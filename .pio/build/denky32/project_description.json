@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_bt_headset2",
-    "project_version":    "98ea812-dirty",
+    "project_version":    "885ec90-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio",
     "idf_path":           "/home/phil/.platformio/packages/framework-espidf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32",
