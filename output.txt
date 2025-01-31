@@ -1,0 +1,11 @@
+Processing denky32 (platform: espressif32@5.4.0; board: denky32; framework: espidf@4.4.6; monitor_speed: 115200; build_flags: -DCONFIG_BTDM_CTRL_HCI_UART_BAUDRATE=921600, -DCONFIG_BTDM_CTRL_PCM_ROLE_EFF=0, -DCONFIG_BTDM_CTRL_PCM_POLAR_EFF=0, -DCONFIG_BTDM_CTRL_DUPL_SCAN_CACHE_SIZE=20, -DCONFIG_BTDM_CTRL_DUPL_SCAN_CACHE_REFRESH_PERIOD=0, -DCONFIG_BTDM_CTRL_SCAN_DUPL_TYPE=0, -DCONFIG_BTDM_CTRL_SCAN_DUPL_EN=n, -DCONFIG_BTDM_CTRL_BLE_MESH_SCAN_DUPL_EN=n, -DCONFIG_BTDM_CTRL_BLE_SLEEP_CLOCK_ACCURACY_INDEX_EFF=0, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_CACHE_SIZE=20, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_REFRESH_PERIOD=0, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_TYPE=0, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_EN=n, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_MESH_EN=n, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_MESH_CACHE_SIZE=50, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_MESH_CACHE_REFRESH_PERIOD=0, -DCONFIG_BTDM_CTRL_ADV_DUPL_SCAN_MESH_TYPE=0; build_unflags: -g; board_build.flash_size: 4MB)
+--------------------------------------------------------------------------------
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/denky32.html
+PLATFORM: Espressif 32 (5.4.0) > Denky32 (WROOM32)
+HARDWARE: ESP32 240MHz, 320KB RAM, 4MB Flash
+DEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - tool-esptoolpy @ 1.40400.0 (4.4.0) 
+ - toolchain-xtensa-esp32 @ 8.4.0+2021r2-patch5
+Error: This board doesn't support espidf@4.4.6 framework!
+========================== [FAILED] Took 0.28 seconds ==========================

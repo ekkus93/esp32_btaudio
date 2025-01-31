@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "esp32_bt_headset2",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"esp_bt.h": "c",
+			"cstdint": "c"
+		}
+	}
+}
