@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_bt_headset2",
-    "project_version":    "885ec90-dirty",
+    "project_version":    "b3d9834-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio",
     "idf_path":           "/home/phil/.platformio/packages/framework-espidf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32",
@@ -1450,7 +1450,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/libsrc.a",
-            "sources": [ "/home/phil/work/esp32/esp32_btaudio/src/CMakeLists.txt", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth.h", "/home/phil/work/esp32/esp32_btaudio/src/main.c" ],
+            "sources": [ "/home/phil/work/esp32/esp32_btaudio/src/CMakeLists.txt", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth.h", "/home/phil/work/esp32/esp32_btaudio/src/bt_app_core.c", "/home/phil/work/esp32/esp32_btaudio/src/bt_app_core.h", "/home/phil/work/esp32/esp32_btaudio/src/main.c" ],
             "include_dirs": []
         },
         "tcp_transport": {

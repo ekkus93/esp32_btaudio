@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"      // Added for mutex
+#include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "string.h"
@@ -11,41 +11,41 @@
 #include "esp_gap_bt_api.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "bluetooth.h"  // Include the Bluetooth header
+#include "bt_app_core.h"  // Include the Bluetooth header
+#include "bluetooth.h"    // Include additional Bluetooth functionality
 #include "esp_idf_version.h"
+
+extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
+
+#define BT_APP_STACK_UP_EVT 0x0000  // << New definition
 
 #define UART_NUM UART_NUM_0
 #define BUF_SIZE (1024)
 #define LED_GPIO GPIO_NUM_2  // Replace with your LED GPIO number
 #define TAG "MAIN"
 
-void app_main(void)
-{
+// Entry point function for PlatformIO (for ESP-IDF, use app_main())
+void app_main(void) {
     ESP_LOGI(TAG, "app_main started");
 
     esp_err_t ret = bluetooth_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluetooth initialization failed");
-        // Handle initialization failure
+        ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    ESP_LOGI(TAG, "Bluetooth initialized successfully");
+    // Start up the Bluetooth application task
+    bt_app_task_start_up();
 
-    // Initialize Bluetooth
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    esp_bt_controller_init(&bt_cfg);
-    esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
+    // Dispatch stack event to set up Bluetooth device name, connection mode, and profile
+    bt_app_work_dispatch(bt_av_hdl_stack_evt, BT_APP_STACK_UP_EVT, NULL, 0, NULL);
 
-    // Initialize Bluedroid
-    esp_bluedroid_init();
-    esp_bluedroid_enable();
-
-    // Register GAP event handler
-    esp_bt_gap_register_callback(gap_event_handler);  // Now recognized
-
-    // Start device discovery or other GAP operations as needed
-    esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
+    // Initialize A2DP
+    if (init_a2dp() != ESP_OK) {
+        ESP_LOGE(TAG, "A2DP initialization failed");
+        return;
+    }
+    ESP_LOGI(TAG, "A2DP initialization succeeded");
 
     // Configure UART
     const uart_config_t uart_config = {
@@ -99,6 +99,8 @@ void app_main(void)
                 char *mac_str = strtok((char*)data + 5, " ");
                 char *pin_str = strtok(NULL, " ");
                 bool require_pin = (pin_str != NULL && strcmp(pin_str, "true") == 0);
+                ESP_LOGI(TAG, "Stopping Bluetooth discovery before pairing...");
+                esp_bt_gap_cancel_discovery();
                 ESP_LOGI(TAG, "Pairing with device: %s, require PIN: %s", mac_str, require_pin ? "true" : "false");
                 esp_err_t ret = bluetooth_pair_device(mac_str, require_pin);
                 if (ret != ESP_OK) {
@@ -109,4 +111,7 @@ void app_main(void)
     }
 
     free(data);
+
+    // Shut down the Bluetooth application task
+    bt_app_task_shut_down();
 }
