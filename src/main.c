@@ -13,6 +13,8 @@
 #include "esp_log.h"
 #include "bt_app_core.h"  // Include the Bluetooth header
 #include "bluetooth.h"    // Include additional Bluetooth functionality
+#include "wifi.h"         // Include Wi-Fi functionality
+#include "ping.h"         // Include Ping functionality
 #include "esp_idf_version.h"
 
 extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
@@ -24,6 +26,22 @@ extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New exter
 #define LED_GPIO GPIO_NUM_2  // Replace with your LED GPIO number
 #define TAG "MAIN"
 
+void print_help() {
+    printf("Available commands:\n");
+    printf("  scan                 - Start Bluetooth device discovery\n");
+    printf("  pair <MAC> [true|false] - Pair with a Bluetooth device (require PIN: true/false)\n");
+    printf("  connect <MAC>        - Connect to a paired Bluetooth device\n");
+    printf("  disconnect           - Disconnect from the connected Bluetooth device\n");
+    printf("  unpair               - Unpair the connected Bluetooth device\n");
+    printf("  set_wifi <SSID> <PASSWORD> - Set Wi-Fi credentials\n");
+    printf("  clear_wifi           - Clear Wi-Fi credentials\n");
+    printf("  connect_wifi         - Connect to Wi-Fi\n");
+    printf("  disconnect_wifi      - Disconnect from Wi-Fi\n");
+    printf("  show_ip              - Show the current IP address\n");
+    printf("  ping <HOST> [COUNT]  - Ping a host (default count: 4)\n");
+    printf("  help                 - Show this help message\n");
+}
+
 // Entry point function for PlatformIO (for ESP-IDF, use app_main())
 void app_main(void) {
     ESP_LOGI(TAG, "app_main started");
@@ -31,6 +49,13 @@ void app_main(void) {
     esp_err_t ret = bluetooth_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    // Initialize Wi-Fi
+    ret = wifi_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi initialization failed: %s", esp_err_to_name(ret));
         return;
     }
 
@@ -125,6 +150,60 @@ void app_main(void) {
                 if (ret != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to unpair: %s", esp_err_to_name(ret));
                 }
+            } else if (strncmp((char*)data, "set_wifi ", 9) == 0) {
+                char *ssid = strtok((char*)data + 9, " ");
+                char *password = strtok(NULL, " ");
+                ESP_LOGI(TAG, "Setting Wi-Fi credentials: SSID=%s, PASSWORD=%s", ssid, password);
+                esp_err_t ret = wifi_set_credentials(ssid, password);
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to set Wi-Fi credentials: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "clear_wifi") == 0) {
+                ESP_LOGI(TAG, "Clearing Wi-Fi credentials...");
+                esp_err_t ret = wifi_clear_credentials();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to clear Wi-Fi credentials: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "connect_wifi") == 0) {
+                ESP_LOGI(TAG, "Connecting to Wi-Fi...");
+                esp_err_t ret = wifi_connect();
+                if (ret == ESP_OK) {
+                    char ip[16];
+                    if (wifi_get_ip(ip, sizeof(ip)) == ESP_OK) {
+                        ESP_LOGI(TAG, "Connected with IP Address: %s", ip);
+                    } else {
+                        ESP_LOGE(TAG, "Failed to get IP address");
+                    }
+                } else {
+                    ESP_LOGE(TAG, "Failed to connect to Wi-Fi: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "disconnect_wifi") == 0) {
+                ESP_LOGI(TAG, "Disconnecting from Wi-Fi...");
+                esp_err_t ret = wifi_disconnect();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to disconnect from Wi-Fi: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "show_ip") == 0) {
+                char ip[16];
+                if (wifi_get_ip(ip, sizeof(ip)) == ESP_OK) {
+                    printf("Current IP Address: %s\n", ip);
+                } else {
+                    printf("Failed to get IP address\n");
+                }
+            } else if (strncmp((char*)data, "ping ", 5) == 0) {
+                char *host = strtok((char*)data + 5, " ");
+                char *count_str = strtok(NULL, " ");
+                int count = (count_str != NULL) ? atoi(count_str) : 4;  // Default to 4 pings if count is not provided
+                ESP_LOGI(TAG, "Pinging host: %s with count: %d", host, count);
+                esp_err_t ret = ping_host(host, count);
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to ping host: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "help") == 0) {
+                print_help();
+            } else {
+                ESP_LOGI(TAG, "Unknown command: %s", data);
+                print_help();
             }
         }
     }

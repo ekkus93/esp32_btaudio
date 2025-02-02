@@ -12,6 +12,7 @@
 #include "esp_bt_defs.h"
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"    // Add AVRCP API include
+#include "wifi.h"            // Include Wi-Fi header
 
 // Initialize Bluetooth stack
 esp_err_t bluetooth_init(void);
