@@ -25,6 +25,15 @@ esp_err_t bluetooth_start_discovery(void);
 // Pair with a Bluetooth device
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 
+// Function to connect to a paired device
+esp_err_t bluetooth_connect_device(const char *mac_str);
+
+// Function to disconnect from a paired device
+esp_err_t bluetooth_disconnect_device(void);
+
+// Function to unpair a device
+esp_err_t bluetooth_unpair_device(void);
+
 // A2DP Sink callback for audio data
 void audio_data_cb(uint8_t *data, uint32_t len);
 

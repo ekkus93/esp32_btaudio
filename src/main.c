@@ -106,6 +106,25 @@ void app_main(void) {
                 if (ret != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to pair with device: %s", esp_err_to_name(ret));
                 }
+            } else if (strncmp((char*)data, "connect ", 8) == 0) {
+                char *mac_str = strtok((char*)data + 8, " ");
+                ESP_LOGI(TAG, "Connecting to device: %s", mac_str);
+                esp_err_t ret = bluetooth_connect_device(mac_str);
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to connect to device: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "disconnect") == 0) {
+                ESP_LOGI(TAG, "Disconnecting from device...");
+                esp_err_t ret = bluetooth_disconnect_device();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to disconnect: %s", esp_err_to_name(ret));
+                }
+            } else if (strcmp((char*)data, "unpair") == 0) {
+                ESP_LOGI(TAG, "Unpairing device...");
+                esp_err_t ret = bluetooth_unpair_device();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to unpair: %s", esp_err_to_name(ret));
+                }
             }
         }
     }

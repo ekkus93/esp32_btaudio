@@ -483,3 +483,63 @@ void bt_av_hdl_stack_evt(uint16_t event, void *p_param) {
             break;
     }
 }
+
+// Function to disconnect from a paired device
+esp_err_t bluetooth_disconnect_device(void) {
+    if (s_a2d_state == APP_AV_STATE_CONNECTED) {
+        esp_err_t ret = esp_a2d_source_disconnect(pending_pair_addr);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to disconnect: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ESP_LOGI(TAG, "Disconnected from device");
+        return ESP_OK;
+    } else {
+        ESP_LOGW(TAG, "No device is currently connected");
+        return ESP_ERR_INVALID_STATE;
+    }
+}
+
+// Function to unpair a device
+esp_err_t bluetooth_unpair_device(void) {
+    if (s_a2d_state == APP_AV_STATE_CONNECTED || s_a2d_state == APP_AV_STATE_CONNECTING) {
+        esp_err_t ret = esp_bt_gap_remove_bond_device(pending_pair_addr);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to unpair: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ESP_LOGI(TAG, "Unpaired device");
+        return ESP_OK;
+    } else {
+        ESP_LOGW(TAG, "No device is currently paired");
+        return ESP_ERR_INVALID_STATE;
+    }
+}
+
+// Function to connect to a paired device
+esp_err_t bluetooth_connect_device(const char *mac_str) {
+    esp_bd_addr_t bd_addr;
+    if (sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
+               &bd_addr[0], &bd_addr[1], &bd_addr[2], 
+               &bd_addr[3], &bd_addr[4], &bd_addr[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid MAC address format");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
+
+    ESP_LOGD(TAG, "Connecting to MAC=%02x:%02x:%02x:%02x:%02x:%02x",
+             bd_addr[0], bd_addr[1], bd_addr[2],
+             bd_addr[3], bd_addr[4], bd_addr[5]);
+
+    s_a2d_state = APP_AV_STATE_CONNECTING;
+    
+    // Establish connection
+    esp_err_t ret = esp_a2d_source_connect(bd_addr);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    return ESP_OK;
+}
