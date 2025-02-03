@@ -10,14 +10,19 @@
 #include <stdlib.h>  // ...existing includes...
 #include "esp_bt_defs.h"
 #include <math.h>  // Add this for sinf()
+#include <inttypes.h>  // Add this for PRId32
 
 #define TAG "BT_APP"
 #define MAX_DEVICES 50
 #define BT_APP_STACK_UP_EVT 0x0000    // << New definition
+#define BT_DEVICE_NAME_KEY "bt_name"
+#define DEFAULT_BT_DEVICE_NAME "monkfish"
 
 // Define test tone parameters
 #define SAMPLE_RATE     44100
 #define TONE_FREQUENCY  440  // 440 Hz (A4 note)
+#define TABLE_SIZE 100  // Precomputed sine table size
+#define BEEP_DURATION_THRESHOLD (SAMPLE_RATE / 2)  // New: beep lasts about 0.5 seconds
 
 // Forward declarations of callback functions
 static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len);
@@ -54,6 +59,35 @@ enum {
 
 static int s_a2d_state = APP_AV_STATE_IDLE;
 static int s_media_state = APP_AV_MEDIA_STATE_IDLE;
+
+// Replace existing beep state variables:
+static bool s_beep_in_progress = false;
+static int s_beep_duration = 0;
+
+// New global variables for sine lookup
+static int16_t sine_table[TABLE_SIZE];
+static bool sine_table_initialized = false;
+static int s_beep_index = 0;
+
+// New helper function to initialize the sine_table once
+static void init_sine_table(void) {
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        float angle = 2.0f * M_PI * i / TABLE_SIZE;
+        sine_table[i] = (int16_t)(32767.5f * sinf(angle));
+    }
+    sine_table_initialized = true;
+}
+
+// New helper function to trigger a beep.
+static void trigger_beep(void) {
+    s_beep_in_progress = true;
+    s_beep_duration = 0;
+    s_beep_index = 0;
+    if (!sine_table_initialized) {
+        init_sine_table();
+    }
+    ESP_LOGI(TAG, "Beep triggered (trigger_beep)");
+}
 
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 
@@ -200,6 +234,16 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
 }
 
 // Define the A2DP callback function
+// New task to handle beep processing on the other CPU with logging.
+static void beep_task(void *params) {
+    ESP_LOGI(TAG, "beep_task started on core %d", xPortGetCoreID());
+    trigger_beep();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP_LOGI(TAG, "beep_task completed, deleting task");
+    vTaskDelete(NULL);
+}
+
+// In the A2DP callback, offload beep processing to core 1 on connection
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     ESP_LOGI(TAG, "A2DP callback event: %d", event);
     switch (event) {
@@ -210,8 +254,10 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 s_a2d_state = APP_AV_STATE_CONNECTED;
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
                 
+                xTaskCreatePinnedToCore(beep_task, "beep_task", 2048, NULL, 5, NULL, 1);
+                
                 // Start media after connection
-                ESP_LOGI(TAG, "Starting media playback...");
+                ESP_LOGI(TAG, "Requesting media playback...");
                 esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
             } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 ESP_LOGI(TAG, "A2DP disconnected");
@@ -219,19 +265,25 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
             }
             break;
-        case ESP_A2D_AUDIO_STATE_EVT:
-            ESP_LOGI(TAG, "A2DP audio state: %d", param->audio_stat.state);
-            if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
-                s_media_state = APP_AV_MEDIA_STATE_STARTED;
-            } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
-                s_media_state = APP_AV_MEDIA_STATE_IDLE;
+        case ESP_A2D_MEDIA_CTRL_ACK_EVT:
+            ESP_LOGI(TAG, "A2DP media control ACK: cmd=%d, status=%d", param->media_ctrl_stat.cmd, param->media_ctrl_stat.status);
+            if (param->media_ctrl_stat.cmd == ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY) {
+                if (param->media_ctrl_stat.status == ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
+                    ESP_LOGI(TAG, "Media source ready, starting playback...");
+                    esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+                } else {
+                    ESP_LOGW(TAG, "Media source not ready, ACK status: %d", param->media_ctrl_stat.status);
+                }
             }
             break;
-        case ESP_A2D_MEDIA_CTRL_ACK_EVT:
-            ESP_LOGI(TAG, "A2DP media control ACK: %d", param->media_ctrl_stat.cmd);
-            if (param->media_ctrl_stat.cmd == ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY &&
-                param->media_ctrl_stat.status == ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
-                esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+        case ESP_A2D_AUDIO_STATE_EVT:
+            ESP_LOGI(TAG, "A2D audio state: %d", param->audio_stat.state);
+            if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+                s_media_state = APP_AV_MEDIA_STATE_STARTED;
+                ESP_LOGI(TAG, "A2DP audio started");
+            } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
+                s_media_state = APP_AV_MEDIA_STATE_IDLE;
+                ESP_LOGI(TAG, "A2DP audio stopped");
             }
             break;
         // Handle all other A2DP events
@@ -249,24 +301,44 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     }
 }
 
-// Generate a sine wave test tone
-static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
-    static float phase = 0.0f;
-    static const float phase_inc = 2.0f * M_PI * TONE_FREQUENCY / SAMPLE_RATE;
-    
-    // Each sample is 16-bit (2 bytes)
-    int16_t *samples = (int16_t*)data;
-    int num_samples = len / 2;  // 2 bytes per sample
-    
-    // Generate sine wave
-    for (int i = 0; i < num_samples; i++) {
-        samples[i] = (int16_t)(32767.0f * sinf(phase));  // Scale to 16-bit range
-        phase += phase_inc;
-        if (phase >= 2.0f * M_PI) {
-            phase -= 2.0f * M_PI;
-        }
+// Update bluetooth_send_beep() to reuse the beep generation.
+esp_err_t bluetooth_send_beep(void) {
+    if (s_a2d_state != APP_AV_STATE_CONNECTED) {
+        ESP_LOGW(TAG, "Not connected: cannot send beep");
+        return ESP_ERR_INVALID_STATE;
     }
-    
+    trigger_beep();
+    return ESP_OK;
+}
+
+// Generate a sine wave test tone with extra debugging.
+static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
+    if (s_beep_in_progress && s_beep_duration >= BEEP_DURATION_THRESHOLD) {  // Modified threshold
+        ESP_LOGI(TAG, "Beep duration reached: %d samples, stopping beep", s_beep_duration);
+        s_beep_in_progress = false;
+        s_beep_duration = 0;
+        memset(data, 0, len); // Output silence after beep
+        return len;
+    }
+
+    int16_t *samples = (int16_t*)data;
+    int num_samples = len / 2;
+
+    if (s_beep_in_progress) {
+        // Log at start of this callback for debugging
+        ESP_LOGD(TAG, "Generating beep: s_beep_index=%d, s_beep_duration=%d", s_beep_index, s_beep_duration);
+        for (int i = 0; i < num_samples; i++) {
+            samples[i] = sine_table[s_beep_index];
+            s_beep_index = (s_beep_index + 1) % TABLE_SIZE;
+            s_beep_duration++;
+            // Log every 100 samples to avoid flooding logs
+            if ((s_beep_duration % 100) == 0) {
+                ESP_LOGD(TAG, "Beep progress: duration=%d, current index=%d", s_beep_duration, s_beep_index);
+            }
+        }
+    } else {
+        memset(data, 0, len);
+    }
     return len;
 }
 
@@ -542,4 +614,111 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
     }
 
     return ESP_OK;
+}
+
+// Function to restart the Bluetooth stack
+esp_err_t restart_bluetooth_stack(void) {
+    esp_err_t ret;
+
+    // Disable Bluedroid
+    ret = esp_bluedroid_disable();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to disable Bluedroid: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Deinitialize Bluedroid
+    ret = esp_bluedroid_deinit();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to deinitialize Bluedroid: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Disable Bluetooth controller
+    ret = esp_bt_controller_disable();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to disable Bluetooth controller: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Deinitialize Bluetooth controller
+    ret = esp_bt_controller_deinit();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to deinitialize Bluetooth controller: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Reinitialize and enable Bluetooth stack
+    ret = bluetooth_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to reinitialize Bluetooth stack: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Bluetooth stack restarted successfully");
+    return ESP_OK;
+}
+
+// Function to set the Bluetooth device name
+esp_err_t bluetooth_set_device_name(const char *name) {
+    esp_err_t ret = esp_bt_gap_set_device_name(name);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set device name: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Save the device name to NVS
+    nvs_handle_t nvs_handle;
+    ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS handle: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, BT_DEVICE_NAME_KEY, name);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save device name to NVS: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    nvs_close(nvs_handle);
+    ESP_LOGI(TAG, "Device name set to: %s", name);
+
+    // Restart Bluetooth stack to apply the new name
+    return restart_bluetooth_stack();
+}
+
+// Function to get the Bluetooth device name
+esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
+    // Read the device name from NVS
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS handle: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    size_t name_len = max_len;
+    ret = nvs_get_str(nvs_handle, BT_DEVICE_NAME_KEY, name, &name_len);
+    if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        // If not found, use the default name and save it to NVS
+        strncpy(name, DEFAULT_BT_DEVICE_NAME, max_len);
+        name[max_len - 1] = '\0';  // Ensure null-termination
+        ret = nvs_set_str(nvs_handle, BT_DEVICE_NAME_KEY, name);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save default device name to NVS: %s", esp_err_to_name(ret));
+        } else {
+            ret = nvs_commit(nvs_handle);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to commit default device name to NVS: %s", esp_err_to_name(ret));
+            }
+        }
+    } else if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read device name from NVS: %s", esp_err_to_name(ret));
+    }
+
+    nvs_close(nvs_handle);
+    ESP_LOGI(TAG, "Device name: %s", name);
+    return ret;
 }

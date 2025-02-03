@@ -47,4 +47,16 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 // AVRCP controller callback
 void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
 
+// Set Bluetooth device name
+esp_err_t bluetooth_set_device_name(const char *name);
+
+// Get Bluetooth device name
+esp_err_t bluetooth_get_device_name(char *name, size_t len);
+
+// Restart Bluetooth stack
+esp_err_t restart_bluetooth_stack(void);
+
+// Add declaration for the serial beep command
+esp_err_t bluetooth_send_beep(void);
+
 #endif // BLUETOOTH_H
