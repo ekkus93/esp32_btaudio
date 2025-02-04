@@ -839,3 +839,9 @@
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/CMakeFiles/rebuild_cache.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/CMakeFiles/list_install_components.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/install/strip.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/install/local.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/edit_cache.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/rebuild_cache.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/install.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/CMakeFiles/list_install_components.dir

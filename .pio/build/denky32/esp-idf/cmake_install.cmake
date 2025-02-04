@@ -552,3 +552,8 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/cmake_install.cmake")
 endif()
 
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/minimp3/cmake_install.cmake")
+endif()
+
