@@ -250,6 +250,9 @@ void radio_task(void *param) {
     }
     ESP_LOGI(TAG, "HTTP connection opened");
 
+    // Fetch headers to populate status code and headers
+    esp_http_client_fetch_headers(client);
+
     // Log the HTTP status code
     int status_code = esp_http_client_get_status_code(client);
     ESP_LOGI(TAG, "HTTP status code: %d", status_code);
@@ -257,6 +260,11 @@ void radio_task(void *param) {
     // Log the content length
     int content_length = esp_http_client_get_content_length(client);
     ESP_LOGI(TAG, "HTTP content length: %d", content_length);
+
+    if (status_code != 200) {
+        ESP_LOGE(TAG, "HTTP request failed with status code: %d", status_code);
+        goto cleanup;
+    }
 
     mp3dec_init(&s_mp3_decoder);
     uint8_t buffer[BUFFER_SIZE];
