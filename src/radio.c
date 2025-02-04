@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include <inttypes.h>  // Added to get PRIu32
 
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"  // Include the minimp3 header
@@ -148,8 +149,11 @@ static size_t read_mp3_data(uint8_t* data, size_t len) {
     return to_read;
 }
 
-// HTTP client + decode task
+// ...existing code...
+static volatile bool s_radio_task_finished = true; // Initially true
+
 void radio_task(void *param) {
+    s_radio_task_finished = false;  // Mark task as running
     ESP_LOGI(TAG, "radio_task: invoked");
     ESP_LOGD(TAG, "radio_task: param pointer=%p", param);
     if (param == NULL) {  // Added explicit check
@@ -246,22 +250,38 @@ void radio_task(void *param) {
     }
     ESP_LOGI(TAG, "HTTP connection opened");
 
+    // Log the HTTP status code
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "HTTP status code: %d", status_code);
+
+    // Log the content length
+    int content_length = esp_http_client_get_content_length(client);
+    ESP_LOGI(TAG, "HTTP content length: %d", content_length);
+
     mp3dec_init(&s_mp3_decoder);
     uint8_t buffer[BUFFER_SIZE];
     mp3dec_frame_info_t info;
     int16_t pcm_output[MINIMP3_MAX_SAMPLES_PER_FRAME];
 
-    // Instead of extensive debug in every loop, log only when processing actual MP3 data.
+    uint32_t loop_count = 0;  // Added counter for debugging
+
     while (s_radio_active) {
+        loop_count++;
+        if ((loop_count % 1000) == 0) {
+            ESP_LOGI(TAG, "radio_task loop iteration: %" PRIu32, loop_count); // Updated format specifier
+        }
+
         int bytes_read = esp_http_client_read(client, (char*)buffer, BUFFER_SIZE);
-        if (bytes_read > 0) {
-            size_t written = write_mp3_data(buffer, bytes_read);
-            // Log only once when MP3 data is written.
-            ESP_LOGD(TAG, "HTTP read %d bytes, wrote %d to MP3 buffer", bytes_read, written);
+        if (bytes_read == 0) {
+            ESP_LOGI(TAG, "HTTP read returned 0 bytes at loop %" PRIu32, loop_count); // Updated format specifier
         } else if (bytes_read < 0) {
             ESP_LOGE(TAG, "HTTP read error: %d", bytes_read);
             break;
+        } else if (bytes_read > 0) {
+            size_t written = write_mp3_data(buffer, bytes_read);
+            ESP_LOGD(TAG, "HTTP read %d bytes, wrote %d to MP3 buffer", bytes_read, written);
         }
+
         size_t available = read_mp3_data(buffer, BUFFER_SIZE);
         if (available > 0) {
             int samples = mp3dec_decode_frame(&s_mp3_decoder, buffer, available, pcm_output, &info);
@@ -296,6 +316,7 @@ cleanup:
     }
     free(url_copy);
     ESP_LOGI(TAG, "radio_task: finished");
+    s_radio_task_finished = true;  // Signal task is done
     vTaskDelete(NULL);
 }
 
@@ -352,16 +373,17 @@ esp_err_t radio_stop(void) {
     s_radio_active = false;
     xSemaphoreGive(s_radio_mutex);
 
-    // Wait a short while for the task to clean up
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    // Force-delete the radio task if it is still set, and clear the handle.
-    if (s_radio_task_handle != NULL) {
-        ESP_LOGI(TAG, "Force deleting radio task");
-        vTaskDelete(s_radio_task_handle);
-        s_radio_task_handle = NULL;
+    // Wait until radio_task finishes
+    int wait = 0;
+    while (!s_radio_task_finished && (wait < 100)) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        wait++;
     }
-
+    if (!s_radio_task_finished) {
+        ESP_LOGE(TAG, "Radio task did not finish in time");
+        return ESP_ERR_TIMEOUT;
+    }
+    s_radio_task_handle = NULL;
     return ESP_OK;
 }
 
@@ -406,6 +428,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
             total_bytes += evt->data_len;
             ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%d, total=%d", evt->data_len, total_bytes);
             if (evt->data_len > 0) {
+                ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA: data=%.*s", evt->data_len, (char*)evt->data);
                 size_t written = write_mp3_data((const uint8_t*)evt->data, evt->data_len);
                 ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", written);
                 if (written < evt->data_len) {

@@ -342,14 +342,19 @@ static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
     return len;
 }
 
+static SemaphoreHandle_t s_bt_resource_mutex = NULL;
+
 esp_err_t bluetooth_start_discovery(void) {
     ESP_LOGI(TAG, "###Starting Bluetooth device discovery");
-    esp_err_t ret = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 30, 0);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start discovery: %s", esp_err_to_name(ret));
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        esp_err_t ret = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 30, 0);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start discovery: %s", esp_err_to_name(ret));
+        }
+        xSemaphoreGive(s_bt_resource_mutex);
     }
     ESP_LOGI(TAG, "###Leaving bluetooth_start_discovery");
-    return ret;
+    return ESP_OK;
 }
 
 // Add more detailed logging in the pairing function
@@ -376,11 +381,15 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
 
     s_a2d_state = APP_AV_STATE_CONNECTING;
     
-    // First establish connection without security
-    esp_err_t ret = esp_a2d_source_connect(bd_addr);  // Changed to source
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
-        return ret;
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        // First establish connection without security
+        esp_err_t ret = esp_a2d_source_connect(bd_addr);  // Changed to source
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+        xSemaphoreGive(s_bt_resource_mutex);
     }
 
     return ESP_OK;
@@ -510,6 +519,14 @@ esp_err_t bluetooth_init(void) {
     esp_bt_gap_register_callback(gap_event_handler);
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
 
+    if (!s_bt_resource_mutex) {
+        s_bt_resource_mutex = xSemaphoreCreateMutex();
+        if (!s_bt_resource_mutex) {
+            ESP_LOGE(TAG, "Failed to create Bluetooth resource mutex");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     ESP_LOGI(TAG, "Bluetooth stack initialized successfully");
     return ESP_OK;
 }
@@ -559,10 +576,15 @@ void bt_av_hdl_stack_evt(uint16_t event, void *p_param) {
 // Function to disconnect from a paired device
 esp_err_t bluetooth_disconnect_device(void) {
     if (s_a2d_state == APP_AV_STATE_CONNECTED) {
-        esp_err_t ret = esp_a2d_source_disconnect(pending_pair_addr);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to disconnect: %s", esp_err_to_name(ret));
-            return ret;
+        if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Attempting to disconnect from device...");
+            esp_err_t ret = esp_a2d_source_disconnect(pending_pair_addr);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to disconnect: %s", esp_err_to_name(ret));
+                xSemaphoreGive(s_bt_resource_mutex);
+                return ret;
+            }
+            xSemaphoreGive(s_bt_resource_mutex);
         }
         ESP_LOGI(TAG, "Disconnected from device");
         return ESP_OK;
@@ -575,10 +597,14 @@ esp_err_t bluetooth_disconnect_device(void) {
 // Function to unpair a device
 esp_err_t bluetooth_unpair_device(void) {
     if (s_a2d_state == APP_AV_STATE_CONNECTED || s_a2d_state == APP_AV_STATE_CONNECTING) {
-        esp_err_t ret = esp_bt_gap_remove_bond_device(pending_pair_addr);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to unpair: %s", esp_err_to_name(ret));
-            return ret;
+        if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+            esp_err_t ret = esp_bt_gap_remove_bond_device(pending_pair_addr);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to unpair: %s", esp_err_to_name(ret));
+                xSemaphoreGive(s_bt_resource_mutex);
+                return ret;
+            }
+            xSemaphoreGive(s_bt_resource_mutex);
         }
         ESP_LOGI(TAG, "Unpaired device");
         return ESP_OK;
@@ -606,11 +632,15 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
 
     s_a2d_state = APP_AV_STATE_CONNECTING;
     
-    // Establish connection
-    esp_err_t ret = esp_a2d_source_connect(bd_addr);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
-        return ret;
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        // Establish connection
+        esp_err_t ret = esp_a2d_source_connect(bd_addr);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+        xSemaphoreGive(s_bt_resource_mutex);
     }
 
     return ESP_OK;
@@ -621,38 +651,46 @@ esp_err_t restart_bluetooth_stack(void) {
     esp_err_t ret;
 
     // Disable Bluedroid
-    ret = esp_bluedroid_disable();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to disable Bluedroid: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        ret = esp_bluedroid_disable();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to disable Bluedroid: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    // Deinitialize Bluedroid
-    ret = esp_bluedroid_deinit();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to deinitialize Bluedroid: %s", esp_err_to_name(ret));
-        return ret;
-    }
+        // Deinitialize Bluedroid
+        ret = esp_bluedroid_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to deinitialize Bluedroid: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    // Disable Bluetooth controller
-    ret = esp_bt_controller_disable();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to disable Bluetooth controller: %s", esp_err_to_name(ret));
-        return ret;
-    }
+        // Disable Bluetooth controller
+        ret = esp_bt_controller_disable();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to disable Bluetooth controller: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    // Deinitialize Bluetooth controller
-    ret = esp_bt_controller_deinit();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to deinitialize Bluetooth controller: %s", esp_err_to_name(ret));
-        return ret;
-    }
+        // Deinitialize Bluetooth controller
+        ret = esp_bt_controller_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to deinitialize Bluetooth controller: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    // Reinitialize and enable Bluetooth stack
-    ret = bluetooth_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reinitialize Bluetooth stack: %s", esp_err_to_name(ret));
-        return ret;
+        // Reinitialize and enable Bluetooth stack
+        ret = bluetooth_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to reinitialize Bluetooth stack: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+        xSemaphoreGive(s_bt_resource_mutex);
     }
 
     ESP_LOGI(TAG, "Bluetooth stack restarted successfully");
@@ -661,29 +699,36 @@ esp_err_t restart_bluetooth_stack(void) {
 
 // Function to set the Bluetooth device name
 esp_err_t bluetooth_set_device_name(const char *name) {
-    esp_err_t ret = esp_bt_gap_set_device_name(name);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set device name: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        esp_err_t ret = esp_bt_gap_set_device_name(name);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set device name: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    // Save the device name to NVS
-    nvs_handle_t nvs_handle;
-    ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open NVS handle: %s", esp_err_to_name(ret));
-        return ret;
-    }
+        // Save the device name to NVS
+        nvs_handle_t nvs_handle;
+        ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to open NVS handle: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
 
-    ret = nvs_set_str(nvs_handle, BT_DEVICE_NAME_KEY, name);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save device name to NVS: %s", esp_err_to_name(ret));
+        ret = nvs_set_str(nvs_handle, BT_DEVICE_NAME_KEY, name);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save device name to NVS: %s", esp_err_to_name(ret));
+            nvs_close(nvs_handle);
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+
         nvs_close(nvs_handle);
-        return ret;
-    }
+        ESP_LOGI(TAG, "Device name set to: %s", name);
 
-    nvs_close(nvs_handle);
-    ESP_LOGI(TAG, "Device name set to: %s", name);
+        xSemaphoreGive(s_bt_resource_mutex);
+    }
 
     // Restart Bluetooth stack to apply the new name
     return restart_bluetooth_stack();
