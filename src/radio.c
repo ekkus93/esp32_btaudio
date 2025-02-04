@@ -150,6 +150,7 @@ static size_t read_mp3_data(uint8_t* data, size_t len) {
 
 // HTTP client + decode task
 void radio_task(void *param) {
+    ESP_LOGI(TAG, "radio_task: invoked");
     ESP_LOGD(TAG, "radio_task: param pointer=%p", param);
     if (param == NULL) {  // Added explicit check
         ESP_LOGE(TAG, "radio_task: NULL parameter provided");
@@ -351,16 +352,21 @@ esp_err_t radio_stop(void) {
     s_radio_active = false;
     xSemaphoreGive(s_radio_mutex);
 
-    // Wait for task to finish
-    if (s_radio_task_handle) {
-        vTaskDelay(pdMS_TO_TICKS(100));  // Give task time to clean up
+    // Wait a short while for the task to clean up
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // Force-delete the radio task if it is still set, and clear the handle.
+    if (s_radio_task_handle != NULL) {
+        ESP_LOGI(TAG, "Force deleting radio task");
+        vTaskDelete(s_radio_task_handle);
+        s_radio_task_handle = NULL;
     }
 
     return ESP_OK;
 }
 
 void radio_set_active(bool active) {
-    ESP_LOGI(TAG, "radio_set_active: called with active: %d", active);
+    ESP_LOGI(TAG, "radio_set_active: Changing active state to: %d", active);
     s_radio_streaming_active = active;
 }
 

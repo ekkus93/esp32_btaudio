@@ -15,6 +15,7 @@
 #include "bluetooth.h"    // Include additional Bluetooth functionality
 #include "wifi.h"         // Include Wi-Fi functionality
 #include "ping.h"         // Include Ping functionality
+#include "radio.h"        // Include radio functionality
 #include "esp_idf_version.h"
 
 extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
@@ -43,6 +44,7 @@ void print_help() {
     printf("  restart              - Restart the program\n");
     printf("  help                 - Show this help message\n");
     printf("  beep [count]         - Send one or multiple beeps (default is 1 beep, only when connected)\n");
+    printf("  play_radio <URL>     - Play an Internet radio stream from the provided URL\n");
 }
 
 void handle_command(char *cmd) {
@@ -50,8 +52,23 @@ void handle_command(char *cmd) {
     cmd[strcspn(cmd, "\r\n")] = '\0';
 
     if (strcmp(cmd, "scan") == 0) {
+        ESP_LOGI(TAG, "Stopping Bluetooth audio streaming before scan...");
+        esp_err_t ret = bluetooth_disconnect_device();  // Ensure any ongoing Bluetooth audio streaming is stopped
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Bluetooth audio streaming stopped successfully.");
+        } else {
+            ESP_LOGW(TAG, "No Bluetooth audio streaming to stop.");
+        }
+
+        ret = radio_stop();  // Ensure any ongoing radio streaming is stopped
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Radio streaming stopped successfully.");
+        } else {
+            ESP_LOGW(TAG, "No radio streaming to stop.");
+        }
+
         ESP_LOGI(TAG, "Starting Bluetooth scan...");
-        esp_err_t ret = bluetooth_start_discovery();
+        ret = bluetooth_start_discovery();
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to start Bluetooth scan: %s", esp_err_to_name(ret));
         }
@@ -168,6 +185,26 @@ void handle_command(char *cmd) {
                 printf("Failed to send beep. Ensure Bluetooth is connected.\n");
             }
             vTaskDelay(pdMS_TO_TICKS(1200)); // Delay to allow beep processing
+        }
+    } else if (strncmp(cmd, "play_radio ", 11) == 0) {
+        char *url = strtok(cmd + 11, " ");
+        if (url) {
+            ESP_LOGI(TAG, "Starting radio stream from URL: %s", url);
+            
+            // Make a copy of the URL string that will persist after this function returns
+            char *url_copy = strdup(url);
+            if (!url_copy) {
+                ESP_LOGE(TAG, "Failed to allocate memory for URL");
+                return;
+            }
+            
+            // Create task with larger stack size (16KB instead of 4KB)
+            if (xTaskCreate(radio_task, "radio_task", 16384, (void*)url_copy, 5, NULL) != pdPASS) {
+                ESP_LOGE(TAG, "Failed to create radio task");
+                free(url_copy);
+            }
+        } else {
+            ESP_LOGE(TAG, "No URL provided for play_radio command");
         }
     } else {
         ESP_LOGI(TAG, "Unknown command: %s", cmd);
