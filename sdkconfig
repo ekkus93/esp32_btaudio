@@ -1,0 +1,4 @@
+# ...existing configuration...
+
+CONFIG_FREERTOS_DEBUG_OCDAWARE=y
+# Enable other debugging options as needed

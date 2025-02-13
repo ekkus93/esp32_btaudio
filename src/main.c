@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <dirent.h>  // Add this include for directory operations
+#include <fcntl.h>  // Add this for O_RDONLY
+#include <unistd.h> // Add this for read()
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -17,6 +20,7 @@
 #include "ping.h"         // Include Ping functionality
 #include "radio.h"        // Include radio functionality
 #include "esp_idf_version.h"
+#include "esp_spiffs.h"  // Add this include
 
 extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
 
@@ -45,6 +49,49 @@ void print_help() {
     printf("  help                 - Show this help message\n");
     printf("  beep [count]         - Send one or multiple beeps (default is 1 beep, only when connected)\n");
     printf("  play_radio <URL>     - Play an Internet radio stream from the provided URL\n");
+    printf("  play_snd             - Play sound.mp3 from SPIFFS storage through Bluetooth\n");
+    printf("  ls_spiffs            - List files on SPIFFS partition\n");
+    printf("  read_test            - Read and display contents of test.txt\n");
+}
+
+static void list_spiffs_files() {
+    // Initialize SPIFFS
+    esp_vfs_spiffs_conf_t conf = {
+        .base_path = "/spiffs",
+        .partition_label = "storage",
+        .max_files = 5,
+        .format_if_mount_failed = true
+    };
+    
+    ESP_LOGI(TAG, "Mounting SPIFFS...");
+    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+        return;
+    }
+
+    // Print partition info
+    size_t total = 0, used = 0;
+    ret = esp_spiffs_info("storage", &total, &used);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Partition total: %d, used: %d", total, used);
+    }
+
+    // Now try to open directory
+    DIR *dir = opendir("/spiffs");
+    if (!dir) {
+        ESP_LOGE(TAG, "Failed to open /spiffs directory: errno %d", errno);
+        esp_vfs_spiffs_unregister("storage");
+        return;
+    }
+
+    // Read directory entries
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        ESP_LOGI(TAG, "Found file: %s", entry->d_name);
+    }
+    closedir(dir);
+    esp_vfs_spiffs_unregister("storage");
 }
 
 void handle_command(char *cmd) {
@@ -53,6 +100,7 @@ void handle_command(char *cmd) {
 
     if (strcmp(cmd, "scan") == 0) {
         ESP_LOGI(TAG, "Stopping Bluetooth audio streaming before scan...");
+        esp_bt_gap_cancel_discovery();
         esp_err_t ret = bluetooth_disconnect_device();  // Ensure any ongoing Bluetooth audio streaming is stopped
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "Bluetooth audio streaming stopped successfully.");
@@ -206,6 +254,141 @@ void handle_command(char *cmd) {
         } else {
             ESP_LOGE(TAG, "No URL provided for play_radio command");
         }
+    } else if (strcmp(cmd, "play_snd") == 0) {
+        ESP_LOGI(TAG, "Playing sound.mp3 from SPIFFS");
+        
+        // Initialize SPIFFS
+        esp_vfs_spiffs_conf_t conf = {
+            .base_path = "/spiffs",
+            .partition_label = "storage",
+            .max_files = 5,
+            .format_if_mount_failed = false  // Changed to false to prevent accidental formatting
+        };
+        
+        ESP_LOGI(TAG, "Mounting SPIFFS...");
+        esp_err_t ret = esp_vfs_spiffs_register(&conf);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+            return;
+        }
+
+        // Print partition info
+        size_t total = 0, used = 0;
+        ret = esp_spiffs_info("storage", &total, &used);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to get SPIFFS partition info");
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+        ESP_LOGI(TAG, "Partition total: %d, used: %d", total, used);
+
+        // Try opening and reading the file
+        const char* filepath = "/spiffs/sound.mp3";
+        FILE *fp = fopen(filepath, "rb");
+        if (!fp) {
+            ESP_LOGE(TAG, "Failed to open file: errno %d", errno);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        // Get file size
+        struct stat st;
+        if (stat(filepath, &st) != 0) {
+            ESP_LOGE(TAG, "Failed to get file size");
+            fclose(fp);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        // Try reading first few bytes to verify file access
+        uint8_t test_buf[16];
+        size_t bytes_read = fread(test_buf, 1, sizeof(test_buf), fp);
+        if (bytes_read <= 0) {
+            ESP_LOGE(TAG, "Failed to read file: errno %d", errno);
+            fclose(fp);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        // Print first few bytes for debugging
+        ESP_LOGI(TAG, "First %d bytes:", bytes_read);
+        for (int i = 0; i < bytes_read; i++) {
+            printf("%02x ", test_buf[i]);
+        }
+        printf("\n");
+
+        // Rewind file pointer
+        rewind(fp);
+
+        // Create task parameters
+        radio_task_params_t *params = malloc(sizeof(radio_task_params_t));
+        if (!params) {
+            ESP_LOGE(TAG, "Failed to allocate parameters");
+            fclose(fp);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        params->fp = fp;
+        params->size = st.st_size;
+
+        // Create playback task with increased stack size
+        if (xTaskCreate(radio_task, "radio_task", 16384, params, 5, NULL) != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create radio task");
+            free(params);
+            fclose(fp);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+    } else if (strcmp(cmd, "ls_spiffs") == 0) {
+        ESP_LOGI(TAG, "Listing files on SPIFFS partition...");
+        list_spiffs_files();
+    } else if (strcmp(cmd, "read_test") == 0) {
+        ESP_LOGI(TAG, "Reading test.txt from SPIFFS");
+        
+        esp_vfs_spiffs_conf_t conf = {
+            .base_path = "/spiffs",
+            .partition_label = "storage",
+            .max_files = 5,
+            .format_if_mount_failed = false
+        };
+        
+        esp_err_t ret = esp_vfs_spiffs_register(&conf);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+            return;
+        }
+
+        // Check if destination file exists before renaming
+        struct stat st;
+        if (stat("/spiffs/test.txt", &st) == 0) {
+            ESP_LOGI(TAG, "File exists: /spiffs/test.txt");
+        } else {
+            ESP_LOGE(TAG, "File does not exist: /spiffs/test.txt");
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        // Simple direct read using a static buffer
+        char buf[128] = {0};  // Fixed size buffer
+        FILE* f = fopen("/spiffs/test.txt", "r");
+        if (f == NULL) {
+            ESP_LOGE(TAG, "Failed to open file: errno %d", errno);
+            esp_vfs_spiffs_unregister("storage");
+            return;
+        }
+
+        size_t bytes = fread(buf, 1, sizeof(buf)-1, f);
+        if (bytes > 0) {
+            buf[bytes] = '\0';  // Ensure null termination
+            ESP_LOGI(TAG, "File contents: %s", buf);
+            ESP_LOGI(TAG, "Read %d bytes successfully", bytes);
+        } else {
+            ESP_LOGE(TAG, "Failed to read file: errno %d", errno);
+        }
+
+        fclose(f);
+        esp_vfs_spiffs_unregister("storage");
     } else {
         ESP_LOGI(TAG, "Unknown command: %s", cmd);
         print_help();

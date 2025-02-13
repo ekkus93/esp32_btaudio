@@ -27,6 +27,14 @@ void radio_write_pcm(const int16_t *samples, int num_samples);
 // Task function for the radio.
 void radio_task(void *params);
 
+typedef struct {
+    union {
+        uint8_t *data;  // For memory buffer playback
+        FILE *fp;       // For file streaming
+    };
+    size_t size;
+} radio_task_params_t;
+
 #ifdef __cplusplus
 }
 #endif

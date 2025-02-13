@@ -178,6 +178,7 @@
                 "/home/phil/.platformio/packages/framework-espidf/components/rt/include",
                 "/home/phil/.platformio/packages/framework-espidf/components/spiffs/include",
                 "/home/phil/.platformio/packages/framework-espidf/components/wifi_provisioning/include",
+                "/home/phil/work/esp32/esp32_btaudio/components/minimp3",
                 ""
             ],
             "browse": {
@@ -353,6 +354,7 @@
                     "/home/phil/.platformio/packages/framework-espidf/components/rt/include",
                     "/home/phil/.platformio/packages/framework-espidf/components/spiffs/include",
                     "/home/phil/.platformio/packages/framework-espidf/components/wifi_provisioning/include",
+                    "/home/phil/work/esp32/esp32_btaudio/components/minimp3",
                     ""
                 ]
             },

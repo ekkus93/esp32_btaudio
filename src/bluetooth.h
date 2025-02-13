@@ -59,4 +59,7 @@ esp_err_t restart_bluetooth_stack(void);
 // Add declaration for the serial beep command
 esp_err_t bluetooth_send_beep(void);
 
+// Add declaration for sending PCM data to the audio output
+void send_pcm_to_audio_output(const int16_t *pcm_data, int num_samples);
+
 #endif // BLUETOOTH_H

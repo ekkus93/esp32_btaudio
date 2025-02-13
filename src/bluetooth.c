@@ -3,7 +3,8 @@
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
-#include "esp_a2dp_api.h"
+#include "esp_a2dp_api.h"     // This includes everything we need for A2DP
+#include "esp_avrc_api.h"     // Add this for AVRCP
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include <string.h>
@@ -767,3 +768,20 @@ esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
     ESP_LOGI(TAG, "Device name: %s", name);
     return ret;
 }
+
+// ...existing code...
+
+esp_err_t bluetooth_write_audio(uint8_t* data, size_t* written) {
+    if (!data || !written || !*written) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_media_state != APP_AV_MEDIA_STATE_STARTED) {
+        ESP_LOGW(TAG, "A2DP media not started");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
+}
+
+// ...existing code...
