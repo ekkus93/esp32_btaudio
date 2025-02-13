@@ -14,68 +14,60 @@
 #include "esp_log.h"
 #include "bt_app_core.h"
 
+static const char *TAG = "BT_APP_CORE";
+
 /*********************************
  * STATIC FUNCTION DECLARATIONS
  ********************************/
 
 /* application task handler */
 static void bt_app_task_handler(void *arg);
-/* message sender for Work queue */
-static bool bt_app_send_msg(bt_app_msg_t *msg);
-/* handler for dispatched message */
-static void bt_app_work_dispatched(bt_app_msg_t *msg);
 
 /*********************************
  * STATIC VARIABLE DEFINITIONS
  ********************************/
-static QueueHandle_t s_bt_app_task_queue = NULL;
-static TaskHandle_t s_bt_app_task_handle = NULL;
+static QueueHandle_t bt_app_queue_handle = NULL;
+static TaskHandle_t bt_app_task_handle = NULL;
 
 /*********************************
  * STATIC FUNCTION DEFINITIONS
  ********************************/
 
-static bool bt_app_send_msg(bt_app_msg_t *msg)
+bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback)
 {
-    if (msg == NULL) {
+    ESP_LOGD(TAG, "bt_app_work_dispatch sig 0x%x, cb %p, param %p", event, p_cback, p_params);
+
+    bt_app_work_item_t item = {
+        .cb = p_cback,
+        .event = event,
+        .param = p_params,
+        .param_len = param_len,
+        .copy_cb = p_copy_cback
+    };
+
+    BaseType_t ret = xQueueSend(bt_app_queue_handle, &item, 10 / portTICK_PERIOD_MS);
+    if (ret != pdTRUE) {
+        ESP_LOGW(TAG, "bt_app_work_dispatch failed to dispatch event 0x%x", event);
         return false;
     }
-
-    if (pdTRUE != xQueueSend(s_bt_app_task_queue, msg, 10 / portTICK_PERIOD_MS)) {
-        ESP_LOGE(BT_APP_CORE_TAG, "%s xQueue send failed", __func__);
-        return false;
-    }
-
     return true;
-}
-
-static void bt_app_work_dispatched(bt_app_msg_t *msg)
-{
-    if (msg->cb) {
-        msg->cb(msg->event, msg->param);
-    }
 }
 
 static void bt_app_task_handler(void *arg)
 {
-    bt_app_msg_t msg;
-
+    bt_app_work_item_t item;
     for (;;) {
-        /* receive message from work queue and handle it */
-        if (pdTRUE == xQueueReceive(s_bt_app_task_queue, &msg, (TickType_t)portMAX_DELAY)) {
-            ESP_LOGD(BT_APP_CORE_TAG, "%s, signal: 0x%x, event: 0x%x", __func__, msg.sig, msg.event);
-
-            switch (msg.sig) {
-            case BT_APP_SIG_WORK_DISPATCH:
-                bt_app_work_dispatched(&msg);
-                break;
-            default:
-                ESP_LOGW(BT_APP_CORE_TAG, "%s, unhandled signal: %d", __func__, msg.sig);
-                break;
+        if (xQueueReceive(bt_app_queue_handle, &item, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGD(TAG, "bt_app_task_handler sig 0x%x, cb %p, param %p", item.event, item.cb, item.param);
+            if (item.cb) {
+                item.cb(item.event, item.param);
             }
-
-            if (msg.param) {
-                free(msg.param);
+            if (item.param) {
+                if (item.copy_cb) {
+                    item.copy_cb(item.param);
+                } else {
+                    free(item.param);
+                }
             }
         }
     }
@@ -85,47 +77,31 @@ static void bt_app_task_handler(void *arg)
  * EXTERN FUNCTION DEFINITIONS
  ********************************/
 
-bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback)
-{
-    ESP_LOGD(BT_APP_CORE_TAG, "%s event: 0x%x, param len: %d", __func__, event, param_len);
-
-    bt_app_msg_t msg;
-    memset(&msg, 0, sizeof(bt_app_msg_t));
-
-    msg.sig = BT_APP_SIG_WORK_DISPATCH;
-    msg.event = event;
-    msg.cb = p_cback;
-
-    if (param_len == 0) {
-        return bt_app_send_msg(&msg);
-    } else if (p_params && param_len > 0) {
-        if ((msg.param = malloc(param_len)) != NULL) {
-            memcpy(msg.param, p_params, param_len);
-            /* check if caller has provided a copy callback to do the deep copy */
-            if (p_copy_cback) {
-                p_copy_cback(msg.param, p_params, param_len);
-            }
-            return bt_app_send_msg(&msg);
-        }
-    }
-
-    return false;
-}
-
 void bt_app_task_start_up(void)
 {
-    s_bt_app_task_queue = xQueueCreate(10, sizeof(bt_app_msg_t));
-    xTaskCreate(bt_app_task_handler, "BtAppTask", 3072, NULL, 10, &s_bt_app_task_handle);
+    bt_app_queue_handle = xQueueCreate(BT_APP_CORE_TASK_QUEUE_SIZE, sizeof(bt_app_work_item_t));
+    if (bt_app_queue_handle == NULL) {
+        ESP_LOGE(TAG, "Create Bluetooth application queue failed!");
+        return;
+    }
+
+    BaseType_t ret = xTaskCreate(bt_app_task_handler, BT_APP_CORE_TASK_NAME, BT_APP_CORE_TASK_STACK_SIZE, NULL, BT_APP_CORE_TASK_PRIO, &bt_app_task_handle);
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Create Bluetooth application task failed!");
+        vQueueDelete(bt_app_queue_handle);
+        bt_app_queue_handle = NULL;
+        return;
+    }
 }
 
 void bt_app_task_shut_down(void)
 {
-    if (s_bt_app_task_handle) {
-        vTaskDelete(s_bt_app_task_handle);
-        s_bt_app_task_handle = NULL;
+    if (bt_app_task_handle) {
+        vTaskDelete(bt_app_task_handle);
+        bt_app_task_handle = NULL;
     }
-    if (s_bt_app_task_queue) {
-        vQueueDelete(s_bt_app_task_queue);
-        s_bt_app_task_queue = NULL;
+    if (bt_app_queue_handle) {
+        vQueueDelete(bt_app_queue_handle);
+        bt_app_queue_handle = NULL;
     }
 }

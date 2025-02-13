@@ -10,6 +10,7 @@
 #include <inttypes.h>  // Added to get PRIu32
 #include "mp3_utils.h"   // Add this include
 #include "esp_task_wdt.h" // Add this line
+#include "mp3dec.h"  // Include the MP3 decoder header
 
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"
@@ -27,7 +28,6 @@ static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((aligned(4)));
 static size_t s_mp3_head = 0, s_mp3_tail = 0;
 
 static TaskHandle_t s_radio_task_handle = NULL;
-static mp3dec_t s_mp3_decoder;  // Minimp3 decoder context
 
 // Add mutex for protecting shared state
 static SemaphoreHandle_t s_radio_mutex = NULL;
@@ -126,34 +126,6 @@ static size_t write_mp3_data(const uint8_t* data, size_t len) {
     return written;
 }
 
-// Helper function to read from MP3 buffer
-static size_t read_mp3_data(uint8_t* data, size_t len) {
-    if (!s_mp3_mutex || xSemaphoreTake(s_mp3_mutex, 0) != pdTRUE) {
-        return 0;
-    }
-    
-    size_t available = (s_mp3_tail >= s_mp3_head) ?
-        (s_mp3_tail - s_mp3_head) :
-        (MP3_BUFFER_SIZE - s_mp3_head + s_mp3_tail);
-        
-    size_t to_read = (len > available) ? available : len;
-    
-    if (to_read > 0) {
-        if (s_mp3_head + to_read <= MP3_BUFFER_SIZE) {
-            memcpy(data, &s_mp3_buffer[s_mp3_head], to_read);
-            s_mp3_head = (s_mp3_head + to_read) % MP3_BUFFER_SIZE;
-        } else {
-            size_t first = MP3_BUFFER_SIZE - s_mp3_head;
-            memcpy(data, &s_mp3_buffer[s_mp3_head], first);
-            memcpy(data + first, s_mp3_buffer, to_read - first);
-            s_mp3_head = to_read - first;
-        }
-    }
-    
-    xSemaphoreGive(s_mp3_mutex);
-    return to_read;
-}
-
 static volatile bool s_radio_task_finished = true; // Initially true
 
 void radio_task(void *param) {
@@ -180,6 +152,10 @@ void radio_task(void *param) {
     rewind(params->fp);
     ESP_LOGI(TAG, "File position before read: %ld", ftell(params->fp));
 
+    mp3dec_t mp3d;
+    mp3dec_frame_info_t info;  // Use mp3dec_frame_info_t
+    mp3dec_init(&mp3d);
+
     size_t remaining = params->size;
     while (remaining > 0) {
         // Feed watchdog
@@ -191,8 +167,12 @@ void radio_task(void *param) {
         
         if (read > 0) {
             ESP_LOGI(TAG, "Processing %d bytes from file", read);
-            // Process audio data
-            process_mp3_data(buf, read);
+            // Decode MP3 data
+            int samples = mp3dec_decode_frame(&mp3d, buf, read, (mp3d_sample_t*)buf, &info);
+            if (samples > 0) {
+                size_t written = samples * sizeof(mp3d_sample_t);
+                bluetooth_write_audio((const uint8_t*)buf, &written);  // Pass pointer to size_t
+            }
             remaining -= read;
         } else {
             ESP_LOGE(TAG, "Read error or EOF");
@@ -345,3 +325,11 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     }
     return ESP_OK;
 }
+
+// Suppress unused function warnings
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
+// Restore warnings
+#pragma GCC diagnostic pop

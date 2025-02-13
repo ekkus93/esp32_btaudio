@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "esp_err.h"
+#include "bluetooth.h"
 
 esp_err_t process_mp3_data(const uint8_t* data, size_t len);
 

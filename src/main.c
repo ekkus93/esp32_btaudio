@@ -21,6 +21,7 @@
 #include "radio.h"        // Include radio functionality
 #include "esp_idf_version.h"
 #include "esp_spiffs.h"  // Add this include
+#include "errno.h"  // Add this include
 
 extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
 
