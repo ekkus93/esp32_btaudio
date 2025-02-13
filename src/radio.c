@@ -8,12 +8,17 @@
 #include "minimp3.h"    // Include minimp3 header
 #include <string.h>
 #include <inttypes.h>  // Added to get PRIu32
+#undef PRIu32
+#define PRIu32 "u"    // Override to force unsigned printing
 #include "mp3_utils.h"   // Add this include
 #include "esp_task_wdt.h" // Add this line
 #include "mp3dec.h"  // Include the MP3 decoder header
+#include "custom_log.h"  // Add this line
 
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"
+
+// Remove the WRAPPED_LOG macros since we'll use SAFE_ESP_* instead
 
 #define TAG "RADIO"
 #define BUFFER_SIZE 512  // Reduced buffer size
@@ -24,17 +29,17 @@ static bool s_radio_active = false;
 static bool s_radio_streaming_active = false;
 static uint8_t s_pcm_ring[PCM_RING_BUFFER_SIZE] __attribute__((aligned(4)));
 static size_t s_ring_head = 0, s_ring_tail = 0;
-static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((aligned(4)));
-static size_t s_mp3_head = 0, s_mp3_tail = 0;
+static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((unused, aligned(4)));
+static size_t s_mp3_head __attribute__((unused)) = 0, s_mp3_tail __attribute__((unused)) = 0;
 
 static TaskHandle_t s_radio_task_handle = NULL;
 
 // Add mutex for protecting shared state
 static SemaphoreHandle_t s_radio_mutex = NULL;
-static SemaphoreHandle_t s_mp3_mutex = NULL;
+static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL;
 
 // Forward declaration of the event handler
-static esp_err_t http_event_handler(esp_http_client_event_t *evt);
+static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_event_t *evt);
 
 // Utility to store PCM samples in our ring buffer
 void radio_write_pcm(const int16_t *samples, int num_samples) {
@@ -44,8 +49,8 @@ void radio_write_pcm(const int16_t *samples, int num_samples) {
         (s_ring_head - s_ring_tail - 1);
 
     if (bytes_to_write > space_available) {
-        ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: %d/%d bytes", 
-                 PCM_RING_BUFFER_SIZE - space_available, PCM_RING_BUFFER_SIZE);
+        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: %d/%d bytes", 
+                    (int)(PCM_RING_BUFFER_SIZE - space_available), (int)PCM_RING_BUFFER_SIZE);
         // Wait a bit when buffer is full
         vTaskDelay(pdMS_TO_TICKS(10));
         return;
@@ -63,10 +68,10 @@ void radio_write_pcm(const int16_t *samples, int num_samples) {
 
     // Log buffer usage periodically
     static uint32_t last_log = 0;
-    uint32_t now = esp_log_timestamp();
+    unsigned int now = (unsigned int)esp_log_timestamp();
     if (now - last_log > 1000) {  // Log every second
-        ESP_LOGI(TAG, "Ring buffer usage: %d/%d bytes", 
-                 PCM_RING_BUFFER_SIZE - space_available, PCM_RING_BUFFER_SIZE);
+        SAFE_ESP_LOGI(TAG, "Ring buffer usage: %d/%d bytes", 
+                    (int)(PCM_RING_BUFFER_SIZE - space_available), (int)PCM_RING_BUFFER_SIZE);
         last_log = now;
     }
 }
@@ -93,7 +98,7 @@ size_t radio_read_pcm(uint8_t *dest, size_t len) {
 }
 
 // Helper function to write to MP3 buffer
-static size_t write_mp3_data(const uint8_t* data, size_t len) {
+static __attribute__((unused)) size_t write_mp3_data(const uint8_t* data, size_t len) {
     size_t written = 0;
     while (written < len) {
         // Wait for the mutex with a timeout
@@ -123,6 +128,8 @@ static size_t write_mp3_data(const uint8_t* data, size_t len) {
         written += to_write;
         xSemaphoreGive(s_mp3_mutex);
     }
+    // NEW: Cast written to int in the log to match %d format specifier.
+    SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", (int)written);
     return written;
 }
 
@@ -132,25 +139,44 @@ void radio_task(void *param) {
     radio_task_params_t *params = (radio_task_params_t*)param;
     uint8_t *buf = malloc(512);
     if (!buf) {
-        ESP_LOGE(TAG, "Failed to allocate buffer");
+        SAFE_ESP_LOGE(TAG, "Failed to allocate buffer");
         return;
     }
 
     // Initialize task watchdog
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
 
-    ESP_LOGI(TAG, "radio_task: invoked");
-    ESP_LOGI(TAG, "radio_task: starting file playback");
-    ESP_LOGI(TAG, "File descriptor: %d", fileno(params->fp));
+    SAFE_ESP_LOGI(TAG, "radio_task: invoked");
+    SAFE_ESP_LOGI(TAG, "radio_task: starting file playback");
+    SAFE_ESP_LOGI(TAG, "File descriptor: %d", fileno(params->fp));
 
     // Test read first 4 bytes
     size_t test_read = fread(buf, 1, 4, params->fp);
-    ESP_LOGI(TAG, "Test read result: %d bytes [%02x %02x %02x %02x]", 
-             test_read, buf[0], buf[1], buf[2], buf[3]);
+    SAFE_ESP_LOGI(TAG, "Test read result: %d bytes [%02x %02x %02x %02x]", 
+             (int)test_read, buf[0], buf[1], buf[2], buf[3]);
 
     // Reset file position
     rewind(params->fp);
-    ESP_LOGI(TAG, "File position before read: %ld", ftell(params->fp));
+    SAFE_ESP_LOGI(TAG, "File position before read: %ld", ftell(params->fp));
+
+    // --- NEW CODE: Skip ID3 header if present ---
+    {
+        char id3_header[10];
+        if (fread(id3_header, 1, 10, params->fp) == 10) {
+            if (id3_header[0]=='I' && id3_header[1]=='D' && id3_header[2]=='3') {
+                uint32_t tag_size = ((id3_header[6] & 0x7F) << 21) |
+                                    ((id3_header[7] & 0x7F) << 14) |
+                                    ((id3_header[8] & 0x7F) << 7)  |
+                                    (id3_header[9] & 0x7F);
+                SAFE_ESP_LOGI(TAG, "Skipping ID3 tag of size %d bytes", (int)tag_size);
+                fseek(params->fp, tag_size, SEEK_CUR);
+            } else {
+                // Not an ID3 tag; rewind 10 bytes back to re-read from the beginning
+                fseek(params->fp, -10, SEEK_CUR);
+            }
+        }
+    }
+    // --- end NEW CODE ---
 
     mp3dec_t mp3d;
     mp3dec_frame_info_t info;  // Use mp3dec_frame_info_t
@@ -161,12 +187,12 @@ void radio_task(void *param) {
         // Feed watchdog
         ESP_ERROR_CHECK(esp_task_wdt_reset());
 
-        ESP_LOGI(TAG, "Attempting to read file...");
+        SAFE_ESP_LOGI(TAG, "Attempting to read file...");
         size_t to_read = (remaining > 512) ? 512 : remaining;
         size_t read = fread(buf, 1, to_read, params->fp);
         
         if (read > 0) {
-            ESP_LOGI(TAG, "Processing %d bytes from file", read);
+            SAFE_ESP_LOGI(TAG, "Processing %d bytes from file", (int)read);
             // Decode MP3 data
             int samples = mp3dec_decode_frame(&mp3d, buf, read, (mp3d_sample_t*)buf, &info);
             if (samples > 0) {
@@ -175,7 +201,7 @@ void radio_task(void *param) {
             }
             remaining -= read;
         } else {
-            ESP_LOGE(TAG, "Read error or EOF");
+            SAFE_ESP_LOGE(TAG, "Read error or EOF");
             break;
         }
 
@@ -194,34 +220,34 @@ void radio_task(void *param) {
 
 // Start the radio streaming
 esp_err_t radio_play(const char *url) {
-    ESP_LOGI(TAG, "radio_play: called with URL: %s", url);
+    SAFE_ESP_LOGI(TAG, "radio_play: called with URL: %s", url);
     if (!s_radio_mutex) {
         s_radio_mutex = xSemaphoreCreateMutex();
         if (!s_radio_mutex) {
-            ESP_LOGE(TAG, "Failed to create radio mutex");
+            SAFE_ESP_LOGE(TAG, "Failed to create radio mutex");
             return ESP_ERR_NO_MEM;
         }
     }
 
     if (xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to take radio mutex");
+        SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
         return ESP_ERR_TIMEOUT;
     }
     
     if (s_radio_active) {
         xSemaphoreGive(s_radio_mutex);
-        ESP_LOGW(TAG, "Radio already playing");
+        SAFE_ESP_LOGW(TAG, "Radio already playing");
         return ESP_ERR_INVALID_STATE;
     }
     xSemaphoreGive(s_radio_mutex);
 
     if (!url) {
-        ESP_LOGE(TAG, "Invalid URL");
+        SAFE_ESP_LOGE(TAG, "Invalid URL");
         return ESP_ERR_INVALID_ARG;
     }
 
     if (xTaskCreate(radio_task, "radio_task", 8192, (void*)url, 5, &s_radio_task_handle) != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create radio task");
+        SAFE_ESP_LOGE(TAG, "Failed to create radio task");
         return ESP_ERR_NO_MEM;
     }
     
@@ -230,15 +256,15 @@ esp_err_t radio_play(const char *url) {
 
 // Stop the radio streaming
 esp_err_t radio_stop(void) {
-    ESP_LOGI(TAG, "radio_stop: called");
+    SAFE_ESP_LOGI(TAG, "radio_stop: called");
     if (!s_radio_mutex || xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to take radio mutex");
+        SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
         return ESP_ERR_TIMEOUT;
     }
     
     if (!s_radio_active) {
         xSemaphoreGive(s_radio_mutex);
-        ESP_LOGW(TAG, "Radio not active");
+        SAFE_ESP_LOGW(TAG, "Radio not active");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -252,7 +278,7 @@ esp_err_t radio_stop(void) {
         wait++;
     }
     if (!s_radio_task_finished) {
-        ESP_LOGE(TAG, "Radio task did not finish in time");
+        SAFE_ESP_LOGE(TAG, "Radio task did not finish in time");
         return ESP_ERR_TIMEOUT;
     }
     s_radio_task_handle = NULL;
@@ -260,19 +286,19 @@ esp_err_t radio_stop(void) {
 }
 
 void radio_set_active(bool active) {
-    ESP_LOGI(TAG, "radio_set_active: Changing active state to: %d", active);
+    SAFE_ESP_LOGI(TAG, "radio_set_active: Changing active state to: %d", active);
     s_radio_streaming_active = active;
 }
 
 // Added validation for URL pointer.
 esp_err_t radio_play_stream(const char *url) {
-    ESP_LOGI(TAG, "radio_play_stream: called with URL: %s", url);
+    SAFE_ESP_LOGI(TAG, "radio_play_stream: called with URL: %s", url);
     if (url == NULL || strlen(url) == 0) {
-        ESP_LOGE("RADIO", "Invalid URL provided to radio_play_stream");
+        SAFE_ESP_LOGE("RADIO", "Invalid URL provided to radio_play_stream");
         return ESP_ERR_INVALID_ARG;
     }
     
-    ESP_LOGI("RADIO", "Starting radio stream with URL: %s", url);
+    SAFE_ESP_LOGI("RADIO", "Starting radio stream with URL: %s", url);
     
     // ...existing code to initialize the stream...
     
@@ -280,47 +306,48 @@ esp_err_t radio_play_stream(const char *url) {
 }
 
 // Event handler for HTTP client
-esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     static size_t total_bytes = 0;
 
     switch (evt->event_id) {
         case HTTP_EVENT_ERROR:
-            ESP_LOGI(TAG, "HTTP_EVENT_ERROR");
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ERROR");
             break;
         case HTTP_EVENT_ON_CONNECTED:
-            ESP_LOGI(TAG, "HTTP_EVENT_ON_CONNECTED");
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_CONNECTED");
             break;
         case HTTP_EVENT_HEADER_SENT:
-            ESP_LOGI(TAG, "HTTP_EVENT_HEADER_SENT");
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_HEADER_SENT");
             break;
         case HTTP_EVENT_ON_HEADER:
-            ESP_LOGI(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
             break;
         case HTTP_EVENT_ON_DATA:
             total_bytes += evt->data_len;
-            ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%d, total=%d", evt->data_len, total_bytes);
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%" PRIu32 ", total=%" PRIu32,
+                     evt->data_len, total_bytes);
             if (evt->data_len > 0) {
-                ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA: hex data:");
+                SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA: hex data:");
                 for (int i = 0; i < evt->data_len; i++) {
                     printf("%02x ", ((uint8_t*)evt->data)[i]);
                 }
                 printf("\n");
 
                 size_t written = write_mp3_data((const uint8_t*)evt->data, evt->data_len);
-                ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", written);
+                SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", written);
                 if (written < evt->data_len) {
-                    ESP_LOGW(TAG, "Buffer full, some data dropped");
+                    SAFE_ESP_LOGW(TAG, "Buffer full, some data dropped");
                 }
             }
             break;
         case HTTP_EVENT_ON_FINISH:
-            ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
             break;
         case HTTP_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
+            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
             break;
         case HTTP_EVENT_REDIRECT:
-            ESP_LOGI(TAG, "HTTP_EVENT_REDIRECT");
+            SAFE_ESP_LOGI(TAG, "%s", "HTTP_EVENT_REDIRECT");
             break;
     }
     return ESP_OK;
