@@ -41,6 +41,10 @@ static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL;
 // Forward declaration of the event handler
 static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_event_t *evt);
 
+// Helper to format size_t values for logging
+#define SIZE_FMT "%u"
+#define SIZE_CAST(x) ((unsigned int)(x))
+
 // Utility to store PCM samples in our ring buffer
 void radio_write_pcm(const int16_t *samples, int num_samples) {
     size_t bytes_to_write = num_samples * sizeof(int16_t);
@@ -49,8 +53,9 @@ void radio_write_pcm(const int16_t *samples, int num_samples) {
         (s_ring_head - s_ring_tail - 1);
 
     if (bytes_to_write > space_available) {
-        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: %d/%d bytes", 
-                    (int)(PCM_RING_BUFFER_SIZE - space_available), (int)PCM_RING_BUFFER_SIZE);
+        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: " SIZE_FMT "/" SIZE_FMT " bytes", 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available), 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
         // Wait a bit when buffer is full
         vTaskDelay(pdMS_TO_TICKS(10));
         return;
@@ -70,8 +75,9 @@ void radio_write_pcm(const int16_t *samples, int num_samples) {
     static uint32_t last_log = 0;
     unsigned int now = (unsigned int)esp_log_timestamp();
     if (now - last_log > 1000) {  // Log every second
-        SAFE_ESP_LOGI(TAG, "Ring buffer usage: %d/%d bytes", 
-                    (int)(PCM_RING_BUFFER_SIZE - space_available), (int)PCM_RING_BUFFER_SIZE);
+        SAFE_ESP_LOGI(TAG, "Ring buffer usage: " SIZE_FMT "/" SIZE_FMT " bytes", 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available),
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
         last_log = now;
     }
 }
@@ -137,10 +143,18 @@ static volatile bool s_radio_task_finished = true; // Initially true
 
 void radio_task(void *param) {
     radio_task_params_t *params = (radio_task_params_t*)param;
-    uint8_t *buf = malloc(512);
-    if (!buf) {
-        SAFE_ESP_LOGE(TAG, "Failed to allocate buffer");
-        return;
+    uint8_t *buf = NULL;
+    uint8_t *pcm_buf = NULL;
+    mp3dec_t mp3d;
+    mp3dec_frame_info_t info;
+
+    // Allocate buffers
+    buf = heap_caps_malloc(BUFFER_SIZE, MALLOC_CAP_8BIT);
+    pcm_buf = heap_caps_malloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t), MALLOC_CAP_8BIT);
+    
+    if (!buf || !pcm_buf) {
+        SAFE_ESP_LOGE(TAG, "Failed to allocate buffers");
+        goto cleanup;
     }
 
     // Initialize task watchdog
@@ -150,71 +164,69 @@ void radio_task(void *param) {
     SAFE_ESP_LOGI(TAG, "radio_task: starting file playback");
     SAFE_ESP_LOGI(TAG, "File descriptor: %d", fileno(params->fp));
 
-    // Test read first 4 bytes
-    size_t test_read = fread(buf, 1, 4, params->fp);
-    SAFE_ESP_LOGI(TAG, "Test read result: %d bytes [%02x %02x %02x %02x]", 
-             (int)test_read, buf[0], buf[1], buf[2], buf[3]);
-
-    // Reset file position
-    rewind(params->fp);
-    SAFE_ESP_LOGI(TAG, "File position before read: %ld", ftell(params->fp));
-
-    // --- NEW CODE: Skip ID3 header if present ---
+    // Handle ID3 tag if present
     {
         char id3_header[10];
         if (fread(id3_header, 1, 10, params->fp) == 10) {
             if (id3_header[0]=='I' && id3_header[1]=='D' && id3_header[2]=='3') {
                 uint32_t tag_size = ((id3_header[6] & 0x7F) << 21) |
-                                    ((id3_header[7] & 0x7F) << 14) |
-                                    ((id3_header[8] & 0x7F) << 7)  |
-                                    (id3_header[9] & 0x7F);
+                                  ((id3_header[7] & 0x7F) << 14) |
+                                  ((id3_header[8] & 0x7F) << 7)  |
+                                  (id3_header[9] & 0x7F);
                 SAFE_ESP_LOGI(TAG, "Skipping ID3 tag of size %d bytes", (int)tag_size);
                 fseek(params->fp, tag_size, SEEK_CUR);
             } else {
-                // Not an ID3 tag; rewind 10 bytes back to re-read from the beginning
                 fseek(params->fp, -10, SEEK_CUR);
             }
         }
     }
-    // --- end NEW CODE ---
 
-    mp3dec_t mp3d;
-    mp3dec_frame_info_t info;  // Use mp3dec_frame_info_t
     mp3dec_init(&mp3d);
-
     size_t remaining = params->size;
+    
     while (remaining > 0) {
         // Feed watchdog
         ESP_ERROR_CHECK(esp_task_wdt_reset());
 
-        SAFE_ESP_LOGI(TAG, "Attempting to read file...");
-        size_t to_read = (remaining > 512) ? 512 : remaining;
+        size_t to_read = MINIMP3_MIN(remaining, BUFFER_SIZE);
         size_t read = fread(buf, 1, to_read, params->fp);
         
-        if (read > 0) {
-            SAFE_ESP_LOGI(TAG, "Processing %d bytes from file", (int)read);
-            // Decode MP3 data
-            int samples = mp3dec_decode_frame(&mp3d, buf, read, (mp3d_sample_t*)buf, &info);
-            if (samples > 0) {
-                size_t written = samples * sizeof(mp3d_sample_t);
-                bluetooth_write_audio((const uint8_t*)buf, &written);  // Pass pointer to size_t
+        if (read == 0) break;
+        
+        SAFE_ESP_LOGI(TAG, "Processing %d bytes from file", (int)read);
+        
+        // Decode MP3 frame
+        int samples = mp3dec_decode_frame(&mp3d, buf, read, (mp3d_sample_t*)pcm_buf, &info);
+        
+        if (samples > 0) {
+            size_t written = samples * sizeof(mp3d_sample_t);
+            esp_err_t err = bluetooth_write_audio((const uint8_t*)pcm_buf, &written);
+            if (err != ESP_OK) {
+                SAFE_ESP_LOGE(TAG, "Failed to write audio data: %d", err);
+                break;
             }
-            remaining -= read;
+            
+            if (written < samples * sizeof(mp3d_sample_t)) {
+                SAFE_ESP_LOGW(TAG, "Partial write: %d/%d bytes", 
+                             (int)written, (int)(samples * sizeof(mp3d_sample_t)));
+            }
         } else {
-            SAFE_ESP_LOGE(TAG, "Read error or EOF");
-            break;
+            SAFE_ESP_LOGW(TAG, "No samples decoded from frame");
         }
 
-        // Small delay to prevent watchdog from triggering
-        vTaskDelay(pdMS_TO_TICKS(10));
+        remaining -= read;
+        vTaskDelay(pdMS_TO_TICKS(5)); // Give other tasks a chance to run
     }
 
-    free(buf);
-    fclose(params->fp);
+cleanup:
+    if (buf) heap_caps_free(buf);
+    if (pcm_buf) heap_caps_free(pcm_buf);
+    if (params->fp) fclose(params->fp);
     free(params);
     
     // Delete task from watchdog
     ESP_ERROR_CHECK(esp_task_wdt_delete(NULL));
+    s_radio_task_finished = true;
     vTaskDelete(NULL);
 }
 
