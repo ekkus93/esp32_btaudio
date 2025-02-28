@@ -3,8 +3,7 @@
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
-#include "esp_a2dp_api.h"     // This includes everything we need for A2DP
-#include "esp_avrc_api.h"     // Add this for AVRCP
+#include "esp_a2dp_api.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include <string.h>
@@ -12,6 +11,12 @@
 #include "esp_bt_defs.h"
 #include <math.h>  // Add this for sinf()
 #include <inttypes.h>  // Add this for PRId32
+#include "esp_bt_device.h" // Add this line
+#include "custom_log.h"
+
+// Reduce L2CAP buffer size (adjust as needed)
+#define L2CAP_MTU 512  // Reduced from default
+#define L2CAP_TX_BUF_SIZE 1024 // Reduced from default
 
 #define TAG "BT_APP"
 #define MAX_DEVICES 50
@@ -520,6 +525,16 @@ esp_err_t bluetooth_init(void) {
     esp_bt_gap_register_callback(gap_event_handler);
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
 
+    // Remove L2CAP configuration
+    /*
+    // Configure L2CAP channel parameters
+    esp_bt_cfg_l2cap_capab_ex_data_t l2cap_cfg;
+    memset(&l2cap_cfg, 0, sizeof(esp_bt_cfg_l2cap_capab_ex_data_t));
+    l2cap_cfg.l2cap_tx_buf_size = L2CAP_TX_BUF_SIZE;
+    l2cap_cfg.l2cap_mtu        = L2CAP_MTU;
+    esp_bt_gap_set_l2cap_capability(&l2cap_cfg);
+    */
+
     if (!s_bt_resource_mutex) {
         s_bt_resource_mutex = xSemaphoreCreateMutex();
         if (!s_bt_resource_mutex) {
@@ -769,8 +784,6 @@ esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
     return ret;
 }
 
-// ...existing code...
-
 esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written) {  // Update this line to match the declaration
     if (!data || !written || !*written) {
         return ESP_ERR_INVALID_ARG;
@@ -781,7 +794,9 @@ esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written) {  // Upda
         return ESP_ERR_INVALID_STATE;
     }
 
+    // Add logging to monitor buffer usage
+    //esp_a2d_source_get_buffer_status(&available, &total);
+    //SAFE_ESP_LOGD(TAG, "A2DP Buffer: Available=%d, Total=%d", available, total);
+
     return esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
 }
-
-// ...existing code...

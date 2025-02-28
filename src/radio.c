@@ -21,9 +21,9 @@
 // Remove the WRAPPED_LOG macros since we'll use SAFE_ESP_* instead
 
 #define TAG "RADIO"
-#define BUFFER_SIZE 512  // Reduced buffer size
-#define PCM_RING_BUFFER_SIZE (4 * 1024)  // Reduced buffer size
-#define MP3_BUFFER_SIZE (4 * 1024)  // Reduced buffer size
+#define BUFFER_SIZE 256  // Further reduced buffer size
+#define PCM_RING_BUFFER_SIZE (2 * 1024)  // Further reduced buffer size
+#define MP3_BUFFER_SIZE (2 * 1024)  // Further reduced buffer size
 
 static bool s_radio_active = false;
 static bool s_radio_streaming_active = false;
@@ -38,108 +38,11 @@ static TaskHandle_t s_radio_task_handle = NULL;
 static SemaphoreHandle_t s_radio_mutex = NULL;
 static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL;
 
-// Forward declaration of the event handler
-static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_event_t *evt);
+static volatile bool s_radio_task_finished = true; // Initially true
 
 // Helper to format size_t values for logging
 #define SIZE_FMT "%u"
 #define SIZE_CAST(x) ((unsigned int)(x))
-
-// Utility to store PCM samples in our ring buffer
-void radio_write_pcm(const int16_t *samples, int num_samples) {
-    size_t bytes_to_write = num_samples * sizeof(int16_t);
-    size_t space_available = (s_ring_tail >= s_ring_head) ? 
-        (PCM_RING_BUFFER_SIZE - s_ring_tail + s_ring_head - 1) : 
-        (s_ring_head - s_ring_tail - 1);
-
-    if (bytes_to_write > space_available) {
-        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: " SIZE_FMT "/" SIZE_FMT " bytes", 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available), 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
-        // Wait a bit when buffer is full
-        vTaskDelay(pdMS_TO_TICKS(10));
-        return;
-    }
-
-    if (s_ring_tail + bytes_to_write <= PCM_RING_BUFFER_SIZE) {
-        memcpy(&s_pcm_ring[s_ring_tail], samples, bytes_to_write);
-        s_ring_tail = (s_ring_tail + bytes_to_write) % PCM_RING_BUFFER_SIZE;
-    } else {
-        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_tail;
-        memcpy(&s_pcm_ring[s_ring_tail], samples, first_chunk);
-        memcpy(s_pcm_ring, (uint8_t*)samples + first_chunk, bytes_to_write - first_chunk);
-        s_ring_tail = bytes_to_write - first_chunk;
-    }
-
-    // Log buffer usage periodically
-    static uint32_t last_log = 0;
-    unsigned int now = (unsigned int)esp_log_timestamp();
-    if (now - last_log > 1000) {  // Log every second
-        SAFE_ESP_LOGI(TAG, "Ring buffer usage: " SIZE_FMT "/" SIZE_FMT " bytes", 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available),
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
-        last_log = now;
-    }
-}
-
-// New accessor to read PCM data from the ring buffer.
-// Returns the number of bytes read.
-size_t radio_read_pcm(uint8_t *dest, size_t len) {
-    size_t bytes_to_read = len;
-    size_t available = (s_ring_tail >= s_ring_head)
-        ? (s_ring_tail - s_ring_head)
-        : (PCM_RING_BUFFER_SIZE - s_ring_head + s_ring_tail);
-    if (bytes_to_read > available) bytes_to_read = available;
-
-    if (s_ring_head + bytes_to_read <= PCM_RING_BUFFER_SIZE) {
-        memcpy(dest, &s_pcm_ring[s_ring_head], bytes_to_read);
-        s_ring_head = (s_ring_head + bytes_to_read) % PCM_RING_BUFFER_SIZE;
-    } else {
-        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_head;
-        memcpy(dest, &s_pcm_ring[s_ring_head], first_chunk);
-        memcpy(dest + first_chunk, s_pcm_ring, bytes_to_read - first_chunk);
-        s_ring_head = bytes_to_read - first_chunk;
-    }
-    return bytes_to_read;
-}
-
-// Helper function to write to MP3 buffer
-static __attribute__((unused)) size_t write_mp3_data(const uint8_t* data, size_t len) {
-    size_t written = 0;
-    while (written < len) {
-        // Wait for the mutex with a timeout
-        if (!s_mp3_mutex || xSemaphoreTake(s_mp3_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-        size_t space = (s_mp3_head > s_mp3_tail) ?
-            (s_mp3_head - s_mp3_tail - 1) :
-            (MP3_BUFFER_SIZE - s_mp3_tail + s_mp3_head - 1);
-        if (space == 0) {
-            // Buffer full, release the mutex and wait briefly
-            xSemaphoreGive(s_mp3_mutex);
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-        size_t to_write = ((len - written) > space) ? space : (len - written);
-        if (s_mp3_tail + to_write <= MP3_BUFFER_SIZE) {
-            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, to_write);
-            s_mp3_tail = (s_mp3_tail + to_write) % MP3_BUFFER_SIZE;
-        } else {
-            size_t first = MP3_BUFFER_SIZE - s_mp3_tail;
-            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, first);
-            memcpy(s_mp3_buffer, data + written + first, to_write - first);
-            s_mp3_tail = to_write - first;
-        }
-        written += to_write;
-        xSemaphoreGive(s_mp3_mutex);
-    }
-    // NEW: Cast written to int in the log to match %d format specifier.
-    SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", (int)written);
-    return written;
-}
-
-static volatile bool s_radio_task_finished = true; // Initially true
 
 void radio_task(void *param) {
     radio_task_params_t *params = (radio_task_params_t*)param;
@@ -228,6 +131,100 @@ cleanup:
     ESP_ERROR_CHECK(esp_task_wdt_delete(NULL));
     s_radio_task_finished = true;
     vTaskDelete(NULL);
+}
+
+// Utility to store PCM samples in our ring buffer
+void radio_write_pcm(const int16_t *samples, int num_samples) {
+    size_t bytes_to_write = num_samples * sizeof(int16_t);
+    size_t space_available = (s_ring_tail >= s_ring_head) ? 
+        (PCM_RING_BUFFER_SIZE - s_ring_tail + s_ring_head - 1) : 
+        (s_ring_head - s_ring_tail - 1);
+
+    if (bytes_to_write > space_available) {
+        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: %u/%u bytes", 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available), 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
+        // Wait a bit when buffer is full
+        vTaskDelay(pdMS_TO_TICKS(10));
+        return;
+    }
+
+    if (s_ring_tail + bytes_to_write <= PCM_RING_BUFFER_SIZE) {
+        memcpy(&s_pcm_ring[s_ring_tail], samples, bytes_to_write);
+        s_ring_tail = (s_ring_tail + bytes_to_write) % PCM_RING_BUFFER_SIZE;
+    } else {
+        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_tail;
+        memcpy(&s_pcm_ring[s_ring_tail], samples, first_chunk);
+        memcpy(s_pcm_ring, (uint8_t*)samples + first_chunk, bytes_to_write - first_chunk);
+        s_ring_tail = bytes_to_write - first_chunk;
+    }
+
+    // Log buffer usage periodically
+    static uint32_t last_log = 0;
+    unsigned int now = (unsigned int)esp_log_timestamp();
+    if (now - last_log > 1000) {  // Log every second
+        SAFE_ESP_LOGI(TAG, "Ring buffer usage: %u/%u bytes", 
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available),
+                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
+        last_log = now;
+    }
+}
+
+// New accessor to read PCM data from the ring buffer.
+// Returns the number of bytes read.
+size_t radio_read_pcm(uint8_t *dest, size_t len) {
+    size_t bytes_to_read = len;
+    size_t available = (s_ring_tail >= s_ring_head)
+        ? (s_ring_tail - s_ring_head)
+        : (PCM_RING_BUFFER_SIZE - s_ring_head + s_ring_tail);
+    if (bytes_to_read > available) bytes_to_read = available;
+
+    if (s_ring_head + bytes_to_read <= PCM_RING_BUFFER_SIZE) {
+        memcpy(dest, &s_pcm_ring[s_ring_head], bytes_to_read);
+        s_ring_head = (s_ring_head + bytes_to_read) % PCM_RING_BUFFER_SIZE;
+    } else {
+        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_head;
+        memcpy(dest, &s_pcm_ring[s_ring_head], first_chunk);
+        memcpy(dest + first_chunk, s_pcm_ring, bytes_to_read - first_chunk);
+        s_ring_head = bytes_to_read - first_chunk;
+    }
+    return bytes_to_read;
+}
+
+// Helper function to write to MP3 buffer
+static __attribute__((unused)) size_t write_mp3_data(const uint8_t* data, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        // Wait for the mutex with a timeout
+        if (!s_mp3_mutex || xSemaphoreTake(s_mp3_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
+        size_t space = (s_mp3_head > s_mp3_tail) ?
+            (s_mp3_head - s_mp3_tail - 1) :
+            (MP3_BUFFER_SIZE - s_mp3_tail + s_mp3_head - 1);
+        if (space == 0) {
+            // Buffer full, release the mutex and wait briefly
+            xSemaphoreGive(s_mp3_mutex);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
+        size_t to_write = ((len - written) > space) ? space : (len - written);
+        if (s_mp3_tail + to_write <= MP3_BUFFER_SIZE) {
+            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, to_write);
+            s_mp3_tail = (s_mp3_tail + to_write) % MP3_BUFFER_SIZE;
+        } else {
+            size_t first = MP3_BUFFER_SIZE - s_mp3_tail;
+            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, first);
+            memcpy(s_mp3_buffer, data + written + first, to_write - first);
+            s_mp3_tail = to_write - first;
+        }
+        written += to_write;
+        xSemaphoreGive(s_mp3_mutex);
+    }
+    // NEW: Cast written to int in the log to match %d format specifier.
+    SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", (int)written);
+    return written;
 }
 
 // Start the radio streaming
