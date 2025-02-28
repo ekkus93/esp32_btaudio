@@ -16,9 +16,16 @@ esp_err_t bluetooth_disconnect_device(void);
 esp_err_t bluetooth_unpair_device(void);
 esp_err_t bluetooth_set_device_name(const char *name);
 esp_err_t bluetooth_get_device_name(char *name, size_t max_len);
-esp_err_t bluetooth_send_beep(void);
+esp_err_t bluetooth_send_beep(void);  // Add this function declaration
 esp_err_t init_a2dp(void);
 esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written); // Update this line to accept const pointer
+
+// Volume control functions
+esp_err_t bluetooth_volume_up(void);
+esp_err_t bluetooth_volume_down(void);
+esp_err_t bluetooth_set_volume(uint8_t volume);
+esp_err_t bluetooth_get_volume(void);
+uint8_t bluetooth_get_current_volume(void);
 
 // Event handler declarations
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);

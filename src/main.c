@@ -55,6 +55,10 @@ void print_help() {
     printf("  play_radio <URL>     - Play an Internet radio stream from the provided URL\n");
     printf("  play_snd             - Play sound.mp3 from SPIFFS storage through Bluetooth\n");
     printf("  ls_spiffs            - List files on SPIFFS partition\n");
+    printf("  volume_up            - Increase the Bluetooth audio volume\n");
+    printf("  volume_down          - Decrease the Bluetooth audio volume\n");
+    printf("  set_volume <VOLUME>  - Set the Bluetooth audio volume (0-127)\n");
+    printf("  get_volume           - Get the current Bluetooth audio volume\n");
 }
 
 #define SPIFFS_BASE_PATH "/spiffs"
@@ -320,6 +324,43 @@ void handle_command(char *cmd) {
     } else if (strcmp(cmd, "ls_spiffs") == 0) {
         ESP_LOGI(TAG, "Listing files on SPIFFS partition...");
         list_spiffs_files();
+    } else if (strcmp(cmd, "volume_up") == 0) {
+        ESP_LOGI(TAG, "Increasing volume");
+        esp_err_t ret = bluetooth_volume_up();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send volume up command: %s", esp_err_to_name(ret));
+        }
+    } else if (strcmp(cmd, "volume_down") == 0) {
+        ESP_LOGI(TAG, "Decreasing volume");
+        esp_err_t ret = bluetooth_volume_down();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send volume down command: %s", esp_err_to_name(ret));
+        }
+    } else if (strncmp(cmd, "set_volume ", 11) == 0) {
+        char *volume_str = strtok(cmd + 11, " ");
+        if (volume_str != NULL) {
+            int volume = atoi(volume_str);
+            if (volume >= 0 && volume <= 127) {
+                ESP_LOGI(TAG, "Setting volume to %d", volume);
+                esp_err_t ret = bluetooth_set_volume((uint8_t)volume);
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to set volume to %d: %s", volume, esp_err_to_name(ret));
+                }
+            } else {
+                ESP_LOGE(TAG, "Invalid volume: %d (must be 0-127)", volume);
+            }
+        } else {
+            ESP_LOGE(TAG, "Usage: set_volume <VOLUME>");
+        }
+    } else if (strcmp(cmd, "get_volume") == 0) {
+        ESP_LOGI(TAG, "Getting current volume");
+        esp_err_t ret = bluetooth_get_volume();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to get volume: %s", esp_err_to_name(ret));
+        } else {
+            // Volume will be printed in the AVRCP callback
+            ESP_LOGI(TAG, "get_volume command sent. Check logs for volume level.");
+        }
     } else {
         ESP_LOGI(TAG, "Unknown command: %s", cmd);
         print_help();

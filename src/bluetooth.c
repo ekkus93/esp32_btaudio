@@ -13,6 +13,9 @@
 #include <inttypes.h>  // Add this for PRId32
 #include "esp_bt_device.h" // Add this line
 #include "custom_log.h"
+#include "esp_avrc_api.h"  // Include AVRCP API
+#include "driver/uart.h"
+#include "esp_timer.h"  // For esp_timer_get_time
 
 // Reduce L2CAP buffer size (adjust as needed)
 #define L2CAP_MTU 512  // Reduced from default
@@ -250,8 +253,25 @@ static void beep_task(void *params) {
 }
 
 // In the A2DP callback, offload beep processing to core 1 on connection
+static bool s_l2cap_congestion_flag = false;
+static uint32_t s_last_operation_time = 0;
+#define BT_OPERATION_DELAY_MS 300  // At least 300ms between BT operations
+
+// Helper function to check if enough time has passed since last operation
+static bool is_operation_time_ok(void) {
+    uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000);
+    if (current_time - s_last_operation_time < BT_OPERATION_DELAY_MS) {
+        ESP_LOGW(TAG, "Operation attempted too soon after previous one");
+        return false;
+    }
+    s_last_operation_time = current_time;
+    return true;
+}
+
+// Replace the bt_app_a2d_cb function with a fixed version
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     ESP_LOGI(TAG, "A2DP callback event: %d", event);
+    
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
             ESP_LOGI(TAG, "A2DP connection state: %d", param->conn_stat.state);
@@ -262,6 +282,9 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 
                 xTaskCreatePinnedToCore(beep_task, "beep_task", 2048, NULL, 5, NULL, 1);
                 
+                // Reset congestion flag when connected
+                s_l2cap_congestion_flag = false;
+                
                 // Start media after connection
                 ESP_LOGI(TAG, "Requesting media playback...");
                 esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
@@ -271,6 +294,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
             }
             break;
+            
         case ESP_A2D_MEDIA_CTRL_ACK_EVT:
             ESP_LOGI(TAG, "A2DP media control ACK: cmd=%d, status=%d", param->media_ctrl_stat.cmd, param->media_ctrl_stat.status);
             if (param->media_ctrl_stat.cmd == ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY) {
@@ -280,46 +304,52 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 } else {
                     ESP_LOGW(TAG, "Media source not ready, ACK status: %d", param->media_ctrl_stat.status);
                 }
+            } else if (param->media_ctrl_stat.status != ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
+                // If we get any error in media control, consider it a congestion
+                s_l2cap_congestion_flag = true;
+                ESP_LOGW(TAG, "A2DP media control failed, possible congestion");
+            } else {
+                // Command completed successfully, clear any congestion flag
+                s_l2cap_congestion_flag = false;
             }
             break;
+            
         case ESP_A2D_AUDIO_STATE_EVT:
             ESP_LOGI(TAG, "A2D audio state: %d", param->audio_stat.state);
             if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
                 s_media_state = APP_AV_MEDIA_STATE_STARTED;
                 ESP_LOGI(TAG, "A2DP audio started");
+                s_l2cap_congestion_flag = false; // Reset congestion flag when audio starts
             } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
                 ESP_LOGI(TAG, "A2DP audio stopped");
             }
             break;
-        // Handle all other A2DP events
+            
+        // Handle all other A2DP events with a default case
         case ESP_A2D_AUDIO_CFG_EVT:
         case ESP_A2D_PROF_STATE_EVT:
         case ESP_A2D_SNK_PSC_CFG_EVT:
         case ESP_A2D_SNK_SET_DELAY_VALUE_EVT:
         case ESP_A2D_SNK_GET_DELAY_VALUE_EVT:
         case ESP_A2D_REPORT_SNK_DELAY_VALUE_EVT:
-            ESP_LOGI(TAG, "Unhandled A2DP event: %d", event);
-            break;
         default:
             ESP_LOGI(TAG, "Unhandled A2DP event: %d", event);
             break;
     }
 }
 
-// Update bluetooth_send_beep() to reuse the beep generation.
-esp_err_t bluetooth_send_beep(void) {
-    if (s_a2d_state != APP_AV_STATE_CONNECTED) {
-        ESP_LOGW(TAG, "Not connected: cannot send beep");
-        return ESP_ERR_INVALID_STATE;
-    }
-    trigger_beep();
-    return ESP_OK;
-}
-
-// Generate a sine wave test tone with extra debugging.
+// Update a2dp_source_data_cb to work with the simplified congestion detection
 static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
-    if (s_beep_in_progress && s_beep_duration >= BEEP_DURATION_THRESHOLD) {  // Modified threshold
+    if (s_l2cap_congestion_flag) {
+        // When congestion detected, send silence
+        memset(data, 0, len);
+        ESP_LOGV(TAG, "L2CAP congestion - sending silence");
+        return len;
+    }
+
+    // Rest of function remains the same
+    if (s_beep_in_progress && s_beep_duration >= BEEP_DURATION_THRESHOLD) {
         ESP_LOGI(TAG, "Beep duration reached: %d samples, stopping beep", s_beep_duration);
         s_beep_in_progress = false;
         s_beep_duration = 0;
@@ -331,16 +361,13 @@ static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
     int num_samples = len / 2;
 
     if (s_beep_in_progress) {
-        // Log at start of this callback for debugging
-        ESP_LOGD(TAG, "Generating beep: s_beep_index=%d, s_beep_duration=%d", s_beep_index, s_beep_duration);
+        // Reduce logging frequency to decrease system load
+        ESP_LOGD(TAG, "Generating beep: duration=%d", s_beep_duration);
+        
         for (int i = 0; i < num_samples; i++) {
             samples[i] = sine_table[s_beep_index];
             s_beep_index = (s_beep_index + 1) % TABLE_SIZE;
             s_beep_duration++;
-            // Log every 100 samples to avoid flooding logs
-            if ((s_beep_duration % 100) == 0) {
-                ESP_LOGD(TAG, "Beep progress: duration=%d, current index=%d", s_beep_duration, s_beep_index);
-            }
         }
     } else {
         memset(data, 0, len);
@@ -433,8 +460,11 @@ esp_err_t bluetooth_init(void) {
 
     ESP_LOGI(TAG, "###Initializing Bluetooth stack - 2");
 
-    // Initialize controller with default config
+    // Initialize controller with increased stack size
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    bt_cfg.controller_task_stack_size = 4096;  // Increase stack size
+    bt_cfg.hci_uart_no = UART_NUM_1;  // Use UART1 instead of default to avoid conflicts
+    
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
         ESP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(ret));
@@ -547,6 +577,9 @@ esp_err_t bluetooth_init(void) {
     return ESP_OK;
 }
 
+// Define static variable at file scope
+static uint8_t s_current_volume = 0;
+
 // AVRCP controller callback
 void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param) {
     ESP_LOGD(TAG, "AVRC controller event: %d", event);
@@ -554,13 +587,32 @@ void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *para
         case ESP_AVRC_CT_CONNECTION_STATE_EVT:
             ESP_LOGI(TAG, "AVRC controller connection state: %d", param->conn_stat.connected);
             if (param->conn_stat.connected) {
-                // Get AVRCP capabilities after connection
-                esp_avrc_ct_send_get_rn_capabilities_cmd(0);
+                // Just log connection, don't try to register for notifications here
+                ESP_LOGI(TAG, "AVRCP controller connected");
             }
             break;
+            
         case ESP_AVRC_CT_REMOTE_FEATURES_EVT:
             ESP_LOGI(TAG, "AVRC remote features: 0x%" PRIx32, param->rmt_feats.feat_mask);
             break;
+            
+        case ESP_AVRC_CT_PASSTHROUGH_RSP_EVT:
+            ESP_LOGI(TAG, "Passthrough response received");
+            break;
+            
+        case ESP_AVRC_CT_METADATA_RSP_EVT:
+            ESP_LOGI(TAG, "Metadata response received");
+            break;
+            
+        case ESP_AVRC_CT_SET_ABSOLUTE_VOLUME_RSP_EVT:
+            ESP_LOGI(TAG, "Set absolute volume response");
+            // Store volume value if available
+            if (param->set_volume_rsp.volume <= 127) {
+                s_current_volume = param->set_volume_rsp.volume;
+                ESP_LOGI(TAG, "Volume set to %d", s_current_volume);
+            }
+            break;
+            
         default:
             ESP_LOGW(TAG, "Unhandled AVRC controller event: %d", event);
             break;
@@ -799,4 +851,113 @@ esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written) {  // Upda
     //SAFE_ESP_LOGD(TAG, "A2DP Buffer: Available=%d, Total=%d", available, total);
 
     return esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
+}
+
+// AVRCP volume control functions
+esp_err_t bluetooth_volume_up(void) {
+    ESP_LOGI(TAG, "Sending volume up command");
+    
+    // Ensure we're not sending commands too quickly
+    if (!is_operation_time_ok()) {
+        ESP_LOGW(TAG, "Volume up command rejected - too soon after previous operation");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    esp_err_t ret = esp_avrc_ct_send_passthrough_cmd(
+        0, // transaction label
+        ESP_AVRC_PT_CMD_VOL_UP, // operation ID for volume up
+        ESP_AVRC_PT_CMD_STATE_PRESSED);
+        
+    // Release the button after pressing
+    vTaskDelay(30 / portTICK_PERIOD_MS); // Increased delay for better stability
+    
+    esp_avrc_ct_send_passthrough_cmd(
+        0, 
+        ESP_AVRC_PT_CMD_VOL_UP,
+        ESP_AVRC_PT_CMD_STATE_RELEASED);
+    
+    // Update our local volume estimate (cap at 127)
+    if (s_current_volume < 127) {
+        s_current_volume += 5; // Increment by a reasonable step
+        if (s_current_volume > 127) {
+            s_current_volume = 127;
+        }
+    }
+    
+    return ret;
+}
+
+esp_err_t bluetooth_volume_down(void) {
+    ESP_LOGI(TAG, "Sending volume down command");
+    
+    // Ensure we're not sending commands too quickly
+    if (!is_operation_time_ok()) {
+        ESP_LOGW(TAG, "Volume down command rejected - too soon after previous operation");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    esp_err_t ret = esp_avrc_ct_send_passthrough_cmd(
+        0, // transaction label
+        ESP_AVRC_PT_CMD_VOL_DOWN, // operation ID for volume down
+        ESP_AVRC_PT_CMD_STATE_PRESSED);
+        
+    // Release the button after pressing
+    vTaskDelay(30 / portTICK_PERIOD_MS); // Increased delay for better stability
+    
+    esp_avrc_ct_send_passthrough_cmd(
+        0,
+        ESP_AVRC_PT_CMD_VOL_DOWN,
+        ESP_AVRC_PT_CMD_STATE_RELEASED);
+    
+    // Update our local volume estimate
+    if (s_current_volume >= 5) {
+        s_current_volume -= 5; // Decrement by a reasonable step
+    } else {
+        s_current_volume = 0; // Set to minimum if we would underflow
+    }
+    
+    return ret;
+}
+
+esp_err_t bluetooth_set_volume(uint8_t volume) {
+    ESP_LOGI(TAG, "Setting volume to: %d", volume);
+    
+    // Ensure we're not sending commands too quickly
+    if (!is_operation_time_ok()) {
+        ESP_LOGW(TAG, "Set volume command rejected - too soon after previous operation");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Ensure volume is in valid range (0-127 for AVRCP)
+    if (volume > 127) {
+        volume = 127;
+    }
+    
+    // Store locally first
+    s_current_volume = volume;
+    
+    // Then send command
+    return esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
+}
+
+// Function to get the current volume level - doesn't need to send any commands
+esp_err_t bluetooth_get_volume(void) {
+    ESP_LOGI(TAG, "Current volume is %d", s_current_volume);
+    return ESP_OK;
+}
+
+// Function to get the stored volume level
+uint8_t bluetooth_get_current_volume(void) {
+    return s_current_volume;
+}
+
+// Make sure this function is present in the source file with proper implementation
+esp_err_t bluetooth_send_beep(void) {
+    ESP_LOGI(TAG, "Sending beep");
+    if (s_a2d_state != APP_AV_STATE_CONNECTED) {
+        ESP_LOGW(TAG, "Not connected: cannot send beep");
+        return ESP_ERR_INVALID_STATE;
+    }
+    trigger_beep();
+    return ESP_OK;
 }
