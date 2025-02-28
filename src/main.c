@@ -63,6 +63,18 @@ void print_help() {
 
 #define SPIFFS_BASE_PATH "/spiffs"
 
+// Add a global flag to track SPIFFS mount state
+// Remove the local definition of spiffs_mounted flag (it should be in spiffs_utils.c)
+// static bool spiffs_mounted = false;
+
+// Modify the SPIFFS mounting function to avoid remounting
+// Remove the local mount_spiffs implementation
+// static esp_err_t mount_spiffs(void) { ... }
+
+// Optional: Add an unmount function if needed
+// Remove the local unmount_spiffs implementation 
+// static void unmount_spiffs(void) { ... }
+
 void handle_command(char *cmd) {
     // Trim trailing newline characters
     cmd[strcspn(cmd, "\r\n")] = '\0';
@@ -224,18 +236,15 @@ void handle_command(char *cmd) {
     } else if (strcmp(cmd, "play_snd") == 0) {
         ESP_LOGI(TAG, "Playing sound.mp3 from SPIFFS");
 
-        // Initialize SPIFFS with recovery options
-        esp_vfs_spiffs_conf_t conf = {
-            .base_path = "/spiffs",
-            .partition_label = "storage",
-            .max_files = 5,
-            .format_if_mount_failed = true  // Format if corrupted
-        };
-        
-        ESP_LOGI(TAG, "Mounting SPIFFS...");
-        esp_err_t ret = esp_vfs_spiffs_register(&conf);
+        esp_err_t ret = mount_spiffs_fs();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+            ESP_LOGE(TAG, "SPIFFS mount failed, cannot play sound");
+            return;
+        }
+
+        // Check if SPIFFS is actually mounted
+        if (!is_spiffs_mounted()) {
+            ESP_LOGE(TAG, "SPIFFS is not mounted, cannot play sound");
             return;
         }
 
@@ -244,26 +253,22 @@ void handle_command(char *cmd) {
         ret = esp_spiffs_info("storage", &total, &used);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to get SPIFFS partition info (%s)", esp_err_to_name(ret));
-            esp_vfs_spiffs_unregister("storage");
             return;
         }
         ESP_LOGI(TAG, "Partition total: %d, used: %d", total, used);
 
         if (total == 0) {
             ESP_LOGE(TAG, "SPIFFS partition is empty");
-            esp_vfs_spiffs_unregister("storage");
             return;
         }
 
         if (total > 0 && used == 0) {
             ESP_LOGE(TAG, "SPIFFS partition is empty");
-            esp_vfs_spiffs_unregister("storage");
             return;
         }
 
         if (used > total) {
             ESP_LOGE(TAG, "SPIFFS used space exceeds total space"); 
-            esp_vfs_spiffs_unregister("storage");
             return;
         }
 
@@ -272,7 +277,6 @@ void handle_command(char *cmd) {
         ret = esp_spiffs_check("storage");
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "SPIFFS is corrupted! (%s)", esp_err_to_name(ret));
-            esp_vfs_spiffs_unregister("storage");
             return;
         }
 
@@ -318,8 +322,6 @@ void handle_command(char *cmd) {
             }
         } else {
             ESP_LOGI(TAG, "File not found or read error, attempting to read with open/read");
-            // If we get here, something failed
-            esp_vfs_spiffs_unregister("storage");
         }
     } else if (strcmp(cmd, "ls_spiffs") == 0) {
         ESP_LOGI(TAG, "Listing files on SPIFFS partition...");

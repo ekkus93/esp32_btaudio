@@ -35,7 +35,7 @@
 
 // Add these additional constants
 #define BT_VOLUME_KEY "bt_vol"
-#define DEFAULT_VOLUME 64
+#define DEFAULT_VOLUME 32
 
 // Forward declarations of callback functions
 static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len);
@@ -660,7 +660,7 @@ esp_err_t bluetooth_init(void) {
         uint8_t vol;
         ret = nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
         if (ret == ESP_ERR_NVS_NOT_FOUND) {
-            // If not found, set default volume of 64
+            // If not found, set default volume of 32
             nvs_set_u8(nvs_handle, BT_VOLUME_KEY, DEFAULT_VOLUME);
             nvs_commit(nvs_handle);
             s_current_volume = DEFAULT_VOLUME;

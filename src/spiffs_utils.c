@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include <errno.h>
 #include <string.h> // For strlcpy
+#include <stdbool.h> // Add this line
 
 #define TAG "BT_APP"
 #define MAX_SPIFFS_PATH 32
@@ -43,6 +44,11 @@ esp_err_t init_spiffs(void) {
     ESP_LOGI(TAG, "SPIFFS mounted successfully. Total: %d, used: %d", total, used);
     g_spiffs_mounted = true;
     return ESP_OK;
+}
+
+// Add this implementation for mount_spiffs_fs
+esp_err_t mount_spiffs_fs(void) {
+    return init_spiffs(); // Simply call init_spiffs which already has the mounting logic
 }
 
 void unmount_spiffs(void) {
@@ -91,4 +97,8 @@ void list_spiffs_files(void) {
         }
     }
     closedir(dir);
+}
+
+bool is_spiffs_mounted(void) {
+    return g_spiffs_mounted;
 }
