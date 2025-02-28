@@ -33,9 +33,16 @@
 #define TABLE_SIZE 100  // Precomputed sine table size
 #define BEEP_DURATION_THRESHOLD (SAMPLE_RATE / 2)  // New: beep lasts about 0.5 seconds
 
+// Add these additional constants
+#define BT_VOLUME_KEY "bt_vol"
+#define DEFAULT_VOLUME 64
+
 // Forward declarations of callback functions
 static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len);
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+
+// Add this forward declaration after the other forward declarations at the top
+static void memory_monitor_task(void *arg);
 
 typedef struct {
     uint8_t bda[ESP_BD_ADDR_LEN];
@@ -77,6 +84,16 @@ static int s_beep_duration = 0;
 static int16_t sine_table[TABLE_SIZE];
 static bool sine_table_initialized = false;
 static int s_beep_index = 0;
+
+// Add this with the other global variables at the top of the file (after the defines)
+static uint8_t s_current_volume = 0;
+
+// Add these new congestion control variables after the existing global variables
+#define MAX_CONGESTION_COUNT 5
+static int s_congestion_count = 0;
+static bool s_severe_congestion = false;
+static uint32_t s_last_congestion_time = 0;
+#define CONGESTION_RECOVERY_TIME_MS 2000 // Time to wait after severe congestion
 
 // New helper function to initialize the sine_table once
 static void init_sine_table(void) {
@@ -269,6 +286,9 @@ static bool is_operation_time_ok(void) {
 }
 
 // Replace the bt_app_a2d_cb function with a fixed version
+// Add flag to track if the volume was initialized this boot cycle
+static bool s_volume_initialized = false;
+
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     ESP_LOGI(TAG, "A2DP callback event: %d", event);
     
@@ -284,6 +304,28 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 
                 // Reset congestion flag when connected
                 s_l2cap_congestion_flag = false;
+                
+                // Check if we need to initialize the volume after connection
+                if (!s_volume_initialized) {
+                    // Get last saved volume from NVS, or use default
+                    nvs_handle_t nvs_handle;
+                    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+                    if (err == ESP_OK) {
+                        uint8_t vol = DEFAULT_VOLUME;
+                        nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
+                        nvs_close(nvs_handle);
+                        
+                        // Set the initial volume with a delay to ensure connection is ready
+                        s_current_volume = vol; // Set current volume immediately
+                        
+                        // Wait a bit before sending actual command to ensure AVRCP is ready
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        ESP_LOGI(TAG, "Setting initial volume to %d", vol);
+                        bluetooth_set_volume(vol);
+                        
+                        s_volume_initialized = true;
+                    }
+                }
                 
                 // Start media after connection
                 ESP_LOGI(TAG, "Requesting media playback...");
@@ -307,7 +349,9 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             } else if (param->media_ctrl_stat.status != ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
                 // If we get any error in media control, consider it a congestion
                 s_l2cap_congestion_flag = true;
-                ESP_LOGW(TAG, "A2DP media control failed, possible congestion");
+                s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
+                ESP_LOGW(TAG, "A2DP media control failed, possible congestion. Status: %d", 
+                        param->media_ctrl_stat.status);
             } else {
                 // Command completed successfully, clear any congestion flag
                 s_l2cap_congestion_flag = false;
@@ -341,11 +385,37 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
 
 // Update a2dp_source_data_cb to work with the simplified congestion detection
 static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
+    // Check for severe congestion condition
+    if (s_severe_congestion) {
+        uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000);
+        if (current_time - s_last_congestion_time < CONGESTION_RECOVERY_TIME_MS) {
+            // Still in recovery period - send silence
+            memset(data, 0, len);
+            return len;
+        } else {
+            // Recovery period over, try again
+            s_severe_congestion = false;
+            s_congestion_count = 0;
+            ESP_LOGI(TAG, "Exiting severe congestion state after recovery time");
+        }
+    }
+    
     if (s_l2cap_congestion_flag) {
+        // Track congestion occurrences
+        s_congestion_count++;
+        if (s_congestion_count >= MAX_CONGESTION_COUNT) {
+            s_severe_congestion = true;
+            s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
+            ESP_LOGW(TAG, "Entering severe congestion state - backing off for %d ms", 
+                    CONGESTION_RECOVERY_TIME_MS);
+        }
+        
         // When congestion detected, send silence
         memset(data, 0, len);
-        ESP_LOGV(TAG, "L2CAP congestion - sending silence");
         return len;
+    } else {
+        // Reset congestion counter if no congestion
+        s_congestion_count = 0;
     }
 
     // Rest of function remains the same
@@ -361,8 +431,10 @@ static int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
     int num_samples = len / 2;
 
     if (s_beep_in_progress) {
-        // Reduce logging frequency to decrease system load
-        ESP_LOGD(TAG, "Generating beep: duration=%d", s_beep_duration);
+        // Only log occasionally to reduce system overhead
+        if (s_beep_duration % 1000 == 0) {
+            ESP_LOGD(TAG, "Generating beep: duration=%d", s_beep_duration);
+        }
         
         for (int i = 0; i < num_samples; i++) {
             samples[i] = sine_table[s_beep_index];
@@ -462,8 +534,15 @@ esp_err_t bluetooth_init(void) {
 
     // Initialize controller with increased stack size
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    bt_cfg.controller_task_stack_size = 4096;  // Increase stack size
+    bt_cfg.controller_task_stack_size = 8192;  // Double the stack size (was 4096)
     bt_cfg.hci_uart_no = UART_NUM_1;  // Use UART1 instead of default to avoid conflicts
+    
+    // Increase the BT controller memory if available
+    bt_cfg.bt_max_acl_conn = 1; // We only need one connection
+    bt_cfg.bt_max_sync_conn = 0; // Not using SCO
+    // Limit the number of advertising packets to save memory
+    bt_cfg.normal_adv_size = 10;
+    // Remove the line with normal_scan_size as it doesn't exist in the struct
     
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
@@ -573,12 +652,31 @@ esp_err_t bluetooth_init(void) {
         }
     }
 
-    ESP_LOGI(TAG, "Bluetooth stack initialized successfully");
+    // Initialize the volume from NVS
+    nvs_handle_t nvs_handle;
+    ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (ret == ESP_OK) {
+        // Check if volume exists in NVS
+        uint8_t vol;
+        ret = nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
+        if (ret == ESP_ERR_NVS_NOT_FOUND) {
+            // If not found, set default volume of 64
+            nvs_set_u8(nvs_handle, BT_VOLUME_KEY, DEFAULT_VOLUME);
+            nvs_commit(nvs_handle);
+            s_current_volume = DEFAULT_VOLUME;
+        } else if (ret == ESP_OK) {
+            // Use the stored volume
+            s_current_volume = vol;
+        }
+        nvs_close(nvs_handle);
+    }
+
+    // At the end of initialization, start our memory monitor task
+    xTaskCreate(memory_monitor_task, "mem_monitor", 2048, NULL, 1, NULL);
+    
+    ESP_LOGI(TAG, "Bluetooth stack initialized successfully with enhanced congestion control");
     return ESP_OK;
 }
-
-// Define static variable at file scope
-static uint8_t s_current_volume = 0;
 
 // AVRCP controller callback
 void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param) {
@@ -936,7 +1034,19 @@ esp_err_t bluetooth_set_volume(uint8_t volume) {
     // Store locally first
     s_current_volume = volume;
     
-    // Then send command
+    // Save to NVS for persistence across reboots
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_u8(nvs_handle, BT_VOLUME_KEY, volume);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+    
+    // Set volume initialized flag
+    s_volume_initialized = true;
+    
+    // Send command to device
     return esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
 }
 
@@ -960,4 +1070,24 @@ esp_err_t bluetooth_send_beep(void) {
     }
     trigger_beep();
     return ESP_OK;
+}
+
+// Create a new timer task to periodically check for memory issues
+#define MEMORY_CHECK_INTERVAL_MS 5000
+static void memory_monitor_task(void *arg) {
+    while(1) {
+        // Get free heap memory
+        size_t free_heap = esp_get_free_heap_size();
+        ESP_LOGI(TAG, "Free heap: %u bytes", free_heap);
+        
+        // If memory is critically low, force congestion mode
+        if (free_heap < 20000) { // 20KB is a critical threshold
+            s_severe_congestion = true;
+            s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
+            ESP_LOGW(TAG, "Memory critically low (%u bytes). Enforcing congestion control.", 
+                   free_heap);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(MEMORY_CHECK_INTERVAL_MS));
+    }
 }
