@@ -218,20 +218,29 @@ void handle_command(char *cmd) {
         char *url = strtok(cmd + 11, " ");
         if (url) {
             ESP_LOGI(TAG, "Starting radio stream from URL: %s", url);
-            // Make a copy of the URL string that will persist after this function returns
-            char *url_copy = strdup(url);
-            if (!url_copy) {
-                ESP_LOGE(TAG, "Failed to allocate memory for URL");
+            
+            radio_task_params_t *params = malloc(sizeof(radio_task_params_t));
+            if (!params) {
+                ESP_LOGE(TAG, "Failed to allocate memory for params");
                 return;
             }
             
-            // Create task with larger stack size (16KB instead of 4KB)
-            if (xTaskCreate(radio_task, "radio_task", 16384, (void*)url_copy, 5, NULL) != pdPASS) {
+            char *url_copy = strdup(url);
+            if (!url_copy) {
+                ESP_LOGE(TAG, "Failed to allocate memory for URL");
+                free(params);
+                return;
+            }
+            
+            params->url = url_copy;
+            params->fp = NULL;  // Initialize other members
+            params->size = 0;
+            
+            if (xTaskCreate(radio_task, "radio_task", 16384, params, 5, NULL) != pdPASS) {
                 ESP_LOGE(TAG, "Failed to create radio task");
                 free(url_copy);
+                free(params);
             }
-        } else {
-            ESP_LOGE(TAG, "No URL provided for play_radio command");
         }
     } else if (strcmp(cmd, "play_snd") == 0) {
         ESP_LOGI(TAG, "Playing sound.mp3 from SPIFFS");
@@ -369,6 +378,9 @@ void handle_command(char *cmd) {
     }
 }
 
+// Change from dynamic to static allocation for UART buffer
+static uint8_t uart_data[BUF_SIZE + 1];  // +1 for null terminator
+
 // Entry point function for PlatformIO (for ESP-IDF, use app_main())
 void app_main(void) {
     ESP_LOGI(TAG, "app_main started");
@@ -430,14 +442,6 @@ void app_main(void) {
     gpio_reset_pin(LED_GPIO);
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
 
-    uint8_t* data = (uint8_t*) malloc(BUF_SIZE);
-    if (data == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for UART data");
-        return;
-    }
-
-    printf("ESP-IDF version: %d\n", ESP_IDF_VERSION);  // Changed from %s to %d
-
     while (1) {
         // Toggle LED
         gpio_set_level(LED_GPIO, 1);
@@ -445,15 +449,13 @@ void app_main(void) {
         gpio_set_level(LED_GPIO, 0);
         vTaskDelay(pdMS_TO_TICKS(500));
 
-        // Poll UART for commands
-        int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, 100 / portTICK_PERIOD_MS);
+        // Poll UART for commands using static buffer
+        int len = uart_read_bytes(UART_NUM, uart_data, BUF_SIZE - 1, 100 / portTICK_PERIOD_MS);
         if (len > 0) {
-            data[len] = '\0';  // Null-terminate received command
-            handle_command((char*)data);
+            uart_data[len] = '\0';  // Safely null-terminate
+            handle_command((char*)uart_data);
         }
     }
-
-    free(data);
 
     // Shut down the Bluetooth application task
     bt_app_task_shut_down();

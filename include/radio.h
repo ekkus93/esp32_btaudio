@@ -13,6 +13,7 @@ void radio_set_active(bool active);
 typedef struct {
     FILE *fp;
     size_t size;
+    const char *url;  // Add this member for URL-based streaming
 } radio_task_params_t;
 
 void radio_task(void *param); // Add this line
