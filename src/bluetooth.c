@@ -673,6 +673,14 @@ esp_err_t bluetooth_init(void) {
 
     // At the end of initialization, start our memory monitor task
     xTaskCreate(memory_monitor_task, "mem_monitor", 2048, NULL, 1, NULL);
+
+    // Set default volume after initialization
+    ret = bluetooth_set_volume(DEFAULT_VOLUME);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set default volume: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Default volume set to: %d", DEFAULT_VOLUME);
+    }
     
     ESP_LOGI(TAG, "Bluetooth stack initialized successfully with enhanced congestion control");
     return ESP_OK;
@@ -807,6 +815,14 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
             return ret;
         }
         xSemaphoreGive(s_bt_resource_mutex);
+    }
+
+    // Set default volume after connecting
+    esp_err_t ret = bluetooth_set_volume(DEFAULT_VOLUME);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set default volume after connecting: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Default volume set after connecting to: %d", DEFAULT_VOLUME);
     }
 
     return ESP_OK;
