@@ -4,7 +4,7 @@
 #include "esp_spiffs.h"  // Add this line
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "bluetooth.h"  // Include Bluetooth header for audio output
+#include "bluetooth/bt_app_audio.h"
 #include "minimp3.h"    // Include minimp3 header
 #include <string.h>
 #include <inttypes.h>  // Added to get PRIu32

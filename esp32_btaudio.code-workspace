@@ -3,5 +3,12 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"files.associations": {
+			"esp_spiffs.h": "c",
+			"bt_app_core.h": "c",
+			"custom_log.h": "c"
+		}
+	}
 }

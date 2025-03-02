@@ -5,9 +5,10 @@
 #include "esp_log.h"
 #include <errno.h>
 #include <string.h> // For strlcpy
-#include <stdbool.h> // Add this line
+#include <stdbool.h> 
+#include "custom_log.h"
 
-#define TAG "BT_APP"
+#define TAG "SPIFFS_UTILS"
 #define MAX_SPIFFS_PATH 32
 #define SPIFFS_BASE_PATH "/spiffs"
 
@@ -18,7 +19,7 @@ esp_err_t init_spiffs(void) {
         return ESP_OK;  // Already mounted
     }
 
-    ESP_LOGI(TAG, "Initializing SPIFFS");
+    SAFE_ESP_LOGI(TAG, "Initializing SPIFFS");
     
     esp_vfs_spiffs_conf_t conf = {
         .base_path = SPIFFS_BASE_PATH,
@@ -29,19 +30,19 @@ esp_err_t init_spiffs(void) {
     
     esp_err_t ret = esp_vfs_spiffs_register(&conf);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+        SAFE_ESP_LOGE(TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
         return ret;
     }
 
     size_t total = 0, used = 0;
     ret = esp_spiffs_info("storage", &total, &used);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get SPIFFS info (%s)", esp_err_to_name(ret));
+        SAFE_ESP_LOGE(TAG, "Failed to get SPIFFS info (%s)", esp_err_to_name(ret));
         esp_vfs_spiffs_unregister("storage");
         return ret;
     }
 
-    ESP_LOGI(TAG, "SPIFFS mounted successfully. Total: %d, used: %d", total, used);
+    SAFE_ESP_LOGI(TAG, "SPIFFS mounted successfully. Total: %d, used: %d", total, used);
     g_spiffs_mounted = true;
     return ESP_OK;
 }
@@ -55,19 +56,19 @@ void unmount_spiffs(void) {
     if (g_spiffs_mounted) {
         esp_vfs_spiffs_unregister("storage");
         g_spiffs_mounted = false;
-        ESP_LOGI(TAG, "SPIFFS unmounted");
+        SAFE_ESP_LOGI(TAG, "SPIFFS unmounted");
     }
 }
 
 void list_spiffs_files(void) {
     if (!g_spiffs_mounted) {
-        ESP_LOGE(TAG, "SPIFFS not mounted");
+        SAFE_ESP_LOGE(TAG, "SPIFFS not mounted");
         return;
     }
 
     DIR *dir = opendir(SPIFFS_BASE_PATH);
     if (!dir) {
-        ESP_LOGE(TAG, "Failed to open %s directory (errno=%d)", SPIFFS_BASE_PATH, errno);
+        SAFE_ESP_LOGE(TAG, "Failed to open %s directory (errno=%d)", SPIFFS_BASE_PATH, errno);
         return;
     }
 
@@ -81,19 +82,19 @@ void list_spiffs_files(void) {
 
         // Check for snprintf errors
         if (path_len < 0 || path_len >= sizeof(fullpath)) {
-            ESP_LOGE(TAG, "Path too long or snprintf error for file: %s", entry->d_name);
+            SAFE_ESP_LOGE(TAG, "Path too long or snprintf error for file: %s", entry->d_name);
             continue;
         }
         
         // Log the full path to verify it's correct
-        ESP_LOGI(TAG, "Checking file: %s", fullpath);
+        SAFE_ESP_LOGI(TAG, "Checking file: %s", fullpath);
 
         // Attempt to get file stats
         if (stat(fullpath, &st) == 0) {
-            ESP_LOGI(TAG, "Found file: %s (%ld bytes)", entry->d_name, st.st_size);
+            SAFE_ESP_LOGI(TAG, "Found file: %s (%ld bytes)", entry->d_name, st.st_size);
         } else {
-            ESP_LOGE(TAG, "Failed to get stats for file: %s (errno=%d)", fullpath, errno);
-            ESP_LOGI(TAG, "Found file: %s (size unknown)", entry->d_name);
+            SAFE_ESP_LOGE(TAG, "Failed to get stats for file: %s (errno=%d)", fullpath, errno);
+            SAFE_ESP_LOGI(TAG, "Found file: %s (size unknown)", entry->d_name);
         }
     }
     closedir(dir);

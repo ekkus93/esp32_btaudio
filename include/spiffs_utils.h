@@ -2,7 +2,7 @@
 #define SPIFFS_UTILS_H
 
 #include "esp_err.h"
-#include <stdbool.h> // Add this line
+#include <stdbool.h> 
 
 esp_err_t init_spiffs(void);
 esp_err_t mount_spiffs_fs(void);

@@ -1,8 +1,10 @@
 #include "mp3_utils.h"
-#include "bluetooth.h"  // Add this include for bluetooth_write_audio()
+#include "bluetooth/bt_app_audio.h"
+#include "custom_log.h"
 #include "minimp3.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include <stdbool.h> 
 
 #define TAG "MP3"
 
@@ -33,13 +35,13 @@ esp_err_t process_mp3_data(const uint8_t* data, size_t len) {
 
         // Send decoded audio to Bluetooth
         if (samples > 0) {
-            ESP_LOGD(TAG, "Decoded %d samples, %d Hz, %d channels", 
+            SAFE_ESP_LOGD(TAG, "Decoded %d samples, %d Hz, %d channels", 
                      samples, info.hz, info.channels);
             
             uint8_t* audio_data = (uint8_t*)pcm;
             size_t audio_size = samples * info.channels * sizeof(int16_t);
             if (bluetooth_write_audio(audio_data, &audio_size) != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to write audio data to Bluetooth");
+                SAFE_ESP_LOGE(TAG, "Failed to write audio data to Bluetooth");
                 return ESP_FAIL;
             }
         }

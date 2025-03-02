@@ -70,7 +70,7 @@ endif()
 
 
 
-set(CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES "/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include-fixed;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/xtensa-esp-elf/include")
+set(CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES "/home/phil/.wasmedge/include;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include-fixed;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/xtensa-esp-elf/include")
 set(CMAKE_C_IMPLICIT_LINK_LIBRARIES "gcc;c;nosys;c;gcc")
 set(CMAKE_C_IMPLICIT_LINK_DIRECTORIES "/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/esp32;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/xtensa-esp-elf/lib/esp32;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/lib/gcc;/home/phil/.platformio/packages/toolchain-xtensa-esp-elf/xtensa-esp-elf/lib")
 set(CMAKE_C_IMPLICIT_LINK_FRAMEWORK_DIRECTORIES "")
