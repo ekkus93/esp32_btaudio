@@ -27,7 +27,6 @@ static void memory_monitor_task(void *arg) {
 }
 
 static discovered_device_t discovered_devices[MAX_DEVICES];
-static SemaphoreHandle_t s_disconnect_semaphore = NULL;
 
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
     SAFE_ESP_LOGD(TAG, "GAP event handler called with event: %d", event);
@@ -515,3 +514,8 @@ esp_err_t bluetooth_safe_start_discovery(void) {
 
 // Use this forward declaration instead
 extern void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+
+void bt_app_conn_start_memory_monitor(void)
+{
+    xTaskCreate(memory_monitor_task, "mem_mon", 2048, NULL, 5, NULL);
+}

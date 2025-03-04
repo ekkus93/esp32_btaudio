@@ -27,4 +27,7 @@ esp_err_t restart_bluetooth_stack(void);
 esp_err_t bluetooth_set_device_name(const char *name);
 esp_err_t bluetooth_get_device_name(char *name, size_t max_len);
 
+// Function to start memory monitor
+void bt_app_conn_start_memory_monitor(void);
+
 #endif // BT_APP_CONN_H

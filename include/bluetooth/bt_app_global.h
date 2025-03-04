@@ -32,7 +32,8 @@
 // Define test tone parameters
 #define SAMPLE_RATE     44100
 #define TONE_FREQUENCY  440  // 440 Hz (A4 note)
-#define TABLE_SIZE 100  // Precomputed sine table size
+#undef TABLE_SIZE
+#define TABLE_SIZE 168  // Precomputed sine table size
 #define BEEP_DURATION_THRESHOLD (SAMPLE_RATE / 2)  // New: beep lasts about 0.5 seconds
 
 // Add these additional constants
@@ -100,5 +101,8 @@ extern bool s_pairing_in_progress;
 
 // Make sure this function is declared here
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
+
+// Add sine_table declaration
+extern int16_t sine_table[TABLE_SIZE];
 
 #endif // BT_APP_GLOBAL_H

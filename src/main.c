@@ -365,6 +365,8 @@ void app_main(void) {
         SAFE_ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(ret));
         return;
     }
+    // Re-enable memory monitoring
+    bt_app_conn_start_memory_monitor();
 
     // Print the Bluetooth device name
     char bt_name[ESP_BT_GAP_MAX_BDNAME_LEN + 1];

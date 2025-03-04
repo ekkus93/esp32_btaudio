@@ -23,7 +23,7 @@ static volatile int s_buffer_releases = 0;
 static volatile int s_buffer_allocation_failures = 0;
 
 // Add this declaration with other static variables
-static int16_t sine_table[TABLE_SIZE]; // Add this line for the sine wave lookup table
+int16_t sine_table[TABLE_SIZE]; // now global instead of static
 
 // Forward declarations
 static void buffer_monitor_task(void *arg);

@@ -43,7 +43,11 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                         nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
                         nvs_close(nvs_handle);
                         
-                        // Set the initial volume with a delay to ensure connection is ready
+                        // If the stored volume is higher than desired default, force it lower.
+                        if (vol > DEFAULT_VOLUME) {
+                            vol = DEFAULT_VOLUME;
+                        }
+                        
                         s_current_volume = vol; // Set current volume immediately
                         
                         // Wait a bit before sending actual command to ensure AVRCP is ready
@@ -172,7 +176,7 @@ int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
         // Generate actual audio with higher volume
         for (int i = 0; i < num_samples; i++) {
             // Left and right channels with higher amplitude - use a fixed sine value for testing
-            int16_t sample = (s_beep_index % 2 == 0) ? 16000 : -16000;
+            int16_t sample = sine_table[s_beep_index % TABLE_SIZE];
             samples[i*2] = sample;     // Left channel
             samples[i*2+1] = sample;   // Right channel
             
