@@ -3,6 +3,7 @@
 #include "bluetooth/bt_app_audio.h"
 #include "bluetooth/bt_app_av.h"
 #include "custom_log.h"
+#include "bluetooth/bt_app_conn.h"  // Add this include to get bluetooth_pair_device
 
 #define TAG "BT_APP_A2DP"
 
@@ -60,7 +61,51 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 SAFE_ESP_LOGI(TAG, "A2DP disconnected");
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
+                
+                // Add automatic retry if pairing was in progress but failed
+                if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
+                    s_pairing_in_progress = false;
+                    SAFE_ESP_LOGI(TAG, "Pairing failed, will retry in 3 seconds...");
+                    
+                    // Create a delayed task to retry
+                    esp_bd_addr_t retry_addr;
+                    memcpy(retry_addr, s_last_pairing_attempt, ESP_BD_ADDR_LEN);
+                    
+                    // Use a timer or task to retry
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                    SAFE_ESP_LOGI(TAG, "Retrying pairing now...");
+                    
+                    // Convert BD_ADDR to string for bluetooth_pair_device
+                    char mac_str[18];
+                    sprintf(mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                            retry_addr[0], retry_addr[1], retry_addr[2],
+                            retry_addr[3], retry_addr[4], retry_addr[5]);
+                            
+                    bluetooth_pair_device(mac_str, pin_required);
+                } else {
+                    s_pairing_in_progress = false;
+                }
+                
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
+
+                // Signal the waiting task if there is one
+                if (s_waiting_task != NULL) {
+                    s_operation_complete = true;
+                    xTaskNotifyGive(s_waiting_task);
+                }
+
+                // In the A2DP callback when connection fails
+                if (s_pairing_attempt >= MAX_PAIRING_ATTEMPTS) {
+                    // Remove device-specific check and message
+                    SAFE_ESP_LOGE(TAG, "------------------------------------------------------");
+                    SAFE_ESP_LOGE(TAG, "Pairing failed after %d attempts.", MAX_PAIRING_ATTEMPTS);
+                    SAFE_ESP_LOGE(TAG, "Please ensure the audio device is in pairing mode:");
+                    SAFE_ESP_LOGE(TAG, "1. Check your device's pairing instructions");
+                    SAFE_ESP_LOGE(TAG, "2. Make sure the device is charged and turned on");
+                    SAFE_ESP_LOGE(TAG, "3. Ensure the device is within range");
+                    SAFE_ESP_LOGE(TAG, "4. Try resetting the device if needed");
+                    SAFE_ESP_LOGE(TAG, "------------------------------------------------------");
+                }
             }
             break;
             
@@ -110,69 +155,46 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     }
 }
 
-static int16_t sine_table[TABLE_SIZE];
-
-// Update a2dp_source_data_cb to work with the simplified congestion detection
+// Fix the a2dp_source_data_cb implementation to properly generate audio
 int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
-    // Check for severe congestion condition
-    if (s_severe_congestion) {
-        uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000);
-        if (current_time - s_last_congestion_time < CONGESTION_RECOVERY_TIME_MS) {
-            // Still in recovery period - send silence
-            memset(data, 0, len);
-            return len;
-        } else {
-            // Recovery period over, try again
-            s_severe_congestion = false;
-            s_congestion_count = 0;
-            SAFE_ESP_LOGI(TAG, "Exiting severe congestion state after recovery time");
+    // No need to reinitialize sine table, already done in trigger_beep
+    
+    // Fill the buffer with sine wave if beep is active
+    if (s_beep_in_progress) {
+        // Log occasionally
+        if (s_beep_duration % 1000 == 0) {
+            SAFE_ESP_LOGI(TAG, "Generating beep: duration=%d", s_beep_duration);
         }
+        
+        int16_t *samples = (int16_t*)data;
+        int num_samples = len / 4; // Stereo, 16-bit samples
+        
+        // Generate actual audio with higher volume
+        for (int i = 0; i < num_samples; i++) {
+            // Left and right channels with higher amplitude - use a fixed sine value for testing
+            int16_t sample = (s_beep_index % 2 == 0) ? 16000 : -16000;
+            samples[i*2] = sample;     // Left channel
+            samples[i*2+1] = sample;   // Right channel
+            
+            s_beep_index++;
+            s_beep_duration++;
+            
+            // End beep after duration threshold
+            if (s_beep_duration >= BEEP_DURATION_THRESHOLD) {
+                s_beep_in_progress = false;
+                SAFE_ESP_LOGI(TAG, "Beep completed after %d samples", s_beep_duration);
+                // Fill the rest with silence
+                memset(&samples[i*2], 0, (num_samples - i) * 4);
+                break;
+            }
+        }
+        
+        return len;
+    } else {
+        // If no beep is in progress, output silence
+        memset(data, 0, len);
     }
     
-    if (s_l2cap_congestion_flag) {
-        // Track congestion occurrences
-        s_congestion_count++;
-        if (s_congestion_count >= MAX_CONGESTION_COUNT) {
-            s_severe_congestion = true;
-            s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
-            SAFE_ESP_LOGW(TAG, "Entering severe congestion state - backing off for %d ms", 
-                    CONGESTION_RECOVERY_TIME_MS);
-        }
-        
-        // When congestion detected, send silence
-        memset(data, 0, len);
-        return len;
-    } else {
-        // Reset congestion counter if no congestion
-        s_congestion_count = 0;
-    }
-
-    // Rest of function remains the same
-    if (s_beep_in_progress && s_beep_duration >= BEEP_DURATION_THRESHOLD) {
-        SAFE_ESP_LOGI(TAG, "Beep duration reached: %d samples, stopping beep", s_beep_duration);
-        s_beep_in_progress = false;
-        s_beep_duration = 0;
-        memset(data, 0, len); // Output silence after beep
-        return len;
-    }
-
-    int16_t *samples = (int16_t*)data;
-    int num_samples = len / 2;
-
-    if (s_beep_in_progress) {
-        // Only log occasionally to reduce system overhead
-        if (s_beep_duration % 1000 == 0) {
-            SAFE_ESP_LOGD(TAG, "Generating beep: duration=%d", s_beep_duration);
-        }
-        
-        for (int i = 0; i < num_samples; i++) {
-            samples[i] = sine_table[s_beep_index];
-            s_beep_index = (s_beep_index + 1) % TABLE_SIZE;
-            s_beep_duration++;
-        }
-    } else {
-        memset(data, 0, len);
-    }
     return len;
 }
 

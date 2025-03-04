@@ -1,28 +1,42 @@
 #include "bluetooth/bt_app_global.h"
+#include "bluetooth/bt_app_types.h"
 
-int num_discovered_devices = 0;
+// Discovery variables
+int num_discovered_devices = 0;  // Tracks number of discovered BT devices
 
-bool pin_required = false;
-esp_bd_addr_t pending_pair_addr = {0};
+// Pairing variables
+bool pin_required = false;       // Whether PIN is required for pairing
+esp_bd_addr_t pending_pair_addr = {0};  // Address of device pending pairing
 
-int s_a2d_state = APP_AV_STATE_IDLE;
-int s_media_state = APP_AV_MEDIA_STATE_IDLE;
+// Connection state variables
+int s_a2d_state = APP_AV_STATE_IDLE;    // Current A2DP connection state
+int s_media_state = APP_AV_MEDIA_STATE_IDLE;  // Current media streaming state
 
-bool s_beep_in_progress = false;
-int s_beep_duration = 0;
+// Beep generation variables
+bool s_beep_in_progress = false;  // Whether a beep is currently playing
+int s_beep_duration = 0;          // Duration of current beep in samples  // Should use DEFAULT_VOLUME
+bool sine_table_initialized = false;  // Whether sine lookup table is initialized
+int s_beep_index = 0;             // Current position in beep generation
 
-bool sine_table_initialized = false;
-int s_beep_index = 0;
+// Audio control variables
+uint8_t s_current_volume = DEFAULT_VOLUME;  // Current volume level (0-127)
+bool s_volume_initialized = false;          // Whether volume was initialized this boot
 
-uint8_t s_current_volume = 0;
+// Congestion control variables
+int s_congestion_count = 0;        // Count of congestion events
+bool s_severe_congestion = false;  // Whether severe congestion is occurring
+uint32_t s_last_congestion_time = 0;  // Timestamp of last congestion event
 
-int s_congestion_count = 0;
-bool s_severe_congestion = false;
-uint32_t s_last_congestion_time = 0;
+// L2CAP and operation timing variables
+bool s_l2cap_congestion_flag = false;  // Whether L2CAP layer is congested
+uint32_t s_last_operation_time = 0;    // Timestamp of last BT operation
 
-bool s_l2cap_congestion_flag = false;
-uint32_t s_last_operation_time = 0;
+// Synchronization primitives
+SemaphoreHandle_t s_bt_resource_mutex = NULL;  // Mutex for BT operations
 
-bool s_volume_initialized = false;
-
-SemaphoreHandle_t s_bt_resource_mutex = NULL;
+// Add these variable definitions
+TaskHandle_t s_waiting_task = NULL;
+bool s_operation_complete = false;
+int s_pairing_attempt = 0;
+esp_bd_addr_t s_last_pairing_attempt = {0};
+bool s_pairing_in_progress = false;

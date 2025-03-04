@@ -1,11 +1,14 @@
 #include "bluetooth/bt_app_av.h"
 #include "bluetooth/bt_app_global.h"
+#include "bluetooth/bt_app_audio.h" // Add this to get is_operation_time_ok()
+#include "bluetooth/bt_app_conn.h" // Add this to get gap_event_handler
 
-#include "bluetooth/bt_app_global.h"
-#include "bluetooth/bt_app_conn.h"
 #include "custom_log.h"
 
 #define TAG "BT_APP_AV"
+
+// Add this forward declaration after the includes and defines
+static void delayed_volume_task(void *param); // Forward declaration
 
 // Add the bt_av_hdl_stack_evt function to handle the stack event
 void bt_av_hdl_stack_evt(uint16_t event, void *p_param) {
@@ -95,37 +98,63 @@ esp_err_t bluetooth_volume_down(void) {
     return ret;
 }
 
+// Generic volume handling for all devices
 esp_err_t bluetooth_set_volume(uint8_t volume) {
-    SAFE_ESP_LOGI(TAG, "Setting volume to: %d", volume);
-    
-    // Ensure we're not sending commands too quickly
-    if (!s_last_operation_time) {
-        SAFE_ESP_LOGW(TAG, "Set volume command rejected - too soon after previous operation");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // Ensure volume is in valid range (0-127 for AVRCP)
-    if (volume > 127) {
-        volume = 127;
-    }
-    
-    // Store locally first
+    // Store the volume locally first
     s_current_volume = volume;
     
-    // Save to NVS for persistence across reboots
+    // Save volume to NVS
     nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-    if (err == ESP_OK) {
+    esp_err_t ret = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (ret == ESP_OK) {
         nvs_set_u8(nvs_handle, BT_VOLUME_KEY, volume);
         nvs_commit(nvs_handle);
         nvs_close(nvs_handle);
     }
     
-    // Set volume initialized flag
-    s_volume_initialized = true;
+    // Ensure Bluetooth is ready and connected
+    if (s_a2d_state != APP_AV_STATE_CONNECTED) {
+        ESP_LOGW(TAG, "Cannot set volume: not connected");
+        return ESP_ERR_INVALID_STATE;
+    }
     
-    // Send command to device
+    SAFE_ESP_LOGI(TAG, "Setting volume to: %d", volume);
+    
+    // Use is_operation_time_ok with proper delay handling
+    if (!is_operation_time_ok()) {
+        ESP_LOGW(TAG, "Set volume command rejected - too soon after previous operation");
+        
+        // Schedule a delayed retry for any device
+        ESP_LOGI(TAG, "Will retry volume change in 1 second");
+        
+        // Clone the volume for task use
+        uint8_t *vol_param = malloc(sizeof(uint8_t));
+        if (vol_param) {
+            *vol_param = volume;
+            if (xTaskCreate(delayed_volume_task, "vol_task", 2048, vol_param, 1, NULL) != pdPASS) {
+                free(vol_param);
+            }
+        }
+        return ESP_OK; // Indicate success since we'll retry
+    }
+    
+    // Send volume command (0-127 range)
     return esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
+}
+
+// Add this helper function for delayed volume changes
+static void delayed_volume_task(void *param) {
+    uint8_t volume = *(uint8_t*)param;
+    free(param);
+    
+    // Wait 1 second before retry
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Retry the volume command
+    ESP_LOGI(TAG, "Retrying volume change to %d", volume);
+    esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
+    
+    vTaskDelete(NULL);
 }
 
 // Function to get the current volume level - doesn't need to send any commands

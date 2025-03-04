@@ -7,6 +7,7 @@
 
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 esp_err_t bluetooth_start_discovery(void);
+esp_err_t bluetooth_safe_start_discovery(void);
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 
 esp_err_t bluetooth_init(void);

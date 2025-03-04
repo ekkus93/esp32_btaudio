@@ -1,8 +1,8 @@
 #include <stdio.h>
-#include <dirent.h>  // Add this include for directory operations
-#include <fcntl.h>  // Add this for O_RDONLY
-#include <unistd.h> // Add this for read()
-#include <errno.h>  // Add this include
+#include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -15,30 +15,30 @@
 #include "esp_gap_bt_api.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "bt_app_core.h"
+#include "bluetooth/bt_app_core.h"
 #include "bluetooth/bt_app_global.h"
 #include "bluetooth/bt_app_a2dp.h"
-#include "bluetooth/bt_app_audio.h"  // Include the audio header
-#include "bluetooth/bt_app_av.h"    // Include the A2DP header
-#include "bluetooth/bt_app_conn.h"  // Include the connection header
-#include "wifi.h"         // Include Wi-Fi functionality
-#include "ping.h"         // Include Ping functionality
-#include "radio.h"        // Include radio functionality
+#include "bluetooth/bt_app_audio.h"
+#include "bluetooth/bt_app_av.h"
+#include "bluetooth/bt_app_conn.h"
+#include "wifi.h"
+#include "ping.h"
+#include "radio.h"
 #include "esp_idf_version.h"
-#include "esp_spiffs.h"  
-#include "spiffs_utils.h"  // Add this include
+#include "esp_spiffs.h"
+#include "spiffs_utils.h"
 #include "custom_log.h"
 
-extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);  // << New extern declaration
-
-// #define BT_APP_STACK_UP_EVT 0x0000  // << New definition
+extern void bt_av_hdl_stack_evt(uint16_t event, void *p_param);
 
 #define UART_NUM UART_NUM_0
 #define BUF_SIZE (1024)
-#define LED_GPIO GPIO_NUM_2  // Replace with your LED GPIO number
+#define LED_GPIO GPIO_NUM_2
 #define TAG "MAIN"
 
-// Remove the unused g_spiffs_mounted variable since it's now handled in spiffs_utils.c
+void print_help_message();
+void print_pairing_guide(void);
+void handle_command(char *cmd);
 
 void print_help_message() {
     printf("Available commands:\n");
@@ -66,36 +66,27 @@ void print_help_message() {
     printf("  play_radio <url>   : Play radio stream from URL\n");
     printf("  play_snd           : Play sound.mp3 from SPIFFS\n");
     printf("  ls_spiffs          : List files on SPIFFS partition\n");
+    printf("  pairing_guide      : Show Bluetooth pairing instructions\n");
 }
 
-#define SPIFFS_BASE_PATH "/spiffs"
-
-// Add a global flag to track SPIFFS mount state
-// Remove the local definition of spiffs_mounted flag (it should be in spiffs_utils.c)
-// static bool spiffs_mounted = false;
-
-// Modify the SPIFFS mounting function to avoid remounting
-// Remove the local mount_spiffs implementation
-// static esp_err_t mount_spiffs(void) { ... }
-
-// Optional: Add an unmount function if needed
-// Remove the local unmount_spiffs implementation 
-// static void unmount_spiffs(void) { ... }
+void print_pairing_guide(void) {
+    printf("\n===============================================\n");
+    printf("BLUETOOTH PAIRING INSTRUCTIONS:\n");
+    printf("1. Use the 'scan' command to find available devices\n");
+    printf("2. Put your audio device into pairing mode\n");
+    printf("3. Note the MAC address from the scan results\n");
+    printf("4. Use 'pair XX:XX:XX:XX:XX:XX' to connect\n");
+    printf("5. For PIN pairing, use 'pair XX:XX:XX:XX:XX:XX true'\n");
+    printf("===============================================\n");
+}
 
 void handle_command(char *cmd) {
     // Trim trailing newline characters
     cmd[strcspn(cmd, "\r\n")] = '\0';
 
     if (strcmp(cmd, "scan") == 0) {
-        SAFE_ESP_LOGI(TAG, "Stopping Bluetooth audio streaming before scan...");
-        esp_bt_gap_cancel_discovery();
-        esp_err_t ret = bluetooth_disconnect_device();  // Ensure any ongoing Bluetooth audio streaming is stopped
-        if (ret == ESP_OK) {
-            SAFE_ESP_LOGI(TAG, "Bluetooth audio streaming stopped successfully.");
-        } else {
-            SAFE_ESP_LOGW(TAG, "No Bluetooth audio streaming to stop.");
-        }
-        ret = radio_stop();  // Ensure any ongoing radio streaming is stopped
+        SAFE_ESP_LOGI(TAG, "Stopping any streaming before scan...");
+        esp_err_t ret = radio_stop();  // Stop radio if playing
         if (ret == ESP_OK) {
             SAFE_ESP_LOGI(TAG, "Radio streaming stopped successfully.");
         } else {
@@ -103,7 +94,8 @@ void handle_command(char *cmd) {
         }
 
         SAFE_ESP_LOGI(TAG, "Starting Bluetooth scan...");
-        ret = bluetooth_start_discovery();
+        // Use the new safe discovery function
+        ret = bluetooth_safe_start_discovery();
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to start Bluetooth scan: %s", esp_err_to_name(ret));
         }
@@ -180,7 +172,7 @@ void handle_command(char *cmd) {
     } else if (strncmp(cmd, "ping ", 5) == 0) {
         char *host = strtok(cmd + 5, " ");
         char *count_str = strtok(NULL, " ");
-        int count = (count_str != NULL) ? atoi(count_str) : 4;  // Default to 4 pings if count is not provided
+        int count = (count_str != NULL) ? atoi(count_str) : 4;
         SAFE_ESP_LOGI(TAG, "Pinging host: %s with count: %d", host, count);
         esp_err_t ret = ping_host(host, count);
         if (ret != ESP_OK) {
@@ -203,9 +195,8 @@ void handle_command(char *cmd) {
     } else if (strcmp(cmd, "help") == 0) {
         print_help_message();
     } else if (strncmp(cmd, "beep", 4) == 0) {
-        // Parse optional parameter for number of beeps
         char *param = strtok(cmd + 4, " ");
-        int count = 1; // Default to 1 beep
+        int count = 1;
         if (param) {
             count = atoi(param);
             if (count <= 0) {
@@ -225,14 +216,12 @@ void handle_command(char *cmd) {
         char *url = strtok(cmd + 11, " ");
         if (url) {
             SAFE_ESP_LOGI(TAG, "Starting radio stream from URL: %s", url);
-            // Make a copy of the URL string that will persist after this function returns
             char *url_copy = strdup(url);
             if (!url_copy) {
                 SAFE_ESP_LOGE(TAG, "Failed to allocate memory for URL");
                 return;
             }
             
-            // Create task with larger stack size (16KB instead of 4KB)
             if (xTaskCreate(radio_task, "radio_task", 16384, (void*)url_copy, 5, NULL) != pdPASS) {
                 SAFE_ESP_LOGE(TAG, "Failed to create radio task");
                 free(url_copy);
@@ -249,13 +238,11 @@ void handle_command(char *cmd) {
             return;
         }
 
-        // Check if SPIFFS is actually mounted
         if (!is_spiffs_mounted()) {
             SAFE_ESP_LOGE(TAG, "SPIFFS is not mounted, cannot play sound");
             return;
         }
 
-        // Print partition info
         size_t total = 0, used = 0;
         ret = esp_spiffs_info("storage", &total, &used);
         if (ret != ESP_OK) {
@@ -264,39 +251,16 @@ void handle_command(char *cmd) {
         }
         SAFE_ESP_LOGI(TAG, "Partition total: %d, used: %d", total, used);
 
-        if (total == 0) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS partition is empty");
+        if (total == 0 || (total > 0 && used == 0) || (used > total)) {
+            SAFE_ESP_LOGE(TAG, "SPIFFS partition issue detected");
             return;
         }
 
-        if (total > 0 && used == 0) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS partition is empty");
-            return;
-        }
-
-        if (used > total) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS used space exceeds total space"); 
-            return;
-        }
-
-        /*
-        // Verify SPIFFS integrity
-        ret = esp_spiffs_check("storage");
-        if (ret != ESP_OK) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS is corrupted! (%s)", esp_err_to_name(ret));
-            return;
-        }
-
-        SAFE_ESP_LOGI(TAG, "SPIFFS is intact");
-        */
-
-        // Print partition info and attempt to read
         const char* filepath = "/spiffs/sound.mp3";
         struct stat st;
         if (stat(filepath, &st) == 0) {
             SAFE_ESP_LOGI(TAG, "File exists, size: %ld bytes", st.st_size);
 
-            // Try reading with fread first
             FILE *fp = fopen(filepath, "rb");
             if (fp) {
                 uint8_t buf[16];
@@ -307,7 +271,6 @@ void handle_command(char *cmd) {
                         printf("%02x ", buf[i]);
                     }
                     printf("\n");
-                    // If fread works, continue with normal playback
                     rewind(fp);
                     radio_task_params_t *params = malloc(sizeof(radio_task_params_t));
                     if (params) {
@@ -318,7 +281,7 @@ void handle_command(char *cmd) {
                             fclose(fp);
                             free(params);
                         }
-                        return;  // Success path
+                        return;
                     }
                 } else {
                     SAFE_ESP_LOGE(TAG, "fread failed: %d", errno);
@@ -367,25 +330,36 @@ void handle_command(char *cmd) {
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to get volume: %s", esp_err_to_name(ret));
         } else {
-            // Volume will be printed in the AVRCP callback
             SAFE_ESP_LOGI(TAG, "get_volume command sent. Check logs for volume level.");
         }
+    } else if (strcmp(cmd, "pairing_guide") == 0) {
+        print_pairing_guide();
     } else {
         SAFE_ESP_LOGI(TAG, "Unknown command: %s", cmd);
         print_help_message();
     }
 }
 
-// Entry point function for PlatformIO (for ESP-IDF, use app_main())
 void app_main(void) {
     SAFE_ESP_LOGI(TAG, "app_main started");
 
-    // Initialize SPIFFS early to ensure it's available when needed
+    // Create the Bluetooth resource mutex
+    s_bt_resource_mutex = xSemaphoreCreateMutex();
+    if (s_bt_resource_mutex == NULL) {
+        SAFE_ESP_LOGE(TAG, "Failed to create Bluetooth resource mutex");
+        return;
+    }
+
+    // Initialize SPIFFS
     if (init_spiffs() != ESP_OK) {
         SAFE_ESP_LOGE(TAG, "SPIFFS initialization failed!");
         // Continue anyway - non-fatal error
     }
 
+    // Initialize audio buffer system
+    bt_app_audio_init();
+    
+    // Initialize Bluetooth
     esp_err_t ret = bluetooth_init();
     if (ret != ESP_OK) {
         SAFE_ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(ret));
@@ -431,20 +405,21 @@ void app_main(void) {
     };
     uart_param_config(UART_NUM, &uart_config);
     uart_driver_install(UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0);
-    // Removed the uart_set_baudrate() call to keep it at 115200
 
     // Configure LED GPIO
     gpio_reset_pin(LED_GPIO);
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
 
+    // Allocate buffer for UART data
     uint8_t* data = (uint8_t*) malloc(BUF_SIZE);
     if (data == NULL) {
         SAFE_ESP_LOGE(TAG, "Failed to allocate memory for UART data");
         return;
     }
 
-    printf("ESP-IDF version: %d\n", ESP_IDF_VERSION);  // Changed from %s to %d
+    printf("ESP-IDF version: %d\n", ESP_IDF_VERSION);
 
+    // Main loop
     while (1) {
         // Toggle LED
         gpio_set_level(LED_GPIO, 1);
@@ -460,8 +435,22 @@ void app_main(void) {
         }
     }
 
-    // Shut down the Bluetooth application task
+    // Clean up (unreachable in current implementation)
     bt_app_task_shut_down();
-
     free(data);
+}
+
+// Mutex helper functions
+bool take_bt_resource_mutex(TickType_t timeout) {
+    if (s_bt_resource_mutex == NULL) {
+        SAFE_ESP_LOGE(TAG, "BT resource mutex not initialized");
+        return false;
+    }
+    return xSemaphoreTake(s_bt_resource_mutex, timeout) == pdTRUE;
+}
+
+void give_bt_resource_mutex(void) {
+    if (s_bt_resource_mutex != NULL) {
+        xSemaphoreGive(s_bt_resource_mutex);
+    }
 }

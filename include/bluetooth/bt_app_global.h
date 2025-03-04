@@ -18,7 +18,7 @@
 #include "esp_avrc_api.h"  // Include AVRCP API
 #include "driver/uart.h"
 #include "esp_timer.h"  // For esp_timer_get_time
-#include "bluetooth/bluetooth_types.h"
+#include "bluetooth/bt_app_types.h"
 
 // Reduce L2CAP buffer size (adjust as needed)
 #define L2CAP_MTU 512  // Reduced from default
@@ -83,5 +83,22 @@ extern SemaphoreHandle_t s_bt_resource_mutex;
 
 // Create a new timer task to periodically check for memory issues
 #define MEMORY_CHECK_INTERVAL_MS 5000
+
+// Mutex helper functions
+bool take_bt_resource_mutex(TickType_t timeout);
+void give_bt_resource_mutex(void);
+
+// Add these variable declarations
+extern TaskHandle_t s_waiting_task;
+extern bool s_operation_complete;
+
+// Add these after the other extern declarations
+#define MAX_PAIRING_ATTEMPTS 3
+extern int s_pairing_attempt;
+extern esp_bd_addr_t s_last_pairing_attempt;
+extern bool s_pairing_in_progress;
+
+// Make sure this function is declared here
+esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 
 #endif // BT_APP_GLOBAL_H

@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_bt_headset2",
-    "project_version":    "df98d8e-dirty",
+    "project_version":    "8fd14df-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio",
     "idf_path":           "/home/phil/.platformio/packages/framework-espidf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32",
@@ -1465,7 +1465,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp-idf/src/libsrc.a",
-            "sources": [ "/home/phil/work/esp32/esp32_btaudio/src/CMakeLists.txt", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth.c_", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_a2dp.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_audio.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_av.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_conn.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_global.c", "/home/phil/work/esp32/esp32_btaudio/src/bt_app_core.c", "/home/phil/work/esp32/esp32_btaudio/src/main.c", "/home/phil/work/esp32/esp32_btaudio/src/mp3_utils.c", "/home/phil/work/esp32/esp32_btaudio/src/ping.c", "/home/phil/work/esp32/esp32_btaudio/src/radio.c", "/home/phil/work/esp32/esp32_btaudio/src/spiffs_utils.c", "/home/phil/work/esp32/esp32_btaudio/src/wifi.c" ],
+            "sources": [ "/home/phil/work/esp32/esp32_btaudio/src/CMakeLists.txt", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_a2dp.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_audio.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_av.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_conn.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_core.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_global.c", "/home/phil/work/esp32/esp32_btaudio/src/bluetooth/bt_app_init.c", "/home/phil/work/esp32/esp32_btaudio/src/main.c", "/home/phil/work/esp32/esp32_btaudio/src/mp3_utils.c", "/home/phil/work/esp32/esp32_btaudio/src/ping.c", "/home/phil/work/esp32/esp32_btaudio/src/radio.c", "/home/phil/work/esp32/esp32_btaudio/src/spiffs_utils.c", "/home/phil/work/esp32/esp32_btaudio/src/wifi.c" ],
             "include_dirs": []
         },
         "tcp_transport": {
