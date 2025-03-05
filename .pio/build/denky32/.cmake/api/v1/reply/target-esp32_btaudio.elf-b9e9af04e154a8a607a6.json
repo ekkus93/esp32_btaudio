@@ -2,7 +2,7 @@
 	"artifacts" : 
 	[
 		{
-			"path" : "esp32_bt_headset2.elf"
+			"path" : "esp32_btaudio.elf"
 		}
 	],
 	"backtrace" : 2,
@@ -1540,7 +1540,7 @@
 			"id" : "__idf_src::@2478b13de56d3028f688"
 		}
 	],
-	"id" : "esp32_bt_headset2.elf::@6890427a1f51a3e7e1df",
+	"id" : "esp32_btaudio.elf::@6890427a1f51a3e7e1df",
 	"link" : 
 	{
 		"commandFragments" : 
@@ -1565,7 +1565,7 @@
 			},
 			{
 				"backtrace" : 5,
-				"fragment" : "-Wl,--Map=/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp32_bt_headset2.map",
+				"fragment" : "-Wl,--Map=/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/esp32_btaudio.map",
 				"role" : "flags"
 			},
 			{
@@ -4323,8 +4323,8 @@
 		],
 		"language" : "CXX"
 	},
-	"name" : "esp32_bt_headset2.elf",
-	"nameOnDisk" : "esp32_bt_headset2.elf",
+	"name" : "esp32_btaudio.elf",
+	"nameOnDisk" : "esp32_btaudio.elf",
 	"paths" : 
 	{
 		"build" : ".",

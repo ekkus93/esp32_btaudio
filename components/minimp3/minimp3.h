@@ -1,5 +1,8 @@
 #ifndef MINIMP3_H
 #define MINIMP3_H
+
+#include "custom_log.h"
+
 /*
     https://github.com/lieff/minimp3
     To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights to this software to the public domain worldwide.
@@ -45,6 +48,8 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 
 #include <stdlib.h>
 #include <string.h>
+
+#define TAG_MINIMP3 "MINIMP3"
 
 #define MAX_FREE_FORMAT_FRAME_SIZE  2304    /* more than ISO spec's */
 #ifndef MAX_FRAME_SYNC_MATCHES
@@ -300,16 +305,22 @@ static unsigned hdr_frame_samples(const uint8_t *h)
 
 static int hdr_frame_bytes(const uint8_t *h, int free_format_size)
 {
+    SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_frame_bytes - 1");
     int frame_bytes = hdr_frame_samples(h)*hdr_bitrate_kbps(h)*125/hdr_sample_rate_hz(h);
+    SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_frame_bytes - 2 - frame_bytes: %d", frame_bytes);
     if (HDR_IS_LAYER_1(h))
     {
+        SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_frame_bytes - 3");
         frame_bytes &= ~3; /* slot align */
     }
+    SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_frame_bytes - 4 - frame_bytes: %d", frame_bytes);
+    SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_frame_bytes - 5 - free_format_size: %d", free_format_size);
     return frame_bytes ? frame_bytes : free_format_size;
 }
 
 static int hdr_padding(const uint8_t *h)
 {
+    SAFE_ESP_LOGI(TAG_MINIMP3, "hdr_padding - 1");
     return HDR_TEST_PADDING(h) ? (HDR_IS_LAYER_1(h) ? 4 : 1) : 0;
 }
 
@@ -1712,19 +1723,25 @@ void mp3dec_init(mp3dec_t *dec)
 
 int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_sample_t *pcm, mp3dec_frame_info_t *info)
 {
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 1");
     int i = 0, igr, frame_size = 0, success = 1;
     const uint8_t *hdr;
     bs_t bs_frame[1];
     mp3dec_scratch_t scratch;
 
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 2");
     if (mp3_bytes > 4 && dec->header[0] == 0xff && hdr_compare(dec->header, mp3))
     {
+        SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 2a");
         frame_size = hdr_frame_bytes(mp3, dec->free_format_bytes) + hdr_padding(mp3);
         if (frame_size != mp3_bytes && (frame_size + HDR_SIZE > mp3_bytes || !hdr_compare(mp3, mp3 + frame_size)))
         {
+            SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 2b");
             frame_size = 0;
         }
     }
+
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 3");
     if (!frame_size)
     {
         memset(dec, 0, sizeof(mp3dec_t));
@@ -1736,6 +1753,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
         }
     }
 
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 4");
     hdr = mp3 + i;
     memcpy(dec->header, hdr, HDR_SIZE);
     info->frame_bytes = i + frame_size;
@@ -1745,19 +1763,23 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
     info->layer = 4 - HDR_GET_LAYER(hdr);
     info->bitrate_kbps = hdr_bitrate_kbps(hdr);
 
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 5");
     if (!pcm)
     {
         return hdr_frame_samples(hdr);
     }
 
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 6");
     bs_init(bs_frame, hdr + HDR_SIZE, frame_size - HDR_SIZE);
     if (HDR_IS_CRC(hdr))
     {
         get_bits(bs_frame, 16);
     }
 
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 7");
     if (info->layer == 3)
     {
+        SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 8");
         int main_data_begin = L3_read_side_info(bs_frame, scratch.gr_info, hdr);
         if (main_data_begin < 0 || bs_frame->pos > bs_frame->limit)
         {
@@ -1777,6 +1799,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
         L3_save_reservoir(dec, &scratch);
     } else
     {
+        SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 9");
 #ifdef MINIMP3_ONLY_MP3
         return 0;
 #else /* MINIMP3_ONLY_MP3 */
@@ -1802,6 +1825,8 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
         }
 #endif /* MINIMP3_ONLY_MP3 */
     }
+
+    SAFE_ESP_LOGI(TAG_MINIMP3, "mp3dec_decode_frame - 10");
     return success*hdr_frame_samples(dec->header);
 }
 

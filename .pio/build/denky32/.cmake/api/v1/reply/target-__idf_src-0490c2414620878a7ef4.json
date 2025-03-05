@@ -3,7 +3,7 @@
 	"artifacts" : 
 	[
 		{
-			"path" : "esp-idf/esp_app_format/libesp_app_format.a"
+			"path" : "esp-idf/src/libsrc.a"
 		}
 	],
 	"backtrace" : 2,
@@ -16,15 +16,12 @@
 			"add_compile_options",
 			"add_c_compile_options",
 			"add_compile_definitions",
-			"include_directories",
-			"target_include_directories",
-			"__component_add_include_dirs",
-			"set_source_files_properties"
+			"include_directories"
 		],
 		"files" : 
 		[
 			"/home/phil/.platformio/packages/framework-espidf/tools/cmake/component.cmake",
-			"/home/phil/.platformio/packages/framework-espidf/components/esp_app_format/CMakeLists.txt",
+			"src/CMakeLists.txt",
 			"/home/phil/.platformio/packages/framework-espidf/tools/cmake/utilities.cmake"
 		],
 		"nodes" : 
@@ -35,7 +32,7 @@
 			{
 				"command" : 1,
 				"file" : 1,
-				"line" : 8,
+				"line" : 6,
 				"parent" : 0
 			},
 			{
@@ -73,24 +70,6 @@
 				"file" : 0,
 				"line" : 474,
 				"parent" : 1
-			},
-			{
-				"command" : 7,
-				"file" : 0,
-				"line" : 492,
-				"parent" : 1
-			},
-			{
-				"command" : 6,
-				"file" : 0,
-				"line" : 319,
-				"parent" : 8
-			},
-			{
-				"command" : 8,
-				"file" : 1,
-				"line" : 35,
-				"parent" : 0
 			}
 		]
 	},
@@ -202,20 +181,12 @@
 			"defines" : 
 			[
 				{
-					"backtrace" : 10,
-					"define" : " PROJECT_NAME=\"esp32_bt_headset2\""
-				},
-				{
 					"backtrace" : 6,
 					"define" : "ESP_PLATFORM"
 				},
 				{
 					"backtrace" : 6,
 					"define" : "IDF_VER=\"5.4.0\""
-				},
-				{
-					"backtrace" : 10,
-					"define" : "PROJECT_VER=\"daf6ac7-dirty\""
 				},
 				{
 					"backtrace" : 2,
@@ -247,10 +218,6 @@
 				{
 					"backtrace" : 7,
 					"path" : "/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/config"
-				},
-				{
-					"backtrace" : 9,
-					"path" : "/home/phil/.platformio/packages/framework-espidf/components/esp_app_format/include"
 				},
 				{
 					"backtrace" : 2,
@@ -440,31 +407,62 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				0
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				10,
+				11,
+				12,
+				13
 			]
 		}
 	],
 	"dependencies" : 
 	[
 		{
-			"id" : "__idf_esp_bootloader_format::@d2aa1b1547bed85670ee"
+			"backtrace" : 2,
+			"id" : "__idf_xtensa::@1daaaad7abe597e030f9"
 		}
 	],
-	"id" : "__idf_esp_app_format::@08c2bdce7fd85cdbea06",
-	"name" : "__idf_esp_app_format",
-	"nameOnDisk" : "libesp_app_format.a",
+	"id" : "__idf_src::@2478b13de56d3028f688",
+	"name" : "__idf_src",
+	"nameOnDisk" : "libsrc.a",
 	"paths" : 
 	{
-		"build" : "esp-idf/esp_app_format",
-		"source" : "/home/phil/.platformio/packages/framework-espidf/components/esp_app_format"
+		"build" : "esp-idf/src",
+		"source" : "src"
 	},
 	"sourceGroups" : 
 	[
 		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0,
+				9
+			]
+		},
+		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				0
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				10,
+				11,
+				12,
+				13
 			]
 		}
 	],
@@ -472,9 +470,85 @@
 	[
 		{
 			"backtrace" : 2,
-			"compileGroupIndex" : 0,
-			"path" : "/home/phil/.platformio/packages/framework-espidf/components/esp_app_format/esp_app_desc.c",
+			"path" : "src/CMakeLists.txt",
 			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_a2dp.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_audio.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_av.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_conn.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_core.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_global.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/bluetooth/bt_app_init.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/main.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"path" : "src/mp3_utils.c_",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/ping.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/radio.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/spiffs_utils.c",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/wifi.c",
+			"sourceGroupIndex" : 1
 		}
 	],
 	"type" : "STATIC_LIBRARY"

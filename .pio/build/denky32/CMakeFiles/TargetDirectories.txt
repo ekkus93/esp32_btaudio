@@ -4,6 +4,7 @@
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/merge-bin.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/bootloader.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/gen_project_binary.dir
+/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/esp32_btaudio.elf.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/flash.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/confserver.dir
@@ -11,7 +12,6 @@
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/menuconfig.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/_project_elf_src.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/edit_cache.dir
-/home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/esp32_bt_headset2.elf.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/size.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/size-components.dir
 /home/phil/work/esp32/esp32_btaudio/.pio/build/denky32/CMakeFiles/uf2-app.dir

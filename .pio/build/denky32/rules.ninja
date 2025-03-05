@@ -6,7 +6,7 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: esp32_bt_headset2
+# Project: esp32_btaudio
 # Configuration: 
 # =============================================================================
 # =============================================================================
@@ -22,7 +22,7 @@ rule CUSTOM_COMMAND
 #############################################
 # Rule for compiling C files.
 
-rule C_COMPILER__esp32_bt_headset2.2eelf
+rule C_COMPILER__esp32_btaudio.2eelf
   depfile = $DEP_FILE
   deps = gcc
   command = /home/phil/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-gcc $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
@@ -32,7 +32,7 @@ rule C_COMPILER__esp32_bt_headset2.2eelf
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__esp32_bt_headset2.2eelf
+rule CXX_EXECUTABLE_LINKER__esp32_btaudio.2eelf
   command = $PRE_LINK && /home/phil/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-g++  $FLAGS  $LINK_FLAGS $in  -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD
   description = Linking CXX executable $TARGET_FILE
   restat = $RESTAT
