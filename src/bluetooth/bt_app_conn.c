@@ -249,22 +249,41 @@ esp_err_t bluetooth_disconnect_device(void) {
     }
     
     // Store address locally - CRITICAL: Add defensive check
-    esp_bd_addr_t device_addr;
+    esp_bd_addr_t device_addr; // Local variable allocated on the stack
     if (memcmp(pending_pair_addr, (uint8_t[6]){0}, ESP_BD_ADDR_LEN) == 0) {
         // No valid device address
         SAFE_ESP_LOGW(TAG, "No valid device address to disconnect from");
         xSemaphoreGive(s_bt_resource_mutex);
         return ESP_ERR_INVALID_STATE;
     }
-    memcpy(device_addr, pending_pair_addr, ESP_BD_ADDR_LEN);
+    memcpy(device_addr, pending_pair_addr, ESP_BD_ADDR_LEN); // Memory copied to local variable
     
     // Update state and prepare for waiting
     s_a2d_state = APP_AV_STATE_DISCONNECTING;
     s_operation_complete = false;
     s_waiting_task = xTaskGetCurrentTaskHandle();
     
+    // Check memory usage before L2CAP call
+    size_t free_heap_before = esp_get_free_heap_size();
+    SAFE_ESP_LOGI(TAG, "Free heap before disconnect: %u bytes", free_heap_before);
+    
+    // Check heap integrity before L2CAP call
+    if (!heap_caps_check_integrity_all(true)) {
+        SAFE_ESP_LOGE(TAG, "Heap integrity check failed before disconnect");
+    }
+    
     // Initiate disconnect - we'll keep holding the mutex
-    esp_err_t ret = esp_a2d_source_disconnect(device_addr);
+    esp_err_t ret = esp_a2d_source_disconnect(device_addr); // L2CAP call
+    
+    // Check memory usage after L2CAP call
+    size_t free_heap_after = esp_get_free_heap_size();
+    SAFE_ESP_LOGI(TAG, "Free heap after disconnect: %u bytes", free_heap_after);
+    
+    // Check heap integrity after L2CAP call
+    if (!heap_caps_check_integrity_all(true)) {
+        SAFE_ESP_LOGE(TAG, "Heap integrity check failed after disconnect");
+    }
+    
     if (ret != ESP_OK) {
         // Handle error
         s_a2d_state = APP_AV_STATE_CONNECTED;
@@ -347,8 +366,17 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
     s_a2d_state = APP_AV_STATE_CONNECTING;
     
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        // Check memory usage before L2CAP call
+        size_t free_heap_before = esp_get_free_heap_size();
+        SAFE_ESP_LOGI(TAG, "Free heap before connect: %u bytes", free_heap_before);
+        
         // Establish connection
-        esp_err_t ret = esp_a2d_source_connect(bd_addr);
+        esp_err_t ret = esp_a2d_source_connect(bd_addr); // L2CAP call
+        
+        // Check memory usage after L2CAP call
+        size_t free_heap_after = esp_get_free_heap_size();
+        SAFE_ESP_LOGI(TAG, "Free heap after connect: %u bytes", free_heap_after);
+        
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
             xSemaphoreGive(s_bt_resource_mutex);
@@ -518,4 +546,22 @@ extern void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 void bt_app_conn_start_memory_monitor(void)
 {
     xTaskCreate(memory_monitor_task, "mem_mon", 2048, NULL, 5, NULL);
+}
+
+void bt_app_conn_callback(uint16_t event, void *param) {
+    // ...existing code...
+    SAFE_ESP_LOGI(TAG, "bt_app_conn_callback: event=%d", event);
+    // ...existing code...
+}
+
+void bt_app_conn_init(void) {
+    // ...existing code...
+    SAFE_ESP_LOGI(TAG, "bt_app_conn_init: Initializing connection");
+    // ...existing code...
+}
+
+void bt_app_conn_deinit(void) {
+    // ...existing code...
+    SAFE_ESP_LOGI(TAG, "bt_app_conn_deinit: Deinitializing connection");
+    // ...existing code...
 }

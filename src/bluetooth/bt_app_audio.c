@@ -1,5 +1,6 @@
 #include "bluetooth/bt_app_audio.h"
 #include "bluetooth/bt_app_global.h"
+#include "custom_log.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -8,8 +9,7 @@
 #define TAG "BT_APP_AUDIO"
 
 // Increase buffer count and add better management
-#define AUDIO_BUFFER_SIZE 4112
-#define AUDIO_BUFFER_COUNT 16   // Increase from 8 to 16 
+#define AUDIO_BUFFER_COUNT 32   // Increase from 16 to 32 
 #define BT_AUDIO_MONITOR_INTERVAL_MS 5000 // Rename to avoid conflict
 
 // Pre-allocated audio buffers
@@ -39,6 +39,7 @@ static void init_sine_table(void) {
 
 // Trigger a beep sound
 void trigger_beep(void) {
+    SAFE_ESP_LOGI(TAG, "Beep triggered (trigger_beep)");
     s_beep_in_progress = true;
     s_beep_duration = 0;
     s_beep_index = 0;
@@ -139,6 +140,7 @@ void bt_app_audio_init(void) {
     
     ESP_LOGI(TAG, "Audio buffer system initialized with %d buffers of %d bytes each",
              AUDIO_BUFFER_COUNT, AUDIO_BUFFER_SIZE);
+    SAFE_ESP_LOGI(TAG, "bt_app_audio_init: Initializing audio");
 }
 
 // Monitoring task for buffer usage
@@ -228,4 +230,12 @@ int bt_app_audio_available_buffers(void) {
     }
     
     return count;
+}
+
+void bt_app_audio_callback(uint16_t event, void *param) {
+    SAFE_ESP_LOGI(TAG, "bt_app_audio_callback: event=%d", event);
+}
+
+void bt_app_audio_deinit(void) {
+    SAFE_ESP_LOGI(TAG, "bt_app_audio_deinit: Deinitializing audio");
 }

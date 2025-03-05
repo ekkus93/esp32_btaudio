@@ -19,13 +19,19 @@
 #include "driver/uart.h"
 #include "esp_timer.h"  // For esp_timer_get_time
 #include "bluetooth/bt_app_types.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+// Remove the redundant definition of BT_APP_STACK_UP_EVT
+// #define BT_APP_STACK_UP_EVT 0x0000    // << New definition
+
+extern SemaphoreHandle_t s_bt_resource_mutex;  // Declare as extern
 
 // Reduce L2CAP buffer size (adjust as needed)
 #define L2CAP_MTU 512  // Reduced from default
 #define L2CAP_TX_BUF_SIZE 1024 // Reduced from default
 
 #define MAX_DEVICES 50
-#define BT_APP_STACK_UP_EVT 0x0000    // << New definition
 #define BT_DEVICE_NAME_KEY "bt_name"
 #define DEFAULT_BT_DEVICE_NAME "monkfish"
 

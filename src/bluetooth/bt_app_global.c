@@ -32,7 +32,7 @@ bool s_l2cap_congestion_flag = false;  // Whether L2CAP layer is congested
 uint32_t s_last_operation_time = 0;    // Timestamp of last BT operation
 
 // Synchronization primitives
-SemaphoreHandle_t s_bt_resource_mutex = NULL;  // Mutex for BT operations
+SemaphoreHandle_t s_bt_resource_mutex = NULL;  // Define the mutex
 
 // Add these variable definitions
 TaskHandle_t s_waiting_task = NULL;

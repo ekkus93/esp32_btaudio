@@ -7,11 +7,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "esp_err.h"
 
 #define BT_APP_CORE_TASK_NAME            "BtAppT"
 #define BT_APP_CORE_TASK_STACK_SIZE      3072
 #define BT_APP_CORE_TASK_PRIO            configMAX_PRIORITIES - 3
 #define BT_APP_CORE_TASK_QUEUE_SIZE      20
+
+#define BT_APP_STACK_UP_EVT              0 // Add this line
 
 typedef struct {
     uint16_t             sig;      /*!< signal to bt_app_task */

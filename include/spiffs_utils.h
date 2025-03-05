@@ -2,14 +2,11 @@
 #define SPIFFS_UTILS_H
 
 #include "esp_err.h"
-#include <stdbool.h> 
+#include <stdbool.h>  // Ensure this include for bool is present
 
 esp_err_t init_spiffs(void);
 esp_err_t mount_spiffs_fs(void);
-void unmount_spiffs(void);
-void list_spiffs_files(void);
 bool is_spiffs_mounted(void);
+void list_spiffs_files(void);
 
-#define SPIFFS_BASE_PATH "/spiffs"
-
-#endif /* SPIFFS_UTILS_H */
+#endif // SPIFFS_UTILS_H

@@ -1,14 +1,20 @@
 #include "bluetooth/bt_app_av.h"
-#include "bluetooth/bt_app_global.h"
+#include "bluetooth/bt_app_core.h"  // Include this header
 #include "bluetooth/bt_app_audio.h" // Add this to get is_operation_time_ok()
 #include "bluetooth/bt_app_conn.h" // Add this to get gap_event_handler
-
+#include "bluetooth/bt_app_global.h" // Include this header for global variables
+#include "esp_avrc_api.h" // Include this for AVRCP API
+#include "nvs_flash.h" // Include this for NVS functions
 #include "custom_log.h"
+#include "freertos/queue.h" // Include this for FreeRTOS queue
 
 #define TAG "BT_APP_AV"
 
 // Add this forward declaration after the includes and defines
 static void delayed_volume_task(void *param); // Forward declaration
+
+// Define a queue for passing volume values to the task
+static QueueHandle_t volume_queue = NULL;
 
 // Add the bt_av_hdl_stack_evt function to handle the stack event
 void bt_av_hdl_stack_evt(uint16_t event, void *p_param) {
@@ -127,12 +133,19 @@ esp_err_t bluetooth_set_volume(uint8_t volume) {
         // Schedule a delayed retry for any device
         ESP_LOGI(TAG, "Will retry volume change in 1 second");
         
-        // Clone the volume for task use
-        uint8_t *vol_param = malloc(sizeof(uint8_t));
-        if (vol_param) {
-            *vol_param = volume;
-            if (xTaskCreate(delayed_volume_task, "vol_task", 2048, vol_param, 1, NULL) != pdPASS) {
-                free(vol_param);
+        // Create the queue if it doesn't exist
+        if (volume_queue == NULL) {
+            volume_queue = xQueueCreate(1, sizeof(uint8_t));
+        }
+        
+        // Send the volume value to the queue
+        if (volume_queue != NULL) {
+            if (xQueueSend(volume_queue, &volume, 0) == pdPASS) {
+                if (xTaskCreate(delayed_volume_task, "vol_task", 2048, NULL, 1, NULL) != pdPASS) {
+                    ESP_LOGE(TAG, "Failed to create delayed volume task");
+                }
+            } else {
+                ESP_LOGE(TAG, "Failed to send volume to queue");
             }
         }
         return ESP_OK; // Indicate success since we'll retry
@@ -144,15 +157,19 @@ esp_err_t bluetooth_set_volume(uint8_t volume) {
 
 // Add this helper function for delayed volume changes
 static void delayed_volume_task(void *param) {
-    uint8_t volume = *(uint8_t*)param;
-    free(param);
+    uint8_t volume;
     
     // Wait 1 second before retry
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    // Retry the volume command
-    ESP_LOGI(TAG, "Retrying volume change to %d", volume);
-    esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
+    // Receive the volume value from the queue
+    if (volume_queue != NULL) {
+        if (xQueueReceive(volume_queue, &volume, 0) == pdPASS) {
+            // Retry the volume command
+            ESP_LOGI(TAG, "Retrying volume change to %d", volume);
+            esp_avrc_ct_send_set_absolute_volume_cmd(0, volume);
+        }
+    }
     
     vTaskDelete(NULL);
 }

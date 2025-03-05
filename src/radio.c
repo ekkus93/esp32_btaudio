@@ -46,19 +46,10 @@ static volatile bool s_radio_task_finished = true; // Initially true
 
 void radio_task(void *param) {
     radio_task_params_t *params = (radio_task_params_t*)param;
-    uint8_t *buf = NULL;
-    uint8_t *pcm_buf = NULL;
+    uint8_t buf[BUFFER_SIZE];  // Change buf to a statically allocated array
+    int16_t pcm_buf[MINIMP3_MAX_SAMPLES_PER_FRAME];  // Change pcm_buf to a statically allocated array
     mp3dec_t mp3d;
     mp3dec_frame_info_t info;
-
-    // Allocate buffers
-    buf = heap_caps_malloc(BUFFER_SIZE, MALLOC_CAP_8BIT);
-    pcm_buf = heap_caps_malloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t), MALLOC_CAP_8BIT);
-    
-    if (!buf || !pcm_buf) {
-        SAFE_ESP_LOGE(TAG, "Failed to allocate buffers");
-        goto cleanup;
-    }
 
     // Initialize task watchdog
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
@@ -99,31 +90,30 @@ void radio_task(void *param) {
         SAFE_ESP_LOGI(TAG, "Processing %d bytes from file", (int)read);
         
         // Decode MP3 frame
-        int samples = mp3dec_decode_frame(&mp3d, buf, read, (mp3d_sample_t*)pcm_buf, &info);
+        int samples = mp3dec_decode_frame(&mp3d, buf, read, pcm_buf, &info);
         
         if (samples > 0) {
-            size_t written = samples * sizeof(mp3d_sample_t);
+            SAFE_ESP_LOGI(TAG, "Decoded %d samples", samples);
+            size_t written = samples * sizeof(int16_t);
             esp_err_t err = bluetooth_write_audio((const uint8_t*)pcm_buf, &written);
             if (err != ESP_OK) {
                 SAFE_ESP_LOGE(TAG, "Failed to write audio data: %d", err);
                 break;
             }
             
-            if (written < samples * sizeof(mp3d_sample_t)) {
+            if (written < samples * sizeof(int16_t)) {
                 SAFE_ESP_LOGW(TAG, "Partial write: %d/%d bytes", 
-                             (int)written, (int)(samples * sizeof(mp3d_sample_t)));
+                             (int)written, (int)(samples * sizeof(int16_t)));
             }
         } else {
-            SAFE_ESP_LOGW(TAG, "No samples decoded from frame");
+            SAFE_ESP_LOGW(TAG, "No samples decoded from frame, frame_bytes: %d, channels: %d, hz: %d, layer: %d, bitrate_kbps: %d",
+                          info.frame_bytes, info.channels, info.hz, info.layer, info.bitrate_kbps);
         }
 
         remaining -= read;
         vTaskDelay(pdMS_TO_TICKS(5)); // Give other tasks a chance to run
     }
 
-cleanup:
-    if (buf) heap_caps_free(buf);
-    if (pcm_buf) heap_caps_free(pcm_buf);
     if (params->fp) fclose(params->fp);
     free(params);
     
