@@ -89,6 +89,20 @@ void print_pairing_guide(void) {
     printf("===============================================\n");
 }
 
+#include <ctype.h> // Include for isspace
+
+// Function to trim leading and trailing whitespace from a string
+char *trim(char *str) {
+    while (isspace((unsigned char)*str)) str++;
+    if (*str == 0) return str;
+
+    char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+
+    end[1] = '\0';
+    return str;
+}
+
 void handle_command(char *cmd) {
     // Trim trailing newline characters
     cmd[strcspn(cmd, "\r\n")] = '\0';
@@ -111,8 +125,9 @@ void handle_command(char *cmd) {
             SAFE_ESP_LOGE(TAG, "Failed to start Bluetooth scan: %s", esp_err_to_name(ret));
         }
     } else if (strncmp(cmd, "pair ", 5) == 0) {
-        char *mac_str = strtok(cmd + 5, " ");
-        char *pin_str = strtok(NULL, " ");
+        char *mac_str = cmd + 5;
+        //char *pin_str = strtok(NULL, " ");
+        char *pin_str = cmd + 5 + strlen(cmd + 5) + 1;
         bool require_pin = (pin_str != NULL && strcmp(pin_str, "true") == 0);
         SAFE_ESP_LOGI(TAG, "Stopping Bluetooth discovery before pairing...");
         esp_bt_gap_cancel_discovery();

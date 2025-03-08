@@ -112,3 +112,5 @@ Step 3: Build & Flash
 ```bash
 idf.py build flash monitor
 ```
+
+pair 48:78:5e:d9:35:a3

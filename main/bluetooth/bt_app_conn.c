@@ -1,100 +1,11 @@
 #include "bluetooth/bt_app_conn.h"
 #include "bluetooth/bt_app_global.h"
-#include "bluetooth/bt_app_av.h"    // Add this include for bluetooth_set_volume
-#include "esp_log.h"
-#include "esp_bt.h"
-#include "esp_bt_main.h"
-#include "esp_gap_bt_api.h"
-#include "nvs_flash.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "bluetooth/bt_app_init.h"
+#include "bluetooth/bt_app_a2dp.h"
+#include "bluetooth/bt_app_av.h"
+#include "custom_log.h"
 
-static const char *TAG = "BT_APP_CONN";
-
-// Implementation of the bluetooth_init function
-esp_err_t bluetooth_init(void) {
-    esp_err_t ret;
-    
-    ESP_LOGI(TAG, "Initializing Bluetooth stack");
-    
-    // Initialize NVS
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "NVS initialized successfully");
-    
-    // Release any previous controller memory
-    esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
-    ESP_LOGI(TAG, "Released BLE controller memory");
-    
-    // Initialize controller with default config - do not modify any parameters
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-
-    // Set explicit values for max connections
-    bt_cfg.bt_max_acl_conn = 1;  // Set the maximum number of Classic BT ACL connections
-    bt_cfg.ble_max_conn = 3;     // Set the maximum number of BLE connections
-    bt_cfg.mode = ESP_BT_MODE_BTDM; // Set the mode to dual mode
-
-    // Log the controller configuration details - only using valid fields
-    ESP_LOGI(TAG, "BT controller config: mode=%d, BLE stack=%d, controller stack=%d",
-             bt_cfg.mode, bt_cfg.ble_max_conn, bt_cfg.bt_max_acl_conn);
-    ESP_LOGI(TAG, "Controller stack size: %d", bt_cfg.controller_task_stack_size);
-    
-    ret = esp_bt_controller_init(&bt_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "Bluetooth controller initialized");
-    
-    // Enable controller in dual mode (Classic BT + BLE) immediately
-    ret = esp_bt_controller_enable(ESP_BT_MODE_BTDM);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "Bluetooth controller enabled in dual mode");
-    
-    // Initialize Bluedroid stack
-    ret = esp_bluedroid_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "Bluedroid stack initialized");
-    
-    // Enable Bluedroid stack
-    ret = esp_bluedroid_enable();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "Bluedroid stack enabled");
-    
-    // Register GAP callback function
-    ret = esp_bt_gap_register_callback(gap_event_handler);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "GAP register callback failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "GAP callback registered");
-    
-    // Create the mutex for Bluetooth operations
-    if (s_bt_resource_mutex == NULL) {
-        s_bt_resource_mutex = xSemaphoreCreateMutex();
-        if (s_bt_resource_mutex == NULL) {
-            ESP_LOGE(TAG, "Failed to create Bluetooth mutex");
-            return ESP_FAIL;
-        }
-    }
-    ESP_LOGI(TAG, "Bluetooth resource mutex created");
-    
-    ESP_LOGI(TAG, "Bluetooth stack initialized successfully");
-    return ESP_OK;
-}
+#define TAG "BT_APP_CONN"
 
 // Create a new timer task to periodically check for memory issues
 static void memory_monitor_task(void *arg) {
@@ -135,7 +46,7 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                     break;
                 }
             }
-            SAFE_ESP_LOGD(TAG, "DISC_RES: num_prop=%d", param->disc_res.num_prop);
+
             if (eir_name) {
                 strncpy(bda_str, (char *)eir_name, eir_length);
                 bda_str[eir_length] = '\0';
@@ -150,6 +61,7 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                     break;
                 }
             }
+
             if (!device_found && num_discovered_devices < MAX_DEVICES) {
                 memcpy(discovered_devices[num_discovered_devices].bda, param->disc_res.bda, ESP_BD_ADDR_LEN);
                 strncpy(discovered_devices[num_discovered_devices].name, bda_str, ESP_BT_GAP_MAX_BDNAME_LEN);
@@ -177,12 +89,15 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                 memset(discovered_devices, 0, sizeof(discovered_devices));
             }
             break;
+
         case ESP_BT_GAP_RMT_SRVCS_EVT:
             SAFE_ESP_LOGI(TAG, "Remote device services discovered");
             break;
+
         case ESP_BT_GAP_RMT_SRVC_REC_EVT:
             SAFE_ESP_LOGI(TAG, "Remote device service record");
             break;
+
         case ESP_BT_GAP_AUTH_CMPL_EVT:
             SAFE_ESP_LOGD(TAG, "AUTH_CMPL: status=%d", param->auth_cmpl.stat);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
@@ -207,13 +122,16 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                 esp_bt_gap_pin_reply(param->pin_req.bda, true, 4, pin_code);
             }
             break;
+
         case ESP_BT_GAP_CFM_REQ_EVT:
             SAFE_ESP_LOGI(TAG, "SSP confirmation request: auto-confirming.");
             esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
             break;
+
         case ESP_BT_GAP_KEY_NOTIF_EVT:
             // ...existing key notification code...
             break;
+
         case ESP_BT_GAP_KEY_REQ_EVT:
             // ...existing key request code...
             break;
@@ -239,6 +157,7 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
         case ESP_BT_GAP_GET_DEV_NAME_CMPL_EVT:
             SAFE_ESP_LOGI(TAG, "Unhandled GAP event: %d", event);
             break;
+
         default:
             SAFE_ESP_LOGD(TAG, "Unhandled GAP event %d, raw data:", event);
             ESP_LOG_BUFFER_HEX(TAG, (uint8_t *)param, sizeof(*param));
@@ -259,18 +178,34 @@ esp_err_t bluetooth_start_discovery(void) {
     return ESP_OK;
 }
 
-// Add more detailed logging in the pairing function
+bool is_valid_mac(const char *mac_str) {
+    esp_bd_addr_t bd_addr;
+
+    if (strlen(mac_str) != 17) {
+        SAFE_ESP_LOGI(TAG, "Invalid MAC address length");
+        return false;
+    }   
+
+    int cnt = sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
+        &bd_addr[0], &bd_addr[1], &bd_addr[2], 
+        &bd_addr[3], &bd_addr[4], &bd_addr[5]);
+
+    if (cnt == 1) {
+        SAFE_ESP_LOGI(TAG, "bd_addr[0]: %02x", bd_addr[0]);
+    }
+
+    return (cnt == 6);
+}
+
 // Update bluetooth_pair_device for Echo Buds compatibility
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     // Reset attempt counter if this is a different device
-    esp_bd_addr_t bd_addr;
-    if (sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
-               &bd_addr[0], &bd_addr[1], &bd_addr[2], 
-               &bd_addr[3], &bd_addr[4], &bd_addr[5]) != 6) {
+    if (is_valid_mac(mac_str)) {    
         SAFE_ESP_LOGE(TAG, "Invalid MAC address format");
         return ESP_ERR_INVALID_ARG;
     }
     
+    /*
     // Check if this is a retry for the same device
     if (memcmp(s_last_pairing_attempt, bd_addr, ESP_BD_ADDR_LEN) != 0) {
         s_pairing_attempt = 0;
@@ -295,11 +230,12 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
              s_pairing_attempt, MAX_PAIRING_ATTEMPTS,
              bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5],
              pin_required ? "yes" : "no");
-    
+    */
+
     // Cancel any ongoing discovery
     esp_bt_gap_cancel_discovery();
     
-    // Define IO capability based on PIN requirement    
+    // Define IO capability based on PIN requirement
     esp_bt_io_cap_t io_cap = pin_required ? ESP_BT_IO_CAP_OUT : ESP_BT_IO_CAP_IO;
     esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &io_cap, sizeof(uint8_t));
     
@@ -464,7 +400,7 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
         }
         xSemaphoreGive(s_bt_resource_mutex);
     }
-    
+
     // Set default volume after connecting
     esp_err_t ret = bluetooth_set_volume(DEFAULT_VOLUME);
     if (ret != ESP_OK) {
@@ -472,14 +408,14 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
     } else {
         SAFE_ESP_LOGI(TAG, "Default volume set after connecting to: %d", DEFAULT_VOLUME);
     }
-    
+
     return ESP_OK;
 }
 
 // Function to restart the Bluetooth stack
 esp_err_t restart_bluetooth_stack(void) {
     esp_err_t ret;
-    
+
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
         // Disable Bluedroid
         ret = esp_bluedroid_disable();
@@ -558,7 +494,11 @@ esp_err_t bluetooth_set_device_name(const char *name) {
         ret = nvs_commit(nvs_handle);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to commit device name to NVS: %s", esp_err_to_name(ret));
+            nvs_close(nvs_handle);
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
         }
+
         nvs_close(nvs_handle);
         xSemaphoreGive(s_bt_resource_mutex);
     }
@@ -598,6 +538,7 @@ esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
 
     nvs_close(nvs_handle);
     SAFE_ESP_LOGI(TAG, "Device name: %s", name);
+
     return ret;
 }
 
@@ -614,9 +555,6 @@ esp_err_t bluetooth_safe_start_discovery(void) {
     // Now we're guaranteed to be disconnected thanks to the mutex
     return bluetooth_start_discovery();
 }
-
-// Use this forward declaration instead
-extern void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 
 void bt_app_conn_start_memory_monitor(void)
 {

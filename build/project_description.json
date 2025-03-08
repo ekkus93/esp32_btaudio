@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_btaudio",
-    "project_version":    "v0.1.0-25-g72ee7ad-dirty",
+    "project_version":    "v0.1.0-26-g42147a2-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio",
     "idf_path":           "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build",
@@ -1240,7 +1240,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/main/libmain.a",
-            "sources": [ "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/radio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/spiffs_utils.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/wifi.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/ping.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_core.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_av.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_audio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_global.c" ],
+            "sources": [ "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/radio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/spiffs_utils.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/wifi.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/ping.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_core.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_av.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_audio.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_global.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_init.c", "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_a2dp.c" ],
             "include_dirs": [ ".", "../include" ]
         },
         "mbedtls": {
