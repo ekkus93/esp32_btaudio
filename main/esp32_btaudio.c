@@ -36,6 +36,19 @@ void play_snd(const char *filename);
 bool take_bt_resource_mutex(TickType_t timeout);
 void give_bt_resource_mutex(void);
 
+// Add this near the top of the file, before app_main()
+static void configure_log_levels(void) {
+    // Configure logging levels centrally in one place
+    esp_log_level_set("BT_APP_CONN", ESP_LOG_INFO);  
+    esp_log_level_set("BT_APP_CORE", ESP_LOG_INFO);
+    esp_log_level_set("BT_APP_AV", ESP_LOG_INFO);
+    esp_log_level_set("BT_APP_AUDIO", ESP_LOG_INFO);
+    esp_log_level_set("MAIN", ESP_LOG_INFO);
+    esp_log_level_set("BTDM_INIT", ESP_LOG_INFO);
+    esp_log_level_set("GAP", ESP_LOG_INFO);
+    esp_log_level_set("A2DP", ESP_LOG_INFO);
+}
+
 void print_help_message(void) {
     printf("Available commands:\n");
     printf("  help               : Display this help message\n");
@@ -275,6 +288,12 @@ void handle_command(char *cmd) {
 }
 
 void app_main(void) {
+    // Force enable ALL INFO logs immediately
+    esp_log_level_set("*", ESP_LOG_INFO);
+    
+    // Configure logging system-wide
+    configure_log_levels();
+    
     SAFE_ESP_LOGI(TAG, "app_main started");
 
     uint8_t data[BUF_SIZE];

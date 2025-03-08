@@ -11,3 +11,6 @@ idf_component_register(SRCS "esp32_btaudio.c"
                     INCLUDE_DIRS "." "../include"
                     REQUIRES bt esp_wifi nvs_flash spiffs
                     PRIV_REQUIRES esp_http_client esp_driver_gpio esp_driver_uart)
+
+# Add size optimization
+target_compile_options(${COMPONENT_LIB} PRIVATE -Os)
