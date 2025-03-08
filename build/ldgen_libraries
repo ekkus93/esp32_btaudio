@@ -51,6 +51,7 @@
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_coex/libesp_coex.a
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_wifi/libesp_wifi.a
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/bt/libbt.a
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/unity/libunity.a
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/cmock/libcmock.a
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/console/libconsole.a

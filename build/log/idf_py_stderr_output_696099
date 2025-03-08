@@ -1,9 +1,0 @@
-CMake Error at /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/build.cmake:268 (message):
-  Failed to resolve component 'esp-adf-libs'.
-Call Stack (most recent call first):
-  /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/build.cmake:304 (__build_resolve_and_add_req)
-  /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/build.cmake:607 (__build_expand_requirements)
-  /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/project.cmake:710 (idf_build_process)
-  CMakeLists.txt:8 (project)
-
-

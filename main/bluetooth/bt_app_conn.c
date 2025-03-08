@@ -1,11 +1,73 @@
 #include "bluetooth/bt_app_conn.h"
 #include "bluetooth/bt_app_global.h"
+#include "bluetooth/bt_app_av.h"    // Add this include for bluetooth_set_volume
+#include "esp_log.h"
+#include "esp_bt.h"
+#include "esp_bt_main.h"
+#include "esp_gap_bt_api.h"
+#include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-#include "bluetooth/bt_app_a2dp.h"
-#include "bluetooth/bt_app_av.h"
-#include "custom_log.h"
+static const char *TAG = "BT_APP_CONN";
 
-#define TAG "BT_APP_CONN"
+// Implementation of the bluetooth_init function
+esp_err_t bluetooth_init(void) {
+    esp_err_t ret;
+    
+    ESP_LOGI(TAG, "Initializing Bluetooth stack");
+    
+    // Initialize NVS
+    ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    
+    // Initialize Bluetooth controller
+    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    if ((ret = esp_bt_controller_init(&bt_cfg)) != ESP_OK) {
+        ESP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Enable Bluetooth controller in Classic BT mode
+    if ((ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)) != ESP_OK) {
+        ESP_LOGE(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Initialize Bluedroid stack
+    if ((ret = esp_bluedroid_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Enable Bluedroid stack
+    if ((ret = esp_bluedroid_enable()) != ESP_OK) {
+        ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Register GAP callback function
+    if ((ret = esp_bt_gap_register_callback(gap_event_handler)) != ESP_OK) {
+        ESP_LOGE(TAG, "GAP register callback failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Create the mutex for Bluetooth operations
+    if (s_bt_resource_mutex == NULL) {
+        s_bt_resource_mutex = xSemaphoreCreateMutex();
+        if (s_bt_resource_mutex == NULL) {
+            ESP_LOGE(TAG, "Failed to create Bluetooth mutex");
+            return ESP_FAIL;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Bluetooth stack initialized successfully");
+    return ESP_OK;
+}
 
 // Create a new timer task to periodically check for memory issues
 static void memory_monitor_task(void *arg) {

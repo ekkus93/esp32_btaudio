@@ -7,6 +7,8 @@
 #include "nvs_flash.h" // Include this for NVS functions
 #include "custom_log.h"
 #include "freertos/queue.h" // Include this for FreeRTOS queue
+#include "esp_log.h"
+#include "esp_a2dp_api.h"
 
 #define TAG "BT_APP_AV"
 
@@ -183,4 +185,44 @@ esp_err_t bluetooth_get_volume(void) {
 // Function to get the stored volume level
 uint8_t bluetooth_get_current_volume(void) {
     return s_current_volume;
+}
+
+// Implementation of the init_a2dp function
+esp_err_t init_a2dp(void) {
+    esp_err_t ret;
+    
+    ESP_LOGI(TAG, "Initializing A2DP");
+    
+    // Initialize AVRCP controller
+    if ((ret = esp_avrc_ct_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "AVRC controller init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Register AVRCP controller callback
+    if ((ret = esp_avrc_ct_register_callback(NULL)) != ESP_OK) { // Use actual callback if needed
+        ESP_LOGE(TAG, "AVRC register callback failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Initialize A2DP source
+    if ((ret = esp_a2d_source_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "A2DP source init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Register A2DP source callback
+    if ((ret = esp_a2d_register_callback(NULL)) != ESP_OK) { // Use actual callback if needed
+        ESP_LOGE(TAG, "A2DP register callback failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Set discoverability and connectability mode
+    if ((ret = esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE)) != ESP_OK) {
+        ESP_LOGE(TAG, "Set scan mode failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "A2DP initialized successfully");
+    return ESP_OK;
 }
