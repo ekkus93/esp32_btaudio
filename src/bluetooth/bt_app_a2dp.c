@@ -209,10 +209,12 @@ esp_err_t init_a2dp(void) {
     // A2DP is already initialized in bluetooth_init()
     // Just verify the state
     if (s_a2d_state == APP_AV_STATE_IDLE) {
+        SAFE_ESP_LOGI(TAG, "###Initializing A2DP source - 2");
         s_a2d_state = APP_AV_STATE_DISCOVERING;
         SAFE_ESP_LOGI(TAG, "A2DP source initialization complete");
         return ESP_OK;
     } else {
+        SAFE_ESP_LOGI(TAG, "###Initializing A2DP source - 3");
         SAFE_ESP_LOGE(TAG, "A2DP in invalid state: %d", s_a2d_state);
         return ESP_ERR_INVALID_STATE;
     }

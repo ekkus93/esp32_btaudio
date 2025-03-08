@@ -93,6 +93,8 @@ void handle_command(char *cmd) {
     // Trim trailing newline characters
     cmd[strcspn(cmd, "\r\n")] = '\0';
 
+    SAFE_ESP_LOGI(TAG, "###Received command: %s", cmd);
+
     if (strcmp(cmd, "scan") == 0) {
         SAFE_ESP_LOGI(TAG, "Stopping any streaming before scan...");
         esp_err_t ret = radio_stop();  // Stop radio if playing
@@ -323,14 +325,11 @@ void app_main(void) {
     // Re-enable memory monitoring
     bt_app_conn_start_memory_monitor();
 
-    // Print the Bluetooth device name
-    char bt_name[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
-    ret = bluetooth_get_device_name(bt_name, sizeof(bt_name));
-    if (ret == ESP_OK) {
-        SAFE_ESP_LOGI(TAG, "Bluetooth device name: %s", bt_name);
-    } else {
-        SAFE_ESP_LOGE(TAG, "Failed to get Bluetooth device name: %s", esp_err_to_name(ret));
-    }
+    // Start up the Bluetooth application task
+    bt_app_task_start_up();
+
+    // Dispatch stack event to set up Bluetooth device name, connection mode, and profile
+    bt_app_work_dispatch(bt_av_hdl_stack_evt, BT_APP_STACK_UP_EVT, NULL, 0, NULL);
 
     // Initialize Wi-Fi
     ret = wifi_init();
@@ -339,18 +338,14 @@ void app_main(void) {
         return;
     }
 
-    // Start up the Bluetooth application task
-    bt_app_task_start_up();
-
-    // Dispatch stack event to set up Bluetooth device name, connection mode, and profile
-    bt_app_work_dispatch(bt_av_hdl_stack_evt, BT_APP_STACK_UP_EVT, NULL, 0, NULL);
-
-    // Initialize A2DP
-    if (init_a2dp() != ESP_OK) {
-        SAFE_ESP_LOGE(TAG, "A2DP initialization failed");
-        return;
+    // Print the Bluetooth device name
+    char bt_name[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
+    ret = bluetooth_get_device_name(bt_name, sizeof(bt_name));
+    if (ret == ESP_OK) {
+        SAFE_ESP_LOGI(TAG, "Bluetooth device name: %s", bt_name);
+    } else {
+        SAFE_ESP_LOGE(TAG, "Failed to get Bluetooth device name: %s", esp_err_to_name(ret));
     }
-    SAFE_ESP_LOGI(TAG, "A2DP initialization succeeded");
 
     // Configure UART
     const uart_config_t uart_config = {
@@ -371,6 +366,7 @@ void app_main(void) {
 
     // Main loop
     while (1) {
+        //SAFE_ESP_LOGI(TAG, "###Main loop iteration");
         // Toggle LED
         gpio_set_level(LED_GPIO, 1);
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -379,7 +375,9 @@ void app_main(void) {
 
         // Poll UART for commands
         int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, 100 / portTICK_PERIOD_MS);
+        //SAFE_ESP_LOGI(TAG, "###Received %d bytes", len);
         if (len > 0) {
+            //SAFE_ESP_LOGI(TAG, "###Received data: %s", data);
             data[len] = '\0';  // Null-terminate received command
             handle_command((char*)data);
         }

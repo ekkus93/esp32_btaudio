@@ -158,8 +158,17 @@ esp_err_t wifi_connect(void) {
     strncpy((char *)wifi_config.sta.password, wifi_password, sizeof(wifi_config.sta.password));
 
     SAFE_ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", wifi_ssid);
-    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    esp_err_t ret = esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to set Wi-Fi configuration: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = esp_wifi_connect();
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to connect to Wi-Fi: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     return ESP_OK;
 }
@@ -171,9 +180,51 @@ esp_err_t wifi_disconnect(void) {
 }
 
 esp_err_t wifi_set_credentials(const char *ssid, const char *password) {
+    SAFE_ESP_LOGI(TAG, "Setting Wi-Fi credentials: SSID=%s, PASSWORD=%s", ssid, password);
+
+    // Disconnect from Wi-Fi before setting new credentials
+    esp_err_t ret = esp_wifi_disconnect();
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGW(TAG, "Failed to disconnect Wi-Fi: %s", esp_err_to_name(ret));
+        // Continue anyway - non-fatal error
+    }
+
     strncpy(wifi_ssid, ssid, sizeof(wifi_ssid));
     strncpy(wifi_password, password, sizeof(wifi_password));
-    return wifi_save_credentials(ssid, password);
+    wifi_save_credentials(ssid, password);
+
+    wifi_config_t wifi_config = {
+        .sta = {
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            .pmf_cfg = {
+                .capable = true,
+                .required = false
+            },
+        },
+    };
+
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    if (password != NULL && strlen(password) > 0) {
+        strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK; // Set WPA2 if password is provided
+    } else {
+        wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN; // Set OPEN if no password
+    }
+
+    ret = esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to set Wi-Fi configuration: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Attempt to connect to the new Wi-Fi network
+    ret = esp_wifi_connect();
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to connect to Wi-Fi: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    return ESP_OK;
 }
 
 esp_err_t wifi_clear_credentials(void) {
