@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/esp/v5.4/esp-idf/components/mbedtls
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -34,11 +34,11 @@ endif()
 
 # Set default install directory permissions.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "/home/phil/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-objdump")
+  set(CMAKE_OBJDUMP "/home/phil/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32-elf-objdump")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/phil/work/esp32/esp32_bt_headset2/build/esp-idf/mbedtls/mbedtls/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/mbedtls/mbedtls/cmake_install.cmake")
 endif()
 
