@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_btaudio",
-    "project_version":    "v0.1.0-21-gcd1dde4-dirty",
+    "project_version":    "v0.1.0-22-g688880a-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio",
     "idf_path":           "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build",
@@ -1241,7 +1241,7 @@
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/main/libmain.a",
             "sources": [ "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c" ],
-            "include_dirs": [ "." ]
+            "include_dirs": [ ".", "../include" ]
         },
         "mbedtls": {
             "alias": "idf::mbedtls",
@@ -2851,7 +2851,7 @@
             "priv_reqs": [],
             "managed_reqs": [],
             "managed_priv_reqs": [],
-            "include_dirs": [ "." ]
+            "include_dirs": [ ".", "../include" ]
         },
         "audio_pipeline": {
             "alias": "idf::audio_pipeline",
