@@ -13,7 +13,7 @@ uint8_t* bt_app_audio_get_buffer(void);
 void bt_app_audio_release_buffer(uint8_t* buffer);
 int bt_app_audio_available_buffers(void);
 
-void trigger_beep(void);
+esp_err_t trigger_beep(void);
 esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written);
 bool is_operation_time_ok(void);
 esp_err_t bluetooth_send_beep(void); 

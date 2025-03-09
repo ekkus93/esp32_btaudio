@@ -124,4 +124,11 @@ extern esp_a2d_audio_state_t s_audio_state;
 // The app_av_media_state_t type is already defined in bt_app_types.h
 // which is included at the top of this file
 
+// These should all be declared as extern
+extern int16_t sine_table[TABLE_SIZE];
+extern bool sine_table_initialized;
+extern bool s_beep_in_progress;
+extern int s_beep_duration;
+extern int s_beep_index;
+
 #endif // BT_APP_GLOBAL_H

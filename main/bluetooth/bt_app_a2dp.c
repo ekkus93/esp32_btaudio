@@ -11,8 +11,34 @@
 // New task to handle beep processing on the other CPU with logging.
 static void beep_task(void *params) {
     SAFE_ESP_LOGI(TAG, "beep_task started on core %d", xPortGetCoreID());
-    trigger_beep();
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // First initialize the sine table
+    if (!sine_table_initialized) {
+        for (int i = 0; i < TABLE_SIZE; i++) {
+            sine_table[i] = (int16_t)(8000.0f * sinf(2.0f * M_PI * i / TABLE_SIZE));
+        }
+        sine_table_initialized = true;
+        SAFE_ESP_LOGI(TAG, "Sine table initialized with %d samples", TABLE_SIZE);
+    }
+    
+    // Reset beep duration and flag
+    s_beep_duration = 0;
+    s_beep_index = 0;
+    s_beep_in_progress = true;
+    
+    // Start media streaming to play the beep
+    if (s_a2d_state == APP_AV_STATE_CONNECTED) {
+        SAFE_ESP_LOGI(TAG, "Starting media for beep");
+        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+    }
+    
+    // Wait for beep to complete - leave time for the audio to play
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    
+    // Stop media streaming after beep completes
+    SAFE_ESP_LOGI(TAG, "Beep completed, stopping audio stream");
+    esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP);
+    
     SAFE_ESP_LOGI(TAG, "beep_task completed, deleting task");
     vTaskDelete(NULL);
 }
@@ -23,46 +49,24 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
             SAFE_ESP_LOGI(TAG, "A2DP connection state: %d", param->conn_stat.state);
-            if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-                SAFE_ESP_LOGI(TAG, "A2DP connected");
-                s_a2d_state = APP_AV_STATE_CONNECTED;
-                s_media_state = APP_AV_MEDIA_STATE_IDLE;
-                
-                xTaskCreatePinnedToCore(beep_task, "beep_task", 2048, NULL, 5, NULL, 1);
-                
-                // Reset congestion flag when connected
-                s_l2cap_congestion_flag = false;
-                
-                // Check if we need to initialize the volume after connection
-                if (!s_volume_initialized) {
-                    // Get last saved volume from NVS, or use default
-                    nvs_handle_t nvs_handle;
-                    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-                    if (err == ESP_OK) {
-                        uint8_t vol = DEFAULT_VOLUME;
-                        nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
-                        nvs_close(nvs_handle);
-                        
-                        // If the stored volume is higher than desired default, force it lower.
-                        if (vol > DEFAULT_VOLUME) {
-                            vol = DEFAULT_VOLUME;
-                        }
-                        
-                        s_current_volume = vol; // Set current volume immediately
-                        
-                        // Wait a bit before sending actual command to ensure AVRCP is ready
-                        vTaskDelay(pdMS_TO_TICKS(500));
-                        SAFE_ESP_LOGI(TAG, "Setting initial volume to %d", vol);
-                        bluetooth_set_volume(vol);
-                        
-                        s_volume_initialized = true;
-                    }
+            
+            // Add error handling for failed connection attempts
+            if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                // Check if this was a connection attempt that failed
+                if (s_a2d_state == APP_AV_STATE_CONNECTING) {
+                    SAFE_ESP_LOGW(TAG, "Connection attempt failed - device may be off or out of range");
                 }
                 
-                // Start media after connection
-                SAFE_ESP_LOGI(TAG, "Requesting media playback...");
-                esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
-            } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                // Safely change state and handle cleanup
+                s_a2d_state = APP_AV_STATE_UNCONNECTED;
+                esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+                
+                // Signal any waiting tasks
+                if (s_waiting_task != NULL) {
+                    s_operation_complete = true;
+                    xTaskNotifyGive(s_waiting_task);
+                }
+                
                 SAFE_ESP_LOGI(TAG, "A2DP disconnected");
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
                 
@@ -110,6 +114,50 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                     SAFE_ESP_LOGE(TAG, "4. Try resetting the device if needed");
                     SAFE_ESP_LOGE(TAG, "------------------------------------------------------");
                 }
+            } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+                SAFE_ESP_LOGI(TAG, "A2DP connected");
+                s_a2d_state = APP_AV_STATE_CONNECTED;
+                s_media_state = APP_AV_MEDIA_STATE_IDLE;
+                
+                xTaskCreatePinnedToCore(beep_task, "beep_task", 2048, NULL, 5, NULL, 1);
+                
+                // Reset congestion flag when connected
+                s_l2cap_congestion_flag = false;
+                
+                // Check if we need to initialize the volume after connection
+                if (!s_volume_initialized) {
+                    // Get last saved volume from NVS, or use default
+                    nvs_handle_t nvs_handle;
+                    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+                    if (err == ESP_OK) {
+                        uint8_t vol = DEFAULT_VOLUME;
+                        nvs_get_u8(nvs_handle, BT_VOLUME_KEY, &vol);
+                        nvs_close(nvs_handle);
+                        
+                        // If the stored volume is higher than desired default, force it lower.
+                        if (vol > DEFAULT_VOLUME) {
+                            vol = DEFAULT_VOLUME;
+                        }
+                        
+                        s_current_volume = vol; // Set current volume immediately
+                        
+                        // Wait a bit before sending actual command to ensure AVRCP is ready
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        SAFE_ESP_LOGI(TAG, "Setting initial volume to %d", vol);
+                        bluetooth_set_volume(vol);
+                        
+                        s_volume_initialized = true;
+                    }
+                }
+                
+                // Play the notification beep when connected
+                xTaskCreatePinnedToCore(beep_task, "beep_task", 4096, NULL, 3, NULL, 1);
+                
+                // Don't automatically start media streaming
+                // Remove or comment out automatic start code:
+                // esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+                
+                SAFE_ESP_LOGI(TAG, "Connected, beep triggered");
             }
             break;
             
@@ -159,43 +207,59 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     }
 }
 
-// Fix the a2dp_source_data_cb implementation to properly generate audio
+// Replace with a simpler version that's closer to the original:
 int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
-    // No need to reinitialize sine table, already done in trigger_beep
+    static bool first_call = true;
     
-    // Fill the buffer with sine wave if beep is active
+    // Log first call details
+    if (first_call) {
+        SAFE_ESP_LOGI(TAG, "First data callback - len: %" PRId32 ", beep_in_progress: %d, sine_table_initialized: %d", 
+                len, (int)s_beep_in_progress, (int)sine_table_initialized);
+        first_call = false;
+        
+        // Ensure sine table is initialized on first callback
+        if (!sine_table_initialized) {
+            SAFE_ESP_LOGI(TAG, "Initializing sine table in data callback");
+            for (int i = 0; i < TABLE_SIZE; i++) {
+                sine_table[i] = (int16_t)(8000.0f * sinf(2.0f * M_PI * i / TABLE_SIZE));
+            }
+            sine_table_initialized = true;
+        }
+    }
+    
+    // Simple approach - if beep is active, generate sine wave
     if (s_beep_in_progress) {
-        // Log occasionally
-        if (s_beep_duration % 1000 == 0) {
-            SAFE_ESP_LOGI(TAG, "Generating beep: duration=%d", s_beep_duration);
+        static int debug_counter = 0;
+        if (++debug_counter % 30 == 0) {
+            SAFE_ESP_LOGI(TAG, "Generating beep data: %" PRId32 " bytes, index: %d", len, s_beep_index);
         }
         
         int16_t *samples = (int16_t*)data;
         int num_samples = len / 4; // Stereo, 16-bit samples
         
-        // Generate actual audio with higher volume
         for (int i = 0; i < num_samples; i++) {
-            // Left and right channels with higher amplitude - use a fixed sine value for testing
-            int16_t sample = sine_table[s_beep_index % TABLE_SIZE];
-            samples[i*2] = sample;     // Left channel
-            samples[i*2+1] = sample;   // Right channel
+            // Calculate simple sine wave
+            int index = s_beep_index % TABLE_SIZE;
+            int16_t sample = sine_table[index];
+            
+            // Write to both channels
+            samples[i*2] = sample;      // Left channel
+            samples[i*2+1] = sample;    // Right channel
             
             s_beep_index++;
             s_beep_duration++;
             
-            // End beep after duration threshold
+            // Stop after certain duration
             if (s_beep_duration >= BEEP_DURATION_THRESHOLD) {
+                SAFE_ESP_LOGI(TAG, "Beep complete after %d samples", s_beep_duration);
                 s_beep_in_progress = false;
-                SAFE_ESP_LOGI(TAG, "Beep completed after %d samples", s_beep_duration);
-                // Fill the rest with silence
-                memset(&samples[i*2], 0, (num_samples - i) * 4);
+                // Fill rest with zeros
+                memset(&samples[i*2+2], 0, (num_samples-i-1) * 4);
                 break;
             }
         }
-        
-        return len;
     } else {
-        // If no beep is in progress, output silence
+        // No beep, fill with silence
         memset(data, 0, len);
     }
     
@@ -254,5 +318,14 @@ void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *para
         default:
             SAFE_ESP_LOGW(TAG, "Unhandled AVRC controller event: %d", event);
             break;
+    }
+}
+
+void start_audio_stream(void) {
+    if (s_a2d_state == APP_AV_STATE_CONNECTED && 
+        s_media_state != APP_AV_MEDIA_STATE_STARTED) {
+        
+        SAFE_ESP_LOGI(TAG, "Starting audio stream");
+        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
     }
 }

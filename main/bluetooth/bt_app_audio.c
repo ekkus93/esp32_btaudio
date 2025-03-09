@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include <math.h>
 
 #define TAG "BT_APP_AUDIO"
 
@@ -22,31 +23,44 @@ static volatile int s_buffer_allocations = 0;
 static volatile int s_buffer_releases = 0;
 static volatile int s_buffer_allocation_failures = 0;
 
-// Add this declaration with other static variables
-// int16_t sine_table[TABLE_SIZE]; // now global instead of static
+// KEEP these definitions here - this is the only place they should be defined
+int16_t sine_table[TABLE_SIZE];
+bool sine_table_initialized = false;
+bool s_beep_in_progress = false;
+int s_beep_duration = 0;
+int s_beep_index = 0;
 
 // Forward declarations
 static void buffer_monitor_task(void *arg);
 
-// Initialize the sine table for beep generation
-static void init_sine_table(void) {
-    for (int i = 0; i < TABLE_SIZE; i++) {
-        float angle = 2.0f * M_PI * i / TABLE_SIZE;
-        sine_table[i] = (int16_t)(32767.5f * sinf(angle));
-    }
-    sine_table_initialized = true;
-}
-
-// Trigger a beep sound
-void trigger_beep(void) {
-    SAFE_ESP_LOGI(TAG, "Beep triggered (trigger_beep)");
-    s_beep_in_progress = true;
-    s_beep_duration = 0;
+// Simplified trigger_beep function
+esp_err_t trigger_beep(void) {
+    // Reset beep state
     s_beep_index = 0;
+    s_beep_duration = 0;
+    s_beep_in_progress = true;
+    
+    // Ensure sine table is initialized
     if (!sine_table_initialized) {
-        init_sine_table();
+        SAFE_ESP_LOGI(TAG, "Initializing sine table");
+        for (int i = 0; i < TABLE_SIZE; i++) {
+            sine_table[i] = (int16_t)(8000.0f * sinf(2.0f * M_PI * i / TABLE_SIZE));
+        }
+        sine_table_initialized = true;
     }
-    ESP_LOGI(TAG, "Beep triggered (trigger_beep)");
+    
+    SAFE_ESP_LOGI(TAG, "Beep triggered! beep_in_progress=%d", s_beep_in_progress);
+    
+    // Start media streaming
+    if (s_a2d_state == APP_AV_STATE_CONNECTED) {
+        SAFE_ESP_LOGI(TAG, "Starting media for beep");
+        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+        return ESP_OK;
+    } else {
+        SAFE_ESP_LOGW(TAG, "Cannot beep: not connected");
+        s_beep_in_progress = false;
+        return ESP_ERR_INVALID_STATE;
+    }
 }
 
 // Check if enough time has passed since last operation
@@ -74,40 +88,11 @@ esp_err_t bluetooth_write_audio(const uint8_t* data, size_t* written) {
     return esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
 }
 
-// Update bluetooth_send_beep function to actively start audio streaming
+// Improved bluetooth_send_beep function
 esp_err_t bluetooth_send_beep(void) {
-    ESP_LOGI(TAG, "Sending beep");
+    SAFE_ESP_LOGI(TAG, "Sending beep");
     
-    if (s_a2d_state != APP_AV_STATE_CONNECTED) {
-        ESP_LOGW(TAG, "Not connected: cannot send beep");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // First make sure audio is started
-    if (s_media_state != APP_AV_MEDIA_STATE_STARTED) {
-        ESP_LOGI(TAG, "Starting media for beep");
-        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
-        
-        // Wait for media to start
-        int timeout = 10;  // 1 second max wait
-        while (s_media_state != APP_AV_MEDIA_STATE_STARTED && timeout > 0) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            timeout--;
-        }
-        
-        if (s_media_state != APP_AV_MEDIA_STATE_STARTED) {
-            ESP_LOGW(TAG, "Failed to start media for beep");
-            return ESP_ERR_TIMEOUT;
-        }
-    }
-    
-    // Now trigger the beep
-    trigger_beep();
-    
-    // Make sure beep is heard by keeping audio stream active
-    ESP_LOGI(TAG, "Beep triggered, active for ~1 second");
-    
-    return ESP_OK;
+    return trigger_beep();
 }
 
 // Add this function to dump buffer statistics periodically
@@ -129,6 +114,17 @@ void bt_app_audio_dump_stats(void) {
 
 // Initialize the audio buffer system
 void bt_app_audio_init(void) {
+    // Initialize sine table at startup
+    if (!sine_table_initialized) {
+        SAFE_ESP_LOGI(TAG, "Initializing sine table with %d samples", TABLE_SIZE);
+        for (int i = 0; i < TABLE_SIZE; i++) {
+            sine_table[i] = (int16_t)(8000.0f * sinf(2.0f * M_PI * i / TABLE_SIZE));
+        }
+        sine_table_initialized = true;
+        SAFE_ESP_LOGI(TAG, "Sine table initialized successfully");
+    }
+    
+    // Rest of the existing initialization code...
     s_buffer_mutex = xSemaphoreCreateMutex();
     if (s_buffer_mutex == NULL) {
         ESP_LOGE(TAG, "Failed to create audio buffer mutex");

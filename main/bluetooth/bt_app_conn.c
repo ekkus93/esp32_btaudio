@@ -7,6 +7,44 @@
 
 #define TAG "BT_APP_CONN"
 
+// Static variables
+static discovered_device_t discovered_devices[MAX_DEVICES];
+static TimerHandle_t s_pairing_retry_timer = NULL;
+#define PAIRING_RETRY_INTERVAL_MS 3000
+
+// Add this global timer variable so we can refer to it safely
+static TimerHandle_t s_connection_timer = NULL;
+
+// Improve the timer handler to be more defensive
+static void connection_timeout_handler(TimerHandle_t xTimer) {
+    SAFE_ESP_LOGW(TAG, "Bluetooth connection attempt timed out");
+    
+    // Take the mutex to ensure we don't interfere with ongoing operations
+    if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Only abort if still trying to connect - don't interfere with established connections
+        if (s_a2d_state == APP_AV_STATE_CONNECTING) {
+            SAFE_ESP_LOGI(TAG, "Connection still in progress - aborting");
+            
+            // Reset state
+            s_a2d_state = APP_AV_STATE_UNCONNECTED;
+            s_pairing_in_progress = false;
+            
+            // Cancel any pending operation
+            if (s_waiting_task != NULL) {
+                TaskHandle_t waiting_task = s_waiting_task;
+                s_operation_complete = true;
+                s_waiting_task = NULL;
+                xTaskNotifyGive(waiting_task);
+            }
+        }
+        
+        xSemaphoreGive(s_bt_resource_mutex);
+    }
+    
+    // Free the timer safely
+    s_connection_timer = NULL;
+}
+
 // Create a new timer task to periodically check for memory issues
 static void memory_monitor_task(void *arg) {
     while(1) {
@@ -26,14 +64,8 @@ static void memory_monitor_task(void *arg) {
     }
 }
 
-static discovered_device_t discovered_devices[MAX_DEVICES];
-
-// Add these at the top with other globals:
-static TimerHandle_t s_pairing_retry_timer = NULL;
-#define PAIRING_RETRY_INTERVAL_MS 3000
-
-// Add this function to handle pairing retry:
-static void pairing_retry_timer_callback(TimerHandle_t timer) {
+// The same for the pairing retry timer callback
+static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
     if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
         SAFE_ESP_LOGI(TAG, "Auto-retrying pairing (attempt %d/%d)",
                 s_pairing_attempt + 1, MAX_PAIRING_ATTEMPTS);
@@ -126,14 +158,6 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             }
             break;
 
-        case ESP_BT_GAP_RMT_SRVCS_EVT:
-            SAFE_ESP_LOGI(TAG, "Remote device services discovered");
-            break;
-
-        case ESP_BT_GAP_RMT_SRVC_REC_EVT:
-            SAFE_ESP_LOGI(TAG, "Remote device service record");
-            break;
-
         case ESP_BT_GAP_AUTH_CMPL_EVT:
             SAFE_ESP_LOGD(TAG, "AUTH_CMPL: status=%d", param->auth_cmpl.stat);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
@@ -146,15 +170,18 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                 }
             } else {
                 SAFE_ESP_LOGE(TAG, "Authentication failed, status: %d", param->auth_cmpl.stat);
-                if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
-                    // Start retry timer for automatic retry
-                    SAFE_ESP_LOGI(TAG, "Will retry pairing in %d ms", PAIRING_RETRY_INTERVAL_MS);
-                    if (s_pairing_retry_timer != NULL) {
-                        xTimerStart(s_pairing_retry_timer, 0);
-                    }
-                } else if (s_pairing_attempt >= MAX_PAIRING_ATTEMPTS) {
-                    SAFE_ESP_LOGE(TAG, "Maximum pairing attempts reached (%d)", MAX_PAIRING_ATTEMPTS);
-                    s_pairing_in_progress = false;
+                
+                // IMPORTANT: Always cleanup the pairing state even on failure
+                s_pairing_in_progress = false;
+                
+                // Consider the connection attempt complete but failed
+                if (s_pairing_retry_timer != NULL && xTimerIsTimerActive(s_pairing_retry_timer)) {
+                    xTimerStop(s_pairing_retry_timer, 0);
+                }
+                
+                // Ensure we don't leave the system in a connecting state
+                if (s_a2d_state == APP_AV_STATE_CONNECTING) {
+                    s_a2d_state = APP_AV_STATE_UNCONNECTED;
                 }
             }
             break;
@@ -179,14 +206,9 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
             break;
 
+        // Handle other GAP events
         case ESP_BT_GAP_KEY_NOTIF_EVT:
-            // ...existing key notification code...
-            break;
-
         case ESP_BT_GAP_KEY_REQ_EVT:
-            // ...existing key request code...
-            break;
-
         case ESP_BT_GAP_READ_RSSI_DELTA_EVT:
         case ESP_BT_GAP_CONFIG_EIR_DATA_EVT:
         case ESP_BT_GAP_SET_AFH_CHANNELS_EVT:
@@ -194,12 +216,11 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
         case ESP_BT_GAP_MODE_CHG_EVT:
         case ESP_BT_GAP_REMOVE_BOND_DEV_COMPLETE_EVT:
         case ESP_BT_GAP_QOS_CMPL_EVT:
-            SAFE_ESP_LOGI(TAG, "ACL event received, ignoring pairing fallback.");
-            break;
         case ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT:
         case ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
             SAFE_ESP_LOGI(TAG, "ACL event received, ignoring pairing fallback.");
             break;
+
         case ESP_BT_GAP_SET_PAGE_TO_EVT:
         case ESP_BT_GAP_GET_PAGE_TO_EVT:
         case ESP_BT_GAP_ACL_PKT_TYPE_CHANGED_EVT:
@@ -217,7 +238,7 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
 }
 
 esp_err_t bluetooth_start_discovery(void) {
-    SAFE_ESP_LOGI(TAG, "###Starting Bluetooth device discovery");
+    SAFE_ESP_LOGI(TAG, "Starting Bluetooth device discovery");
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
         esp_err_t ret = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 30, 0);
         if (ret != ESP_OK) {
@@ -225,7 +246,6 @@ esp_err_t bluetooth_start_discovery(void) {
         }
         xSemaphoreGive(s_bt_resource_mutex);
     }
-    SAFE_ESP_LOGI(TAG, "###Leaving bluetooth_start_discovery");
     return ESP_OK;
 }
 
@@ -280,7 +300,7 @@ bool is_valid_mac(const char *mac_str) {
     
     // If we get here, the MAC address is valid
     SAFE_ESP_LOGI(TAG, "MAC validated: %02x:%02x:%02x:%02x:%02x:%02x", 
-        bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
+                 bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
     
     // Store it for use in bluetooth_pair_device
     memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
@@ -288,12 +308,32 @@ bool is_valid_mac(const char *mac_str) {
     return true;
 }
 
-// Clean up the bluetooth_pair_device function - here's the fixed version:
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
-    // Validate and parse MAC address (now handled by is_valid_mac)
+    // Validate and parse MAC address
     if (!is_valid_mac(mac_str)) {
         SAFE_ESP_LOGE(TAG, "Invalid MAC address format: %s", mac_str);
         return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Delete any existing timer first
+    if (s_connection_timer != NULL) {
+        xTimerStop(s_connection_timer, 0);
+        xTimerDelete(s_connection_timer, 0);
+        s_connection_timer = NULL;
+    }
+    
+    // Create a connection timeout timer
+    s_connection_timer = xTimerCreate(
+        "conn_timeout",
+        pdMS_TO_TICKS(10000), // 10 seconds timeout
+        pdFALSE,  // One-shot timer
+        NULL,
+        connection_timeout_handler
+    );
+    
+    if (s_connection_timer == NULL) {
+        SAFE_ESP_LOGE(TAG, "Failed to create connection timeout timer");
+        return ESP_ERR_NO_MEM;
     }
     
     // No need to parse the MAC again, is_valid_mac already stored it in pending_pair_addr
@@ -301,8 +341,7 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
              pending_pair_addr[0], pending_pair_addr[1], pending_pair_addr[2], 
              pending_pair_addr[3], pending_pair_addr[4], pending_pair_addr[5]);
     
-    // Store device info for later use (already done in is_valid_mac)
-    // memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
+    // Store device info for later use
     pin_required = require_pin;
     
     // Track this device for auto-retry implementation
@@ -331,6 +370,7 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
         esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_FIXED, 4, pin_code);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
+            xTimerDelete(s_connection_timer, 0);
             return ret;
         }
     } else {
@@ -340,6 +380,7 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
         esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, 0, pin_code);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
+            xTimerDelete(s_connection_timer, 0);
             return ret;
         }
     }
@@ -360,9 +401,20 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     SAFE_ESP_LOGI(TAG, "Initiating A2DP source connection...");
     s_a2d_state = APP_AV_STATE_CONNECTING;
     
+    // Start the connection timeout timer
+    if (xTimerStart(s_connection_timer, 0) != pdPASS) {
+        SAFE_ESP_LOGE(TAG, "Failed to start connection timeout timer");
+        xTimerDelete(s_connection_timer, 0);
+        s_connection_timer = NULL;
+        // Continue anyway
+    }
+    
     esp_err_t ret = esp_a2d_source_connect(pending_pair_addr);
     if (ret != ESP_OK) {
         SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+        xTimerStop(s_connection_timer, 0);
+        xTimerDelete(s_connection_timer, 0);
+        s_connection_timer = NULL;
         return ret;
     }
     
@@ -370,7 +422,6 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     return ESP_OK;
 }
 
-// Function to disconnect from a paired device
 esp_err_t bluetooth_disconnect_device(void) {
     if (s_a2d_state != APP_AV_STATE_CONNECTED && s_a2d_state != APP_AV_STATE_CONNECTING) {
         SAFE_ESP_LOGW(TAG, "No device is currently connected (state=%d)", s_a2d_state);
@@ -437,7 +488,7 @@ esp_err_t bluetooth_disconnect_device(void) {
     // Wait for completion while still holding the mutex
     SAFE_ESP_LOGI(TAG, "Disconnect request sent, waiting for completion...");
     
-    // Wait with timeout - IMPROVED: Use notification instead of direct flag
+    // Wait with timeout
     int timeout_counter = 0;
     while (!s_operation_complete && timeout_counter < 10) { // Reduced timeout
         xSemaphoreGive(s_bt_resource_mutex); // Release during wait
@@ -454,7 +505,6 @@ esp_err_t bluetooth_disconnect_device(void) {
     bool completed = s_operation_complete;
     s_operation_complete = false;
     
-    // Only now release the mutex
     xSemaphoreGive(s_bt_resource_mutex);
     
     // Safety: Allow a moment for any pending callbacks to complete
@@ -469,7 +519,6 @@ esp_err_t bluetooth_disconnect_device(void) {
     return ESP_OK;
 }
 
-// Function to unpair a device
 esp_err_t bluetooth_unpair_device(void) {
     if (s_a2d_state == APP_AV_STATE_CONNECTED || s_a2d_state == APP_AV_STATE_CONNECTING) {
         if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
@@ -489,7 +538,6 @@ esp_err_t bluetooth_unpair_device(void) {
     }
 }
 
-// Function to connect to a paired device
 esp_err_t bluetooth_connect_device(const char *mac_str) {
     // Use the same validation function for consistency
     if (!is_valid_mac(mac_str)) {
@@ -534,7 +582,6 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
     return ESP_OK;
 }
 
-// Function to restart the Bluetooth stack
 esp_err_t restart_bluetooth_stack(void) {
     esp_err_t ret;
 
@@ -585,7 +632,6 @@ esp_err_t restart_bluetooth_stack(void) {
     return ESP_OK;
 }
 
-// Function to set the Bluetooth device name
 esp_err_t bluetooth_set_device_name(const char *name) {
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
         esp_err_t ret = esp_bt_gap_set_device_name(name);
@@ -628,7 +674,6 @@ esp_err_t bluetooth_set_device_name(const char *name) {
     return restart_bluetooth_stack();
 }
 
-// Function to get the Bluetooth device name
 esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
     // Read the device name from NVS
     nvs_handle_t nvs_handle;
@@ -659,7 +704,6 @@ esp_err_t bluetooth_get_device_name(char *name, size_t max_len) {
 
     nvs_close(nvs_handle);
     SAFE_ESP_LOGI(TAG, "Device name: %s", name);
-
     return ret;
 }
 
@@ -672,7 +716,7 @@ esp_err_t bluetooth_safe_start_discovery(void) {
             return ret;
         }
     }
-    
+
     // Now we're guaranteed to be disconnected thanks to the mutex
     return bluetooth_start_discovery();
 }
@@ -684,7 +728,7 @@ void bt_app_conn_start_memory_monitor(void) {
 void bt_app_conn_callback(uint16_t event, void *param) {
     // This function is called from the Bluetooth stack with events
     esp_a2d_cb_param_t *a2d = (esp_a2d_cb_param_t *)param;
-    
+
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT: {
             uint8_t *bda = a2d->conn_stat.remote_bda;
@@ -707,13 +751,12 @@ void bt_app_conn_callback(uint16_t event, void *param) {
             }
             break;
         }
-        
         case ESP_A2D_AUDIO_STATE_EVT:
             SAFE_ESP_LOGI(TAG, "A2DP audio state: %s", s_a2d_audio_state_str[a2d->audio_stat.state]);
-            s_audio_state = a2d->audio_stat.state;
+            s_audio_state = a2d->audio_stat.state; 
             if (s_audio_state == ESP_A2D_AUDIO_STATE_STARTED) {
                 s_media_state = APP_AV_MEDIA_STATE_STARTED;
-            } else if (s_audio_state == ESP_A2D_AUDIO_STATE_STOPPED ||
+            } else if (s_audio_state == ESP_A2D_AUDIO_STATE_STOPPED || 
                        s_audio_state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
                 s_media_state = APP_AV_MEDIA_STATE_STOPPED;
             }
@@ -734,11 +777,11 @@ void bt_app_conn_init(void) {
     s_pairing_in_progress = false;
     s_pairing_attempt = 0;
     s_a2d_state = APP_AV_STATE_IDLE;
-    s_media_state = APP_AV_MEDIA_STATE_IDLE;
-    s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
     s_operation_complete = false;
     s_waiting_task = NULL;
-    
+    s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+    s_media_state = APP_AV_MEDIA_STATE_IDLE;
+
     // Set default device name if needed
     char device_name[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
     if (bluetooth_get_device_name(device_name, sizeof(device_name)) == ESP_OK) {
@@ -756,6 +799,7 @@ void bt_app_conn_init(void) {
 
     // Set as connectable and discoverable
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+
     SAFE_ESP_LOGI(TAG, "Bluetooth connection initialized successfully");
 }
 
@@ -768,13 +812,15 @@ void bt_app_conn_deinit(void) {
         xTimerDelete(s_pairing_retry_timer, 0);
         s_pairing_retry_timer = NULL;
     }
-    
+
     // Reset state variables
     s_pairing_in_progress = false;
     s_pairing_attempt = 0;
     s_a2d_state = APP_AV_STATE_IDLE;
-    s_media_state = APP_AV_MEDIA_STATE_IDLE;
     s_operation_complete = false;
     s_waiting_task = NULL;
+    s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+    s_media_state = APP_AV_MEDIA_STATE_IDLE;
+
     SAFE_ESP_LOGI(TAG, "Bluetooth connection deinitialized");
 }

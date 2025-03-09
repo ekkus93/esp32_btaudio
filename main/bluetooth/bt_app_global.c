@@ -15,13 +15,6 @@ esp_bd_addr_t pending_pair_addr = {0};  // Address of device pending pairing
 int s_a2d_state = 0;    // Current A2DP connection state
 int s_media_state = 0;  // Current media streaming state
 
-// Beep generation variables
-bool s_beep_in_progress = false;  // Whether a beep is currently playing
-int s_beep_duration = 0;          // Duration of current beep in samples  // Should use DEFAULT_VOLUME
-bool sine_table_initialized = false;  // Whether sine lookup table is initialized
-int s_beep_index = 0;             // Current position in beep generation
-int16_t sine_table[TABLE_SIZE];
-
 // Audio control variables
 uint8_t s_current_volume = 0;  // Current volume level (0-127)
 bool s_volume_initialized = false;          // Whether volume was initialized this boot

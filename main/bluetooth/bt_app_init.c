@@ -83,12 +83,21 @@ esp_err_t bluetooth_init(void) {
     }
     ESP_LOGI(TAG, "A2DP source initialized");
     
+    // Register A2DP callback and data callback
     ret = esp_a2d_register_callback(&bt_app_a2d_cb);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "A2DP callback registration failed: %s", esp_err_to_name(ret));
         return ret;
     }
     ESP_LOGI(TAG, "A2DP callback registered");
+    
+    // THIS IS THE KEY LINE THAT WAS MISSING! Register the data callback
+    ret = esp_a2d_source_register_data_callback(a2dp_source_data_cb);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "A2DP data callback registration failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "A2DP data callback registered successfully");
     
     // Initialize AVRCP controller
     ret = esp_avrc_ct_init();
