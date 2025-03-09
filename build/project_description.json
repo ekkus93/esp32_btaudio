@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32_btaudio",
-    "project_version":    "v0.1.0-26-g42147a2-dirty",
+    "project_version":    "v0.1.0-27-g37c559d-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio",
     "idf_path":           "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build",

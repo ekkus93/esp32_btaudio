@@ -15,6 +15,15 @@
 // Add this forward declaration after the includes and defines
 static void delayed_volume_task(void *param); // Forward declaration
 
+// Connection state strings
+const char *s_a2d_conn_state_str[] = {"Disconnected", "Connecting", "Connected", "Disconnecting"};
+
+// Audio state strings
+const char *s_a2d_audio_state_str[] = {"Suspended", "Stopped", "Started"};
+
+// Define the audio state variable
+esp_a2d_audio_state_t s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+
 // Define a queue for passing volume values to the task
 static QueueHandle_t volume_queue = NULL;
 

@@ -17,7 +17,8 @@ typedef enum {
     APP_AV_MEDIA_STATE_IDLE,
     APP_AV_MEDIA_STATE_STARTING,
     APP_AV_MEDIA_STATE_STARTED,
-    APP_AV_MEDIA_STATE_STOPPING
+    APP_AV_MEDIA_STATE_STOPPING,
+    APP_AV_MEDIA_STATE_STOPPED  // Make sure this value is present
 } app_av_media_state_t;
 
 #endif // BLUETOOTH_TYPES_H

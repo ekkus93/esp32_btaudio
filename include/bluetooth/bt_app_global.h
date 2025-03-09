@@ -111,4 +111,17 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 // Add sine_table declaration
 extern int16_t sine_table[TABLE_SIZE];
 
+// Add these declarations
+// String descriptions for A2DP connection states
+extern const char *s_a2d_conn_state_str[];
+
+// String descriptions for A2DP audio states
+extern const char *s_a2d_audio_state_str[];
+
+// Additional state variable
+extern esp_a2d_audio_state_t s_audio_state;
+
+// The app_av_media_state_t type is already defined in bt_app_types.h
+// which is included at the top of this file
+
 #endif // BT_APP_GLOBAL_H

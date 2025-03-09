@@ -6322,7 +6322,10 @@
                                                 "help": "Maximum GATT Server Profiles Count",
                                                 "id": "BT_GATT_MAX_SR_PROFILES",
                                                 "name": "BT_GATT_MAX_SR_PROFILES",
-                                                "range": null,
+                                                "range": [
+                                                    1,
+                                                    32
+                                                ],
                                                 "title": "Max GATT Server Profiles",
                                                 "type": "int"
                                             },
@@ -6332,7 +6335,10 @@
                                                 "help": "Maximum GATT Service Attributes Count",
                                                 "id": "BT_GATT_MAX_SR_ATTRIBUTES",
                                                 "name": "BT_GATT_MAX_SR_ATTRIBUTES",
-                                                "range": null,
+                                                "range": [
+                                                    1,
+                                                    500
+                                                ],
                                                 "title": "Max GATT Service Attributes",
                                                 "type": "int"
                                             },
@@ -6423,7 +6429,10 @@
                                                 "help": "Maximum GATTC cache characteristic count",
                                                 "id": "BT_GATTC_MAX_CACHE_CHAR",
                                                 "name": "BT_GATTC_MAX_CACHE_CHAR",
-                                                "range": null,
+                                                "range": [
+                                                    1,
+                                                    500
+                                                ],
                                                 "title": "Max gattc cache characteristic for discover",
                                                 "type": "int"
                                             },
@@ -6433,7 +6442,10 @@
                                                 "help": "Maximum GATTC notify(indication) register number",
                                                 "id": "BT_GATTC_NOTIF_REG_MAX",
                                                 "name": "BT_GATTC_NOTIF_REG_MAX",
-                                                "range": null,
+                                                "range": [
+                                                    1,
+                                                    64
+                                                ],
                                                 "title": "Max gattc notify(indication) register number",
                                                 "type": "int"
                                             },
@@ -6453,7 +6465,10 @@
                                                 "help": "The number of attempts to reconnect if the connection establishment failed",
                                                 "id": "BT_GATTC_CONNECT_RETRY_COUNT",
                                                 "name": "BT_GATTC_CONNECT_RETRY_COUNT",
-                                                "range": null,
+                                                "range": [
+                                                    0,
+                                                    255
+                                                ],
                                                 "title": "The number of attempts to reconnect if the connection establishment failed",
                                                 "type": "int"
                                             }
@@ -8506,7 +8521,10 @@
                                 "help": "Bluetooth Connection establishment maximum time, if connection time exceeds this value, the connection\nestablishment fails, ESP_GATTC_OPEN_EVT or ESP_GATTS_OPEN_EVT is triggered.",
                                 "id": "BT_BLE_ESTAB_LINK_CONN_TOUT",
                                 "name": "BT_BLE_ESTAB_LINK_CONN_TOUT",
-                                "range": null,
+                                "range": [
+                                    1,
+                                    60
+                                ],
                                 "title": "Timeout of BLE connection establishment",
                                 "type": "int"
                             },
@@ -8539,7 +8557,10 @@
                                 "help": "This set RPA timeout of Controller and Host.\nDefault is 900 s (15 minutes). Range is 1 s to 1 hour (3600 s).",
                                 "id": "BT_BLE_RPA_TIMEOUT",
                                 "name": "BT_BLE_RPA_TIMEOUT",
-                                "range": null,
+                                "range": [
+                                    1,
+                                    3600
+                                ],
                                 "title": "Timeout of resolvable private address",
                                 "type": "int"
                             },

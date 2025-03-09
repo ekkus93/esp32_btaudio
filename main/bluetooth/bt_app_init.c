@@ -13,6 +13,9 @@
 
 static const char *TAG = "BT_APP_INIT";
 
+// Add function prototype here
+void dump_bt_controller_status(void);
+
 // Implementation of the bluetooth_init function
 esp_err_t bluetooth_init(void) {
     esp_err_t ret;
@@ -38,7 +41,7 @@ esp_err_t bluetooth_init(void) {
     // IMPORTANT: Set consistent mode parameters that match sdkconfig
     // This is likely the source of the initialization error
     bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;  // Only use classic mode, not dual mode
-    bt_cfg.bt_max_acl_conn = 1;
+    bt_cfg.bt_max_acl_conn = 2;
     bt_cfg.bt_max_sync_conn = 1;
     
     ret = esp_bt_controller_init(&bt_cfg);
@@ -114,5 +117,41 @@ esp_err_t bluetooth_init(void) {
     ESP_LOGI(TAG, "Bluetooth resource mutex created");
     
     ESP_LOGI(TAG, "Bluetooth stack initialized successfully");
+    
+    // Call the function to dump Bluetooth controller status
+    dump_bt_controller_status();
+    
     return ESP_OK;
+}
+
+// The function definition remains the same
+void dump_bt_controller_status(void) {
+    esp_bt_controller_status_t status = esp_bt_controller_get_status();
+    const char *status_str = "";
+    
+    switch (status) {
+        case ESP_BT_CONTROLLER_STATUS_IDLE:
+            status_str = "IDLE";
+            break;
+        case ESP_BT_CONTROLLER_STATUS_INITED:
+            status_str = "INITED";
+            break;
+        case ESP_BT_CONTROLLER_STATUS_ENABLED:
+            status_str = "ENABLED";
+            break;
+        case ESP_BT_CONTROLLER_STATUS_NUM:
+            status_str = "INVALID";
+            break;
+    }
+    
+    ESP_LOGI(TAG, "BT Controller Status: %s", status_str);
+    
+    // Get and display Bluetooth MAC address
+    const uint8_t *mac = esp_bt_dev_get_address();
+    if (mac) {
+        ESP_LOGI(TAG, "BT MAC: %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+        ESP_LOGW(TAG, "Could not get BT MAC address");
+    }
 }

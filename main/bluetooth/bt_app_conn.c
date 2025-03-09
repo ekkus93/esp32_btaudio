@@ -28,6 +28,42 @@ static void memory_monitor_task(void *arg) {
 
 static discovered_device_t discovered_devices[MAX_DEVICES];
 
+// Add these at the top with other globals:
+static TimerHandle_t s_pairing_retry_timer = NULL;
+#define PAIRING_RETRY_INTERVAL_MS 3000
+
+// Add this function to handle pairing retry:
+static void pairing_retry_timer_callback(TimerHandle_t timer) {
+    if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
+        SAFE_ESP_LOGI(TAG, "Auto-retrying pairing (attempt %d/%d)",
+                s_pairing_attempt + 1, MAX_PAIRING_ATTEMPTS);
+                
+        // Use the stored MAC address and PIN setting from previous attempt
+        esp_bd_addr_t retry_addr;
+        memcpy(retry_addr, s_last_pairing_attempt, ESP_BD_ADDR_LEN);
+        
+        // Increment attempt counter
+        s_pairing_attempt++;
+        
+        // Reconnect with the same parameters as before
+        esp_err_t ret = esp_a2d_source_connect(retry_addr);
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Retry failed: %s", esp_err_to_name(ret));
+            
+            if (s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
+                // Try again after delay
+                xTimerStart(s_pairing_retry_timer, 0);
+            } else {
+                SAFE_ESP_LOGE(TAG, "Maximum retry attempts reached.");
+                s_pairing_in_progress = false;
+            }
+        }
+    } else {
+        // Either pairing is no longer in progress or max attempts reached
+        s_pairing_in_progress = false;
+    }
+}
+
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
     SAFE_ESP_LOGD(TAG, "GAP event handler called with event: %d", event);
     switch (event) {
@@ -102,9 +138,24 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             SAFE_ESP_LOGD(TAG, "AUTH_CMPL: status=%d", param->auth_cmpl.stat);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 SAFE_ESP_LOGI(TAG, "Authentication success: %s", param->auth_cmpl.device_name);
-                // ...existing success handling...
+                s_pairing_in_progress = false; // Success, stop retry process
+                
+                // If we have a timer active, delete it
+                if (s_pairing_retry_timer != NULL && xTimerIsTimerActive(s_pairing_retry_timer)) {
+                    xTimerStop(s_pairing_retry_timer, 0);
+                }
             } else {
                 SAFE_ESP_LOGE(TAG, "Authentication failed, status: %d", param->auth_cmpl.stat);
+                if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
+                    // Start retry timer for automatic retry
+                    SAFE_ESP_LOGI(TAG, "Will retry pairing in %d ms", PAIRING_RETRY_INTERVAL_MS);
+                    if (s_pairing_retry_timer != NULL) {
+                        xTimerStart(s_pairing_retry_timer, 0);
+                    }
+                } else if (s_pairing_attempt >= MAX_PAIRING_ATTEMPTS) {
+                    SAFE_ESP_LOGE(TAG, "Maximum pairing attempts reached (%d)", MAX_PAIRING_ATTEMPTS);
+                    s_pairing_in_progress = false;
+                }
             }
             break;
 
@@ -180,66 +231,142 @@ esp_err_t bluetooth_start_discovery(void) {
 
 bool is_valid_mac(const char *mac_str) {
     esp_bd_addr_t bd_addr;
-
+    
+    // Log the MAC string for debugging
+    SAFE_ESP_LOGI(TAG, "Validating MAC address: %s", mac_str);
+    
+    // Verify length
     if (strlen(mac_str) != 17) {
-        SAFE_ESP_LOGI(TAG, "Invalid MAC address length");
+        SAFE_ESP_LOGW(TAG, "Invalid MAC address length: %d (expected 17)", strlen(mac_str));
         return false;
-    }   
-
-    int cnt = sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
-        &bd_addr[0], &bd_addr[1], &bd_addr[2], 
-        &bd_addr[3], &bd_addr[4], &bd_addr[5]);
-
-    if (cnt == 1) {
-        SAFE_ESP_LOGI(TAG, "bd_addr[0]: %02x", bd_addr[0]);
     }
-
-    return (cnt == 6);
+    
+    // Try manual parsing as an alternative to sscanf
+    // Format should be xx:xx:xx:xx:xx:xx where xx is a hexadecimal number
+    char hex_str[3] = {0}; // Space for 2 hex chars plus null terminator
+    
+    for (int i = 0; i < 6; i++) {
+        // Extract 2 hex chars
+        hex_str[0] = mac_str[i*3];
+        hex_str[1] = mac_str[i*3+1];
+        hex_str[2] = '\0';
+        
+        // Verify they're valid hex
+        for (int j = 0; j < 2; j++) {
+            if (!((hex_str[j] >= '0' && hex_str[j] <= '9') || 
+                  (hex_str[j] >= 'a' && hex_str[j] <= 'f') || 
+                  (hex_str[j] >= 'A' && hex_str[j] <= 'F'))) {
+                SAFE_ESP_LOGW(TAG, "Invalid hex character in MAC address: %c", hex_str[j]);
+                return false;
+            }
+        }
+        
+        // Convert to byte
+        char *endptr = NULL;
+        bd_addr[i] = (uint8_t)strtol(hex_str, &endptr, 16);
+        
+        // Check correct conversion
+        if (endptr != hex_str + 2) {
+            SAFE_ESP_LOGW(TAG, "Failed to parse hex value: %s", hex_str);
+            return false;
+        }
+        
+        // Check for colon separator (except for the last byte)
+        if (i < 5 && mac_str[i*3+2] != ':') {
+            SAFE_ESP_LOGW(TAG, "Missing colon separator in MAC address");
+            return false;
+        }
+    }
+    
+    // If we get here, the MAC address is valid
+    SAFE_ESP_LOGI(TAG, "MAC validated: %02x:%02x:%02x:%02x:%02x:%02x", 
+        bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
+    
+    // Store it for use in bluetooth_pair_device
+    memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
+    
+    return true;
 }
 
-// Update bluetooth_pair_device for Echo Buds compatibility
+// Clean up the bluetooth_pair_device function - here's the fixed version:
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
-    // Reset attempt counter if this is a different device
-    if (is_valid_mac(mac_str)) {    
-        SAFE_ESP_LOGE(TAG, "Invalid MAC address format");
+    // Validate and parse MAC address (now handled by is_valid_mac)
+    if (!is_valid_mac(mac_str)) {
+        SAFE_ESP_LOGE(TAG, "Invalid MAC address format: %s", mac_str);
         return ESP_ERR_INVALID_ARG;
     }
     
-    /*
-    // Check if this is a retry for the same device
-    if (memcmp(s_last_pairing_attempt, bd_addr, ESP_BD_ADDR_LEN) != 0) {
-        s_pairing_attempt = 0;
-        memcpy(s_last_pairing_attempt, bd_addr, ESP_BD_ADDR_LEN);
-    }
+    // No need to parse the MAC again, is_valid_mac already stored it in pending_pair_addr
+    SAFE_ESP_LOGI(TAG, "Starting pairing with device: %02x:%02x:%02x:%02x:%02x:%02x", 
+             pending_pair_addr[0], pending_pair_addr[1], pending_pair_addr[2], 
+             pending_pair_addr[3], pending_pair_addr[4], pending_pair_addr[5]);
     
-    // Check if we've exceeded retry attempts
-    if (s_pairing_attempt >= MAX_PAIRING_ATTEMPTS) {
-        SAFE_ESP_LOGE(TAG, "Maximum pairing attempts reached for this device");
-        s_pairing_attempt = 0;  // Reset for next time
-        return ESP_ERR_TIMEOUT;
-    }
-    
-    s_pairing_attempt++;
-    s_pairing_in_progress = true;
-    
-    // Standard pairing for all devices
-    memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
+    // Store device info for later use (already done in is_valid_mac)
+    // memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
     pin_required = require_pin;
     
-    SAFE_ESP_LOGI(TAG, "Pairing attempt %d/%d with device (MAC=%02x:%02x:%02x:%02x:%02x:%02x), using PIN mode: %s",
-             s_pairing_attempt, MAX_PAIRING_ATTEMPTS,
-             bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5],
-             pin_required ? "yes" : "no");
-    */
-
+    // Track this device for auto-retry implementation
+    if (memcmp(s_last_pairing_attempt, pending_pair_addr, ESP_BD_ADDR_LEN) != 0) {
+        // Reset counter for new device
+        s_pairing_attempt = 0;
+        memcpy(s_last_pairing_attempt, pending_pair_addr, ESP_BD_ADDR_LEN);
+    }
+    
+    // Log attempt number but don't prevent manual retries
+    s_pairing_attempt++;
+    SAFE_ESP_LOGI(TAG, "Manual pairing attempt %d for this device", s_pairing_attempt);
+    
+    // Always allow manual pairing attempts from user, regardless of counter
+    s_pairing_in_progress = true;
+    
     // Cancel any ongoing discovery
     esp_bt_gap_cancel_discovery();
+    SAFE_ESP_LOGI(TAG, "Discovery canceled to start pairing");
     
-    // Define IO capability based on PIN requirement
-    esp_bt_io_cap_t io_cap = pin_required ? ESP_BT_IO_CAP_OUT : ESP_BT_IO_CAP_IO;
+    // First, set pin type and code
+    if (require_pin) {
+        // Fixed PIN for devices that need a PIN
+        SAFE_ESP_LOGI(TAG, "Setting fixed PIN '0000'");
+        esp_bt_pin_code_t pin_code = {'0', '0', '0', '0'};
+        esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_FIXED, 4, pin_code);
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    } else {
+        // For Just Works pairing, we set a variable PIN that won't actually be used
+        SAFE_ESP_LOGI(TAG, "Setting up for 'Just Works' pairing");
+        esp_bt_pin_code_t pin_code = {0};
+        esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, 0, pin_code);
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
+    
+    // Second, set IO capability
+    esp_bt_io_cap_t io_cap = require_pin ? ESP_BT_IO_CAP_OUT : ESP_BT_IO_CAP_NONE;
+    SAFE_ESP_LOGI(TAG, "Setting IO capability: %d", io_cap);
     esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &io_cap, sizeof(uint8_t));
     
-    // Rest of code remains the same...
+    // Make the device discoverable
+    SAFE_ESP_LOGI(TAG, "Setting device as discoverable");
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    
+    // IMPORTANT: Wait a moment for security settings to take effect
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Now initiate the connection
+    SAFE_ESP_LOGI(TAG, "Initiating A2DP source connection...");
+    s_a2d_state = APP_AV_STATE_CONNECTING;
+    
+    esp_err_t ret = esp_a2d_source_connect(pending_pair_addr);
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    SAFE_ESP_LOGI(TAG, "Connection request sent, pairing should follow");
     return ESP_OK;
 }
 
@@ -254,13 +381,12 @@ esp_err_t bluetooth_disconnect_device(void) {
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) != pdTRUE) {
         return ESP_FAIL;
     }
-    
+
     SAFE_ESP_LOGI(TAG, "Attempting to disconnect from device...");
-    
     // First stop any streaming
     if (s_media_state == APP_AV_MEDIA_STATE_STARTED) {
         SAFE_ESP_LOGI(TAG, "Stopping media before disconnecting");
-        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP);
+        esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP);    
         vTaskDelay(pdMS_TO_TICKS(100)); // Wait for media stop
     }
     
@@ -365,34 +491,30 @@ esp_err_t bluetooth_unpair_device(void) {
 
 // Function to connect to a paired device
 esp_err_t bluetooth_connect_device(const char *mac_str) {
-    esp_bd_addr_t bd_addr;
-    if (sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
-               &bd_addr[0], &bd_addr[1], &bd_addr[2], 
-               &bd_addr[3], &bd_addr[4], &bd_addr[5]) != 6) {
+    // Use the same validation function for consistency
+    if (!is_valid_mac(mac_str)) {
         SAFE_ESP_LOGE(TAG, "Invalid MAC address format");
         return ESP_ERR_INVALID_ARG;
     }
 
-    memcpy(pending_pair_addr, bd_addr, ESP_BD_ADDR_LEN);
-
+    // No need to parse again, is_valid_mac already stored the result in pending_pair_addr
     SAFE_ESP_LOGD(TAG, "Connecting to MAC=%02x:%02x:%02x:%02x:%02x:%02x",
-             bd_addr[0], bd_addr[1], bd_addr[2],
-             bd_addr[3], bd_addr[4], bd_addr[5]);
+             pending_pair_addr[0], pending_pair_addr[1], pending_pair_addr[2],
+             pending_pair_addr[3], pending_pair_addr[4], pending_pair_addr[5]);
 
     s_a2d_state = APP_AV_STATE_CONNECTING;
-    
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
         // Check memory usage before L2CAP call
         size_t free_heap_before = esp_get_free_heap_size();
         SAFE_ESP_LOGI(TAG, "Free heap before connect: %u bytes", free_heap_before);
         
-        // Establish connection
-        esp_err_t ret = esp_a2d_source_connect(bd_addr); // L2CAP call
+        // Use the stored address from is_valid_mac
+        esp_err_t ret = esp_a2d_source_connect(pending_pair_addr); // L2CAP call
         
         // Check memory usage after L2CAP call
         size_t free_heap_after = esp_get_free_heap_size();
         SAFE_ESP_LOGI(TAG, "Free heap after connect: %u bytes", free_heap_after);
-        
+                
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
             xSemaphoreGive(s_bt_resource_mutex);
@@ -456,7 +578,6 @@ esp_err_t restart_bluetooth_stack(void) {
             xSemaphoreGive(s_bt_resource_mutex);
             return ret;
         }
-
         xSemaphoreGive(s_bt_resource_mutex);
     }
 
@@ -556,25 +677,104 @@ esp_err_t bluetooth_safe_start_discovery(void) {
     return bluetooth_start_discovery();
 }
 
-void bt_app_conn_start_memory_monitor(void)
-{
+void bt_app_conn_start_memory_monitor(void) {
     xTaskCreate(memory_monitor_task, "mem_mon", 2048, NULL, 5, NULL);
 }
 
 void bt_app_conn_callback(uint16_t event, void *param) {
-    // ...existing code...
-    SAFE_ESP_LOGI(TAG, "bt_app_conn_callback: event=%d", event);
-    // ...existing code...
+    // This function is called from the Bluetooth stack with events
+    esp_a2d_cb_param_t *a2d = (esp_a2d_cb_param_t *)param;
+    
+    switch (event) {
+        case ESP_A2D_CONNECTION_STATE_EVT: {
+            uint8_t *bda = a2d->conn_stat.remote_bda;
+            SAFE_ESP_LOGI(TAG, "A2DP connection state: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+                     s_a2d_conn_state_str[a2d->conn_stat.state],
+                     bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+            if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+                if (s_waiting_task != NULL) {
+                    s_operation_complete = true;
+                    xTaskNotifyGive(s_waiting_task);
+                }
+                s_a2d_state = APP_AV_STATE_UNCONNECTED;
+            } else if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+                // When connected, update state and stop being discoverable
+                esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+                s_a2d_state = APP_AV_STATE_CONNECTED;
+            } else if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTING) {
+                s_a2d_state = APP_AV_STATE_CONNECTING;
+            }
+            break;
+        }
+        
+        case ESP_A2D_AUDIO_STATE_EVT:
+            SAFE_ESP_LOGI(TAG, "A2DP audio state: %s", s_a2d_audio_state_str[a2d->audio_stat.state]);
+            s_audio_state = a2d->audio_stat.state;
+            if (s_audio_state == ESP_A2D_AUDIO_STATE_STARTED) {
+                s_media_state = APP_AV_MEDIA_STATE_STARTED;
+            } else if (s_audio_state == ESP_A2D_AUDIO_STATE_STOPPED ||
+                       s_audio_state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
+                s_media_state = APP_AV_MEDIA_STATE_STOPPED;
+            }
+            break;
+            
+        case ESP_A2D_MEDIA_CTRL_ACK_EVT:
+            SAFE_ESP_LOGI(TAG, "A2DP media ctrl ack: %d", a2d->media_ctrl_stat.cmd);
+            break;
+            
+        default:
+            SAFE_ESP_LOGW(TAG, "Unhandled A2DP event: %d", event);
+            break;
+    }
 }
 
 void bt_app_conn_init(void) {
-    // ...existing code...
-    SAFE_ESP_LOGI(TAG, "bt_app_conn_init: Initializing connection");
-    // ...existing code...
+    // Initialize connection variables
+    s_pairing_in_progress = false;
+    s_pairing_attempt = 0;
+    s_a2d_state = APP_AV_STATE_IDLE;
+    s_media_state = APP_AV_MEDIA_STATE_IDLE;
+    s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+    s_operation_complete = false;
+    s_waiting_task = NULL;
+    
+    // Set default device name if needed
+    char device_name[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
+    if (bluetooth_get_device_name(device_name, sizeof(device_name)) == ESP_OK) {
+        esp_bt_gap_set_device_name(device_name);
+    } else {
+        esp_bt_gap_set_device_name(DEFAULT_BT_DEVICE_NAME);
+    }
+
+    // Create the pairing retry timer
+    s_pairing_retry_timer = xTimerCreate("pairing_retry", 
+                                     pdMS_TO_TICKS(PAIRING_RETRY_INTERVAL_MS),
+                                     pdFALSE,  // One-shot timer
+                                     NULL, 
+                                     pairing_retry_timer_callback);
+
+    // Set as connectable and discoverable
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    SAFE_ESP_LOGI(TAG, "Bluetooth connection initialized successfully");
 }
 
 void bt_app_conn_deinit(void) {
-    // ...existing code...
-    SAFE_ESP_LOGI(TAG, "bt_app_conn_deinit: Deinitializing connection");
-    // ...existing code...
+    // Clean up timers
+    if (s_pairing_retry_timer != NULL) {
+        if (xTimerIsTimerActive(s_pairing_retry_timer)) {
+            xTimerStop(s_pairing_retry_timer, 0);
+        }
+        xTimerDelete(s_pairing_retry_timer, 0);
+        s_pairing_retry_timer = NULL;
+    }
+    
+    // Reset state variables
+    s_pairing_in_progress = false;
+    s_pairing_attempt = 0;
+    s_a2d_state = APP_AV_STATE_IDLE;
+    s_media_state = APP_AV_MEDIA_STATE_IDLE;
+    s_operation_complete = false;
+    s_waiting_task = NULL;
+    SAFE_ESP_LOGI(TAG, "Bluetooth connection deinitialized");
 }
