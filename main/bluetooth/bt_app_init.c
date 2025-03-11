@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "esp_gap_bt_api.h"
+#include "bluetooth/bt_app_global.h" // Keep this line
 
 static const char *TAG = "BT_APP_INIT";
 
@@ -18,9 +19,33 @@ void dump_bt_controller_status(void);
 
 // Implementation of the bluetooth_init function
 esp_err_t bluetooth_init(void) {
+    SAFE_ESP_LOGI(TAG, "Initializing Bluetooth...");
+    
     esp_err_t ret;
     
-    ESP_LOGI(TAG, "Initializing Bluetooth stack");
+    // Release Bluetooth resources if they were allocated
+    if (s_bt_enable) {
+        ret = esp_bluedroid_disable();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to disable Bluedroid: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ret = esp_bluedroid_deinit();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to deinitialize Bluedroid: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ret = esp_bt_controller_disable();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to disable controller: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ret = esp_bt_controller_deinit();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to deinitialize controller: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
     
     // Initialize NVS
     ret = nvs_flash_init();
@@ -75,6 +100,8 @@ esp_err_t bluetooth_init(void) {
     }
     ESP_LOGI(TAG, "Bluedroid stack enabled");
     
+    s_bt_enable = true;
+    
     // Set up Bluetooth classic protocols
     ret = esp_a2d_source_init();
     if (ret != ESP_OK) {
@@ -82,6 +109,9 @@ esp_err_t bluetooth_init(void) {
         return ret;
     }
     ESP_LOGI(TAG, "A2DP source initialized");
+    
+    // Add logging here
+    SAFE_ESP_LOGI(TAG, "A2DP source initialized successfully");
     
     // Register A2DP callback and data callback
     ret = esp_a2d_register_callback(&bt_app_a2d_cb);

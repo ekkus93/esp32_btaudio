@@ -15,7 +15,8 @@
 #include "bluetooth/bt_app_av.h"
 #include "bluetooth/bt_app_audio.h"
 #include "bluetooth/bt_app_conn.h"
-#include "bluetooth/bt_app_global.h"  // Include this header
+#include "bluetooth/bt_app_global.h"  // Add this include for global variables
+#include "bluetooth/bt_app_init.h"  
 #include "wifi.h"
 #include "ping.h"
 #include "spiffs_utils.h"
@@ -112,22 +113,19 @@ void handle_command(char *cmd) {
     if (strcmp(cmd, "scan") == 0) {
         SAFE_ESP_LOGI(TAG, "Stopping any streaming before scan...");
         esp_err_t ret = radio_stop();  // Stop radio if playing
-        if (ret == ESP_OK) {
-            SAFE_ESP_LOGI(TAG, "Radio streaming stopped successfully.");
-        } else {
-            SAFE_ESP_LOGW(TAG, "No radio streaming to stop.");
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "radio_stop failed (%s), aborting scan", esp_err_to_name(ret));
+            return; // Prevent proceeding to scan
         }
-
+        SAFE_ESP_LOGI(TAG, "Radio streaming stopped successfully.");
         SAFE_ESP_LOGI(TAG, "Starting Bluetooth scan...");
-        // Use the new safe discovery function
         ret = bluetooth_safe_start_discovery();
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to start Bluetooth scan: %s", esp_err_to_name(ret));
         }
     } else if (strncmp(cmd, "pair ", 5) == 0) {
-        char *mac_str = cmd + 5;
-        //char *pin_str = strtok(NULL, " ");
-        char *pin_str = cmd + 5 + strlen(cmd + 5) + 1;
+        char *mac_str = strtok(cmd + 5, " ");
+        char *pin_str = strtok(NULL, " ");
         bool require_pin = (pin_str != NULL && strcmp(pin_str, "true") == 0);
         SAFE_ESP_LOGI(TAG, "Stopping Bluetooth discovery before pairing...");
         esp_bt_gap_cancel_discovery();
@@ -403,7 +401,8 @@ void app_main(void) {
         }
 
         // Log free heap size periodically
-        SAFE_ESP_LOGI(TAG, "Free heap size: %lu bytes", (unsigned long)esp_get_free_heap_size()); // Fix format specifier
+        SAFE_ESP_LOGI(TAG, "Free heap size: %lu bytes, Minimum free heap: %u bytes", 
+            (unsigned long)esp_get_free_heap_size(), heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT));
     }
 
     // Clean up (unreachable in current implementation)
@@ -411,16 +410,34 @@ void app_main(void) {
 }
 
 // Mutex helper functions
+// Add static variable to track mutex owner
+TaskHandle_t s_bt_mutex_owner = NULL;
+
 bool take_bt_resource_mutex(TickType_t timeout) {
     if (s_bt_resource_mutex == NULL) {
         SAFE_ESP_LOGE(TAG, "BT resource mutex not initialized");
         return false;
     }
-    return xSemaphoreTake(s_bt_resource_mutex, timeout) == pdTRUE;
+    if (xSemaphoreTake(s_bt_resource_mutex, timeout) == pdTRUE) {
+        s_bt_mutex_owner = xTaskGetCurrentTaskHandle();
+        SAFE_ESP_LOGI(TAG, "Mutex acquired by task: %p, name: %s", 
+                        s_bt_mutex_owner, pcTaskGetName(s_bt_mutex_owner));
+        return true;
+    } else {
+        if (s_bt_mutex_owner != NULL) {
+            SAFE_ESP_LOGE(TAG, "Failed to acquire mutex. Currently held by task: %p, name: %s", 
+                        s_bt_mutex_owner, pcTaskGetName(s_bt_mutex_owner));
+        } else {
+            SAFE_ESP_LOGE(TAG, "Failed to acquire mutex; owner unknown");
+        }
+        return false;
+    }
 }
 
 void give_bt_resource_mutex(void) {
     if (s_bt_resource_mutex != NULL) {
+        SAFE_ESP_LOGI(TAG, "Mutex released by task: %p", xTaskGetCurrentTaskHandle());
+        s_bt_mutex_owner = NULL;
         xSemaphoreGive(s_bt_resource_mutex);
     }
 }

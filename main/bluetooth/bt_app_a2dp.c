@@ -45,17 +45,27 @@ static void beep_task(void *params) {
 
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     SAFE_ESP_LOGI(TAG, "A2DP callback event: %d", event);
-    
+    char addr_str[18];  // common temporary variable
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
+            sprintf(addr_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
+                    param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
+                    param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
+            SAFE_ESP_LOGI(TAG, "Device address: %s", addr_str);
             SAFE_ESP_LOGI(TAG, "A2DP connection state: %d", param->conn_stat.state);
+            
+            // Add logging here
+            SAFE_ESP_LOGI(TAG, "A2DP connection state changed to: %d", param->conn_stat.state);
             
             // Add error handling for failed connection attempts
             if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 // Check if this was a connection attempt that failed
                 if (s_a2d_state == APP_AV_STATE_CONNECTING) {
-                    SAFE_ESP_LOGW(TAG, "Connection attempt failed - device may be off or out of range");
+                    SAFE_ESP_LOGW(TAG, "A2DP connection failed after initial pairing. Check device compatibility or try again.");
                 }
+                
+                SAFE_ESP_LOGI(TAG, "Disconnected from device: %s", addr_str);
                 
                 // Safely change state and handle cleanup
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
@@ -78,6 +88,8 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                     // Create a delayed task to retry
                     esp_bd_addr_t retry_addr;
                     memcpy(retry_addr, s_last_pairing_attempt, ESP_BD_ADDR_LEN);
+                    
+                    SAFE_ESP_LOGI(TAG, "Failed device address: %s", addr_str);
                     
                     // Use a timer or task to retry
                     vTaskDelay(pdMS_TO_TICKS(3000));

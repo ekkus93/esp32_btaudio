@@ -34,7 +34,7 @@ endif()
 
 # Set default install directory permissions.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "/home/phil/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32-elf-objdump")
+  set(CMAKE_OBJDUMP "/home/phil/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-objdump")
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
@@ -121,6 +121,7 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/build_info.h"
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto.h"
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto_adjust_auto_enabled.h"
+    "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto_adjust_config_dependencies.h"
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto_adjust_config_key_pair_types.h"
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto_adjust_config_synonyms.h"
     "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include/psa/crypto_builtin_composites.h"

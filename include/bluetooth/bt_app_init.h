@@ -1,5 +1,5 @@
-#ifndef __BT_APP_CORE_H__
-#define __BT_APP_CORE_H__
+#ifndef __BT_APP_INIT_H__
+#define __BT_APP_INIT_H__
 
 #include "esp_err.h"
 

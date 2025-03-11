@@ -20,7 +20,7 @@ ESP-ADF only supports certain ESP-IDF versions. Check the ESP-ADF documentation 
 
 ```bash
 cd ${PROJECT_BASE_DIR}
-git clone -b v5.1.2 --recursive https://github.com/espressif/esp-idf.git esp-idf
+git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git esp-idf
 ```
 
 ⚠️ Replace v5.1.2 with the latest supported version.
@@ -79,6 +79,7 @@ ESP-ADF comes with several examples inside ${PROJECT_BASE_DIR}/esp-adf/examples.
 cd ${PROJECT_BASE_DIR}/esp-adf/examples/get-started/play_mp3
 idf.py set-target esp32
 idf.py menuconfig
+idf.py build
 idf.py flash monitor
 ```
 

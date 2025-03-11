@@ -4,6 +4,23 @@
 #include "bluetooth/bt_app_a2dp.h"
 #include "bluetooth/bt_app_av.h"
 #include "custom_log.h"
+#include "esp_bt_defs.h" // Add this line
+#include "esp_bt_main.h" // Add this line
+#include "esp_gap_bt_api.h" // Add this line
+#include "esp_bt_device.h" // Add this line
+
+// Define missing constants if not defined
+#ifndef ESP_BT_AUTH_REQ_BONDING
+#define ESP_BT_AUTH_REQ_BONDING 0x01
+#endif
+
+#ifndef ESP_BT_AUTH_REQ_MITM
+#define ESP_BT_AUTH_REQ_MITM 0x04
+#endif
+
+#ifndef ESP_BT_SP_AUTHENTICATION_REQUIREMENTS
+#define ESP_BT_SP_AUTHENTICATION_REQUIREMENTS 0x0D
+#endif
 
 #define TAG "BT_APP_CONN"
 
@@ -48,18 +65,16 @@ static void connection_timeout_handler(TimerHandle_t xTimer) {
 // Create a new timer task to periodically check for memory issues
 static void memory_monitor_task(void *arg) {
     while(1) {
-        // Get free heap memory
         size_t free_heap = esp_get_free_heap_size();
-        SAFE_ESP_LOGI(TAG, "Free heap: %u bytes", free_heap);
-        
-        // If memory is critically low, force congestion mode
+        size_t min_free_heap = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+        SAFE_ESP_LOGI(TAG, "Free heap: %u bytes, Minimum free heap: %u bytes", 
+                        free_heap, min_free_heap);
         if (free_heap < 20000) { // 20KB is a critical threshold
             s_severe_congestion = true;
             s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
             ESP_LOGW(TAG, "Memory critically low (%u bytes). Enforcing congestion control.", 
-                   free_heap);
+                     free_heap);
         }
-        
         vTaskDelay(pdMS_TO_TICKS(MEMORY_CHECK_INTERVAL_MS));
     }
 }
@@ -78,6 +93,10 @@ static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
         s_pairing_attempt++;
         
         // Reconnect with the same parameters as before
+        
+        // Add a small delay before retrying
+        vTaskDelay(pdMS_TO_TICKS(500));
+        
         esp_err_t ret = esp_a2d_source_connect(retry_addr);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Retry failed: %s", esp_err_to_name(ret));
@@ -98,12 +117,12 @@ static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
 
 void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
     SAFE_ESP_LOGD(TAG, "GAP event handler called with event: %d", event);
+    char addr_str[18]; // declare once for this function
     switch (event) {
         case ESP_BT_GAP_DISC_RES_EVT: {
             // Log raw device address and property count
             SAFE_ESP_LOGD(TAG, "DISC_RES: num_prop=%d", param->disc_res.num_prop);
             ESP_LOG_BUFFER_HEX(TAG, param->disc_res.bda, ESP_BD_ADDR_LEN);
-            char bda_str[18];
             uint8_t eir_length = 0;
             uint8_t *eir_name = NULL;
 
@@ -116,10 +135,10 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             }
 
             if (eir_name) {
-                strncpy(bda_str, (char *)eir_name, eir_length);
-                bda_str[eir_length] = '\0';
+                strncpy(addr_str, (char *)eir_name, eir_length);
+                addr_str[eir_length] = '\0';
             } else {
-                strcpy(bda_str, "Unknown");
+                strcpy(addr_str, "Unknown");
             }
 
             bool device_found = false;
@@ -132,14 +151,14 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
 
             if (!device_found && num_discovered_devices < MAX_DEVICES) {
                 memcpy(discovered_devices[num_discovered_devices].bda, param->disc_res.bda, ESP_BD_ADDR_LEN);
-                strncpy(discovered_devices[num_discovered_devices].name, bda_str, ESP_BT_GAP_MAX_BDNAME_LEN);
+                strncpy(discovered_devices[num_discovered_devices].name, addr_str, ESP_BT_GAP_MAX_BDNAME_LEN);
                 discovered_devices[num_discovered_devices].name[ESP_BT_GAP_MAX_BDNAME_LEN] = '\0';
                 num_discovered_devices++;
             }
 
             SAFE_ESP_LOGI(TAG, "Device found: %02x:%02x:%02x:%02x:%02x:%02x, Name: %s",
                      param->disc_res.bda[0], param->disc_res.bda[1], param->disc_res.bda[2],
-                     param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5], bda_str);
+                     param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5], addr_str);
             break;
         }
         case ESP_BT_GAP_DISC_STATE_CHANGED_EVT:
@@ -162,24 +181,16 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             SAFE_ESP_LOGD(TAG, "AUTH_CMPL: status=%d", param->auth_cmpl.stat);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 SAFE_ESP_LOGI(TAG, "Authentication success: %s", param->auth_cmpl.device_name);
-                s_pairing_in_progress = false; // Success, stop retry process
-                
-                // If we have a timer active, delete it
+                s_pairing_in_progress = false; // stop retry process
                 if (s_pairing_retry_timer != NULL && xTimerIsTimerActive(s_pairing_retry_timer)) {
                     xTimerStop(s_pairing_retry_timer, 0);
                 }
             } else {
                 SAFE_ESP_LOGE(TAG, "Authentication failed, status: %d", param->auth_cmpl.stat);
-                
-                // IMPORTANT: Always cleanup the pairing state even on failure
                 s_pairing_in_progress = false;
-                
-                // Consider the connection attempt complete but failed
                 if (s_pairing_retry_timer != NULL && xTimerIsTimerActive(s_pairing_retry_timer)) {
                     xTimerStop(s_pairing_retry_timer, 0);
                 }
-                
-                // Ensure we don't leave the system in a connecting state
                 if (s_a2d_state == APP_AV_STATE_CONNECTING) {
                     s_a2d_state = APP_AV_STATE_UNCONNECTED;
                 }
@@ -206,7 +217,7 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
             break;
 
-        // Handle other GAP events
+        // For ACL events, simply log without reiterating a second local addr_str.
         case ESP_BT_GAP_KEY_NOTIF_EVT:
         case ESP_BT_GAP_KEY_REQ_EVT:
         case ESP_BT_GAP_READ_RSSI_DELTA_EVT:
@@ -325,7 +336,7 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     // Create a connection timeout timer
     s_connection_timer = xTimerCreate(
         "conn_timeout",
-        pdMS_TO_TICKS(10000), // 10 seconds timeout
+        pdMS_TO_TICKS(30000), // 30 seconds timeout
         pdFALSE,  // One-shot timer
         NULL,
         connection_timeout_handler
@@ -390,6 +401,18 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     SAFE_ESP_LOGI(TAG, "Setting IO capability: %d", io_cap);
     esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &io_cap, sizeof(uint8_t));
     
+    // Add logging here
+    uint8_t auth_req = ESP_BT_AUTH_REQ_BONDING | ESP_BT_AUTH_REQ_MITM; // Bonding and MITM protection
+    
+    // Remove MITM protection if not the first attempt
+    if (s_pairing_attempt > 1) {
+        auth_req &= ~ESP_BT_AUTH_REQ_MITM;
+        SAFE_ESP_LOGI(TAG, "Pairing attempt %d: Removing MITM protection", s_pairing_attempt);
+    }
+    
+    SAFE_ESP_LOGI(TAG, "Setting authentication requirements: 0x%x", auth_req);
+    esp_bt_gap_set_security_param(ESP_BT_SP_AUTHENTICATION_REQUIREMENTS, &auth_req, sizeof(uint8_t));
+    
     // Make the device discoverable
     SAFE_ESP_LOGI(TAG, "Setting device as discoverable");
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
@@ -400,6 +423,11 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     // Now initiate the connection
     SAFE_ESP_LOGI(TAG, "Initiating A2DP source connection...");
     s_a2d_state = APP_AV_STATE_CONNECTING;
+    
+    // Check heap integrity before L2CAP call
+    if (!heap_caps_check_integrity_all(true)) {
+        SAFE_ESP_LOGE(TAG, "Heap integrity check failed before connect (L2CAP)");
+    }
     
     // Start the connection timeout timer
     if (xTimerStart(s_connection_timer, 0) != pdPASS) {
@@ -416,6 +444,14 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
         xTimerDelete(s_connection_timer, 0);
         s_connection_timer = NULL;
         return ret;
+    }
+    
+    // Add logging here
+    SAFE_ESP_LOGI(TAG, "A2DP connection initiated successfully");
+    
+    // Check heap integrity after L2CAP call
+    if (!heap_caps_check_integrity_all(true)) {
+        SAFE_ESP_LOGE(TAG, "Heap integrity check failed after connect (L2CAP)");
     }
     
     SAFE_ESP_LOGI(TAG, "Connection request sent, pairing should follow");

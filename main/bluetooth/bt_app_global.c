@@ -37,3 +37,6 @@ bool s_operation_complete = false;
 int s_pairing_attempt = 0;
 esp_bd_addr_t s_last_pairing_attempt = {0};
 bool s_pairing_in_progress = false;
+
+// Add this line
+bool s_bt_enable = false;

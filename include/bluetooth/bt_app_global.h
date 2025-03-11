@@ -131,4 +131,7 @@ extern bool s_beep_in_progress;
 extern int s_beep_duration;
 extern int s_beep_index;
 
+// Add this line
+extern bool s_bt_enable;
+
 #endif // BT_APP_GLOBAL_H

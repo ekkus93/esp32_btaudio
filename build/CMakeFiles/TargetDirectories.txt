@@ -5,8 +5,6 @@
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/gen_project_binary.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/app.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/erase_flash.dir
-/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/uf2.dir
-/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/uf2-app.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/merge-bin.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/monitor.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/flash.dir
@@ -16,6 +14,8 @@
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/size.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/size-files.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/size-components.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/uf2.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/uf2-app.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/edit_cache.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/rebuild_cache.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/list_install_components.dir
@@ -262,6 +262,13 @@
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/soc/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/soc/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/soc/CMakeFiles/install/strip.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/__idf_esp_security.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/edit_cache.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/rebuild_cache.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/list_install_components.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/install.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/install/local.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_security/CMakeFiles/install/strip.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_hw_support/CMakeFiles/__idf_esp_hw_support.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_hw_support/CMakeFiles/edit_cache.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_hw_support/CMakeFiles/rebuild_cache.dir
@@ -785,6 +792,13 @@
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/perfmon/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/perfmon/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/perfmon/CMakeFiles/install/strip.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/__idf_rt.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/edit_cache.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/rebuild_cache.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/list_install_components.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/install.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/install/local.dir
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/rt/CMakeFiles/install/strip.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/spiffs/CMakeFiles/__idf_spiffs.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/spiffs/CMakeFiles/edit_cache.dir
 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/spiffs/CMakeFiles/rebuild_cache.dir

@@ -12,6 +12,13 @@
 #include "esp_task_wdt.h" // Add this line
 #include "custom_log.h"  // Add this line
 
+// NEW: Declare external mutex helper functions and owner variable.
+// Ensure that in main/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c,
+// s_bt_mutex_owner is not declared as static.
+extern bool take_bt_resource_mutex(TickType_t timeout);
+extern void give_bt_resource_mutex(void);
+extern TaskHandle_t s_bt_mutex_owner;
+
 // Remove the WRAPPED_LOG macros since we'll use SAFE_ESP_* instead
 
 #define TAG "RADIO"
@@ -39,8 +46,9 @@ static volatile bool s_radio_task_finished = true; // Initially true
 #define SIZE_CAST(x) ((unsigned int)(x))
 
 void radio_task(void *param) {
-    /*
     radio_task_params_t *params = (radio_task_params_t*)param;
+    
+    /*
     uint8_t buf[BUFFER_SIZE];  // Change buf to a statically allocated array
     int16_t pcm_buf[MINIMP3_MAX_SAMPLES_PER_FRAME];  // Change pcm_buf to a statically allocated array
     mp3dec_t mp3d;
@@ -108,7 +116,8 @@ void radio_task(void *param) {
         remaining -= read;
         vTaskDelay(pdMS_TO_TICKS(5)); // Give other tasks a chance to run
     }
-
+    */
+   
     if (params->fp) fclose(params->fp);
     free(params);
     
@@ -116,7 +125,6 @@ void radio_task(void *param) {
     ESP_ERROR_CHECK(esp_task_wdt_delete(NULL));
     s_radio_task_finished = true;
     vTaskDelete(NULL);
-    */
 }
 
 // Utility to store PCM samples in our ring buffer
@@ -252,19 +260,24 @@ esp_err_t radio_play(const char *url) {
 // Stop the radio streaming
 esp_err_t radio_stop(void) {
     SAFE_ESP_LOGI(TAG, "radio_stop: called");
-    if (!s_radio_mutex || xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
+    if (!take_bt_resource_mutex(pdMS_TO_TICKS(100))) {
+        if (s_bt_mutex_owner != NULL) {
+            SAFE_ESP_LOGE(TAG, "Failed to take radio mutex; currently held by task: %p, name: %s",
+                          s_bt_mutex_owner, pcTaskGetName(s_bt_mutex_owner));
+        } else {
+            SAFE_ESP_LOGE(TAG, "Failed to take radio mutex; owner unknown");
+        }
         return ESP_ERR_TIMEOUT;
     }
     
+    // If radio is not active, nothing to stop. Return success.
     if (!s_radio_active) {
-        xSemaphoreGive(s_radio_mutex);
+        give_bt_resource_mutex();
         SAFE_ESP_LOGW(TAG, "Radio not active");
-        return ESP_ERR_INVALID_STATE;
+        return ESP_OK;
     }
 
     s_radio_active = false;
-    xSemaphoreGive(s_radio_mutex);
 
     // Wait until radio_task finishes
     int wait = 0;
@@ -274,9 +287,11 @@ esp_err_t radio_stop(void) {
     }
     if (!s_radio_task_finished) {
         SAFE_ESP_LOGE(TAG, "Radio task did not finish in time");
+        give_bt_resource_mutex();
         return ESP_ERR_TIMEOUT;
     }
     s_radio_task_handle = NULL;
+    give_bt_resource_mutex();
     return ESP_OK;
 }
 

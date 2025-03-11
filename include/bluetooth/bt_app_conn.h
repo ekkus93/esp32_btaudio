@@ -10,8 +10,6 @@ esp_err_t bluetooth_start_discovery(void);
 esp_err_t bluetooth_safe_start_discovery(void);
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 
-esp_err_t bluetooth_init(void);
-
 // Function to disconnect from a paired device
 esp_err_t bluetooth_disconnect_device(void);
 

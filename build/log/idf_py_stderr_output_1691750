@@ -1,0 +1,11 @@
+/home/phil/mambaforge/envs/python310/bin/python: No module named kconfgen.__main__; 'kconfgen' is a package and cannot be directly executed
+CMake Error at /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/kconfig.cmake:209 (message):
+  Failed to run kconfgen
+  (/home/phil/mambaforge/envs/python310/bin/python;-m;kconfgen;--list-separator=semicolon;--kconfig;/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/Kconfig;--sdkconfig-rename;/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/sdkconfig.rename;--config;/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/sdkconfig;--defaults;/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/sdkconfig.bt;--env-file;/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/config.env).
+  Error 1
+Call Stack (most recent call first):
+  /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/build.cmake:681 (__kconfig_generate_config)
+  /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/tools/cmake/project.cmake:710 (idf_build_process)
+  CMakeLists.txt:11 (project)
+
+
