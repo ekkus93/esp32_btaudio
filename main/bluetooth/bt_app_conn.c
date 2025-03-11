@@ -8,6 +8,7 @@
 #include "esp_bt_main.h" // Add this line
 #include "esp_gap_bt_api.h" // Add this line
 #include "esp_bt_device.h" // Add this line
+#include "radio.h"  // NEW: Include radio.h to declare radio_stop() and radio_task_is_finished()
 
 // Define missing constants if not defined
 #ifndef ESP_BT_AUTH_REQ_BONDING
@@ -372,6 +373,32 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     // Cancel any ongoing discovery
     esp_bt_gap_cancel_discovery();
     SAFE_ESP_LOGI(TAG, "Discovery canceled to start pairing");
+    
+    // NEW: If already connected or connecting, force disconnect to flush ACL queue
+    if (s_a2d_state == APP_AV_STATE_CONNECTED || s_a2d_state == APP_AV_STATE_CONNECTING) {
+        SAFE_ESP_LOGI(TAG, "Device already in use; forcing disconnect to clear ACL transmissions");
+        esp_err_t dis_ret = bluetooth_disconnect_device();
+        if (dis_ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to disconnect existing device: %s", esp_err_to_name(dis_ret));
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Wait for state to settle
+    }
+    
+    // Stop any ongoing radio streaming (as previously)
+    esp_err_t ret_radio = radio_stop();
+    if (ret_radio != ESP_OK) {
+        SAFE_ESP_LOGW(TAG, "radio_stop returned %s; proceeding anyway", esp_err_to_name(ret_radio));
+    }
+    int wait = 0;
+    while (!radio_task_is_finished() && wait < 100) {  // using accessor
+        vTaskDelay(pdMS_TO_TICKS(10));
+        wait++;
+    }
+    if (!radio_task_is_finished()) {
+        SAFE_ESP_LOGW(TAG, "Radio task did not finish after %d ticks", wait);
+    } else {
+        SAFE_ESP_LOGI(TAG, "Radio task confirmed finished");
+    }
     
     // First, set pin type and code
     if (require_pin) {

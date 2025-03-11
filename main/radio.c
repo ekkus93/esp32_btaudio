@@ -257,7 +257,6 @@ esp_err_t radio_play(const char *url) {
     return ESP_OK;
 }
 
-// Stop the radio streaming
 esp_err_t radio_stop(void) {
     SAFE_ESP_LOGI(TAG, "radio_stop: called");
     if (!take_bt_resource_mutex(pdMS_TO_TICKS(100))) {
@@ -270,7 +269,6 @@ esp_err_t radio_stop(void) {
         return ESP_ERR_TIMEOUT;
     }
     
-    // If radio is not active, nothing to stop. Return success.
     if (!s_radio_active) {
         give_bt_resource_mutex();
         SAFE_ESP_LOGW(TAG, "Radio not active");
@@ -279,17 +277,10 @@ esp_err_t radio_stop(void) {
 
     s_radio_active = false;
 
-    // Wait until radio_task finishes
-    int wait = 0;
-    while (!s_radio_task_finished && (wait < 100)) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-        wait++;
-    }
-    if (!s_radio_task_finished) {
-        SAFE_ESP_LOGE(TAG, "Radio task did not finish in time");
-        give_bt_resource_mutex();
-        return ESP_ERR_TIMEOUT;
-    }
+    // Instead of polling the ACL queue (which requires internal access),
+    // wait a fixed delay to allow pending ACL transmissions to clear.
+    vTaskDelay(pdMS_TO_TICKS(500)); // Adjust delay as needed
+
     s_radio_task_handle = NULL;
     give_bt_resource_mutex();
     return ESP_OK;
@@ -363,10 +354,8 @@ static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_even
     return ESP_OK;
 }
 
-// Suppress unused function warnings
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wunused-variable"
+// NEW: Accessor function to allow checking if the radio task has finished.
+bool radio_task_is_finished(void) {
+    return s_radio_task_finished;
+}
 
-// Restore warnings
-#pragma GCC diagnostic pop
