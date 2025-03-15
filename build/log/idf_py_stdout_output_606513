@@ -1,0 +1,212 @@
+[1/9] Performing build step for 'bootloader'
+[1/1] cd /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/bootloader/esp-idf/esptool_py && /home/phil/mambaforge/envs/python310/bin/python /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/bootloader/bootloader.bin
+Bootloader binary size 0x6560 bytes. 0xaa0 bytes (9%) free.
+[2/7] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/bluetooth/bt_app_conn.c.obj
+FAILED: esp-idf/main/CMakeFiles/__idf_main.dir/bluetooth/bt_app_conn.c.obj 
+/home/phil/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc -DESP_PLATFORM -DHAVE_CONFIG_H -DIDF_VER=\"v5.4\" -DMBEDTLS_CONFIG_FILE=\"mbedtls/esp_config.h\" -DSOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE -DSOC_XTAL_FREQ_MHZ=CONFIG_XTAL_FREQ -D_GLIBCXX_HAVE_POSIX_SEMAPHORE -D_GLIBCXX_USE_POSIX_SEMAPHORE -D_GNU_SOURCE -D_POSIX_READER_WRITER_LOCKS -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/config -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/newlib/platform_include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/config/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/config/include/freertos -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/config/xtensa/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/portable/xtensa/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/portable/xtensa/include/freertos -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/esp_additions/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/include/soc -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/include/soc/esp32 -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/dma/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/ldo/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/debug_probe/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/port/esp32/. -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_hw_support/port/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/heap/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/heap/tlsf -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/log/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/soc/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/soc/esp32 -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/soc/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/soc/esp32/register -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/hal/platform_port/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/hal/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/hal/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_rom/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_rom/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_rom/esp32/include/esp32 -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_rom/esp32 -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_common/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_system/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_system/port/soc -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_system/port/include/private -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/xtensa/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/xtensa/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/xtensa/deprecated_include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/include/apps -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/include/apps/sntp -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/lwip/src/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/port/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/port/freertos/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/port/esp32xx/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/port/esp32xx/include/arch -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/lwip/port/esp32xx/include/sys -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/include/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/common/osi/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/common/api/include/api -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/common/btc/profile/esp/blufi/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/common/btc/profile/esp/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/common/hci_log/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/host/bluedroid/api/include/api -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/porting/ext/tinycrypt/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_timer/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_wifi/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_wifi/include/local -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_wifi/wifi_apps/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_wifi/wifi_apps/nan_app/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_event/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_phy/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_phy/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_netif/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/nvs_flash/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_partition/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/spiffs/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_pipeline/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_sal/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/efuse/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/efuse/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_audio/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_codec/include/codec -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_codec/include/processing -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_new_jpeg/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/media_lib_sal/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/media_lib_sal/include/port -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_muxer/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-adf-libs/esp_media_protocols/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/managed_components/espressif__nghttp/port/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/managed_components/espressif__nghttp/nghttp2/lib/includes -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp-tls -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp-tls/esp-tls-crypto -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/port/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/library -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/esp_crt_bundle/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/3rdparty/everest/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/3rdparty/p256-m -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/3rdparty/p256-m/p256-m -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_stream -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_stream/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/driver/deprecated -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/driver/i2c/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/driver/touch_sensor/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/driver/twai/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/driver/touch_sensor/esp32/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_pm/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_ringbuf/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_gpio/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_pcnt/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_gptimer/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_spi/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_mcpwm/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_ana_cmpr/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_i2s/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_sdmmc/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/sdmmc/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_sdspi/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_sdio/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_dac/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_rmt/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_tsens/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_sdm/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_i2c/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_uart/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/vfs/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_ledc/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_parlio/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_driver_usb_serial_jtag/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_http_client/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/tcp_transport/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bootloader_support/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bootloader_support/bootloader_flash/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_dispatcher/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_actions/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/spi_flash/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-sr/src/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-sr/esp-tts/esp_tts_chinese/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp-sr/include/esp32 -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/json/cJSON -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/adc_button -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/gpio_isr -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/button -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/blufi -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/IS31FL3216 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/aw2013 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/tca9554 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/driver/i2c_bus -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/sdcard -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_peripherals/lib/touch -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es8388 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es8374 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es8311 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es8156 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es7243 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es7148 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es7210 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/es7243e -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/tas5805m -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/zl38063 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/zl38063/api_lib -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/zl38063/example_apps -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_hal/driver/zl38063/firmware -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/fatfs/diskio -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/fatfs/src -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/fatfs/vfs -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/wear_levelling/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/console -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_vfs_console/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_board/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/audio_board/lyrat_v4_3 -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/display_service/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/display_service/led_indicator/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/display_service/led_bar/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/wpa_supplicant/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/wpa_supplicant/port/include -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/wpa_supplicant/esp_supplicant/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_lcd/include -I/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_lcd/interface -I/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/bluetooth_service/include -mlongcalls -Wno-frame-address  -fno-builtin-memcpy -fno-builtin-memset -fno-builtin-bzero -fno-builtin-stpcpy -fno-builtin-strncpy -ffunction-sections -fdata-sections -Wall -Werror=all -Wno-error=unused-function -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=deprecated-declarations -Wextra -Wno-error=extra -Wno-unused-parameter -Wno-sign-compare -Wno-enum-conversion -gdwarf-4 -ggdb -Os -freorder-blocks -fmacro-prefix-map=/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio=. -fmacro-prefix-map=/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf=/IDF -fstrict-volatile-bitfields -fno-jump-tables -fno-tree-switch-conversion -std=gnu17 -Wno-old-style-declaration -MD -MT esp-idf/main/CMakeFiles/__idf_main.dir/bluetooth/bt_app_conn.c.obj -MF esp-idf/main/CMakeFiles/__idf_main.dir/bluetooth/bt_app_conn.c.obj.d -o esp-idf/main/CMakeFiles/__idf_main.dir/bluetooth/bt_app_conn.c.obj -c /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c: In function 'bluetooth_pair_device':
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:127:38: error: 'with' undeclared (first use in this function)
+  127 |     connection_timer = xTimerCreate( with shorter timeout for quicker failure detection
+      |                                      ^~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:127:38: note: each undeclared identifier is reported only once for each function it appears in
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:127:42: error: expected ')' before 'shorter'
+  127 |     connection_timer = xTimerCreate( with shorter timeout for quicker failure detection
+      |                                    ~     ^~~~~~~~
+      |                                          )
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:127:24: error: too few arguments to function 'xTimerCreate'
+  127 |     connection_timer = xTimerCreate( with shorter timeout for quicker failure detection
+      |                        ^~~~~~~~~~~~
+In file included from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/include/freertos/event_groups.h:41,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/esp_additions/include/freertos/idf_additions.h:25,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/include/freertos/FreeRTOS.h:1533,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_system/include/esp_task.h:24,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/bt/include/esp32/include/esp_bt.h:14,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/include/bluetooth/bt_app_global.h:4,
+                 from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:11:
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/FreeRTOS-Kernel/include/freertos/timers.h:234:19: note: declared here
+  234 |     TimerHandle_t xTimerCreate( const char * const pcTimerName, /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+      |                   ^~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:164:63: error: unknown type name 'y'
+  164 |     SAFE_ESP_LOGI(TAG, "Discovery canceled to start pairing");y as it can interfere with pairing
+      |                                                               ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:164:68: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'it'
+  164 |     SAFE_ESP_LOGI(TAG, "Discovery canceled to start pairing");y as it can interfere with pairing
+      |                                                                    ^~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:170:71: warning: missing terminating " character
+  170 |         if (dis_ret != ESP_OK) { disconnect to clear ACL transmissions");
+      |                                                                       ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:170:71: error: missing terminating " character
+  170 |         if (dis_ret != ESP_OK) { disconnect to clear ACL transmissions");
+      |                                                                       ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:178:32: error: unknown type name 'to'
+  178 |     if (ret_radio != ESP_OK) { to prevent resource conflicts
+      |                                ^~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:178:43: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'resource'
+  178 |     if (ret_radio != ESP_OK) { to prevent resource conflicts
+      |                                           ^~~~~~~~
+In file included from /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/include/bluetooth/bt_app_global.h:17:
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/include/custom_log.h:15:3: error: this 'while' clause does not guard... [-Werror=misleading-indentation]
+   15 | } while(0)
+      |   ^~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/include/custom_log.h:18:42: note: in expansion of macro 'SAFE_ESP_LOG_LEVEL'
+   18 | #define SAFE_ESP_LOGW(tag, format, ...)  SAFE_ESP_LOG_LEVEL(ESP_LOG_WARN,    tag, format, ##__VA_ARGS__)
+      |                                          ^~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:179:9: note: in expansion of macro 'SAFE_ESP_LOGW'
+  179 |         SAFE_ESP_LOGW(TAG, "radio_stop returned %s; proceeding anyway", esp_err_to_name(ret_radio));o_stop();
+      |         ^~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:179:101: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'while'
+  179 |         SAFE_ESP_LOGW(TAG, "radio_stop returned %s; proceeding anyway", esp_err_to_name(ret_radio));o_stop();
+      |                                                                                                     ^~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:179:101: error: implicit declaration of function 'o_stop'; did you mean 'radio_stop'? [-Wimplicit-function-declaration]
+  179 |         SAFE_ESP_LOGW(TAG, "radio_stop returned %s; proceeding anyway", esp_err_to_name(ret_radio));o_stop();
+      |                                                                                                     ^~~~~~
+      |                                                                                                     radio_stop
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:184:54: error: unknown type name 'adio'
+  184 |     while (!radio_task_is_finished() && wait < 100) {adio task to finish to ensure clean state
+      |                                                      ^~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:184:64: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'to'
+  184 |     while (!radio_task_is_finished() && wait < 100) {adio task to finish to ensure clean state
+      |                                                                ^~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:186:23: warning: comparison between pointer and integer
+  186 |         wait++;& wait < 100) {
+      |                       ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:186:23: error: statement with no effect [-Werror=unused-value]
+  186 |         wait++;& wait < 100) {
+      |                ~~~~~~~^~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:186:28: error: expected ';' before ')' token
+  186 |         wait++;& wait < 100) {
+      |                            ^
+      |                            ;
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:186:28: error: expected statement before ')' token
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:187:6: error: implicit declaration of function 'lay' [-Wimplicit-function-declaration]
+  187 |     }lay(pdMS_TO_TICKS(10));
+      |      ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:191:7: error: 'else' without a previous 'if'
+  191 |     } else {
+      |       ^~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:192:61: error: implicit declaration of function '_ESP_LOGW'; did you mean 'ESP_LOGW'? [-Wimplicit-function-declaration]
+  192 |         SAFE_ESP_LOGI(TAG, "Radio task confirmed finished");_ESP_LOGW(TAG, "Radio task did not finish after %d ticks", wait);
+      |                                                             ^~~~~~~~~
+      |                                                             ESP_LOGW
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:197:5: error: unknown type name 'airing'
+  197 |     airing parameters
+      |     ^~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:199:5: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'if'
+  199 |     if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+      |     ^~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:212:48: warning: missing terminating " character
+  212 |         }led to take semaphore after stack wait");
+      |                                                ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:212:48: error: missing terminating " character
+  212 |         }led to take semaphore after stack wait");
+      |                                                ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:229:82: warning: missing terminating ' character
+  229 |         if (ret != ESP_OK) {or Just Works pairing, we set a variable PIN that won't actually be used
+      |                                                                                  ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:229:82: error: missing terminating ' character
+  229 |         if (ret != ESP_OK) {or Just Works pairing, we set a variable PIN that won't actually be used
+      |                                                                                  ^~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:242:50: warning: missing terminating " character
+  242 |             xSemaphoreGive(s_bt_resource_mutex);d", io_cap);
+      |                                                  ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:242:50: error: missing terminating " character
+  242 |             xSemaphoreGive(s_bt_resource_mutex);d", io_cap);
+      |                                                  ^~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:267:35: warning: missing terminating " character
+  267 |     ting A2DP source connection...");
+      |                                   ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:267:35: error: missing terminating " character
+  267 |     ting A2DP source connection...");
+      |                                   ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:336:1: error: "/*" within comment [-Werror=comment]
+  336 | /**
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:348:66: warning: missing terminating " character
+  348 |     SAFE_ESP_LOGI(TAG, "Connection watchdog task started"); bytes", free_heap_before);
+      |                                                                  ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:348:66: error: missing terminating " character
+  348 |     SAFE_ESP_LOGI(TAG, "Connection watchdog task started"); bytes", free_heap_before);
+      |                                                                  ^~~~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:352:76: warning: missing terminating " character
+  352 |     if (s_a2d_state == APP_AV_STATE_CONNECTING) {k failed before disconnect");
+      |                                                                            ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:352:76: error: missing terminating " character
+  352 |     if (s_a2d_state == APP_AV_STATE_CONNECTING) {k failed before disconnect");
+      |                                                                            ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:360:19: warning: missing terminating " character
+  360 |              bytes", free_heap_after);
+      |                   ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:360:19: error: missing terminating " character
+  360 |              bytes", free_heap_after);
+      |                   ^~~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:364:74: warning: missing terminating " character
+  364 |             xSemaphoreGive(s_bt_resource_mutex);k failed after disconnect");
+      |                                                                          ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:364:74: error: missing terminating " character
+  364 |             xSemaphoreGive(s_bt_resource_mutex);k failed after disconnect");
+      |                                                                          ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:376:18: warning: missing terminating " character
+  376 |             on...");
+      |                  ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:376:18: error: missing terminating " character
+  376 |             on...");
+      |                  ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:435:48: error: "/*" within comment [-Werror=comment]
+  435 |     if (!heap_caps_check_integrity_all(true)) {/**
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:489:61: error: "/*" within comment [-Werror=comment]
+  489 |     SAFE_ESP_LOGI(TAG, "Disconnect completed successfully");/**
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:493:1: error: "/*" within comment [-Werror=comment]
+  493 | /**
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:61: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                             ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:66: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                  ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:71: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                       ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:76: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                            ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:81: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                                 ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:86: error: invalid suffix "x" on integer constant
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                                      ^~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:90: warning: missing terminating " character
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                                          ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:506:90: error: missing terminating " character
+  506 |                 xSemaphoreGive(s_bt_resource_mutex);: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
+      |                                                                                          ^~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:548:74: warning: missing terminating " character
+  548 |         esp_err_t ret = esp_a2d_source_connect(pending_pair_addr);ack: %d", a2d->media_ctrl_stat.cmd);
+      |                                                                          ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:548:74: error: missing terminating " character
+  548 |         esp_err_t ret = esp_a2d_source_connect(pending_pair_addr);ack: %d", a2d->media_ctrl_stat.cmd);
+      |                                                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:553:34: warning: missing terminating " character
+  553 |                 ed A2DP event: %d", event);
+      |                                  ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:553:34: error: missing terminating " character
+  553 |                 ed A2DP event: %d", event);
+      |                                  ^~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:573:1: error: "/*" within comment [-Werror=comment]
+  573 | /**
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:596:91: error: stray '@' in program
+  596 |                 esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);@brief Clean up Bluetooth connection resources
+      |                                                                                           ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:704:1: error: expected declaration or statement at end of input
+  704 | }
+      | ^
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:705: error: control reaches end of non-void function [-Werror=return-type]
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c: At top level:
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:75:13: warning: 'pairing_retry_timer_callback' defined but not used [-Wunused-function]
+   75 | static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/main/bluetooth/bt_app_conn.c:34:13: warning: 'connection_timeout_handler' defined but not used [-Wunused-function]
+   34 | static void connection_timeout_handler(TimerHandle_t xTimer) {
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+cc1: some warnings being treated as errors
+ninja: build stopped: subcommand failed.

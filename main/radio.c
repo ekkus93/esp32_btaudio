@@ -22,21 +22,17 @@
 #include "esp_task_wdt.h" 
 #include "custom_log.h"  
 #include <audio_pipeline.h>
+#include <audio_element.h>
 #include <esp_peripherals.h>
 #include "freertos/semphr.h"
 #include <mp3_decoder.h>
 #include <i2s_stream.h>
 #include <bluetooth_service.h>
 
-// Remove direct include of periph_bt.h and instead conditionally include or define stubs:
+// Conditionally include or define stubs for periph_bt
 #if __has_include("periph_bt.h")
 #include "periph_bt.h"
 #else
-/**
- * Minimal stub definition for periph_bt_cfg_t and periph_bt_init() when
- * the periph_bt.h header is not available. Allows compilation to proceed
- * without the actual Bluetooth peripheral implementation.
- */
 typedef struct {
     const char *device_name;
     int mode;
@@ -45,112 +41,148 @@ typedef struct {
 static inline void *periph_bt_init(const periph_bt_cfg_t *cfg) { (void)cfg; return NULL; }
 #endif
 
-// NEW: Add missing prototype for audio_pipeline_wait_for_event
-extern esp_err_t audio_pipeline_wait_for_event(audio_pipeline_handle_t pipeline,
-                                               audio_event_iface_msg_t *msg,
-                                               TickType_t timeout);
-
-// NEW: Declare external mutex helper functions and owner variable.
-// Ensure that in main/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c,
-// s_bt_mutex_owner is not declared as static.
+// External function declarations
 extern bool take_bt_resource_mutex(TickType_t timeout);
 extern void give_bt_resource_mutex(void);
 extern TaskHandle_t s_bt_mutex_owner;
 
 #define TAG "RADIO"
-#define BUFFER_SIZE 256       // Further reduced buffer size
-#define PCM_RING_BUFFER_SIZE (2 * 1024)  // Further reduced buffer size
-#define MP3_BUFFER_SIZE (2 * 1024)       // Further reduced buffer size
+#define BUFFER_SIZE 256       // Buffer size for data processing
+#define PCM_RING_BUFFER_SIZE (2 * 1024)  // Size for PCM ring buffer
+#define MP3_BUFFER_SIZE (2 * 1024)       // Size for MP3 buffer
 
-/**
- * Module-level state variables to track radio operations and resource usage
- */
+// Module-level state variables
 static bool s_radio_active = false;          // Indicates if radio module is currently active
 static bool s_radio_streaming_active = false; // Indicates if streaming is in progress
-static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((unused, aligned(4))); // Buffer for MP3 data
-static size_t s_mp3_head __attribute__((unused)) = 0, s_mp3_tail __attribute__((unused)) = 0; // Buffer pointers
 
 static TaskHandle_t s_radio_task_handle = NULL; // Handle to the radio playback task
 
 // Mutexes for protecting shared resources
 static SemaphoreHandle_t s_radio_mutex = NULL; // Protects radio state variables
-static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL; // Protects MP3 buffer access
 
 static volatile bool s_radio_task_finished = true; // Initially true, indicates task completion state
-
-// Helper to format size_t values for logging
-#define SIZE_FMT "%u"
-#define SIZE_CAST(x) ((unsigned int)(x))
 
 /**
  * @brief Task that plays MP3 audio from a URL or file
  * 
  * This task sets up and manages an audio pipeline to decode MP3 data and output
- * it through the Bluetooth A2DP interface. It uses ESP-ADF components to handle
- * the audio processing.
+ * it through the I2S interface.
  *
  * @param url Pointer to a string containing the URL or file path to play
  */
 void play_mp3_task(void* url) {
-    SAFE_ESP_LOGI(TAG, "Starting MP3 playback for: %s", (char*)url);
+    char *uri = (char*)url;
+    SAFE_ESP_LOGI(TAG, "Starting MP3 playback for: %s", uri);
     
-    // Create an audio pipeline
-    audio_pipeline_handle_t pipeline;
+    // Initialize variables with explicit NULL values
+    audio_pipeline_handle_t pipeline = NULL;
+    audio_element_handle_t mp3_decoder = NULL;
+    audio_element_handle_t i2s_stream = NULL;
+    
+    // First, check if we have enough memory to proceed
+    size_t free_heap = esp_get_free_heap_size();
+    SAFE_ESP_LOGI(TAG, "Free heap before creating pipeline: %u bytes", (unsigned int)free_heap);
+    
+    // We need at least 40KB of free heap to safely play MP3s
+    if (free_heap < 40000) {
+        SAFE_ESP_LOGE(TAG, "Insufficient memory to start MP3 playback (need 40KB, have %u bytes)", (unsigned int)free_heap);
+        goto exit;
+    }
+    
+    // Mark radio as active and task as running
+    s_radio_active = true;
+    s_radio_task_finished = false;
+    
+    // Create an audio pipeline with minimal memory allocation
     audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
+    pipeline_cfg.rb_size = 2 * 1024; // Smaller ring buffer
     pipeline = audio_pipeline_init(&pipeline_cfg);
     if (!pipeline) {
         SAFE_ESP_LOGE(TAG, "Failed to create pipeline");
-        goto task_exit;
+        goto exit;
     }
 
-    // Configure MP3 decoder with default settings
-    mp3_decoder_cfg_t mp3_dec_cfg = DEFAULT_MP3_DECODER_CONFIG();
+    // Configure MP3 decoder with memory-optimized settings
+    mp3_decoder_cfg_t mp3_cfg = DEFAULT_MP3_DECODER_CONFIG();
+    mp3_cfg.task_stack = 8 * 1024;    // Increase task stack for decoder
+    mp3_cfg.task_core = 0;           // Run on core 0 (away from BT stack)
+    mp3_cfg.out_rb_size = 4 * 1024;  // Smaller output ring buffer
+    mp3_decoder = mp3_decoder_init(&mp3_cfg);
+    if (!mp3_decoder) {
+        SAFE_ESP_LOGE(TAG, "Failed to create MP3 decoder");
+        goto exit;
+    }
 
-    // Create an MP3 decoder element
-    audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_dec_cfg);
+    // Use I2S stream instead of BT sink to avoid memory contention
+    i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
+    i2s_cfg.type = AUDIO_STREAM_WRITER;
+    i2s_cfg.task_stack = 4 * 1024;   // Sufficient stack size
+    i2s_cfg.task_core = 0;           // Run on core 0
+    i2s_cfg.task_prio = 5;           // Lower priority
+    i2s_cfg.out_rb_size = 4 * 1024;  // Smaller ring buffer
+    i2s_cfg.use_alc = false;         // No automatic level control
+    i2s_cfg.volume = 50;
+    
+    i2s_stream = i2s_stream_init(&i2s_cfg);
+    if (!i2s_stream) {
+        SAFE_ESP_LOGE(TAG, "Failed to create I2S stream");
+        goto exit;
+    }
 
-    // Create an I2S stream to send audio to Bluetooth
-    audio_element_handle_t i2s_stream = i2s_stream_init(&(i2s_stream_cfg_t) {
-        .type = AUDIO_STREAM_WRITER,
-        .out_rb_size = 8 * 1024,
-        .use_alc = false,
-        .volume = 50,
-        .uninstall_drv = false
-    });
+    // Pause briefly to allow memory allocations to complete
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-    // Set MP3 file source from SPIFFS or URL
-    audio_element_set_uri(mp3_decoder, (const char*)url);
+    // Set MP3 file source
+    SAFE_ESP_LOGI(TAG, "Setting URI: %s", uri);
+    audio_element_set_uri(mp3_decoder, uri);
 
     // Register elements in pipeline
-    audio_pipeline_register(pipeline, mp3_decoder, "mp3_decoder");
-    audio_pipeline_register(pipeline, i2s_stream, "i2s_output");
+    SAFE_ESP_LOGI(TAG, "Registering pipeline elements");
+    esp_err_t ret;
+    ret = audio_pipeline_register(pipeline, mp3_decoder, "mp3_decoder");
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to register MP3 decoder: %s", esp_err_to_name(ret));
+        goto exit;
+    }
+    
+    ret = audio_pipeline_register(pipeline, i2s_stream, "i2s_output");
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to register I2S stream: %s", esp_err_to_name(ret));
+        goto exit;
+    }
 
     // Link pipeline elements (MP3 Decoder → I2S Stream)
-    audio_pipeline_link(pipeline, (const char *[]){"mp3_decoder", "i2s_output"}, 2);
+    SAFE_ESP_LOGI(TAG, "Linking pipeline elements");
+    ret = audio_pipeline_link(pipeline, (const char *[]){"mp3_decoder", "i2s_output"}, 2);
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to link pipeline elements: %s", esp_err_to_name(ret));
+        goto exit;
+    }
 
-    // Initialize Bluetooth A2DP Sink
-    esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
-    esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
-    periph_bt_cfg_t bt_cfg = {
-        .device_name = "ESP32_Bluetooth_Audio",
-        .mode = BLUETOOTH_A2DP_SINK
-    };
-    esp_periph_handle_t bt_handle = periph_bt_init(&bt_cfg);
-    esp_periph_start(set, bt_handle);
+    // Check memory again before starting
+    free_heap = esp_get_free_heap_size();
+    SAFE_ESP_LOGI(TAG, "Free heap before starting pipeline: %u bytes", (unsigned int)free_heap);
+    
+    if (free_heap < 20000) {  // Need at least 20KB free to run
+        SAFE_ESP_LOGE(TAG, "Insufficient memory before starting pipeline");
+        goto exit;
+    }
 
     // Start pipeline
     SAFE_ESP_LOGI(TAG, "Starting audio pipeline...");
-    audio_pipeline_run(pipeline);
+    if ((ret = audio_pipeline_run(pipeline)) != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to start pipeline: %s", esp_err_to_name(ret));
+        goto exit;
+    }
 
-    // Instead of using audio_pipeline_wait_for_event, use a simple polling approach
-    vTaskDelay(pdMS_TO_TICKS(1000));  // Give time for pipeline to start
-    
-    // Poll for pipeline state periodically using a simpler approach
+    // Poll for pipeline state
     bool playing = true;
-    while (playing) {
+    int check_count = 0;
+    while (playing && check_count < 60) {  // Timeout after 30 seconds
         vTaskDelay(pdMS_TO_TICKS(500));  // Check every 0.5 seconds
+        check_count++;
         
-        // Check if the pipeline is running by polling the pipeline state
+        // Check if the pipeline is running
         audio_element_state_t mp3_state = audio_element_get_state(mp3_decoder);
         if (mp3_state == AEL_STATE_FINISHED || mp3_state == AEL_STATE_ERROR) {
             SAFE_ESP_LOGI(TAG, "MP3 playback finished or encountered an error");
@@ -162,25 +194,70 @@ void play_mp3_task(void* url) {
             SAFE_ESP_LOGI(TAG, "Playback stopped by request");
             playing = false;
         }
+        
+        // Log memory usage periodically
+        if (check_count % 10 == 0) {
+            SAFE_ESP_LOGI(TAG, "Free heap during playback: %u bytes", (unsigned int)esp_get_free_heap_size());
+        }
     }
 
+exit:
     // Cleanup and release all resources
     SAFE_ESP_LOGI(TAG, "Cleaning up audio resources");
-    audio_pipeline_stop(pipeline);
-    audio_pipeline_wait_for_stop(pipeline);
-    audio_pipeline_terminate(pipeline);
-    audio_pipeline_unregister(pipeline, mp3_decoder);
-    audio_pipeline_unregister(pipeline, i2s_stream);
-    audio_pipeline_deinit(pipeline);
-    audio_element_deinit(mp3_decoder);
-    audio_element_deinit(i2s_stream);
-    esp_periph_set_stop_all(set);
-    esp_periph_set_destroy(set);
     
-task_exit:
-    // Delete task from watchdog and mark as finished
-    esp_task_wdt_delete(NULL);
+    // Stop radio active flag first to ensure other functions know we're shutting down
+    s_radio_active = false;
+    
+    // Use #pragma directive to silence the uninitialized variable warning
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+    
+    // Clean up the pipeline if it was initialized
+    if (pipeline != NULL) {
+        audio_pipeline_stop(pipeline);
+        audio_pipeline_wait_for_stop(pipeline);
+        audio_pipeline_terminate(pipeline);
+        
+        if (mp3_decoder != NULL) {
+            audio_pipeline_unregister(pipeline, mp3_decoder);
+        }
+        
+        if (i2s_stream != NULL) {
+            audio_pipeline_unregister(pipeline, i2s_stream);
+        }
+        
+        audio_pipeline_deinit(pipeline);
+    }
+    
+    // Free individual elements
+    if (mp3_decoder != NULL) {
+        audio_element_deinit(mp3_decoder);
+        mp3_decoder = NULL;
+    }
+    
+    if (i2s_stream != NULL) {
+        audio_element_deinit(i2s_stream);
+        i2s_stream = NULL;
+    }
+    
+    // Restore compiler warnings
+    #pragma GCC diagnostic pop
+    
+    // If we made a copy of the URI string, free it
+    if (uri != url && uri != NULL) {
+        free(uri);
+        uri = NULL;
+    }
+    
+    // Force a garbage collection pause to allow memory to be freed
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Final cleanup
     s_radio_task_finished = true;
+    
+    // Remove task from watchdog
+    esp_task_wdt_delete(NULL);
+    SAFE_ESP_LOGI(TAG, "Radio task exiting, free heap: %u bytes", (unsigned int)esp_get_free_heap_size());
     vTaskDelete(NULL);
 }
 
@@ -195,6 +272,14 @@ task_exit:
  */
 esp_err_t mp3_play_file(const char* file_name) {
     SAFE_ESP_LOGI(TAG, "radio_play: called with file: %s", file_name);
+    
+    // Check available memory before proceeding
+    size_t free_heap = esp_get_free_heap_size();
+    if (free_heap < 30000) {  // Need at least 30KB free to start
+        SAFE_ESP_LOGE(TAG, "Insufficient memory to start playback: %u bytes available", (unsigned int)free_heap);
+        return ESP_ERR_NO_MEM;
+    }
+    
     // Initialize radio mutex if not already created
     if (!s_radio_mutex) {
         s_radio_mutex = xSemaphoreCreateMutex();
@@ -204,7 +289,7 @@ esp_err_t mp3_play_file(const char* file_name) {
         }
     }
 
-    // Check if radio is already active (mutex protected)
+    // Check if radio is already active
     if (xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
         return ESP_ERR_TIMEOUT;
@@ -215,47 +300,65 @@ esp_err_t mp3_play_file(const char* file_name) {
         SAFE_ESP_LOGW(TAG, "Radio already playing");
         return ESP_ERR_INVALID_STATE;
     }
+    
+    // Mark radio as active
+    s_radio_active = true;
     xSemaphoreGive(s_radio_mutex);
 
     // Validate file name
     if (!file_name) {
         SAFE_ESP_LOGE(TAG, "Invalid file name");
+        s_radio_active = false;
         return ESP_ERR_INVALID_ARG;
     }
 
+    // Reset task finished flag
+    s_radio_task_finished = false;
+    
     // Ensure SPIFFS is mounted and ready
     if (!is_spiffs_mounted()) {
-        esp_err_t ret = init_spiffs();
-        if (ret != ESP_OK) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS initialization failed: %s", esp_err_to_name(ret));
-            return ret;
+        SAFE_ESP_LOGI(TAG, "SPIFFS not mounted, attempting to mount");
+        esp_err_t ret = mount_spiffs_fs();
+        if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+            SAFE_ESP_LOGI(TAG, "Direct mount failed, trying full initialization");
+            ret = init_spiffs();
+            if (ret != ESP_OK) {
+                SAFE_ESP_LOGE(TAG, "SPIFFS initialization failed: %s", esp_err_to_name(ret));
+                s_radio_active = false;
+                return ret;
+            }
         }
     }
 
-    // Double-check SPIFFS mount status
-    esp_err_t ret = mount_spiffs_fs();
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        SAFE_ESP_LOGE(TAG, "SPIFFS mount failed, cannot play sound");
-        return ret;
-    }
+    SAFE_ESP_LOGI(TAG, "SPIFFS mount status: %s", is_spiffs_mounted() ? "Mounted" : "Not mounted");
 
     if (!is_spiffs_mounted()) {
         SAFE_ESP_LOGE(TAG, "SPIFFS is not mounted, cannot play sound");
+        s_radio_active = false;
         return ESP_ERR_INVALID_STATE;
     }
 
     // Build full path to file
-    char fullpath[64];
-    int path_len = snprintf(fullpath, sizeof(fullpath), "%s/%s", SPIFFS_BASE_PATH, file_name);
-    // Check for path formatting errors
-    if (path_len < 0 || path_len >= sizeof(fullpath)) {
+    char *fullpath = malloc(128); // Allocate memory for the path
+    if (!fullpath) {
+        SAFE_ESP_LOGE(TAG, "Failed to allocate memory for file path");
+        s_radio_active = false;
+        return ESP_ERR_NO_MEM;
+    }
+    
+    int path_len = snprintf(fullpath, 128, "%s/%s", SPIFFS_BASE_PATH, file_name);
+    if (path_len < 0 || path_len >= 128) {
         SAFE_ESP_LOGE(TAG, "Path too long or snprintf error for file: %s", file_name);
+        free(fullpath);
+        s_radio_active = false;
         return ESP_FAIL;
     }
 
-    // Create task to play the MP3 file
-    if (xTaskCreate(play_mp3_task, "radio_task", 8192, (void*)file_name, 5, &s_radio_task_handle) != pdPASS) {
+    // Create task to play the MP3 file with higher stack size
+    if (xTaskCreate(play_mp3_task, "radio_task", 12 * 1024, fullpath, 10, &s_radio_task_handle) != pdPASS) {
         SAFE_ESP_LOGE(TAG, "Failed to create radio task");
+        free(fullpath);
+        s_radio_active = false;
         return ESP_ERR_NO_MEM;
     }
     
@@ -273,6 +376,7 @@ esp_err_t mp3_play_file(const char* file_name) {
  */
 esp_err_t mp3_play_stream(const char *url) {
     SAFE_ESP_LOGI(TAG, "radio_play: called with URL: %s", url);
+    
     // Initialize radio mutex if not already created
     if (!s_radio_mutex) {
         s_radio_mutex = xSemaphoreCreateMutex();
@@ -282,7 +386,7 @@ esp_err_t mp3_play_stream(const char *url) {
         }
     }
 
-    // Check if radio is already active (mutex protected)
+    // Check if radio is already active
     if (xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
         return ESP_ERR_TIMEOUT;
@@ -293,11 +397,24 @@ esp_err_t mp3_play_stream(const char *url) {
         SAFE_ESP_LOGW(TAG, "Radio already playing");
         return ESP_ERR_INVALID_STATE;
     }
+    
+    // Mark radio as active
+    s_radio_active = true;
     xSemaphoreGive(s_radio_mutex);
 
+    // Create a copy of the URL string to ensure it remains valid
+    char *url_copy = strdup(url);
+    if (!url_copy) {
+        SAFE_ESP_LOGE(TAG, "Failed to allocate memory for URL");
+        s_radio_active = false;
+        return ESP_ERR_NO_MEM;
+    }
+
     // Create task to play the MP3 stream
-    if (xTaskCreate(play_mp3_task, "radio_task", 8192, (void*)url, 5, &s_radio_task_handle) != pdPASS) {
+    if (xTaskCreate(play_mp3_task, "radio_task", 8192, url_copy, 5, &s_radio_task_handle) != pdPASS) {
         SAFE_ESP_LOGE(TAG, "Failed to create radio task");
+        free(url_copy);
+        s_radio_active = false;
         return ESP_ERR_NO_MEM;
     }
     
@@ -314,6 +431,7 @@ esp_err_t mp3_play_stream(const char *url) {
  */
 esp_err_t radio_stop(void) {
     SAFE_ESP_LOGI(TAG, "radio_stop: called");
+    
     // Acquire mutex before modifying shared resources
     if (!take_bt_resource_mutex(pdMS_TO_TICKS(100))) {
         if (s_bt_mutex_owner != NULL) {
@@ -332,11 +450,11 @@ esp_err_t radio_stop(void) {
         return ESP_OK;
     }
 
-    // Mark radio as inactive
+    // Mark radio as inactive to signal the task to stop
     s_radio_active = false;
 
-    // Wait for pending ACL transmissions to complete
-    vTaskDelay(pdMS_TO_TICKS(500)); // Adjust delay as needed
+    // Wait for pending operations to complete
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Clear task handle and release mutex
     s_radio_task_handle = NULL;

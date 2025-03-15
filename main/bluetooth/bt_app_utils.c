@@ -87,3 +87,34 @@ bool is_valid_mac(const char *mac_str) {
     
     return true;
 }
+
+/**
+ * @brief Wait for the Bluetooth stack to recover from congestion
+ * 
+ * This function ensures the Bluetooth stack has enough time to process 
+ * pending operations before initiating new ones. It helps prevent
+ * stack assertion failures during intensive operations like pairing.
+ *
+ * @param min_time_ms Minimum time to wait regardless of congestion state
+ */
+void bt_wait_for_stack_ready(uint32_t min_time_ms)
+{
+    bool ready = false;
+    uint32_t wait_time = 0;
+    
+    while (!ready && wait_time < 3000) { // Maximum 3 second wait
+        // Check if there's congestion or if minimum time hasn't passed
+        if (s_l2cap_congestion_flag || wait_time < min_time_ms) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            wait_time += 50;
+        } else {
+            ready = true;
+        }
+    }
+    
+    if (!ready) {
+        SAFE_ESP_LOGW(TAG, "Bluetooth stack still may be congested after waiting %u ms", (unsigned int)wait_time);
+    } else if (wait_time > min_time_ms) {
+        SAFE_ESP_LOGI(TAG, "Bluetooth stack ready after waiting %u ms", (unsigned int)wait_time);
+    }
+}

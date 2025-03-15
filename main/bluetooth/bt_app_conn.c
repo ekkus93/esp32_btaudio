@@ -1,11 +1,6 @@
 /**
  * @file bt_app_conn.c
  * @brief Bluetooth connection management functionality
- * 
- * This file implements connection management for the Bluetooth A2DP source profile,
- * including device connection, disconnection, pairing and reconnection logic.
- * It handles Bluetooth operation timeouts, pairing retries, and provides an interface
- * for other components to control Bluetooth connections.
  */
 #include "bluetooth/bt_app_conn.h"
 #include "bluetooth/bt_app_global.h"
@@ -30,11 +25,6 @@ static TimerHandle_t connection_timer = NULL;
 
 /**
  * @brief Handles connection timeout events
- * 
- * This function is called when a Bluetooth connection attempt times out.
- * It safely aborts the connection attempt and resets the connection state.
- * 
- * @param xTimer Timer handle that triggered this callback
  */
 static void connection_timeout_handler(TimerHandle_t xTimer) {
     SAFE_ESP_LOGW(TAG, "Bluetooth connection attempt timed out");
@@ -45,11 +35,15 @@ static void connection_timeout_handler(TimerHandle_t xTimer) {
         if (s_a2d_state == APP_AV_STATE_CONNECTING) {
             SAFE_ESP_LOGI(TAG, "Connection still in progress - aborting");
             
-            // Reset state
+            // Reset state variables
             s_a2d_state = APP_AV_STATE_UNCONNECTED;
             s_pairing_in_progress = false;
+            s_l2cap_congestion_flag = false;
             
-            // Cancel any pending operation
+            // Cancel any discovery in progress (which might be holding ACL resources)
+            esp_bt_gap_cancel_discovery();
+            
+            // Cancel any pending operations
             if (s_waiting_task != NULL) {
                 TaskHandle_t waiting_task = s_waiting_task;
                 s_operation_complete = true;
@@ -66,12 +60,61 @@ static void connection_timeout_handler(TimerHandle_t xTimer) {
 }
 
 /**
+ * @brief Watchdog task to monitor connection progress
+ *
+ * This task runs during connection attempt and force-resets the Bluetooth 
+ * controller if the stack becomes unresponsive or the connection hangs.
+ * It's a last-resort mechanism to avoid crashes when pairing with devices
+ * that aren't in pairing mode.
+ *
+ * @param pvParameters Task parameters (unused)
+ */
+static void connection_watchdog_task(void *pvParameters) {
+    // Wait for a reasonable time - 8 seconds
+    SAFE_ESP_LOGI(TAG, "Connection watchdog task started");
+    vTaskDelay(pdMS_TO_TICKS(8000));
+    
+    // After timeout, check if we're still in CONNECTING state
+    if (s_a2d_state == APP_AV_STATE_CONNECTING) {
+        SAFE_ESP_LOGW(TAG, "Connection watchdog: Connection attempt timed out!");
+        
+        if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // Reset state and force timeout
+            s_a2d_state = APP_AV_STATE_UNCONNECTED;
+            s_pairing_in_progress = false;
+            s_l2cap_congestion_flag = false;
+            
+            // Abort any ACL connections in progress
+            esp_bt_gap_cancel_discovery();
+            
+            xSemaphoreGive(s_bt_resource_mutex);
+            
+            // Allow stack time to process before more drastic measures
+            vTaskDelay(pdMS_TO_TICKS(200));
+            
+            // Force a controller reset as a last resort
+            SAFE_ESP_LOGW(TAG, "Forcing Bluetooth controller reset");
+            esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+            esp_bt_controller_deinit();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            
+            // Fix the BT_CONTROLLER_INIT_CONFIG_DEFAULT() usage
+            esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+            esp_bt_controller_init(&bt_cfg);
+            esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
+            
+            // Signal UI that we had to force reset
+            SAFE_ESP_LOGW(TAG, "Bluetooth reset complete: device likely not in pairing mode");
+        }
+    } else {
+        SAFE_ESP_LOGI(TAG, "Connection watchdog: Connection state changed, no reset needed");
+    }
+    
+    vTaskDelete(NULL);
+}
+
+/**
  * @brief Pairing retry timer callback function
- * 
- * Attempts to automatically retry pairing if the previous attempt failed.
- * Tracks attempts and will stop retrying after reaching MAX_PAIRING_ATTEMPTS.
- * 
- * @param xTimer Timer handle that triggered this callback
  */
 static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
     if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
@@ -109,13 +152,6 @@ static void pairing_retry_timer_callback(TimerHandle_t xTimer) {
 
 /**
  * @brief Pair with a Bluetooth device 
- * 
- * Establishes a Bluetooth pairing with a device specified by its MAC address.
- * Can use PIN authentication if required, and implements retry mechanisms.
- * 
- * @param mac_str MAC address string in format "XX:XX:XX:XX:XX:XX"
- * @param require_pin Whether PIN code is required for pairing
- * @return ESP_OK if pairing initiated successfully, error code otherwise
  */
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     // Validate and parse MAC address
@@ -131,10 +167,10 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
         connection_timer = NULL;
     }
     
-    // Create a connection timeout timer
+    // Create a connection timeout timer with shorter timeout for quicker failure detection
     connection_timer = xTimerCreate(
         "conn_timeout",
-        pdMS_TO_TICKS(30000), // 30 seconds timeout
+        pdMS_TO_TICKS(10000), // 10 seconds timeout (reduced from 30 seconds)
         pdFALSE,  // One-shot timer
         NULL,
         connection_timeout_handler
@@ -164,8 +200,9 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     s_pairing_attempt++;
     SAFE_ESP_LOGI(TAG, "Manual pairing attempt %d for this device", s_pairing_attempt);
     
-    // Always allow manual pairing attempts from user, regardless of counter
+    // Reset pairing state variables
     s_pairing_in_progress = true;
+    s_l2cap_congestion_flag = false; // Reset any congestion flags
     
     // Cancel any ongoing discovery as it can interfere with pairing
     esp_bt_gap_cancel_discovery();
@@ -199,42 +236,69 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     } else {
         SAFE_ESP_LOGI(TAG, "Radio task confirmed finished");
     }
+
+    // IMPORTANT: Extended delay before setting up pairing parameters
+    vTaskDelay(pdMS_TO_TICKS(500)); // Longer delay 
     
-    // Configure PIN type and code based on device requirements
+    // Make sure Bluetooth is in a clean state before pairing
+    if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+        // Clear any pending operations
+        s_l2cap_congestion_flag = false;
+        // Reset operation timing
+        s_last_operation_time = esp_timer_get_time() / 1000;
+        
+        // NEW: Explicit call to wait for stack to be ready
+        xSemaphoreGive(s_bt_resource_mutex);
+        bt_wait_for_stack_ready(500); // Wait at least 500ms for stack to be ready
+        
+        if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+            SAFE_ESP_LOGE(TAG, "Failed to take semaphore after stack wait");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+
+    // For improved robustness against device-not-in-pairing-mode situations
+    // First reset any existing security associations with this device
+    esp_bt_gap_remove_bond_device(pending_pair_addr);
+    vTaskDelay(pdMS_TO_TICKS(200)); // Give time for bond removal to process
+
+    // Different approach for earbud pairing - simplified security settings
+    esp_bt_pin_code_t pin_code = {0};
     if (require_pin) {
         // Fixed PIN for devices that need a PIN
         SAFE_ESP_LOGI(TAG, "Setting fixed PIN '0000'");
-        esp_bt_pin_code_t pin_code = {'0', '0', '0', '0'};
+        pin_code[0] = '0'; pin_code[1] = '0'; pin_code[2] = '0'; pin_code[3] = '0';
         esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_FIXED, 4, pin_code);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
             xTimerDelete(connection_timer, 0);
+            xSemaphoreGive(s_bt_resource_mutex);
             return ret;
         }
     } else {
         // For Just Works pairing, we set a variable PIN that won't actually be used
         SAFE_ESP_LOGI(TAG, "Setting up for 'Just Works' pairing");
-        esp_bt_pin_code_t pin_code = {0};
         esp_err_t ret = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, 0, pin_code);
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to set PIN: %s", esp_err_to_name(ret));
             xTimerDelete(connection_timer, 0);
+            xSemaphoreGive(s_bt_resource_mutex);
             return ret;
         }
     }
     
-    // Set IO capability based on whether PIN is required
-    esp_bt_io_cap_t io_cap = require_pin ? ESP_BT_IO_CAP_OUT : ESP_BT_IO_CAP_NONE;
+    // Simplified security approach for earbuds - use IO_CAP_NONE for best compatibility
+    esp_bt_io_cap_t io_cap = ESP_BT_IO_CAP_NONE;
     SAFE_ESP_LOGI(TAG, "Setting IO capability: %d", io_cap);
     esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &io_cap, sizeof(uint8_t));
     
-    // Configure authentication requirements
-    uint8_t auth_req = ESP_BT_AUTH_REQ_BONDING | ESP_BT_AUTH_REQ_MITM; // Bonding and MITM protection
+    // For earbuds, we only need bonding without MITM protection
+    uint8_t auth_req = ESP_BT_AUTH_REQ_BONDING;
     
-    // Remove MITM protection if not the first attempt for improved compatibility
+    // If this is a retry, try with a different auth requirement
     if (s_pairing_attempt > 1) {
-        auth_req &= ~ESP_BT_AUTH_REQ_MITM;
-        SAFE_ESP_LOGI(TAG, "Pairing attempt %d: Removing MITM protection", s_pairing_attempt);
+        SAFE_ESP_LOGI(TAG, "Retry attempt - using just bonding without MITM");
+        auth_req = ESP_BT_AUTH_REQ_BONDING;
     }
     
     SAFE_ESP_LOGI(TAG, "Setting authentication requirements: 0x%x", auth_req);
@@ -244,17 +308,20 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     SAFE_ESP_LOGI(TAG, "Setting device as discoverable");
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
     
-    // Wait for security settings to take effect
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // IMPORTANT: Another critical delay before connecting to fix ACL queue issues
+    xSemaphoreGive(s_bt_resource_mutex);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Take the mutex again for the actual connection attempt
+    if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        SAFE_ESP_LOGE(TAG, "Failed to take semaphore for connection");
+        xTimerDelete(connection_timer, 0);
+        return ESP_ERR_TIMEOUT;
+    }
     
     // Initiate the connection
     SAFE_ESP_LOGI(TAG, "Initiating A2DP source connection...");
     s_a2d_state = APP_AV_STATE_CONNECTING;
-    
-    // Check heap integrity before L2CAP call
-    if (!heap_caps_check_integrity_all(true)) {
-        SAFE_ESP_LOGE(TAG, "Heap integrity check failed before connect (L2CAP)");
-    }
     
     // Start the connection timeout timer
     if (xTimerStart(connection_timer, 0) != pdPASS) {
@@ -264,10 +331,27 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
         // Continue anyway
     }
     
-    // Initiate the A2DP connection
-    esp_err_t ret = esp_a2d_source_connect(pending_pair_addr);
+    // NEW: Prepare a local copy of address since the function may use it after we release mutex
+    esp_bd_addr_t local_addr;
+    memcpy(local_addr, pending_pair_addr, ESP_BD_ADDR_LEN);
+    
+    xSemaphoreGive(s_bt_resource_mutex);
+    
+    // Allow a little time for parameters to take effect
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Initiate the A2DP connection - without holding the mutex during the actual call
+    // as the callback might need to take the mutex
+    esp_err_t ret = esp_a2d_source_connect(local_addr);
     if (ret != ESP_OK) {
         SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
+        
+        if (xSemaphoreTake(s_bt_resource_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            s_a2d_state = APP_AV_STATE_UNCONNECTED;
+            s_pairing_in_progress = false;
+            xSemaphoreGive(s_bt_resource_mutex);
+        }
+        
         xTimerStop(connection_timer, 0);
         xTimerDelete(connection_timer, 0);
         connection_timer = NULL;
@@ -276,9 +360,11 @@ esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin) {
     
     SAFE_ESP_LOGI(TAG, "A2DP connection initiated successfully");
     
-    // Check heap integrity after L2CAP call to detect memory issues
-    if (!heap_caps_check_integrity_all(true)) {
-        SAFE_ESP_LOGE(TAG, "Heap integrity check failed after connect (L2CAP)");
+    // Now set up a watchdog to reset Bluetooth if no response from device
+    TaskHandle_t connection_watchdog_handle = NULL;
+    BaseType_t res = xTaskCreate(connection_watchdog_task, "conn_watchdog", 2048, NULL, 5, &connection_watchdog_handle);
+    if (res != pdPASS) {
+        SAFE_ESP_LOGE(TAG, "Failed to create connection watchdog task");
     }
     
     SAFE_ESP_LOGI(TAG, "Connection request sent, pairing should follow");
@@ -298,12 +384,12 @@ esp_err_t bluetooth_disconnect_device(void) {
         SAFE_ESP_LOGW(TAG, "No device is currently connected (state=%d)", s_a2d_state);
         return ESP_ERR_INVALID_STATE;
     }
-
+    
     // Take and hold the mutex for the ENTIRE operation
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) != pdTRUE) {
         return ESP_FAIL;
     }
-
+    
     SAFE_ESP_LOGI(TAG, "Attempting to disconnect from device...");
     
     // First stop any streaming to ensure clean disconnection
@@ -433,12 +519,11 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
         SAFE_ESP_LOGE(TAG, "Invalid MAC address format");
         return ESP_ERR_INVALID_ARG;
     }
-
+    
     // No need to parse again, is_valid_mac already stored the result in pending_pair_addr
     SAFE_ESP_LOGD(TAG, "Connecting to MAC=%02x:%02x:%02x:%02x:%02x:%02x",
              pending_pair_addr[0], pending_pair_addr[1], pending_pair_addr[2],
              pending_pair_addr[3], pending_pair_addr[4], pending_pair_addr[5]);
-
     s_a2d_state = APP_AV_STATE_CONNECTING;
     if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
         // Check memory usage before L2CAP call
@@ -451,7 +536,7 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
         // Check memory usage after L2CAP call
         size_t free_heap_after = esp_get_free_heap_size();
         SAFE_ESP_LOGI(TAG, "Free heap after connect: %u bytes", free_heap_after);
-                
+        
         if (ret != ESP_OK) {
             SAFE_ESP_LOGE(TAG, "Failed to initiate connection: %s", esp_err_to_name(ret));
             xSemaphoreGive(s_bt_resource_mutex);
@@ -459,7 +544,7 @@ esp_err_t bluetooth_connect_device(const char *mac_str) {
         }
         xSemaphoreGive(s_bt_resource_mutex);
     }
-
+    
     // Set default volume after connecting
     esp_err_t ret = bluetooth_set_volume(DEFAULT_VOLUME);
     if (ret != ESP_OK) {
@@ -502,7 +587,6 @@ void bt_app_conn_callback(uint16_t event, void *param) {
                     xTaskNotifyGive(s_waiting_task);
                 }
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
-                
             } else if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
                 // When connected, become non-discoverable to prevent other devices from finding us
                 esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
@@ -517,7 +601,7 @@ void bt_app_conn_callback(uint16_t event, void *param) {
         case ESP_A2D_AUDIO_STATE_EVT:
             // Handle A2DP audio streaming state changes
             SAFE_ESP_LOGI(TAG, "A2DP audio state: %s", s_a2d_audio_state_str[a2d->audio_stat.state]);
-            s_audio_state = a2d->audio_stat.state; 
+            s_audio_state = a2d->audio_stat.state;
             
             // Update media state based on audio state
             if (s_audio_state == ESP_A2D_AUDIO_STATE_STARTED) {

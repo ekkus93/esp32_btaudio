@@ -132,6 +132,12 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
                 // Reset connection state if we were still connecting
                 if (s_a2d_state == APP_AV_STATE_CONNECTING) {
                     s_a2d_state = APP_AV_STATE_UNCONNECTED;
+                    
+                    // Add a small delay to let the stack recover
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                    
+                    // Clear the L2CAP congestion flag
+                    s_l2cap_congestion_flag = false;
                 }
             }
             break;
@@ -159,6 +165,36 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
             esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
             break;
 
+        // Handle ACL events more explicitly for debugging earbuds issues
+        case ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT:
+            {
+                uint8_t *bda = param->acl_conn_cmpl_stat.bda;
+                SAFE_ESP_LOGI(TAG, "ACL connection complete: status=%d, [%02x:%02x:%02x:%02x:%02x:%02x]",
+                     param->acl_conn_cmpl_stat.stat, bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+                
+                // Give the stack some time to process ACL queue
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
+            break;
+            
+        case ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
+            {
+                uint8_t *bda = param->acl_disconn_cmpl_stat.bda;
+                SAFE_ESP_LOGI(TAG, "ACL disconnection complete: reason=%d, [%02x:%02x:%02x:%02x:%02x:%02x]",
+                     param->acl_disconn_cmpl_stat.reason, bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+                
+                // Clear any congestion flags when ACL is disconnected
+                s_l2cap_congestion_flag = false;
+            }
+            break;
+            
+        case ESP_BT_GAP_MODE_CHG_EVT:
+            SAFE_ESP_LOGI(TAG, "Mode change event: mode=%d, [%02x:%02x:%02x:%02x:%02x:%02x]",
+                 param->mode_chg.mode, param->mode_chg.bda[0], param->mode_chg.bda[1],
+                 param->mode_chg.bda[2], param->mode_chg.bda[3], param->mode_chg.bda[4],
+                 param->mode_chg.bda[5]);
+            break;
+
         // Log but don't handle in detail: ACL connection events and other common events
         case ESP_BT_GAP_KEY_NOTIF_EVT:   // SSP passkey notification
         case ESP_BT_GAP_KEY_REQ_EVT:     // SSP passkey request
@@ -166,11 +202,8 @@ void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param
         case ESP_BT_GAP_CONFIG_EIR_DATA_EVT:  // EIR config result
         case ESP_BT_GAP_SET_AFH_CHANNELS_EVT: // AFH channels result
         case ESP_BT_GAP_READ_REMOTE_NAME_EVT: // Remote name result
-        case ESP_BT_GAP_MODE_CHG_EVT:         // Mode change
         case ESP_BT_GAP_REMOVE_BOND_DEV_COMPLETE_EVT: // Unbonding result
         case ESP_BT_GAP_QOS_CMPL_EVT:         // QoS complete
-        case ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT:    // ACL connect complete
-        case ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT: // ACL disconnect complete
             SAFE_ESP_LOGI(TAG, "ACL event received, ignoring pairing fallback.");
             break;
 

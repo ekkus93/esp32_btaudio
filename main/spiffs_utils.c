@@ -71,23 +71,38 @@ esp_err_t init_spiffs(void) {
  * @return ESP_OK on success, or an appropriate error code
  */
 esp_err_t mount_spiffs_fs(void) {
+    if (g_spiffs_mounted) {
+        SAFE_ESP_LOGI(TAG, "SPIFFS is already mounted");
+        return ESP_OK;
+    }
+    
     esp_vfs_spiffs_conf_t conf = {
         .base_path = SPIFFS_BASE_PATH,
-        .partition_label = "storage",
+        .partition_label = NULL,
         .max_files = 5,
-        .format_if_mount_failed = false
+        .format_if_mount_failed = true  // Format if mounting fails
     };
 
+    // Try to mount
     esp_err_t ret = esp_vfs_spiffs_register(&conf);
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount filesystem");
+            SAFE_ESP_LOGE(TAG, "Failed to mount or format filesystem");
         } else if (ret == ESP_ERR_NOT_FOUND) {
-            ESP_LOGE(TAG, "Failed to find SPIFFS partition");
+            SAFE_ESP_LOGE(TAG, "Failed to find SPIFFS partition");
         } else {
-            ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
+            SAFE_ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
         }
         return ret;
+    }
+
+    size_t total = 0, used = 0;
+    ret = esp_spiffs_info(NULL, &total, &used);
+    if (ret != ESP_OK) {
+        SAFE_ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret));
+        // Don't unmount - we did mount successfully even if we can't get partition info
+    } else {
+        SAFE_ESP_LOGI(TAG, "SPIFFS mounted successfully. Partition size: total: %d, used: %d", total, used);
     }
 
     g_spiffs_mounted = true;
