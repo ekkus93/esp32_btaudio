@@ -22,9 +22,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-// Remove the redundant definition of BT_APP_STACK_UP_EVT
-// #define BT_APP_STACK_UP_EVT 0x0000    // << New definition
-
 extern SemaphoreHandle_t s_bt_resource_mutex;  // Declare as extern
 
 // Reduce L2CAP buffer size (adjust as needed)
@@ -86,8 +83,6 @@ extern uint32_t s_last_operation_time;
 // Add flag to track if the volume was initialized this boot cycle
 extern bool s_volume_initialized;
 
-extern SemaphoreHandle_t s_bt_resource_mutex;
-
 // Create a new timer task to periodically check for memory issues
 #define MEMORY_CHECK_INTERVAL_MS 5000
 
@@ -107,9 +102,6 @@ extern bool s_pairing_in_progress;
 
 // Make sure this function is declared here
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
-
-// Add sine_table declaration
-extern int16_t sine_table[TABLE_SIZE];
 
 // Add these declarations
 // String descriptions for A2DP connection states
@@ -133,5 +125,10 @@ extern int s_beep_index;
 
 // Add this line
 extern bool s_bt_enable;
+
+extern discovered_device_t discovered_devices[MAX_DEVICES];
+
+extern TimerHandle_t s_pairing_retry_timer;
+#define PAIRING_RETRY_INTERVAL_MS 3000
 
 #endif // BT_APP_GLOBAL_H

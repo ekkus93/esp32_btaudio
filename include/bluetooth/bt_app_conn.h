@@ -5,9 +5,19 @@
 #include "esp_err.h"
 #include <stdbool.h>  
 
-void gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
-esp_err_t bluetooth_start_discovery(void);
-esp_err_t bluetooth_safe_start_discovery(void);
+// Define missing constants if not defined
+#ifndef ESP_BT_AUTH_REQ_BONDING
+#define ESP_BT_AUTH_REQ_BONDING 0x01
+#endif
+
+#ifndef ESP_BT_AUTH_REQ_MITM
+#define ESP_BT_AUTH_REQ_MITM 0x04
+#endif
+
+#ifndef ESP_BT_SP_AUTHENTICATION_REQUIREMENTS
+#define ESP_BT_SP_AUTHENTICATION_REQUIREMENTS 0x0D
+#endif
+
 esp_err_t bluetooth_pair_device(const char *mac_str, bool require_pin);
 
 // Function to disconnect from a paired device
@@ -18,14 +28,5 @@ esp_err_t bluetooth_unpair_device(void);
 
 // Function to connect to a paired device
 esp_err_t bluetooth_connect_device(const char *mac_str);
-
-// Function to restart the Bluetooth stack
-esp_err_t restart_bluetooth_stack(void);
-
-esp_err_t bluetooth_set_device_name(const char *name);
-esp_err_t bluetooth_get_device_name(char *name, size_t max_len);
-
-// Function to start memory monitor
-void bt_app_conn_start_memory_monitor(void);
 
 #endif // BT_APP_CONN_H

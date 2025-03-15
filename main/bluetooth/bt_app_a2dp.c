@@ -1,3 +1,17 @@
+/**
+ * @file bt_app_a2dp.c
+ * @brief Implementation of Bluetooth A2DP (Advanced Audio Distribution Profile)
+ * 
+ * This module handles Bluetooth audio streaming functionality including:
+ * - A2DP connection management
+ * - Media control operations
+ * - Audio state tracking
+ * - Generation of notification beeps
+ * - Volume control integration
+ * 
+ * It provides callbacks for A2DP events and implements audio data source
+ * functionality for streaming audio to connected devices.
+ */
 #include "bluetooth/bt_app_a2dp.h"      
 #include "bluetooth/bt_app_global.h"
 #include "bluetooth/bt_app_audio.h"
@@ -7,8 +21,15 @@
 
 #define TAG "BT_APP_A2DP"
 
-// Define the A2DP callback function
-// New task to handle beep processing on the other CPU with logging.
+/**
+ * @brief Task that generates a beep notification sound
+ * 
+ * Creates a sine wave beep and sends it through the Bluetooth audio
+ * stream. This task runs on a separate core to prevent audio glitches
+ * and ensures the audio streaming is properly started/stopped.
+ *
+ * @param params Unused parameter required by FreeRTOS task signature
+ */
 static void beep_task(void *params) {
     SAFE_ESP_LOGI(TAG, "beep_task started on core %d", xPortGetCoreID());
     
@@ -43,11 +64,25 @@ static void beep_task(void *params) {
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Main A2DP callback function to handle Bluetooth audio events
+ * 
+ * Processes A2DP events including:
+ * - Connection state changes (connect/disconnect)
+ * - Media control acknowledgments
+ * - Audio playback state changes
+ * 
+ * It manages state transitions and handles recovery from failures.
+ *
+ * @param event The A2DP event type
+ * @param param Event parameters containing event-specific data
+ */
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     SAFE_ESP_LOGI(TAG, "A2DP callback event: %d", event);
     char addr_str[18];  // common temporary variable
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
+            // Format device address for logging
             sprintf(addr_str, "%02x:%02x:%02x:%02x:%02x:%02x",
                     param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
                     param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
@@ -58,7 +93,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             // Add logging here
             SAFE_ESP_LOGI(TAG, "A2DP connection state changed to: %d", param->conn_stat.state);
             
-            // Add error handling for failed connection attempts
+            // Handle disconnection event
             if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 // Check if this was a connection attempt that failed
                 if (s_a2d_state == APP_AV_STATE_CONNECTING) {
@@ -67,7 +102,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 
                 SAFE_ESP_LOGI(TAG, "Disconnected from device: %s", addr_str);
                 
-                // Safely change state and handle cleanup
+                // Update connection state and make discoverable again
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
                 esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
                 
@@ -80,7 +115,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 SAFE_ESP_LOGI(TAG, "A2DP disconnected");
                 s_a2d_state = APP_AV_STATE_UNCONNECTED;
                 
-                // Add automatic retry if pairing was in progress but failed
+                // Handle auto-retry logic for failed pairing attempts
                 if (s_pairing_in_progress && s_pairing_attempt < MAX_PAIRING_ATTEMPTS) {
                     s_pairing_in_progress = false;
                     SAFE_ESP_LOGI(TAG, "Pairing failed, will retry in 3 seconds...");
@@ -114,9 +149,8 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                     xTaskNotifyGive(s_waiting_task);
                 }
 
-                // In the A2DP callback when connection fails
+                // Display guidance if pairing repeatedly fails
                 if (s_pairing_attempt >= MAX_PAIRING_ATTEMPTS) {
-                    // Remove device-specific check and message
                     SAFE_ESP_LOGE(TAG, "------------------------------------------------------");
                     SAFE_ESP_LOGE(TAG, "Pairing failed after %d attempts.", MAX_PAIRING_ATTEMPTS);
                     SAFE_ESP_LOGE(TAG, "Please ensure the audio device is in pairing mode:");
@@ -126,17 +160,20 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                     SAFE_ESP_LOGE(TAG, "4. Try resetting the device if needed");
                     SAFE_ESP_LOGE(TAG, "------------------------------------------------------");
                 }
-            } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+            } 
+            // Handle connection established event
+            else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
                 SAFE_ESP_LOGI(TAG, "A2DP connected");
                 s_a2d_state = APP_AV_STATE_CONNECTED;
                 s_media_state = APP_AV_MEDIA_STATE_IDLE;
                 
+                // Play a notification beep when connected
                 xTaskCreatePinnedToCore(beep_task, "beep_task", 2048, NULL, 5, NULL, 1);
                 
                 // Reset congestion flag when connected
                 s_l2cap_congestion_flag = false;
                 
-                // Check if we need to initialize the volume after connection
+                // Initialize volume settings
                 if (!s_volume_initialized) {
                     // Get last saved volume from NVS, or use default
                     nvs_handle_t nvs_handle;
@@ -165,15 +202,12 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                 // Play the notification beep when connected
                 xTaskCreatePinnedToCore(beep_task, "beep_task", 4096, NULL, 3, NULL, 1);
                 
-                // Don't automatically start media streaming
-                // Remove or comment out automatic start code:
-                // esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
-                
                 SAFE_ESP_LOGI(TAG, "Connected, beep triggered");
             }
             break;
             
         case ESP_A2D_MEDIA_CTRL_ACK_EVT:
+            // Handle acknowledgments for media control commands
             SAFE_ESP_LOGI(TAG, "A2DP media control ACK: cmd=%d, status=%d", param->media_ctrl_stat.cmd, param->media_ctrl_stat.status);
             if (param->media_ctrl_stat.cmd == ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY) {
                 if (param->media_ctrl_stat.status == ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
@@ -183,7 +217,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
                     SAFE_ESP_LOGW(TAG, "Media source not ready, ACK status: %d", param->media_ctrl_stat.status);
                 }
             } else if (param->media_ctrl_stat.status != ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
-                // If we get any error in media control, consider it a congestion
+                // Handle congestion or errors in media control
                 s_l2cap_congestion_flag = true;
                 s_last_congestion_time = (uint32_t)(esp_timer_get_time() / 1000);
                 SAFE_ESP_LOGW(TAG, "A2DP media control failed, possible congestion. Status: %d", 
@@ -195,6 +229,7 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             break;
             
         case ESP_A2D_AUDIO_STATE_EVT:
+            // Track audio streaming state changes
             SAFE_ESP_LOGI(TAG, "A2D audio state: %d", param->audio_stat.state);
             if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
                 s_media_state = APP_AV_MEDIA_STATE_STARTED;
@@ -219,7 +254,17 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     }
 }
 
-// Replace with a simpler version that's closer to the original:
+/**
+ * @brief Callback function for providing audio data
+ * 
+ * This function is called by the A2DP stack when it needs audio data to send.
+ * It either generates a beep sound (sine wave) if a beep is in progress,
+ * or provides silence (zeros).
+ *
+ * @param data Pointer where the audio data should be written
+ * @param len Length of audio data requested in bytes
+ * @return Number of bytes written
+ */
 int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
     static bool first_call = true;
     
@@ -239,13 +284,14 @@ int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
         }
     }
     
-    // Simple approach - if beep is active, generate sine wave
+    // Generate beep audio if active, otherwise provide silence
     if (s_beep_in_progress) {
         static int debug_counter = 0;
         if (++debug_counter % 30 == 0) {
             SAFE_ESP_LOGI(TAG, "Generating beep data: %" PRId32 " bytes, index: %d", len, s_beep_index);
         }
         
+        // Convert byte buffer to 16-bit stereo samples
         int16_t *samples = (int16_t*)data;
         int num_samples = len / 4; // Stereo, 16-bit samples
         
@@ -278,7 +324,14 @@ int32_t a2dp_source_data_cb(uint8_t *data, int32_t len) {
     return len;
 }
 
-// Changed from static to non-static since it's now exposed in the header
+/**
+ * @brief Initialize A2DP source functionality
+ * 
+ * Sets up the A2DP source profile for streaming audio to connected devices.
+ * Transitions the A2DP state from IDLE to DISCOVERING.
+ *
+ * @return ESP_OK if initialization was successful, ESP_ERR_INVALID_STATE otherwise
+ */
 esp_err_t init_a2dp(void) {
     SAFE_ESP_LOGI(TAG, "###Initializing A2DP source - 1");
     
@@ -294,7 +347,18 @@ esp_err_t init_a2dp(void) {
     }
 }
 
-// AVRCP controller callback
+/**
+ * @brief AVRCP controller callback for handling remote control events
+ * 
+ * Processes AVRCP (Audio/Video Remote Control Profile) events including:
+ * - Connection state changes
+ * - Remote device features
+ * - Volume control responses
+ * - Metadata updates
+ *
+ * @param event The AVRCP controller event type
+ * @param param Event parameters containing event-specific data
+ */
 void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param) {
     SAFE_ESP_LOGD(TAG, "AVRC controller event: %d", event);
     switch (event) {
@@ -333,6 +397,13 @@ void avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *para
     }
 }
 
+/**
+ * @brief Start audio streaming over Bluetooth
+ * 
+ * Initiates audio streaming if a device is connected and audio
+ * is not already playing. This function is called externally when
+ * audio playback needs to be started.
+ */
 void start_audio_stream(void) {
     if (s_a2d_state == APP_AV_STATE_CONNECTED && 
         s_media_state != APP_AV_MEDIA_STATE_STARTED) {

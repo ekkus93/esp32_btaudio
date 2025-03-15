@@ -549,11 +549,6 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/main/cmake_install.cmake")
-endif()
-
-if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  # Include the install script for the subdirectory.
   include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/audio_sal/cmake_install.cmake")
 endif()
 
@@ -570,5 +565,70 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
   include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/audio_pipeline/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_dispatcher/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/wifi_service/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_actions/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/espressif__esp-dsp/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp-sr/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/tone_partition/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/display_service/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/audio_hal/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/esp_peripherals/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/audio_board/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/audio_stream/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/bluetooth_service/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/esp-idf/main/cmake_install.cmake")
 endif()
 

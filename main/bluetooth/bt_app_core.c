@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "bluetooth/bt_app_core.h"
+#include "custom_log.h"
 
 static const char *TAG = "BT_APP_CORE";
 

@@ -1,8 +1,8 @@
 #include "bluetooth/bt_app_init.h"
 #include "bluetooth/bt_app_global.h"
 #include "bluetooth/bt_app_av.h"
-#include "bluetooth/bt_app_conn.h"
 #include "bluetooth/bt_app_a2dp.h"
+#include "bluetooth/bt_app_gap.h"
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -10,7 +10,8 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "esp_gap_bt_api.h"
-#include "bluetooth/bt_app_global.h" // Keep this line
+#include "bluetooth/bt_app_global.h" 
+#include "custom_log.h"
 
 static const char *TAG = "BT_APP_INIT";
 
@@ -193,4 +194,54 @@ void dump_bt_controller_status(void) {
     } else {
         ESP_LOGW(TAG, "Could not get BT MAC address");
     }
+}
+
+esp_err_t restart_bluetooth_stack(void) {
+    esp_err_t ret;
+
+    if (xSemaphoreTake(s_bt_resource_mutex, portMAX_DELAY) == pdTRUE) {
+        // Disable Bluedroid
+        ret = esp_bluedroid_disable();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to disable Bluedroid: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+
+        // Deinitialize Bluedroid
+        ret = esp_bluedroid_deinit();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to deinitialize Bluedroid: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+
+        // Disable Bluetooth controller
+        ret = esp_bt_controller_disable();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to disable Bluetooth controller: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+
+        // Deinitialize Bluetooth controller
+        ret = esp_bt_controller_deinit();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to deinitialize Bluetooth controller: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+
+        // Reinitialize and enable Bluetooth stack
+        ret = bluetooth_init();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "Failed to reinitialize Bluetooth stack: %s", esp_err_to_name(ret));
+            xSemaphoreGive(s_bt_resource_mutex);
+            return ret;
+        }
+        xSemaphoreGive(s_bt_resource_mutex);
+    }
+
+    SAFE_ESP_LOGI(TAG, "Bluetooth stack restarted successfully");
+    return ESP_OK;
 }

@@ -14,11 +14,14 @@
 #include "bluetooth/bt_app_core.h"
 #include "bluetooth/bt_app_av.h"
 #include "bluetooth/bt_app_audio.h"
+#include "bluetooth/bt_app_monitor.h"
 #include "bluetooth/bt_app_conn.h"
 #include "bluetooth/bt_app_global.h"  // Add this include for global variables
 #include "bluetooth/bt_app_init.h"  
+#include "bluetooth/bt_app_name.h"
+#include "bluetooth/bt_app_discovery.h"
 #include "wifi.h"
-#include "ping.h"
+#include "ping_utils.h"
 #include "spiffs_utils.h"
 #include "custom_log.h"
 #include "radio.h"
@@ -33,11 +36,18 @@
 void print_help_message(void);
 void print_pairing_guide(void);
 void handle_command(char *cmd);
-void play_snd(const char *filename);
 bool take_bt_resource_mutex(TickType_t timeout);
 void give_bt_resource_mutex(void);
 
-// Add this near the top of the file, before app_main()
+// Global mutex to protect Bluetooth resources from concurrent access
+SemaphoreHandle_t s_bt_resource_mutex = NULL;
+
+/**
+ * @brief Configures the logging levels for different modules
+ * 
+ * Sets appropriate ESP-IDF logging levels for various components to control
+ * the verbosity of log output. This allows for filtering logs by importance.
+ */
 static void configure_log_levels(void) {
     // Configure logging levels centrally in one place
     esp_log_level_set("BT_APP_CONN", ESP_LOG_INFO);  
@@ -50,6 +60,13 @@ static void configure_log_levels(void) {
     esp_log_level_set("A2DP", ESP_LOG_INFO);
 }
 
+/**
+ * @brief Displays available commands and their descriptions
+ * 
+ * Prints a formatted help message to the console showing all supported
+ * commands with brief descriptions of their functionality and syntax.
+ * This function is called when the user enters the "help" command.
+ */
 void print_help_message(void) {
     printf("Available commands:\n");
     printf("  help               : Display this help message\n");
@@ -246,7 +263,7 @@ void handle_command(char *cmd) {
                 return;
             }
             
-            if (xTaskCreate(radio_task, "radio_task", 16384, (void*)url_copy, 5, NULL) != pdPASS) {
+            if (xTaskCreate(play_mp3_task, "radio_task", 16384, (void*)url_copy, 5, NULL) != pdPASS) {
                 SAFE_ESP_LOGE(TAG, "Failed to create radio task");
                 free(url_copy);
             }
@@ -254,7 +271,7 @@ void handle_command(char *cmd) {
             SAFE_ESP_LOGE(TAG, "No URL provided for play_radio command");
         }
     } else if (strcmp(cmd, "play_snd") == 0) {
-        play_snd("/spiffs/sound.mp3");
+        mp3_play_file("sound.mp3");
     } else if (strcmp(cmd, "ls_spiffs") == 0) {
         SAFE_ESP_LOGI(TAG, "Listing files on SPIFFS partition...");
         list_spiffs_files();
@@ -442,80 +459,3 @@ void give_bt_resource_mutex(void) {
     }
 }
 
-void play_snd(const char *filename) {
-    SAFE_ESP_LOGI(TAG, "Playing %s from SPIFFS", filename);
-    
-    // Check if SPIFFS is already mounted
-    if (!is_spiffs_mounted()) {
-        esp_err_t ret = init_spiffs();
-        if (ret != ESP_OK) {
-            SAFE_ESP_LOGE(TAG, "SPIFFS initialization failed: %s", esp_err_to_name(ret));
-            return;
-        }
-    }
-
-    // Ensure SPIFFS is mounted
-    esp_err_t ret = mount_spiffs_fs();
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        SAFE_ESP_LOGE(TAG, "SPIFFS mount failed, cannot play sound");
-        return;
-    }
-
-    if (!is_spiffs_mounted()) {
-        SAFE_ESP_LOGE(TAG, "SPIFFS is not mounted, cannot play sound");
-        return;
-    }
-
-    size_t total = 0, used = 0;
-    ret = esp_spiffs_info("storage", &total, &used);
-    if (ret != ESP_OK) {
-        SAFE_ESP_LOGE(TAG, "Failed to get SPIFFS partition info (%s)", esp_err_to_name(ret));
-        return;
-    }
-    SAFE_ESP_LOGI(TAG, "Partition total: %d, used: %d", total, used);
-
-    if (total == 0 || (total > 0 && used == 0) || (used > total)) {
-        SAFE_ESP_LOGE(TAG, "SPIFFS partition issue detected");
-        return;
-    }
-
-    struct stat st;
-    if (stat(filename, &st) == 0) {
-        SAFE_ESP_LOGI(TAG, "File exists, size: %ld bytes", st.st_size);
-
-        FILE *fp = fopen(filename, "rb");
-        if (fp) {
-            uint8_t buf[16];
-            size_t bytes = fread(buf, 1, sizeof(buf), fp);
-            if (bytes > 0) {
-                SAFE_ESP_LOGI(TAG, "fread success: %d bytes", (int)bytes);
-                for (int i = 0; i < bytes; i++) {
-                    printf("%02x ", buf[i]);
-                }
-                printf("\n");
-                rewind(fp);
-                radio_task_params_t *params = malloc(sizeof(radio_task_params_t));  // Dynamically allocate memory for params
-                if (params) {
-                    params->fp = fp;
-                    params->size = st.st_size;
-                    if (xTaskCreate(radio_task, "radio_task", 16384, params, 5, NULL) != pdPASS) {
-                        SAFE_ESP_LOGE(TAG, "Failed to create radio task");
-                        fclose(fp);
-                        free(params);
-                    }
-                    return;
-                } else {
-                    SAFE_ESP_LOGE(TAG, "Failed to allocate memory for radio_task_params_t");
-                    fclose(fp);
-                }
-            } else {
-                SAFE_ESP_LOGE(TAG, "fread failed: %d", errno);
-            }
-            fclose(fp);
-        } else {
-            SAFE_ESP_LOGE(TAG, "fopen failed: %d", errno);
-        }
-    } else {
-        SAFE_ESP_LOGI(TAG, "File not found or read error, attempting to read with open/read");
-    }
-}

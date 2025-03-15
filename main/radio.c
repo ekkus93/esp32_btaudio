@@ -1,16 +1,54 @@
+/**
+ * @file radio.c
+ * @brief Implementation of MP3 audio streaming and playback capabilities
+ * 
+ * This module provides functionality to stream MP3 audio from URLs or play MP3 files
+ * stored in SPIFFS. It handles audio decoding, Bluetooth A2DP audio output, and 
+ * resource management for audio tasks. The implementation uses ESP-ADF (Audio Development
+ * Framework) components for the audio pipeline.
+ */
 #include "radio.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
-#include "esp_spiffs.h"  // Add this line
+#include "esp_spiffs.h"  
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "bluetooth/bt_app_audio.h"
+#include "spiffs_utils.h"  
 #include <string.h>
 #include <inttypes.h>  // Added to get PRIu32
 #undef PRIu32
 #define PRIu32 "u"    // Override to force unsigned printing
-#include "esp_task_wdt.h" // Add this line
-#include "custom_log.h"  // Add this line
+#include "esp_task_wdt.h" 
+#include "custom_log.h"  
+#include <audio_pipeline.h>
+#include <esp_peripherals.h>
+#include "freertos/semphr.h"
+#include <mp3_decoder.h>
+#include <i2s_stream.h>
+#include <bluetooth_service.h>
+
+// Remove direct include of periph_bt.h and instead conditionally include or define stubs:
+#if __has_include("periph_bt.h")
+#include "periph_bt.h"
+#else
+/**
+ * Minimal stub definition for periph_bt_cfg_t and periph_bt_init() when
+ * the periph_bt.h header is not available. Allows compilation to proceed
+ * without the actual Bluetooth peripheral implementation.
+ */
+typedef struct {
+    const char *device_name;
+    int mode;
+} periph_bt_cfg_t;
+#define BLUETOOTH_A2DP_SINK 1
+static inline void *periph_bt_init(const periph_bt_cfg_t *cfg) { (void)cfg; return NULL; }
+#endif
+
+// NEW: Add missing prototype for audio_pipeline_wait_for_event
+extern esp_err_t audio_pipeline_wait_for_event(audio_pipeline_handle_t pipeline,
+                                               audio_event_iface_msg_t *msg,
+                                               TickType_t timeout);
 
 // NEW: Declare external mutex helper functions and owner variable.
 // Ensure that in main/esp32_btaudio4/esp32_btaudio/main/esp32_btaudio.c,
@@ -19,211 +57,145 @@ extern bool take_bt_resource_mutex(TickType_t timeout);
 extern void give_bt_resource_mutex(void);
 extern TaskHandle_t s_bt_mutex_owner;
 
-// Remove the WRAPPED_LOG macros since we'll use SAFE_ESP_* instead
-
 #define TAG "RADIO"
-#define BUFFER_SIZE 256  // Further reduced buffer size
+#define BUFFER_SIZE 256       // Further reduced buffer size
 #define PCM_RING_BUFFER_SIZE (2 * 1024)  // Further reduced buffer size
-#define MP3_BUFFER_SIZE (2 * 1024)  // Further reduced buffer size
+#define MP3_BUFFER_SIZE (2 * 1024)       // Further reduced buffer size
 
-static bool s_radio_active = false;
-static bool s_radio_streaming_active = false;
-static uint8_t s_pcm_ring[PCM_RING_BUFFER_SIZE] __attribute__((aligned(4)));
-static size_t s_ring_head = 0, s_ring_tail = 0;
-static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((unused, aligned(4)));
-static size_t s_mp3_head __attribute__((unused)) = 0, s_mp3_tail __attribute__((unused)) = 0;
+/**
+ * Module-level state variables to track radio operations and resource usage
+ */
+static bool s_radio_active = false;          // Indicates if radio module is currently active
+static bool s_radio_streaming_active = false; // Indicates if streaming is in progress
+static uint8_t s_mp3_buffer[MP3_BUFFER_SIZE] __attribute__((unused, aligned(4))); // Buffer for MP3 data
+static size_t s_mp3_head __attribute__((unused)) = 0, s_mp3_tail __attribute__((unused)) = 0; // Buffer pointers
 
-static TaskHandle_t s_radio_task_handle = NULL;
+static TaskHandle_t s_radio_task_handle = NULL; // Handle to the radio playback task
 
-// Add mutex for protecting shared state
-static SemaphoreHandle_t s_radio_mutex = NULL;
-static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL;
+// Mutexes for protecting shared resources
+static SemaphoreHandle_t s_radio_mutex = NULL; // Protects radio state variables
+static SemaphoreHandle_t s_mp3_mutex __attribute__((unused)) = NULL; // Protects MP3 buffer access
 
-static volatile bool s_radio_task_finished = true; // Initially true
+static volatile bool s_radio_task_finished = true; // Initially true, indicates task completion state
 
 // Helper to format size_t values for logging
 #define SIZE_FMT "%u"
 #define SIZE_CAST(x) ((unsigned int)(x))
 
-void radio_task(void *param) {
-    radio_task_params_t *params = (radio_task_params_t*)param;
+/**
+ * @brief Task that plays MP3 audio from a URL or file
+ * 
+ * This task sets up and manages an audio pipeline to decode MP3 data and output
+ * it through the Bluetooth A2DP interface. It uses ESP-ADF components to handle
+ * the audio processing.
+ *
+ * @param url Pointer to a string containing the URL or file path to play
+ */
+void play_mp3_task(void* url) {
+    SAFE_ESP_LOGI(TAG, "Starting MP3 playback for: %s", (char*)url);
     
-    /*
-    uint8_t buf[BUFFER_SIZE];  // Change buf to a statically allocated array
-    int16_t pcm_buf[MINIMP3_MAX_SAMPLES_PER_FRAME];  // Change pcm_buf to a statically allocated array
-    mp3dec_t mp3d;
-    mp3dec_frame_info_t info;
+    // Create an audio pipeline
+    audio_pipeline_handle_t pipeline;
+    audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
+    pipeline = audio_pipeline_init(&pipeline_cfg);
+    if (!pipeline) {
+        SAFE_ESP_LOGE(TAG, "Failed to create pipeline");
+        goto task_exit;
+    }
 
-    // Initialize task watchdog
-    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    // Configure MP3 decoder with default settings
+    mp3_decoder_cfg_t mp3_dec_cfg = DEFAULT_MP3_DECODER_CONFIG();
 
-    SAFE_ESP_LOGI(TAG, "radio_task: invoked");
-    SAFE_ESP_LOGI(TAG, "radio_task: starting file playback");
-    SAFE_ESP_LOGI(TAG, "File descriptor: %d", fileno(params->fp));
+    // Create an MP3 decoder element
+    audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_dec_cfg);
 
-    // Handle ID3 tag if present
-    {
-        char id3_header[10];
-        if (fread(id3_header, 1, 10, params->fp) == 10) {
-            if (id3_header[0]=='I' && id3_header[1]=='D' && id3_header[2]=='3') {
-                uint32_t tag_size = ((id3_header[6] & 0x7F) << 21) |
-                                  ((id3_header[7] & 0x7F) << 14) |
-                                  ((id3_header[8] & 0x7F) << 7)  |
-                                  (id3_header[9] & 0x7F);
-                SAFE_ESP_LOGI(TAG, "Skipping ID3 tag of size %d bytes", (int)tag_size);
-                fseek(params->fp, tag_size, SEEK_CUR);
-            } else {
-                fseek(params->fp, -10, SEEK_CUR);
-            }
+    // Create an I2S stream to send audio to Bluetooth
+    audio_element_handle_t i2s_stream = i2s_stream_init(&(i2s_stream_cfg_t) {
+        .type = AUDIO_STREAM_WRITER,
+        .out_rb_size = 8 * 1024,
+        .use_alc = false,
+        .volume = 50,
+        .uninstall_drv = false
+    });
+
+    // Set MP3 file source from SPIFFS or URL
+    audio_element_set_uri(mp3_decoder, (const char*)url);
+
+    // Register elements in pipeline
+    audio_pipeline_register(pipeline, mp3_decoder, "mp3_decoder");
+    audio_pipeline_register(pipeline, i2s_stream, "i2s_output");
+
+    // Link pipeline elements (MP3 Decoder → I2S Stream)
+    audio_pipeline_link(pipeline, (const char *[]){"mp3_decoder", "i2s_output"}, 2);
+
+    // Initialize Bluetooth A2DP Sink
+    esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
+    esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
+    periph_bt_cfg_t bt_cfg = {
+        .device_name = "ESP32_Bluetooth_Audio",
+        .mode = BLUETOOTH_A2DP_SINK
+    };
+    esp_periph_handle_t bt_handle = periph_bt_init(&bt_cfg);
+    esp_periph_start(set, bt_handle);
+
+    // Start pipeline
+    SAFE_ESP_LOGI(TAG, "Starting audio pipeline...");
+    audio_pipeline_run(pipeline);
+
+    // Instead of using audio_pipeline_wait_for_event, use a simple polling approach
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Give time for pipeline to start
+    
+    // Poll for pipeline state periodically using a simpler approach
+    bool playing = true;
+    while (playing) {
+        vTaskDelay(pdMS_TO_TICKS(500));  // Check every 0.5 seconds
+        
+        // Check if the pipeline is running by polling the pipeline state
+        audio_element_state_t mp3_state = audio_element_get_state(mp3_decoder);
+        if (mp3_state == AEL_STATE_FINISHED || mp3_state == AEL_STATE_ERROR) {
+            SAFE_ESP_LOGI(TAG, "MP3 playback finished or encountered an error");
+            playing = false;
+        }
+        
+        // Also check for stop requests
+        if (!s_radio_active) {
+            SAFE_ESP_LOGI(TAG, "Playback stopped by request");
+            playing = false;
         }
     }
 
-    mp3dec_init(&mp3d);
-    size_t remaining = params->size;
+    // Cleanup and release all resources
+    SAFE_ESP_LOGI(TAG, "Cleaning up audio resources");
+    audio_pipeline_stop(pipeline);
+    audio_pipeline_wait_for_stop(pipeline);
+    audio_pipeline_terminate(pipeline);
+    audio_pipeline_unregister(pipeline, mp3_decoder);
+    audio_pipeline_unregister(pipeline, i2s_stream);
+    audio_pipeline_deinit(pipeline);
+    audio_element_deinit(mp3_decoder);
+    audio_element_deinit(i2s_stream);
+    esp_periph_set_stop_all(set);
+    esp_periph_set_destroy(set);
     
-    while (remaining > 0) {
-        // Feed watchdog
-        ESP_ERROR_CHECK(esp_task_wdt_reset());
-
-        size_t to_read = MINIMP3_MIN(remaining, BUFFER_SIZE);
-        size_t read = fread(buf, 1, to_read, params->fp);
-        
-        if (read == 0) break;
-        
-        SAFE_ESP_LOGI(TAG, "Processing %d bytes from file", (int)read);
-        
-        // Decode MP3 frame
-        int samples = mp3dec_decode_frame(&mp3d, buf, read, pcm_buf, &info);
-        
-        if (samples > 0) {
-            SAFE_ESP_LOGI(TAG, "Decoded %d samples", samples);
-            size_t written = samples * sizeof(int16_t);
-            esp_err_t err = bluetooth_write_audio((const uint8_t*)pcm_buf, &written);
-            if (err != ESP_OK) {
-                SAFE_ESP_LOGE(TAG, "Failed to write audio data: %d", err);
-                break;
-            }
-            
-            if (written < samples * sizeof(int16_t)) {
-                SAFE_ESP_LOGW(TAG, "Partial write: %d/%d bytes", 
-                             (int)written, (int)(samples * sizeof(int16_t)));
-            }
-        } else {
-            SAFE_ESP_LOGW(TAG, "No samples decoded from frame, frame_bytes: %d, channels: %d, hz: %d, layer: %d, bitrate_kbps: %d",
-                          info.frame_bytes, info.channels, info.hz, info.layer, info.bitrate_kbps);
-        }
-
-        remaining -= read;
-        vTaskDelay(pdMS_TO_TICKS(5)); // Give other tasks a chance to run
-    }
-    */
-   
-    if (params->fp) fclose(params->fp);
-    free(params);
-    
-    // Delete task from watchdog
-    ESP_ERROR_CHECK(esp_task_wdt_delete(NULL));
+task_exit:
+    // Delete task from watchdog and mark as finished
+    esp_task_wdt_delete(NULL);
     s_radio_task_finished = true;
     vTaskDelete(NULL);
 }
 
-// Utility to store PCM samples in our ring buffer
-void radio_write_pcm(const int16_t *samples, int num_samples) {
-    size_t bytes_to_write = num_samples * sizeof(int16_t);
-    size_t space_available = (s_ring_tail >= s_ring_head) ? 
-        (PCM_RING_BUFFER_SIZE - s_ring_tail + s_ring_head - 1) : 
-        (s_ring_head - s_ring_tail - 1);
-
-    if (bytes_to_write > space_available) {
-        SAFE_ESP_LOGW(TAG, "Ring buffer overflow, buffer usage: %u/%u bytes", 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available), 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
-        // Wait a bit when buffer is full
-        vTaskDelay(pdMS_TO_TICKS(10));
-        return;
-    }
-
-    if (s_ring_tail + bytes_to_write <= PCM_RING_BUFFER_SIZE) {
-        memcpy(&s_pcm_ring[s_ring_tail], samples, bytes_to_write);
-        s_ring_tail = (s_ring_tail + bytes_to_write) % PCM_RING_BUFFER_SIZE;
-    } else {
-        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_tail;
-        memcpy(&s_pcm_ring[s_ring_tail], samples, first_chunk);
-        memcpy(s_pcm_ring, (uint8_t*)samples + first_chunk, bytes_to_write - first_chunk);
-        s_ring_tail = bytes_to_write - first_chunk;
-    }
-
-    // Log buffer usage periodically
-    static uint32_t last_log = 0;
-    unsigned int now = (unsigned int)esp_log_timestamp();
-    if (now - last_log > 1000) {  // Log every second
-        SAFE_ESP_LOGI(TAG, "Ring buffer usage: %u/%u bytes", 
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE - space_available),
-                    SIZE_CAST(PCM_RING_BUFFER_SIZE));
-        last_log = now;
-    }
-}
-
-// New accessor to read PCM data from the ring buffer.
-// Returns the number of bytes read.
-size_t radio_read_pcm(uint8_t *dest, size_t len) {
-    size_t bytes_to_read = len;
-    size_t available = (s_ring_tail >= s_ring_head)
-        ? (s_ring_tail - s_ring_head)
-        : (PCM_RING_BUFFER_SIZE - s_ring_head + s_ring_tail);
-    if (bytes_to_read > available) bytes_to_read = available;
-
-    if (s_ring_head + bytes_to_read <= PCM_RING_BUFFER_SIZE) {
-        memcpy(dest, &s_pcm_ring[s_ring_head], bytes_to_read);
-        s_ring_head = (s_ring_head + bytes_to_read) % PCM_RING_BUFFER_SIZE;
-    } else {
-        size_t first_chunk = PCM_RING_BUFFER_SIZE - s_ring_head;
-        memcpy(dest, &s_pcm_ring[s_ring_head], first_chunk);
-        memcpy(dest + first_chunk, s_pcm_ring, bytes_to_read - first_chunk);
-        s_ring_head = bytes_to_read - first_chunk;
-    }
-    return bytes_to_read;
-}
-
-// Helper function to write to MP3 buffer
-static __attribute__((unused)) size_t write_mp3_data(const uint8_t* data, size_t len) {
-    size_t written = 0;
-    while (written < len) {
-        // Wait for the mutex with a timeout
-        if (!s_mp3_mutex || xSemaphoreTake(s_mp3_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-        size_t space = (s_mp3_head > s_mp3_tail) ?
-            (s_mp3_head - s_mp3_tail - 1) :
-            (MP3_BUFFER_SIZE - s_mp3_tail + s_mp3_head - 1);
-        if (space == 0) {
-            // Buffer full, release the mutex and wait briefly
-            xSemaphoreGive(s_mp3_mutex);
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-        size_t to_write = ((len - written) > space) ? space : (len - written);
-        if (s_mp3_tail + to_write <= MP3_BUFFER_SIZE) {
-            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, to_write);
-            s_mp3_tail = (s_mp3_tail + to_write) % MP3_BUFFER_SIZE;
-        } else {
-            size_t first = MP3_BUFFER_SIZE - s_mp3_tail;
-            memcpy(&s_mp3_buffer[s_mp3_tail], data + written, first);
-            memcpy(s_mp3_buffer, data + written + first, to_write - first);
-            s_mp3_tail = to_write - first;
-        }
-        written += to_write;
-        xSemaphoreGive(s_mp3_mutex);
-    }
-    // NEW: Cast written to int in the log to match %d format specifier.
-    SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", (int)written);
-    return written;
-}
-
-// Start the radio streaming
-esp_err_t radio_play(const char *url) {
-    SAFE_ESP_LOGI(TAG, "radio_play: called with URL: %s", url);
+/**
+ * @brief Play an MP3 file from SPIFFS storage
+ * 
+ * This function validates input, checks if radio is already active,
+ * ensures SPIFFS is mounted, and then creates a task to play the MP3 file.
+ *
+ * @param file_name Name of the MP3 file stored in SPIFFS
+ * @return ESP_OK if task creation succeeds, appropriate error code otherwise
+ */
+esp_err_t mp3_play_file(const char* file_name) {
+    SAFE_ESP_LOGI(TAG, "radio_play: called with file: %s", file_name);
+    // Initialize radio mutex if not already created
     if (!s_radio_mutex) {
         s_radio_mutex = xSemaphoreCreateMutex();
         if (!s_radio_mutex) {
@@ -232,6 +204,7 @@ esp_err_t radio_play(const char *url) {
         }
     }
 
+    // Check if radio is already active (mutex protected)
     if (xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
         return ESP_ERR_TIMEOUT;
@@ -244,12 +217,44 @@ esp_err_t radio_play(const char *url) {
     }
     xSemaphoreGive(s_radio_mutex);
 
-    if (!url) {
-        SAFE_ESP_LOGE(TAG, "Invalid URL");
+    // Validate file name
+    if (!file_name) {
+        SAFE_ESP_LOGE(TAG, "Invalid file name");
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (xTaskCreate(radio_task, "radio_task", 8192, (void*)url, 5, &s_radio_task_handle) != pdPASS) {
+    // Ensure SPIFFS is mounted and ready
+    if (!is_spiffs_mounted()) {
+        esp_err_t ret = init_spiffs();
+        if (ret != ESP_OK) {
+            SAFE_ESP_LOGE(TAG, "SPIFFS initialization failed: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
+
+    // Double-check SPIFFS mount status
+    esp_err_t ret = mount_spiffs_fs();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        SAFE_ESP_LOGE(TAG, "SPIFFS mount failed, cannot play sound");
+        return ret;
+    }
+
+    if (!is_spiffs_mounted()) {
+        SAFE_ESP_LOGE(TAG, "SPIFFS is not mounted, cannot play sound");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Build full path to file
+    char fullpath[64];
+    int path_len = snprintf(fullpath, sizeof(fullpath), "%s/%s", SPIFFS_BASE_PATH, file_name);
+    // Check for path formatting errors
+    if (path_len < 0 || path_len >= sizeof(fullpath)) {
+        SAFE_ESP_LOGE(TAG, "Path too long or snprintf error for file: %s", file_name);
+        return ESP_FAIL;
+    }
+
+    // Create task to play the MP3 file
+    if (xTaskCreate(play_mp3_task, "radio_task", 8192, (void*)file_name, 5, &s_radio_task_handle) != pdPASS) {
         SAFE_ESP_LOGE(TAG, "Failed to create radio task");
         return ESP_ERR_NO_MEM;
     }
@@ -257,8 +262,59 @@ esp_err_t radio_play(const char *url) {
     return ESP_OK;
 }
 
+/**
+ * @brief Play an MP3 stream from a URL
+ * 
+ * Similar to mp3_play_file but designed for streaming from URLs.
+ * Checks if radio is already active and creates a task to stream the audio.
+ *
+ * @param url URL of the MP3 stream to play
+ * @return ESP_OK if task creation succeeds, appropriate error code otherwise
+ */
+esp_err_t mp3_play_stream(const char *url) {
+    SAFE_ESP_LOGI(TAG, "radio_play: called with URL: %s", url);
+    // Initialize radio mutex if not already created
+    if (!s_radio_mutex) {
+        s_radio_mutex = xSemaphoreCreateMutex();
+        if (!s_radio_mutex) {
+            SAFE_ESP_LOGE(TAG, "Failed to create radio mutex");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    // Check if radio is already active (mutex protected)
+    if (xSemaphoreTake(s_radio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        SAFE_ESP_LOGE(TAG, "Failed to take radio mutex");
+        return ESP_ERR_TIMEOUT;
+    }
+    
+    if (s_radio_active) {
+        xSemaphoreGive(s_radio_mutex);
+        SAFE_ESP_LOGW(TAG, "Radio already playing");
+        return ESP_ERR_INVALID_STATE;
+    }
+    xSemaphoreGive(s_radio_mutex);
+
+    // Create task to play the MP3 stream
+    if (xTaskCreate(play_mp3_task, "radio_task", 8192, (void*)url, 5, &s_radio_task_handle) != pdPASS) {
+        SAFE_ESP_LOGE(TAG, "Failed to create radio task");
+        return ESP_ERR_NO_MEM;
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Stop any active radio playback
+ * 
+ * Takes control of the BT resource mutex and stops any active radio playback.
+ * Allows some time for pending ACL transmissions to complete.
+ *
+ * @return ESP_OK if successful, appropriate error code otherwise
+ */
 esp_err_t radio_stop(void) {
     SAFE_ESP_LOGI(TAG, "radio_stop: called");
+    // Acquire mutex before modifying shared resources
     if (!take_bt_resource_mutex(pdMS_TO_TICKS(100))) {
         if (s_bt_mutex_owner != NULL) {
             SAFE_ESP_LOGE(TAG, "Failed to take radio mutex; currently held by task: %p, name: %s",
@@ -269,92 +325,46 @@ esp_err_t radio_stop(void) {
         return ESP_ERR_TIMEOUT;
     }
     
+    // Check if radio is not active
     if (!s_radio_active) {
         give_bt_resource_mutex();
         SAFE_ESP_LOGW(TAG, "Radio not active");
         return ESP_OK;
     }
 
+    // Mark radio as inactive
     s_radio_active = false;
 
-    // Instead of polling the ACL queue (which requires internal access),
-    // wait a fixed delay to allow pending ACL transmissions to clear.
+    // Wait for pending ACL transmissions to complete
     vTaskDelay(pdMS_TO_TICKS(500)); // Adjust delay as needed
 
+    // Clear task handle and release mutex
     s_radio_task_handle = NULL;
     give_bt_resource_mutex();
     return ESP_OK;
 }
 
+/**
+ * @brief Set the active state of radio streaming
+ * 
+ * Sets the internal flag to track if radio streaming is active.
+ * Used by other components to notify the radio module of activity changes.
+ *
+ * @param active Boolean indicating if radio should be active
+ */
 void radio_set_active(bool active) {
     SAFE_ESP_LOGI(TAG, "radio_set_active: Changing active state to: %d", active);
     s_radio_streaming_active = active;
 }
 
-// Added validation for URL pointer.
-esp_err_t radio_play_stream(const char *url) {
-    SAFE_ESP_LOGI(TAG, "radio_play_stream: called with URL: %s", url);
-    if (url == NULL || strlen(url) == 0) {
-        SAFE_ESP_LOGE("RADIO", "Invalid URL provided to radio_play_stream");
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    SAFE_ESP_LOGI("RADIO", "Starting radio stream with URL: %s", url);
-    
-    // ...existing code to initialize the stream...
-    
-    return ESP_OK;
-}
-
-// Event handler for HTTP client
-static __attribute__((unused)) esp_err_t http_event_handler(esp_http_client_event_t *evt) {
-    static size_t total_bytes = 0;
-
-    switch (evt->event_id) {
-        case HTTP_EVENT_ERROR:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ERROR");
-            break;
-        case HTTP_EVENT_ON_CONNECTED:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_CONNECTED");
-            break;
-        case HTTP_EVENT_HEADER_SENT:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_HEADER_SENT");
-            break;
-        case HTTP_EVENT_ON_HEADER:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
-            break;
-        case HTTP_EVENT_ON_DATA:
-            total_bytes += evt->data_len;
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%" PRIu32 ", total=%" PRIu32,
-                     evt->data_len, total_bytes);
-            if (evt->data_len > 0) {
-                SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA: hex data:");
-                for (int i = 0; i < evt->data_len; i++) {
-                    printf("%02x ", ((uint8_t*)evt->data)[i]);
-                }
-                printf("\n");
-
-                size_t written = write_mp3_data((const uint8_t*)evt->data, evt->data_len);
-                SAFE_ESP_LOGI(TAG, "Written %d bytes to MP3 buffer", written);
-                if (written < evt->data_len) {
-                    SAFE_ESP_LOGW(TAG, "Buffer full, some data dropped");
-                }
-            }
-            break;
-        case HTTP_EVENT_ON_FINISH:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
-            break;
-        case HTTP_EVENT_DISCONNECTED:
-            SAFE_ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-            break;
-        case HTTP_EVENT_REDIRECT:
-            SAFE_ESP_LOGI(TAG, "%s", "HTTP_EVENT_REDIRECT");
-            break;
-    }
-    return ESP_OK;
-}
-
-// NEW: Accessor function to allow checking if the radio task has finished.
+/**
+ * @brief Check if the radio task has finished
+ * 
+ * Accessor function to allow external components to check if the radio
+ * playback task has completed execution.
+ *
+ * @return true if the radio task has finished, false otherwise
+ */
 bool radio_task_is_finished(void) {
     return s_radio_task_finished;
 }

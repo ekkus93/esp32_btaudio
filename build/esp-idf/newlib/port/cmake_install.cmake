@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/newlib/port
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/newlib/port
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

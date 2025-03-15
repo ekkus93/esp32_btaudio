@@ -6,6 +6,7 @@
 
 // Discovery variables
 int num_discovered_devices = 0;  // Tracks number of discovered BT devices
+discovered_device_t discovered_devices[MAX_DEVICES]; // Definition of the array
 
 // Pairing variables
 bool pin_required = false;       // Whether PIN is required for pairing
@@ -29,7 +30,8 @@ bool s_l2cap_congestion_flag = false;  // Whether L2CAP layer is congested
 uint32_t s_last_operation_time = 0;    // Timestamp of last BT operation
 
 // Synchronization primitives
-SemaphoreHandle_t s_bt_resource_mutex = NULL;  // Define the mutex
+// Remove the definition here - it should only be in esp32_btaudio.c
+// SemaphoreHandle_t s_bt_resource_mutex = NULL;  // Define the mutex
 
 // Add these variable definitions
 TaskHandle_t s_waiting_task = NULL;
@@ -40,3 +42,19 @@ bool s_pairing_in_progress = false;
 
 // Add this line
 bool s_bt_enable = false;
+
+TimerHandle_t s_pairing_retry_timer = NULL;
+
+// These string constants should be defined here
+const char *s_a2d_conn_state_str[] = {"Disconnected", "Connecting", "Connected", "Disconnecting"};
+const char *s_a2d_audio_state_str[] = {"Suspended", "Stopped", "Started"};
+
+// This should also be defined here
+esp_a2d_audio_state_t s_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+
+// Define sine table and related variables
+int16_t sine_table[TABLE_SIZE];
+bool sine_table_initialized = false;
+bool s_beep_in_progress = false;
+int s_beep_duration = 0;
+int s_beep_index = 0;
