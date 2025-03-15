@@ -1,0 +1,10 @@
+[0/1] Re-running CMake...
+-- Building ESP-IDF components for target esp32
+NOTICE: Processing 3 dependencies:
+NOTICE: [1/3] espressif/esp-dsp (1.4.12)
+NOTICE: [2/3] espressif/nghttp (1.62.1)
+NOTICE: [3/3] idf (5.4.0)
+-- Configuring incomplete, errors occurred!
+See also "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build/CMakeFiles/CMakeOutput.log".
+FAILED: build.ninja 
+/usr/bin/cmake --regenerate-during-build -S/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio -B/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/build

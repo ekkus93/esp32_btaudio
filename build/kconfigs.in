@@ -48,7 +48,7 @@ source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_syst
 source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/esp_timer/Kconfig"
 source "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/esp_wifi/Kconfig"
 source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/espcoredump/Kconfig"
-source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/fatfs/Kconfig"
+source "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/fatfs/Kconfig"
 source "/home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/freertos/Kconfig"
 source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/hal/Kconfig"
 source "/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/heap/Kconfig"

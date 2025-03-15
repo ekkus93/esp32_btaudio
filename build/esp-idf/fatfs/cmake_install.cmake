@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/fatfs
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio4/esp32_btaudio/components/fatfs
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
