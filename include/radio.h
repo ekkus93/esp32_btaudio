@@ -12,4 +12,8 @@ esp_err_t radio_stop(void);
 void radio_set_active(bool active);
 bool radio_task_is_finished(void);
 
+// Add the new WAV functions
+void play_wav_task(void* args);
+esp_err_t wav_play_file(const char* file_name);
+
 #endif // RADIO_H

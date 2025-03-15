@@ -36,6 +36,7 @@
 void print_help_message(void);
 void print_pairing_guide(void);
 void handle_command(char *cmd);
+void handle_play_sound_command(void); // Added missing forward declaration
 bool take_bt_resource_mutex(TickType_t timeout);
 void give_bt_resource_mutex(void);
 
@@ -271,7 +272,7 @@ void handle_command(char *cmd) {
             SAFE_ESP_LOGE(TAG, "No URL provided for play_radio command");
         }
     } else if (strcmp(cmd, "play_snd") == 0) {
-        mp3_play_file("sound.mp3");
+        handle_play_sound_command();
     } else if (strcmp(cmd, "ls_spiffs") == 0) {
         SAFE_ESP_LOGI(TAG, "Listing files on SPIFFS partition...");
         list_spiffs_files();
@@ -456,6 +457,30 @@ void give_bt_resource_mutex(void) {
         SAFE_ESP_LOGI(TAG, "Mutex released by task: %p", xTaskGetCurrentTaskHandle());
         s_bt_mutex_owner = NULL;
         xSemaphoreGive(s_bt_resource_mutex);
+    }
+}
+
+// In a function that handles commands or user input
+void handle_play_sound_command(void) {
+    // Check if sound.wav exists in SPIFFS
+    struct stat st;
+    char path[64];
+    snprintf(path, sizeof(path), "%s/sound.wav", SPIFFS_BASE_PATH);
+    
+    if (stat(path, &st) == 0) {
+        // Found WAV file, use it
+        ESP_LOGI(TAG, "###Playing WAV sound file");
+        esp_err_t ret = wav_play_file("sound.wav");
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to play WAV file: %s", esp_err_to_name(ret));
+        }
+    } else {
+        // Fall back to MP3 if WAV isn't available
+        ESP_LOGI(TAG, "###Playing MP3 sound file (WAV not found)");
+        esp_err_t ret = mp3_play_file("sound.mp3");
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to play MP3 file: %s", esp_err_to_name(ret));
+        }
     }
 }
 
