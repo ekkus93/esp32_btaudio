@@ -65,7 +65,12 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
   - (46) "24-bit PCM format handling" [audio][pcm]
   - (47) "PCM endianness conversion" [audio][pcm]
   - (48) "Bit depth conversion (16/24/32-bit)" [audio][pcm]
-- [ ] I2S channel configuration tests (mono/stereo handling)
+- [x] I2S channel configuration tests (mono/stereo handling)
+  - (49) "Mono channel configuration" [i2s][channels]
+  - (50) "Stereo channel configuration" [i2s][channels]
+  - (51) "Stereo to mono conversion" [i2s][channels]
+  - (52) "Mono to stereo conversion" [i2s][channels]
+  - (53) "Channel independence" [i2s][channels]
 
 ### Pairing and Security
 - [ ] Implement "Just Works" pairing method

@@ -7,23 +7,16 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_system.h"
 #include "esp_log.h"
+
+// Include test headers
+#include "i2s_audio_test.h"
+#include "audio_pipeline_test.h"
 #include "pcm_format_test.h"
+#include "i2s_channel_test.h"
 
-static const char *TAG = "PCM_FORMAT_TEST";
-
-void run_pcm_format_tests()
-{
-    ESP_LOGI(TAG, "Running PCM format validation tests");
-
-    // Add your PCM format validation test cases here
-    // For example:
-    // - Test for correct bit depth
-    // - Test for endianness
-    // - Test for mono/stereo handling
-
-    ESP_LOGI(TAG, "PCM format validation tests completed");
-}
+static const char *TAG = "BT_AUDIO_TEST";
 
 void app_main(void)
 {
@@ -48,9 +41,15 @@ void app_main(void)
     
     vTaskDelay(pdMS_TO_TICKS(500));
     
-    // Add the new PCM format tests
+    // Run PCM format tests - remove the NULL check since function is always available
     ESP_LOGI(TAG, "Running PCM format validation tests");
     run_pcm_format_tests();
+    
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Run I2S channel tests
+    ESP_LOGI(TAG, "Running I2S channel configuration tests");
+    run_i2s_channel_tests();
     
     ESP_LOGI(TAG, "All tests completed");
     ESP_LOGI(TAG, "Audio buffer and pipeline implementation test completed");

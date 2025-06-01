@@ -825,13 +825,6 @@
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/wifi_provisioning/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/wifi_provisioning/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/wifi_provisioning/CMakeFiles/install/strip.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/__idf_main.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/edit_cache.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/rebuild_cache.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/list_install_components.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/local.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/strip.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/__idf_audio.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/edit_cache.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/rebuild_cache.dir
@@ -839,6 +832,13 @@
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/CMakeFiles/install/strip.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/__idf_main.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/edit_cache.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/rebuild_cache.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/list_install_components.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/local.dir
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/strip.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/__idf_command_interface.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/edit_cache.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/rebuild_cache.dir
