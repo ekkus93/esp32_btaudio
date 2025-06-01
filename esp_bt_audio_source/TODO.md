@@ -41,11 +41,31 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 
 ### Audio Processing
 - [x] Configure I2S driver for receiving audio
+  - (30) "I2S driver initializes successfully" [i2s][audio]
+  - (31) "I2S standard mode configuration works" [i2s][audio]
 - [x] Set up audio data buffers and processing pipeline
+  - (32) "Audio buffer pool initialization" [audio][pipeline]
+  - (33) "Audio buffer allocation and release" [audio][pipeline]
+  - (34) "Single-stage audio processing" [audio][pipeline]
+  - (35) "Multi-stage audio processing pipeline" [audio][pipeline]
+  - (36) "Basic audio buffer operations" [audio][pipeline]
 - [x] Implement volume control functionality
+  - (37) "Volume level setting and retrieval" [audio][volume]
+  - (38) "Volume application to audio samples" [audio][volume]
 - [x] Add mute/unmute capability
+  - (39) "Audio mute operation" [audio][volume]
+  - (40) "Audio unmute restores previous volume" [audio][volume]
+  - (41) "Toggle mute functionality" [audio][volume]
 - [x] Support for different sample rates
-- [ ] Handle audio format conversion if needed
+  - (42) "Sample rate configuration" [audio][sampling]
+  - (43) "Buffer size calculations for different rates" [audio][sampling]
+  - (44) "Sample rate conversion" [audio][sampling]
+- [x] PCM format validation tests (bit depth, endianness)
+  - (45) "16-bit PCM format handling" [audio][pcm]
+  - (46) "24-bit PCM format handling" [audio][pcm]
+  - (47) "PCM endianness conversion" [audio][pcm]
+  - (48) "Bit depth conversion (16/24/32-bit)" [audio][pcm]
+- [ ] I2S channel configuration tests (mono/stereo handling)
 
 ### Pairing and Security
 - [ ] Implement "Just Works" pairing method
