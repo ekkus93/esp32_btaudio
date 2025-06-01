@@ -6,7 +6,7 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 
 ### Bluetooth A2DP Implementation
 - [x] Initial A2DP source profile implementation
-- [ ] Implement device scanning functionality
+- [x] Implement device scanning functionality
 - [ ] Implement connection management
 - [ ] Add reconnection logic for previously paired devices
 - [ ] Handle connection events and state transitions

@@ -3,6 +3,7 @@
 #include "command_interface.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "test_bt_scan.h"  // Include our new test header
 
 // Forward declaration of callback function
 static void test_discovery_callback(bt_device_t* device, void* user_data);
@@ -199,6 +200,32 @@ static void test_discovery_callback(bt_device_t* device, void* user_data) {
         bool* found_ptr = (bool*)user_data;
         *found_ptr = true;
     }
+}
+
+// Add these test cases to your test function registrations
+TEST_CASE("Bluetooth scanning basic functionality", "[bluetooth][a2dp][scan]")
+{
+    test_bt_scan_basic();
+}
+
+TEST_CASE("Bluetooth scan filters devices by type", "[bluetooth][a2dp][scan]")
+{
+    test_bt_scan_filtered();
+}
+
+TEST_CASE("Bluetooth scan returns device details", "[bluetooth][a2dp][scan]")
+{
+    test_bt_scan_get_results();
+}
+
+TEST_CASE("Bluetooth scan times out properly", "[bluetooth][a2dp][scan]")
+{
+    test_bt_scan_timeout();
+}
+
+TEST_CASE("Bluetooth scan can be stopped early", "[bluetooth][a2dp][scan]")
+{
+    test_bt_scan_stop();
 }
 
 void app_main(void) {

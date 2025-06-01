@@ -832,10 +832,3 @@
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/local.dir
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/CMakeFiles/install/strip.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/__idf_command_interface.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/edit_cache.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/rebuild_cache.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/list_install_components.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/install.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/install/local.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/CMakeFiles/install/strip.dir
