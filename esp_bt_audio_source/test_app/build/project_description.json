@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "esp_bt_audio_source_test",
-    "project_version":    "v0.1.0-39-g6e774822-dirty",
+    "project_version":    "v0.1.0-40-g468bceda-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app",
     "idf_path":           "/home/phil/esp/v5.4.1/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build",
