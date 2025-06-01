@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 # Include any dependencies generated for this target.
 include CMakeFiles/test_commands.dir/depend.make
@@ -70,63 +70,63 @@ include CMakeFiles/test_commands.dir/progress.make
 include CMakeFiles/test_commands.dir/flags.make
 
 CMakeFiles/test_commands.dir/test_commands.c.o: CMakeFiles/test_commands.dir/flags.make
-CMakeFiles/test_commands.dir/test_commands.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_commands.c
+CMakeFiles/test_commands.dir/test_commands.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c
 CMakeFiles/test_commands.dir/test_commands.c.o: CMakeFiles/test_commands.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/test_commands.dir/test_commands.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/test_commands.c.o -MF CMakeFiles/test_commands.dir/test_commands.c.o.d -o CMakeFiles/test_commands.dir/test_commands.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_commands.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/test_commands.dir/test_commands.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/test_commands.c.o -MF CMakeFiles/test_commands.dir/test_commands.c.o.d -o CMakeFiles/test_commands.dir/test_commands.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c
 
 CMakeFiles/test_commands.dir/test_commands.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_commands.dir/test_commands.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_commands.c > CMakeFiles/test_commands.dir/test_commands.c.i
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c > CMakeFiles/test_commands.dir/test_commands.c.i
 
 CMakeFiles/test_commands.dir/test_commands.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_commands.dir/test_commands.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_commands.c -o CMakeFiles/test_commands.dir/test_commands.c.s
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c -o CMakeFiles/test_commands.dir/test_commands.c.s
 
-CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o: CMakeFiles/test_commands.dir/flags.make
-CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c
-CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o: CMakeFiles/test_commands.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o -MF CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o.d -o CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c
+CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o: CMakeFiles/test_commands.dir/flags.make
+CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c
+CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o: CMakeFiles/test_commands.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o -MF CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o.d -o CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c
 
-CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c > CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i
+CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c > CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i
 
-CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c -o CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s
+CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c -o CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s
 
 CMakeFiles/test_commands.dir/mocks/mock_uart.c.o: CMakeFiles/test_commands.dir/flags.make
-CMakeFiles/test_commands.dir/mocks/mock_uart.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c
+CMakeFiles/test_commands.dir/mocks/mock_uart.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c
 CMakeFiles/test_commands.dir/mocks/mock_uart.c.o: CMakeFiles/test_commands.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/test_commands.dir/mocks/mock_uart.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/mocks/mock_uart.c.o -MF CMakeFiles/test_commands.dir/mocks/mock_uart.c.o.d -o CMakeFiles/test_commands.dir/mocks/mock_uart.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/test_commands.dir/mocks/mock_uart.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_commands.dir/mocks/mock_uart.c.o -MF CMakeFiles/test_commands.dir/mocks/mock_uart.c.o.d -o CMakeFiles/test_commands.dir/mocks/mock_uart.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c
 
 CMakeFiles/test_commands.dir/mocks/mock_uart.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_commands.dir/mocks/mock_uart.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c > CMakeFiles/test_commands.dir/mocks/mock_uart.c.i
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c > CMakeFiles/test_commands.dir/mocks/mock_uart.c.i
 
 CMakeFiles/test_commands.dir/mocks/mock_uart.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_commands.dir/mocks/mock_uart.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c -o CMakeFiles/test_commands.dir/mocks/mock_uart.c.s
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_uart.c -o CMakeFiles/test_commands.dir/mocks/mock_uart.c.s
 
 # Object files for target test_commands
 test_commands_OBJECTS = \
 "CMakeFiles/test_commands.dir/test_commands.c.o" \
-"CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o" \
+"CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o" \
 "CMakeFiles/test_commands.dir/mocks/mock_uart.c.o"
 
 # External object files for target test_commands
 test_commands_EXTERNAL_OBJECTS =
 
 test_commands: CMakeFiles/test_commands.dir/test_commands.c.o
-test_commands: CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o
+test_commands: CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
 test_commands: CMakeFiles/test_commands.dir/mocks/mock_uart.c.o
 test_commands: CMakeFiles/test_commands.dir/build.make
 test_commands: _deps/unity-build/libunity.a
 test_commands: CMakeFiles/test_commands.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking C executable test_commands"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking C executable test_commands"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_commands.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -138,6 +138,6 @@ CMakeFiles/test_commands.dir/clean:
 .PHONY : CMakeFiles/test_commands.dir/clean
 
 CMakeFiles/test_commands.dir/depend:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles/test_commands.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles/test_commands.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/test_commands.dir/depend
 

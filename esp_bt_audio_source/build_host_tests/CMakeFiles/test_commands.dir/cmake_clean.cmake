@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o"
-  "CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o.d"
+  "CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o"
+  "CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o.d"
   "CMakeFiles/test_commands.dir/mocks/mock_uart.c.o"
   "CMakeFiles/test_commands.dir/mocks/mock_uart.c.o.d"
   "CMakeFiles/test_commands.dir/test_commands.c.o"

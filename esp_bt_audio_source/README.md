@@ -161,7 +161,7 @@ In addition to command responses, the ESP32 may send unsolicited event messages:
 
 1. Navigate to the project directory:
    ```bash
-   cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source
+   cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source
    ```
 
 2. Configure the project using the ESP-IDF tool:
@@ -309,7 +309,7 @@ Running tests becomes part of your normal development cycle:
 
 ## Additional Resources
 
-See the [main project README](/home/phil/work/esp32/esp32_audio/README.md) for:
+See the [main project README](/home/phil/work/esp32/esp32_btaudio/README.md) for:
 - Complete system architecture
 - Detailed command protocol specification
 - Connection diagram for both ESP32s

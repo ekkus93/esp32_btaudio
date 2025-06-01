@@ -1,4 +1,4 @@
-/* * Data converted from /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -44,7 +44,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/cmake_install.cmake")
 
 endif()
 
@@ -56,5 +56,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -132,14 +132,14 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build//CMakeFiles/progress.marks
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles 0
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build//CMakeFiles/progress.marks
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/clean
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/clean
 .PHONY : clean
 
 # The main clean target
@@ -148,22 +148,22 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/preinstall
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/preinstall
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/preinstall
 .PHONY : preinstall/fast
 
 # clear depends
 depend:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
 # Convenience name for target.
 _deps/unity-build/CMakeFiles/unity.dir/rule:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/CMakeFiles/unity.dir/rule
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/unity-build/CMakeFiles/unity.dir/rule
 .PHONY : _deps/unity-build/CMakeFiles/unity.dir/rule
 
 # Convenience name for target.
@@ -172,7 +172,7 @@ unity: _deps/unity-build/CMakeFiles/unity.dir/rule
 
 # fast build rule for target.
 unity/fast:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/build
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/build
 .PHONY : unity/fast
 
 src/unity.o: src/unity.c.o
@@ -180,7 +180,7 @@ src/unity.o: src/unity.c.o
 
 # target to build an object file
 src/unity.c.o:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o
 .PHONY : src/unity.c.o
 
 src/unity.i: src/unity.c.i
@@ -188,7 +188,7 @@ src/unity.i: src/unity.c.i
 
 # target to preprocess a source file
 src/unity.c.i:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.i
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.i
 .PHONY : src/unity.c.i
 
 src/unity.s: src/unity.c.s
@@ -196,7 +196,7 @@ src/unity.s: src/unity.c.s
 
 # target to generate assembly for a file
 src/unity.c.s:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.s
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.s
 .PHONY : src/unity.c.s
 
 # Help Target
@@ -226,6 +226,6 @@ help:
 # No rule that depends on this can have commands that come from listfiles
 # because they might be regenerated.
 cmake_check_build_system:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
 .PHONY : cmake_check_build_system
 

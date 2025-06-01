@@ -26,7 +26,7 @@ This project implements an ESP32-based I2S audio source with a WebSocket interfa
 
 1. Navigate to the project directory:
    ```bash
-   cd /home/phil/work/esp32/esp32_audio/esp32_i2s_source
+   cd /home/phil/work/esp32/esp32_btaudio/esp32_i2s_source
    ```
 
 2. Configure the project using the ESP-IDF tool:

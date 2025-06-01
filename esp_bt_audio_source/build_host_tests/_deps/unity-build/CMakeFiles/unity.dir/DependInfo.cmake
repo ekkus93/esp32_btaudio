@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c" "_deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o" "gcc" "_deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o.d"
+  "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c" "_deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o" "gcc" "_deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o.d"
   )
 
 # Targets to which this target links.

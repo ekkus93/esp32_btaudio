@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/main
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

@@ -2,37 +2,37 @@
 	"sources" : 
 	[
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate-complete.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate-complete.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-build.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-build.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-configure.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-configure.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-download.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-download.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-install.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-install.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-mkdir.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-mkdir.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-patch.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-patch.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-test.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-test.rule"
 		},
 		{
-			"file" : "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-update.rule"
+			"file" : "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/unity-populate-prefix/src/unity-populate-stamp/unity-populate-update.rule"
 		}
 	],
 	"target" : 

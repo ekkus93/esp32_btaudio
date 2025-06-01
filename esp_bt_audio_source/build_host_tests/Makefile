@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -132,9 +132,9 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -213,53 +213,53 @@ unity/fast:
 	$(MAKE) $(MAKESILENT) -f _deps/unity-build/CMakeFiles/unity.dir/build.make _deps/unity-build/CMakeFiles/unity.dir/build
 .PHONY : unity/fast
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.o: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.o
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.o: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.o
 
 # target to build an object file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.i: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.i
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.i: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.i
 
 # target to preprocess a source file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.s: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.s
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.s: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.s
 
 # target to generate assembly for a file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bluetooth.dir/build.make CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.o: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.o
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.o: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.o
 
 # target to build an object file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.o
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.i: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.i
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.i: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.i
 
 # target to preprocess a source file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.i
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.i
 
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.s: home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.s
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.s: home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.s
 
 # target to generate assembly for a file
-home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s
-.PHONY : home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.c.s
+home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_commands.dir/build.make CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s
+.PHONY : home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.s
 
 mocks/mock_i2s.o: mocks/mock_i2s.c.o
 .PHONY : mocks/mock_i2s.o
@@ -373,12 +373,12 @@ help:
 	@echo "... test_bluetooth"
 	@echo "... test_commands"
 	@echo "... unity"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.o"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.i"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.s"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.o"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.i"
-	@echo "... home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/command_interface/commands.s"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.o"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.i"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.s"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.o"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.i"
+	@echo "... home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.s"
 	@echo "... mocks/mock_i2s.o"
 	@echo "... mocks/mock_i2s.i"
 	@echo "... mocks/mock_i2s.s"

@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src
+# Install script for directory: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -43,13 +43,13 @@ if(NOT DEFINED CMAKE_OBJDUMP)
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE STATIC_LIBRARY FILES "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/libunity.a")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE STATIC_LIBRARY FILES "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/libunity.a")
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xlibraryx" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/include/unity" TYPE FILE FILES
-    "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.h"
-    "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity_internals.h"
+    "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.h"
+    "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity_internals.h"
     )
 endif()
 
@@ -57,7 +57,7 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/cmake/unity/unityTargets.cmake")
     file(DIFFERENT EXPORT_FILE_CHANGED FILES
          "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/cmake/unity/unityTargets.cmake"
-         "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets.cmake")
+         "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets.cmake")
     if(EXPORT_FILE_CHANGED)
       file(GLOB OLD_CONFIG_FILES "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/cmake/unity/unityTargets-*.cmake")
       if(OLD_CONFIG_FILES)
@@ -66,16 +66,16 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
       endif()
     endif()
   endif()
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/unity" TYPE FILE FILES "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets.cmake")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/unity" TYPE FILE FILES "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets.cmake")
   if("${CMAKE_INSTALL_CONFIG_NAME}" MATCHES "^()$")
-    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/unity" TYPE FILE FILES "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets-noconfig.cmake")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/unity" TYPE FILE FILES "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/Export/lib/cmake/unity/unityTargets-noconfig.cmake")
   endif()
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/unity" TYPE FILE FILES
-    "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/unityConfig.cmake"
-    "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/unityConfigVersion.cmake"
+    "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/unityConfig.cmake"
+    "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/unityConfigVersion.cmake"
     )
 endif()
 

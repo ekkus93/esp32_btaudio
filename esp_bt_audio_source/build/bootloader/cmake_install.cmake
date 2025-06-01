@@ -39,7 +39,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/bootloader/esp-idf/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/esp-idf/cmake_install.cmake")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

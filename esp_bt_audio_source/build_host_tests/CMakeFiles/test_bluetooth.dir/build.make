@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 # Include any dependencies generated for this target.
 include CMakeFiles/test_bluetooth.dir/depend.make
@@ -70,63 +70,63 @@ include CMakeFiles/test_bluetooth.dir/progress.make
 include CMakeFiles/test_bluetooth.dir/flags.make
 
 CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o: CMakeFiles/test_bluetooth.dir/flags.make
-CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_bluetooth.c
+CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bluetooth.c
 CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o: CMakeFiles/test_bluetooth.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o -MF CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o.d -o CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_bluetooth.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o -MF CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o.d -o CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bluetooth.c
 
 CMakeFiles/test_bluetooth.dir/test_bluetooth.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_bluetooth.dir/test_bluetooth.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_bluetooth.c > CMakeFiles/test_bluetooth.dir/test_bluetooth.c.i
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bluetooth.c > CMakeFiles/test_bluetooth.dir/test_bluetooth.c.i
 
 CMakeFiles/test_bluetooth.dir/test_bluetooth.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_bluetooth.dir/test_bluetooth.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/test_bluetooth.c -o CMakeFiles/test_bluetooth.dir/test_bluetooth.c.s
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bluetooth.c -o CMakeFiles/test_bluetooth.dir/test_bluetooth.c.s
 
-CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: CMakeFiles/test_bluetooth.dir/flags.make
-CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c
-CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: CMakeFiles/test_bluetooth.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o -MF CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o.d -o CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c
+CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: CMakeFiles/test_bluetooth.dir/flags.make
+CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c
+CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o: CMakeFiles/test_bluetooth.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o -MF CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o.d -o CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c
 
-CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c > CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
+CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c > CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.i
 
-CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c -o CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
+CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c -o CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.s
 
 CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o: CMakeFiles/test_bluetooth.dir/flags.make
-CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o: /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c
+CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c
 CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o: CMakeFiles/test_bluetooth.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o -MF CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o.d -o CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o -MF CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o.d -o CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c
 
 CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c > CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.i
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c > CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.i
 
 CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c -o CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.s
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/mocks/mock_i2s.c -o CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.s
 
 # Object files for target test_bluetooth
 test_bluetooth_OBJECTS = \
 "CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o" \
-"CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o" \
+"CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o" \
 "CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o"
 
 # External object files for target test_bluetooth
 test_bluetooth_EXTERNAL_OBJECTS =
 
 test_bluetooth: CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o
-test_bluetooth: CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+test_bluetooth: CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
 test_bluetooth: CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o
 test_bluetooth: CMakeFiles/test_bluetooth.dir/build.make
 test_bluetooth: _deps/unity-build/libunity.a
 test_bluetooth: CMakeFiles/test_bluetooth.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking C executable test_bluetooth"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking C executable test_bluetooth"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_bluetooth.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -138,6 +138,6 @@ CMakeFiles/test_bluetooth.dir/clean:
 .PHONY : CMakeFiles/test_bluetooth.dir/clean
 
 CMakeFiles/test_bluetooth.dir/depend:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles/test_bluetooth.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles/test_bluetooth.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/test_bluetooth.dir/depend
 

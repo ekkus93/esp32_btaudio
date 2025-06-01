@@ -22,8 +22,8 @@ set_property(GLOBAL PROPERTY _CMAKE_FindGit_GIT_EXECUTABLE_VERSION
 include(ExternalProject)
 ExternalProject_Add(unity-populate
                      "UPDATE_DISCONNECTED" "False" "GIT_REPOSITORY" "https://github.com/ThrowTheSwitch/Unity.git" "GIT_TAG" "v2.5.2"
-                    SOURCE_DIR          "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src"
-                    BINARY_DIR          "/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build"
+                    SOURCE_DIR          "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src"
+                    BINARY_DIR          "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build"
                     CONFIGURE_COMMAND   ""
                     BUILD_COMMAND       ""
                     INSTALL_COMMAND     ""

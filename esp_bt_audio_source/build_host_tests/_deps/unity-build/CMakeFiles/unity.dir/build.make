@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 # Include any dependencies generated for this target.
 include _deps/unity-build/CMakeFiles/unity.dir/depend.make
@@ -72,16 +72,16 @@ include _deps/unity-build/CMakeFiles/unity.dir/flags.make
 _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o: _deps/unity-build/CMakeFiles/unity.dir/flags.make
 _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o: _deps/unity-src/src/unity.c
 _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o: _deps/unity-build/CMakeFiles/unity.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o"
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o -MF CMakeFiles/unity.dir/src/unity.c.o.d -o CMakeFiles/unity.dir/src/unity.c.o -c /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o"
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o -MF CMakeFiles/unity.dir/src/unity.c.o.d -o CMakeFiles/unity.dir/src/unity.c.o -c /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c
 
 _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/unity.dir/src/unity.c.i"
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c > CMakeFiles/unity.dir/src/unity.c.i
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c > CMakeFiles/unity.dir/src/unity.c.i
 
 _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/unity.dir/src/unity.c.s"
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c -o CMakeFiles/unity.dir/src/unity.c.s
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && /usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src/src/unity.c -o CMakeFiles/unity.dir/src/unity.c.s
 
 # Object files for target unity
 unity_OBJECTS = \
@@ -93,19 +93,19 @@ unity_EXTERNAL_OBJECTS =
 _deps/unity-build/libunity.a: _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o
 _deps/unity-build/libunity.a: _deps/unity-build/CMakeFiles/unity.dir/build.make
 _deps/unity-build/libunity.a: _deps/unity-build/CMakeFiles/unity.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C static library libunity.a"
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -P CMakeFiles/unity.dir/cmake_clean_target.cmake
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/unity.dir/link.txt --verbose=$(VERBOSE)
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C static library libunity.a"
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -P CMakeFiles/unity.dir/cmake_clean_target.cmake
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/unity.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
 _deps/unity-build/CMakeFiles/unity.dir/build: _deps/unity-build/libunity.a
 .PHONY : _deps/unity-build/CMakeFiles/unity.dir/build
 
 _deps/unity-build/CMakeFiles/unity.dir/clean:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -P CMakeFiles/unity.dir/cmake_clean.cmake
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build && $(CMAKE_COMMAND) -P CMakeFiles/unity.dir/cmake_clean.cmake
 .PHONY : _deps/unity-build/CMakeFiles/unity.dir/clean
 
 _deps/unity-build/CMakeFiles/unity.dir/depend:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-src /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/unity.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-src /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-build/CMakeFiles/unity.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : _deps/unity-build/CMakeFiles/unity.dir/depend
 

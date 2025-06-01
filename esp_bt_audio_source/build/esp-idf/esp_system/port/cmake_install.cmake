@@ -39,6 +39,6 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/esp_system/port/soc/esp32/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/esp_system/port/soc/esp32/cmake_install.cmake")
 endif()
 

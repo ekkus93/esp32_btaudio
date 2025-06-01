@@ -39,10 +39,10 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/include/cmake_install.cmake")
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/3rdparty/cmake_install.cmake")
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/library/cmake_install.cmake")
-  include("/home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/pkgconfig/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/include/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/3rdparty/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/library/cmake_install.cmake")
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/mbedtls/mbedtls/pkgconfig/cmake_install.cmake")
 
 endif()
 

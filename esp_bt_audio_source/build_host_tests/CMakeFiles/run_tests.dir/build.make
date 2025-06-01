@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test
+CMAKE_SOURCE_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests
+CMAKE_BINARY_DIR = /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests
 
 # Utility rule file for run_tests.
 
@@ -84,6 +84,6 @@ CMakeFiles/run_tests.dir/clean:
 .PHONY : CMakeFiles/run_tests.dir/clean
 
 CMakeFiles/run_tests.dir/depend:
-	cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build_host_tests/CMakeFiles/run_tests.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/CMakeFiles/run_tests.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/run_tests.dir/depend
 
