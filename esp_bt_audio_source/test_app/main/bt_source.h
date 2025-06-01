@@ -42,6 +42,29 @@ typedef struct {
 } bt_device_t;
 
 /**
+ * @brief Connection state enum
+ */
+typedef enum {
+    BT_CONNECTION_STATE_DISCONNECTED = 0,
+    BT_CONNECTION_STATE_CONNECTING,
+    BT_CONNECTION_STATE_CONNECTED,
+    BT_CONNECTION_STATE_DISCONNECTING,
+    BT_CONNECTION_STATE_FAILED
+} bt_connection_state_t;
+
+/**
+ * @brief Streaming state enum
+ */
+typedef enum {
+    BT_STREAMING_STATE_STOPPED = 0,
+    BT_STREAMING_STATE_STARTING,
+    BT_STREAMING_STATE_STREAMING,
+    BT_STREAMING_STATE_PAUSED,
+    BT_STREAMING_STATE_STOPPING,
+    BT_STREAMING_STATE_ERROR
+} bt_streaming_state_t;
+
+/**
  * @brief Bluetooth connection information structure
  */
 typedef struct {
@@ -49,7 +72,22 @@ typedef struct {
     char remote_addr[18];     // Remote device address
     char remote_name[32];     // Remote device name
     int connection_quality;   // Connection quality (0-100)
+    bt_connection_state_t state; // Detailed connection state
+    uint32_t connect_time;    // Timestamp of when connection was established
+    uint16_t retry_count;     // Connection retry count
 } bt_connection_info_t;
+
+/**
+ * @brief Streaming info structure
+ */
+typedef struct {
+    bt_streaming_state_t state;  // Current streaming state
+    uint32_t bytes_sent;         // Bytes sent in current session
+    uint32_t packets_sent;       // Packets sent in current session
+    uint32_t packet_errors;      // Error packets in current session
+    uint32_t stream_duration;    // Duration of current stream in milliseconds
+    bool paused;                 // Whether stream is paused
+} bt_streaming_info_t;
 
 /**
  * @brief Connection callback function type
@@ -183,6 +221,42 @@ bool bt_is_connected(void);
  * @return ESP_OK on success
  */
 esp_err_t bt_get_connection_info(bt_connection_info_t* info);
+
+/**
+ * @brief Get current streaming information
+ * 
+ * @param info Pointer to store streaming information
+ * @return ESP_OK on success, ESP_FAIL if not streaming or error
+ */
+esp_err_t bt_get_streaming_info(bt_streaming_info_t* info);
+
+/**
+ * @brief Start audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not connected or error
+ */
+esp_err_t bt_streaming_start(void);
+
+/**
+ * @brief Stop audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not streaming or error
+ */
+esp_err_t bt_streaming_stop(void);
+
+/**
+ * @brief Pause audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not streaming or error
+ */
+esp_err_t bt_streaming_pause(void);
+
+/**
+ * @brief Resume audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not paused or error
+ */
+esp_err_t bt_streaming_resume(void);
 
 /**
  * @brief Get connection state 
