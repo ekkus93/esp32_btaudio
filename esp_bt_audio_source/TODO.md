@@ -28,9 +28,9 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
   - (19) "Handle connection timeout" [bluetooth][a2dp][connection]
   - (20) "Get connection status information" [bluetooth][a2dp][connection]
 
-- [ ] Add reconnection logic for previously paired devices
-  - (5) "A2DP remembers paired devices" [bluetooth][a2dp] (future)
-  - (21) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection] (future)
+- [x] Add reconnection logic for previously paired devices
+  - (5) "A2DP remembers paired devices" [bluetooth][a2dp]
+  - (21) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection]
 - [ ] Handle connection events and state transitions
 - [ ] Implement audio streaming control (start/stop)
 

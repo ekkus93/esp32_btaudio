@@ -365,3 +365,49 @@ esp_err_t bt_simulate_disconnect(void) {
     
     return ESP_OK;
 }
+
+/**
+ * Simulate a Bluetooth connection drop for testing reconnection
+ */
+esp_err_t bt_simulate_connection_drop(void)
+{
+    ESP_LOGI(TAG, "Stub: Simulating connection drop");
+    
+    if (!s_connected) {
+        ESP_LOGW(TAG, "Cannot simulate drop - not connected");
+        return ESP_FAIL;
+    }
+    
+    // Save current connection info
+    bt_device_t device;
+    memset(&device, 0, sizeof(bt_device_t));
+    strncpy(device.name, current_connection.remote_name, sizeof(device.name) - 1);
+    
+    // Convert MAC address string to bytes (simplified for mock)
+    for (int i = 0; i < 6; i++) {
+        device.addr[i] = 0x11 + i; // Dummy MAC
+    }
+    
+    // Mark as disconnected
+    s_connected = false;
+    current_connection.connected = false;
+    
+    // Call connection callback if registered to notify about the drop
+    if (s_connection_callback) {
+        s_connection_callback(false, NULL, ESP_FAIL, s_connection_user_data);
+    }
+    
+    // Wait a moment to simulate some delay
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Auto-reconnect in mock implementation
+    s_connected = true;
+    current_connection.connected = true;
+    
+    // Notify about reconnection
+    if (s_connection_callback) {
+        s_connection_callback(true, &device, ESP_OK, s_connection_user_data);
+    }
+    
+    return ESP_OK;
+}
