@@ -15,6 +15,7 @@
 #include "audio_pipeline_test.h"
 #include "pcm_format_test.h"
 #include "i2s_channel_test.h"
+#include "bt_a2dp_test.h" // Include Bluetooth A2DP test header
 
 static const char *TAG = "BT_AUDIO_TEST";
 
@@ -22,11 +23,15 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "Starting ESP32 BT Audio Source Tests");
     
-    bool run_bluetooth_tests = false;
+    // Enable Bluetooth tests
+    bool run_bluetooth_tests = true;
     
     if (run_bluetooth_tests) {
         ESP_LOGI(TAG, "Running Bluetooth tests");
-        // Run Bluetooth tests
+        run_bt_a2dp_tests(); // Call the Bluetooth test function
+        
+        // Allow some time for Bluetooth operations to complete
+        vTaskDelay(pdMS_TO_TICKS(1000));
     } else {
         ESP_LOGI(TAG, "Bluetooth tests are DISABLED - focusing on I2S implementation");
     }
@@ -41,13 +46,11 @@ void app_main(void)
     
     vTaskDelay(pdMS_TO_TICKS(500));
     
-    // Run PCM format tests - remove the NULL check since function is always available
     ESP_LOGI(TAG, "Running PCM format validation tests");
     run_pcm_format_tests();
     
     vTaskDelay(pdMS_TO_TICKS(500));
     
-    // Run I2S channel tests
     ESP_LOGI(TAG, "Running I2S channel configuration tests");
     run_i2s_channel_tests();
     

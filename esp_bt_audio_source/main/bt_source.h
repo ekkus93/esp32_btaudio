@@ -239,6 +239,58 @@ esp_err_t bt_simulate_disconnect(void);
  */
 bool bt_device_supports_profile(const bt_device_t* device, bt_profile_t profile);
 
+/**
+ * @brief Start BT scanning with timeout
+ * 
+ * @param duration_s Duration in seconds
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan(uint32_t duration_s);
+
+/**
+ * @brief Check if BT is currently scanning
+ * 
+ * @return true if scanning, false otherwise
+ */
+bool bt_is_scanning(void);
+
+/**
+ * @brief Pause streaming audio
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not streaming
+ */
+esp_err_t bt_pause_streaming(void);
+
+/**
+ * @brief Resume previously paused audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not paused
+ */
+esp_err_t bt_resume_streaming(void);
+
+/**
+ * @brief Bluetooth streaming states
+ */
+typedef enum {
+    BT_STREAMING_STATE_STOPPED = 0,
+    BT_STREAMING_STATE_PLAYING,
+    BT_STREAMING_STATE_PAUSED
+} bt_streaming_state_t;
+
+/**
+ * @brief Check if streaming is paused
+ * 
+ * @return true if paused, false otherwise
+ */
+bool bt_is_paused(void);
+
+/**
+ * @brief Get current streaming state
+ * 
+ * @return Current streaming state (STOPPED, PLAYING, PAUSED)
+ */
+bt_streaming_state_t bt_get_streaming_state(void);
+
 #ifdef __cplusplus
 }
 #endif

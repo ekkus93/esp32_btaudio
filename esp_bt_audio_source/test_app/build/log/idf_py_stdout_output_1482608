@@ -1,0 +1,249 @@
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6276
+load:0x40078000,len:15748
+load:0x40080400,len:4
+ho 8 tail 4 room 4
+load:0x40080404,len:3860
+entry 0x4008063c
+[0;32mI (31) boot: ESP-IDF v5.4.1-dirty 2nd stage bootloader[0m
+[0;32mI (31) boot: compile time Jun  1 2025 15:45:18[0m
+[0;32mI (31) boot: Multicore bootloader[0m
+[0;32mI (33) boot: chip revision: v3.1[0m
+[0;32mI (36) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (40) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (43) boot.esp32: SPI Flash Size : 2MB[0m
+[0;32mI (47) boot: Enabling RNG early entropy source...[0m
+[0;32mI (51) boot: Partition Table:[0m
+[0;32mI (54) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (60) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (67) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (73) boot:  2 factory          factory app      00 00 00010000 00100000[0m
+[0;32mI (80) boot: End of partition table[0m
+[0;32mI (83) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=2ac70h (175216) map[0m
+[0;32mI (150) esp_image: segment 1: paddr=0003ac98 vaddr=3ff80000 size=0001ch (    28) load[0m
+[0;32mI (151) esp_image: segment 2: paddr=0003acbc vaddr=3ffbdb60 size=050dch ( 20700) load[0m
+[0;32mI (162) esp_image: segment 3: paddr=0003fda0 vaddr=40080000 size=00278h (   632) load[0m
+[0;32mI (162) esp_image: segment 4: paddr=00040020 vaddr=400d0020 size=b2abch (731836) map[0m
+[0;32mI (419) esp_image: segment 5: paddr=000f2ae4 vaddr=40080278 size=19d80h (105856) load[0m
+[0;32mI (473) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (473) boot: Disabling RNG early entropy source...[0m
+[0;32mI (484) cpu_start: Multicore app[0m
+[0;32mI (492) cpu_start: Pro cpu start user code[0m
+[0;32mI (492) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (492) app_init: Application information:[0m
+[0;32mI (492) app_init: Project name:     esp_bt_audio_source_test[0m
+[0;32mI (498) app_init: App version:      v0.1.0-51-g098ba205-dirty[0m
+[0;32mI (503) app_init: Compile time:     Jun  1 2025 15:45:11[0m
+[0;32mI (508) app_init: ELF file SHA256:  96bb95730...[0m
+[0;32mI (512) app_init: ESP-IDF:          v5.4.1-dirty[0m
+[0;32mI (517) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (521) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (525) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (529) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (535) heap_init: At 3FFAFF10 len 000000F0 (0 KiB): DRAM[0m
+[0;32mI (540) heap_init: At 3FFB6388 len 00001C78 (7 KiB): DRAM[0m
+[0;32mI (545) heap_init: At 3FFB9A20 len 00004108 (16 KiB): DRAM[0m
+[0;32mI (550) heap_init: At 3FFCCB78 len 00013488 (77 KiB): DRAM[0m
+[0;32mI (555) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (561) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (566) heap_init: At 4009A000 len 00006000 (24 KiB): IRAM[0m
+[0;32mI (573) spi_flash: detected chip: generic[0m
+[0;32mI (575) spi_flash: flash io: dio[0m
+[0;33mW (578) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.[0m
+[0;32mI (591) coexist: coex firmware version: e727207[0m
+[0;32mI (595) main_task: Started on CPU0[0m
+[0;32mI (605) main_task: Calling app_main()[0m
+[0;32mI (605) BT_AUDIO_TEST: Starting ESP32 BT Audio Source Tests[0m
+[0;32mI (605) BT_AUDIO_TEST: Running Bluetooth tests[0m
+[0;32mI (605) BT_A2DP_TEST: Starting Bluetooth A2DP tests[0m
+[0;32mI (605) BT_SOURCE_MOCK: Initializing mock framework[0m
+[0;32mI (615) BT_A2DP_TEST: Testing Bluetooth stack initialization[0m
+[0;32mI (615) BT_SOURCE_MOCK: Resetting mock state[0m
+[0;32mI (625) BT_SOURCE_MOCK: Mock: Initializing Bluetooth stack[0m
+[0;32mI (625) BTDM_INIT: BT controller compile version [dc1cd58][0m
+[0;32mI (635) BTDM_INIT: Bluetooth MAC: a0:b7:65:2c:7f:56[0m
+./main/bt_a2dp_test.c:48:test_bluetooth_stack_init:FAIL: Expected 0 Was 258. BT controller enable failed
+[0;32mI (665) BT_A2DP_TEST: Testing A2DP streaming start/stop[0m
+[0;32mI (665) BT_SOURCE_MOCK: Resetting mock state[0m
+[0;32mI (665) BT_SOURCE_MOCK: Mock: Starting audio streaming[0m
+[0;32mI (665) BT_SOURCE_MOCK: Mock: Stopping audio streaming[0m
+./main/bt_a2dp_test.c:193:test_a2dp_streaming:PASS
+[0;32mI (685) BT_A2DP_TEST: Testing Bluetooth scan start[0m
+[0;32mI (685) BT_SOURCE_MOCK: Resetting mock state[0m
+[0;32mI (685) BT_SOURCE_MOCK: Mock: Starting Bluetooth scan[0m
+./main/bt_a2dp_test.c:104:test_bluetooth_scan_start:FAIL: Expected 0 Was -1
+[0;32mI (715) BT_A2DP_TEST: Testing Bluetooth connection management[0m
+[0;32mI (715) BT_SOURCE_MOCK: Resetting mock state[0m
+[0;32mI (715) BT_SOURCE_MOCK: Mock: Connecting to 00:11:22:33:44:55[0m
+./main/bt_a2dp_test.c:124:test_bluetooth_connection:FAIL: Expected 0 Was -1
+[0;32mI (735) BT_A2DP_TEST: Testing A2DP paired devices memory[0m
+[0;32mI (735) BT_SOURCE_MOCK: Resetting mock state[0m
+./main/bt_a2dp_test.c:196:test_a2dp_paired_devices:PASS
+
+-----------------------
+5 Tests 3 Failures 0 Ignored 
+FAIL
+[0;32mI (765) BT_A2DP_TEST: Cleaning up Bluetooth stack[0m
+[0;32mI (765) BT_SOURCE_MOCK: Resetting mock state[0m
+[0;32mI (765) BT_A2DP_TEST: Bluetooth A2DP tests completed with 3 failures[0m
+[0;32mI (1765) BT_AUDIO_TEST: Running I2S audio tests[0m
+[0;32mI (1765) I2S_AUDIO_TEST: Starting I2S audio driver tests[0m
+[0;32mI (1765) I2S_AUDIO_TEST: Testing I2S channel initialization[0m
+./main/i2s_audio_test.c:139:test_i2s_driver_init:PASS
+[0;32mI (1775) I2S_AUDIO_TEST: Testing I2S standard config: 44100Hz, 16-bit, stereo[0m
+./main/i2s_audio_test.c:140:test_i2s_standard_mode:PASS
+
+-----------------------
+2 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (1895) I2S_AUDIO_TEST: I2S audio driver tests completed with 0 failures[0m
+[0;32mI (2395) BT_AUDIO_TEST: Running audio buffer and pipeline tests[0m
+[0;32mI (2395) AUDIO_PIPELINE_TEST: Starting audio buffer and pipeline tests[0m
+[0;32mI (2395) AUDIO_PIPELINE_TEST: Testing audio buffer pool initialization[0m
+[0;32mI (2395) AUDIO_PIPELINE: Audio buffer pool initialized: 8 buffers of 1024 bytes each[0m
+[0;32mI (2405) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:837:test_audio_buffer_pool_init:PASS
+[0;32mI (2425) AUDIO_PIPELINE_TEST: Testing audio buffer allocation and release[0m
+[0;32mI (2425) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;33mW (2435) AUDIO_PIPELINE: No free buffers available[0m
+[0;32mI (2435) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:838:test_audio_buffer_allocation:PASS
+[0;32mI (2455) AUDIO_PIPELINE_TEST: Testing single audio processing stage[0m
+[0;32mI (2455) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2465) AUDIO_PIPELINE: Audio pipeline created with 1 stages[0m
+[0;32mI (2465) AUDIO_PIPELINE: Added processing stage 'Double Amplitude' at index 0[0m
+[0;32mI (2475) AUDIO_PIPELINE: Audio pipeline started[0m
+[0;32mI (2475) AUDIO_PIPELINE: Audio pipeline stopped[0m
+[0;32mI (2485) AUDIO_PIPELINE: Audio pipeline deinitialized[0m
+[0;32mI (2485) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:839:test_audio_single_processing_stage:PASS
+[0;32mI (2515) AUDIO_PIPELINE_TEST: Testing multi-stage audio processing pipeline[0m
+[0;32mI (2515) AUDIO_PIPELINE: Audio buffer pool initialized: 6 buffers of 1024 bytes each[0m
+[0;32mI (2515) AUDIO_PIPELINE: Audio pipeline created with 2 stages[0m
+[0;32mI (2525) AUDIO_PIPELINE: Added processing stage 'Double Amplitude' at index 0[0m
+[0;32mI (2525) AUDIO_PIPELINE: Added processing stage 'Invert Signal' at index 1[0m
+[0;32mI (2535) AUDIO_PIPELINE: Audio pipeline started[0m
+[0;32mI (2535) AUDIO_PIPELINE: Audio pipeline stopped[0m
+[0;32mI (2545) AUDIO_PIPELINE: Audio pipeline deinitialized[0m
+[0;32mI (2545) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:840:test_audio_multi_stage_pipeline:PASS
+[0;32mI (2575) AUDIO_PIPELINE_TEST: Testing audio buffer init (simplified test)[0m
+[0;32mI (2575) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2575) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (2585) AUDIO_PIPELINE_TEST: Basic audio buffer test passed[0m
+./main/audio_pipeline_test.c:841:test_audio_buffer_init_basic:PASS
+[0;32mI (2605) AUDIO_PIPELINE_TEST: Testing volume set/get functionality[0m
+[0;32mI (2605) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2605) AUDIO_PIPELINE: Audio pipeline created with 1 stages[0m
+[0;32mI (2615) AUDIO_PIPELINE: Audio pipeline volume set to 75%[0m
+[0;32mI (2615) AUDIO_PIPELINE: Audio pipeline volume set to 0%[0m
+[0;32mI (2625) AUDIO_PIPELINE: Audio pipeline volume set to 100%[0m
+[0;32mI (2625) AUDIO_PIPELINE: Audio pipeline volume set to 0%[0m
+[0;32mI (2635) AUDIO_PIPELINE: Audio pipeline volume set to 100%[0m
+[0;32mI (2635) AUDIO_PIPELINE: Audio pipeline deinitialized[0m
+[0;32mI (2645) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:844:test_volume_set_get:PASS
+[0;32mI (2665) AUDIO_PIPELINE_TEST: Testing mute/unmute functionality[0m
+[0;32mI (2665) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2665) AUDIO_PIPELINE: Audio pipeline created with 1 stages[0m
+[0;32mI (2675) AUDIO_PIPELINE: Audio pipeline volume set to 75%[0m
+[0;32mI (2675) AUDIO_PIPELINE: Audio pipeline muted[0m
+[0;32mI (2685) AUDIO_PIPELINE: Audio pipeline unmuted, volume restored to 75%[0m
+[0;32mI (2695) AUDIO_PIPELINE: Audio pipeline muted[0m
+[0;32mI (2695) AUDIO_PIPELINE: Audio pipeline unmuted, volume restored to 75%[0m
+[0;32mI (2705) AUDIO_PIPELINE: Audio pipeline deinitialized[0m
+[0;32mI (2705) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:845:test_volume_mute_unmute:PASS
+[0;32mI (2725) AUDIO_PIPELINE_TEST: Testing volume application to audio samples[0m
+[0;32mI (2725) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2735) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:846:test_volume_apply_to_samples:PASS
+[0;32mI (2755) AUDIO_PIPELINE_TEST: Testing sample rate configuration[0m
+[0;32mI (2755) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2755) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2765) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 2048 bytes each[0m
+[0;32mI (2775) AUDIO_PIPELINE: Audio buffer pool sample rate set to 22050 Hz[0m
+[0;32mI (2775) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (2785) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (2785) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:849:test_configure_sample_rate:PASS
+[0;32mI (2815) AUDIO_PIPELINE_TEST: Testing buffer size calculations for different sample rates[0m
+[0;32mI (2815) AUDIO_PIPELINE_TEST: Sample rate: 8000 Hz, Expected size: 743 bytes, Calculated size: 744 bytes[0m
+[0;32mI (2815) AUDIO_PIPELINE_TEST: Sample rate: 16000 Hz, Expected size: 1486 bytes, Calculated size: 1488 bytes[0m
+[0;32mI (2825) AUDIO_PIPELINE_TEST: Sample rate: 22050 Hz, Expected size: 2047 bytes, Calculated size: 2048 bytes[0m
+[0;32mI (2835) AUDIO_PIPELINE_TEST: Sample rate: 32000 Hz, Expected size: 2972 bytes, Calculated size: 2972 bytes[0m
+[0;32mI (2845) AUDIO_PIPELINE_TEST: Sample rate: 44100 Hz, Expected size: 4095 bytes, Calculated size: 4096 bytes[0m
+[0;32mI (2855) AUDIO_PIPELINE_TEST: Sample rate: 48000 Hz, Expected size: 4458 bytes, Calculated size: 4460 bytes[0m
+[0;32mI (2865) AUDIO_PIPELINE_TEST: Sample rate: 96000 Hz, Expected size: 8916 bytes, Calculated size: 8916 bytes[0m
+./main/audio_pipeline_test.c:850:test_buffer_sizes_sample_rates:PASS
+[0;32mI (2895) AUDIO_PIPELINE_TEST: Testing sample rate conversion[0m
+[0;32mI (2895) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (2895) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 2048 bytes each[0m
+[0;32mI (2915) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (2915) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:851:test_sample_rate_conversion:PASS
+
+-----------------------
+11 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (2945) AUDIO_PIPELINE_TEST: Audio buffer and pipeline tests completed with 0 failures[0m
+[0;32mI (3445) BT_AUDIO_TEST: Running PCM format validation tests[0m
+[0;32mI (3445) PCM_FORMAT_TEST: Starting PCM format validation tests[0m
+[0;32mI (3445) PCM_FORMAT_TEST: Testing 16-bit PCM format handling[0m
+[0;32mI (3445) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3465) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:426:test_pcm_16bit_format:PASS
+[0;32mI (3475) PCM_FORMAT_TEST: Testing 24-bit PCM format handling[0m
+[0;32mI (3475) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1536 bytes each[0m
+[0;32mI (3475) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3485) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (3495) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:427:test_pcm_24bit_format:PASS
+[0;32mI (3515) PCM_FORMAT_TEST: Testing PCM endianness handling[0m
+[0;32mI (3515) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3515) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:428:test_pcm_endianness:PASS
+[0;32mI (3535) PCM_FORMAT_TEST: Testing 16-bit to 32-bit PCM conversion[0m
+[0;32mI (3535) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3545) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 2048 bytes each[0m
+[0;32mI (3545) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (3555) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:429:test_pcm_16bit_to_32bit:PASS
+
+-----------------------
+4 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (3585) PCM_FORMAT_TEST: PCM format tests completed with 0 failures[0m
+[0;32mI (4085) BT_AUDIO_TEST: Running I2S channel configuration tests[0m
+[0;32mI (4085) I2S_CHANNEL_TEST: Starting I2S channel configuration tests[0m
+[0;32mI (4085) I2S_CHANNEL_TEST: Testing mono channel configuration[0m
+./main/i2s_channel_test.c:492:test_mono_channel_config:PASS
+[0;32mI (4105) I2S_CHANNEL_TEST: Testing stereo channel configuration[0m
+./main/i2s_channel_test.c:493:test_stereo_channel_config:PASS
+[0;32mI (4115) I2S_CHANNEL_TEST: Testing stereo to mono conversion[0m
+[0;32mI (4115) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4125) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:494:test_stereo_to_mono_conversion:PASS
+[0;32mI (4145) I2S_CHANNEL_TEST: Testing mono to stereo conversion[0m
+[0;32mI (4145) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 512 bytes each[0m
+[0;32mI (4145) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4155) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (4155) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:495:test_mono_to_stereo_conversion:PASS
+[0;32mI (4185) I2S_CHANNEL_TEST: Testing channel independence[0m
+[0;32mI (4185) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4195) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:496:test_channel_independence:PASS
+
+-----------------------
+5 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (4215) I2S_CHANNEL_TEST: I2S channel configuration tests completed with 0 failures[0m
+[0;32mI (4215) BT_AUDIO_TEST: All tests completed[0m
+[0;32mI (4215) BT_AUDIO_TEST: Audio buffer and pipeline implementation test completed[0m
+[0;32mI (4225) main_task: Returned from app_main()[0m

@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "esp_bt_audio_source_test",
-    "project_version":    "v0.1.0-50-g076270c0-dirty",
+    "project_version":    "v0.1.0-51-g098ba205-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app",
     "idf_path":           "/home/phil/esp/v5.4.1/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build",
@@ -1220,13 +1220,13 @@
             "dir": "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main",
             "type": "LIBRARY",
             "lib": "__idf_main",
-            "reqs": [ "driver", "audio", "unity" ],
+            "reqs": [ "driver", "audio", "unity", "bt" ],
             "priv_reqs": [],
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/libmain.a",
-            "sources": [ "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/main.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/i2s_audio_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/audio_pipeline_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/pcm_format_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/i2s_channel_test.c" ],
-            "include_dirs": [ "." ]
+            "sources": [ "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/main.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/i2s_audio_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/audio_pipeline_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/pcm_format_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/i2s_channel_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/bt_a2dp_test.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/bt_source_mock.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/command_interface_mock.c" ],
+            "include_dirs": [ ".", "../../main" ]
         },
         "mbedtls": {
             "alias": "idf::mbedtls",
@@ -2871,11 +2871,11 @@
             "prefix": "idf",
             "dir": "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main",
             "lib": "__idf_main",
-            "reqs": [ "driver", "audio", "unity" ],
+            "reqs": [ "driver", "audio", "unity", "bt" ],
             "priv_reqs": [],
             "managed_reqs": [],
             "managed_priv_reqs": [],
-            "include_dirs": [ "." ]
+            "include_dirs": [ ".", "../../main" ]
         },
         "audio": {
             "alias": "idf::audio",
