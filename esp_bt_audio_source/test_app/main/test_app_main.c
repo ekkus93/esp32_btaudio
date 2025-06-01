@@ -526,13 +526,34 @@ TEST_CASE("Audio streaming state is reported correctly", "[bluetooth][a2dp][audi
     bt_streaming_mock_set_connected(false);
 }
 
-// Main application function
+// Add this implementation above the app_main function:
+
+/**
+ * @brief Placeholder implementation for audio tests
+ * 
+ * This function will eventually contain actual audio processing tests
+ * when those features are implemented.
+ */
+void run_all_audio_tests(void)
+{
+    printf("\n==================================\n");
+    printf("Audio Processing Tests (TODO)\n");
+    printf("==================================\n");
+    printf("- These features are not yet implemented\n");
+    printf("- The corresponding tasks are marked as TODO in the task list\n");
+    printf("- Audio tests will be implemented when the audio features are ready\n");
+    printf("==================================\n\n");
+}
+
 void app_main(void)
 {
     // Run all tests automatically
     UNITY_BEGIN();
     unity_run_all_tests();
     UNITY_END();
+    
+    ESP_LOGI(TAG, "Starting Audio Processing tests");
+    run_all_audio_tests();
     
     ESP_LOGI(TAG, "All tests completed");
     

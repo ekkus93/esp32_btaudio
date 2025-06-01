@@ -90,6 +90,17 @@ typedef struct {
 } bt_streaming_info_t;
 
 /**
+ * @brief Audio configuration structure
+ */
+typedef struct {
+    uint32_t sample_rate;     // Sample rate in Hz
+    uint8_t bit_depth;        // Bit depth (e.g., 16, 24, 32)
+    uint8_t channels;         // Number of channels (1 or 2)
+    uint8_t volume;           // Volume level (0-100)
+    bool mute;                // Mute state (true/false)
+} bt_audio_config_t;
+
+/**
  * @brief Connection callback function type
  */
 typedef void (*bt_connection_callback_t)(bool connected, esp_err_t status, void* user_data);
@@ -287,6 +298,46 @@ uint16_t bt_get_paired_device_count(void);
  * @return ESP_OK on success
  */
 esp_err_t bt_simulate_disconnect(void);
+
+/**
+ * @brief Set audio configuration for streaming
+ * @param config Audio configuration
+ * @return ESP_OK on success
+ */
+esp_err_t bt_set_audio_config(const bt_audio_config_t* config);
+
+/**
+ * @brief Get current audio configuration
+ * @param config Pointer to store audio configuration
+ * @return ESP_OK on success
+ */
+esp_err_t bt_get_audio_config(bt_audio_config_t* config);
+
+/**
+ * @brief Set audio volume
+ * @param volume Volume level (0-100)
+ * @return ESP_OK on success
+ */
+esp_err_t bt_set_volume(uint8_t volume);
+
+/**
+ * @brief Get current volume level
+ * @return Volume level (0-100)
+ */
+uint8_t bt_get_volume(void);
+
+/**
+ * @brief Set audio mute state
+ * @param mute true to mute, false to unmute
+ * @return ESP_OK on success
+ */
+esp_err_t bt_set_mute(bool mute);
+
+/**
+ * @brief Get current mute state
+ * @return true if muted, false otherwise
+ */
+bool bt_is_muted(void);
 
 #ifdef __cplusplus
 }
