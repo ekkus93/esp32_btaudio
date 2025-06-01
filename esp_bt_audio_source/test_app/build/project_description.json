@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "esp_bt_audio_source_test",
-    "project_version":    "v0.1.0-38-gc10c2d09-dirty",
+    "project_version":    "v0.1.0-39-g6e774822-dirty",
     "project_path":       "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app",
     "idf_path":           "/home/phil/esp/v5.4.1/esp-idf",
     "build_dir":          "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build",
@@ -1195,7 +1195,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/libmain.a",
-            "sources": [ "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/test_app_main.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/test_bt_scan.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/bt_source_mock.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/command_interface.c" ],
+            "sources": [ "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/test_app_main.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/test_bt_scan.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/test_bt_connection.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/bt_source_mock.c", "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/main/command_interface.c" ],
             "include_dirs": [ ".", "../../main" ]
         },
         "mbedtls": {

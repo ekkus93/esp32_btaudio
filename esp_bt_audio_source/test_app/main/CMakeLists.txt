@@ -2,11 +2,12 @@ idf_component_register(
     SRCS 
         "test_app_main.c"
         "test_bt_scan.c"
-        "bt_source_mock.c"    # Add mock implementation
-        "command_interface.c"  # Add command interface implementation
+        "test_bt_connection.c"
+        "bt_source_mock.c"
+        "command_interface.c"
     INCLUDE_DIRS 
         "."
-        "../../main"  # Add path to main project header files
+        "../../main"
     REQUIRES 
         unity 
         freertos

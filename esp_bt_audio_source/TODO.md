@@ -6,9 +6,31 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 
 ### Bluetooth A2DP Implementation
 - [x] Initial A2DP source profile implementation
+  - (6) "Bluetooth stack initializes successfully" [bluetooth]
+  - (3) "A2DP starts and stops streaming" [bluetooth][a2dp]
+
 - [x] Implement device scanning functionality
-- [ ] Implement connection management
+  - (1) "Bluetooth scan starts successfully" [bluetooth][a2dp]
+  - (9) "Bluetooth scan reports discovered devices" [bluetooth][a2dp][scan]
+  - (10) "Bluetooth scan filters by device type" [bluetooth][a2dp][scan]
+  - (11) "Bluetooth scanning basic functionality" [bluetooth][a2dp][scan]
+  - (12) "Bluetooth scan filters devices by type" [bluetooth][a2dp][scan]
+  - (13) "Bluetooth scan returns device details" [bluetooth][a2dp][scan]
+  - (14) "Bluetooth scan times out properly" [bluetooth][a2dp][scan]
+  - (15) "Bluetooth scan can be stopped early" [bluetooth][a2dp][scan]
+
+- [x] Implement connection management
+  - (2) "Bluetooth connects to A2DP sink" [bluetooth][a2dp]
+  - (4) "Bluetooth disconnects properly" [bluetooth][a2dp]
+  - (16) "Connect to a device by address" [bluetooth][a2dp][connection]
+  - (17) "Connect to a device by name" [bluetooth][a2dp][connection]
+  - (18) "Handle connection failure gracefully" [bluetooth][a2dp][connection]
+  - (19) "Handle connection timeout" [bluetooth][a2dp][connection]
+  - (20) "Get connection status information" [bluetooth][a2dp][connection]
+
 - [ ] Add reconnection logic for previously paired devices
+  - (5) "A2DP remembers paired devices" [bluetooth][a2dp] (future)
+  - (21) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection] (future)
 - [ ] Handle connection events and state transitions
 - [ ] Implement audio streaming control (start/stop)
 

@@ -3,178 +3,239 @@
 #include "esp_err.h"
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief Device types for filtering
+ * @brief BT device type enum
  */
 typedef enum {
-    BT_DEVICE_TYPE_ANY = 0,
-    BT_DEVICE_TYPE_A2DP_SINK,
-    BT_DEVICE_TYPE_HFP,
-    // Add more types as needed
+    BT_DEVICE_TYPE_UNKNOWN = 0,
+    BT_DEVICE_TYPE_CLASSIC,
+    BT_DEVICE_TYPE_BLE,
+    BT_DEVICE_TYPE_DUAL
 } bt_device_type_t;
 
 /**
- * @brief Bluetooth profiles
+ * @brief BT profile type enum
  */
 typedef enum {
-    BT_PROFILE_A2DP_SINK = 0x01,
-    BT_PROFILE_HFP = 0x02,
-    // Add more profiles as needed
+    BT_PROFILE_NONE = 0,
+    BT_PROFILE_A2DP_SINK = (1 << 0),
+    BT_PROFILE_A2DP_SOURCE = (1 << 1),
+    BT_PROFILE_HFP = (1 << 2),
+    BT_PROFILE_SPP = (1 << 3)
 } bt_profile_t;
 
 /**
- * @brief Bluetooth device information structure
+ * @brief BT device structure
  */
 typedef struct {
-    uint8_t addr[6];           // Device MAC address
+    uint8_t addr[6];           // Device address
     char name[32];             // Device name
     int8_t rssi;               // Signal strength
-    bool paired;               // Whether device is paired
-    bool connected;            // Whether device is connected
-    uint16_t profiles;         // Supported profiles (bit mask)
+    bool paired;               // Is device paired
+    uint32_t cod;              // Class of Device
 } bt_device_t;
 
 /**
- * @brief Callback for device discovery events
- * 
- * @param device Pointer to discovered device info
- * @param user_data User data passed during registration
+ * @brief Connection information structure
  */
-typedef void (*bt_discovery_cb_t)(bt_device_t* device, void* user_data);
+typedef struct {
+    bool connected;             // Whether currently connected
+    char remote_addr[18];       // Remote device address string
+    char remote_name[32];       // Remote device name
+    int8_t signal_strength;     // Signal strength (RSSI)
+} bt_connection_info_t;
 
 /**
- * @brief Initialize the Bluetooth stack and A2DP source profile
+ * @brief Discovery callback function type
+ */
+typedef void (*bt_discovery_cb_t)(bt_device_t *device, void *user_data);
+
+/**
+ * @brief Connection state change callback type
+ */
+typedef void (*bt_connection_callback_t)(bool connected, bt_device_t* device, esp_err_t status, void* user_data);
+
+/**
+ * @brief Initialize Bluetooth stack
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_init(void);
 
 /**
- * @brief Start scanning for Bluetooth devices
+ * @brief Start BT scanning
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_scan_start(void);
 
 /**
- * @brief Stop scanning for Bluetooth devices
+ * @brief Start filtered scan for specific device type
+ * 
+ * @param device_type Device type to filter for
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan_start_filtered(bt_device_type_t device_type);
+
+/**
+ * @brief Stop scanning
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_scan_stop(void);
 
 /**
- * @brief Get number of discovered devices during scan
- * 
- * @return Number of discovered devices
- */
-uint16_t bt_get_discovered_device_count(void);
-
-/**
- * @brief Connect to a Bluetooth device by MAC address
+ * @brief Connect to a device
  * 
  * @param addr MAC address string in format "XX:XX:XX:XX:XX:XX"
- * @return ESP_OK on success
+ * @return ESP_OK on success, error code otherwise
  */
 esp_err_t bt_connect(const char* addr);
 
 /**
- * @brief Check if connected to a Bluetooth device
+ * @brief Connect to a device by name
+ * 
+ * @param name Device name to connect to
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_connect_by_name(const char* name);
+
+/**
+ * @brief Connect with timeout
+ * 
+ * @param addr MAC address string in format "XX:XX:XX:XX:XX:XX"
+ * @param timeout_ms Timeout in milliseconds
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms);
+
+/**
+ * @brief Check if connected to a BT device
  * 
  * @return true if connected, false otherwise
  */
 bool bt_is_connected(void);
 
 /**
- * @brief Disconnect from connected Bluetooth device
+ * @brief Disconnect from current device
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_disconnect(void);
 
 /**
- * @brief Start A2DP audio streaming
+ * @brief Start audio streaming
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_start_streaming(void);
 
 /**
- * @brief Stop A2DP audio streaming
+ * @brief Stop audio streaming
  * 
  * @return ESP_OK on success
  */
 esp_err_t bt_stop_streaming(void);
 
 /**
- * @brief Check if audio is currently streaming
+ * @brief Check if streaming is active
  * 
  * @return true if streaming, false otherwise
  */
 bool bt_is_streaming(void);
 
 /**
- * @brief Get the number of paired devices in memory
+ * @brief Register device discovery callback
+ * 
+ * @param callback Function to call when device is discovered
+ * @param user_data User data to pass to callback
+ * @return ESP_OK on success
+ */
+esp_err_t bt_register_discovery_callback(bt_discovery_cb_t callback, void *user_data);
+
+/**
+ * @brief Get discovered device count
+ * 
+ * @return Number of discovered devices
+ */
+uint16_t bt_get_discovered_device_count(void);
+
+/**
+ * @brief Get discovered devices
+ * 
+ * @param devices Array to store devices (must be allocated by caller)
+ * @param max_count Maximum number of devices to store
+ * @param device_count Actual number of devices stored
+ * @return ESP_OK on success
+ */
+esp_err_t bt_get_discovered_devices(bt_device_t* devices, int max_count, uint16_t* device_count);
+
+/**
+ * @brief Get paired device count
  * 
  * @return Number of paired devices
  */
 uint16_t bt_get_paired_device_count(void);
 
 /**
- * @brief Add a device to the paired devices list
+ * @brief Add paired device
  * 
- * @param device Pointer to device information structure
+ * @param device Device to add
  * @return ESP_OK on success
  */
-esp_err_t bt_add_paired_device(const bt_device_t* device);
+esp_err_t bt_add_paired_device(bt_device_t* device);
 
 /**
- * @brief Remove a device from the paired devices list
+ * @brief Remove paired device
  * 
- * @param device Pointer to device information structure
+ * @param device Device to remove
  * @return ESP_OK on success
  */
-esp_err_t bt_remove_paired_device(const bt_device_t* device);
+esp_err_t bt_remove_paired_device(bt_device_t* device);
 
 /**
- * @brief Register callback for device discovery events
+ * @brief Register callback for connection state changes
  * 
- * @param callback Function to call when device is discovered
+ * @param callback Function to call when connection state changes
  * @param user_data User data to pass to callback
  * @return ESP_OK on success
  */
-esp_err_t bt_register_discovery_callback(bt_discovery_cb_t callback, void* user_data);
+esp_err_t bt_register_connection_callback(bt_connection_callback_t callback, void* user_data);
 
 /**
- * @brief Start scanning with device type filter
+ * @brief Get current connection information
  * 
- * @param device_type Type of device to filter for
+ * @param info Pointer to connection info structure to fill
  * @return ESP_OK on success
  */
-esp_err_t bt_scan_start_filtered(bt_device_type_t device_type);
+esp_err_t bt_get_connection_info(bt_connection_info_t* info);
 
 /**
- * @brief Get list of discovered devices
+ * @brief Enable or disable auto-reconnection
  * 
- * @param devices Array to store discovered devices
- * @param max_count Maximum number of devices to return
- * @param count Actual number of devices returned
+ * @param enable True to enable auto-reconnect, false to disable
  * @return ESP_OK on success
  */
-esp_err_t bt_get_discovered_devices(bt_device_t* devices, uint16_t max_count, uint16_t* count);
+esp_err_t bt_set_auto_reconnect(bool enable);
 
 /**
- * @brief Check if device supports specific profile
+ * @brief Simulate disconnection (for testing only)
+ * 
+ * @return ESP_OK on success
+ */
+esp_err_t bt_simulate_disconnect(void);
+
+/**
+ * @brief Check if device supports a profile
  * 
  * @param device Device to check
  * @param profile Profile to check for
- * @return true if device supports profile
+ * @return true if supported, false otherwise
  */
 bool bt_device_supports_profile(const bt_device_t* device, bt_profile_t profile);
 
