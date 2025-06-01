@@ -1,3 +1,11 @@
-idf_component_register(SRCS "test_app_main.c" "bt_source_mock.c" "bt_streaming_mock.c"
-                       INCLUDE_DIRS "."
-                       REQUIRES unity)
+idf_component_register(
+    SRCS 
+        "test_app_main.c"
+        "i2s_audio_test.c"
+    INCLUDE_DIRS 
+        "."
+    REQUIRES
+        driver
+        esp_driver_i2s
+        unity
+)

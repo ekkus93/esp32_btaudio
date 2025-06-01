@@ -40,7 +40,7 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
   - (29) "Audio streaming state is reported correctly" [bluetooth][a2dp][audio]
 
 ### Audio Processing
-- [ ] Configure I2S driver for receiving audio
+- [x] Configure I2S driver for receiving audio
 - [ ] Set up audio data buffers and processing pipeline
 - [ ] Implement volume control functionality
 - [ ] Add mute/unmute capability
