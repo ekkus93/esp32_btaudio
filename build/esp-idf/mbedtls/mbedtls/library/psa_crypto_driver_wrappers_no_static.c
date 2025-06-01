@@ -1,1 +1,0 @@
-/home/phil/work/esp32/esp32_btaudio4/esp-adf/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_driver_wrappers_no_static.c

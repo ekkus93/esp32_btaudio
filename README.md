@@ -1,131 +1,379 @@
-1️⃣ Install ESP-IDF
-ESP-ADF depends on ESP-IDF, so install it first.
+# ESP32 Audio Project
 
-Step 0: Set Project Base Directory
-```bash
-export PROJECT_BASE_DIR=`pwd`
+This project uses multiple ESP32 devices to create an audio streaming solution:
+- One ESP32 dedicated to Bluetooth A2DP audio source functionality
+- Another ESP32 handling WiFi and web server capabilities
+
+## System Architecture
+
+### ESP32 Bluetooth Audio Source
+- **Function**: Captures audio input and transmits it over Bluetooth A2DP
+- **Input**: I2S audio interface
+  - I2S is ideal for this application because:
+    - ESP32 has dedicated hardware I2S controllers
+    - Supports high-quality digital audio transfer
+    - Can interface with many types of audio devices (DACs, ADCs, codecs, microphones)
+    - Avoids analog noise issues with direct digital transfer
+    - ESP-IDF provides robust I2S drivers
+- **Output**: Bluetooth A2DP (Advanced Audio Distribution Profile)
+  - Uses SBC codec for audio compression
+  - Streams to any A2DP sink device (speakers, headphones, etc.)
+- **Control Interface**: Serial UART command system
+  - Accept commands to control Bluetooth functions (connect, disconnect, etc.)
+  - Configure audio parameters (volume, EQ settings if supported)
+  - Report device status and connection information
+  - Enable runtime changes without reflashing
+  - Bridge communication with the WiFi controller ESP32
+
+### ESP32 WiFi Controller
+- **Function**: Provides web interface and network connectivity
+- **Features**: TBD
+
+## Hardware Configuration
+
+### ESP32 Bluetooth Audio Source (ESP32 WROOM32)
+
+#### GPIO Assignments
+
+**I2S Audio Interface:**
+- BCLK (Bit Clock): GPIO26
+- WCLK/LRCLK (Word/LR Clock): GPIO25
+- DATA OUT: GPIO22 (from external device to ESP32)
+- DATA IN: GPIO21 (from ESP32 to external device, if needed)
+
+**Serial Communication:**
+- Using UART1 (separate from USB programming port UART0)
+- TX: GPIO17
+- RX: GPIO16 
+
+**Rationale:**
+- These pins avoid boot strapping pins (GPIO0, GPIO2, GPIO12)
+- GPIO25/26 are commonly used for I2S and work well together
+- GPIO16/17 provide a dedicated UART channel separate from the debug/programming port
+- All selected pins are available on most ESP32 development boards
+- This configuration leaves GPIO ports available for additional functionality if needed
+
+**Notes:**
+- If using an I2S codec chip or DAC/ADC, consult its datasheet for any specific requirements
+- The standard programming/debug UART (UART0 on GPIO1/GPIO3) remains available
+
+## Audio Format Requirements
+
+### I2S Input Format for Bluetooth A2DP Transmission
+- **Sample Rate**: 44.1kHz (standard for A2DP audio)
+- **Channel Configuration**: Stereo (2 channels)
+- **Bit Depth**: 16-bit per sample
+- **Data Format**: Signed PCM (little-endian)
+- **I2S Standard**: Standard Philips I2S protocol
+  - BCLK: Bit clock (frequency = sample rate × bit depth × channels)
+  - WCLK/LRCLK: Word/Left-Right clock (frequency = sample rate)
+  - DATA: Serial data line (MSB first)
+
+### A2DP Transmission Processing
+- ESP32 I2S controller receives digital audio data
+- ESP32 internal processing converts I2S data to Bluetooth A2DP packets
+- SBC encoding is applied (default A2DP codec for ESP32)
+- Data is transmitted via Bluetooth to connected A2DP sink devices
+
+**Implementation Note**: The ESP-IDF A2DP source example includes a sample rate converter if needed, but direct 44.1kHz input simplifies processing and provides best audio quality.
+
+## Serial Command Protocol
+
+### Command Format
+Commands follow a simple text-based protocol:
+```
+<COMMAND> [PARAMETERS]
 ```
 
-Step 1: Install Dependencies
-Run the following command to install system packages required for ESP-IDF:
+Responses follow the format:
+```
+<STATUS>|<COMMAND>|<RESULT>[|<ADDITIONAL_DATA>]
+```
+- STATUS: OK, ERROR, INFO
+- COMMAND: The command being responded to
+- RESULT: Result of the command
+- ADDITIONAL_DATA: Optional additional data
 
-```bash
-sudo apt update && sudo apt install -y \
-    git wget curl flex bison gperf python3 python3-pip python3-venv \
-    cmake ninja-build ccache libffi-dev libssl-dev dfu-util
+### Command Set
+
+#### Bluetooth Connection Management
+- **SCAN** - Start scanning for Bluetooth devices
+  - Response: `INFO|SCAN|DEVICE_FOUND|<MAC>,<NAME>` (multiple responses possible)
+  - Final response: `OK|SCAN|COMPLETE|<COUNT>`
+- **CONNECT <MAC>** - Connect to specific device by MAC address
+  - Response: `OK|CONNECT|CONNECTED|<MAC>` or `ERROR|CONNECT|FAILED|<REASON>`
+- **CONNECT_NAME <NAME>** - Connect to device by name
+  - Response: Same as CONNECT
+- **DISCONNECT** - Disconnect current Bluetooth connection
+  - Response: `OK|DISCONNECT|SUCCESS`
+- **PAIRED** - List paired devices
+  - Response: `INFO|PAIRED|DEVICE|<MAC>,<NAME>` (multiple responses possible)
+  - Final response: `OK|PAIRED|COMPLETE|<COUNT>`
+- **SET_NAME <NAME>** - Set Bluetooth device name
+  - Response: `OK|SET_NAME|SUCCESS|<NAME>`
+
+#### Audio Control
+- **START** - Start audio transmission
+  - Response: `OK|START|SUCCESS` or `ERROR|START|FAILED|<REASON>`
+- **STOP** - Stop audio transmission
+  - Response: `OK|STOP|SUCCESS`
+- **VOLUME <0-100>** - Set volume level
+  - Response: `OK|VOLUME|SET|<LEVEL>`
+- **MUTE** - Mute audio output
+  - Response: `OK|MUTE|SUCCESS`
+- **UNMUTE** - Unmute audio output
+  - Response: `OK|UNMUTE|SUCCESS`
+
+#### Status and System Commands
+- **STATUS** - Get current system status
+  - Response: `OK|STATUS|<BT_STATUS>,<AUDIO_STATUS>,<VOLUME>`
+- **VERSION** - Get firmware version
+  - Response: `OK|VERSION|<VERSION_STRING>`
+- **RESET** - Reset the ESP32
+  - Response: `OK|RESET|REBOOTING` (followed by boot messages)
+- **DEBUG <ON|OFF>** - Enable/disable debug messages
+  - Response: `OK|DEBUG|<STATE>`
+
+#### Audio Configuration
+- **SAMPLE_RATE <RATE>** - Configure I2S sample rate
+  - Response: `OK|SAMPLE_RATE|SET|<RATE>`
+- **I2S_CONFIG <BCLK>,<WCLK>,<DOUT>,<DIN>** - Configure I2S pins
+  - Response: `OK|I2S_CONFIG|SUCCESS`
+
+### Example Communication Flow
+```
+> SCAN
+< INFO|SCAN|DEVICE_FOUND|11:22:33:44:55:66,Kitchen Speaker
+< INFO|SCAN|DEVICE_FOUND|AA:BB:CC:DD:EE:FF,Living Room Speaker
+< OK|SCAN|COMPLETE|2
+
+> CONNECT AA:BB:CC:DD:EE:FF
+< OK|CONNECT|CONNECTED|AA:BB:CC:DD:EE:FF
+
+> START
+< OK|START|SUCCESS
+
+> STOP
+< OK|STOP|SUCCESS
+
+> STATUS
+< OK|STATUS|CONNECTED,STOPPED,75
 ```
 
-Step 2: Clone ESP-IDF Repository
-ESP-ADF only supports certain ESP-IDF versions. Check the ESP-ADF documentation for compatibility. The most stable version is usually ESP-IDF v4.4 or later.
+## Bluetooth Pairing Process
 
-```bash
-cd ${PROJECT_BASE_DIR}
-git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git esp-idf
+### Pairing Methods
+The ESP32 Bluetooth A2DP source supports different pairing methods depending on the requirements of the sink device:
+
+1. **"Just Works" Pairing** - No PIN required
+   - Most common for speakers and headphones
+   - Automatically handled without user intervention
+   
+2. **PIN Code Authentication** - Numeric PIN required
+   - Used by some older Bluetooth devices
+   - ESP32 can use a fixed PIN (default "0000" or "1234") or custom PIN
+
+3. **Secure Simple Pairing (SSP)** - Modern security method
+   - Confirmation of numeric code displayed on both devices
+   - Passkey entry on one device
+   
+### Additional Pairing Commands
+
+- **PAIR <MAC>** - Initiate pairing with device (if not already paired)
+  - Response: `OK|PAIR|STARTED|<MAC>` or `ERROR|PAIR|FAILED|<REASON>`
+  
+- **CONFIRM_PIN <YES/NO>** - Confirm a PIN match during SSP
+  - Response: `OK|CONFIRM_PIN|<RESULT>`
+  
+- **ENTER_PIN <PIN>** - Enter a PIN when requested
+  - Response: `OK|ENTER_PIN|ACCEPTED` or `ERROR|ENTER_PIN|REJECTED`
+  
+- **SET_DEFAULT_PIN <PIN>** - Set the default PIN to use (stored in NVS)
+  - Response: `OK|SET_DEFAULT_PIN|SUCCESS|<PIN>`
+  
+- **UNPAIR <MAC>** - Remove a paired device
+  - Response: `OK|UNPAIR|SUCCESS|<MAC>` or `ERROR|UNPAIR|FAILED|<REASON>`
+  
+- **UNPAIR_ALL** - Remove all paired devices
+  - Response: `OK|UNPAIR_ALL|SUCCESS|<COUNT>`
+
+### Pairing Events
+During pairing operations, the ESP32 may send unsolicited messages:
+
+- `EVENT|PAIR|PIN_REQUEST|<MAC>` - A PIN code is required
+- `EVENT|PAIR|CONFIRM|<PIN>` - Confirm the PIN matches on both devices
+- `EVENT|PAIR|SUCCESS|<MAC>` - Pairing was successful 
+- `EVENT|PAIR|FAILED|<REASON>` - Pairing failed
+
+### Example Pairing Flow with PIN
+
+```
+> SCAN
+< INFO|SCAN|DEVICE_FOUND|AA:BB:CC:DD:EE:FF,Car Stereo
+< OK|SCAN|COMPLETE|1
+
+> PAIR AA:BB:CC:DD:EE:FF
+< OK|PAIR|STARTED|AA:BB:CC:DD:EE:FF
+< EVENT|PAIR|PIN_REQUEST|AA:BB:CC:DD:EE:FF
+
+> ENTER_PIN 0000
+< OK|ENTER_PIN|ACCEPTED
+< EVENT|PAIR|SUCCESS|AA:BB:CC:DD:EE:FF
+
+> CONNECT AA:BB:CC:DD:EE:FF
+< OK|CONNECT|CONNECTED|AA:BB:CC:DD:EE:FF
 ```
 
-⚠️ Replace v5.1.2 with the latest supported version.
+**Note**: Most A2DP audio sink devices (speakers, headphones) use "Just Works" pairing and don't require PIN codes. PIN-based pairing commands are typically only needed for automotive systems and some older devices.
 
-Step 3: Install ESP-IDF
-Run the ESP-IDF installation script:
+## WiFi Controller ESP32
 
-```bash
-cd ${PROJECT_BASE_DIR}/esp-idf
-./install.sh
+### Function
+The WiFi Controller ESP32 serves as:
+- I2S audio source (generating audio data)
+- Web interface provider via WiFi
+- Command interface to the Bluetooth ESP32
+- Internet connectivity for streaming services
+
+### GPIO Assignments (ESP32 WROOM32)
+
+**I2S Output Interface:**
+- BCLK (Bit Clock): GPIO26 (must match Bluetooth ESP32)
+- WCLK/LRCLK (Word/LR Clock): GPIO25 (must match Bluetooth ESP32)
+- DATA OUT: GPIO21 (connects to DATA IN on Bluetooth ESP32)
+
+**Serial Communication to Bluetooth ESP32:**
+- TX: GPIO17 (connects to RX GPIO16 on Bluetooth ESP32)
+- RX: GPIO16 (connects to TX GPIO17 on Bluetooth ESP32)
+
+**SD Card Interface (Optional - for local audio files):**
+- MOSI: GPIO23
+- MISO: GPIO19
+- CLK: GPIO18
+- CS: GPIO5
+
+**User Interface Elements:**
+- Status LED: GPIO2 (built-in LED on most dev boards)
+- User button: GPIO0 (built-in button on most dev boards)
+
+**Notes:**
+- The I2S pins are selected to directly connect to the Bluetooth ESP32
+- This configuration leaves SPI bus 2 available for the SD card
+- GPIO pins 1 and 3 remain available for the debug serial port
+- WiFi functionality uses the ESP32's integrated WiFi and doesn't require additional GPIO pins
+
+### Connection Diagram
+```
+WiFi ESP32                  Bluetooth ESP32
+-----------                 --------------
+GPIO26 (BCLK) ------------- GPIO26 (BCLK)
+GPIO25 (WCLK) ------------- GPIO25 (WCLK)
+GPIO21 (DATA) ------------- GPIO22 (DATA IN)
+GPIO17 (TX)   ------------- GPIO16 (RX)
+GPIO16 (RX)   ------------- GPIO17 (TX)
+GND           ------------- GND
 ```
 
-Step 4: Export ESP-IDF Environment Variables
-Run the following command to set up the environment:
+## Implementation Guide
 
-```bash
-source ${PROJECT_BASE_DIR}/esp-idf/export.sh
+### ESP32 WiFi Controller Project Setup
+
+**Recommended Base Templates:**
+
+1. **HTTP Server Options:**
+   - **`protocols/http_server/simple`**: Basic HTTP server with minimal features
+   - **`protocols/http_server/restful_server`**: More advanced with RESTful API structure
+      * Good for structured API endpoints
+      * Includes JSON parsing
+      * Better organization for complex web interfaces
+
+2. **WebSocket Option:**
+   - **`protocols/http_server/ws_echo_server`**: WebSocket server implementation
+      * Ideal for real-time communication
+      * Allows push notifications from ESP32 to browser
+      * Better for displaying live status updates from Bluetooth ESP32
+      * More responsive user experience for status monitoring
+
+3. **Persistent Sockets Option:**
+   - **`protocols/http_server/persistent_sockets`**: Maintains long-lived TCP connections
+      * Lower-level socket implementation
+      * Good for custom protocols or binary data streaming
+
+**Final Recommendation:** The **`protocols/http_server/ws_echo_server`** would be the best choice for your project because:
+- WebSockets provide the ideal communication channel for real-time Bluetooth status updates
+- It allows both server-to-client push notifications and client-to-server commands
+- It includes basic HTTP functionality for serving the web interface
+- The bidirectional communication model matches your needs for sending commands and receiving status updates
+
+**Implementation steps:**
+1. Start with the ws_echo_server template
+2. Add I2S output functionality for audio generation
+3. Implement UART communication to the Bluetooth ESP32
+4. Add SD card support if needed
+5. Develop the web interface with WebSocket support for real-time updates
+
+*More implementation details to be added...*
+
+## System Diagram
+
+```
+┌───────────────────┐       ┌────────────────────┐      ┌──────────────┐
+│                   │ I2S   │                    │  BT  │              │
+│  WiFi Controller  ├───────►  Bluetooth Source  ├──────►  BT Speaker  │
+│  ESP32            │       │  ESP32             │      │              │
+│                   │       │                    │      │              │
+└───┬───────────────┘       └────────────────────┘      └──────────────┘
+    │                                 ▲
+    │         Serial UART            │
+    └─────────────────────────────────┘
+
+     ▲
+     │ WebSocket/HTTP
+     │
+┌────▼─────────┐
+│              │
+│  Web Client  │
+│              │
+└──────────────┘
 ```
 
-To make this permanent, add it to your .bashrc or .zshrc:
+## Troubleshooting Guide
 
-```bash
-echo 'source ${PROJECT_BASE_DIR}/esp-idf/export.sh' >> ${PROJECT_BASE_DIR}/.bashrc
-```
+### Common Issues
 
-2️⃣ Install ESP-ADF
-ESP-ADF extends ESP-IDF, so now we install it.
+#### No Sound Output
+- Check I2S connections between ESP32s
+- Verify Bluetooth connection status
+- Ensure volume is not set to zero
+- Try different speakers
+- Check the sample rate configuration
 
-Step 1: Clone ESP-ADF Repository
-```bash
-cd ${PROJECT_BASE_DIR}
-git clone --recursive https://github.com/espressif/esp-adf.git esp-adf
-```
+#### ESP32s Not Communicating
+- Verify UART connections
+- Check TX/RX are correctly crossed (TX to RX, RX to TX)
+- Try a lower baud rate
+- Check ground connection between ESP32s
 
-Step 2: Set Up ESP-ADF Environment
-ESP-ADF must use the correct ESP-IDF version. To configure this, run:
+#### Bluetooth Not Connecting
+- Ensure the target device is in pairing mode
+- Try resetting the Bluetooth stack with the RESET command
+- Check MAC address is entered correctly
+- Try removing paired devices with UNPAIR_ALL
 
-```bash
-export ADF_PATH=${PROJECT_BASE_DIR}/esp-adf
-source $ADF_PATH/esp-idf/export.sh
-```
-For permanent configuration, add this to .bashrc:
+#### WiFi Connection Issues
+- Check SSID and password
+- Ensure router is broadcasting 2.4GHz network (ESP32 doesn't support 5GHz)
+- Try moving closer to the router
+- Restart the ESP32
 
-```bash
-echo 'export ADF_PATH=${PROJECT_BASE_DIR}/esp-adf' >> ${PROJECT_BASE_DIR}/.bashrc
-echo 'source $ADF_PATH/esp-idf/export.sh' >> ${PROJECT_BASE_DIR}/.bashrc
-```
+#### WebSocket Connection Failing
+- Check ESP32's IP address in serial output
+- Verify browser supports WebSockets
+- Try a different browser or WebSocket client
+- Check your network allows WebSocket connections
 
-3️⃣ Create a New ESP-ADF Project
-You can start with an example project or create a new one.
-
-Option 1: Using an Example
-ESP-ADF comes with several examples inside ${PROJECT_BASE_DIR}/esp-adf/examples. Try running an example:
-
-```bash
-cd ${PROJECT_BASE_DIR}/esp-adf/examples/get-started/play_mp3
-idf.py set-target esp32
-idf.py menuconfig
-idf.py build
-idf.py flash monitor
-```
-
-Option 2: Creating a New ESP-ADF Project
-To create a fresh project:
-
-```bash
-cd ${PROJECT_BASE_DIR}
-idf.py create-project my-audio-project
-cd my-audio-project
-```
-
-Then, copy the necessary ESP-ADF components into your project:
-
-```bash
-mkdir components
-cp -r ${PROJECT_BASE_DIR}/esp-adf/components/audio_pipeline components/
-```
-
-Modify CMakeLists.txt to include ESP-ADF libraries.
-
-4️⃣ Build & Flash the Project
-Step 1: Configure the Target
-```bash
-idf.py set-target esp32
-```
-
-Step 2: Configure the Project
-```bash
-idf.py menuconfig
-```
-
-Set up Audio Pipeline, Wi-Fi, or Bluetooth settings as needed.
-Step 3: Build & Flash
-```bash
-idf.py build flash monitor
-```
-
-pair 48:78:5e:d9:35:a3
-pair fa:b5:e0:ae:b7:1b
-
-
-Set Environment
-```bash
-export PROJECT_BASE_DIR=`pwd`
-source ${PROJECT_BASE_DIR}/esp-idf/export.sh
-export ADF_PATH=${PROJECT_BASE_DIR}/esp-adf
-source $ADF_PATH/esp-idf/export.sh
-```
+#### Audio Quality Issues
+- Verify 44.1kHz sample rate
+- Check for I2S clock jitter
+- Try shorter I2S cables
+- Ensure both ESP32s are using the same I2S clock

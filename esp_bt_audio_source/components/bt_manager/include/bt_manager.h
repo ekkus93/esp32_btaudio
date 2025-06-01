@@ -1,0 +1,174 @@
+#ifndef BT_MANAGER_H
+#define BT_MANAGER_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * Bluetooth Manager - Handles A2DP source functionality
+ */
+
+// Status codes
+typedef enum {
+    BT_SUCCESS = 0,
+    BT_ERROR_INVALID_PARAM,
+    BT_ERROR_INIT_FAILED,
+    BT_ERROR_SCAN_FAILED,
+    BT_ERROR_CONNECT_FAILED,
+    BT_ERROR_NOT_INITIALIZED,
+    BT_ERROR_ALREADY_CONNECTED
+} bt_status_t;
+
+// Device info structure
+typedef struct {
+    char mac[18];
+    char name[32];
+    int rssi;
+} bt_device_t;
+
+// Device list structure
+typedef struct {
+    bt_device_t devices[20];  // Maximum 20 devices
+    int count;
+} bt_device_list_t;
+
+// Callback function types
+typedef void (*bt_connected_cb)(const char* mac, const char* name);
+typedef void (*bt_disconnected_cb)(const char* mac);
+
+// Initialization parameters
+typedef struct {
+    const char* device_name;
+    bt_connected_cb connected_cb;
+    bt_disconnected_cb disconnected_cb;
+} bt_manager_init_t;
+
+/**
+ * Initialize Bluetooth Manager
+ *
+ * @param config Initialization parameters
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_manager_init(const bt_manager_init_t* config);
+
+/**
+ * Deinitialize Bluetooth Manager
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_manager_deinit(void);
+
+/**
+ * Start device scanning
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_start_scan(void);
+
+/**
+ * Stop device scanning
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_stop_scan(void);
+
+/**
+ * Connect to a device
+ *
+ * @param mac MAC address of the device
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_connect(const char* mac);
+
+/**
+ * Connect to a device by name
+ *
+ * @param name Name of the device
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_connect_by_name(const char* name);
+
+/**
+ * Disconnect from the current device
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_disconnect(void);
+
+/**
+ * Get the list of discovered devices
+ *
+ * @return Pointer to device list (NULL if none)
+ */
+bt_device_list_t* bt_get_device_list(void);
+
+/**
+ * Get the list of paired devices
+ *
+ * @return Pointer to device list (NULL if none)
+ */
+bt_device_list_t* bt_get_paired_devices(void);
+
+/**
+ * Start audio streaming
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_start_audio(void);
+
+/**
+ * Stop audio streaming
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_stop_audio(void);
+
+/**
+ * Set volume level
+ *
+ * @param volume Volume level (0-100)
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_set_volume(int volume);
+
+/**
+ * Pair with a device
+ *
+ * @param mac MAC address of the device
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_pair(const char* mac);
+
+/**
+ * Unpair a device
+ *
+ * @param mac MAC address of the device
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_unpair(const char* mac);
+
+/**
+ * Unpair all devices
+ *
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_unpair_all(void);
+
+/**
+ * Set PIN code for pairing
+ *
+ * @param pin PIN code
+ * @return BT_SUCCESS if successful
+ */
+bt_status_t bt_set_pin(const char* pin);
+
+// Functions for testing only - not for production use
+#ifdef UNIT_TEST
+void bt_manager_mock_device_found(const bt_device_t* device);
+void bt_manager_mock_connection_established(const char* mac, const char* name);
+void bt_manager_mock_connection_closed(const char* mac);
+void bt_manager_mock_audio_state_changed(int state);
+void bt_manager_mock_pairing_complete(const char* mac, bool success);
+#endif
+
+#endif // BT_MANAGER_H

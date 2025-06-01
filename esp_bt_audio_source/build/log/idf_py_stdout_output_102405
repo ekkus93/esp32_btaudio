@@ -1,0 +1,18 @@
+[1/1173] Generating ../../partition_table/partition-table.bin
+FAILED: partition_table/partition-table.bin /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/partition_table/partition-table.bin 
+cd /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/esp-idf/partition_table && /home/phil/.espressif/python_env/idf5.4_py3.10_env/bin/python /home/phil/esp/v5.4/esp-idf/components/partition_table/gen_esp32part.py -q --offset 0x8000 --flash-size 2MB -- /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/partitions.csv /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/partition_table/partition-table.bin && /usr/bin/cmake -E echo "Partition table binary generated. Contents:" && /usr/bin/cmake -E echo "*******************************************************************************" && /home/phil/.espressif/python_env/idf5.4_py3.10_env/bin/python /home/phil/esp/v5.4/esp-idf/components/partition_table/gen_esp32part.py -q --offset 0x8000 --flash-size 2MB -- /home/phil/work/esp32/esp32_audio/esp_bt_audio_source/build/partition_table/partition-table.bin && /usr/bin/cmake -E echo "*******************************************************************************"
+Partitions tables occupies 2.1MB of flash (2162688 bytes) which does not fit in configured flash size 2MB. Change the flash size in menuconfig under the 'Serial Flasher Config' menu.
+[2/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/esp32/esp_efuse_fields.c.obj
+[3/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/src/esp_efuse_fields.c.obj
+[4/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/esp32/esp_efuse_table.c.obj
+[5/1173] Building C object esp-idf/esp_partition/CMakeFiles/__idf_esp_partition.dir/partition_target.c.obj
+[6/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/src/esp_efuse_startup.c.obj
+[7/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/esp32/esp_efuse_utility.c.obj
+[8/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/src/efuse_controller/keys/without_key_purposes/three_key_blocks/esp_efuse_api_key.c.obj
+[9/1173] Building C object esp-idf/esp_partition/CMakeFiles/__idf_esp_partition.dir/partition.c.obj
+[10/1173] Building C object esp-idf/bootloader_support/CMakeFiles/__idf_bootloader_support.dir/src/bootloader_common.c.obj
+[11/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/src/esp_efuse_utility.c.obj
+[12/1173] Building C object esp-idf/efuse/CMakeFiles/__idf_efuse.dir/src/esp_efuse_api.c.obj
+[13/1173] Building C object esp-idf/bootloader_support/CMakeFiles/__idf_bootloader_support.dir/src/bootloader_clock_init.c.obj
+[14/1173] Building C object esp-idf/bootloader_support/CMakeFiles/__idf_bootloader_support.dir/src/bootloader_common_loader.c.obj
+ninja: build stopped: subcommand failed.

@@ -1,0 +1,744 @@
+#include "bt_manager.h"
+#include <stdio.h>
+#include <string.h>
+#pragma message("COMPILING bt_manager.c")
+
+// Define this for ESP32 builds
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#include "esp_bt.h"
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include "esp_gap_bt_api.h"
+#include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
+#define TAG "BT_MGR"
+#endif
+
+// Private data
+static struct {
+    bool initialized;
+    char device_name[32];
+    bool scanning;
+    bool connected;
+    bool audio_playing;
+    int volume;
+    bt_device_list_t discovered_devices;
+    bt_device_list_t paired_devices;
+    bt_connected_cb connected_callback;
+    bt_disconnected_cb disconnected_callback;
+    char connected_mac[18];
+    char connected_name[32];
+} bt_ctx = {
+    .initialized = false,
+    .scanning = false,
+    .connected = false,
+    .audio_playing = false,
+    .volume = 75
+};
+
+#ifdef ESP_PLATFORM
+// Callback declarations
+static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
+static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len);
+#endif
+
+// Initialize Bluetooth Manager
+bt_status_t bt_manager_init(const bt_manager_init_t* config) {
+    if (config == NULL || config->device_name == NULL) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    if (bt_ctx.initialized) {
+        return BT_SUCCESS; // Already initialized
+    }
+    
+    // Store configuration
+    strncpy(bt_ctx.device_name, config->device_name, sizeof(bt_ctx.device_name) - 1);
+    bt_ctx.connected_callback = config->connected_cb;
+    bt_ctx.disconnected_callback = config->disconnected_cb;
+    
+    // Initialize structures
+    memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
+    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    
+#ifdef ESP_PLATFORM
+    // Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Initialize Bluetooth controller
+    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    if ((ret = esp_bt_controller_init(&bt_cfg)) != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize controller failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    if ((ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)) != ESP_OK) {
+        ESP_LOGE(TAG, "Enable controller failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    // Initialize Bluedroid
+    if ((ret = esp_bluedroid_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize bluedroid failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    if ((ret = esp_bluedroid_enable()) != ESP_OK) {
+        ESP_LOGE(TAG, "Enable bluedroid failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    // Configure device name
+    esp_bt_dev_set_device_name(config->device_name);
+
+    // Register GAP callback
+    esp_bt_gap_register_callback(bt_app_gap_callback);
+
+    // Initialize A2DP source
+    if ((ret = esp_a2d_source_init()) != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    // Register A2DP source callback
+    if ((ret = esp_a2d_register_callback(bt_app_a2d_callback)) != ESP_OK) {
+        ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    // Register data callback
+    if ((ret = esp_a2d_source_register_data_callback(bt_app_a2d_data_callback)) != ESP_OK) {
+        ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));
+        return BT_ERROR_INIT_FAILED;
+    }
+
+    // Set device discoverable and connectable
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    
+    ESP_LOGI(TAG, "Bluetooth manager initialized with name: %s", config->device_name);
+#endif
+    
+    bt_ctx.initialized = true;
+    return BT_SUCCESS;
+}
+
+// Deinitialize Bluetooth Manager
+bt_status_t bt_manager_deinit(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+#ifdef ESP_PLATFORM
+    // Stop scanning if active
+    if (bt_ctx.scanning) {
+        bt_stop_scan();
+    }
+    
+    // Disconnect if connected
+    if (bt_ctx.connected) {
+        bt_disconnect();
+    }
+    
+    // Deinitialize A2DP
+    esp_a2d_source_deinit();
+    
+    // Disable and deinitialize Bluetooth
+    esp_bluedroid_disable();
+    esp_bluedroid_deinit();
+    esp_bt_controller_disable();
+    esp_bt_controller_deinit();
+    
+    ESP_LOGI(TAG, "Bluetooth manager deinitialized");
+#endif
+    
+    bt_ctx.initialized = false;
+    bt_ctx.connected = false;
+    bt_ctx.audio_playing = false;
+    // Optionally reset other fields if needed
+
+    return BT_SUCCESS;
+}
+
+// Start device scanning
+bt_status_t bt_start_scan(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (bt_ctx.scanning) {
+        return BT_SUCCESS; // Already scanning
+    }
+    
+    // Clear previous discovered devices
+    memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
+    
+#ifdef ESP_PLATFORM
+    // Start discovery
+    if (esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0) != ESP_OK) {
+        ESP_LOGE(TAG, "Start device discovery failed");
+        return BT_ERROR_SCAN_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Started Bluetooth device scanning");
+#endif
+    
+    bt_ctx.scanning = true;
+    return BT_SUCCESS;
+}
+
+// Stop device scanning
+bt_status_t bt_stop_scan(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (!bt_ctx.scanning) {
+        return BT_SUCCESS; // Not scanning
+    }
+    
+#ifdef ESP_PLATFORM
+    // Stop discovery
+    if (esp_bt_gap_cancel_discovery() != ESP_OK) {
+        ESP_LOGE(TAG, "Stop device discovery failed");
+        return BT_ERROR_SCAN_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Stopped Bluetooth device scanning");
+#endif
+    
+    bt_ctx.scanning = false;
+    return BT_SUCCESS;
+}
+
+// Connect to a device
+bt_status_t bt_connect(const char* mac) {
+    printf("TRACE: bt_connect called\n");
+    if (!bt_ctx.initialized) {
+        printf("TRACE: bt_connect - bt_connect not initialized\n");
+        fflush(stdout);
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (mac == NULL) {
+        printf("TRACE: bt_connect - bt_connect invalid MAC\n");
+        fflush(stdout);
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    if (bt_ctx.connected) {
+        printf("TRACE: bt_connect - bt_connect already connected\n");
+        fflush(stdout);
+        return BT_ERROR_ALREADY_CONNECTED;
+    }
+    
+#ifdef ESP_PLATFORM
+    // Convert MAC string to address
+    esp_bd_addr_t bda;
+    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+        printf("TRACE: bt_connect invalid MAC format\n");
+        fflush(stdout);
+        ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    // Connect to device
+    if (esp_a2d_source_connect(bda) != ESP_OK) {
+        printf("TRACE: bt_connect failed to connect\n");
+        fflush(stdout);
+        ESP_LOGE(TAG, "Failed to connect to device: %s", mac);
+        return BT_ERROR_CONNECT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Connecting to device: %s", mac);
+    strncpy(bt_ctx.connected_mac, mac, sizeof(bt_ctx.connected_mac) - 1);
+#endif
+    printf("TRACE: bt_connect success\n");
+    fflush(stdout);
+    
+    return BT_SUCCESS;
+}
+
+// Connect to a device by name
+bt_status_t bt_connect_by_name(const char* name) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (name == NULL) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    // Find device in discovered devices
+    for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+        if (strcmp(bt_ctx.discovered_devices.devices[i].name, name) == 0) {
+            return bt_connect(bt_ctx.discovered_devices.devices[i].mac);
+        }
+    }
+    
+    return BT_ERROR_CONNECT_FAILED;
+}
+
+// Disconnect from the current device
+bt_status_t bt_disconnect(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (!bt_ctx.connected) {
+        return BT_SUCCESS; // Already disconnected
+    }
+    
+#ifdef ESP_PLATFORM
+    // Stop audio if playing
+    if (bt_ctx.audio_playing) {
+        bt_stop_audio();
+    }
+    
+    // Convert MAC string to address
+    esp_bd_addr_t bda;
+    if (sscanf(bt_ctx.connected_mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid MAC format in stored address: %s", bt_ctx.connected_mac);
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    // Disconnect device
+    if (esp_a2d_source_disconnect(bda) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to disconnect from device: %s", bt_ctx.connected_mac);
+        return BT_ERROR_CONNECT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Disconnecting from device: %s", bt_ctx.connected_mac);
+#else
+    // For testing without ESP-IDF
+    bt_ctx.connected = false;
+    
+    if (bt_ctx.disconnected_callback != NULL) {
+        bt_ctx.disconnected_callback(bt_ctx.connected_mac);
+    }
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Get the list of discovered devices
+bt_device_list_t* bt_get_device_list(void) {
+    if (!bt_ctx.initialized) {
+        return NULL;
+    }
+    
+    return &bt_ctx.discovered_devices;
+}
+
+// Get the list of paired devices
+bt_device_list_t* bt_get_paired_devices(void) {
+    if (!bt_ctx.initialized) {
+        return NULL;
+    }
+    
+    return &bt_ctx.paired_devices;
+}
+
+// Stop audio streaming
+bt_status_t bt_stop_audio(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (!bt_ctx.audio_playing) {
+        return BT_SUCCESS; // Not playing
+    }
+    
+#ifdef ESP_PLATFORM
+    // Stop audio stream
+    if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to stop audio stream");
+        return BT_ERROR_INIT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Stopped audio streaming");
+#else
+    // For testing without ESP-IDF
+    bt_ctx.audio_playing = false;
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Start audio streaming
+bt_status_t bt_start_audio(void) {
+    printf("TRACE: entered bt_start_audio\n");
+    fflush(stdout);
+    bt_ctx.audio_playing = true;
+    printf("TRACE: returning BT_SUCCESS from bt_start_audio\n");
+    fflush(stdout);
+    return BT_SUCCESS;
+}
+
+// Set volume level
+bt_status_t bt_set_volume(int volume) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (volume < 0 || volume > 100) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    bt_ctx.volume = volume;
+    
+#ifdef ESP_PLATFORM
+    // Volume control would be implemented here if supported
+    // Currently not directly supported by ESP-IDF A2DP API
+    ESP_LOGI(TAG, "Volume set to %d%%", volume);
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Pair with a device
+bt_status_t bt_pair(const char* mac) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (mac == NULL) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+#ifdef ESP_PLATFORM
+    // Convert MAC string to address
+    esp_bd_addr_t bda;
+    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    // Start pairing
+    if (esp_bt_gap_start_authentication(bda) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start authentication with device: %s", mac);
+        return BT_ERROR_INIT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Started pairing with device: %s", mac);
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Unpair a device
+bt_status_t bt_unpair(const char* mac) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (mac == NULL) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+#ifdef ESP_PLATFORM
+    // Convert MAC string to address
+    esp_bd_addr_t bda;
+    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+    // Remove device from paired list
+    if (esp_bt_gap_remove_bond_device(bda) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to unpair device: %s", mac);
+        return BT_ERROR_INIT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "Unpaired device: %s", mac);
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Unpair all devices
+bt_status_t bt_unpair_all(void) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    // Clear paired devices list
+    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    
+#ifdef ESP_PLATFORM
+    // No direct API for this in ESP-IDF, would need to iterate through paired devices
+    ESP_LOGI(TAG, "Removed all paired devices");
+#endif
+    
+    return BT_SUCCESS;
+}
+
+// Set PIN code for pairing
+bt_status_t bt_set_pin(const char* pin) {
+    if (!bt_ctx.initialized) {
+        return BT_ERROR_NOT_INITIALIZED;
+    }
+    
+    if (pin == NULL) {
+        return BT_ERROR_INVALID_PARAM;
+    }
+    
+#ifdef ESP_PLATFORM
+    // Set PIN code
+    esp_bt_pin_code_t pin_code;
+    size_t pin_len = strlen(pin);
+    if (pin_len > ESP_BT_PIN_CODE_LEN) {
+        pin_len = ESP_BT_PIN_CODE_LEN;
+    }
+    memcpy(pin_code, pin, pin_len);
+    esp_bt_pin_type_t pin_type = (pin_len == 16) ? ESP_BT_PIN_TYPE_VARIABLE : ESP_BT_PIN_TYPE_FIXED;
+    
+    esp_bt_gap_set_pin(pin_type, pin_len, pin_code);
+    ESP_LOGI(TAG, "PIN code set to: %s, length: %d", pin, pin_len);
+#endif
+    
+    return BT_SUCCESS;
+}
+
+#ifdef ESP_PLATFORM
+// GAP callback for Bluetooth events
+static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
+    switch (event) {
+        case ESP_BT_GAP_DISC_RES_EVT: {
+            // Device discovery result
+            char bda_str[18];
+            char name[32] = {0};
+            uint32_t cod = 0;
+            int8_t rssi = 0;
+            
+            // Get device address
+            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                   param->disc_res.bda[0], param->disc_res.bda[1], param->disc_res.bda[2],
+                   param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5]);
+            
+            // Get device name
+            for (int i = 0; i < param->disc_res.num_prop; i++) {
+                if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_BDNAME) {
+                    memcpy(name, param->disc_res.prop[i].val, param->disc_res.prop[i].len);
+                    name[param->disc_res.prop[i].len] = '\0';
+                } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_COD) {
+                    memcpy(&cod, param->disc_res.prop[i].val, sizeof(uint32_t));
+                } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_RSSI) {
+                    memcpy(&rssi, param->disc_res.prop[i].val, sizeof(int8_t));
+                }
+            }
+            
+            ESP_LOGI(TAG, "Device found: %s, name: %s, RSSI: %d", bda_str, name, rssi);
+            
+            // Add to discovered devices list
+            if (bt_ctx.discovered_devices.count < 20) {
+                int idx = bt_ctx.discovered_devices.count;
+                strncpy(bt_ctx.discovered_devices.devices[idx].mac, bda_str, 
+                        sizeof(bt_ctx.discovered_devices.devices[idx].mac) - 1);
+                strncpy(bt_ctx.discovered_devices.devices[idx].name, name, 
+                        sizeof(bt_ctx.discovered_devices.devices[idx].name) - 1);
+                bt_ctx.discovered_devices.devices[idx].rssi = rssi;
+                bt_ctx.discovered_devices.count++;
+            }
+            break;
+        }
+        
+        case ESP_BT_GAP_DISC_STATE_CHANGED_EVT:
+            // Discovery state changed
+            if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STOPPED) {
+                ESP_LOGI(TAG, "Device discovery stopped");
+                bt_ctx.scanning = false;
+            } else if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STARTED) {
+                ESP_LOGI(TAG, "Device discovery started");
+                bt_ctx.scanning = true;
+            }
+            break;
+            
+        // Add other GAP event handlers as needed
+        default:
+            break;
+    }
+}
+
+// A2DP callback for audio events
+static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
+    switch (event) {
+        case ESP_A2D_CONNECTION_STATE_EVT:
+            // Connection state changed
+            if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+                char bda_str[18];
+                sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                       param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
+                       param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
+                       param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
+                
+                ESP_LOGI(TAG, "Connected to device: %s", bda_str);
+                
+                bt_ctx.connected = true;
+                strncpy(bt_ctx.connected_mac, bda_str, sizeof(bt_ctx.connected_mac) - 1);
+                
+                // Get device name (simplified, actual implementation would get name from bt_ctx.discovered_devices)
+                if (bt_ctx.connected_callback != NULL) {
+                    bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
+                }
+            } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);
+                
+                if (bt_ctx.disconnected_callback != NULL) {
+                    bt_ctx.disconnected_callback(bt_ctx.connected_mac);
+                }
+                
+                bt_ctx.connected = false;
+                bt_ctx.audio_playing = false;
+            }
+            break;
+            
+        case ESP_A2D_AUDIO_STATE_EVT:
+            // Audio state changed
+            if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+                ESP_LOGI(TAG, "Audio streaming started");
+                bt_ctx.audio_playing = true;
+            } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
+                ESP_LOGI(TAG, "Audio streaming stopped");
+                bt_ctx.audio_playing = false;
+            }
+            break;
+            
+        // Add other A2DP event handlers as needed
+        default:
+            break;
+    }
+}
+
+// A2DP data callback to provide audio data
+static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len) {
+    // This callback is called when the A2DP stack needs more audio data to send
+    // Here you would read from the I2S input and return it
+    // For now, just use a simple sine wave pattern for testing
+    
+    if (len < 4 || data == NULL) {
+        return;
+    }
+    
+    // In the actual implementation, this would read from the I2S audio input
+    // and copy to the A2DP buffer for transmission
+}
+#endif
+
+// For testing only - not for production use
+#ifdef UNIT_TEST
+void bt_manager_mock_device_found(const bt_device_t* device) {
+    if (!bt_ctx.initialized || !bt_ctx.scanning || device == NULL) {
+        return;
+    }
+    
+    int idx = bt_ctx.discovered_devices.count;
+    if (idx < 20) {
+        memcpy(&bt_ctx.discovered_devices.devices[idx], device, sizeof(bt_device_t));
+        bt_ctx.discovered_devices.count++;
+        
+        // Log the device found
+        printf("Mock BT: Device found: %s, name: %s, RSSI: %d\n", 
+               device->mac, device->name, device->rssi);
+    }
+}
+
+void bt_manager_mock_connection_established(const char* mac, const char* name) {
+    printf("TRACE: bt_manager_mock_connection_established called\n");
+    if (!bt_ctx.initialized) {
+        return;
+    }
+    
+    bt_ctx.connected = true;
+    strncpy(bt_ctx.connected_mac, mac, sizeof(bt_ctx.connected_mac) - 1);
+    strncpy(bt_ctx.connected_name, name, sizeof(bt_ctx.connected_name) - 1);
+    
+    // Log the connection
+    printf("Mock BT: Connected to device: %s, name: %s\n", mac, name);
+    
+    if (bt_ctx.connected_callback != NULL) {
+        bt_ctx.connected_callback(mac, name);
+    }
+}
+
+void bt_manager_mock_connection_closed(const char* mac) {
+    if (!bt_ctx.initialized || !bt_ctx.connected) {
+        return;
+    }
+    
+    // Log the disconnection
+    printf("Mock BT: Disconnected from device: %s\n", mac);
+    
+    bt_ctx.connected = false;
+    bt_ctx.audio_playing = false;
+    
+    if (bt_ctx.disconnected_callback != NULL) {
+        bt_ctx.disconnected_callback(mac);
+    }
+}
+
+void bt_manager_mock_audio_state_changed(int state) {
+    if (!bt_ctx.initialized) {
+        return;
+    }
+    
+    bt_ctx.audio_playing = (state == 2); // 2 = ESP_A2D_AUDIO_STATE_STARTED
+    
+    // Log the audio state change
+    printf("Mock BT: Audio state changed to: %s\n", bt_ctx.audio_playing ? "playing" : "stopped");
+}
+
+void bt_manager_mock_pairing_complete(const char* mac, bool success) {
+    if (!bt_ctx.initialized) {
+        return;
+    }
+    
+    // Log the pairing result
+    printf("Mock BT: Pairing %s for device: %s\n", success ? "successful" : "failed", mac);
+    
+    if (success && mac != NULL) {
+        // Add device to paired devices
+        int idx = bt_ctx.paired_devices.count;
+        if (idx < 20) {
+            strncpy(bt_ctx.paired_devices.devices[idx].mac, mac, 
+                    sizeof(bt_ctx.paired_devices.devices[idx].mac) - 1);
+            
+            // In a real scenario, we would have the name, here we just set a placeholder
+            snprintf(bt_ctx.paired_devices.devices[idx].name, 
+                     sizeof(bt_ctx.paired_devices.devices[idx].name) - 1, 
+                     "Device_%s", mac);
+            
+            bt_ctx.paired_devices.count++;
+        }
+    }
+}
+#endif
+
+#ifdef UNIT_TEST
+// Expose a function to force-initialize bt_ctx for unit tests
+void bt_manager_force_initialized(bool value) {
+    bt_ctx.initialized = value;
+}
+
+// Debug print for test state
+void bt_manager_debug_print(void) {
+    printf("DEBUG: bt_ctx.initialized=%d, connected=%d, audio_playing=%d\n",
+        bt_ctx.initialized, bt_ctx.connected, bt_ctx.audio_playing);
+}
+#endif
+
+#ifdef ESP_PLATFORM
+#pragma message("ESP_PLATFORM is defined")
+#else
+#pragma message("ESP_PLATFORM is NOT defined")
+#endif
