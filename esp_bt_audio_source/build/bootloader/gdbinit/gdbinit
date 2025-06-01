@@ -1,0 +1,2 @@
+source /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/gdbinit/symbols
+source /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/gdbinit/connect

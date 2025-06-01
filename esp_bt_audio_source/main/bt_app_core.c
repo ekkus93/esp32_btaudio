@@ -115,9 +115,18 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
 // Updated to use larger stack size for better WiFi coexistence 
 void bt_app_task_start_up(void)
 {
+    // Create the queue first before creating the task
+    s_bt_app_task_queue = xQueueCreate(10, sizeof(bt_app_msg_t));
+    if (s_bt_app_task_queue == NULL) {
+        ESP_LOGE(BT_APP_CORE_TAG, "%s queue create failed", __func__);
+        return;
+    }
+    
     BaseType_t res = xTaskCreate(bt_app_task_handler, "BtAppTask", 8192, NULL, 10, &s_bt_app_task_handle);
     if (res != pdPASS) {
         ESP_LOGE(BT_APP_CORE_TAG, "%s failed: %d", __func__, res);
+        vQueueDelete(s_bt_app_task_queue);
+        s_bt_app_task_queue = NULL;
         return;
     }
 }

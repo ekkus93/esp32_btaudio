@@ -1,0 +1,16 @@
+[0;33m--- esp-idf-monitor 1.6.2 on /dev/ttyUSB0 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0;33m--- 0x40080400: _init at ??:?
+[0m
+[0;33m--- 0x40081b75: panic_abort at /home/phil/esp/v5.4.1/esp-idf/components/esp_system/panic.c:454
+--- 0x4008ecdd: esp_system_abort at /home/phil/esp/v5.4.1/esp-idf/components/esp_system/port/esp_system_chip.c:87
+--- 0x400953ad: __assert_func at /home/phil/esp/v5.4.1/esp-idf/components/newlib/assert.c:80
+--- 0x4008f406: xQueueReceive at /home/phil/esp/v5.4.1/esp-idf/components/freertos/FreeRTOS-Kernel/queue.c:1531 (discriminator 1)
+--- 0x400db8a1: bt_app_task_handler at /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/main/bt_app_core.c:65
+--- 0x4008f701: vPortTaskWrapper at /home/phil/esp/v5.4.1/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c:139
+[0m
+[0;33m--- Initiating core dump![0m
+[0;33m--- Core dump started (further output muted)[0m
+[0;33m--- Received   1 kB...[0m[0;33m--- Received   2 kB...[0m[0;33m--- Received   3 kB...[0m[0;33m--- Received   4 kB...[0m[0;33m--- Received   5 kB...[0m[0;33m--- Received   6 kB...[0m[0;33m--- Received   7 kB...[0m[0;33m--- Received   8 kB...[0m[0;33m--- Received   9 kB...[0m[0;33m--- Received  10 kB...[0m[0;33m--- Received  11 kB...[0m[0;33m--- Received  12 kB...[0m[0;33m--- Received  13 kB...[0m[0;33m--- Received  14 kB...[0m[0;33m--- Received  15 kB...[0m[0;33m--- Received  16 kB...[0m[0;33m--- Received  17 kB...[0m[0;33m--- Received  18 kB...[0m[0;33m--- Received  19 kB...[0m[0;33m--- Received  20 kB...[0m[0;33m--- Received  21 kB...[0m[0;33m--- Received  22 kB...[0m[0;33m--- Received  23 kB...[0m[0;33m--- Received  24 kB...[0m[0;33m
+--- Core dump finished![0m
+[0m

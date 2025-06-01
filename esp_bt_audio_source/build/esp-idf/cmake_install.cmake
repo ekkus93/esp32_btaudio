@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/esp/v5.4/esp-idf
+# Install script for directory: /home/phil/esp/v5.4.1/esp-idf
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -550,5 +550,10 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
   include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/main/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/command_interface/cmake_install.cmake")
 endif()
 

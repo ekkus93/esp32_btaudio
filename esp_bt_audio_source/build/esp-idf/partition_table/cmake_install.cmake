@@ -1,4 +1,4 @@
-# Install script for directory: /home/phil/esp/v5.4/esp-idf/components/partition_table
+# Install script for directory: /home/phil/esp/v5.4.1/esp-idf/components/partition_table
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
