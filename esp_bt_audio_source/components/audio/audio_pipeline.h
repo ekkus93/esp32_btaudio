@@ -76,6 +76,9 @@ typedef struct {
     uint32_t stage_count;               /*!< Number of processing stages */
     audio_buffer_pool_t *buffer_pool;   /*!< Audio buffer pool */
     bool is_running;                    /*!< Flag indicating if pipeline is running */
+    int volume;                         /*!< Current volume level (0-100) */
+    bool is_muted;                      /*!< Mute state */
+    int pre_mute_volume;                /*!< Volume level before muting */
 } audio_pipeline_t;
 
 /**
@@ -120,6 +123,13 @@ esp_err_t audio_buffer_release(audio_buffer_pool_t *pool, audio_buffer_t *buffer
 audio_pipeline_t* audio_pipeline_create(audio_buffer_pool_t *buffer_pool, uint32_t stage_count);
 
 /**
+ * @brief Free audio pipeline
+ * 
+ * @param pipeline Audio pipeline to free
+ */
+void audio_pipeline_deinit(audio_pipeline_t *pipeline);
+
+/**
  * @brief Add a processing stage to the pipeline
  * 
  * @param pipeline Audio pipeline
@@ -159,11 +169,55 @@ esp_err_t audio_pipeline_start(audio_pipeline_t *pipeline);
 esp_err_t audio_pipeline_stop(audio_pipeline_t *pipeline);
 
 /**
- * @brief Free audio pipeline
+ * @brief Set volume level for the audio pipeline
  * 
- * @param pipeline Audio pipeline to free
+ * @param pipeline Pointer to the audio pipeline
+ * @param volume Volume level (0-100)
+ * @return esp_err_t ESP_OK on success
  */
-void audio_pipeline_deinit(audio_pipeline_t *pipeline);
+esp_err_t audio_pipeline_set_volume(audio_pipeline_t *pipeline, int volume);
+
+/**
+ * @brief Get current volume level
+ * 
+ * @param pipeline Pointer to the audio pipeline
+ * @param volume Pointer to store the current volume level
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_pipeline_get_volume(audio_pipeline_t *pipeline, int *volume);
+
+/**
+ * @brief Mute audio output
+ * 
+ * @param pipeline Pointer to the audio pipeline
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_pipeline_mute(audio_pipeline_t *pipeline);
+
+/**
+ * @brief Unmute audio output
+ * 
+ * @param pipeline Pointer to the audio pipeline
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_pipeline_unmute(audio_pipeline_t *pipeline);
+
+/**
+ * @brief Toggle mute state
+ * 
+ * @param pipeline Pointer to the audio pipeline
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_pipeline_toggle_mute(audio_pipeline_t *pipeline);
+
+/**
+ * @brief Check if audio is muted
+ * 
+ * @param pipeline Pointer to the audio pipeline
+ * @param muted Pointer to store the mute state
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_pipeline_is_muted(audio_pipeline_t *pipeline, bool *muted);
 
 #ifdef __cplusplus
 }

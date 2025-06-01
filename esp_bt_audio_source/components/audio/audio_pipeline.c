@@ -196,6 +196,11 @@ audio_pipeline_t* audio_pipeline_create(audio_buffer_pool_t *buffer_pool, uint32
     pipeline->buffer_pool = buffer_pool;
     pipeline->is_running = false;
     
+    // Initialize volume control settings
+    pipeline->volume = 100;       // Default to full volume
+    pipeline->is_muted = false;   // Not muted by default
+    pipeline->pre_mute_volume = 100;
+    
     ESP_LOGI(TAG, "Audio pipeline created with %" PRIu32 " stages", stage_count);
     
     return pipeline;
@@ -333,4 +338,124 @@ void audio_pipeline_deinit(audio_pipeline_t *pipeline)
     free(pipeline);
     
     ESP_LOGI(TAG, "Audio pipeline deinitialized");
+}
+
+/**
+ * Set volume level for the audio pipeline
+ */
+esp_err_t audio_pipeline_set_volume(audio_pipeline_t *pipeline, int volume)
+{
+    if (!pipeline) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Clamp volume to valid range (0-100)
+    if (volume < 0) {
+        volume = 0;
+    } else if (volume > 100) {
+        volume = 100;
+    }
+    
+    // Set volume if not muted
+    if (!pipeline->is_muted) {
+        pipeline->volume = volume;
+    }
+    
+    // Always store the intended volume even when muted
+    pipeline->pre_mute_volume = volume;
+    
+    ESP_LOGI(TAG, "Audio pipeline volume set to %d%%", volume);
+    
+    return ESP_OK;
+}
+
+/**
+ * Get current volume level
+ */
+esp_err_t audio_pipeline_get_volume(audio_pipeline_t *pipeline, int *volume)
+{
+    if (!pipeline || !volume) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Return pre-mute volume if the pipeline is muted
+    if (pipeline->is_muted) {
+        *volume = pipeline->pre_mute_volume;
+    } else {
+        // Return current volume
+        *volume = pipeline->volume;
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * Mute audio output
+ */
+esp_err_t audio_pipeline_mute(audio_pipeline_t *pipeline)
+{
+    if (!pipeline) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!pipeline->is_muted) {
+        // Store current volume before muting
+        pipeline->pre_mute_volume = pipeline->volume;
+        pipeline->volume = 0;
+        pipeline->is_muted = true;
+        
+        ESP_LOGI(TAG, "Audio pipeline muted");
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * Unmute audio output
+ */
+esp_err_t audio_pipeline_unmute(audio_pipeline_t *pipeline)
+{
+    if (!pipeline) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (pipeline->is_muted) {
+        // Restore volume from before muting
+        pipeline->volume = pipeline->pre_mute_volume;
+        pipeline->is_muted = false;
+        
+        ESP_LOGI(TAG, "Audio pipeline unmuted, volume restored to %d%%", pipeline->volume);
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * Toggle mute state
+ */
+esp_err_t audio_pipeline_toggle_mute(audio_pipeline_t *pipeline)
+{
+    if (!pipeline) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (pipeline->is_muted) {
+        return audio_pipeline_unmute(pipeline);
+    } else {
+        return audio_pipeline_mute(pipeline);
+    }
+}
+
+/**
+ * Check if audio is muted
+ */
+esp_err_t audio_pipeline_is_muted(audio_pipeline_t *pipeline, bool *muted)
+{
+    if (!pipeline || !muted) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    *muted = pipeline->is_muted;
+    
+    return ESP_OK;
 }

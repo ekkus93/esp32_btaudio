@@ -42,8 +42,8 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 ### Audio Processing
 - [x] Configure I2S driver for receiving audio
 - [x] Set up audio data buffers and processing pipeline
-- [ ] Implement volume control functionality
-- [ ] Add mute/unmute capability
+- [x] Implement volume control functionality
+- [x] Add mute/unmute capability
 - [ ] Support for different sample rates
 - [ ] Handle audio format conversion if needed
 

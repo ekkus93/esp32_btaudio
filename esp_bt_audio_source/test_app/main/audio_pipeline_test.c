@@ -77,6 +77,40 @@ static esp_err_t test_process_invert(audio_buffer_t *in_buffer,
     return ESP_OK;
 }
 
+// Simple processing function for applying volume
+static esp_err_t test_process_apply_volume(audio_buffer_t *in_buffer,
+                                          audio_buffer_t *out_buffer,
+                                          void *user_data)
+{
+    if (!in_buffer || !out_buffer) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // For 16-bit samples
+    if (in_buffer->data_size > out_buffer->size) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    // Get volume level from user_data (0-100)
+    int volume = user_data ? *((int *)user_data) : 100;
+    float volume_scale = volume / 100.0f;
+
+    int16_t *in_samples = (int16_t *)in_buffer->data;
+    int16_t *out_samples = (int16_t *)out_buffer->data;
+    int num_samples = in_buffer->data_size / 2;  // 16-bit = 2 bytes per sample
+
+    for (int i = 0; i < num_samples; i++) {
+        // Apply volume scaling
+        float sample_f = in_samples[i] * volume_scale;
+        out_samples[i] = (int16_t)sample_f;
+    }
+
+    out_buffer->data_size = in_buffer->data_size;
+    out_buffer->timestamp = in_buffer->timestamp;
+
+    return ESP_OK;
+}
+
 // In Unity, these need to be global functions
 // Using "weak" attribute tells the linker to only use this implementation
 // if there's no stronger definition elsewhere (like in another file)
@@ -360,6 +394,187 @@ void test_audio_buffer_init_basic(void)
 }
 
 /**
+ * @brief Test setting and getting volume
+ */
+void test_volume_set_get(void)
+{
+    ESP_LOGI(TAG, "Testing volume set/get functionality");
+
+    // Create a test audio pipeline with volume control
+    audio_buffer_cfg_t config = {
+        .buffer_size = 1024,
+        .buffer_count = 4,
+        .sample_rate = 44100,
+        .bits_per_sample = 16,
+        .num_channels = 2
+    };
+
+    audio_buffer_pool_t *pool = audio_buffer_pool_init(&config);
+    TEST_ASSERT_NOT_NULL(pool);
+
+    // Create pipeline
+    audio_pipeline_t *pipeline = audio_pipeline_create(pool, 1);
+    TEST_ASSERT_NOT_NULL(pipeline);
+
+    // Set initial volume to 75%
+    int initial_volume = 75;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, initial_volume));
+    
+    // Get volume and verify
+    int current_volume;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(initial_volume, current_volume);
+    
+    // Test setting volume to valid boundaries
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, 0));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(0, current_volume);
+    
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, 100));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(100, current_volume);
+    
+    // Test setting out of range (expected to clamp to valid range)
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, -10));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(0, current_volume);  // Should be clamped to 0
+    
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, 150));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(100, current_volume);  // Should be clamped to 100
+    
+    // Cleanup
+    audio_pipeline_deinit(pipeline);
+    audio_buffer_pool_deinit(pool);
+}
+
+/**
+ * @brief Test mute and unmute functionality
+ */
+void test_volume_mute_unmute(void)
+{
+    ESP_LOGI(TAG, "Testing mute/unmute functionality");
+
+    // Create a test audio pipeline with volume control
+    audio_buffer_cfg_t config = {
+        .buffer_size = 1024,
+        .buffer_count = 4,
+        .sample_rate = 44100,
+        .bits_per_sample = 16,
+        .num_channels = 2
+    };
+
+    audio_buffer_pool_t *pool = audio_buffer_pool_init(&config);
+    TEST_ASSERT_NOT_NULL(pool);
+
+    // Create pipeline
+    audio_pipeline_t *pipeline = audio_pipeline_create(pool, 1);
+    TEST_ASSERT_NOT_NULL(pipeline);
+
+    // Set initial volume to 75%
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_set_volume(pipeline, 75));
+    
+    // Test mute
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_mute(pipeline));
+    
+    // Get mute status
+    bool is_muted;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_is_muted(pipeline, &is_muted));
+    TEST_ASSERT_TRUE(is_muted);
+    
+    // Get volume - should still return the stored volume even when muted
+    int current_volume;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(75, current_volume);
+    
+    // Test unmute
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_unmute(pipeline));
+    
+    // Verify unmuted state
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_is_muted(pipeline, &is_muted));
+    TEST_ASSERT_FALSE(is_muted);
+    
+    // Verify volume is restored
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_get_volume(pipeline, &current_volume));
+    TEST_ASSERT_EQUAL(75, current_volume);
+    
+    // Test toggle mute
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_toggle_mute(pipeline));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_is_muted(pipeline, &is_muted));
+    TEST_ASSERT_TRUE(is_muted);
+    
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_toggle_mute(pipeline));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_pipeline_is_muted(pipeline, &is_muted));
+    TEST_ASSERT_FALSE(is_muted);
+    
+    // Cleanup
+    audio_pipeline_deinit(pipeline);
+    audio_buffer_pool_deinit(pool);
+}
+
+/**
+ * @brief Test volume application to audio samples
+ */
+void test_volume_apply_to_samples(void)
+{
+    ESP_LOGI(TAG, "Testing volume application to audio samples");
+
+    // Create test configuration
+    audio_buffer_cfg_t config = {
+        .buffer_size = 1024,
+        .buffer_count = 4,
+        .sample_rate = 44100,
+        .bits_per_sample = 16,
+        .num_channels = 2
+    };
+
+    // Initialize buffer pool
+    audio_buffer_pool_t *pool = audio_buffer_pool_init(&config);
+    TEST_ASSERT_NOT_NULL(pool);
+
+    // Get input and output buffers
+    audio_buffer_t *in_buffer = audio_buffer_get(pool);
+    audio_buffer_t *out_buffer = audio_buffer_get(pool);
+    TEST_ASSERT_NOT_NULL(in_buffer);
+    TEST_ASSERT_NOT_NULL(out_buffer);
+
+    // Fill input buffer with test data (16-bit samples with value 1000)
+    int16_t *samples = (int16_t *)in_buffer->data;
+    for (int i = 0; i < 512; i++) {
+        samples[i] = 1000;
+    }
+    in_buffer->data_size = 1024; // 512 samples * 2 bytes
+    
+    // Test 100% volume (no change)
+    int volume_100 = 100;
+    TEST_ASSERT_EQUAL(ESP_OK, test_process_apply_volume(in_buffer, out_buffer, &volume_100));
+    int16_t *out_samples = (int16_t *)out_buffer->data;
+    TEST_ASSERT_EQUAL(1000, out_samples[0]);
+    TEST_ASSERT_EQUAL(1000, out_samples[511]);
+    
+    // Test 50% volume
+    int volume_50 = 50;
+    TEST_ASSERT_EQUAL(ESP_OK, test_process_apply_volume(in_buffer, out_buffer, &volume_50));
+    out_samples = (int16_t *)out_buffer->data;
+    TEST_ASSERT_EQUAL(500, out_samples[0]);  // 1000 * 0.5 = 500
+    TEST_ASSERT_EQUAL(500, out_samples[511]);
+    
+    // Test 0% volume (muted)
+    int volume_0 = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, test_process_apply_volume(in_buffer, out_buffer, &volume_0));
+    out_samples = (int16_t *)out_buffer->data;
+    TEST_ASSERT_EQUAL(0, out_samples[0]);
+    TEST_ASSERT_EQUAL(0, out_samples[511]);
+    
+    // Release buffers
+    audio_buffer_release(pool, in_buffer);
+    audio_buffer_release(pool, out_buffer);
+    
+    // Cleanup
+    audio_buffer_pool_deinit(pool);
+}
+
+/**
  * @brief Run all audio pipeline tests
  */
 void run_audio_pipeline_tests(void)
@@ -375,6 +590,11 @@ void run_audio_pipeline_tests(void)
     RUN_TEST(test_audio_single_processing_stage);
     RUN_TEST(test_audio_multi_stage_pipeline);
     RUN_TEST(test_audio_buffer_init_basic);
+    
+    // Volume control tests
+    RUN_TEST(test_volume_set_get);
+    RUN_TEST(test_volume_mute_unmute);
+    RUN_TEST(test_volume_apply_to_samples);
     
     // End Unity test session and display results
     int failures = UNITY_END();
