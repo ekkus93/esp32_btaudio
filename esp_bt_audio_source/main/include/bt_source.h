@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
+#include "esp_err.h"
 
 /*********************************
  * STATIC FUNCTION DECLARATIONS
@@ -165,3 +166,108 @@ esp_err_t bt_simulate_connection_drop(void)
 
     return ESP_OK;
 }
+
+/**
+ * @brief Connection states for the BT connection
+ */
+typedef enum {
+    BT_STATE_UNKNOWN = 0,
+    BT_STATE_DISCONNECTED,
+    BT_STATE_CONNECTING,
+    BT_STATE_CONNECTED,
+    BT_STATE_DISCONNECTING,
+    BT_STATE_ERROR
+} bt_connection_state_t;
+
+/**
+ * @brief Streaming states for audio
+ */
+typedef enum {
+    BT_STREAM_STATE_UNKNOWN = 0,
+    BT_STREAM_STATE_STOPPED,
+    BT_STREAM_STATE_STREAMING,
+    BT_STREAM_STATE_PAUSED,
+    BT_STREAM_STATE_ERROR
+} bt_streaming_state_t;
+
+/**
+ * @brief Event types for Bluetooth events
+ */
+typedef enum {
+    BT_EVENT_UNKNOWN = 0,
+    BT_EVENT_CONNECTION_STATE_CHANGED,
+    BT_EVENT_AUDIO_STATE_CHANGED,
+    BT_EVENT_SCAN_RESULT,
+    BT_EVENT_SCAN_COMPLETE,
+    BT_EVENT_ERROR
+} bt_event_t;
+
+/**
+ * @brief Event callback function type
+ */
+typedef void (*bt_event_callback_t)(bt_event_t event, void* param);
+
+/**
+ * @brief Register for streaming events
+ * 
+ * @param callback Event callback function
+ * @return ESP_OK on success
+ */
+esp_err_t bt_register_streaming_callback(bt_event_callback_t callback);
+
+/**
+ * @brief Get current connection state
+ *
+ * @return Current connection state
+ */
+bt_connection_state_t bt_get_connection_state(void);
+
+/**
+ * @brief Get current streaming state
+ *
+ * @return Current streaming state
+ */
+bt_streaming_state_t bt_get_streaming_state(void);
+
+/**
+ * @brief Start streaming audio to connected Bluetooth device
+ *
+ * @return ESP_OK on success, ESP_FAIL if not connected or error
+ */
+esp_err_t bt_start_streaming(void);
+
+/**
+ * @brief Stop streaming audio to connected Bluetooth device
+ *
+ * @return ESP_OK on success
+ */
+esp_err_t bt_stop_streaming(void);
+
+/**
+ * @brief Check if audio is currently streaming
+ *
+ * @return true if streaming, false otherwise
+ */
+bool bt_is_streaming(void);
+
+/**
+ * @brief Pause audio streaming
+ *
+ * @return ESP_OK on success, ESP_FAIL if not streaming or error
+ */
+esp_err_t bt_pause_streaming(void);
+
+/**
+ * @brief Resume previously paused audio streaming
+ *
+ * @return ESP_OK on success, ESP_FAIL if not paused or error
+ */
+esp_err_t bt_resume_streaming(void);
+
+/**
+ * @brief Register for connection state change events
+ *
+ * @param callback Event callback function
+ * @return ESP_OK on success
+ */
+esp_err_t bt_register_connection_callback(bt_event_callback_t callback);

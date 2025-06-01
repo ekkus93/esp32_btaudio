@@ -9,175 +9,210 @@ extern "C" {
 #endif
 
 /**
- * @brief BT device type enum
+ * @brief Bluetooth device types for filtering
  */
 typedef enum {
     BT_DEVICE_TYPE_UNKNOWN = 0,
-    BT_DEVICE_TYPE_CLASSIC,
-    BT_DEVICE_TYPE_BLE,
-    BT_DEVICE_TYPE_DUAL,
-    BT_DEVICE_TYPE_ANY,       // For scan filtering - match any device type
-    BT_DEVICE_TYPE_A2DP_SINK  // For scan filtering - match A2DP sink devices
+    BT_DEVICE_TYPE_CLASSIC = 1,
+    BT_DEVICE_TYPE_LE = 2, 
+    BT_DEVICE_TYPE_DUAL = 3,
+    BT_DEVICE_TYPE_A2DP_SINK = 5,  // Added for test case
 } bt_device_type_t;
 
 /**
- * @brief BT profile type enum
+ * @brief Bluetooth profile masks
  */
 typedef enum {
-    BT_PROFILE_NONE = 0,
-    BT_PROFILE_A2DP_SINK = (1 << 0),
-    BT_PROFILE_A2DP_SOURCE = (1 << 1),
-    BT_PROFILE_HFP = (1 << 2),
-    BT_PROFILE_SPP = (1 << 3)
+    BT_PROFILE_NONE = 0x0,
+    BT_PROFILE_A2DP_SINK = 0x1,
+    BT_PROFILE_A2DP_SOURCE = 0x2,
+    BT_PROFILE_HFP = 0x4,
+    BT_PROFILE_AVRCP = 0x8,
 } bt_profile_t;
 
 /**
- * @brief BT device structure
+ * @brief Bluetooth device information structure
  */
 typedef struct {
-    uint8_t addr[6];           // Device address
-    char name[32];             // Device name
-    int8_t rssi;               // Signal strength
-    bool paired;               // Is device paired
-    bool connected;            // Is device currently connected
-    uint32_t profiles;         // Supported profiles (bitmask of bt_profile_t)
-    uint32_t cod;              // Class of Device - for backward compatibility
+    char name[32];         // Device name
+    char addr[18];         // Device address (xx:xx:xx:xx:xx:xx format)
+    int rssi;              // Signal strength
+    uint32_t profiles;     // Supported profiles (bitmask of bt_profile_t values)
+    bt_device_type_t type; // Device type
 } bt_device_t;
 
 /**
- * @brief Connection information structure
+ * @brief Bluetooth connection information structure
  */
 typedef struct {
-    bool connected;             // Whether currently connected
-    char remote_addr[18];       // Remote device address string
-    char remote_name[32];       // Remote device name
-    int8_t signal_strength;     // Signal strength (RSSI)
+    bool connected;           // Whether device is connected
+    char remote_addr[18];     // Remote device address
+    char remote_name[32];     // Remote device name
+    int connection_quality;   // Connection quality (0-100)
 } bt_connection_info_t;
 
 /**
- * @brief Discovery callback function type
+ * @brief Connection callback function type
  */
-typedef void (*bt_discovery_cb_t)(bt_device_t *device, void *user_data);
+typedef void (*bt_connection_callback_t)(bool connected, esp_err_t status, void* user_data);
 
 /**
- * @brief Connection state change callback type
+ * @brief Streaming callback function type
  */
-typedef void (*bt_connection_callback_t)(bool connected, bt_device_t* device, esp_err_t status, void* user_data);
+typedef void (*bt_stream_callback_t)(bool streaming, esp_err_t status, void* user_data);
 
 /**
- * @brief Initialize Bluetooth stack
+ * @brief Initialize Bluetooth module
+ * @return ESP_OK on success
  */
 esp_err_t bt_init(void);
 
 /**
- * @brief Start BT scanning
+ * @brief Deinitialize Bluetooth module
+ * @return ESP_OK on success
  */
-esp_err_t bt_scan_start(void);
+esp_err_t bt_deinit(void);
 
 /**
- * @brief Start filtered scan for specific device type
+ * @brief Check if Bluetooth is initialized
+ * @return true if initialized
  */
-esp_err_t bt_scan_start_filtered(bt_device_type_t device_type);
+bool bt_is_initialized(void);
 
 /**
- * @brief Stop scanning
- */
-esp_err_t bt_scan_stop(void);
-
-/**
- * @brief Connect to a device
- */
-esp_err_t bt_connect(const char* addr);
-
-/**
- * @brief Connect to a device by name
- */
-esp_err_t bt_connect_by_name(const char* name);
-
-/**
- * @brief Connect with timeout
- */
-esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms);
-
-/**
- * @brief Check if connected to a BT device
- */
-bool bt_is_connected(void);
-
-/**
- * @brief Disconnect from current device
- */
-esp_err_t bt_disconnect(void);
-
-/**
- * @brief Start audio streaming
- */
-esp_err_t bt_start_streaming(void);
-
-/**
- * @brief Stop audio streaming
- */
-esp_err_t bt_stop_streaming(void);
-
-/**
- * @brief Check if streaming is active
- */
-bool bt_is_streaming(void);
-
-/**
- * @brief Register device discovery callback
- */
-esp_err_t bt_register_discovery_callback(bt_discovery_cb_t callback, void *user_data);
-
-/**
- * @brief Get discovered device count
- */
-uint16_t bt_get_discovered_device_count(void);
-
-/**
- * @brief Get discovered devices
- */
-esp_err_t bt_get_discovered_devices(bt_device_t* devices, uint16_t max_count, uint16_t* count);
-
-/**
- * @brief Get paired device count
- */
-uint16_t bt_get_paired_device_count(void);
-
-/**
- * @brief Add paired device
- */
-esp_err_t bt_add_paired_device(const bt_device_t* device);
-
-/**
- * @brief Remove paired device
- */
-esp_err_t bt_remove_paired_device(const bt_device_t* device);
-
-/**
- * @brief Register callback for connection state changes
+ * @brief Register callback for connection events
+ * @param callback Function to call when connection status changes
+ * @param user_data User data to pass to the callback
+ * @return ESP_OK on success
  */
 esp_err_t bt_register_connection_callback(bt_connection_callback_t callback, void* user_data);
 
 /**
- * @brief Get current connection information
+ * @brief Register callback for streaming events
+ * @param callback Function to call when streaming status changes
+ * @param user_data User data to pass to the callback
+ * @return ESP_OK on success
+ */
+esp_err_t bt_register_streaming_callback(bt_stream_callback_t callback, void* user_data);
+
+/**
+ * @brief Start scanning for Bluetooth devices
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan_start(void);
+
+/**
+ * @brief Stop scanning for Bluetooth devices
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan_stop(void);
+
+/**
+ * @brief Scan for specified duration
+ * @param duration_s Duration in seconds
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan(uint32_t duration_s);
+
+/**
+ * @brief Start scanning with device type filter
+ * @param device_type Device type to filter for
+ * @return ESP_OK on success
+ */
+esp_err_t bt_scan_start_filtered(bt_device_type_t device_type);
+
+/**
+ * @brief Check if filter has matching devices
+ * @param device_type Device type to check
+ * @return true if there are matches
+ */
+bool bt_filter_has_matches(bt_device_type_t device_type);
+
+/**
+ * @brief Get number of discovered devices
+ * @return Count of discovered devices
+ */
+uint16_t bt_get_discovered_device_count(void);
+
+/**
+ * @brief Get discovered devices list
+ * @param devices Buffer to store device information
+ * @param max_count Maximum number of devices to retrieve
+ * @param count Actual number of devices retrieved
+ * @return ESP_OK on success
+ */
+esp_err_t bt_get_discovered_devices(bt_device_t* devices, uint16_t max_count, uint16_t* count);
+
+/**
+ * @brief Connect to device by address
+ * @param addr Address of device to connect to
+ * @return ESP_OK on success
+ */
+esp_err_t bt_connect(const char* addr);
+
+/**
+ * @brief Connect to device by name
+ * @param name Name of device to connect to
+ * @return ESP_OK on success
+ */
+esp_err_t bt_connect_by_name(const char* name);
+
+/**
+ * @brief Connect to device with timeout
+ * @param addr Address of device to connect to
+ * @param timeout_ms Connection timeout in milliseconds
+ * @return ESP_OK on success, ESP_ERR_TIMEOUT on timeout
+ */
+esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms);
+
+/**
+ * @brief Disconnect from current device
+ * @return ESP_OK on success
+ */
+esp_err_t bt_disconnect(void);
+
+/**
+ * @brief Check if connected to a device
+ * @return true if connected
+ */
+bool bt_is_connected(void);
+
+/**
+ * @brief Get connection info
+ * @param info Pointer to store connection info
+ * @return ESP_OK on success
  */
 esp_err_t bt_get_connection_info(bt_connection_info_t* info);
 
 /**
- * @brief Enable or disable auto-reconnection
+ * @brief Get connection state 
+ * @return 1 if connected, 0 otherwise
  */
-esp_err_t bt_set_auto_reconnect(bool enable);
+int bt_get_connection_state(void);
 
 /**
- * @brief Simulate disconnection (for testing only)
+ * @brief Get streaming state 
+ * @return 1 if streaming, 0 otherwise
+ */
+int bt_get_streaming_state(void);
+
+/**
+ * @brief Get paired devices
+ * @return Pointer to paired devices array
+ */
+void* bt_get_paired_devices(void);
+
+/**
+ * @brief Get paired device count
+ * @return Number of paired devices
+ */
+uint16_t bt_get_paired_device_count(void);
+
+/**
+ * @brief Simulate a connection drop
+ * @return ESP_OK on success
  */
 esp_err_t bt_simulate_disconnect(void);
-
-/**
- * @brief Check if device supports a profile
- */
-bool bt_device_supports_profile(const bt_device_t* device, bt_profile_t profile);
 
 #ifdef __cplusplus
 }

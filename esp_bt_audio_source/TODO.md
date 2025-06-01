@@ -31,8 +31,13 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 - [x] Add reconnection logic for previously paired devices
   - (5) "A2DP remembers paired devices" [bluetooth][a2dp]
   - (21) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection]
-- [ ] Handle connection events and state transitions
-- [ ] Implement audio streaming control (start/stop)
+- [x] Handle connection events and state transitions
+- [x] Implement audio streaming control (start/stop)
+  - (25) "Audio streaming starts successfully" [bluetooth][a2dp][audio]
+  - (26) "Audio streaming stops successfully" [bluetooth][a2dp][audio]
+  - (27) "Audio streaming cannot start when disconnected" [bluetooth][a2dp][audio]
+  - (28) "Audio streaming can be paused and resumed" [bluetooth][a2dp][audio]
+  - (29) "Audio streaming state is reported correctly" [bluetooth][a2dp][audio]
 
 ### Audio Processing
 - [ ] Configure I2S driver for receiving audio

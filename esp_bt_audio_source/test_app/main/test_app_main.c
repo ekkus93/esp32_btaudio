@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "unity.h"
 #include "bt_source.h"
+#include "bt_streaming.h"
 #include "esp_log.h"
 
 static const char *TAG = "BT_TEST";
@@ -396,6 +397,133 @@ TEST_CASE("Auto-reconnect when connection drops", "[bluetooth][a2dp][connection]
     // Clean up
     bt_disconnect();
     TEST_ASSERT_FALSE(bt_is_connected());
+}
+
+// (25) "Audio streaming starts successfully" [bluetooth][a2dp][audio]
+TEST_CASE("Audio streaming starts successfully", "[bluetooth][a2dp][audio]")
+{
+    // Initialize BT
+    bt_init();
+    
+    // Connect to device
+    const char* test_addr = "11:22:33:44:55:66";
+    bt_connect(test_addr);
+    
+    // Set mock connected state
+    bt_streaming_mock_set_connected(true);
+    
+    // Start streaming
+    esp_err_t result = bt_start_streaming();
+    TEST_ASSERT_EQUAL(ESP_OK, result);
+    
+    // Verify streaming state
+    TEST_ASSERT_TRUE(bt_is_streaming());
+    
+    // Clean up
+    bt_stop_streaming();
+    bt_disconnect();
+    bt_streaming_mock_set_connected(false);
+}
+
+// (26) "Audio streaming stops successfully" [bluetooth][a2dp][audio]
+TEST_CASE("Audio streaming stops successfully", "[bluetooth][a2dp][audio]")
+{
+    // Initialize BT
+    bt_init();
+    
+    // Connect to device
+    const char* test_addr = "11:22:33:44:55:66";
+    bt_connect(test_addr);
+    bt_streaming_mock_set_connected(true);
+    
+    // Start streaming
+    bt_start_streaming();
+    TEST_ASSERT_TRUE(bt_is_streaming());
+    
+    // Stop streaming
+    esp_err_t result = bt_stop_streaming();
+    TEST_ASSERT_EQUAL(ESP_OK, result);
+    
+    // Verify streaming stopped
+    TEST_ASSERT_FALSE(bt_is_streaming());
+    
+    // Clean up
+    bt_disconnect();
+    bt_streaming_mock_set_connected(false);
+}
+
+// (27) "Audio streaming cannot start when disconnected" [bluetooth][a2dp][audio]
+TEST_CASE("Audio streaming cannot start when disconnected", "[bluetooth][a2dp][audio]")
+{
+    // Initialize BT
+    bt_init();
+    
+    // Explicitly set disconnected state
+    bt_streaming_mock_set_connected(false);
+    
+    // Try to start streaming without connection
+    esp_err_t result = bt_start_streaming();
+    TEST_ASSERT_EQUAL(ESP_FAIL, result);
+    
+    // Verify streaming state
+    TEST_ASSERT_FALSE(bt_is_streaming());
+}
+
+// (28) "Audio streaming can be paused and resumed" [bluetooth][a2dp][audio]
+TEST_CASE("Audio streaming can be paused and resumed", "[bluetooth][a2dp][audio]")
+{
+    // Initialize BT
+    bt_init();
+    
+    // Connect to device
+    const char* test_addr = "11:22:33:44:55:66";
+    bt_connect(test_addr);
+    bt_streaming_mock_set_connected(true);
+    
+    // Start streaming
+    bt_start_streaming();
+    TEST_ASSERT_TRUE(bt_is_streaming());
+    
+    // Pause streaming
+    esp_err_t pause_result = bt_pause_streaming();
+    TEST_ASSERT_EQUAL(ESP_OK, pause_result);
+    
+    // Resume streaming 
+    esp_err_t resume_result = bt_resume_streaming();
+    TEST_ASSERT_EQUAL(ESP_OK, resume_result);
+    TEST_ASSERT_TRUE(bt_is_streaming());
+    
+    // Clean up
+    bt_stop_streaming();
+    bt_disconnect();
+    bt_streaming_mock_set_connected(false);
+}
+
+// (29) "Audio streaming state is reported correctly" [bluetooth][a2dp][audio]
+TEST_CASE("Audio streaming state is reported correctly", "[bluetooth][a2dp][audio]")
+{
+    // Initialize BT
+    bt_init();
+    
+    // Verify initial state (should be stopped when not connected)
+    TEST_ASSERT_FALSE(bt_is_streaming());
+    
+    // Connect to device
+    const char* test_addr = "11:22:33:44:55:66";
+    bt_connect(test_addr);
+    bt_streaming_mock_set_connected(true);
+    
+    // Start streaming
+    bt_start_streaming();
+    TEST_ASSERT_TRUE(bt_is_streaming());
+    
+    // Stop streaming
+    bt_stop_streaming();
+    TEST_ASSERT_FALSE(bt_is_streaming());
+    
+    // Clean up
+    bt_disconnect();
+    bt_streaming_mock_set_connected(false);
 }
 
 // Main application function
