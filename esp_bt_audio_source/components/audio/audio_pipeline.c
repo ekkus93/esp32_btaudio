@@ -65,6 +65,9 @@ audio_buffer_pool_t* audio_buffer_pool_init(const audio_buffer_cfg_t *config)
     pool->buffer_count = config->buffer_count;
     pool->buffer_size = config->buffer_size;
     pool->free_count = config->buffer_count;
+    pool->sample_rate = config->sample_rate;         // Store sample rate from config
+    pool->bits_per_sample = config->bits_per_sample; // Store bits per sample
+    pool->num_channels = config->num_channels;       // Store number of channels
     
     ESP_LOGI(TAG, "Audio buffer pool initialized: %" PRIu32 " buffers of %" PRIu32 " bytes each",
             config->buffer_count, config->buffer_size);
@@ -458,4 +461,58 @@ esp_err_t audio_pipeline_is_muted(audio_pipeline_t *pipeline, bool *muted)
     *muted = pipeline->is_muted;
     
     return ESP_OK;
+}
+
+/**
+ * @brief Set the sample rate of an audio buffer pool
+ */
+esp_err_t audio_buffer_pool_set_sample_rate(audio_buffer_pool_t *pool, uint32_t sample_rate)
+{
+    if (!pool || sample_rate == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Store the sample rate
+    pool->sample_rate = sample_rate;
+    
+    ESP_LOGI(TAG, "Audio buffer pool sample rate set to %lu Hz", sample_rate);
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Get the current sample rate of an audio buffer pool
+ */
+uint32_t audio_buffer_pool_get_sample_rate(audio_buffer_pool_t *pool)
+{
+    if (!pool) {
+        return 0;
+    }
+    
+    return pool->sample_rate;
+}
+
+/**
+ * @brief Calculate buffer size needed for a given duration and sample rate
+ */
+uint32_t audio_buffer_calculate_size(float duration_ms, uint32_t sample_rate, 
+                                    uint32_t channels, uint32_t bits_per_sample)
+{
+    if (duration_ms <= 0 || sample_rate == 0 || channels == 0 || bits_per_sample == 0) {
+        return 0;
+    }
+    
+    // Calculate bytes per sample
+    uint32_t bytes_per_sample = bits_per_sample / 8;
+    
+    // Calculate total bytes needed
+    uint32_t buffer_size = (uint32_t)((duration_ms / 1000.0f) * sample_rate * channels * bytes_per_sample);
+    
+    // Ensure buffer size is a multiple of the sample frame size (channels * bytes_per_sample)
+    uint32_t frame_size = channels * bytes_per_sample;
+    if (buffer_size % frame_size != 0) {
+        buffer_size = (buffer_size / frame_size + 1) * frame_size;
+    }
+    
+    return buffer_size;
 }

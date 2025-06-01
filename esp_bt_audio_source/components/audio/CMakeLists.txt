@@ -7,4 +7,5 @@ idf_component_register(
         driver
         freertos
         heap
+        esp_common
 )

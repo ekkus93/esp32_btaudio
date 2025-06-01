@@ -41,10 +41,13 @@ typedef struct audio_buffer {
  * @brief Audio buffer pool structure
  */
 typedef struct {
-    audio_buffer_t *buffers;     /*!< Array of audio buffers */
-    uint32_t buffer_count;       /*!< Total number of buffers */
-    uint32_t buffer_size;        /*!< Size of each buffer */
-    uint32_t free_count;         /*!< Number of free buffers */
+    audio_buffer_t *buffers;      /**< Array of buffer structures */
+    uint32_t buffer_count;        /**< Number of buffers in the pool */
+    uint32_t buffer_size;         /**< Size of each buffer in bytes */
+    uint32_t free_count;          /**< Number of free buffers */
+    uint32_t sample_rate;         /**< Sample rate in Hz */
+    uint8_t bits_per_sample;      /**< Bits per sample */
+    uint8_t num_channels;         /**< Number of channels */
 } audio_buffer_pool_t;
 
 /**
@@ -80,6 +83,14 @@ typedef struct {
     bool is_muted;                      /*!< Mute state */
     int pre_mute_volume;                /*!< Volume level before muting */
 } audio_pipeline_t;
+
+/**
+ * @brief Sample rate conversion configuration
+ */
+typedef struct {
+    uint32_t src_rate;       /**< Source sample rate in Hz */
+    uint32_t dst_rate;       /**< Destination sample rate in Hz */
+} sample_rate_conversion_t;
 
 /**
  * @brief Initialize audio buffer pool
@@ -218,6 +229,35 @@ esp_err_t audio_pipeline_toggle_mute(audio_pipeline_t *pipeline);
  * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_pipeline_is_muted(audio_pipeline_t *pipeline, bool *muted);
+
+/**
+ * @brief Set the sample rate of an audio buffer pool
+ * 
+ * @param pool Pointer to buffer pool
+ * @param sample_rate New sample rate in Hz
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_buffer_pool_set_sample_rate(audio_buffer_pool_t *pool, uint32_t sample_rate);
+
+/**
+ * @brief Get the current sample rate of an audio buffer pool
+ * 
+ * @param pool Pointer to buffer pool
+ * @return uint32_t Current sample rate in Hz, or 0 if an error occurred
+ */
+uint32_t audio_buffer_pool_get_sample_rate(audio_buffer_pool_t *pool);
+
+/**
+ * @brief Calculate buffer size needed for a given duration and sample rate
+ * 
+ * @param duration_ms Desired buffer duration in milliseconds
+ * @param sample_rate Sample rate in Hz
+ * @param channels Number of audio channels
+ * @param bits_per_sample Bits per sample (e.g., 16, 24, 32)
+ * @return uint32_t Required buffer size in bytes
+ */
+uint32_t audio_buffer_calculate_size(float duration_ms, uint32_t sample_rate, 
+                                    uint32_t channels, uint32_t bits_per_sample);
 
 #ifdef __cplusplus
 }

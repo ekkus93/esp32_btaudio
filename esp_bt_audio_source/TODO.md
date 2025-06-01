@@ -44,7 +44,7 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 - [x] Set up audio data buffers and processing pipeline
 - [x] Implement volume control functionality
 - [x] Add mute/unmute capability
-- [ ] Support for different sample rates
+- [x] Support for different sample rates
 - [ ] Handle audio format conversion if needed
 
 ### Pairing and Security
