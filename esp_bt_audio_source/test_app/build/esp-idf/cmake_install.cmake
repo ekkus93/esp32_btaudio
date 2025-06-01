@@ -552,3 +552,13 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/cmake_install.cmake")
 endif()
 
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/cmake_install.cmake")
+endif()
+

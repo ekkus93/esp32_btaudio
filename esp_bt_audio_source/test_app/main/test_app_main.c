@@ -5,6 +5,7 @@
 #include "esp_log.h"
 
 #include "i2s_audio_test.h"
+#include "audio_pipeline_test.h"
 
 static const char *TAG = "BT_AUDIO_TEST";
 
@@ -61,8 +62,18 @@ void app_main(void)
     // Run the I2S audio tests
     ESP_LOGI(TAG, "Running I2S audio tests");
     run_i2s_audio_tests();
+    
+    // Add a small delay between test suites
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Run audio buffer and pipeline tests
+    ESP_LOGI(TAG, "Running audio buffer and pipeline tests");
+    run_audio_pipeline_tests();
 
     // Delay to allow logs to be printed
     vTaskDelay(pdMS_TO_TICKS(1000));
     ESP_LOGI(TAG, "All tests completed");
+    
+    // Update TODO item status
+    ESP_LOGI(TAG, "Audio buffer and pipeline implementation test completed");
 }

@@ -12,6 +12,7 @@
 
 static const char *TAG = "I2S_AUDIO_TEST";
 
+// These need to be global for Unity to find them
 void setUp(void)
 {
     // Setup for I2S tests
@@ -22,11 +23,11 @@ void tearDown(void)
     // Cleanup after I2S tests
 }
 
-/**
- * @brief Test I2S driver initialization
- */
-TEST_CASE("I2S driver initialization", "[i2s]")
+// Test functions need to be declared separately to use with RUN_TEST
+void test_i2s_driver_init(void)
 {
+    ESP_LOGI(TAG, "Testing I2S channel initialization");
+
     i2s_chan_handle_t rx_handle = NULL;
     
     i2s_chan_config_t chan_cfg = {
@@ -37,7 +38,6 @@ TEST_CASE("I2S driver initialization", "[i2s]")
         .auto_clear = true,
     };
     
-    ESP_LOGI(TAG, "Testing I2S channel initialization");
     esp_err_t ret = i2s_new_channel(&chan_cfg, NULL, &rx_handle);
     
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -49,11 +49,10 @@ TEST_CASE("I2S driver initialization", "[i2s]")
     }
 }
 
-/**
- * @brief Test I2S standard mode configuration for receiving audio
- */
-TEST_CASE("I2S standard mode configuration", "[i2s]")
+void test_i2s_standard_mode(void)
 {
+    ESP_LOGI(TAG, "Testing I2S standard config: 44100Hz, 16-bit, stereo");
+    
     i2s_chan_handle_t rx_handle = NULL;
     
     // Test parameters
@@ -63,11 +62,6 @@ TEST_CASE("I2S standard mode configuration", "[i2s]")
     int gpio_bclk = GPIO_NUM_26;
     int gpio_ws = GPIO_NUM_25;
     int gpio_din = GPIO_NUM_22;
-    
-    ESP_LOGI(TAG, "Testing I2S standard config: %" PRIu32 "Hz, %d-bit, %s",
-             sample_rate, 
-             (int)bit_width,
-             channel_fmt == I2S_SLOT_MODE_MONO ? "mono" : "stereo");
     
     // Channel configuration
     i2s_chan_config_t chan_cfg = {
@@ -132,14 +126,21 @@ TEST_CASE("I2S standard mode configuration", "[i2s]")
 }
 
 /**
- * @brief Run all I2S audio driver tests
+ * @brief Run I2S audio driver tests
  */
 void run_i2s_audio_tests(void)
 {
     ESP_LOGI(TAG, "Starting I2S audio driver tests");
     
-    // The Unity framework will automatically run the TEST_CASE functions
-    unity_run_all_tests();
+    // Begin Unity test session and explicitly register tests
+    UNITY_BEGIN();
     
-    ESP_LOGI(TAG, "I2S audio driver tests completed");
+    // Explicitly run each test
+    RUN_TEST(test_i2s_driver_init);
+    RUN_TEST(test_i2s_standard_mode);
+    
+    // End Unity test session and display results
+    int failures = UNITY_END();
+    
+    ESP_LOGI(TAG, "I2S audio driver tests completed with %d failures", failures);
 }

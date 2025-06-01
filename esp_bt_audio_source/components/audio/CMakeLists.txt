@@ -1,9 +1,10 @@
 idf_component_register(
     SRCS 
-        "audio_i2s.c"
+        "audio_pipeline.c"
     INCLUDE_DIRS 
         "."
     REQUIRES 
         driver
-        esp_driver_i2s
+        freertos
+        heap
 )

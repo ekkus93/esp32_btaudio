@@ -13,7 +13,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
-#include "esp_err.h"
 
 /*********************************
  * STATIC FUNCTION DECLARATIONS
@@ -245,21 +244,21 @@ esp_err_t bt_stop_streaming(void);
 
 /**
  * @brief Check if audio is currently streaming
- *
+ * 
  * @return true if streaming, false otherwise
  */
 bool bt_is_streaming(void);
 
 /**
  * @brief Pause audio streaming
- *
+ * 
  * @return ESP_OK on success, ESP_FAIL if not streaming or error
  */
 esp_err_t bt_pause_streaming(void);
 
 /**
  * @brief Resume previously paused audio streaming
- *
+ * 
  * @return ESP_OK on success, ESP_FAIL if not paused or error
  */
 esp_err_t bt_resume_streaming(void);

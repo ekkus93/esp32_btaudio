@@ -2,8 +2,10 @@ idf_component_register(
     SRCS 
         "test_app_main.c"
         "i2s_audio_test.c"
+        "audio_pipeline_test.c"
     INCLUDE_DIRS 
         "."
+        "../../components/audio"
     REQUIRES
         driver
         esp_driver_i2s
