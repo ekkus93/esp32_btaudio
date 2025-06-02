@@ -6,71 +6,68 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 
 ### Bluetooth A2DP Implementation
 - [x] Initial A2DP source profile implementation
-  - (6) "Bluetooth stack initializes successfully" [bluetooth]
-  - (3) "A2DP starts and stops streaming" [bluetooth][a2dp]
+  - (1) "Bluetooth stack initializes successfully" [bluetooth]
+  - (16) "A2DP starts and stops streaming" [bluetooth][a2dp]
 
 - [x] Implement device scanning functionality
-  - (1) "Bluetooth scan starts successfully" [bluetooth][a2dp]
-  - (9) "Bluetooth scan reports discovered devices" [bluetooth][a2dp][scan]
-  - (10) "Bluetooth scan filters by device type" [bluetooth][a2dp][scan]
-  - (11) "Bluetooth scanning basic functionality" [bluetooth][a2dp][scan]
-  - (12) "Bluetooth scan filters devices by type" [bluetooth][a2dp][scan]
-  - (13) "Bluetooth scan returns device details" [bluetooth][a2dp][scan]
-  - (14) "Bluetooth scan times out properly" [bluetooth][a2dp][scan]
-  - (15) "Bluetooth scan can be stopped early" [bluetooth][a2dp][scan]
+  - (2) "Bluetooth scan starts successfully" [bluetooth][a2dp]
+  - (3) "Bluetooth scan reports discovered devices" [bluetooth][a2dp][scan]
+  - (4) "Bluetooth scan filters by device type" [bluetooth][a2dp][scan]
+  - (5) "Bluetooth scanning basic functionality" [bluetooth][a2dp][scan]
+  - (6) "Bluetooth scan returns device details" [bluetooth][a2dp][scan]
+  - (7) "Bluetooth scan times out properly" [bluetooth][a2dp][scan]
+  - (8) "Bluetooth scan can be stopped early" [bluetooth][a2dp][scan]
 
 - [x] Implement connection management
-  - (2) "Bluetooth connects to A2DP sink" [bluetooth][a2dp]
-  - (4) "Bluetooth disconnects properly" [bluetooth][a2dp]
-  - (16) "Connect to a device by address" [bluetooth][a2dp][connection]
-  - (17) "Connect to a device by name" [bluetooth][a2dp][connection]
-  - (18) "Handle connection failure gracefully" [bluetooth][a2dp][connection]
-  - (19) "Handle connection timeout" [bluetooth][a2dp][connection]
-  - (20) "Get connection status information" [bluetooth][a2dp][connection]
+  - (15) "Bluetooth connects to A2DP sink" [bluetooth][a2dp]
+  - (9) "Bluetooth disconnects properly" [bluetooth][a2dp]
+  - (9) "Connect to a device by address" [bluetooth][a2dp][connection]
+  - (10) "Connect to a device by name" [bluetooth][a2dp][connection]
+  - (11) "Handle connection failure gracefully" [bluetooth][a2dp][connection]
+  - (12) "Handle connection timeout" [bluetooth][a2dp][connection]
+  - (13) "Get connection status information" [bluetooth][a2dp][connection]
 
 - [x] Add reconnection logic for previously paired devices
-  - (5) "A2DP remembers paired devices" [bluetooth][a2dp]
-  - (21) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection]
+  - (17) "A2DP remembers paired devices" [bluetooth][a2dp]
+  - (14) "Auto-reconnect when connection drops" [bluetooth][a2dp][connection]
 - [x] Handle connection events and state transitions
 - [x] Implement audio streaming control (start/stop)
-  - (25) "Audio streaming starts successfully" [bluetooth][a2dp][audio]
-  - (26) "Audio streaming stops successfully" [bluetooth][a2dp][audio]
-  - (27) "Audio streaming cannot start when disconnected" [bluetooth][a2dp][audio]
-  - (28) "Audio streaming can be paused and resumed" [bluetooth][a2dp][audio]
-  - (29) "Audio streaming state is reported correctly" [bluetooth][a2dp][audio]
+  - (18) "Audio streaming starts successfully" [bluetooth][a2dp][audio]
+  - (19) "Audio streaming stops successfully" [bluetooth][a2dp][audio]
+  - (20) "Audio streaming cannot start when disconnected" [bluetooth][a2dp][audio]
+  - (21) "Audio streaming can be paused and resumed" [bluetooth][a2dp][audio]
+  - (22) "Audio streaming state is reported correctly" [bluetooth][a2dp][audio]
 
 ### Audio Processing
 - [x] Configure I2S driver for receiving audio
-  - (30) "I2S driver initializes successfully" [i2s][audio]
-  - (31) "I2S standard mode configuration works" [i2s][audio]
+  - (23) "I2S driver initializes successfully" [i2s][audio]
+  - (24) "I2S standard mode configuration works" [i2s][audio]
 - [x] Set up audio data buffers and processing pipeline
-  - (32) "Audio buffer pool initialization" [audio][pipeline]
-  - (33) "Audio buffer allocation and release" [audio][pipeline]
-  - (34) "Single-stage audio processing" [audio][pipeline]
-  - (35) "Multi-stage audio processing pipeline" [audio][pipeline]
-  - (36) "Basic audio buffer operations" [audio][pipeline]
+  - (25) "Audio buffer pool initialization" [audio][pipeline]
+  - (26) "Audio buffer allocation and release" [audio][pipeline]
+  - (27) "Single-stage audio processing" [audio][pipeline]
+  - (28) "Multi-stage audio processing pipeline" [audio][pipeline]
+  - (29) "Basic audio buffer operations" [audio][pipeline]
 - [x] Implement volume control functionality
-  - (37) "Volume level setting and retrieval" [audio][volume]
-  - (38) "Volume application to audio samples" [audio][volume]
+  - (30) "Volume level setting and retrieval" [audio][volume]
+  - (31) "Volume application to audio samples" [audio][volume]
 - [x] Add mute/unmute capability
-  - (39) "Audio mute operation" [audio][volume]
-  - (40) "Audio unmute restores previous volume" [audio][volume]
-  - (41) "Toggle mute functionality" [audio][volume]
+  - (32) "Audio mute/unmute operations" [audio][volume]
 - [x] Support for different sample rates
-  - (42) "Sample rate configuration" [audio][sampling]
-  - (43) "Buffer size calculations for different rates" [audio][sampling]
-  - (44) "Sample rate conversion" [audio][sampling]
+  - (33) "Sample rate configuration" [audio][sampling]
+  - (34) "Buffer size calculations for different rates" [audio][sampling]
+  - (35) "Sample rate conversion" [audio][sampling]
 - [x] PCM format validation tests (bit depth, endianness)
-  - (45) "16-bit PCM format handling" [audio][pcm]
-  - (46) "24-bit PCM format handling" [audio][pcm]
-  - (47) "PCM endianness conversion" [audio][pcm]
-  - (48) "Bit depth conversion (16/24/32-bit)" [audio][pcm]
+  - (36) "16-bit PCM format handling" [audio][pcm]
+  - (37) "24-bit PCM format handling" [audio][pcm]
+  - (38) "PCM endianness conversion" [audio][pcm]
+  - (39) "Bit depth conversion (16/24/32-bit)" [audio][pcm]
 - [x] I2S channel configuration tests (mono/stereo handling)
-  - (49) "Mono channel configuration" [i2s][channels]
-  - (50) "Stereo channel configuration" [i2s][channels]
-  - (51) "Stereo to mono conversion" [i2s][channels]
-  - (52) "Mono to stereo conversion" [i2s][channels]
-  - (53) "Channel independence" [i2s][channels]
+  - (40) "Mono channel configuration" [i2s][channels]
+  - (41) "Stereo channel configuration" [i2s][channels]
+  - (42) "Stereo to mono conversion" [i2s][channels]
+  - (43) "Mono to stereo conversion" [i2s][channels]
+  - (44) "Channel independence" [i2s][channels]
 
 ### Pairing and Security
 - [ ] Implement "Just Works" pairing method
