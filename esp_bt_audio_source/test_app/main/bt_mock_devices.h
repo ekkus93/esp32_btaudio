@@ -127,4 +127,75 @@ bool bt_mock_is_ssp_confirm_requested(void);
  */
 uint32_t bt_mock_get_ssp_passkey(void);
 
+/**
+ * @brief Start pairing with a device
+ * 
+ * @param addr Device address in format "XX:XX:XX:XX:XX:XX"
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_start_pairing(const char* addr);
+
+/**
+ * @brief Send a PIN code for pairing
+ * 
+ * @param pin PIN code string
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_send_pin(const char* pin);
+
+/**
+ * @brief Confirm or reject SSP pairing
+ * 
+ * @param confirm true to accept, false to reject
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_confirm_ssp(bool confirm);
+
+/**
+ * @brief Add a paired device
+ * 
+ * @param device Device info
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_add_paired_device(const bt_device_t* device);
+
+/**
+ * @brief Check if a device is paired
+ * 
+ * @param addr Device address
+ * @return true if paired, false otherwise
+ */
+bool bt_mock_is_device_paired(const char* addr);
+
+/**
+ * @brief Unpair a specific device
+ * 
+ * @param addr Device address
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_unpair_device(const char* addr);
+
+/**
+ * @brief Unpair all devices
+ * 
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t bt_mock_unpair_all_devices(void);
+
+/**
+ * @brief Get count of paired devices
+ * 
+ * @return Number of paired devices
+ */
+int bt_mock_get_paired_device_count(void);
+
+/**
+ * @brief Get list of paired devices
+ * 
+ * @param devices Array to populate with paired devices
+ * @param max_count Maximum number of devices to return
+ * @return Number of devices returned
+ */
+int bt_mock_get_paired_devices(bt_device_t* devices, int max_count);
+
 #endif /* BT_MOCK_DEVICES_H */

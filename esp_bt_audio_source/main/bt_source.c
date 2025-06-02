@@ -82,6 +82,14 @@ esp_err_t bt_init(void)
             return ESP_FAIL;
         }
     }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    // In test mode, we don't need to initialize the real BT stack
+    is_initialized = true;
+    ESP_LOGI(TAG, "Initialized Bluetooth mock");
+    return ESP_OK;
+#else
+    // Normal initialization code follows
     
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -333,6 +341,17 @@ bt_streaming_state_t bt_get_streaming_state(void)
  */
 esp_err_t bt_start_pairing(const char* addr)
 {
+#if BT_USE_MOCKS
+    // In test mode, use the mock function
+    esp_err_t ret = bt_mock_start_pairing(addr);
+    
+    // Update our state from the mock state
+    current_pairing_state = bt_mock_get_pairing_state();
+    current_pairing_method = bt_mock_get_pairing_method();
+    
+    return ret;
+#else
+    // Original real implementation
     if (!is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -360,9 +379,10 @@ esp_err_t bt_start_pairing(const char* addr)
     
     // Set initial state - actual state changes will happen in GAP callback
     current_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;
-    current_pairing_method = BT_PAIRING_PIN;  // Default, may change in callback
+    current_pairing_method = BT_PAIRING_METHOD_PIN;  // Default, may change in callback
     
     return ESP_OK;
+#endif
 }
 
 /**
@@ -370,7 +390,17 @@ esp_err_t bt_start_pairing(const char* addr)
  */
 esp_err_t bt_send_pin_code(const char* pin)
 {
-    if (!is_pairing || current_pairing_method != BT_PAIRING_PIN) {
+#if BT_USE_MOCKS
+    // In test mode, use the mock function
+    esp_err_t ret = bt_mock_send_pin(pin);
+    
+    // Update our state from the mock state
+    current_pairing_state = bt_mock_get_pairing_state();
+    
+    return ret;
+#else
+    // Original real implementation
+    if (!is_pairing || current_pairing_method != BT_PAIRING_METHOD_PIN) {
         return ESP_ERR_INVALID_STATE;
     }
     
@@ -391,6 +421,7 @@ esp_err_t bt_send_pin_code(const char* pin)
     
     // On success, state will change in GAP callback
     return ESP_OK;
+#endif
 }
 
 /**
@@ -402,10 +433,65 @@ bt_pairing_state_t bt_get_pairing_state(void)
 }
 
 /**
+ * Confirm or reject SSP pairing
+ */
+esp_err_t bt_ssp_confirm(bool confirm)
+{
+#if BT_USE_MOCKS
+    // In test mode, use the mock function
+    esp_err_t ret = bt_mock_confirm_ssp(confirm);
+    
+    // Update our state from the mock state
+    current_pairing_state = bt_mock_get_pairing_state();
+    
+    return ret;
+#else
+    // Original implementation
+    if (!is_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (!is_pairing) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    ESP_LOGI(TAG, "SSP pairing confirmation: %s", confirm ? "yes" : "no");
+    
+    // Convert MAC address string to bytes
+    esp_bd_addr_t bda;
+    sscanf(current_pairing_addr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
+           &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]);
+    
+    esp_err_t ret;
+    if (confirm) {
+        // Confirm pairing
+        ret = esp_bt_sp_passkey_reply(bda, true, 0, NULL);
+    } else {
+        // Reject pairing
+        ret = esp_bt_sp_passkey_reply(bda, false, 0, NULL);
+    }
+    
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SSP confirm failed: %s", esp_err_to_name(ret));
+        current_pairing_state = BT_PAIRING_STATE_FAILED;
+        return ret;
+    }
+    
+    // State will be updated in the GAP callback
+    return ESP_OK;
+#endif
+}
+
+/**
  * Check if a device is paired
  */
 bool bt_is_device_paired(const char* addr)
 {
+#if BT_USE_MOCKS
+    // In test mode, use the mock function
+    return bt_mock_is_device_paired(addr);
+#else
+    // Original implementation
     if (!addr) {
         return false;
     }
@@ -424,6 +510,7 @@ bool bt_is_device_paired(const char* addr)
     }
     
     return false;
+#endif
 }
 
 /**
