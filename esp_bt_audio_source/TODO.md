@@ -70,12 +70,37 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
   - (44) "Channel independence" [i2s][channels]
 
 ### Pairing and Security
-- [ ] Implement "Just Works" pairing method
-- [ ] Add PIN-based pairing support
-- [ ] Implement Secure Simple Pairing (SSP) with confirmation
-- [ ] Add pairing management functionality
-- [ ] Add unpair functionality for specific devices
-- [ ] Add unpair all devices functionality
+- [x] Implement "Just Works" pairing method
+  - (45) "Just Works pairing initiation" [bluetooth][pairing]
+  - (46) "Just Works pairing completion" [bluetooth][pairing]
+  - (47) "Just Works pairing failure handling" [bluetooth][pairing]
+- [x] Add PIN-based pairing support
+  - (45) "PIN-based pairing initiation" [bluetooth][pairing]
+  - (46) "PIN-based pairing successful completion" [bluetooth][pairing]
+  - (47) "PIN-based pairing failure handling" [bluetooth][pairing]
+  - (48) "PIN-based pairing timeout handling" [bluetooth][pairing]
+  - (49) "Setting and retrieving default PIN" [bluetooth][pairing]
+- [x] Implement Secure Simple Pairing (SSP) with confirmation
+  - (50) "SSP confirmation request" [bluetooth][pairing][ssp]
+  - (51) "SSP confirmation accepted" [bluetooth][pairing][ssp]
+  - (52) "SSP confirmation rejected" [bluetooth][pairing][ssp]
+  - (53) "SSP fallback to PIN" [bluetooth][pairing][ssp]
+- [x] Add pairing management functionality
+  - (54) "Unpairing a specific device" [bluetooth][pairing][management]
+  - (55) "Unpairing all devices" [bluetooth][pairing][management]
+  - (56) "Paired devices persistence" [bluetooth][pairing][management]
+  - (57) "Paired devices retrieval" [bluetooth][pairing][management]
+  - (58) "Paired device connection info" [bluetooth][pairing][management]
+- [x] Add unpair functionality for specific devices
+  - (59) "Unpairing a nonexistent device" [bluetooth][pairing][management]
+  - (60) "Unpairing a connected device" [bluetooth][pairing][management]
+  - (61) "Unpairing with invalid address" [bluetooth][pairing][management]
+  - (62) "Unpair persistence" [bluetooth][pairing][management]
+- [x] Add unpair all devices functionality
+  - (63) "Unpair all when no devices are paired" [bluetooth][pairing][management]
+  - (64) "Unpair all with connected devices" [bluetooth][pairing][management]
+  - (65) "Unpair all persistence" [bluetooth][pairing][management]
+  - (66) "Unpair all with multiple devices" [bluetooth][pairing][management]
 
 ## Command Interface
 
@@ -145,4 +170,3 @@ This document tracks the implementation tasks for the ESP32 Bluetooth Audio Sour
 - [ ] Audio quality improvements (SBC vs AAC vs aptX)
 - [ ] Multiple simultaneous connections (if hardware supports)
 - [ ] OTA firmware updates
-- [ ] Web-based configuration interface

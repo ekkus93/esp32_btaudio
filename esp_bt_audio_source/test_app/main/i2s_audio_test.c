@@ -1,146 +1,91 @@
+/**
+ * I2S Audio Tests
+ */
+
 #include <stdio.h>
-#include <string.h>
-#include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "unity.h"
 #include "esp_log.h"
-#include "driver/i2s_std.h"
-#include "driver/gpio.h"
-
-#include "i2s_audio_test.h"
+#include "freertos/FreeRTOS.h" // Add FreeRTOS for task delays
+#include "freertos/task.h"     // Add for vTaskDelay
+#include "i2s_audio.h"
+#include "audio_test_helpers.h"
+#include <string.h>
 
 static const char *TAG = "I2S_AUDIO_TEST";
 
-// These need to be global for Unity to find them
-void setUp(void)
-{
-    // Setup for I2S tests
+// Test data
+#define TEST_BUFFER_SIZE 1024
+static int16_t test_buffer[TEST_BUFFER_SIZE];
+
+void i2s_audio_test_setUp(void) {
+    // Initialize test data before each test
+    memset(test_buffer, 0, sizeof(test_buffer));
 }
 
-void tearDown(void)
-{
-    // Cleanup after I2S tests
+void i2s_audio_test_tearDown(void) {
+    // Clean up after each test
+    i2s_driver_uninstall(I2S_NUM_0);  // Clean up I2S driver
 }
 
-// Test functions need to be declared separately to use with RUN_TEST
-void test_i2s_driver_init(void)
-{
-    ESP_LOGI(TAG, "Testing I2S channel initialization");
-
-    i2s_chan_handle_t rx_handle = NULL;
+// Test #23: I2S driver initialization
+void test_i2s_driver_init(void) {
+    ESP_LOGI(TAG, "Testing I2S driver initialization");
     
-    i2s_chan_config_t chan_cfg = {
-        .id = I2S_NUM_0,
-        .role = I2S_ROLE_MASTER,
-        .dma_desc_num = 8,
-        .dma_frame_num = 64,
-        .auto_clear = true,
-    };
-    
-    esp_err_t ret = i2s_new_channel(&chan_cfg, NULL, &rx_handle);
-    
+    // Initialize I2S driver using real component
+    esp_err_t ret = i2s_driver_init(44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_FMT_RIGHT_LEFT);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
-    TEST_ASSERT_NOT_NULL(rx_handle);
     
-    // Clean up
-    if (rx_handle) {
-        i2s_del_channel(rx_handle);
-    }
+    // Check driver is installed
+    TEST_ASSERT_TRUE(i2s_is_driver_installed());
+    
+    // Verify configuration
+    i2s_config_t config;
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_get_config(&config));
+    TEST_ASSERT_EQUAL(44100, config.sample_rate);
+    TEST_ASSERT_EQUAL(I2S_BITS_PER_SAMPLE_16BIT, config.bits_per_sample);
+    TEST_ASSERT_EQUAL(I2S_CHANNEL_FMT_RIGHT_LEFT, config.channel_format);
 }
 
-void test_i2s_standard_mode(void)
-{
-    ESP_LOGI(TAG, "Testing I2S standard config: 44100Hz, 16-bit, stereo");
+// Test #24: I2S standard mode configuration
+void test_i2s_standard_mode(void) {
+    ESP_LOGI(TAG, "Testing I2S standard mode configuration");
     
-    i2s_chan_handle_t rx_handle = NULL;
-    
-    // Test parameters
-    uint32_t sample_rate = 44100;
-    i2s_data_bit_width_t bit_width = I2S_DATA_BIT_WIDTH_16BIT;
-    i2s_slot_mode_t channel_fmt = I2S_SLOT_MODE_STEREO;
-    int gpio_bclk = GPIO_NUM_26;
-    int gpio_ws = GPIO_NUM_25;
-    int gpio_din = GPIO_NUM_22;
-    
-    // Channel configuration
-    i2s_chan_config_t chan_cfg = {
-        .id = I2S_NUM_0,
-        .role = I2S_ROLE_MASTER,
-        .dma_desc_num = 8,
-        .dma_frame_num = 64,
-        .auto_clear = true,
-    };
-    
-    // Initialize channel
-    esp_err_t ret = i2s_new_channel(&chan_cfg, NULL, &rx_handle);
-    TEST_ASSERT_EQUAL(ESP_OK, ret);
-    TEST_ASSERT_NOT_NULL(rx_handle);
-    
-    // Standard mode configuration
-    i2s_std_config_t std_cfg = {
-        .clk_cfg = {
-            .sample_rate_hz = sample_rate,
-            .clk_src = I2S_CLK_SRC_DEFAULT,
-            .mclk_multiple = I2S_MCLK_MULTIPLE_256,
-        },
-        .slot_cfg = {
-            .data_bit_width = bit_width,
-            .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
-            .slot_mode = channel_fmt,
-            .slot_mask = I2S_STD_SLOT_BOTH,
-            .ws_pol = false,
-            .bit_shift = true,
-            // Note: Other fields depend on ESP-IDF version
-        },
-        .gpio_cfg = {
-            .mclk = GPIO_NUM_0,
-            .bclk = gpio_bclk,
-            .ws = gpio_ws,
-            .din = gpio_din,
-            .dout = GPIO_NUM_NC,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
-            },
-        },
-    };
-    
-    // Configure standard mode
-    ret = i2s_channel_init_std_mode(rx_handle, &std_cfg);
+    // Configure I2S in standard mode using real component
+    esp_err_t ret = i2s_configure_standard_mode();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Enable/disable test
-    ret = i2s_channel_enable(rx_handle);
-    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    // Verify standard settings
+    i2s_config_t config;
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_get_config(&config));
     
-    // Short delay to verify stability
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // Standard mode should have:
+    // - I2S Philips communication format 
+    // - 16-bit samples
+    // - 44.1kHz sample rate (common for audio)
+    TEST_ASSERT_EQUAL(I2S_COMM_FORMAT_STAND_I2S, config.communication_format);
+    TEST_ASSERT_EQUAL(I2S_BITS_PER_SAMPLE_16BIT, config.bits_per_sample);
+    TEST_ASSERT_EQUAL(44100, config.sample_rate);
     
-    ret = i2s_channel_disable(rx_handle);
-    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    // Test basic read/write operations
+    generate_test_tone(test_buffer, TEST_BUFFER_SIZE, 1000.0f, 16000.0f, 44100);
     
-    // Clean up
-    i2s_del_channel(rx_handle);
+    // Write samples to I2S
+    size_t bytes_written = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_write_samples(test_buffer, TEST_BUFFER_SIZE, &bytes_written));
+    TEST_ASSERT_GREATER_THAN(0, bytes_written);
 }
 
-/**
- * @brief Run I2S audio driver tests
- */
-void run_i2s_audio_tests(void)
-{
-    ESP_LOGI(TAG, "Starting I2S audio driver tests");
+// Main entry point for I2S Audio tests
+void app_main_i2s_audio_tests(void) {
+    ESP_LOGI(TAG, "Starting I2S audio tests");
     
-    // Begin Unity test session and explicitly register tests
     UNITY_BEGIN();
     
-    // Explicitly run each test
+    // Run tests
     RUN_TEST(test_i2s_driver_init);
     RUN_TEST(test_i2s_standard_mode);
     
-    // End Unity test session and display results
-    int failures = UNITY_END();
+    UNITY_END();
     
-    ESP_LOGI(TAG, "I2S audio driver tests completed with %d failures", failures);
+    ESP_LOGI(TAG, "I2S audio tests completed");
 }

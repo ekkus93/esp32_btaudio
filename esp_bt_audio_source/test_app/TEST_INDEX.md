@@ -69,6 +69,33 @@
 | 43 | test_mono_to_stereo_conversion | Mono to stereo conversion |
 | 44 | test_channel_independence | Channel independence |
 
+## 6. Bluetooth Pairing Tests (22 tests)
+
+| Test # | Test Function | Description |
+|--------|--------------|-------------|
+| 45 | test_pin_pairing_initiation | PIN-based pairing initiation |
+| 46 | test_pin_pairing_success | PIN-based pairing successful completion |
+| 47 | test_pin_pairing_failure | PIN-based pairing failure handling |
+| 48 | test_pin_pairing_timeout | PIN-based pairing timeout handling |
+| 49 | test_set_default_pin | Setting and retrieving default PIN |
+| 50 | test_ssp_confirmation_request | SSP confirmation request handling |
+| 51 | test_ssp_confirmation_accepted | SSP confirmation accepted response |
+| 52 | test_ssp_confirmation_rejected | SSP confirmation rejected response |
+| 53 | test_ssp_fallback_to_pin | SSP fallback to PIN when not supported |
+| 54 | test_unpair_specific_device | Unpairing a specific device |
+| 55 | test_unpair_all_devices | Unpairing all devices |
+| 56 | test_paired_devices_stored | Paired devices persistence |
+| 57 | test_paired_devices_retrieval | Paired devices retrieval |
+| 58 | test_paired_device_connection_info | Paired device connection info |
+| 59 | test_unpair_nonexistent_device | Unpairing a nonexistent device |
+| 60 | test_unpair_connected_device | Unpairing a connected device |
+| 61 | test_unpair_invalid_address | Unpairing with invalid address |
+| 62 | test_unpair_persistence | Unpair persistence |
+| 63 | test_unpair_all_when_none_paired | Unpair all when no devices are paired |
+| 64 | test_unpair_all_with_connected_devices | Unpair all with connected devices |
+| 65 | test_unpair_all_persistence | Unpair all persistence |
+| 66 | test_unpair_all_multiple_devices | Unpair all with multiple devices |
+
 ## Summary
-- Total tests: 44
+- Total tests: 66
 - All tests implemented and passing

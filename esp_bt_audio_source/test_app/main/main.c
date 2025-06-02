@@ -4,56 +4,61 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 
+/**
+ * ESP32 Bluetooth Audio Source Test Application
+ * 
+ * Main entry point for running all tests.
+ */
+
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
+#include "nvs_flash.h"
 #include "esp_log.h"
+#include "unity.h"
 
-// Include test headers
-#include "i2s_audio_test.h"
-#include "audio_pipeline_test.h"
-#include "pcm_format_test.h"
-#include "i2s_channel_test.h"
-#include "bt_a2dp_test.h" // Include Bluetooth A2DP test header
+// Test function declarations
+void app_main_bt_a2dp_tests(void);
+void app_main_bt_pairing_tests(void);
+void app_main_i2s_audio_tests(void);
+void app_main_audio_pipeline_tests(void);
+void app_main_pcm_format_tests(void);
+void app_main_i2s_channel_tests(void);
 
 static const char *TAG = "BT_AUDIO_TEST";
 
+// Main entry point for all tests
 void app_main(void)
 {
+    // Initialize NVS for storage
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
     ESP_LOGI(TAG, "Starting ESP32 BT Audio Source Tests");
     
-    // Enable Bluetooth tests
-    bool run_bluetooth_tests = true;
+    // Run all test suites
+    ESP_LOGI(TAG, "Running Bluetooth tests");
+    app_main_bt_a2dp_tests();
     
-    if (run_bluetooth_tests) {
-        ESP_LOGI(TAG, "Running Bluetooth tests");
-        run_bt_a2dp_tests(); // Call the Bluetooth test function
-        
-        // Allow some time for Bluetooth operations to complete
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    } else {
-        ESP_LOGI(TAG, "Bluetooth tests are DISABLED - focusing on I2S implementation");
-    }
+    ESP_LOGI(TAG, "Running Bluetooth pairing tests");
+    app_main_bt_pairing_tests();
     
     ESP_LOGI(TAG, "Running I2S audio tests");
-    run_i2s_audio_tests();
-    
-    vTaskDelay(pdMS_TO_TICKS(500));
+    app_main_i2s_audio_tests();
     
     ESP_LOGI(TAG, "Running audio buffer and pipeline tests");
-    run_audio_pipeline_tests();
-    
-    vTaskDelay(pdMS_TO_TICKS(500));
+    app_main_audio_pipeline_tests();
     
     ESP_LOGI(TAG, "Running PCM format validation tests");
-    run_pcm_format_tests();
-    
-    vTaskDelay(pdMS_TO_TICKS(500));
+    app_main_pcm_format_tests();
     
     ESP_LOGI(TAG, "Running I2S channel configuration tests");
-    run_i2s_channel_tests();
+    app_main_i2s_channel_tests();
     
     ESP_LOGI(TAG, "All tests completed");
-    ESP_LOGI(TAG, "Audio buffer and pipeline implementation test completed");
 }

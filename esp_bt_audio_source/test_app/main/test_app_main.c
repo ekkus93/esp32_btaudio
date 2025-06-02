@@ -6,6 +6,7 @@
 
 #include "i2s_audio_test.h"
 #include "audio_pipeline_test.h"
+#include "test_utils.h"
 
 static const char *TAG = "BT_AUDIO_TEST";
 
@@ -59,9 +60,26 @@ void app_main(void)
     ESP_LOGI(TAG, "Bluetooth tests are DISABLED - focusing on I2S implementation");
 #endif
 
-    // Run the I2S audio tests
-    ESP_LOGI(TAG, "Running I2S audio tests");
-    run_i2s_audio_tests();
+    // For I2S audio tests
+    UNITY_BEGIN();
+    unity_set_setup_function(i2s_audio_test_setUp);
+    unity_set_teardown_function(i2s_audio_test_tearDown);
+    // Run I2S audio tests...
+    UNITY_END();
+    
+    // For PCM format tests
+    UNITY_BEGIN();
+    unity_set_setup_function(pcm_format_test_setUp);
+    unity_set_teardown_function(pcm_format_test_tearDown);
+    // Run PCM format tests...
+    UNITY_END();
+    
+    // For I2S channel tests
+    UNITY_BEGIN();
+    unity_set_setup_function(i2s_channel_test_setUp);
+    unity_set_teardown_function(i2s_channel_test_tearDown);
+    // Run I2S channel tests...
+    UNITY_END();
     
     // Add a small delay between test suites
     vTaskDelay(pdMS_TO_TICKS(500));

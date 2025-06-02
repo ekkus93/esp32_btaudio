@@ -307,6 +307,111 @@ Running tests becomes part of your normal development cycle:
 3. Refactor while keeping tests passing
 4. Repeat
 
+## Project Architecture
+
+This project follows a modular architecture with several key components:
+
+### Component Structure
+
+The ESP32 Bluetooth Audio Source is organized into the following components:
+
+#### 1. Audio Component (`/components/audio`)
+The audio component handles all audio processing functionality:
+- I2S driver configuration and initialization
+- Audio buffer management for receiving and processing data
+- PCM format handling (bit depth, endianness)
+- Stereo/mono channel configuration
+- Sample rate conversion and validation
+- Audio pipeline management for processing blocks
+
+#### 2. Bluetooth Manager (`/components/bt_manager`)
+The Bluetooth manager handles all Bluetooth-related functionality:
+- Bluetooth stack initialization and configuration
+- A2DP source profile implementation
+- Device scanning, discovery, and connection management
+- Pairing and security (PIN, SSP, "Just Works")
+- Audio streaming control
+- Bluetooth event handling and notifications
+- Device persistence (paired devices storage/retrieval)
+
+#### 3. Command Interface (`/components/command_interface`)
+The command interface provides a serial control protocol:
+- UART communication handling
+- Command parsing and validation
+- Command execution routing
+- Response formatting and sending
+- Asynchronous event notifications
+- Error handling and reporting
+
+### Main Application Structure
+
+The `/main` directory contains the core application files that integrate all components. Here's a breakdown of the key files:
+
+#### Core Files
+
+##### `main.c`
+- **Purpose**: Application entry point
+- **Key Functions**:
+  - `app_main()`: Main entry function called by ESP-IDF
+  - System initialization sequence
+  - Component initialization and coordination
+  - Main event loop handling
+- **Integration Points**: Initializes and connects all components (bt_manager, audio, command_interface)
+
+##### `bt_source.h`
+- **Purpose**: Bluetooth A2DP source public interface
+- **Key Declarations**:
+  - Device type and profile enumerations
+  - Bluetooth device structures
+  - Connection and pairing state structures
+  - API functions for Bluetooth initialization, scanning, pairing, and streaming
+- **Usage**: Imported by components needing Bluetooth functionality
+
+##### `i2s_audio.c/h`
+- **Purpose**: I2S audio interface implementation
+- **Key Functions**:
+  - I2S driver initialization and configuration 
+  - Audio buffer management
+  - Sample rate and format handling
+- **Hardware Interaction**: Configures ESP32's I2S peripheral for audio input
+
+##### `nvs_storage.c/h`
+- **Purpose**: Persistent storage implementation using ESP32's NVS
+- **Key Functions**:
+  - Store and retrieve paired device information
+  - Save configuration settings and parameters
+  - Maintain settings across reboots
+- **Integration**: Used by various modules for persistent data storage
+
+##### `system_config.c/h`
+- **Purpose**: Global system configuration
+- **Key Features**:
+  - Default settings and parameters
+  - System-wide configuration structures
+  - Configuration loading/saving functions
+- **Usage**: Provides configuration context for all components
+
+#### Utility Files
+
+##### `utils.c/h`
+- **Purpose**: Common utility functions
+- **Key Features**:
+  - Logging helpers
+  - Buffer manipulation
+  - String parsing
+  - Error handling macros
+- **Usage**: Used throughout the codebase for common operations
+
+##### `debug.c/h`
+- **Purpose**: Debugging support
+- **Key Functions**:
+  - Debug message formatting
+  - Conditional debug output
+  - Runtime debug level control
+- **Usage**: Provides enhanced debugging capabilities beyond ESP_LOG
+
+This main application structure follows a modular design pattern, where each file has a clear responsibility and interfaces with other parts through well-defined APIs. This organization facilitates testing, maintenance, and future enhancements.
+
 ## Additional Resources
 
 See the [main project README](/home/phil/work/esp32/esp32_btaudio/README.md) for:

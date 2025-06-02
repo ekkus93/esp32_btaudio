@@ -5,11 +5,16 @@ set(SOURCES
     "pcm_format_test.c"
     "i2s_channel_test.c"
     "bt_a2dp_test.c"
-    "bt_source_mock.c"
+    "bt_pairing_test.c"
+    "bt_mock_devices.c"
+    "audio_test_helpers.c"
 )
 
 idf_component_register(
     SRCS ${SOURCES}
-    INCLUDE_DIRS "." "../../main"  # Add path to main app headers
-    REQUIRES driver audio unity bt command_interface  # Added command_interface component
+    INCLUDE_DIRS "." "../../main"
+    # Add ESP32-specific libraries that we're using 
+    REQUIRES driver esp_common nvs_flash unity bt esp_hw_support
+    # Add private requirements for the audio component
+    PRIV_REQUIRES audio
 )

@@ -1,11 +1,5 @@
 idf_component_register(
-    SRCS 
-        "audio_pipeline.c"
-    INCLUDE_DIRS 
-        "."
-    REQUIRES 
-        driver
-        freertos
-        heap
-        esp_common
+    SRCS "i2s_audio.c" "audio_pipeline.c" "pcm_processing.c"
+    INCLUDE_DIRS "include"
+    REQUIRES driver
 )

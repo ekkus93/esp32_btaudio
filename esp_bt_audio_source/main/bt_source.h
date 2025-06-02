@@ -9,17 +9,18 @@ extern "C" {
 #endif
 
 /**
- * @brief BT device type enum
+ * Device type definitions
  */
 typedef enum {
     BT_DEVICE_TYPE_UNKNOWN = 0,
-    BT_DEVICE_TYPE_CLASSIC,
-    BT_DEVICE_TYPE_BLE,
-    BT_DEVICE_TYPE_DUAL
+    BT_DEVICE_TYPE_AUDIO,     // Audio device (speakers, headphones)
+    BT_DEVICE_TYPE_HID,       // HID device (keyboard, mouse)
+    BT_DEVICE_TYPE_PHONE,     // Phone
+    BT_DEVICE_TYPE_OTHER      // Other device types
 } bt_device_type_t;
 
 /**
- * @brief BT profile type enum
+ * BT profile type enum
  */
 typedef enum {
     BT_PROFILE_NONE = 0,
@@ -41,13 +42,15 @@ typedef struct {
 } bt_device_t;
 
 /**
- * @brief Connection information structure
+ * Connection information structure
  */
 typedef struct {
-    bool connected;             // Whether currently connected
-    char remote_addr[18];       // Remote device address string
-    char remote_name[32];       // Remote device name
-    int8_t signal_strength;     // Signal strength (RSSI)
+    bool connected;              /* True if connected */
+    char remote_addr[18];        /* Remote device address (xx:xx:xx:xx:xx:xx format) */
+    char remote_name[32];        /* Remote device name */
+    bt_profile_t profile;        /* Active profile */
+    int rssi;                    /* Signal strength */
+    uint32_t connection_time;    /* Connection time in seconds */
 } bt_connection_info_t;
 
 /**
@@ -176,7 +179,14 @@ uint16_t bt_get_discovered_device_count(void);
 esp_err_t bt_get_discovered_devices(bt_device_t* devices, int max_count, uint16_t* device_count);
 
 /**
- * @brief Get paired device count
+ * Unpair all devices
+ * 
+ * @return ESP_OK if successful
+ */
+esp_err_t bt_unpair_all_devices(void);
+
+/**
+ * Get count of paired devices
  * 
  * @return Number of paired devices
  */
@@ -290,6 +300,171 @@ bool bt_is_paused(void);
  * @return Current streaming state (STOPPED, PLAYING, PAUSED)
  */
 bt_streaming_state_t bt_get_streaming_state(void);
+
+/**
+ * Pairing method types
+ */
+typedef enum {
+    BT_PAIRING_NONE = 0,   /* No pairing in progress */
+    BT_PAIRING_PIN,        /* PIN-based pairing */
+    BT_PAIRING_SSP,        /* Secure Simple Pairing */
+    BT_PAIRING_JUST_WORKS  /* Just Works pairing (no user interaction) */
+} bt_pairing_method_t;
+
+/**
+ * Pairing state
+ */
+typedef enum {
+    BT_PAIRING_STATE_NONE = 0,          /* No pairing in progress */
+    BT_PAIRING_STATE_PIN_REQUESTED,     /* PIN code requested */
+    BT_PAIRING_STATE_PIN_ENTERED,       /* PIN entered, waiting for verification */
+    BT_PAIRING_STATE_SSP_CONFIRM,       /* SSP confirmation requested */
+    BT_PAIRING_STATE_COMPLETE,          /* Pairing completed successfully */
+    BT_PAIRING_STATE_FAILED,            /* Pairing failed */
+    BT_PAIRING_STATE_TIMEOUT            /* Pairing timed out */
+} bt_pairing_state_t;
+
+/**
+ * @brief Start Bluetooth pairing with a device
+ *
+ * @param addr MAC address of the device
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t bt_start_pairing(const char* addr);
+
+/**
+ * @brief Send PIN code for pairing
+ *
+ * @param pin PIN code as string
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t bt_send_pin_code(const char* pin);
+
+/**
+ * @brief Get current pairing state
+ *
+ * @return bt_pairing_state_t Current pairing state
+ */
+bt_pairing_state_t bt_get_pairing_state(void);
+
+/**
+ * @brief Check if a device is paired
+ *
+ * @param addr MAC address of the device
+ * @return bool True if paired
+ */
+bool bt_is_device_paired(const char* addr);
+
+/**
+ * @brief Set default PIN code
+ *
+ * @param pin PIN code to use as default
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t bt_set_default_pin(const char* pin);
+
+/**
+ * @brief Get default PIN code
+ *
+ * @param pin Buffer to store the PIN
+ * @param size Size of the buffer
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t bt_get_default_pin(char* pin, size_t size);
+
+/**
+ * Unpair a specific device
+ * 
+ * @param addr Device address
+ * @return ESP_OK if successful, ESP_ERR_NOT_FOUND if device not found
+ */
+esp_err_t bt_unpair_device(const char* addr);
+
+/**
+ * Store paired devices to persistent storage
+ * 
+ * @return ESP_OK if successful
+ */
+esp_err_t bt_store_paired_devices(void);
+
+/**
+ * Load paired devices from persistent storage
+ * 
+ * @return ESP_OK if successful
+ */
+esp_err_t bt_load_paired_devices(void);
+
+/**
+ * Get detailed connection info for a specific paired device
+ * 
+ * @param addr Device address
+ * @param info Pointer to connection info structure
+ * @return ESP_OK if successful, ESP_ERR_NOT_FOUND if device not found
+ */
+esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info);
+
+/**
+ * Add a test device (for testing purposes only)
+ * 
+ * @param addr_str Device address string
+ * @param name Device name
+ * @param type Device type
+ */
+void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_type_t type);
+
+/* Mock functions for testing - these should only be defined in the test code */
+void bt_mock_simulate_pin_failure(void);
+void bt_mock_simulate_pairing_timeout(void);
+
+/* SSP Pairing Functions */
+
+/**
+ * Respond to a SSP confirmation request
+ * 
+ * @param confirm True to accept the pairing, false to reject
+ * @return ESP_OK if the response was sent successfully
+ */
+esp_err_t bt_ssp_confirm(bool confirm);
+
+/**
+ * Get the current SSP passkey/code displayed by remote device
+ *
+ * @param passkey Buffer to store the passkey (should be at least 7 bytes)
+ * @param size Size of the passkey buffer
+ * @return ESP_OK if successful, ESP_ERR_NOT_FOUND if no SSP request is active
+ */
+esp_err_t bt_get_ssp_passkey(char* passkey, size_t size);
+
+/**
+ * Check if a SSP confirmation request is active
+ *
+ * @return true if SSP confirmation is requested, false otherwise
+ */
+bool bt_is_ssp_confirm_requested(void);
+
+/**
+ * Get the current pairing method being used
+ *
+ * @return Current pairing method
+ */
+bt_pairing_method_t bt_get_pairing_method(void);
+
+/**
+ * Set whether SSP is supported by the mock
+ * For testing purposes only
+ * 
+ * @param supported Whether SSP is supported
+ */
+void bt_mock_set_ssp_supported(bool supported);
+
+/**
+ * Get a list of paired devices
+ *
+ * @param devices Array to populate with paired device information
+ * @param max_devices Maximum number of devices to retrieve
+ * @return Number of devices retrieved
+ */
+int bt_get_paired_devices(bt_device_t* devices, int max_devices);
 
 #ifdef __cplusplus
 }

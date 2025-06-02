@@ -3,90 +3,95 @@
  * @brief Audio buffer and processing pipeline implementation
  */
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <inttypes.h> // Added this include for PRIu32 macros
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_err.h"
+// Make sure we're including the header from the include directory
 #include "audio_pipeline.h"
+#include <inttypes.h>  // For PRIu32 and other format macros
 
 static const char *TAG = "AUDIO_PIPELINE";
 
+// Global buffer pool
+static audio_buffer_pool_t *g_buffer_pool = NULL;
+
 /**
- * Initialize audio buffer pool
+ * Initialize a buffer pool
  */
-audio_buffer_pool_t* audio_buffer_pool_init(const audio_buffer_cfg_t *config)
-{
-    if (!config || config->buffer_size == 0 || config->buffer_count == 0) {
+audio_buffer_pool_t* audio_buffer_pool_init(const audio_buffer_cfg_t *config) {
+    if (!config || config->buffer_count <= 0 || config->buffer_size <= 0) {
         ESP_LOGE(TAG, "Invalid buffer pool configuration");
         return NULL;
     }
-    
-    // Allocate the pool structure
+
     audio_buffer_pool_t *pool = calloc(1, sizeof(audio_buffer_pool_t));
     if (!pool) {
         ESP_LOGE(TAG, "Failed to allocate buffer pool");
         return NULL;
     }
-    
-    // Allocate the buffer array
+
+    pool->buffer_count = config->buffer_count;
+    pool->buffer_size = config->buffer_size;
+    pool->available_count = config->buffer_count;
+
+    // Allocate buffer array
     pool->buffers = calloc(config->buffer_count, sizeof(audio_buffer_t));
     if (!pool->buffers) {
         ESP_LOGE(TAG, "Failed to allocate buffer array");
         free(pool);
         return NULL;
     }
-    
-    // Initialize each buffer
-    for (uint32_t i = 0; i < config->buffer_count; i++) {
-        // Allocate buffer data memory
-        pool->buffers[i].data = heap_caps_malloc(config->buffer_size, MALLOC_CAP_8BIT);
+
+    // Allocate availability tracker
+    pool->buffer_availability = calloc(config->buffer_count, sizeof(bool));
+    if (!pool->buffer_availability) {
+        ESP_LOGE(TAG, "Failed to allocate buffer availability array");
+        free(pool->buffers);
+        free(pool);
+        return NULL;
+    }
+
+    // Initialize each buffer 
+    for (int i = 0; i < config->buffer_count; i++) {
+        pool->buffers[i].data = calloc(1, config->buffer_size);
         if (!pool->buffers[i].data) {
-            // Clean up previously allocated buffers
-            for (uint32_t j = 0; j < i; j++) {
+            ESP_LOGE(TAG, "Failed to allocate buffer %d", i);
+            // Clean up previous buffers
+            for (int j = 0; j < i; j++) {
                 free(pool->buffers[j].data);
             }
+            free(pool->buffer_availability);
             free(pool->buffers);
             free(pool);
-            ESP_LOGE(TAG, "Failed to allocate buffer data memory");
             return NULL;
         }
-        
-        // Initialize buffer properties
+
         pool->buffers[i].size = config->buffer_size;
-        pool->buffers[i].data_size = 0;
-        pool->buffers[i].timestamp = 0;
-        pool->buffers[i].in_use = false;
-        pool->buffers[i].next = NULL;
+        pool->buffers[i].length = 0;
+        pool->buffer_availability[i] = true;
     }
-    
-    // Set up pool properties
-    pool->buffer_count = config->buffer_count;
-    pool->buffer_size = config->buffer_size;
-    pool->free_count = config->buffer_count;
-    pool->sample_rate = config->sample_rate;         // Store sample rate from config
-    pool->bits_per_sample = config->bits_per_sample; // Store bits per sample
-    pool->num_channels = config->num_channels;       // Store number of channels
-    
-    ESP_LOGI(TAG, "Audio buffer pool initialized: %" PRIu32 " buffers of %" PRIu32 " bytes each",
-            config->buffer_count, config->buffer_size);
-    
+
+    // Store global reference 
+    g_buffer_pool = pool;
+    ESP_LOGI(TAG, "Buffer pool initialized with %d buffers of size %zu bytes", 
+             (int)config->buffer_count, (size_t)config->buffer_size);
     return pool;
 }
 
 /**
- * Free audio buffer pool
+ * Deinitialize a buffer pool
  */
-void audio_buffer_pool_deinit(audio_buffer_pool_t *pool)
-{
+void audio_buffer_pool_deinit(audio_buffer_pool_t *pool) {
     if (!pool) {
+        ESP_LOGW(TAG, "Cannot deinit NULL buffer pool");
         return;
     }
     
-    // Free each buffer's data
     if (pool->buffers) {
-        for (uint32_t i = 0; i < pool->buffer_count; i++) {
+        // Free buffer data
+        for (int i = 0; i < pool->buffer_count; i++) {
             if (pool->buffers[i].data) {
                 free(pool->buffers[i].data);
             }
@@ -94,425 +99,486 @@ void audio_buffer_pool_deinit(audio_buffer_pool_t *pool)
         free(pool->buffers);
     }
     
-    // Free the pool itself
+    if (pool->buffer_availability) {
+        free(pool->buffer_availability);
+    }
+    
     free(pool);
     
-    ESP_LOGI(TAG, "Audio buffer pool deinitialized");
+    // Clear global reference if this was the global pool
+    if (g_buffer_pool == pool) {
+        g_buffer_pool = NULL;
+    }
+    
+    ESP_LOGI(TAG, "Buffer pool deinitialized");
 }
 
 /**
- * Get a free buffer from the pool
+ * Check if buffer pool is initialized
  */
-audio_buffer_t* audio_buffer_get(audio_buffer_pool_t *pool)
-{
-    if (!pool || !pool->buffers) {
-        ESP_LOGE(TAG, "Invalid buffer pool");
+bool audio_buffer_pool_is_initialized(void) {
+    return (g_buffer_pool != NULL);
+}
+
+/**
+ * Get buffer pool count
+ */
+int audio_buffer_pool_get_count(void) {
+    if (!g_buffer_pool) return 0;
+    return g_buffer_pool->buffer_count;
+}
+
+/**
+ * Get buffer size
+ */
+size_t audio_buffer_pool_get_buffer_size(void) {
+    if (!g_buffer_pool) return 0;
+    return g_buffer_pool->buffer_size;
+}
+
+/**
+ * Allocate a buffer from the pool
+ */
+audio_buffer_t* audio_buffer_alloc(audio_buffer_pool_t *pool) {
+    if (!pool) {
+        ESP_LOGW(TAG, "Buffer pool is NULL");
         return NULL;
     }
     
-    // No free buffers
-    if (pool->free_count == 0) {
-        ESP_LOGW(TAG, "No free buffers available");
+    if (pool->available_count <= 0) {
+        ESP_LOGW(TAG, "No buffers available");
         return NULL;
     }
     
-    // Find a free buffer
-    for (uint32_t i = 0; i < pool->buffer_count; i++) {
-        if (!pool->buffers[i].in_use) {
-            pool->buffers[i].in_use = true;
-            pool->buffers[i].data_size = 0;
-            pool->buffers[i].timestamp = 0;
-            pool->free_count--;
+    // Find an available buffer
+    for (int i = 0; i < pool->buffer_count; i++) {
+        if (pool->buffer_availability[i]) {
+            pool->buffer_availability[i] = false;
+            pool->available_count--;
+            ESP_LOGD(TAG, "Allocated buffer %d, %d remaining", i, pool->available_count);
             return &pool->buffers[i];
         }
     }
     
-    // Should never reach here if free_count > 0
-    ESP_LOGE(TAG, "Buffer pool inconsistency: free_count = %" PRIu32 " but no free buffer found",
-            pool->free_count);
+    ESP_LOGE(TAG, "Failed to find an available buffer despite count > 0");
     return NULL;
 }
 
 /**
- * Return a buffer to the pool
+ * Release a buffer back to the pool
  */
-esp_err_t audio_buffer_release(audio_buffer_pool_t *pool, audio_buffer_t *buffer)
-{
+esp_err_t audio_buffer_release(audio_buffer_pool_t *pool, audio_buffer_t *buffer) {
     if (!pool || !buffer) {
+        ESP_LOGW(TAG, "Cannot release NULL buffer or pool");
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Check if buffer belongs to this pool
-    bool buffer_found = false;
-    for (uint32_t i = 0; i < pool->buffer_count; i++) {
+    // Find this buffer in the pool
+    int buffer_index = -1;
+    for (int i = 0; i < pool->buffer_count; i++) {
         if (&pool->buffers[i] == buffer) {
-            buffer_found = true;
+            buffer_index = i;
             break;
         }
     }
     
-    if (!buffer_found) {
-        ESP_LOGE(TAG, "Buffer doesn't belong to this pool");
+    if (buffer_index < 0) {
+        ESP_LOGE(TAG, "Buffer does not belong to this pool");
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Mark buffer as free
-    if (buffer->in_use) {
-        buffer->in_use = false;
-        buffer->data_size = 0;
-        buffer->timestamp = 0;
-        pool->free_count++;
-        return ESP_OK;
-    } else {
-        ESP_LOGW(TAG, "Buffer was already released");
+    if (pool->buffer_availability[buffer_index]) {
+        ESP_LOGW(TAG, "Buffer %d already released", buffer_index);
         return ESP_ERR_INVALID_STATE;
     }
+    
+    // Release the buffer
+    buffer->length = 0;
+    pool->buffer_availability[buffer_index] = true;
+    pool->available_count++;
+    ESP_LOGD(TAG, "Released buffer %d, %d now available", 
+             buffer_index, pool->available_count);
+    
+    return ESP_OK;
 }
 
 /**
- * Create an audio processing pipeline
+ * Initialize an audio pipeline
  */
-audio_pipeline_t* audio_pipeline_create(audio_buffer_pool_t *buffer_pool, uint32_t stage_count)
-{
-    if (!buffer_pool || stage_count == 0) {
-        ESP_LOGE(TAG, "Invalid pipeline parameters");
-        return NULL;
-    }
-    
-    // Allocate the pipeline structure
+audio_pipeline_t* audio_pipeline_init(void) {
     audio_pipeline_t *pipeline = calloc(1, sizeof(audio_pipeline_t));
     if (!pipeline) {
-        ESP_LOGE(TAG, "Failed to allocate pipeline structure");
+        ESP_LOGE(TAG, "Failed to allocate audio pipeline");
         return NULL;
     }
     
-    // Allocate the stages array
-    pipeline->stages = calloc(stage_count, sizeof(audio_process_stage_cfg_t));
-    if (!pipeline->stages) {
-        ESP_LOGE(TAG, "Failed to allocate pipeline stages array");
-        free(pipeline);
-        return NULL;
-    }
+    // Initialize with defaults
+    pipeline->volume = 1.0f;  // Full volume
+    pipeline->volume_enabled = false;
+    pipeline->eq_enabled = false;
+    pipeline->eq_gain = 1.0f;
+    pipeline->eq_frequency = 0.0f;
     
-    // Initialize pipeline properties
-    pipeline->stage_count = stage_count;
-    pipeline->buffer_pool = buffer_pool;
-    pipeline->is_running = false;
-    
-    // Initialize volume control settings
-    pipeline->volume = 100;       // Default to full volume
-    pipeline->is_muted = false;   // Not muted by default
-    pipeline->pre_mute_volume = 100;
-    
-    ESP_LOGI(TAG, "Audio pipeline created with %" PRIu32 " stages", stage_count);
-    
+    ESP_LOGI(TAG, "Audio pipeline initialized");
     return pipeline;
 }
 
 /**
- * Add a processing stage to the pipeline
+ * Deinitialize an audio pipeline
  */
-esp_err_t audio_pipeline_add_stage(audio_pipeline_t *pipeline, uint32_t stage_idx, 
-                                  const audio_process_stage_cfg_t *stage_cfg)
-{
-    if (!pipeline || !stage_cfg || stage_idx >= pipeline->stage_count) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Copy stage configuration
-    pipeline->stages[stage_idx] = *stage_cfg;
-    
-    ESP_LOGI(TAG, "Added processing stage '%s' at index %" PRIu32,
-            stage_cfg->name ? stage_cfg->name : "unnamed", stage_idx);
-    
-    return ESP_OK;
-}
-
-/**
- * Process a buffer through the pipeline
- */
-esp_err_t audio_pipeline_process(audio_pipeline_t *pipeline, 
-                                audio_buffer_t *in_buffer,
-                                audio_buffer_t *out_buffer)
-{
-    if (!pipeline || !in_buffer || !out_buffer) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    if (!pipeline->is_running) {
-        ESP_LOGW(TAG, "Pipeline is not running");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    if (in_buffer->data_size == 0) {
-        ESP_LOGW(TAG, "Input buffer is empty");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // For now, this just processes a single stage
-    // In a real implementation, you'd want a more sophisticated pipeline with
-    // intermediate buffers and proper stage management
-    
-    // Get the stage (assume single stage for now)
-    audio_process_stage_cfg_t *stage = &pipeline->stages[0];
-    if (!stage->process_cb) {
-        ESP_LOGE(TAG, "Stage has no processing callback");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // Call the processing function
-    esp_err_t ret = stage->process_cb(in_buffer, out_buffer, stage->user_data);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Stage processing failed: %d", ret);
-        return ret;
-    }
-    
-    return ESP_OK;
-}
-
-/**
- * Start the audio pipeline
- */
-esp_err_t audio_pipeline_start(audio_pipeline_t *pipeline)
-{
+void audio_pipeline_deinit(audio_pipeline_t *pipeline) {
     if (!pipeline) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    if (pipeline->is_running) {
-        ESP_LOGW(TAG, "Pipeline already running");
-        return ESP_OK;
-    }
-    
-    // Check if all stages are properly initialized
-    for (uint32_t i = 0; i < pipeline->stage_count; i++) {
-        if (!pipeline->stages[i].process_cb) {
-            ESP_LOGE(TAG, "Stage %" PRIu32 " has no processing callback", i);
-            return ESP_ERR_INVALID_STATE;
-        }
-    }
-    
-    pipeline->is_running = true;
-    ESP_LOGI(TAG, "Audio pipeline started");
-    
-    return ESP_OK;
-}
-
-/**
- * Stop the audio pipeline
- */
-esp_err_t audio_pipeline_stop(audio_pipeline_t *pipeline)
-{
-    if (!pipeline) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    if (!pipeline->is_running) {
-        ESP_LOGW(TAG, "Pipeline already stopped");
-        return ESP_OK;
-    }
-    
-    pipeline->is_running = false;
-    ESP_LOGI(TAG, "Audio pipeline stopped");
-    
-    return ESP_OK;
-}
-
-/**
- * Free audio pipeline
- */
-void audio_pipeline_deinit(audio_pipeline_t *pipeline)
-{
-    if (!pipeline) {
+        ESP_LOGW(TAG, "Cannot deinit NULL pipeline");
         return;
     }
     
-    // Make sure the pipeline is stopped
-    if (pipeline->is_running) {
-        audio_pipeline_stop(pipeline);
-    }
-    
-    // Free the stages array
-    if (pipeline->stages) {
-        free(pipeline->stages);
-    }
-    
-    // Free the pipeline structure itself
     free(pipeline);
-    
     ESP_LOGI(TAG, "Audio pipeline deinitialized");
 }
 
 /**
- * Set volume level for the audio pipeline
+ * Add a volume processing stage to the pipeline
  */
-esp_err_t audio_pipeline_set_volume(audio_pipeline_t *pipeline, int volume)
-{
+esp_err_t audio_pipeline_add_volume_stage(audio_pipeline_t *pipeline, float volume) {
     if (!pipeline) {
+        ESP_LOGE(TAG, "Pipeline is NULL");
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Clamp volume to valid range (0-100)
-    if (volume < 0) {
-        volume = 0;
-    } else if (volume > 100) {
-        volume = 100;
+    if (volume < 0.0f || volume > 1.0f) {
+        ESP_LOGW(TAG, "Volume out of range (0.0-1.0), clamping");
+        volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
     }
     
-    // Set volume if not muted
-    if (!pipeline->is_muted) {
-        pipeline->volume = volume;
-    }
-    
-    // Always store the intended volume even when muted
-    pipeline->pre_mute_volume = volume;
-    
-    ESP_LOGI(TAG, "Audio pipeline volume set to %d%%", volume);
+    pipeline->volume = volume;
+    pipeline->volume_enabled = true;
+    ESP_LOGI(TAG, "Added volume stage to pipeline: %.2f", (double)volume);
     
     return ESP_OK;
 }
 
 /**
- * Get current volume level
+ * Add an equalizer stage to the pipeline
  */
-esp_err_t audio_pipeline_get_volume(audio_pipeline_t *pipeline, int *volume)
-{
-    if (!pipeline || !volume) {
+esp_err_t audio_pipeline_add_eq_stage(audio_pipeline_t *pipeline, float gain, float frequency) {
+    if (!pipeline) {
+        ESP_LOGE(TAG, "Pipeline is NULL");
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Return pre-mute volume if the pipeline is muted
-    if (pipeline->is_muted) {
-        *volume = pipeline->pre_mute_volume;
-    } else {
-        // Return current volume
-        *volume = pipeline->volume;
-    }
+    pipeline->eq_enabled = true;
+    pipeline->eq_gain = gain;
+    pipeline->eq_frequency = frequency;
+    ESP_LOGI(TAG, "Added EQ stage to pipeline: gain=%.2f, freq=%.2f Hz", (double)gain, (double)frequency);
     
     return ESP_OK;
 }
 
 /**
- * Mute audio output
+ * Process audio through the pipeline
  */
-esp_err_t audio_pipeline_mute(audio_pipeline_t *pipeline)
-{
-    if (!pipeline) {
+esp_err_t audio_pipeline_process(audio_pipeline_t *pipeline,
+                               audio_buffer_t *input, audio_buffer_t *output) {
+    if (!pipeline || !input || !output) {
+        ESP_LOGE(TAG, "Invalid pipeline or buffers");
         return ESP_ERR_INVALID_ARG;
     }
     
-    if (!pipeline->is_muted) {
-        // Store current volume before muting
-        pipeline->pre_mute_volume = pipeline->volume;
-        pipeline->volume = 0;
-        pipeline->is_muted = true;
+    if (!input->data || !output->data) {
+        ESP_LOGE(TAG, "Buffer data pointers are NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Copy input to output first
+    memcpy(output->data, input->data, input->length);
+    output->length = input->length;
+    
+    // Process stages
+    int16_t *samples = (int16_t*)output->data;
+    size_t sample_count = output->length / sizeof(int16_t);
+    
+    // Apply volume if enabled
+    if (pipeline->volume_enabled) {
+        for (size_t i = 0; i < sample_count; i++) {
+            samples[i] = (int16_t)(samples[i] * pipeline->volume);
+        }
+        // Fix the format string issue by casting float to double
+        ESP_LOGD(TAG, "Applied volume: %g", (double)pipeline->volume);
+    }
+    
+    // Apply EQ if enabled (simplified implementation)
+    if (pipeline->eq_enabled) {
+        // Simple gain boost for demonstration 
+        for (size_t i = 0; i < sample_count; i++) {
+            int32_t sample = samples[i] * pipeline->eq_gain;
+            // Clip if necessary
+            if (sample > INT16_MAX) sample = INT16_MAX;
+            if (sample < INT16_MIN) sample = INT16_MIN;
+            samples[i] = (int16_t)sample;
+        }
+        // Fix format string issues by casting floats to doubles
+        ESP_LOGD(TAG, "Applied EQ: gain=%g, freq=%g Hz",
+                 (double)pipeline->eq_gain, (double)pipeline->eq_frequency);
+    }
+    
+    ESP_LOGD(TAG, "Pipeline processed %zu samples", sample_count);
+    return ESP_OK;
+}
+
+/**
+ * Initialize a buffer
+ */
+esp_err_t audio_buffer_init(audio_buffer_t* buffer, size_t size) {
+    if (!buffer) {
+        ESP_LOGE(TAG, "Buffer pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (size == 0) {
+        ESP_LOGE(TAG, "Buffer size cannot be zero");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    buffer->data = malloc(size);
+    if (!buffer->data) {
+        ESP_LOGE(TAG, "Failed to allocate buffer data");
+        return ESP_ERR_NO_MEM;
+    }
+    
+    buffer->size = size;
+    buffer->length = 0;  // Using 'length' instead of 'used'
+    ESP_LOGD(TAG, "Initialized buffer of size %zu bytes", size);
+    
+    return ESP_OK;
+}
+
+/**
+ * Clean up a buffer
+ */
+esp_err_t audio_buffer_deinit(audio_buffer_t* buffer) {
+    if (!buffer) {
+        ESP_LOGE(TAG, "Buffer pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (buffer->data) {
+        free(buffer->data);
+        buffer->data = NULL;
+    }
+    
+    buffer->size = 0;
+    buffer->length = 0;  // Using 'length' instead of 'used'
+    ESP_LOGD(TAG, "Deinitialized buffer");
+    
+    return ESP_OK;
+}
+
+/**
+ * Write data to a buffer
+ */
+esp_err_t audio_buffer_write(audio_buffer_t* buffer, void* data, size_t size) {
+    if (!buffer || !data) {
+        ESP_LOGE(TAG, "Buffer or data pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (buffer->length + size > buffer->size) {
+        ESP_LOGW(TAG, "Buffer overflow: %zu + %zu > %zu", 
+                 buffer->length, size, buffer->size);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    
+    memcpy((uint8_t*)buffer->data + buffer->length, data, size);
+    buffer->length += size;
+    ESP_LOGD(TAG, "Written %zu bytes to buffer, now contains %zu bytes", 
+             size, buffer->length);
+    
+    return ESP_OK;
+}
+
+/**
+ * Read data from a buffer
+ */
+esp_err_t audio_buffer_read(audio_buffer_t* buffer, void* data, size_t size) {
+    if (!buffer || !data) {
+        ESP_LOGE(TAG, "Buffer or data pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (size > buffer->length) {
+        size = buffer->length;
+    }
+    
+    // Copy data to the output buffer
+    memcpy(data, buffer->data, size);
+    ESP_LOGD(TAG, "Read %zu bytes from buffer", size);
+    
+    // Move remaining data to the beginning of the buffer
+    if (size < buffer->length) {
+        memmove(buffer->data, (uint8_t*)buffer->data + size, buffer->length - size);
+    }
+    
+    buffer->length -= size;
+    ESP_LOGD(TAG, "Buffer now contains %zu bytes", buffer->length);
+    
+    return ESP_OK;
+}
+
+// Volume control functions
+float current_volume = 1.0f;
+bool is_muted = false;
+float pre_mute_volume = 1.0f;
+
+/**
+ * Set the volume level
+ */
+esp_err_t audio_volume_set(float volume) {
+    if (volume < 0.0f || volume > 1.0f) {
+        ESP_LOGW(TAG, "Volume out of range (0.0-1.0), clamping");
+        volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
+    }
+    
+    current_volume = volume;
+    if (!is_muted) {
+        pre_mute_volume = volume;
+    }
+    
+    ESP_LOGI(TAG, "Volume set to %.2f", (double)volume);
+    return ESP_OK;
+}
+
+/**
+ * Get the current volume level
+ */
+esp_err_t audio_volume_get(float* volume) {
+    if (!volume) {
+        ESP_LOGE(TAG, "Volume pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    *volume = current_volume;
+    return ESP_OK;
+}
+
+/**
+ * Apply volume to audio samples
+ */
+esp_err_t audio_volume_apply(int16_t* input, int16_t* output, size_t len) {
+    if (!input || !output) {
+        ESP_LOGE(TAG, "Input or output pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    for (size_t i = 0; i < len; i++) {
+        output[i] = (int16_t)(input[i] * current_volume);
+    }
+    
+    ESP_LOGD(TAG, "Applied volume %.2f to %zu samples", (double)current_volume, len);
+    return ESP_OK;
+}
+
+/**
+ * Mute audio
+ */
+esp_err_t audio_volume_mute(void) {
+    if (!is_muted) {
+        pre_mute_volume = current_volume;
+        current_volume = 0.0f;
+        is_muted = true;
+        ESP_LOGI(TAG, "Audio muted");
+    }
+    return ESP_OK;
+}
+
+/**
+ * Unmute audio
+ */
+esp_err_t audio_volume_unmute(void) {
+    if (is_muted) {
+        current_volume = pre_mute_volume;
+        is_muted = false;
+        ESP_LOGI(TAG, "Audio unmuted, volume restored to %.2f", (double)current_volume);
+    }
+    return ESP_OK;
+}
+
+// Sample rate handling
+int current_sample_rate = 44100;
+
+/**
+ * Configure the sample rate
+ */
+esp_err_t audio_configure_sample_rate(int rate) {
+    if (rate != 8000 && rate != 11025 && rate != 16000 && 
+        rate != 22050 && rate != 32000 && rate != 44100 && 
+        rate != 48000 && rate != 88200 && rate != 96000) {
+        ESP_LOGW(TAG, "Unsupported sample rate: %d Hz", rate);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    current_sample_rate = rate;
+    ESP_LOGI(TAG, "Sample rate set to %d Hz", rate);
+    return ESP_OK;
+}
+
+/**
+ * Get the current sample rate
+ */
+esp_err_t audio_get_sample_rate(int* rate) {
+    if (!rate) {
+        ESP_LOGE(TAG, "Rate pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    *rate = current_sample_rate;
+    return ESP_OK;
+}
+
+/**
+ * Calculate buffer size for given duration and sample rate
+ */
+esp_err_t audio_calculate_buffer_size(int duration_ms, int sample_rate, size_t* size) {
+    if (!size || duration_ms <= 0 || sample_rate <= 0) {
+        ESP_LOGE(TAG, "Invalid parameters");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Calculate size in bytes (assuming stereo, 16-bit)
+    *size = (size_t)((duration_ms * sample_rate * 2 * 2) / 1000);
+    ESP_LOGD(TAG, "Calculated buffer size: %zu bytes for %d ms @ %d Hz", 
+             *size, duration_ms, sample_rate);
+    
+    return ESP_OK;
+}
+
+/**
+ * Very simple sample rate conversion (for testing purposes only)
+ */
+esp_err_t audio_convert_sample_rate(int16_t* src, size_t src_len, int src_rate,
+                               int16_t* dst, size_t dst_len, int dst_rate) {
+    if (!src || !dst || src_len == 0 || dst_len == 0) {
+        ESP_LOGE(TAG, "Invalid parameters");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    float ratio = (float)src_rate / (float)dst_rate;
+    size_t src_samples = src_len / sizeof(int16_t);
+    size_t dst_samples = dst_len / sizeof(int16_t);
+    
+    // Simple resampling
+    for (size_t i = 0; i < dst_samples; i++) {
+        float src_pos = i * ratio;
+        size_t src_idx = (size_t)src_pos;
         
-        ESP_LOGI(TAG, "Audio pipeline muted");
-    }
-    
-    return ESP_OK;
-}
-
-/**
- * Unmute audio output
- */
-esp_err_t audio_pipeline_unmute(audio_pipeline_t *pipeline)
-{
-    if (!pipeline) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    if (pipeline->is_muted) {
-        // Restore volume from before muting
-        pipeline->volume = pipeline->pre_mute_volume;
-        pipeline->is_muted = false;
+        if (src_idx >= src_samples) {
+            break;
+        }
         
-        ESP_LOGI(TAG, "Audio pipeline unmuted, volume restored to %d%%", pipeline->volume);
+        dst[i] = src[src_idx];
     }
+    
+    ESP_LOGI(TAG, "Converted %zu samples from %d Hz to %d Hz", 
+             dst_samples, src_rate, dst_rate);
     
     return ESP_OK;
-}
-
-/**
- * Toggle mute state
- */
-esp_err_t audio_pipeline_toggle_mute(audio_pipeline_t *pipeline)
-{
-    if (!pipeline) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    if (pipeline->is_muted) {
-        return audio_pipeline_unmute(pipeline);
-    } else {
-        return audio_pipeline_mute(pipeline);
-    }
-}
-
-/**
- * Check if audio is muted
- */
-esp_err_t audio_pipeline_is_muted(audio_pipeline_t *pipeline, bool *muted)
-{
-    if (!pipeline || !muted) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    *muted = pipeline->is_muted;
-    
-    return ESP_OK;
-}
-
-/**
- * @brief Set the sample rate of an audio buffer pool
- */
-esp_err_t audio_buffer_pool_set_sample_rate(audio_buffer_pool_t *pool, uint32_t sample_rate)
-{
-    if (!pool || sample_rate == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Store the sample rate
-    pool->sample_rate = sample_rate;
-    
-    ESP_LOGI(TAG, "Audio buffer pool sample rate set to %lu Hz", sample_rate);
-    
-    return ESP_OK;
-}
-
-/**
- * @brief Get the current sample rate of an audio buffer pool
- */
-uint32_t audio_buffer_pool_get_sample_rate(audio_buffer_pool_t *pool)
-{
-    if (!pool) {
-        return 0;
-    }
-    
-    return pool->sample_rate;
-}
-
-/**
- * @brief Calculate buffer size needed for a given duration and sample rate
- */
-uint32_t audio_buffer_calculate_size(float duration_ms, uint32_t sample_rate, 
-                                    uint32_t channels, uint32_t bits_per_sample)
-{
-    if (duration_ms <= 0 || sample_rate == 0 || channels == 0 || bits_per_sample == 0) {
-        return 0;
-    }
-    
-    // Calculate bytes per sample
-    uint32_t bytes_per_sample = bits_per_sample / 8;
-    
-    // Calculate total bytes needed
-    uint32_t buffer_size = (uint32_t)((duration_ms / 1000.0f) * sample_rate * channels * bytes_per_sample);
-    
-    // Ensure buffer size is a multiple of the sample frame size (channels * bytes_per_sample)
-    uint32_t frame_size = channels * bytes_per_sample;
-    if (buffer_size % frame_size != 0) {
-        buffer_size = (buffer_size / frame_size + 1) * frame_size;
-    }
-    
-    return buffer_size;
 }
