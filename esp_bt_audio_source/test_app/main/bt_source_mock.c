@@ -1132,3 +1132,50 @@ static bool is_valid_mac_address(const char* addr)
     
     return true;
 }
+
+/**
+ * Simulate a device disconnect
+ */
+esp_err_t bt_simulate_disconnect(void) {
+    ESP_LOGI(TAG, "Simulating device disconnect");
+    
+    if (!s_connected) {
+        ESP_LOGW(TAG, "Not connected to any device");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Keep a safe copy of the current connection info
+    bt_device_info_t prev_device;
+    bool was_connected = s_connected;
+    memcpy(&prev_device, &s_current_connection, sizeof(bt_device_info_t));
+    
+    // Simulate disconnect
+    s_connected = false;
+    s_streaming = false;
+    s_streaming_paused = false;
+    s_streaming_state = BT_STREAM_STATE_IDLE;
+    
+    // IMPORTANT: Ensure prev_device has a valid name string with proper null termination
+    prev_device.name[sizeof(prev_device.name) - 1] = '\0';
+    
+    // If auto reconnect is enabled, reconnect with proper validation
+    if (s_auto_reconnect_config.auto_reconnect_enabled && was_connected) {
+        if (strlen(prev_device.name) > 0) {
+            ESP_LOGI(TAG, "Auto reconnecting to %s", prev_device.name);
+            
+            // Restore connection state
+            s_connected = true;
+            memcpy(&s_current_connection, &prev_device, sizeof(bt_device_info_t));
+            
+            // Ensure the remote_name is null-terminated
+            s_current_connection.remote_name[sizeof(s_current_connection.remote_name) - 1] = '\0';
+            
+            // Validate address format
+            s_current_connection.remote_addr[sizeof(s_current_connection.remote_addr) - 1] = '\0';
+        } else {
+            ESP_LOGW(TAG, "Cannot auto-reconnect: device name invalid");
+        }
+    }
+    
+    return ESP_OK;
+}

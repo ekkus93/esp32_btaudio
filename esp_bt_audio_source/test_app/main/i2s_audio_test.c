@@ -7,6 +7,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h" // Add FreeRTOS for task delays
 #include "freertos/task.h"     // Add for vTaskDelay
+
+// Use the old I2S API for now
 #include "i2s_audio.h"
 #include "audio_test_helpers.h"
 #include <string.h>

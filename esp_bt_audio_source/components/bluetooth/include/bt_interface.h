@@ -325,6 +325,15 @@ esp_err_t bt_store_paired_devices(void);
  */
 esp_err_t bt_load_paired_devices(void);
 
+/**
+ * @brief Get the list of scanned devices
+ * 
+ * @param devices Pointer to an array to store the scanned devices
+ * @param max_count Maximum number of devices to return
+ * @return The number of devices found and copied into the array
+ */
+int bt_interface_get_scanned_devices(bt_device_info_t* devices, int max_count);
+
 #ifdef __cplusplus
 }
 #endif

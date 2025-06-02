@@ -1,67 +1,77 @@
 #include "audio_test_helpers.h"
-#include "esp_log.h"
-#include <string.h>
+#include "i2s_audio.h"
+#include "pcm_processing.h"
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
-// Define M_PI if not already defined
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+// Calculate RMS (Root Mean Square) of audio buffer
+float calculate_rms(int16_t* buffer, size_t samples, int offset, int stride) {
+    if (!buffer || samples == 0) return 0.0f;
+    
+    float sum_squares = 0.0f;
+    size_t sample_count = 0;
+    
+    for (size_t i = offset; i < samples; i += stride) {
+        float sample = buffer[i] / 32768.0f; // Normalize to -1.0 to 1.0
+        sum_squares += sample * sample;
+        sample_count++;
+    }
+    
+    if (sample_count == 0) return 0.0f;
+    
+    return sqrtf(sum_squares / sample_count);
+}
 
-static const char *TAG = "AUDIO_TEST_HELPERS";
+// Calculate peak value of audio buffer
+int16_t calculate_peak(int16_t* buffer, size_t samples) {
+    if (!buffer || samples == 0) return 0;
+    
+    int16_t peak = 0;
+    
+    for (size_t i = 0; i < samples; i++) {
+        int16_t abs_val = abs(buffer[i]);
+        if (abs_val > peak) {
+            peak = abs_val;
+        }
+    }
+    
+    return peak;
+}
 
 // Generate a sine wave test tone
-void generate_test_tone(int16_t* buffer, size_t samples, float frequency, float amplitude, int sample_rate) {
+void generate_test_tone(int16_t* buffer, size_t samples, float frequency, 
+                       float sample_rate, int16_t amplitude) {
     if (!buffer) return;
     
     for (size_t i = 0; i < samples; i++) {
-        float t = (float)i / sample_rate;  // Time in seconds
-        float angle = 2.0f * (float)M_PI * frequency * t;
-        buffer[i] = (int16_t)(amplitude * sinf(angle));
+        double angle = 2.0 * M_PI * frequency * i / sample_rate;
+        buffer[i] = (int16_t)(amplitude * sin(angle));
     }
 }
 
-// Generate sine wave stereo test tone (interleaved L/R)
-void generate_stereo_test_tone(int16_t* buffer, size_t frames, float left_freq, float right_freq, float amplitude, int sample_rate) {
+// Generate a stereo test tone with different frequencies for left and right channels
+void generate_stereo_test_tone(int16_t* buffer, size_t frames, 
+                              float left_freq, float right_freq,
+                              float sample_rate, int16_t amplitude) {
     if (!buffer) return;
     
     for (size_t i = 0; i < frames; i++) {
-        float t = (float)i / sample_rate;  // Time in seconds
-        float left_angle = 2.0f * M_PI * left_freq * t;
-        float right_angle = 2.0f * M_PI * right_freq * t;
+        double left_angle = 2.0 * M_PI * left_freq * i / sample_rate;
+        double right_angle = 2.0 * M_PI * right_freq * i / sample_rate;
         
-        // Interleaved L/R samples
-        buffer[i*2] = (int16_t)(amplitude * sinf(left_angle));
-        buffer[i*2+1] = (int16_t)(amplitude * sinf(right_angle));
+        buffer[i * 2] = (int16_t)(amplitude * sin(left_angle));       // Left channel
+        buffer[i * 2 + 1] = (int16_t)(amplitude * sin(right_angle));  // Right channel
     }
-}
-
-// Calculate RMS (Root Mean Square) of a buffer
-float calculate_rms(int16_t* buffer, size_t samples) {
-    if (!buffer || samples == 0) return 0.0f;
-    
-    int64_t sum = 0;
-    
-    for (size_t i = 0; i < samples; i++) {
-        int32_t sample = buffer[i];
-        sum += ((int64_t)sample * (int64_t)sample);
-    }
-    
-    float rms = sqrtf((float)sum / samples);
-    return rms;
 }
 
 // Compare audio buffers with tolerance
-bool compare_audio_buffers(int16_t* buffer1, int16_t* buffer2, size_t samples, float tolerance) {
-    if (!buffer1 || !buffer2 || samples == 0) return false;
+bool compare_audio_buffers(int16_t* buffer1, int16_t* buffer2, size_t samples, int16_t tolerance) {
+    if (!buffer1 || !buffer2) return false;
     
     for (size_t i = 0; i < samples; i++) {
-        float diff = fabsf((float)buffer1[i] - (float)buffer2[i]);
-        float relative = (buffer1[i] != 0) ? diff / fabsf((float)buffer1[i]) : diff;
-        
-        if (relative > tolerance) {
-            ESP_LOGE(TAG, "Buffer mismatch at sample %d: %d vs %d (diff: %.2f, rel: %.4f)",
-                    (int)i, buffer1[i], buffer2[i], diff, relative);
+        int16_t diff = abs(buffer1[i] - buffer2[i]);
+        if (diff > tolerance) {
             return false;
         }
     }
@@ -69,52 +79,63 @@ bool compare_audio_buffers(int16_t* buffer1, int16_t* buffer2, size_t samples, f
     return true;
 }
 
-// Convert bit depth (16-bit to 24-bit packed in 32-bit)
-void convert_16bit_to_24bit(int16_t* src, int32_t* dst, size_t samples) {
-    if (!src || !dst) return;
+// Wrapper for stereo to mono conversion
+esp_err_t test_convert_stereo_to_mono(int16_t* stereo_buffer, int16_t* mono_buffer, size_t stereo_samples) {
+    // Call the actual implementation from i2s_audio.h
+    return i2s_convert_stereo_to_mono(stereo_buffer, mono_buffer, stereo_samples);
+}
+
+// Wrapper for mono to stereo conversion
+esp_err_t test_convert_mono_to_stereo(int16_t* mono_buffer, int16_t* stereo_buffer, size_t mono_samples) {
+    // Call the actual implementation from i2s_audio.h
+    return i2s_convert_mono_to_stereo(mono_buffer, stereo_buffer, mono_samples);
+}
+
+// Wrapper for 16-bit to 24-bit PCM conversion
+void test_convert_16bit_to_24bit(int16_t* src_buffer, uint8_t* dst_buffer, size_t samples) {
+    // We need to convert between the different parameter types expected by pcm_processing.h
     
+    // Allocate temporary buffer for 32-bit int representation
+    int32_t* temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
+    if (!temp_buffer) return;
+    
+    // Call the actual implementation
+    pcm_convert_16bit_to_24bit(src_buffer, temp_buffer, samples);
+    
+    // Convert int32_t to byte array (3 bytes per sample)
     for (size_t i = 0; i < samples; i++) {
-        // Shift left by 8 bits to convert 16-bit to 24-bit
-        dst[i] = ((int32_t)src[i]) << 8;
+        // Extract the 24 bits (3 bytes) from the 32-bit value
+        dst_buffer[i*3]     = (uint8_t)(temp_buffer[i] & 0xFF);
+        dst_buffer[i*3 + 1] = (uint8_t)((temp_buffer[i] >> 8) & 0xFF);
+        dst_buffer[i*3 + 2] = (uint8_t)((temp_buffer[i] >> 16) & 0xFF);
     }
+    
+    free(temp_buffer);
 }
 
-// Convert bit depth (24-bit packed in 32-bit to 16-bit)
-void convert_24bit_to_16bit(int32_t* src, int16_t* dst, size_t samples) {
-    if (!src || !dst) return;
+// Wrapper for 24-bit to 16-bit PCM conversion
+void test_convert_24bit_to_16bit(uint8_t* src_buffer, int16_t* dst_buffer, size_t samples) {
+    // We need to convert between the different parameter types expected by pcm_processing.h
     
+    // Allocate temporary buffer for 32-bit int representation
+    int32_t* temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
+    if (!temp_buffer) return;
+    
+    // Convert byte array to int32_t representation
     for (size_t i = 0; i < samples; i++) {
-        // Shift right by 8 bits and truncate to convert 24-bit to 16-bit
-        dst[i] = (int16_t)(src[i] >> 8);
+        // Combine the 3 bytes into a 24-bit value in a 32-bit container
+        temp_buffer[i] = (int32_t)src_buffer[i*3] | 
+                        ((int32_t)src_buffer[i*3 + 1] << 8) | 
+                        ((int32_t)src_buffer[i*3 + 2] << 16);
+                        
+        // Sign extend if the 24-bit value is negative (MSB is 1)
+        if (temp_buffer[i] & 0x800000) {
+            temp_buffer[i] |= 0xFF000000;
+        }
     }
-}
-
-// Convert mono to stereo (duplicate samples)
-void convert_mono_to_stereo(int16_t* src, int16_t* dst, size_t mono_samples) {
-    if (!src || !dst) return;
     
-    for (size_t i = 0; i < mono_samples; i++) {
-        // Duplicate each sample to left and right channels
-        dst[i*2] = src[i];     // Left
-        dst[i*2+1] = src[i];   // Right
-    }
-}
-
-// Convert stereo to mono (average samples)
-void convert_stereo_to_mono(int16_t* src, int16_t* dst, size_t stereo_frames) {
-    if (!src || !dst) return;
+    // Call the actual implementation
+    pcm_convert_24bit_to_16bit(temp_buffer, dst_buffer, samples);
     
-    for (size_t i = 0; i < stereo_frames; i++) {
-        // Average left and right channels
-        dst[i] = (int16_t)(((int32_t)src[i*2] + (int32_t)src[i*2+1]) / 2);
-    }
-}
-
-// Apply volume to samples
-void apply_volume(int16_t* buffer, size_t samples, float volume) {
-    if (!buffer) return;
-    
-    for (size_t i = 0; i < samples; i++) {
-        buffer[i] = (int16_t)((float)buffer[i] * volume);
-    }
+    free(temp_buffer);
 }

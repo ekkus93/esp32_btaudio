@@ -9,15 +9,38 @@ extern "C" {
 #endif
 
 /**
- * Device type definitions
+ * @brief Enum defining the different types of Bluetooth devices
  */
 typedef enum {
     BT_DEVICE_TYPE_UNKNOWN = 0,
-    BT_DEVICE_TYPE_AUDIO,     // Audio device (speakers, headphones)
-    BT_DEVICE_TYPE_HID,       // HID device (keyboard, mouse)
-    BT_DEVICE_TYPE_PHONE,     // Phone
-    BT_DEVICE_TYPE_OTHER      // Other device types
+    BT_DEVICE_TYPE_AUDIO = 1,
+    BT_DEVICE_TYPE_PHONE = 2,
+    BT_DEVICE_TYPE_COMPUTER = 3,
+    BT_DEVICE_TYPE_HEADSET = 4,
+    BT_DEVICE_TYPE_SPEAKER = 5
 } bt_device_type_t;
+
+/**
+ * @brief Enum defining the Bluetooth pairing states
+ */
+typedef enum {
+    BT_PAIRING_STATE_IDLE = 0,
+    BT_PAIRING_STATE_STARTED = 1,
+    BT_PAIRING_STATE_PIN_REQUESTED = 2,
+    BT_PAIRING_STATE_SSP_REQUESTED = 3,
+    BT_PAIRING_STATE_PAIRED = 4,
+    BT_PAIRING_STATE_FAILED = 5,
+    BT_PAIRING_STATE_TIMEOUT = 6
+} bt_pairing_state_t;
+
+/**
+ * @brief Enum defining the Bluetooth pairing methods
+ */
+typedef enum {
+    BT_PAIRING_METHOD_NONE = 0,
+    BT_PAIRING_METHOD_PIN = 1,
+    BT_PAIRING_METHOD_SSP = 2
+} bt_pairing_method_t;
 
 /**
  * BT profile type enum
@@ -42,15 +65,23 @@ typedef struct {
 } bt_device_t;
 
 /**
- * Connection information structure
+ * Bluetooth device information structure
  */
 typedef struct {
-    bool connected;              /* True if connected */
-    char remote_addr[18];        /* Remote device address (xx:xx:xx:xx:xx:xx format) */
-    char remote_name[32];        /* Remote device name */
-    bt_profile_t profile;        /* Active profile */
-    int rssi;                    /* Signal strength */
-    uint32_t connection_time;    /* Connection time in seconds */
+    uint8_t addr[6];
+    char name[64];
+    bool supports_a2dp;
+} bt_device_info_t;
+
+/**
+ * Bluetooth connection information structure
+ */
+typedef struct {
+    bool connected;
+    char remote_addr[18];
+    char remote_name[64];
+    uint32_t profile;
+    bool supports_a2dp;
 } bt_connection_info_t;
 
 /**
@@ -176,7 +207,7 @@ uint16_t bt_get_discovered_device_count(void);
  * @param device_count Actual number of devices stored
  * @return ESP_OK on success
  */
-esp_err_t bt_get_discovered_devices(bt_device_t* devices, int max_count, uint16_t* device_count);
+esp_err_t bt_get_discovered_devices(bt_device_t *devices, uint16_t count, uint16_t *actual_count);
 
 /**
  * Unpair all devices
@@ -300,29 +331,6 @@ bool bt_is_paused(void);
  * @return Current streaming state (STOPPED, PLAYING, PAUSED)
  */
 bt_streaming_state_t bt_get_streaming_state(void);
-
-/**
- * Pairing method types
- */
-typedef enum {
-    BT_PAIRING_NONE = 0,   /* No pairing in progress */
-    BT_PAIRING_PIN,        /* PIN-based pairing */
-    BT_PAIRING_SSP,        /* Secure Simple Pairing */
-    BT_PAIRING_JUST_WORKS  /* Just Works pairing (no user interaction) */
-} bt_pairing_method_t;
-
-/**
- * Pairing state
- */
-typedef enum {
-    BT_PAIRING_STATE_NONE = 0,          /* No pairing in progress */
-    BT_PAIRING_STATE_PIN_REQUESTED,     /* PIN code requested */
-    BT_PAIRING_STATE_PIN_ENTERED,       /* PIN entered, waiting for verification */
-    BT_PAIRING_STATE_SSP_CONFIRM,       /* SSP confirmation requested */
-    BT_PAIRING_STATE_COMPLETE,          /* Pairing completed successfully */
-    BT_PAIRING_STATE_FAILED,            /* Pairing failed */
-    BT_PAIRING_STATE_TIMEOUT            /* Pairing timed out */
-} bt_pairing_state_t;
 
 /**
  * @brief Start Bluetooth pairing with a device
