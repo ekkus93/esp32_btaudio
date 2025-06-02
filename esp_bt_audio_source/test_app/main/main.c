@@ -16,7 +16,6 @@
 #include "pcm_format_test.h"
 #include "i2s_channel_test.h"
 #include "bt_a2dp_test.h" // Include Bluetooth A2DP test header
-#include "command_interface_test.c" // Include UART command interface test header
 
 static const char *TAG = "BT_AUDIO_TEST";
 
@@ -54,9 +53,6 @@ void app_main(void)
     
     ESP_LOGI(TAG, "Running I2S channel configuration tests");
     run_i2s_channel_tests();
-    
-    ESP_LOGI(TAG, "Running UART command interface tests");
-    run_command_interface_tests();
     
     ESP_LOGI(TAG, "All tests completed");
     ESP_LOGI(TAG, "Audio buffer and pipeline implementation test completed");

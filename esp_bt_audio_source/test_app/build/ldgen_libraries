@@ -83,5 +83,5 @@
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/spiffs/libspiffs.a
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/wifi_provisioning/libwifi_provisioning.a
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/audio/libaudio.a
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/libmain.a
 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/command_interface/libcommand_interface.a
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/esp-idf/main/libmain.a
