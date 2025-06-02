@@ -1,5 +1,0 @@
-[1/4] cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp-idf/esptool_py && /home/phil/.espressif/python_env/idf5.4_py3.10_env/bin/python /home/phil/esp/v5.4.1/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/partition_table/partition-table.bin /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/esp_bt_audio_source.bin
-esp_bt_audio_source.bin binary size 0xf4b30 bytes. Smallest app partition is 0x1f0000 bytes. 0xfb4d0 bytes (51%) free.
-[2/4] Performing build step for 'bootloader'
-[1/1] cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/esp-idf/esptool_py && /home/phil/.espressif/python_env/idf5.4_py3.10_env/bin/python /home/phil/esp/v5.4.1/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build/bootloader/bootloader.bin
-Bootloader binary size 0x6580 bytes. 0xa80 bytes (9%) free.

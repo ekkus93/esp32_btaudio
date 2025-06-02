@@ -1,3 +1,0 @@
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/unity-populate.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/edit_cache.dir
-/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/build_host_tests/_deps/unity-subbuild/CMakeFiles/rebuild_cache.dir
