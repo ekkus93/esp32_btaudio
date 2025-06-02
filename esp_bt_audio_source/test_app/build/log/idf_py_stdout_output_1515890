@@ -246,4 +246,79 @@ OK
 [0;32mI (3104) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
 [0;32mI (3114) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
 [0;32mI (3114) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
-./main/audio_pipeline_test.c:849:t
+./main/audio_pipeline_test.c:849:test_configure_sample_rate:PASS
+[0;32mI (3144) AUDIO_PIPELINE_TEST: Testing buffer size calculations for different sample rates[0m
+[0;32mI (3144) AUDIO_PIPELINE_TEST: Sample rate: 8000 Hz, Expected size: 743 bytes, Calculated size: 744 bytes[0m
+[0;32mI (3144) AUDIO_PIPELINE_TEST: Sample rate: 16000 Hz, Expected size: 1486 bytes, Calculated size: 1488 bytes[0m
+[0;32mI (3154) AUDIO_PIPELINE_TEST: Sample rate: 22050 Hz, Expected size: 2047 bytes, Calculated size: 2048 bytes[0m
+[0;32mI (3164) AUDIO_PIPELINE_TEST: Sample rate: 32000 Hz, Expected size: 2972 bytes, Calculated size: 2972 bytes[0m
+[0;32mI (3174) AUDIO_PIPELINE_TEST: Sample rate: 44100 Hz, Expected size: 4095 bytes, Calculated size: 4096 bytes[0m
+[0;32mI (3184) AUDIO_PIPELINE_TEST: Sample rate: 48000 Hz, Expected size: 4458 bytes, Calculated size: 4460 bytes[0m
+[0;32mI (3194) AUDIO_PIPELINE_TEST: Sample rate: 96000 Hz, Expected size: 8916 bytes, Calculated size: 8916 bytes[0m
+./main/audio_pipeline_test.c:850:test_buffer_sizes_sample_rates:PASS
+[0;32mI (3224) AUDIO_PIPELINE_TEST: Testing sample rate conversion[0m
+[0;32mI (3224) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3224) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 2048 bytes each[0m
+[0;32mI (3244) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (3244) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/audio_pipeline_test.c:851:test_sample_rate_conversion:PASS
+
+-----------------------
+11 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (3274) AUDIO_PIPELINE_TEST: Audio buffer and pipeline tests completed with 0 failures[0m
+[0;32mI (3774) BT_AUDIO_TEST: Running PCM format validation tests[0m
+[0;32mI (3774) PCM_FORMAT_TEST: Starting PCM format validation tests[0m
+[0;32mI (3774) PCM_FORMAT_TEST: Testing 16-bit PCM format handling[0m
+[0;32mI (3774) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3794) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:426:test_pcm_16bit_format:PASS
+[0;32mI (3804) PCM_FORMAT_TEST: Testing 24-bit PCM format handling[0m
+[0;32mI (3804) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1536 bytes each[0m
+[0;32mI (3804) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3814) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (3824) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:427:test_pcm_24bit_format:PASS
+[0;32mI (3844) PCM_FORMAT_TEST: Testing PCM endianness handling[0m
+[0;32mI (3844) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3844) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:428:test_pcm_endianness:PASS
+[0;32mI (3864) PCM_FORMAT_TEST: Testing 16-bit to 32-bit PCM conversion[0m
+[0;32mI (3864) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (3874) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 2048 bytes each[0m
+[0;32mI (3874) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (3884) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/pcm_format_test.c:429:test_pcm_16bit_to_32bit:PASS
+
+-----------------------
+4 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (3914) PCM_FORMAT_TEST: PCM format tests completed with 0 failures[0m
+[0;32mI (4414) BT_AUDIO_TEST: Running I2S channel configuration tests[0m
+[0;32mI (4414) I2S_CHANNEL_TEST: Starting I2S channel configuration tests[0m
+[0;32mI (4414) I2S_CHANNEL_TEST: Testing mono channel configuration[0m
+./main/i2s_channel_test.c:492:test_mono_channel_config:PASS
+[0;32mI (4434) I2S_CHANNEL_TEST: Testing stereo channel configuration[0m
+./main/i2s_channel_test.c:493:test_stereo_channel_config:PASS
+[0;32mI (4444) I2S_CHANNEL_TEST: Testing stereo to mono conversion[0m
+[0;32mI (4444) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4454) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:494:test_stereo_to_mono_conversion:PASS
+[0;32mI (4474) I2S_CHANNEL_TEST: Testing mono to stereo conversion[0m
+[0;32mI (4474) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 512 bytes each[0m
+[0;32mI (4474) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4484) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+[0;32mI (4484) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:495:test_mono_to_stereo_conversion:PASS
+[0;32mI (4514) I2S_CHANNEL_TEST: Testing channel independence[0m
+[0;32mI (4514) AUDIO_PIPELINE: Audio buffer pool initialized: 4 buffers of 1024 bytes each[0m
+[0;32mI (4524) AUDIO_PIPELINE: Audio buffer pool deinitialized[0m
+./main/i2s_channel_test.c:496:test_channel_independence:PASS
+
+-----------------------
+5 Tests 0 Failures 0 Ignored 
+OK
+[0;32mI (4544) I2S_CHANNEL_TEST: I2S channel configuration tests completed with 0 failures[0m
+[0;32mI (4544) BT_AUDIO_TEST: All tests completed[0m
+[0;32mI (4544) BT_AUDIO_TEST: Audio buffer and pipeline implementation test completed[0m
+[0;32mI (4554) main_task: Returned from app_main()[0m
