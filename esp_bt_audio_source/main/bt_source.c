@@ -341,7 +341,7 @@ bt_streaming_state_t bt_get_streaming_state(void)
  */
 esp_err_t bt_start_pairing(const char* addr)
 {
-#if BT_USE_MOCKS
+#ifdef CONFIG_BT_MOCK_TESTING
     // In test mode, use the mock function
     esp_err_t ret = bt_mock_start_pairing(addr);
     
@@ -390,7 +390,7 @@ esp_err_t bt_start_pairing(const char* addr)
  */
 esp_err_t bt_send_pin_code(const char* pin)
 {
-#if BT_USE_MOCKS
+#ifdef CONFIG_BT_MOCK_TESTING
     // In test mode, use the mock function
     esp_err_t ret = bt_mock_send_pin(pin);
     
@@ -487,7 +487,7 @@ esp_err_t bt_ssp_confirm(bool confirm)
  */
 bool bt_is_device_paired(const char* addr)
 {
-#if BT_USE_MOCKS
+#ifdef CONFIG_BT_MOCK_TESTING
     // In test mode, use the mock function
     return bt_mock_is_device_paired(addr);
 #else
@@ -510,6 +510,41 @@ bool bt_is_device_paired(const char* addr)
     }
     
     return false;
+#endif
+}
+
+/**
+ * Add a paired device - THIS FUNCTION IS MISSING THE TEST MODE REDIRECTION
+ */
+esp_err_t bt_add_paired_device(const bt_device_t* device)
+{
+#ifdef CONFIG_BT_MOCK_TESTING
+    // In test mode, use the mock function
+    return bt_mock_add_paired_device(device);
+#else
+    // Original implementation
+    if (!device) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Check if already paired
+    if (bt_is_device_paired(device->addr)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Add to paired devices list
+    if (paired_count < MAX_PAIRED_DEVICES) {
+        memcpy(&paired_devices[paired_count], device, sizeof(bt_device_t));
+        paired_count++;
+        
+        // Store to persistent storage
+        bt_store_paired_devices();
+        
+        ESP_LOGI(TAG, "Device %s paired", device->addr);
+        return ESP_OK;
+    } else {
+        return ESP_ERR_NO_MEM;
+    }
 #endif
 }
 

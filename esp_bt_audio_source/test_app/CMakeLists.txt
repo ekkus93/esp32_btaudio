@@ -4,11 +4,9 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.16)
 
-# Add the audio component from our parent directory
-set(EXTRA_COMPONENT_DIRS "../components")
-
-# Add this near the top of the file to enable mocks during testing
+# Set mock testing flag globally for all components
 add_compile_definitions(CONFIG_BT_MOCK_TESTING)
+add_compile_definitions(BT_USE_MOCKS)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp_bt_audio_source_test)

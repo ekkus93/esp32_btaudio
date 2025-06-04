@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "unity.h"
 #include "esp_log.h"
+#include "bt_mock_devices.h"
+#include "bt_source.h"  // Add this include for bt_deinit()
 
 #include "i2s_audio_test.h"
 #include "audio_pipeline_test.h"
 #include "test_utils.h"
 
-static const char *TAG = "BT_AUDIO_TEST";
+#define TAG "TEST_MAIN"
 
 // Set to 1 to enable Bluetooth tests when BT implementation is ready
 #define ENABLE_BT_TESTS 0
@@ -51,8 +52,14 @@ void tearDown(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting ESP32 BT Audio Source Tests");
-
+    ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite");
+    
+    // Initialize BT
+    bt_init();
+    
+    // Make sure any previous scan is stopped and cleaned up
+    bt_scan_stop();
+    
 #if ENABLE_BT_TESTS
     ESP_LOGI(TAG, "Bluetooth tests are ENABLED");
     // BT test code would go here
@@ -92,6 +99,12 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(1000));
     ESP_LOGI(TAG, "All tests completed");
     
-    // Update TODO item status
-    ESP_LOGI(TAG, "Audio buffer and pipeline implementation test completed");
+    // Ensure proper cleanup - add this at the end of your app_main() function
+    bt_scan_stop();  // Make sure any scan is stopped
+    bt_mock_cleanup();  // Clean up mock resources
+    bt_deinit();     // Clean up bt stubs resources
+    
+    ESP_LOGI(TAG, "All tests completed. Test application will now restart.");
+    // Short delay before restarting to allow logs to flush and resources to free
+    vTaskDelay(pdMS_TO_TICKS(500));
 }

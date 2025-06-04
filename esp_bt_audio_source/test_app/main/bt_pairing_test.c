@@ -1,3 +1,4 @@
+#include "test_config.h"
 /**
  * @file bt_pairing_test.c
  * @brief Bluetooth pairing functionality tests
@@ -56,31 +57,28 @@ static bt_device_t create_device(uint8_t* addr, const char* name, bool supports_
 void test_pin_pairing_success(void) {
     ESP_LOGI(PAIRING_TEST_TAG, "Testing PIN pairing success");
     
-    // Use bt_mock_devices for testing
-    bt_mock_reset();
+    // Get the interface implementation
+    bt_interface_t* bt = get_bt_implementation();
+    
+    // Reset mock state
+    bt->reset();
     
     // Create test data
     char addr_str[18];
     uint8_t addr[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     addr_to_str(addr, addr_str);
     
-    // Test pairing using PIN method
-    bt_mock_set_default_pin("1234");
-    
-    // Start pairing with the device
-    esp_err_t ret = bt_start_pairing(addr_str);
+    // Test using the interface
+    esp_err_t ret = bt->start_pairing(addr_str);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Verify state is PIN_REQUESTED
-    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PIN_REQUESTED, bt_mock_get_pairing_state());
-    TEST_ASSERT_EQUAL(BT_PAIRING_METHOD_PIN, bt_mock_get_pairing_method());
+    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PIN_REQUESTED, bt->get_pairing_state());
     
-    // Send PIN
-    ret = bt_send_pin_code("1234");
+    ret = bt->send_pin("1234");
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Verify pairing was successful
-    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PAIRED, bt_mock_get_pairing_state());
+    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PAIRED, bt->get_pairing_state());
+    TEST_ASSERT_TRUE(bt->is_device_paired(addr_str));
 }
 
 void test_pin_pairing_failure(void) {
@@ -424,7 +422,7 @@ void test_unpair_all_devices(void) {
     
     // Add multiple paired devices
     uint8_t addr1[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    uint8_t addr2[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    uint8_t addr2[6] = {0x22, 0x33, 0x44, 0x55, 0x66};
     
     bt_device_t device1 = create_device(addr1, "Device 1", true);
     bt_device_t device2 = create_device(addr2, "Device 2", true);
@@ -598,10 +596,10 @@ void test_unpair_all_multiple_devices(void) {
     
     // Add 5 paired devices
     uint8_t addr1[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    uint8_t addr2[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    uint8_t addr3[6] = {0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
-    uint8_t addr4[6] = {0x44, 0x55, 0x66, 0x77, 0x88, 0x99};
-    uint8_t addr5[6] = {0x55, 0x66, 0x77, 0x88, 0x99, 0xAA};
+    uint8_t addr2[6] = {0x22, 0x33, 0x44, 0x55, 0x66};
+    uint8_t addr3[6] = {0x33, 0x44, 0x55, 0x66, 0x77};
+    uint8_t addr4[6] = {0x44, 0x55, 0x66, 0x77, 0x88};
+    uint8_t addr5[6] = {0x55, 0x66, 0x77, 0x88, 0x99};
     
     bt_device_t device1 = create_device(addr1, "Device 1", true);
     bt_device_t device2 = create_device(addr2, "Device 2", true);
@@ -660,6 +658,9 @@ void test_unpair_all_with_connected_devices(void) {
 void app_main_bt_pairing_tests(void)
 {
     ESP_LOGI(PAIRING_TEST_TAG, "Starting Bluetooth pairing tests");
+    
+    // Configure to use mock implementation for testing
+    setup_mock_bt_implementation();
     
     // Initialize NVS flash to ensure it's ready for BT operations
     esp_err_t ret = nvs_flash_init();

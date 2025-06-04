@@ -1,201 +1,183 @@
 #ifndef BT_MOCK_DEVICES_H
 #define BT_MOCK_DEVICES_H
 
-#include <stdbool.h>
 #include "esp_err.h"
-#include "bt_source.h"
+#include "bt_defs.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
- * @brief Reset all mock device data
- */
-void bt_mock_reset(void);
-
-/**
- * @brief Add a mock device for testing
- * 
- * @param addr Bluetooth address in format "XX:XX:XX:XX:XX:XX"
+ * @brief Add a mock BT device
+ * @param addr Device MAC address as string
  * @param name Device name
  * @param type Device type
- * @param supports_a2dp Whether device supports A2DP profile
+ * @param supports_a2dp Whether the device supports A2DP
  */
 void bt_mock_add_device(const char* addr, const char* name, bt_device_type_t type, bool supports_a2dp);
 
 /**
- * @brief Start a mock Bluetooth scan
+ * @brief Start BT scan in mock
  */
 void bt_mock_start_scan(void);
 
 /**
- * @brief Stop the mock Bluetooth scan
+ * @brief Stop BT scan in mock
  */
 void bt_mock_stop_scan(void);
 
 /**
- * @brief Get the results from a mock scan
- * 
- * @param devices Array to populate with discovered devices
+ * @brief Get scan results
+ * @param devices Pointer to array of devices to fill
  * @param max_count Maximum number of devices to return
- * @return Number of devices found
+ * @return Number of devices actually returned
  */
 int bt_mock_get_scan_results(bt_device_t* devices, int max_count);
 
 /**
- * @brief Connect to a mock device
- * 
- * @param addr Device address in format "XX:XX:XX:XX:XX:XX"
- * @return ESP_OK on success, error code otherwise
+ * @brief Connect to device in mock
+ * @param addr Device address
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_connect(const char* addr);
 
 /**
- * @brief Disconnect from current mock device
- * 
- * @return ESP_OK on success, error code otherwise
+ * @brief Disconnect from device in mock
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_disconnect(void);
 
 /**
- * @brief Check if connected to a mock device
- * 
- * @return true if connected, false otherwise
+ * @brief Check if connected in mock
+ * @return true if connected
  */
 bool bt_mock_is_connected(void);
 
 /**
- * @brief Get the connected device address
- * 
- * @return Address string or NULL if not connected
+ * @brief Get connected device address
+ * @return Address of connected device, or NULL if not connected
  */
 const char* bt_mock_get_connected_addr(void);
 
 /**
- * @brief Safely copy the connected device address to a buffer
- * 
- * @param addr_buf Buffer to store the address
- * @param buf_size Size of the buffer
- * @return ESP_OK on success, error code otherwise
+ * @brief Start pairing in mock
+ * @param addr Device address
+ * @return ESP_OK on success
  */
-esp_err_t bt_mock_copy_connected_addr(char* addr_buf, size_t buf_size);
+esp_err_t bt_mock_start_pairing(const char* addr);
 
 /**
- * @brief Set the default PIN code for pairing
- * 
- * @param pin PIN code string
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t bt_mock_set_default_pin(const char* pin);
-
-/**
- * @brief Get the current pairing state
- * 
+ * @brief Get pairing state in mock
  * @return Current pairing state
  */
 bt_pairing_state_t bt_mock_get_pairing_state(void);
 
 /**
- * @brief Get the current pairing method
- * 
+ * @brief Get pairing method in mock
  * @return Current pairing method
  */
 bt_pairing_method_t bt_mock_get_pairing_method(void);
 
 /**
- * @brief Enable or disable SSP support
- * 
- * @param supported Whether SSP is supported
- */
-void bt_mock_set_ssp_supported(bool supported);
-
-/**
- * @brief Simulate an SSP request with a passkey
- * 
- * @param passkey Passkey to use for SSP
- */
-void bt_mock_simulate_ssp_request(uint32_t passkey);
-
-/**
- * @brief Check if an SSP confirmation is requested
- * 
- * @return true if confirmation is requested, false otherwise
- */
-bool bt_mock_is_ssp_confirm_requested(void);
-
-/**
- * @brief Get the current SSP passkey
- * 
- * @return SSP passkey value
- */
-uint32_t bt_mock_get_ssp_passkey(void);
-
-/**
- * @brief Start pairing with a device
- * 
- * @param addr Device address in format "XX:XX:XX:XX:XX:XX"
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t bt_mock_start_pairing(const char* addr);
-
-/**
- * @brief Send a PIN code for pairing
- * 
+ * @brief Send PIN in mock
  * @param pin PIN code string
- * @return ESP_OK on success, error code otherwise
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_send_pin(const char* pin);
 
 /**
- * @brief Confirm or reject SSP pairing
- * 
- * @param confirm true to accept, false to reject
- * @return ESP_OK on success, error code otherwise
+ * @brief Check if confirmation requested in mock
+ * @return true if confirmation requested
+ */
+bool bt_mock_is_ssp_confirm_requested(void);
+
+/**
+ * @brief Confirm SSP pairing in mock
+ * @param confirm true to confirm, false to reject
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_confirm_ssp(bool confirm);
 
 /**
- * @brief Add a paired device
- * 
- * @param device Device info
- * @return ESP_OK on success, error code otherwise
+ * @brief Set default PIN in mock
+ * @param pin Default PIN
+ * @return ESP_OK on success
+ */
+esp_err_t bt_mock_set_default_pin(const char* pin);
+
+/**
+ * @brief Add paired device in mock
+ * @param device Device to add
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_add_paired_device(const bt_device_t* device);
 
 /**
- * @brief Check if a device is paired
- * 
+ * @brief Unpair device in mock
  * @param addr Device address
- * @return true if paired, false otherwise
- */
-bool bt_mock_is_device_paired(const char* addr);
-
-/**
- * @brief Unpair a specific device
- * 
- * @param addr Device address
- * @return ESP_OK on success, error code otherwise
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_unpair_device(const char* addr);
 
 /**
- * @brief Unpair all devices
- * 
- * @return ESP_OK on success, error code otherwise
+ * @brief Unpair all devices in mock
+ * @return ESP_OK on success
  */
 esp_err_t bt_mock_unpair_all_devices(void);
 
 /**
- * @brief Get count of paired devices
- * 
+ * @brief Get paired device count in mock
  * @return Number of paired devices
  */
 int bt_mock_get_paired_device_count(void);
 
 /**
- * @brief Get list of paired devices
- * 
- * @param devices Array to populate with paired devices
- * @param max_count Maximum number of devices to return
- * @return Number of devices returned
+ * @brief Get paired devices in mock
+ * @param devices Array to store devices
+ * @param max_count Maximum number to retrieve
+ * @return Number of devices retrieved
  */
 int bt_mock_get_paired_devices(bt_device_t* devices, int max_count);
+
+/**
+ * @brief Check if device is paired in mock
+ * @param addr Device address
+ * @return true if paired
+ */
+bool bt_mock_is_device_paired(const char* addr);
+
+/**
+ * @brief Reset mock state
+ */
+void bt_mock_reset(void);
+
+/**
+ * @brief Clean up all mock resources
+ */
+void bt_mock_cleanup(void);
+
+/**
+ * @brief Set whether SSP is supported
+ * @param supported True if SSP is supported, false otherwise
+ */
+void bt_mock_set_ssp_supported(bool supported);
+
+/**
+ * @brief Simulate an SSP request with the given passkey
+ * @param passkey The numeric passkey to display
+ * @return ESP_OK on success
+ */
+esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey);
+
+/**
+ * @brief Get the current SSP passkey
+ * @return The current SSP passkey
+ */
+uint32_t bt_mock_get_ssp_passkey(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* BT_MOCK_DEVICES_H */
