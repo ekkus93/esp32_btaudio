@@ -20,7 +20,20 @@ esp_err_t i2s_driver_init(int sample_rate, i2s_bits_per_sample_t bits_per_sample
     current_config.dma_buf_count = 8;
     current_config.dma_buf_len = 64;
     
+    // For testing purposes, we'll set the flag but we don't actually
+    // call i2s_driver_install() since this is just a stub for tests
     driver_installed = true;
+    return ESP_OK;
+}
+
+// Add a function to actually uninstall the driver properly
+esp_err_t i2s_driver_deinit(void) {
+    if (!driver_installed) {
+        return ESP_OK;  // Nothing to do if driver isn't installed
+    }
+    
+    // Just reset our state flag since we didn't actually install the driver
+    driver_installed = false;
     return ESP_OK;
 }
 

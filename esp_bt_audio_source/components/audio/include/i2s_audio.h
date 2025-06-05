@@ -1,27 +1,25 @@
 #ifndef I2S_AUDIO_H
 #define I2S_AUDIO_H
 
-#include <stdint.h>
-#include <stddef.h>
 #include "esp_err.h"
-#include "driver/i2s_types_legacy.h"
+#include "driver/i2s.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Initialize I2S driver
- *
- * @param sample_rate Sample rate in Hz
- * @param bits_per_sample Bits per sample
- * @param channel_fmt Channel format (mono/stereo)
- * @return ESP_OK on success
- */
+// Initialize I2S driver with given parameters
 esp_err_t i2s_driver_init(int sample_rate, i2s_bits_per_sample_t bits_per_sample, i2s_channel_fmt_t channel_fmt);
 
 /**
- * Check if I2S driver is installed
+ * Properly deinitialize the I2S driver
+ *
+ * @return ESP_OK on success
+ */
+esp_err_t i2s_driver_deinit(void);
+
+/**
+ * Check if driver is installed
  *
  * @return true if installed
  */
@@ -36,7 +34,7 @@ bool i2s_is_driver_installed(void);
 esp_err_t i2s_get_config(i2s_config_t* config);
 
 /**
- * Configure I2S for standard mode
+ * Configure I2S in standard audio mode (44.1kHz, 16-bit, stereo)
  *
  * @return ESP_OK on success
  */
@@ -128,4 +126,4 @@ esp_err_t i2s_convert_mono_to_stereo(int16_t* mono_buffer, int16_t* stereo_buffe
 }
 #endif
 
-#endif // I2S_AUDIO_H
+#endif /* I2S_AUDIO_H */

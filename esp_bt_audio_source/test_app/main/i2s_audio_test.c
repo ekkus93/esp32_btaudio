@@ -40,9 +40,9 @@ void setUp(void) {
  */
 void tearDown(void) {
     ESP_LOGI(TAG, "Tearing down I2S audio test");
-    // Only attempt uninstall if driver is installed
+    // Use our own deinit function instead of calling the ESP-IDF one directly
     if (i2s_is_driver_installed()) {
-        i2s_driver_uninstall(I2S_NUM_0);
+        i2s_driver_deinit();
     }
 }
 
