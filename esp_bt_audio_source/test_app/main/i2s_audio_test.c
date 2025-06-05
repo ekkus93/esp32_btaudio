@@ -5,8 +5,9 @@
 #include <stdio.h>
 #include "unity.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h" // Add FreeRTOS for task delays
-#include "freertos/task.h"     // Add for vTaskDelay
+#include "freertos/FreeRTOS.h" 
+#include "freertos/task.h"     
+#include "i2s_audio_test.h" // Include the header for function declarations
 
 // Use the old I2S API for now
 #include "i2s_audio.h"
@@ -19,21 +20,45 @@ static const char *TAG = "I2S_AUDIO_TEST";
 #define TEST_BUFFER_SIZE 1024
 static int16_t test_buffer[TEST_BUFFER_SIZE];
 
-void i2s_audio_test_setUp(void) {
+/**
+ * @brief Set up environment for each test
+ */
+void setUp(void) {
+    ESP_LOGI(TAG, "Setting up I2S audio test");
     // Initialize test data before each test
     memset(test_buffer, 0, sizeof(test_buffer));
+    
+    // Make sure I2S driver is initialized at setup
+    // This ensures we have a driver to uninstall during tearDown
+    esp_err_t ret = i2s_driver_init(44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_FMT_RIGHT_LEFT);
+    TEST_ASSERT_EQUAL_MESSAGE(ESP_OK, ret, "Failed to initialize I2S driver in setUp");
 }
 
-void i2s_audio_test_tearDown(void) {
-    // Clean up after each test
-    i2s_driver_uninstall(I2S_NUM_0);  // Clean up I2S driver
+/**
+ * @brief Clean up after each test
+ */
+void tearDown(void) {
+    ESP_LOGI(TAG, "Tearing down I2S audio test");
+    // Only attempt uninstall if driver is installed
+    if (i2s_is_driver_installed()) {
+        i2s_driver_uninstall(I2S_NUM_0);
+    }
 }
 
-// Test #23: I2S driver initialization
+/**
+ * @brief Test I2S driver initialization
+ * 
+ * Define as a normal function to match header declaration
+ */
 void test_i2s_driver_init(void) {
     ESP_LOGI(TAG, "Testing I2S driver initialization");
     
-    // Initialize I2S driver using real component
+    // First ensure driver is uninstalled if previously installed
+    if (i2s_is_driver_installed()) {
+        i2s_driver_uninstall(I2S_NUM_0);
+    }
+    
+    // Now initialize I2S driver using real component
     esp_err_t ret = i2s_driver_init(44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_FMT_RIGHT_LEFT);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
@@ -48,7 +73,11 @@ void test_i2s_driver_init(void) {
     TEST_ASSERT_EQUAL(I2S_CHANNEL_FMT_RIGHT_LEFT, config.channel_format);
 }
 
-// Test #24: I2S standard mode configuration
+/**
+ * @brief Test I2S standard mode configuration
+ * 
+ * Define as a normal function to match header declaration
+ */
 void test_i2s_standard_mode(void) {
     ESP_LOGI(TAG, "Testing I2S standard mode configuration");
     
@@ -77,16 +106,16 @@ void test_i2s_standard_mode(void) {
     TEST_ASSERT_GREATER_THAN(0, bytes_written);
 }
 
-// Main entry point for I2S Audio tests
-void app_main_i2s_audio_tests(void) {
+/**
+ * @brief Main entry point for I2S Audio tests
+ */
+void run_i2s_audio_tests(void) {
     ESP_LOGI(TAG, "Starting I2S audio tests");
     
+    // Use Unity macros to properly register and run tests
     UNITY_BEGIN();
-    
-    // Run tests
     RUN_TEST(test_i2s_driver_init);
     RUN_TEST(test_i2s_standard_mode);
-    
     UNITY_END();
     
     ESP_LOGI(TAG, "I2S audio tests completed");
