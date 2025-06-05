@@ -13,6 +13,7 @@ extern void bt_mock_cleanup(void);
 // Forward declarations for the test functions
 extern void run_i2s_audio_tests(void); // Updated function that runs both I2S tests
 extern void run_audio_pipeline_tests(void);
+extern void run_bt_pairing_tests(void); // Added forward declaration for BT pairing tests
 
 void app_main(void)
 {
@@ -30,6 +31,13 @@ void app_main(void)
     
     ESP_LOGI(TAG, "Running audio buffer and pipeline tests");
     run_audio_pipeline_tests();
+
+    // Add a delay before running BT tests
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Uncomment this line to run the BT pairing tests
+    ESP_LOGI(TAG, "Running Bluetooth pairing tests");
+    run_bt_pairing_tests();
 
     vTaskDelay(pdMS_TO_TICKS(1000));
     ESP_LOGI(TAG, "All tests completed");

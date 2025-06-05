@@ -17,7 +17,7 @@ static const char *TAG = "BT_SHIM";
 // Test variables
 static bool test_mode = false;
 static bool test_device_added = false;
-static bool ssp_support_enabled = true;
+static bool ssp_supported = true;
 static bool pin_failure_simulated = false;
 static bool pairing_timeout_simulated = false;
 static uint32_t simulated_passkey = 0;
@@ -32,7 +32,7 @@ static void esp32_bt_mock_reset(void) // Renamed to avoid conflict
     ESP_LOGI(TAG, "Resetting Bluetooth test state");
     test_mode = true;
     test_device_added = false;
-    ssp_support_enabled = true;
+    ssp_supported = true;
     pin_failure_simulated = false;
     pairing_timeout_simulated = false;
     memset(test_devices, 0, sizeof(test_devices));
@@ -89,15 +89,20 @@ void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_t
 /**
  * Configure SSP support for testing
  */
-void bt_mock_set_ssp_supported(bool supported) {
-    ESP_LOGI(TAG, "Setting SSP support: %d", supported);
-    ssp_support_enabled = supported;
+void esp32_bt_shim_set_ssp_supported(bool supported)
+{
+    // Store the value locally first
+    ssp_supported = supported;
+    
+    // Call the real implementation instead of redefining
+    bt_mock_set_ssp_supported(supported);
 }
 
 /**
  * Simulate PIN pairing failure
  */
-void bt_mock_simulate_pin_failure(void) {
+static void esp32_bt_shim_simulate_pin_failure(void)
+{
     ESP_LOGI(TAG, "Simulating PIN failure");
     pin_failure_simulated = true;
 }
@@ -105,18 +110,34 @@ void bt_mock_simulate_pin_failure(void) {
 /**
  * Simulate pairing timeout
  */
-void bt_mock_simulate_pairing_timeout(void) {
-    ESP_LOGI(TAG, "Simulating pairing timeout");
-    pairing_timeout_simulated = true;
+void esp32_bt_shim_simulate_pairing_timeout(void)
+{
+    ESP_LOGI(TAG, "Simulating PIN pairing timeout");
+    
+    // Call the real implementation instead of redefining
+    bt_mock_simulate_pairing_timeout();
 }
 
 /**
  * Simulate SSP request with a specific passkey
  */
-esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey) {
+static esp_err_t esp32_bt_shim_simulate_ssp_request(uint32_t passkey)
+{
     ESP_LOGI(TAG, "Simulating SSP request with passkey: %" PRIu32, passkey);
     
     // The real implementation should provide a way to inject SSP requests
     // for test purposes
     return ESP_OK;
+}
+
+// If this function exists and uses bt_mock_simulate_pin_failure, update it to use the renamed version
+void bt_simulate_pin_failure(void) 
+{
+    esp32_bt_shim_simulate_pin_failure();
+}
+
+// If this function exists and uses bt_mock_simulate_ssp_request, update it to use the renamed version
+esp_err_t bt_simulate_ssp_request(uint32_t passkey)
+{
+    return esp32_bt_shim_simulate_ssp_request(passkey);
 }

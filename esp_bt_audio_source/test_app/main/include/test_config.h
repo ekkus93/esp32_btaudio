@@ -1,24 +1,34 @@
-#ifndef TEST_CONFIG_H
-#define TEST_CONFIG_H
+/**
+ * @file test_config.h
+ * @brief Configuration and declarations for the BT test suite
+ */
 
-#include "esp_err.h"
+#pragma once
+
 #include "bt_source.h"
+#include "esp_err.h"
+#include <stdbool.h>
 
-// The interface all BT implementations must provide
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Type definition for BT interface
+ */
 typedef struct {
-    void (*reset)(void);
-    esp_err_t (*start_pairing)(const char* addr);
-    esp_err_t (*send_pin)(const char* pin);
-    bt_pairing_state_t (*get_pairing_state)(void);
-    bt_pairing_method_t (*get_pairing_method)(void);
-    esp_err_t (*confirm_ssp)(bool confirm);
-    bool (*is_device_paired)(const char* addr);
+    esp_err_t (*init)(void);
+    esp_err_t (*scan_start)(void);
+    esp_err_t (*scan_stop)(void);
+    esp_err_t (*connect)(const char* addr);
+    esp_err_t (*reset)(void);
 } bt_interface_t;
 
-// Function to set up the mock implementation
-void setup_mock_bt_implementation(void);
-
-// Function to get the current implementation
+/**
+ * Get BT implementation for tests
+ */
 bt_interface_t* get_bt_implementation(void);
 
-#endif // TEST_CONFIG_H
+#ifdef __cplusplus
+}
+#endif

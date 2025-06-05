@@ -13,6 +13,7 @@
 #include "i2s_audio.h"
 #include "audio_test_helpers.h"
 #include <string.h>
+#include "driver/i2s.h"  // This should include the declaration for i2s_driver_uninstall
 
 static const char *TAG = "I2S_AUDIO_TEST";
 
