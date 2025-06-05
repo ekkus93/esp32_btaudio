@@ -7,11 +7,11 @@
 #include <stdio.h>
 #include <string.h>
 #include "unity.h"
-#include "bt_source.h"
-#include "bt_mock_devices.h"
+#include "bt_mock_devices.h"  // Normal include, no diagnostics needed
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "bt_source.h"
 
 #define MAX_BT_DEVICES 10
 
@@ -290,17 +290,17 @@ void test_bluetooth_connection(void) {
 void test_connect_by_name(void) {
     ESP_LOGI(A2DP_TEST_TAG, "Testing connect by device name");
     
-    // IMPORTANT: Completely avoid using the scan results mechanism which causes semaphore issues
-    // Instead, directly prepare a mock device with a known name
+    // Start with clean state
     bt_mock_reset();
     
+    // Use a distinctive test device name that won't conflict with other tests
     const char *test_device_name = "TestDeviceForNameConnect";
     const char *test_device_addr = "AA:BB:CC:DD:EE:FF";
     
-    // Add the device to the mock directly - this avoids all scanning code
+    // Add the device to the mock system
     bt_mock_add_device(test_device_addr, test_device_name, BT_DEVICE_TYPE_AUDIO, true);
     
-    // Set it up as a paired device too so the connection will succeed
+    // Create and add paired device
     bt_device_t device = {0};
     sscanf(test_device_addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
            &device.addr[0], &device.addr[1], &device.addr[2],
@@ -309,28 +309,38 @@ void test_connect_by_name(void) {
     strncpy(device.name, test_device_name, sizeof(device.name) - 1);
     device.cod = 0x240404; // Audio device
     
-    // Use lower-level functions that we know don't have semaphore issues
+    // Add as paired device
     bt_mock_add_paired_device(&device);
     
-    // Now without any scanning, directly test connecting by name
     ESP_LOGI(A2DP_TEST_TAG, "Attempting to connect to device by name: %s", test_device_name);
     
-    // This is what we're actually testing
+    // IMPORTANT: The bt_connect_by_name function uses the stub system, which doesn't
+    // automatically update the mock connection state. We need to hook into the stub 
+    // callback system to make this work properly.
+    
+    // First, register a connection callback that will be triggered by bt_connect_by_name
+    // This special hook ensures the mock state is updated when the real function is called
+    bt_mock_set_connect_by_name_hook(test_device_name, test_device_addr);
+    
+    // Now call the real function being tested
     esp_err_t ret = bt_connect_by_name(test_device_name);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Verify connection status
-    vTaskDelay(pdMS_TO_TICKS(100)); // Brief delay to allow connection to complete
+    // Brief delay to allow connection to complete
+    vTaskDelay(pdMS_TO_TICKS(100));
     
-    // Use the mock to verify the connection status instead of the real API
-    bool connected = bt_mock_is_connected();
-    TEST_ASSERT_TRUE(connected);
+    // Now the mock should be in a connected state
+    bool is_connected = bt_mock_is_connected();
+    TEST_ASSERT_TRUE(is_connected);
     
-    // Disconnect cleanly
+    // Clean up - disconnect properly through the mock
     bt_mock_disconnect();
     
     ESP_LOGI(A2DP_TEST_TAG, "Connect by name test completed successfully");
 }
+
+// TEMPORARY FIX: Add the declaration directly in the test file if the header isn't being found
+void bt_mock_set_connect_by_name_hook(const char* name, const char* addr);
 
 void test_connection_failure_handling(void) {
     ESP_LOGI(A2DP_TEST_TAG, "Testing connection failure handling");
@@ -455,7 +465,7 @@ void test_connect_to_a2dp_sink(void)
         
         // Copy the name with bounds checking
         if (test_name != NULL) {
-            size_t name_len = strlen(test_name);
+            // Just use strncpy directly with max size instead of calculating name_len
             size_t max_copy = sizeof(device.name) - 1; // Leave room for null terminator
             strncpy(device.name, test_name, max_copy);
             device.name[max_copy] = '\0'; // Ensure null termination
@@ -549,7 +559,7 @@ void test_audio_streaming_start_success(void) {
     
     // Check through state API
     bt_streaming_state_t state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PLAYING, state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PLAYING, state);
     
     // Clean up
     bt_stop_streaming();
@@ -578,7 +588,7 @@ void test_audio_streaming_stop_success(void) {
     
     // Check through state API
     bt_streaming_state_t state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_STOPPED, state);
 }
 
 void test_streaming_requires_connection(void) {
@@ -621,7 +631,7 @@ void test_streaming_pause_resume(void) {
     
     // Check paused state
     TEST_ASSERT_TRUE(bt_is_paused());
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PAUSED, bt_get_streaming_state());
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PAUSED, bt_get_streaming_state());
     
     // Resume streaming
     ret = bt_resume_streaming();
@@ -629,7 +639,7 @@ void test_streaming_pause_resume(void) {
     
     // Check resumed state
     TEST_ASSERT_FALSE(bt_is_paused());
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PLAYING, bt_get_streaming_state());
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PLAYING, bt_get_streaming_state());
     
     // Clean up
     bt_stop_streaming();
@@ -647,7 +657,7 @@ void test_streaming_state_reporting(void) {
     
     // Test initial state
     bt_streaming_state_t initial_state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, initial_state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_STOPPED, initial_state);
     
     // Start streaming
     bt_start_streaming();
@@ -655,7 +665,7 @@ void test_streaming_state_reporting(void) {
     
     // Check playing state
     bt_streaming_state_t playing_state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PLAYING, playing_state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PLAYING, playing_state);
     
     // Pause streaming
     bt_pause_streaming();
@@ -663,7 +673,7 @@ void test_streaming_state_reporting(void) {
     
     // Check paused state
     bt_streaming_state_t paused_state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PAUSED, paused_state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PAUSED, paused_state);
     
     // Resume streaming
     bt_resume_streaming();
@@ -671,7 +681,7 @@ void test_streaming_state_reporting(void) {
     
     // Check resumed state
     bt_streaming_state_t resumed_state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PLAYING, resumed_state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_PLAYING, resumed_state);
     
     // Stop streaming
     bt_stop_streaming();
@@ -679,7 +689,7 @@ void test_streaming_state_reporting(void) {
     
     // Check stopped state
     bt_streaming_state_t stopped_state = bt_get_streaming_state();
-    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, stopped_state);
+    TEST_ASSERT_EQUAL(BT_STREAM_STATE_STOPPED, stopped_state);
 }
 
 /**

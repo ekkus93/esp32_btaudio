@@ -23,10 +23,6 @@ extern bool mock_is_scanning;
 #define DEFAULT_PIN_SIZE 17     // 16 chars + null terminator
 #define BT_MAC_ADDR_STR_LEN 18  // Format XX:XX:XX:XX:XX:XX + null terminator
 
-// Define missing enums
-#define BT_STREAMING_STATE_PLAYING BT_STREAMING_STATE_STOPPED + 1
-#define BT_STREAMING_STATE_STARTED BT_STREAMING_STATE_PLAYING
-
 // Scan timer for automatic timeout
 static TimerHandle_t scan_timer = NULL;
 static uint32_t scan_timeout_seconds = 0;
@@ -42,7 +38,7 @@ static bool s_has_connection_info = false;
 static bool s_is_initialized = false;
 static bool s_is_streaming = false;
 static bool s_is_paused = false;
-static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
+static bt_streaming_state_t s_streaming_state = BT_STREAM_STATE_STOPPED;
 
 // Internal scan state to prevent duplicate stop calls
 static bool s_scan_active = false;
@@ -66,7 +62,7 @@ static void bt_stub_init_state(void)
         s_is_initialized = false;
         s_is_streaming = false;
         s_is_paused = false;
-        s_streaming_state = BT_STREAMING_STATE_STOPPED;
+        s_streaming_state = BT_STREAM_STATE_STOPPED;
         s_scan_active = false;
         
         // Make sure timer is null initially
@@ -475,7 +471,7 @@ esp_err_t bt_start_streaming(void) {
     s_is_streaming = true;
     s_is_paused = false;
     // Fix the enum reference
-    s_streaming_state = BT_STREAMING_STATE_PLAYING;
+    s_streaming_state = BT_STREAM_STATE_PLAYING;
     return ESP_OK;
 }
 
@@ -485,7 +481,7 @@ esp_err_t bt_stop_streaming(void) {
     ESP_LOGI(TAG, "Stub: bt_stop_streaming");
     s_is_streaming = false;
     s_is_paused = false;
-    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_streaming_state = BT_STREAM_STATE_STOPPED;
     return ESP_OK;
 }
 
@@ -506,7 +502,7 @@ esp_err_t bt_pause_streaming(void) {
     
     ESP_LOGI(TAG, "Stub: bt_pause_streaming");
     s_is_paused = true;
-    s_streaming_state = BT_STREAMING_STATE_PAUSED;
+    s_streaming_state = BT_STREAM_STATE_PAUSED;
     return ESP_OK;
 }
 
@@ -520,7 +516,7 @@ esp_err_t bt_resume_streaming(void) {
     ESP_LOGI(TAG, "Stub: bt_resume_streaming");
     s_is_paused = false;
     // Fix the enum reference
-    s_streaming_state = BT_STREAMING_STATE_PLAYING;
+    s_streaming_state = BT_STREAM_STATE_PLAYING;
     return ESP_OK;
 }
 
@@ -716,7 +712,7 @@ static void bt_stub_reset_state(void)
     s_is_initialized = false;
     s_is_streaming = false;
     s_is_paused = false;
-    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_streaming_state = BT_STREAM_STATE_STOPPED;
     s_scan_active = false;
 }
 
@@ -741,28 +737,9 @@ esp_err_t bt_deinit(void) {
 /**
  * Reset function for testing - allows tests to reset state between runs
  */
-esp_err_t bt_reset_for_test(void) {
-    ESP_LOGI(TAG, "Stub: Explicit reset for testing");
+void bt_reset_for_test(void) {
+    ESP_LOGI(TAG, "Reset BT for test");
     
-    // Disconnect any active connections
-    if (bt_mock_is_connected()) {
-        bt_mock_disconnect();
-    }
-    
-    // Stop any active scan
-    if (s_scan_active) {
-        bt_scan_stop();
-    }
-    
-    // Reset our local stub state
-    bt_stub_reset_state();
-    
-    // Reset mock device state - tells mocks to clear their arrays
     bt_mock_reset();
-    
-    // Re-initialize to a clean state
-    bt_stub_init_state();
-    s_is_initialized = true;
-    
-    return ESP_OK;
+    return; // No return value needed
 }

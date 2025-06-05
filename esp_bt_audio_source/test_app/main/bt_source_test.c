@@ -3,6 +3,11 @@
 #include "bt_source.h"
 #include "esp_log.h"
 
+void bt_deinit(void);
+const char* bt_get_address_from_info(const bt_connection_info_t* info);
+
+int bt_get_connection_quality(const bt_connection_info_t* info); // Add this prototype
+
 static const char *TAG = "BT_TEST";
 
 /**

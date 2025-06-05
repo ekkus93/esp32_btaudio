@@ -120,6 +120,51 @@ TEST_CASE("Audio pipeline processing", "[audio]") {
 }
 
 /**
+ * Audio pipeline test stubs
+ */
+void pcm_format_test_setUp(void)
+{
+    ESP_LOGI(TAG, "PCM format test setup");
+    // Add any setup code here
+}
+
+void pcm_format_test_tearDown(void)
+{
+    ESP_LOGI(TAG, "PCM format test teardown");
+    // Add any teardown code here
+}
+
+void i2s_channel_test_setUp(void)
+{
+    ESP_LOGI(TAG, "I2S channel test setup");
+    // Add any setup code here
+}
+
+void i2s_channel_test_tearDown(void)
+{
+    ESP_LOGI(TAG, "I2S channel test teardown");
+    // Add any teardown code here
+}
+
+/**
+ * @brief Run audio pipeline tests
+ * 
+ * This function runs tests for the audio processing pipeline.
+ * Currently a stub implementation.
+ */
+void run_audio_pipeline_tests(void)
+{
+    ESP_LOGI(TAG, "Starting audio pipeline tests");
+    
+    UNITY_BEGIN();
+    // No tests implemented yet
+    ESP_LOGI(TAG, "Audio pipeline tests not implemented yet");
+    UNITY_END();
+    
+    ESP_LOGI(TAG, "Audio pipeline tests completed");
+}
+
+/**
  * Run all audio pipeline tests
  */
 void app_main_audio_pipeline_tests(void) {

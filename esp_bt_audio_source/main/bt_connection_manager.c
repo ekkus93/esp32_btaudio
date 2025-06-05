@@ -13,6 +13,13 @@
 #include "bt_app_core.h"
 #include "bt_source.h"
 
+// Make sure these types are defined in bt_source.h or define them here if not:
+// typedef enum { ... } bt_connection_state_t;
+// typedef enum { ... } bt_streaming_state_t;
+// typedef struct { ... } bt_connection_info_t;
+// typedef struct { ... } bt_streaming_info_t;
+// typedef void (*bt_stream_callback_t)(bool, esp_err_t, void*);
+
 static const char *TAG = "BT_CONNECTION_MGR";
 
 /* Static variables for connection management */

@@ -3,9 +3,13 @@
  * These test the real implementation on actual hardware
  */
 #include <stdio.h>
+#include <string.h>  // Add string.h for strlen
+#include <stdlib.h>
 #include "unity.h"
-#include "bt_source.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
+#include "bt_source.h"
 
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
 

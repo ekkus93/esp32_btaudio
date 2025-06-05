@@ -56,11 +56,11 @@ static bool s_streaming = false;
 static bool s_streaming_paused = false;
 
 /* Streaming state tracking */
-static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
+static bt_streaming_state_t s_streaming_state = BT_STREAM_STATE_STOPPED;
 
 /* Pairing state and methods */
-static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_NONE;
-static bt_pairing_method_t current_pairing_method = BT_PAIRING_NONE;
+static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;  // Changed from BT_PAIRING_STATE_NONE
+static bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;  // Changed from BT_PAIRING_NONE
 static char current_pairing_addr[18] = {0};
 static char default_pin[16] = "1234"; // Default PIN
 static bool pin_failure_simulation = false;
@@ -127,7 +127,7 @@ void bt_mock_reset(void)
     
     // Reset pairing state
     current_pairing_state = BT_PAIRING_STATE_NONE;
-    current_pairing_method = BT_PAIRING_NONE;
+    current_pairing_method = BT_PAIRING_METHOD_NONE;
     memset(current_pairing_addr, 0, sizeof(current_pairing_addr));
     strcpy(default_pin, "1234");
     pin_failure_simulation = false;
@@ -230,7 +230,7 @@ esp_err_t bt_init(void)
  */
 esp_err_t bt_scan(uint32_t timeout_seconds)
 {
-    ESP_LOGI(TAG, "Mock: Starting Bluetooth scan with timeout %"PRIu32"s", timeout_seconds);
+    ESP_LOGI(TAG, "Mock: Starting Bluetooth scan with timeout %" PRIu32 "s", timeout_seconds);
     
     if (!s_initialized && mock_control.scan_start_return == ESP_OK) {
         return ESP_ERR_INVALID_STATE;
@@ -327,7 +327,7 @@ esp_err_t bt_connect_by_name(const char* name)
  */
 esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms)
 {
-    ESP_LOGI(TAG, "Mock: Connecting to %s with timeout %"PRIu32"ms", addr, timeout_ms);
+    ESP_LOGI(TAG, "Mock: Connecting to %s with timeout %" PRIu32 "ms", addr, timeout_ms);
     
     if (timeout_ms > 0) {
         return mock_control.timeout_return;
@@ -524,14 +524,14 @@ esp_err_t bt_start_pairing(const char* addr)
     // Check if SSP is supported
     if (s_ssp_support_enabled) {
         // For SSP, don't set pairing state yet
-        current_pairing_method = BT_PAIRING_SSP;
+        current_pairing_method = BT_PAIRING_METHOD_SSP;  // Changed from BT_PAIRING_SSP
         
         // For testing, simulate SSP request right away
         bt_mock_simulate_ssp_request(123456);
     } else {
         // For PIN - explicitly set PIN_REQUESTED state to 1 as tests expect
         current_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;  // Value is 1
-        current_pairing_method = BT_PAIRING_PIN;
+        current_pairing_method = BT_PAIRING_METHOD_PIN;  // Changed from BT_PAIRING_PIN
     }
     
     return ESP_OK;
@@ -544,7 +544,7 @@ esp_err_t bt_send_pin_code(const char* pin)
 {
     ESP_LOGI(TAG, "Mock: Sending PIN code");
     
-    if (!is_pairing || current_pairing_method != BT_PAIRING_PIN) {
+    if (!is_pairing || current_pairing_method != BT_PAIRING_METHOD_PIN) {  // Changed from BT_PAIRING_PIN
         return ESP_ERR_INVALID_STATE;
     }
     
@@ -577,7 +577,7 @@ esp_err_t bt_send_pin_code(const char* pin)
             sprintf(s_discovered_devices[s_discovered_device_count].name, "Device %s", current_pairing_addr);
             s_discovered_devices[s_discovered_device_count].rssi = -70;
             s_discovered_devices[s_discovered_device_count].cod = 0x240404; // Audio device
-            
+
             s_device_paired[s_discovered_device_count] = true;
             s_paired_device_count++;
             s_discovered_device_count++;
@@ -606,7 +606,7 @@ void bt_mock_simulate_ssp_request(uint32_t passkey)
     
     s_ssp_confirmation_requested = true;
     s_ssp_passkey_value = passkey;
-    snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06u", (unsigned int)passkey);
+    snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, passkey);
     
     // Set state to SSP confirm (3)
     current_pairing_state = BT_PAIRING_STATE_SSP_CONFIRM;  // Value is 3
@@ -844,7 +844,6 @@ esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info
             info->connected = s_connected && 
                 strcasecmp(s_current_connection.remote_addr, addr) == 0;
             info->profile = s_active_profile;
-            info->rssi = s_discovered_devices[i].rssi;
             
             return ESP_OK;  // Return 0 to pass the test
         }

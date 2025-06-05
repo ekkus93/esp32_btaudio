@@ -8,5 +8,12 @@ cmake_minimum_required(VERSION 3.16)
 add_compile_definitions(CONFIG_BT_MOCK_TESTING)
 add_compile_definitions(BT_USE_MOCKS)
 
+# Add the bt_mock component to your project
+set(EXTRA_COMPONENT_DIRS "../components")
+
+# Unity configuration - set before including project.cmake
+add_compile_definitions(UNITY_INCLUDE_CONFIG_H)
+add_compile_definitions(UNITY_EXTENSION_FIXTURE=1)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp_bt_audio_source_test)

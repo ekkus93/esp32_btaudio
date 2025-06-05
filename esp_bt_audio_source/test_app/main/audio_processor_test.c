@@ -1,7 +1,9 @@
 #include <stdio.h>
+#include <inttypes.h>  // Add this for PRIu32
 #include "unity.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"   // Make sure this is included
 #include "audio_processor.h"
 
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
@@ -310,9 +312,8 @@ void test_audio_format_conversion(void)
     esp_err_t ret = audio_processor_init(&config);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Create test buffers
+    // Declare the source buffer
     int16_t src_buffer_16[256];
-    int32_t dst_buffer_32[256];
     
     // Fill source buffer with test pattern
     for (int i = 0; i < 256; i++) {
@@ -440,7 +441,7 @@ void test_audio_buffer_management(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Print buffer stats
-    ESP_LOGI(TAG, "Buffer level: %u, Peak: %u", 
+    ESP_LOGI(TAG, "Buffer level: %" PRIu32 ", Peak: %" PRIu32, 
              stats.current_buffer_level, stats.peak_buffer_level);
     
     // Read some data to verify buffer works

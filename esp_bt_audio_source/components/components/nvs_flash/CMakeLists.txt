@@ -5,7 +5,7 @@ if(BOOTLOADER_BUILD)
 
     idf_component_register(SRCS "${srcs}"
                         REQUIRES "${requires}"
-                        INCLUDE_DIRS "include"
+                        INCLUDE_DIRS "include" "../components/esp_partition/include" 
                         PRIV_INCLUDE_DIRS "private_include"
     )
 

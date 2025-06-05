@@ -4,6 +4,7 @@
  */
 
 #include <string.h>
+#include <inttypes.h>
 #include "esp_log.h"
 #include "audio_i2s.h"
 #include "driver/gpio.h"
@@ -52,12 +53,9 @@ esp_err_t audio_i2s_init(const audio_i2s_config_t *config)
             .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
             .slot_mode = config->channel_fmt,
             .slot_mask = I2S_STD_SLOT_BOTH,
-            .ws_width = I2S_STD_WS_WIDTH_16_BCLK,
+            .ws_width = 16, // WS signal width in bits
             .ws_pol = false,
             .bit_shift = true,
-            .left_align = false,
-            .big_endian = false,
-            .bit_order_lsb = false,
         },
         .gpio_cfg = {
             .mclk = config->gpio_mclk >= 0 ? config->gpio_mclk : GPIO_NUM_NC,
@@ -73,9 +71,9 @@ esp_err_t audio_i2s_init(const audio_i2s_config_t *config)
         },
     };
 
-    ESP_LOGI(TAG, "Configuring I2S: %dHz, %d-bit, %s", 
-             config->sample_rate,
-             config->bit_width,
+    ESP_LOGI(TAG, "Configuring I2S: %" PRIu32 "Hz, %" PRIu32 "-bit, %s", 
+             (uint32_t)config->sample_rate,
+             (uint32_t)config->bit_width,
              config->channel_fmt == I2S_SLOT_MODE_MONO ? "mono" : "stereo");
     
     // Configure standard mode

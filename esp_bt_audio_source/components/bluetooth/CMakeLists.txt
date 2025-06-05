@@ -1,14 +1,5 @@
-set(COMPONENT_SRCS 
-    "bt_interface.c"
+idf_component_register(
+    SRCS "bt_source.c"
+    INCLUDE_DIRS "include"
+    REQUIRES "esp_common" "nvs_flash" "bt"
 )
-
-set(COMPONENT_ADD_INCLUDEDIRS 
-    "include"
-)
-
-set(COMPONENT_REQUIRES 
-    nvs_flash
-    bt
-)
-
-register_component()
