@@ -154,17 +154,29 @@ void bt_mock_set_connect_by_name_hook(const char* name, const char* addr) {
 }
 
 bool bt_mock_is_device_paired(const char* addr) {
+    if (!addr) return false;
+    
+    ESP_LOGI(TAG, "Checking if device is paired: %s", addr);
+    
     for (int i = 0; i < mock_state.device_count; i++) {
         char device_addr[18];
-        sprintf(device_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+        // Use uppercase hex format to match the input format (12:34:56:78:9A:BC)
+        sprintf(device_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
                 mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
                 mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
                 mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
         
-        if (strcmp(device_addr, addr) == 0) {
+        ESP_LOGI(TAG, "Comparing with stored device: %s, paired: %d", 
+                device_addr, mock_state.devices[i].paired);
+        
+        // Use case-insensitive comparison to be more robust
+        if (strcasecmp(device_addr, addr) == 0) {
+            ESP_LOGI(TAG, "Device match found! Paired status: %d", mock_state.devices[i].paired);
             return mock_state.devices[i].paired;
         }
     }
+    
+    ESP_LOGI(TAG, "No paired device found with address: %s", addr);
     return false;
 }
 
@@ -237,10 +249,29 @@ esp_err_t bt_mock_send_pin(const char* pin)
         return ESP_FAIL;
     }
     
-    // Standard success path - FIX: set to PAIRED (4) as defined in bt_source.h
-    // The constant BT_PAIRING_STATE_PAIRED is 4, not 0
+    // Standard success path - set to PAIRED (4) as defined in bt_source.h
     current_pairing_state = BT_PAIRING_STATE_PAIRED;  // Value is 4
     ESP_LOGI(TAG, "Pin success: setting state to PAIRED (4)");
+    
+    // FIX: Add the device to the mock's paired devices list, so bt_is_device_paired returns true
+    if (current_pairing_addr[0] != '\0' && mock_state.device_count < 10) {
+        bt_device_t* device = &mock_state.devices[mock_state.device_count];
+        
+        // Parse the address string (e.g., "12:34:56:78:9A:BC") into bytes
+        sscanf(current_pairing_addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+               &device->addr[0], &device->addr[1], &device->addr[2],
+               &device->addr[3], &device->addr[4], &device->addr[5]);
+        
+        // Set default name and other properties
+        snprintf(device->name, sizeof(device->name), "Paired Device %d", mock_state.device_count + 1);
+        device->paired = true; // This is the critical part to make bt_is_device_paired return true
+        device->cod = 0x240404; // Audio device
+        device->rssi = -70;
+        
+        mock_state.device_count++;
+        ESP_LOGI(TAG, "Added paired device: %s", current_pairing_addr);
+    }
+    
     return ESP_OK;
 }
 

@@ -247,17 +247,14 @@ bt_pairing_state_t bt_get_pairing_state_internal(void) {
     extern bt_pairing_state_t current_pairing_state;
     ESP_LOGI(TAG, "Current pairing state: %d", current_pairing_state);
     
-    // For test_pin_pairing_success, we need to map BT_PAIRING_STATE_PAIRED (4)
-    // to the value 0 that the test expects
-    if (current_pairing_state == BT_PAIRING_STATE_PAIRED) {
-        return 0; // Return 0 instead of 4 for compatibility
-    }
+    // The test now correctly expects BT_PAIRING_STATE_PAIRED (4), so return the actual value
+    // instead of mapping it to 0
     
-    // For test_pin_pairing_failure, map BT_PAIRING_STATE_FAILED (5) to 5
+    // For test_pin_pairing_failure, still map BT_PAIRING_STATE_FAILED (5) to 5
     if (current_pairing_state == BT_PAIRING_STATE_FAILED) {
         return 5;
     }
     
-    // Otherwise return the state as-is
+    // Return the state as-is without any mapping
     return current_pairing_state;
 }
