@@ -10,16 +10,16 @@
 
 static const char *TAG = "BT_MOCK";
 
-// Declare all variables properly before use
-static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;
-static bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;
+// Remove 'static' from these variables so they can be accessed with extern
+bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;
+bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;
 static char current_pairing_addr[18] = {0};
 static bool is_pairing = false;
 static bool s_ssp_support_enabled = true;
 static bool pin_failure_simulation = false;
-static uint32_t s_ssp_passkey_value = 0;
+uint32_t s_ssp_passkey_value = 0;  // Remove 'static' to allow access
 static char s_ssp_passkey[7] = {0};
-static bool s_ssp_confirmation_requested = false;
+bool s_ssp_confirmation_requested = false;  // Remove 'static' from this variable
 
 // Define our internal state structure - make sure it doesn't conflict with header
 typedef struct {

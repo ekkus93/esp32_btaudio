@@ -148,81 +148,16 @@ esp_err_t bt_mock_send_pin(const char* pin)
 #endif
 
 /**
- * Check if SSP confirmation is requested
- */
-bool bt_mock_is_ssp_confirm_requested(void)
-{
-    return mock_state.ssp_confirmation_requested;
-}
-
-/**
- * Confirm SSP pairing
- */
-esp_err_t bt_mock_confirm_ssp(bool confirm)
-{
-    if (!mock_state.ssp_confirmation_requested) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    mock_state.ssp_confirmation_requested = false;
-    
-    if (confirm) {
-        mock_state.pairing_state = BT_PAIRING_STATE_PAIRED;
-    } else {
-        mock_state.pairing_state = BT_PAIRING_STATE_FAILED;
-    }
-    
-    return ESP_OK;
-}
-
-/**
- * Set default PIN code
- */
-esp_err_t bt_mock_set_default_pin(const char* pin)
-{
-    if (!pin) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    strncpy(mock_state.default_pin, pin, sizeof(mock_state.default_pin) - 1);
-    mock_state.default_pin[sizeof(mock_state.default_pin) - 1] = '\0';
-    
-    return ESP_OK;
-}
-
-/**
- * Remove or rename this function since it's now properly implemented
- * in bt_mock_devices.c
- */
-#if 0 // Comment out the whole function
-esp_err_t bt_mock_start_pairing(const char* addr)
-{
-    // This implementation has been moved to bt_mock_devices.c
-    
-    if (!addr) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Save address and update pairing state
-    strncpy(mock_state.connected_addr, addr, sizeof(mock_state.connected_addr) - 1);
-    mock_state.connected_addr[sizeof(mock_state.connected_addr) - 1] = '\0';
-    
-    // Default to SSP pairing method
-    mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
-    mock_state.pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
-    mock_state.ssp_confirmation_requested = true;
-    strcpy(mock_state.ssp_passkey, "123456");
-    
-    return ESP_OK;
-}
-#endif
-
-/**
  * Get the current pairing state
  */
 bt_pairing_state_t bt_mock_get_pairing_state(void)
 {
-    return mock_state.pairing_state;
+    // We need to make sure we're using the "current_pairing_state" from bt_mock_devices.c
+    // We need to declare this as an extern so we can access it
+    extern bt_pairing_state_t current_pairing_state;
+    
+    // Return the actual state from bt_mock_devices.c rather than our local state
+    return current_pairing_state;
 }
 
 /**
@@ -230,7 +165,53 @@ bt_pairing_state_t bt_mock_get_pairing_state(void)
  */
 bt_pairing_method_t bt_mock_get_pairing_method(void)
 {
-    return mock_state.pairing_method;
+    // Similarly, we need to access the method from bt_mock_devices.c
+    extern bt_pairing_method_t current_pairing_method;
+    
+    // Return the actual method from bt_mock_devices.c
+    return current_pairing_method;
+}
+
+/**
+ * Check if SSP confirmation is requested
+ */
+bool bt_mock_is_ssp_confirm_requested(void)
+{
+    // Access the SSP confirmation flag from bt_mock_devices.c
+    extern bool s_ssp_confirmation_requested;
+    
+    // Return the actual value from bt_mock_devices.c
+    return s_ssp_confirmation_requested;
+}
+
+/**
+ * Confirm SSP pairing
+ */
+esp_err_t bt_mock_confirm_ssp(bool confirm)
+{
+    // Access global variables from bt_mock_devices.c
+    extern bool s_ssp_confirmation_requested;
+    extern bt_pairing_state_t current_pairing_state;
+    
+    if (!s_ssp_confirmation_requested) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Update both local and global state
+    mock_state.ssp_confirmation_requested = false;
+    s_ssp_confirmation_requested = false;
+    
+    if (confirm) {
+        // Set to BT_PAIRING_STATE_PAIRED (0) as test expects
+        mock_state.pairing_state = BT_PAIRING_STATE_PAIRED;
+        current_pairing_state = BT_PAIRING_STATE_PAIRED;
+    } else {
+        // Set to BT_PAIRING_STATE_FAILED (5) as test expects
+        mock_state.pairing_state = BT_PAIRING_STATE_FAILED;
+        current_pairing_state = BT_PAIRING_STATE_FAILED;
+    }
+    
+    return ESP_OK;
 }
 
 /**
@@ -238,12 +219,12 @@ bt_pairing_method_t bt_mock_get_pairing_method(void)
  */
 uint32_t bt_mock_get_ssp_passkey(void)
 {
-    // Convert stored passkey string to uint32_t
-    uint32_t passkey = 0;
-    if (mock_state.ssp_confirmation_requested && strlen(mock_state.ssp_passkey) > 0) {
-        passkey = (uint32_t)strtoul(mock_state.ssp_passkey, NULL, 10);
-    }
-    return passkey;
+    // Access global variable from bt_mock_devices.c
+    extern uint32_t s_ssp_passkey_value;
+    
+    // Return the global passkey value, which should be non-zero
+    // when bt_mock_simulate_ssp_request() is called
+    return s_ssp_passkey_value;
 }
 
 /**

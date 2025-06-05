@@ -1,9 +1,13 @@
 #include "audio_test_helpers.h"
 #include "i2s_audio.h"
 #include "pcm_processing.h"
+#include "esp_log.h" // Add this include for ESP_LOGE and other log macros
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Define a TAG for logging
+static const char *TAG = "TEST_HELPERS";
 
 // Calculate RMS (Root Mean Square) of audio buffer
 float calculate_rms(int16_t* buffer, size_t samples, int offset, int stride) {
@@ -93,11 +97,26 @@ esp_err_t test_convert_mono_to_stereo(int16_t* mono_buffer, int16_t* stereo_buff
 
 // Wrapper for 16-bit to 24-bit PCM conversion
 void test_convert_16bit_to_24bit(int16_t* src_buffer, uint8_t* dst_buffer, size_t samples) {
-    // We need to convert between the different parameter types expected by pcm_processing.h
+    if (!src_buffer || !dst_buffer || samples == 0) return;
     
-    // Allocate temporary buffer for 32-bit int representation
-    int32_t* temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
-    if (!temp_buffer) return;
+    // IMPROVED: Use static buffer for temp storage when possible
+    #define MAX_TEMP_BUFFER_SIZE 1024
+    static int32_t static_temp_buffer[MAX_TEMP_BUFFER_SIZE];
+    int32_t* temp_buffer;
+    bool using_dynamic = false;
+    
+    // Choose appropriate buffer based on size
+    if (samples <= MAX_TEMP_BUFFER_SIZE) {
+        temp_buffer = static_temp_buffer;
+    } else {
+        // Only use dynamic allocation for larger buffers
+        temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
+        if (!temp_buffer) {
+            ESP_LOGE(TAG, "Memory allocation failed for PCM conversion");
+            return;
+        }
+        using_dynamic = true;
+    }
     
     // Call the actual implementation
     pcm_convert_16bit_to_24bit(src_buffer, temp_buffer, samples);
@@ -110,16 +129,31 @@ void test_convert_16bit_to_24bit(int16_t* src_buffer, uint8_t* dst_buffer, size_
         dst_buffer[i*3 + 2] = (uint8_t)((temp_buffer[i] >> 16) & 0xFF);
     }
     
-    free(temp_buffer);
+    if (using_dynamic) free(temp_buffer);
 }
 
 // Wrapper for 24-bit to 16-bit PCM conversion
 void test_convert_24bit_to_16bit(uint8_t* src_buffer, int16_t* dst_buffer, size_t samples) {
-    // We need to convert between the different parameter types expected by pcm_processing.h
+    if (!src_buffer || !dst_buffer || samples == 0) return;
     
-    // Allocate temporary buffer for 32-bit int representation
-    int32_t* temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
-    if (!temp_buffer) return;
+    // IMPROVED: Use static buffer for temp storage when possible
+    #define MAX_TEMP_BUFFER_SIZE 1024
+    static int32_t static_temp_buffer[MAX_TEMP_BUFFER_SIZE];
+    int32_t* temp_buffer;
+    bool using_dynamic = false;
+    
+    // Choose appropriate buffer based on size
+    if (samples <= MAX_TEMP_BUFFER_SIZE) {
+        temp_buffer = static_temp_buffer;
+    } else {
+        // Only use dynamic allocation for larger buffers
+        temp_buffer = (int32_t*)malloc(samples * sizeof(int32_t));
+        if (!temp_buffer) {
+            ESP_LOGE(TAG, "Memory allocation failed for PCM conversion");
+            return;
+        }
+        using_dynamic = true;
+    }
     
     // Convert byte array to int32_t representation
     for (size_t i = 0; i < samples; i++) {
@@ -137,5 +171,5 @@ void test_convert_24bit_to_16bit(uint8_t* src_buffer, int16_t* dst_buffer, size_
     // Call the actual implementation
     pcm_convert_24bit_to_16bit(temp_buffer, dst_buffer, samples);
     
-    free(temp_buffer);
+    if (using_dynamic) free(temp_buffer);
 }
