@@ -60,13 +60,13 @@ typedef enum {
  * @brief Enum defining the Bluetooth pairing states
  */
 typedef enum {
-    BT_PAIRING_STATE_IDLE = 0,
-    BT_PAIRING_STATE_STARTED = 1,
-    BT_PAIRING_STATE_PIN_REQUESTED = 2,
-    BT_PAIRING_STATE_SSP_REQUESTED = 3,
-    BT_PAIRING_STATE_PAIRED = 4,
-    BT_PAIRING_STATE_FAILED = 5,
-    BT_PAIRING_STATE_TIMEOUT = 6
+    BT_PAIRING_STATE_IDLE = 0,         // Idle state - no pairing activity
+    BT_PAIRING_STATE_STARTED = 1,      // Pairing process has started
+    BT_PAIRING_STATE_PIN_REQUESTED = 2, // PIN code requested
+    BT_PAIRING_STATE_SSP_REQUESTED = 3, // SSP confirmation requested
+    BT_PAIRING_STATE_PAIRED = 4,       // Successfully paired
+    BT_PAIRING_STATE_FAILED = 5,       // Pairing failed
+    BT_PAIRING_STATE_TIMEOUT = 6       // Pairing timed out
 } bt_pairing_state_t;
 
 /**

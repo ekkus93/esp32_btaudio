@@ -221,6 +221,8 @@ void test_pin_pairing_success(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Verify pairing state is now complete
+    // FIX: Use the correct enum value BT_PAIRING_STATE_PAIRED (4) from bt_source.h
+    // instead of assuming it's 0
     TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PAIRED, bt_get_pairing_state());
     
     // Device should now be paired
@@ -252,6 +254,9 @@ void test_pin_pairing_failure(void)
     // Verify pairing state is failed - must match BT_PAIRING_STATE_FAILED (5)
     extern bt_pairing_state_t current_pairing_state; // Access the global value
     TEST_ASSERT_EQUAL(BT_PAIRING_STATE_FAILED, current_pairing_state);
+    
+    // Print the actual values to help debug
+    ESP_LOGI(TAG, "Expected: %d, Got: %d", BT_PAIRING_STATE_FAILED, current_pairing_state);
     
     ESP_LOGI(TAG, "PIN pairing failure test completed");
 }

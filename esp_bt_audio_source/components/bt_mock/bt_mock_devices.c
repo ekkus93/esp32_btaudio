@@ -232,12 +232,15 @@ esp_err_t bt_mock_send_pin(const char* pin)
     // If pin failure simulation is enabled, return failure
     if (pin_failure_simulation) {
         current_pairing_state = BT_PAIRING_STATE_FAILED;  // Value is 5
+        ESP_LOGI(TAG, "Pin failure simulation: setting state to FAILED (5)");
         pin_failure_simulation = false; // Reset for next test
         return ESP_FAIL;
     }
     
-    // Standard success path - set to PAIRED (0) as expected by test
-    current_pairing_state = BT_PAIRING_STATE_PAIRED;  // Value is 0
+    // Standard success path - FIX: set to PAIRED (4) as defined in bt_source.h
+    // The constant BT_PAIRING_STATE_PAIRED is 4, not 0
+    current_pairing_state = BT_PAIRING_STATE_PAIRED;  // Value is 4
+    ESP_LOGI(TAG, "Pin success: setting state to PAIRED (4)");
     return ESP_OK;
 }
 
