@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 /**
- * Type definition for BT interface
+ * Type definition for BT test interface - renamed to avoid conflict with bt_source.h
  */
 typedef struct {
     esp_err_t (*init)(void);
@@ -22,12 +22,12 @@ typedef struct {
     esp_err_t (*scan_stop)(void);
     esp_err_t (*connect)(const char* addr);
     esp_err_t (*reset)(void);
-} bt_interface_t;
+} bt_test_interface_t;
 
 /**
  * Get BT implementation for tests
  */
-bt_interface_t* get_bt_implementation(void);
+bt_test_interface_t* get_bt_implementation(void);
 
 #ifdef __cplusplus
 }

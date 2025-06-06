@@ -63,22 +63,23 @@ void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_t
         // Set device class of device (CoD) based on type
         switch (type) {
             case BT_DEVICE_TYPE_AUDIO:
-                test_devices[test_device_count].cod = 0x240404; // Audio device
+                // Handle different audio device types by examining the name
+                if (strstr(name, "Computer") != NULL) {
+                    test_devices[test_device_count].cod = 0x240404;  // Computer audio device
+                } else if (strstr(name, "Headset") != NULL) {
+                    test_devices[test_device_count].cod = 0x240408;  // Audio headset device
+                } else if (strstr(name, "Speaker") != NULL) {
+                    test_devices[test_device_count].cod = 0x240414;  // Audio speaker device
+                } else {
+                    test_devices[test_device_count].cod = 0x240400;  // Default audio device
+                }
                 break;
             case BT_DEVICE_TYPE_PHONE:
-                test_devices[test_device_count].cod = 0x200000; // Phone
-                break;
-            case BT_DEVICE_TYPE_COMPUTER:
-                test_devices[test_device_count].cod = 0x100000; // Computer
-                break;
-            case BT_DEVICE_TYPE_HEADSET:
-                test_devices[test_device_count].cod = 0x240418; // Headset
-                break;
-            case BT_DEVICE_TYPE_SPEAKER:
-                test_devices[test_device_count].cod = 0x240414; // Speaker
+                test_devices[test_device_count].cod = 0x500204;  // Phone device
                 break;
             default:
-                test_devices[test_device_count].cod = 0x000000; // Unknown
+                test_devices[test_device_count].cod = 0x120104;  // Generic device
+                break;
         }
 
         test_device_count++;

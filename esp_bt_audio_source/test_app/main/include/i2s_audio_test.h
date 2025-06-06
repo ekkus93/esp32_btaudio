@@ -26,6 +26,9 @@ void pcm_format_test_tearDown(void);
 void i2s_channel_test_setUp(void);
 void i2s_channel_test_tearDown(void);
 
+// Main test runner function - add this missing declaration
+void run_i2s_audio_tests(void);
+
 #ifdef __cplusplus
 }
 #endif

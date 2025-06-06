@@ -50,10 +50,10 @@ void setup_mock_bt_implementation(void)
 /**
  * Get the BT implementation for tests - fix the return type to match header
  */
-bt_interface_t* get_bt_implementation(void)
+bt_test_interface_t* get_bt_implementation(void)
 {
     // Cast to the expected return type
-    return (bt_interface_t*)&mock_state;
+    return (bt_test_interface_t*)&mock_state;
 }
 
 /**
@@ -204,8 +204,8 @@ void test_pin_pairing_success(void)
 {
     ESP_LOGI(TAG, "Testing PIN pairing success");
     
-    // Get the test implementation
-    bt_interface_t* impl = get_bt_implementation();
+    // Get the test implementation - fix the type to match what's returned
+    bt_test_interface_t* impl = get_bt_implementation();
     TEST_ASSERT_NOT_NULL(impl);
     
     // Start pairing with a PIN-based device

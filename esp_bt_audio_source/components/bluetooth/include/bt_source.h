@@ -1,123 +1,84 @@
 #pragma once
 
-#include "esp_err.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * @brief Connection states for the BT connection
- */
-typedef enum {
-    BT_STATE_UNKNOWN = 0,
-    BT_STATE_DISCONNECTED,
-    BT_STATE_CONNECTING,
-    BT_STATE_CONNECTED,
-    BT_STATE_DISCONNECTING,
-    BT_STATE_ERROR
-} bt_connection_state_t;
-
-/**
- * @brief Streaming states for audio
- */
-typedef enum {
-    BT_STREAM_STATE_UNKNOWN = 0,
-    BT_STREAM_STATE_IDLE,      // <-- Add this line
-    BT_STREAM_STATE_STOPPED,
-    BT_STREAM_STATE_STREAMING,
-    BT_STREAM_STATE_PAUSED,
-    BT_STREAM_STATE_PLAYING,
-    BT_STREAM_STATE_ERROR
-} bt_streaming_state_t;
-
-/**
- * Bluetooth connection information structure
- */
+// Device information structure
 typedef struct {
-    bool connected;
-    char remote_addr[18];
-    char remote_name[64];
-    uint32_t profile;
-    bool supports_a2dp;
-} bt_connection_info_t;
-
-/**
- * @brief Enum defining the different types of Bluetooth devices
- */
-typedef enum {
-    BT_DEVICE_TYPE_UNKNOWN = 0,
-    BT_DEVICE_TYPE_AUDIO = 1,
-    BT_DEVICE_TYPE_PHONE = 2,
-    BT_DEVICE_TYPE_COMPUTER = 3,
-    BT_DEVICE_TYPE_HEADSET = 4,
-    BT_DEVICE_TYPE_SPEAKER = 5
-} bt_device_type_t;
-
-/**
- * @brief Enum defining the Bluetooth pairing states
- */
-typedef enum {
-    BT_PAIRING_STATE_IDLE = 0,         // Idle state - no pairing activity
-    BT_PAIRING_STATE_STARTED = 1,      // Pairing process has started
-    BT_PAIRING_STATE_PIN_REQUESTED = 2, // PIN code requested
-    BT_PAIRING_STATE_SSP_REQUESTED = 3, // SSP confirmation requested
-    BT_PAIRING_STATE_PAIRED = 4,       // Successfully paired
-    BT_PAIRING_STATE_FAILED = 5,       // Pairing failed
-    BT_PAIRING_STATE_TIMEOUT = 6       // Pairing timed out
-} bt_pairing_state_t;
-
-/**
- * @brief Enum defining the Bluetooth pairing methods
- */
-typedef enum {
-    BT_PAIRING_METHOD_NONE = 0,
-    BT_PAIRING_METHOD_PIN = 1,
-    BT_PAIRING_METHOD_SSP = 2
-} bt_pairing_method_t;
-
-/**
- * BT profile type enum
- */
-typedef enum {
-    BT_PROFILE_NONE = 0,
-    BT_PROFILE_A2DP_SINK = (1 << 0),
-    BT_PROFILE_A2DP_SOURCE = (1 << 1),
-    BT_PROFILE_HFP = (1 << 2),
-    BT_PROFILE_SPP = (1 << 3)
-} bt_profile_t;
-
-/**
- * @brief BT device structure
- */
-typedef struct {
-    uint8_t addr[6];           // Device address
-    char name[32];             // Device name
-    int8_t rssi;               // Signal strength
-    bool paired;               // Is device paired
-    uint32_t cod;              // Class of Device
+    uint8_t addr[6];      // Bluetooth address (MAC)
+    char name[64];        // Device name
+    int8_t rssi;          // Signal strength
+    uint32_t cod;         // Class of device
+    bool paired;          // Is device paired?
 } bt_device_t;
 
-/**
- * Bluetooth device information structure
- */
+// Connection info structure
 typedef struct {
-    uint8_t addr[6];
-    char name[64];
-    bool supports_a2dp;
-} bt_device_info_t;
+    bool connected;       // Is currently connected
+    char addr[18];        // Connected device address
+    char name[64];        // Connected device name
+    bool streaming;       // Is audio streaming active
+} bt_connection_info_t;
 
-/**
- * @brief Discovery callback function type
- */
-typedef void (*bt_discovery_cb_t)(bt_device_t *device, void *user_data);
+// Bluetooth device types
+typedef enum {
+    BT_DEVICE_TYPE_ALL,   // All types
+    BT_DEVICE_TYPE_AUDIO, // Audio devices (speakers, headphones)
+    BT_DEVICE_TYPE_PHONE, // Phones
+    BT_DEVICE_TYPE_OTHER  // Other types
+} bt_device_type_t;
 
-/**
- * @brief Connection state change callback type
- */
-typedef void (*bt_connection_callback_t)(bool connected, bt_device_t* device, esp_err_t status, void* user_data);
+// Bluetooth pairing states
+typedef enum {
+    BT_PAIRING_STATE_IDLE = 0,        // Not pairing
+    BT_PAIRING_STATE_STARTED = 1,     // Pairing started
+    BT_PAIRING_STATE_PIN_REQUESTED = 2, // PIN code requested
+    BT_PAIRING_STATE_SSP_REQUESTED = 3, // SSP confirmation requested
+    BT_PAIRING_STATE_PAIRED = 4,      // Pairing successful
+    BT_PAIRING_STATE_FAILED = 5,      // Pairing failed
+    BT_PAIRING_STATE_TIMEOUT = 6      // Pairing timeout
+} bt_pairing_state_t;
+
+// Bluetooth pairing methods
+typedef enum {
+    BT_PAIRING_METHOD_NONE = 0,       // Not pairing
+    BT_PAIRING_METHOD_JUST_WORKS = 1, // Just Works
+    BT_PAIRING_METHOD_PIN = 2,        // PIN code
+    BT_PAIRING_METHOD_SSP = 3         // Secure Simple Pairing
+} bt_pairing_method_t;
+
+// Streaming state enum
+typedef enum {
+    BT_STREAM_STATE_STOPPED = 0,    // Streaming stopped
+    BT_STREAM_STATE_PLAYING = 1,    // Streaming active
+    BT_STREAM_STATE_PAUSED = 2,     // Streaming paused
+    BT_STREAM_STATE_ERROR = 3       // Streaming error
+} bt_streaming_state_t;
+
+// Profile enum
+typedef enum {
+    BT_PROFILE_A2DP_SINK = 0,        // A2DP Sink
+    BT_PROFILE_A2DP_SOURCE = 1,      // A2DP Source
+    BT_PROFILE_HFP = 2,              // Hands-Free Profile
+    BT_PROFILE_AVRCP = 3,            // Audio/Video Remote Control Profile
+    BT_PROFILE_SPP = 4,              // Serial Port Profile
+    BT_PROFILE_PBAP = 5              // Phone Book Access Profile
+} bt_profile_t;
+
+// Callback type definitions
+typedef void (*bt_discovery_cb_t)(bt_device_t* device, void* user_data);
+typedef void (*bt_connection_callback_t)(bt_connection_info_t* info, void* user_data);
+
+// Interface structure for BT implementation
+typedef struct {
+    // Implementation-specific data
+    void* priv;
+} bt_interface_t;
 
 /**
  * @brief Initialize Bluetooth stack
@@ -125,6 +86,13 @@ typedef void (*bt_connection_callback_t)(bool connected, bt_device_t* device, es
  * @return ESP_OK on success
  */
 esp_err_t bt_init(void);
+
+/**
+ * @brief Cleanup Bluetooth stack
+ * 
+ * @return ESP_OK on success
+ */
+void bt_cleanup(void);
 
 /**
  * @brief Start BT scanning
@@ -154,7 +122,7 @@ esp_err_t bt_scan_stop(void);
  * @param addr MAC address string in format "XX:XX:XX:XX:XX:XX"
  * @return ESP_OK on success, error code otherwise
  */
-esp_err_t bt_connect(const char* addr);
+esp_err_t bt_connect_device(const char* addr);
 
 /**
  * @brief Connect to a device by name
@@ -162,23 +130,7 @@ esp_err_t bt_connect(const char* addr);
  * @param name Device name to connect to
  * @return ESP_OK on success, error code otherwise
  */
-esp_err_t bt_connect_by_name(const char* name);
-
-/**
- * @brief Connect with timeout
- * 
- * @param addr MAC address string in format "XX:XX:XX:XX:XX:XX"
- * @param timeout_ms Timeout in milliseconds
- * @return ESP_OK on success, error code otherwise
- */
-esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms);
-
-/**
- * @brief Check if connected to a BT device
- * 
- * @return true if connected, false otherwise
- */
-bool bt_is_connected(void);
+esp_err_t bt_connect_device_by_name(const char* name);
 
 /**
  * @brief Disconnect from current device
@@ -188,25 +140,61 @@ bool bt_is_connected(void);
 esp_err_t bt_disconnect(void);
 
 /**
+ * @brief Check if connected to a BT device
+ * 
+ * @return true if connected, false otherwise
+ */
+bool bt_is_connected(void);
+
+/**
+ * @brief Get current connection information
+ * 
+ * @param info Pointer to connection info structure to fill
+ * @return ESP_OK on success
+ */
+esp_err_t bt_get_connection_info(bt_connection_info_t* info);
+
+/**
  * @brief Start audio streaming
  * 
  * @return ESP_OK on success
  */
-esp_err_t bt_start_streaming(void);
+esp_err_t bt_a2dp_start_streaming(void);
 
 /**
  * @brief Stop audio streaming
  * 
  * @return ESP_OK on success
  */
-esp_err_t bt_stop_streaming(void);
+esp_err_t bt_a2dp_stop_streaming(void);
+
+/**
+ * @brief Pause audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not streaming
+ */
+esp_err_t bt_a2dp_pause_streaming(void);
+
+/**
+ * @brief Resume previously paused audio streaming
+ * 
+ * @return ESP_OK on success, ESP_FAIL if not paused
+ */
+esp_err_t bt_a2dp_resume_streaming(void);
 
 /**
  * @brief Check if streaming is active
  * 
  * @return true if streaming, false otherwise
  */
-bool bt_is_streaming(void);
+bool bt_a2dp_is_streaming(void);
+
+/**
+ * @brief Check if A2DP is connected
+ * 
+ * @return true if connected, false otherwise
+ */
+bool bt_a2dp_is_connected(void);
 
 /**
  * @brief Register device discovery callback
@@ -274,14 +262,6 @@ esp_err_t bt_remove_paired_device(bt_device_t* device);
 esp_err_t bt_register_connection_callback(bt_connection_callback_t callback, void* user_data);
 
 /**
- * @brief Get current connection information
- * 
- * @param info Pointer to connection info structure to fill
- * @return ESP_OK on success
- */
-esp_err_t bt_get_connection_info(bt_connection_info_t* info);
-
-/**
  * @brief Enable or disable auto-reconnection
  * 
  * @param enable True to enable auto-reconnect, false to disable
@@ -319,20 +299,6 @@ esp_err_t bt_scan(uint32_t duration_s);
  * @return true if scanning, false otherwise
  */
 bool bt_is_scanning(void);
-
-/**
- * @brief Pause streaming audio
- * 
- * @return ESP_OK on success, ESP_FAIL if not streaming
- */
-esp_err_t bt_pause_streaming(void);
-
-/**
- * @brief Resume previously paused audio streaming
- * 
- * @return ESP_OK on success, ESP_FAIL if not paused
- */
-esp_err_t bt_resume_streaming(void);
 
 /**
  * @brief Check if streaming is paused
