@@ -68,39 +68,6 @@ const char* bt_mock_get_connected_addr(void)
 }
 
 /**
- * Unpair a device
- */
-esp_err_t bt_mock_unpair_device(const char* addr)
-{
-    if (addr == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Implementation would involve removing the device from a paired list
-    // For the mock, we'll just simulate success
-    return ESP_OK;
-}
-
-/**
- * Unpair all devices
- */
-esp_err_t bt_mock_unpair_all_devices(void)
-{
-    // Implementation would involve clearing the paired device list
-    // For the mock, we'll just simulate success
-    return ESP_OK;
-}
-
-/**
- * Get the number of paired devices - fix to match header return type
- */
-int bt_mock_get_paired_device_count(void)
-{
-    // Return a fixed number for testing
-    return 1;
-}
-
-/**
  * Get the list of paired devices
  */
 int bt_mock_get_paired_devices(bt_device_t* devices, int max_count)
@@ -127,25 +94,6 @@ int bt_mock_get_paired_devices(bt_device_t* devices, int max_count)
     
     return 0;
 }
-
-/**
- * Send PIN code during pairing
- */
-#if 0 // Comment out this function as it's now implemented in bt_mock_devices.c
-esp_err_t bt_mock_send_pin(const char* pin)
-{
-    if (!pin) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Save the PIN and change pairing state to complete
-    strncpy(mock_state.default_pin, pin, sizeof(mock_state.default_pin) - 1);
-    mock_state.default_pin[sizeof(mock_state.default_pin) - 1] = '\0';
-    mock_state.pairing_state = BT_PAIRING_STATE_PAIRED;
-    
-    return ESP_OK;
-}
-#endif
 
 /**
  * Get the current pairing state
@@ -270,6 +218,12 @@ void test_ssp_confirmation_request(void)
     
     const char* test_addr = "12:34:56:78:9A:BC";
     
+    // Reset the mock to ensure clean state
+    bt_mock_reset();
+    
+    // Explicitly enable SSP support to ensure it's set
+    bt_mock_set_ssp_supported(true);
+    
     // Set up SSP mock
     mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
     mock_state.pairing_state = BT_PAIRING_STATE_IDLE;
@@ -280,7 +234,9 @@ void test_ssp_confirmation_request(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Verify pairing state is now SSP request
-    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_SSP_REQUESTED, bt_mock_get_pairing_state());
+    bt_pairing_state_t state = bt_mock_get_pairing_state();
+    ESP_LOGI(TAG, "Current pairing state after start_pairing: %d", state);
+    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_SSP_REQUESTED, state);
     
     // Verify pairing method is SSP
     TEST_ASSERT_EQUAL(BT_PAIRING_METHOD_SSP, bt_mock_get_pairing_method());
@@ -406,6 +362,161 @@ void test_pin_pairing_timeout(void)
 }
 
 /**
+ * Test PIN pairing initiation 
+ */
+void test_pin_pairing_initiation(void)
+{
+    ESP_LOGI(TAG, "Testing PIN pairing initiation");
+    
+    const char* test_addr = "12:34:56:78:9A:BC";
+    
+    // Configure mock to use PIN instead of SSP
+    bt_mock_set_ssp_supported(false);
+    
+    // Start pairing
+    esp_err_t ret = bt_start_pairing(test_addr);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Verify pairing method is PIN
+    bt_pairing_method_t method = bt_mock_get_pairing_method();
+    TEST_ASSERT_EQUAL(BT_PAIRING_METHOD_PIN, method);
+    
+    // Verify pairing state is BT_PAIRING_STATE_STARTED (1)
+    // or BT_PAIRING_STATE_PIN_REQUESTED (2) depending on implementation
+    bt_pairing_state_t state = bt_mock_get_pairing_state();
+    TEST_ASSERT_TRUE(state == BT_PAIRING_STATE_STARTED || 
+                    state == BT_PAIRING_STATE_PIN_REQUESTED);
+    
+    ESP_LOGI(TAG, "PIN pairing initiation test completed");
+}
+
+/**
+ * Test setting and getting default PIN code
+ */
+void test_set_default_pin(void)
+{
+    ESP_LOGI(TAG, "Testing set/get default PIN");
+    
+    // Define test pin codes
+    const char* test_pin = "9876";
+    char retrieved_pin[16] = {0};
+    
+    // Set default PIN
+    esp_err_t ret = bt_set_default_pin(test_pin);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Get default PIN
+    ret = bt_get_default_pin(retrieved_pin, sizeof(retrieved_pin));
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Verify the retrieved PIN matches what we set
+    TEST_ASSERT_EQUAL_STRING(test_pin, retrieved_pin);
+    
+    // Test with invalid arguments
+    ret = bt_set_default_pin(NULL);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, ret);
+    
+    ret = bt_get_default_pin(NULL, sizeof(retrieved_pin));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, ret);
+    
+    // Test with buffer too small
+    ret = bt_get_default_pin(retrieved_pin, 2); // "9876" needs at least 5 bytes
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_SIZE, ret);
+    
+    ESP_LOGI(TAG, "Set/get default PIN test completed");
+}
+
+/**
+ * Test unpairing a specific device
+ */
+void test_unpair_specific_device(void)
+{
+    ESP_LOGI(TAG, "Testing unpairing specific device");
+    
+    // Create a test device that will be paired
+    const char* test_addr = "12:34:56:78:9A:BC";
+    
+    // Set up paired device first
+    bt_device_t device;
+    memset(&device, 0, sizeof(device));
+    sscanf(test_addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+           &device.addr[0], &device.addr[1], &device.addr[2],
+           &device.addr[3], &device.addr[4], &device.addr[5]);
+    strncpy(device.name, "Test Paired Device", sizeof(device.name) - 1);
+    device.paired = true;
+    
+    // Add the device to paired list
+    esp_err_t ret = bt_mock_add_paired_device(&device);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Verify device is paired
+    TEST_ASSERT_TRUE(bt_is_device_paired(test_addr));
+    
+    // Unpair the device
+    ret = bt_unpair_device(test_addr);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Verify device is no longer paired
+    TEST_ASSERT_FALSE(bt_is_device_paired(test_addr));
+    
+    ESP_LOGI(TAG, "Unpair specific device test completed");
+}
+
+/**
+ * Test unpairing all devices
+ */
+void test_unpair_all_devices(void)
+{
+    ESP_LOGI(TAG, "Testing unpairing all devices");
+    
+    // Set up multiple paired devices
+    const char* test_addr1 = "11:22:33:44:55:66";
+    const char* test_addr2 = "AA:BB:CC:DD:EE:FF";
+    
+    // Add first device
+    bt_device_t device1;
+    memset(&device1, 0, sizeof(device1));
+    sscanf(test_addr1, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+           &device1.addr[0], &device1.addr[1], &device1.addr[2],
+           &device1.addr[3], &device1.addr[4], &device1.addr[5]);
+    strncpy(device1.name, "Test Device 1", sizeof(device1.name) - 1);
+    device1.paired = true;
+    bt_mock_add_paired_device(&device1);
+    
+    // Add second device
+    bt_device_t device2;
+    memset(&device2, 0, sizeof(device2));
+    sscanf(test_addr2, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+           &device2.addr[0], &device2.addr[1], &device2.addr[2],
+           &device2.addr[3], &device2.addr[4], &device2.addr[5]);
+    strncpy(device2.name, "Test Device 2", sizeof(device2.name) - 1);
+    device2.paired = true;
+    bt_mock_add_paired_device(&device2);
+    
+    // Verify both devices are paired
+    TEST_ASSERT_TRUE(bt_is_device_paired(test_addr1));
+    TEST_ASSERT_TRUE(bt_is_device_paired(test_addr2));
+    
+    // Get paired device count before unpairing
+    int count_before = bt_mock_get_paired_device_count();
+    TEST_ASSERT_GREATER_THAN(0, count_before);
+    
+    // Unpair all devices
+    esp_err_t ret = bt_unpair_all_devices();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Verify all devices were unpaired
+    TEST_ASSERT_FALSE(bt_is_device_paired(test_addr1));
+    TEST_ASSERT_FALSE(bt_is_device_paired(test_addr2));
+    
+    // Get paired device count after unpairing
+    int count_after = bt_mock_get_paired_device_count();
+    TEST_ASSERT_EQUAL(0, count_after);
+    
+    ESP_LOGI(TAG, "Unpair all devices test completed");
+}
+
+/**
  * Run all Bluetooth pairing tests
  */
 void run_bt_pairing_tests(void)
@@ -421,10 +532,15 @@ void run_bt_pairing_tests(void)
     // Run all pairing tests
     RUN_TEST(test_pin_pairing_success);
     RUN_TEST(test_pin_pairing_failure);
+    RUN_TEST(test_pin_pairing_initiation);
+    RUN_TEST(test_pin_pairing_timeout); 
+    RUN_TEST(test_set_default_pin);
     RUN_TEST(test_ssp_confirmation_request);
     RUN_TEST(test_ssp_confirmation_accepted);
     RUN_TEST(test_ssp_confirmation_rejected);
     RUN_TEST(test_ssp_fallback_to_pin);
+    RUN_TEST(test_unpair_specific_device);
+    RUN_TEST(test_unpair_all_devices);
     
     // Finish Unity tests
     UNITY_END();

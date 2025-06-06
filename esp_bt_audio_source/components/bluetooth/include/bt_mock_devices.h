@@ -52,6 +52,7 @@ esp_err_t bt_mock_unpair_device(const char* addr);
 esp_err_t bt_mock_unpair_all_devices(void);
 int bt_mock_get_paired_device_count(void);
 esp_err_t bt_mock_set_default_pin(const char* pin);
+esp_err_t bt_mock_get_default_pin(char* pin, size_t size);  // Add this declaration
 
 #ifdef __cplusplus
 }

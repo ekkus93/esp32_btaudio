@@ -27,6 +27,8 @@ esp_err_t bt_mock_start_pairing(const char* addr);
 esp_err_t bt_mock_send_pin(const char* pin);
 esp_err_t bt_mock_confirm_ssp(bool confirm);
 bool bt_mock_is_device_paired(const char* addr);
+esp_err_t bt_mock_set_default_pin(const char* pin);
+esp_err_t bt_mock_get_default_pin(char* pin, size_t size);  // Add this missing declaration
 
 static const char *TAG = "BT_STUBS";
 
@@ -495,4 +497,32 @@ bool bt_a2dp_is_connected(void) {
  */
 void bt_set_ssp_supported(bool supported) {
     bt_mock_set_ssp_supported(supported);
+}
+
+/**
+ * @brief Set default PIN code for pairing
+ */
+esp_err_t bt_set_default_pin(const char* pin) {
+    return bt_mock_set_default_pin(pin);
+}
+
+/**
+ * @brief Get default PIN code
+ */
+esp_err_t bt_get_default_pin(char* pin, size_t size) {
+    return bt_mock_get_default_pin(pin, size);
+}
+
+/**
+ * @brief Unpair a specific device
+ */
+esp_err_t bt_unpair_device(const char* addr) {
+    return bt_mock_unpair_device(addr);
+}
+
+/**
+ * @brief Unpair all paired devices
+ */
+esp_err_t bt_unpair_all_devices(void) {
+    return bt_mock_unpair_all_devices();
 }

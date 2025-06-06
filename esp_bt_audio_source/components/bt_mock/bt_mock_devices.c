@@ -21,6 +21,9 @@ uint32_t s_ssp_passkey_value = 0;  // Remove 'static' to allow access
 static char s_ssp_passkey[7] = {0};
 bool s_ssp_confirmation_requested = false;  // Remove 'static' from this variable
 
+// Default PIN code implementation
+static char s_default_pin[16] = "1234"; // Default PIN
+
 // Define our internal state structure - make sure it doesn't conflict with header
 typedef struct {
     bt_device_t devices[10];  // Maintain compatibility with bt_device_t 
@@ -42,6 +45,18 @@ void bt_mock_init(void) {
 
 void bt_mock_reset(void) {
     memset(&mock_state, 0, sizeof(mock_state));
+    
+    // Reset all static state variables to their default values
+    current_pairing_state = BT_PAIRING_STATE_IDLE;
+    current_pairing_method = BT_PAIRING_METHOD_NONE;
+    memset(current_pairing_addr, 0, sizeof(current_pairing_addr));
+    is_pairing = false;
+    s_ssp_support_enabled = true;  // Make sure SSP is enabled by default
+    pin_failure_simulation = false;
+    s_ssp_passkey_value = 0;
+    memset(s_ssp_passkey, 0, sizeof(s_ssp_passkey));
+    s_ssp_confirmation_requested = false;
+    strcpy(s_default_pin, "1234"); // Reset to default PIN
 }
 
 // Add the cleanup function expected in test_app_main.c
@@ -157,21 +172,37 @@ bool bt_mock_is_device_paired(const char* addr) {
     if (!addr) return false;
     
     ESP_LOGI(TAG, "Checking if device is paired: %s", addr);
+
+    // First, normalize the input address to uppercase for consistent comparison
+    char normalized_addr[18];
+    strncpy(normalized_addr, addr, sizeof(normalized_addr) - 1);
+    normalized_addr[sizeof(normalized_addr) - 1] = '\0';
+    
+    // Convert to uppercase for comparison
+    for(int i = 0; normalized_addr[i]; i++) {
+        if(normalized_addr[i] >= 'a' && normalized_addr[i] <= 'f') {
+            normalized_addr[i] = normalized_addr[i] - 'a' + 'A';
+        }
+    }
+    
+    // Debug output device count
+    ESP_LOGI(TAG, "Current device count: %d", mock_state.device_count);
     
     for (int i = 0; i < mock_state.device_count; i++) {
         char device_addr[18];
-        // Use uppercase hex format to match the input format (12:34:56:78:9A:BC)
+        // Use uppercase hex format to match the normalized input format
         sprintf(device_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
                 mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
                 mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
                 mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
         
-        ESP_LOGI(TAG, "Comparing with stored device: %s, paired: %d", 
-                device_addr, mock_state.devices[i].paired);
+        ESP_LOGI(TAG, "Comparing with device %d: %s, paired: %d", 
+                i, device_addr, mock_state.devices[i].paired);
         
-        // Use case-insensitive comparison to be more robust
-        if (strcasecmp(device_addr, addr) == 0) {
-            ESP_LOGI(TAG, "Device match found! Paired status: %d", mock_state.devices[i].paired);
+        // Exact string comparison with normalized address
+        if (strcmp(device_addr, normalized_addr) == 0 && mock_state.devices[i].paired) {
+            ESP_LOGI(TAG, "Device match found at index %d! Paired status: %d", 
+                    i, mock_state.devices[i].paired);
             return mock_state.devices[i].paired;
         }
     }
@@ -343,10 +374,12 @@ esp_err_t bt_mock_start_pairing(const char* addr)
     if (s_ssp_support_enabled) {
         // For SSP, we should explicitly simulate the SSP request soon after
         current_pairing_method = BT_PAIRING_METHOD_SSP;
-        current_pairing_state = BT_PAIRING_STATE_STARTED;
+        current_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;  // Change this directly to 3
         
-        // Auto-simulate SSP request with passkey 123456 (for test_ssp_confirmation_request)
-        bt_mock_simulate_ssp_request(123456);
+        // Auto-simulate SSP request with passkey 123456
+        s_ssp_passkey_value = 123456;
+        snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, s_ssp_passkey_value);
+        s_ssp_confirmation_requested = true;
     } else {
         // For PIN
         current_pairing_method = BT_PAIRING_METHOD_PIN;
@@ -377,4 +410,133 @@ esp_err_t bt_mock_confirm_ssp(bool confirm)
     }
     
     return ESP_OK;
+}
+
+/**
+ * Set default PIN code
+ */
+esp_err_t bt_mock_set_default_pin(const char* pin) {
+    if (!pin) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    strncpy(s_default_pin, pin, sizeof(s_default_pin) - 1);
+    s_default_pin[sizeof(s_default_pin) - 1] = '\0';
+    
+    return ESP_OK;
+}
+
+/**
+ * Get default PIN code
+ */
+esp_err_t bt_mock_get_default_pin(char* pin, size_t size) {
+    if (!pin) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (size <= strlen(s_default_pin)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    
+    strncpy(pin, s_default_pin, size - 1);
+    pin[size - 1] = '\0';
+    
+    return ESP_OK;
+}
+
+/**
+ * Mock unpair specific device
+ */
+esp_err_t bt_mock_unpair_device(const char* addr) {
+    if (!addr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    ESP_LOGI(TAG, "Unpairing device: %s", addr);
+    
+    // First, normalize the input address to uppercase for consistent comparison
+    char normalized_addr[18];
+    strncpy(normalized_addr, addr, sizeof(normalized_addr) - 1);
+    normalized_addr[sizeof(normalized_addr) - 1] = '\0';
+    
+    // Convert to uppercase for comparison
+    for(int i = 0; normalized_addr[i]; i++) {
+        if(normalized_addr[i] >= 'a' && normalized_addr[i] <= 'f') {
+            normalized_addr[i] = normalized_addr[i] - 'a' + 'A';
+        }
+    }
+    
+    ESP_LOGI(TAG, "Device count before unpairing: %d", mock_state.device_count);
+    
+    // Go through the list multiple times to remove ALL matching devices
+    bool found_any = false;
+    int i = 0;
+    
+    // Use a while loop so we can reprocess the same index after shifting
+    while (i < mock_state.device_count) {
+        char device_addr[18];
+        sprintf(device_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
+                mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
+                mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+        
+        ESP_LOGI(TAG, "Comparing with device %d: %s", i, device_addr);
+        
+        // Exact string comparison with normalized address
+        if (strcmp(device_addr, normalized_addr) == 0) {
+            ESP_LOGI(TAG, "Found device to unpair at index %d", i);
+            
+            // Remove device by shifting remaining devices
+            for (int j = i; j < mock_state.device_count - 1; j++) {
+                memcpy(&mock_state.devices[j], &mock_state.devices[j+1], sizeof(bt_device_t));
+            }
+            
+            // Decrement device count
+            mock_state.device_count--;
+            found_any = true;
+            
+            // Don't increment i here - we need to check the new device that got shifted into this position
+        } else {
+            // Only increment i if we didn't remove a device
+            i++;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Device removal complete, new count: %d", mock_state.device_count);
+    
+    // Dump the current device list for debugging
+    for (int k = 0; k < mock_state.device_count; k++) {
+        char remaining_addr[18];
+        sprintf(remaining_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
+                mock_state.devices[k].addr[0], mock_state.devices[k].addr[1], 
+                mock_state.devices[k].addr[2], mock_state.devices[k].addr[3],
+                mock_state.devices[k].addr[4], mock_state.devices[k].addr[5]);
+        ESP_LOGI(TAG, "Remaining device %d: %s, paired: %d", 
+                k, remaining_addr, mock_state.devices[k].paired);
+    }
+    
+    return found_any ? ESP_OK : ESP_ERR_NOT_FOUND;
+}
+
+/**
+ * Mock unpair all devices
+ */
+esp_err_t bt_mock_unpair_all_devices(void) {
+    // Simply reset the device count
+    mock_state.device_count = 0;
+    return ESP_OK;
+}
+
+/**
+ * Mock get paired device count
+ */
+int bt_mock_get_paired_device_count(void) {
+    // Count devices that are marked as paired
+    int count = 0;
+    for (int i = 0; i < mock_state.device_count; i++) {
+        if (mock_state.devices[i].paired) {
+            count++;
+        }
+    }
+    return count;
 }
