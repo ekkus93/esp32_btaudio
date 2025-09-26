@@ -43,6 +43,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len);
 #include "command_interface.h"
+#include "nvs_storage.h"
 #endif
 
 // Initialize Bluetooth Manager
@@ -124,6 +125,24 @@ bt_status_t bt_manager_init(const bt_manager_init_t* config) {
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
     
     ESP_LOGI(TAG, "Bluetooth manager initialized with name: %s", config->device_name);
+    
+    // Initialize app NVS wrappers and load persisted paired devices
+    if (nvs_storage_init() == ESP_OK) {
+        int count = 0;
+        if (nvs_storage_get_paired_count(&count) == ESP_OK && count > 0) {
+            for (int i = 0; i < count && bt_ctx.paired_devices.count < 20; i++) {
+                char mac[32] = {0};
+                char name[32] = {0};
+                if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
+                    int idx = bt_ctx.paired_devices.count;
+                    strncpy(bt_ctx.paired_devices.devices[idx].mac, mac, sizeof(bt_ctx.paired_devices.devices[idx].mac)-1);
+                    if (name[0]) strncpy(bt_ctx.paired_devices.devices[idx].name, name, sizeof(bt_ctx.paired_devices.devices[idx].name)-1);
+                    bt_ctx.paired_devices.count++;
+                }
+            }
+            ESP_LOGI(TAG, "Loaded %d persisted paired devices", bt_ctx.paired_devices.count);
+        }
+    }
 #endif
     
     bt_ctx.initialized = true;
@@ -460,6 +479,8 @@ bt_status_t bt_unpair(const char* mac) {
         ESP_LOGE(TAG, "Failed to unpair device: %s", mac);
         return BT_ERROR_INIT_FAILED;
     }
+    // Remove from persisted storage as well
+    nvs_storage_remove_paired_device(mac);
     
     ESP_LOGI(TAG, "Unpaired device: %s", mac);
 #endif
@@ -605,6 +626,16 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
                 cmd_send_response("EVENT", "PAIR", "SUCCESS", bda_str);
+                // Persist paired device
+                // Try to get a device name from discovered list if available
+                char dev_name[32] = {0};
+                for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+                    if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
+                        strncpy(dev_name, bt_ctx.discovered_devices.devices[i].name, sizeof(dev_name)-1);
+                        break;
+                    }
+                }
+                nvs_storage_add_paired_device(bda_str, dev_name[0] ? dev_name : NULL);
             } else {
                 ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
                 cmd_send_response("EVENT", "PAIR", "FAILED", bda_str);

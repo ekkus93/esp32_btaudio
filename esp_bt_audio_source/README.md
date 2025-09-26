@@ -37,7 +37,8 @@ I2S and UART: practical defaults and recommendations
 - [x] Add I2S driver configuration for receiving audio
 - [x] Implement serial command protocol
 - [~] Add pairing management functionality (in-progress)
-  - Notes: Host-side command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests; on-device end-to-end pairing verification remains.
+   - Host-side: command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests (CONFIRM_PIN / ENTER_PIN and `nvs_storage` tests).
+   - On-device: end-to-end pairing verification (pair → reboot → persisted list verification) remains manual/pending.
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
   - [x] Add persistent settings storage in NVS
@@ -61,6 +62,7 @@ Recent changes (host-test and pairing work)
 - Host unit-test harness under `test/host_test` updated with additional mocks and tests to validate command handlers without device hardware.
 - Added minimal host-side mocks for Bluetooth GAP responses and NVS (`test/host_test/mocks/mock_gap.c`, `mocks/nvs_storage_mock.c`, `mocks/esp_bt.h`, `mocks/esp_err.h`) so `CONFIRM_PIN` and `ENTER_PIN` command handlers can be exercised by unit tests.
 - `components/command_interface/commands.c` has a small host-path branch that parses MAC and calls the GAP reply mocks so host tests can assert the expected behavior.
+ - New `nvs_storage` host tests were added and expanded (capacity and invalid-MAC cases); all host `nvs_storage` tests pass locally (6 tests, 0 failures).
 
 Next high-priority tasks:
 - Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).

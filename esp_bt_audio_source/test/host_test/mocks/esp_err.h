@@ -27,6 +27,10 @@ typedef int esp_err_t;
 #define ESP_ERR_NOT_FOUND (-127)
 #endif
 
+#ifndef ESP_ERR_NO_MEM
+#define ESP_ERR_NO_MEM (-12)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

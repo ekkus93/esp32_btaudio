@@ -43,9 +43,14 @@ add_executable(test_bluetooth test_bluetooth.c
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
 
+add_executable(test_nvs_storage test_nvs_storage.c
+    mocks/nvs_storage_mock.c)
+target_link_libraries(test_nvs_storage unity)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands
     COMMAND test_bluetooth
+    COMMAND test_nvs_storage
     DEPENDS test_commands test_bluetooth
 )

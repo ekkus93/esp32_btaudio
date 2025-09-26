@@ -21,3 +21,13 @@ esp_err_t nvs_storage_set_device_name(const char* name);
 // Default PIN
 esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len);
 esp_err_t nvs_storage_set_default_pin(const char* pin);
+
+// Paired devices persistence (simple indexed list stored in NVS)
+// count: number of stored paired devices
+esp_err_t nvs_storage_get_paired_count(int* count);
+// Fetch paired device fields by index (0-based). Returns ESP_OK if present.
+esp_err_t nvs_storage_get_paired_device_by_index(int index, char* mac, size_t mac_len, char* name, size_t name_len);
+// Add/remove/clear paired devices
+esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name);
+esp_err_t nvs_storage_remove_paired_device(const char* mac);
+esp_err_t nvs_storage_clear_paired_devices(void);
