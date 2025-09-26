@@ -42,6 +42,7 @@ static struct {
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len);
+#include "command_interface.h"
 #endif
 
 // Initialize Bluetooth Manager
@@ -564,7 +565,53 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             }
             break;
             
-        // Add other GAP event handlers as needed
+        case ESP_BT_GAP_PIN_REQ_EVT: {
+            // Remote device is requesting a PIN code (legacy pairing)
+            char bda_str[18];
+            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                   param->pin_req.bda[0], param->pin_req.bda[1], param->pin_req.bda[2],
+                   param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
+
+            ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
+            // Notify command interface: EVENT|PAIR|PIN_REQUEST|<MAC>
+            cmd_send_response("EVENT", "PAIR", "PIN_REQUEST", bda_str);
+            break;
+        }
+
+        case ESP_BT_GAP_CFM_REQ_EVT: {
+            // SSP confirmation request (numeric comparison)
+            char bda_str[18];
+            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                   param->cfm_req.bda[0], param->cfm_req.bda[1], param->cfm_req.bda[2],
+                   param->cfm_req.bda[3], param->cfm_req.bda[4], param->cfm_req.bda[5]);
+
+            // num_val contains the numeric comparison value (32-bit)
+            char data[64];
+            snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
+            ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
+            // Notify command interface: EVENT|PAIR|CONFIRM|<MAC>,<NUM>
+            cmd_send_response("EVENT", "PAIR", "CONFIRM", data);
+            break;
+        }
+
+        case ESP_BT_GAP_AUTH_CMPL_EVT: {
+            // Authentication complete (pairing result)
+            char bda_str[18] = {0};
+            if (param->auth_cmpl.bda) {
+                sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                       param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
+                       param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
+            }
+            if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+                ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
+                cmd_send_response("EVENT", "PAIR", "SUCCESS", bda_str);
+            } else {
+                ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
+                cmd_send_response("EVENT", "PAIR", "FAILED", bda_str);
+            }
+            break;
+        }
+
         default:
             break;
     }

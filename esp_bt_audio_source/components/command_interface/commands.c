@@ -19,6 +19,7 @@
 #define CMD_BUF_SIZE 256
 #include "nvs_storage.h"
 #include "bt_manager.h"
+#include "esp_gap_bt_api.h"
 #else
 // Include mock UART header for host-based testing
 #include "mock_uart.h"
@@ -407,6 +408,81 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             }
 #else
             cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_CONFIRM_PIN: {
+            // Expect params: <MAC> [ACCEPT|REJECT]
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "CONFIRM_PIN", "MISSING_PARAM", NULL);
+                break;
+            }
+            const char* mac = ctx->params[0];
+            bool accept = true; // default to accept if not specified
+            if (ctx->param_count >= 2) {
+                const char* p = ctx->params[1];
+                if (p == NULL) accept = true;
+                else if (strcasecmp(p, "REJECT") == 0 || strcasecmp(p, "NO") == 0 || strcmp(p, "0") == 0) accept = false;
+                else accept = true;
+            }
+#ifdef ESP_PLATFORM
+            esp_bd_addr_t bda;
+            if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+                       &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+                cmd_send_response("ERR", "CONFIRM_PIN", "INVALID_MAC", NULL);
+                break;
+            }
+            if (esp_bt_gap_ssp_confirm_reply(bda, accept) == ESP_OK) {
+                cmd_send_response("OK", "CONFIRM_PIN", accept ? "ACCEPTED" : "REJECTED", mac);
+            } else {
+                cmd_send_response("ERR", "CONFIRM_PIN", "FAILED", NULL);
+            }
+#else
+            // Host test: just echo
+            cmd_send_response("OK", "CONFIRM_PIN", accept ? "MOCK_ACCEPTED" : "MOCK_REJECTED", mac);
+#endif
+        } break;
+
+        case CMD_TYPE_ENTER_PIN: {
+            // Expect params: <MAC> <PIN>
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "ENTER_PIN", "MISSING_PARAM", NULL);
+                break;
+            }
+            const char* mac = ctx->params[0];
+            const char* pin = NULL;
+            char default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
+            if (ctx->param_count >= 2 && strlen(ctx->params[1]) > 0) {
+                pin = ctx->params[1];
+            } else {
+                // Try to use default PIN from NVS
+                if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0) {
+                    pin = default_pin;
+                }
+            }
+            if (pin == NULL) {
+                cmd_send_response("ERR", "ENTER_PIN", "MISSING_PIN", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            esp_bd_addr_t bda;
+            if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+                       &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+                cmd_send_response("ERR", "ENTER_PIN", "INVALID_MAC", NULL);
+                break;
+            }
+            esp_bt_pin_code_t pin_code = {0};
+            size_t pin_len = strlen(pin);
+            if (pin_len > ESP_BT_PIN_CODE_LEN) pin_len = ESP_BT_PIN_CODE_LEN;
+            memcpy(pin_code, pin, pin_len);
+            if (esp_bt_gap_pin_reply(bda, true, (uint8_t)pin_len, pin_code) == ESP_OK) {
+                cmd_send_response("OK", "ENTER_PIN", "SENT", mac);
+            } else {
+                cmd_send_response("ERR", "ENTER_PIN", "FAILED", NULL);
+            }
+#else
+            // Host test: just echo
+            cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
 #endif
         } break;
 
