@@ -8,6 +8,7 @@
 #include "esp_avrc_api.h"
 #include "bt_app_core.h"
 #include "bt_source.h"
+#include "nvs_storage.h"
 
 static const char *TAG = "BT_SOURCE";
 
@@ -58,20 +59,35 @@ static esp_err_t bt_classic_init(void)
         return ret;
     }
     
-        /* Try setting device name via GAP API; fall back to deprecated API if it fails */
-        ret = esp_bt_gap_set_device_name("ESP32-A2DP-Source");
+        /* Attempt to read a persisted device name from NVS and apply it.
+         * Fall back to the built-in default if none is found, and use the
+         * same GAP -> deprecated fallback strategy as before. */
+        char saved_name[64] = {0};
+        esp_err_t nvs_err = nvs_storage_init();
+        if (nvs_err != ESP_OK) {
+            ESP_LOGW(TAG, "NVS init failed: %s", esp_err_to_name(nvs_err));
+        }
+        const char* name_to_set = "ESP32-A2DP-Source";
+        if (nvs_storage_get_device_name(saved_name, sizeof(saved_name)) == ESP_OK && saved_name[0] != '\0') {
+            name_to_set = saved_name;
+            ESP_LOGI(TAG, "Applying persisted device name: %s", name_to_set);
+        } else {
+            ESP_LOGI(TAG, "Using default device name: %s", name_to_set);
+        }
+
+        ret = esp_bt_gap_set_device_name(name_to_set);
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s), attempting fallback", esp_err_to_name(ret));
             /* Fall back to deprecated API when gap API is not available.
              * Suppress the deprecation warning locally for this call. */
-    #if defined(__GNUC__)
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    #endif
-            ret = esp_bt_dev_set_device_name("ESP32-A2DP-Source");
-    #if defined(__GNUC__)
-    #pragma GCC diagnostic pop
-    #endif
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+            ret = esp_bt_dev_set_device_name(name_to_set);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "Failed to set device name with fallback API: %s", esp_err_to_name(ret));
                 return ret;

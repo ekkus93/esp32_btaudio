@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "audio_processor.h"
+#include "nvs_storage.h"
 
 static const char *TAG = "AUDIO_PROC";
 
@@ -94,6 +95,9 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     // Initialize statistics
     memset(&s_audio_stats, 0, sizeof(audio_stats_t));
+
+    // Initialize NVS storage helper (best effort)
+    nvs_storage_init();
 
     // Create audio processing task
     BaseType_t task_ret = xTaskCreate(audio_processing_task, "audio_proc", 
@@ -280,6 +284,9 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
 
     s_volume_gain = volume;
     s_audio_config.volume = volume;
+
+    // Persist new volume
+    nvs_storage_set_volume(s_volume_gain);
 
     ESP_LOGI(TAG, "Audio volume set to %d%%", volume);
     return ESP_OK;
@@ -511,6 +518,9 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     s_audio_config.i2s_ws_pin = ws_pin;
     s_audio_config.i2s_din_pin = din_pin;
     s_audio_config.i2s_dout_pin = dout_pin;
+
+    // Persist pins
+    nvs_storage_set_i2s_pins(bclk_pin, ws_pin, din_pin, dout_pin);
 
     esp_err_t ret = configure_i2s(&s_audio_config);
 

@@ -17,9 +17,12 @@
 #define TAG "CMD_IF"
 #define CMD_UART_NUM UART_NUM_1
 #define CMD_BUF_SIZE 256
+#include "nvs_storage.h"
+#include "bt_manager.h"
 #else
 // Include mock UART header for host-based testing
 #include "mock_uart.h"
+#include "nvs_storage.h"
 #endif
 
 // Private data
@@ -404,6 +407,43 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             }
 #else
             cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_SET_NAME: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "SET_NAME", "MISSING_PARAM", NULL);
+                break;
+            }
+            // Persist the device name and set in the Bluetooth stack if available
+#ifdef ESP_PLATFORM
+            if (nvs_storage_set_device_name(ctx->params[0]) == ESP_OK) {
+                // Try to set the name in bt_manager if provided
+                if (bt_set_name != NULL) bt_set_name(ctx->params[0]);
+                cmd_send_response("OK", "SET_NAME", "SUCCESS", ctx->params[0]);
+            } else {
+                cmd_send_response("ERR", "SET_NAME", "FAILED", NULL);
+            }
+#else
+            nvs_storage_set_device_name(ctx->params[0]);
+            cmd_send_response("OK", "SET_NAME", "MOCK_SUCCESS", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_SET_DEFAULT_PIN: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "SET_DEFAULT_PIN", "MISSING_PARAM", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (nvs_storage_set_default_pin(ctx->params[0]) == ESP_OK) {
+                cmd_send_response("OK", "SET_DEFAULT_PIN", "SUCCESS", ctx->params[0]);
+            } else {
+                cmd_send_response("ERR", "SET_DEFAULT_PIN", "FAILED", NULL);
+            }
+#else
+            nvs_storage_set_default_pin(ctx->params[0]);
+            cmd_send_response("OK", "SET_DEFAULT_PIN", "MOCK_SUCCESS", ctx->params[0]);
 #endif
         } break;
 

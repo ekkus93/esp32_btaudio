@@ -47,7 +47,14 @@ Notes on progress:
 - Volume and mute controls are implemented in the audio processor (`audio_processor_set_volume`, `audio_processor_set_mute`) and are wired into the command handlers.
 - Device scanning and connection management APIs are available in `components/bt_manager` (scan/connect/disconnect functions). The scanning result/event streaming and full pairing flows (PIN/SSP confirmation and persistent pairing state) remain to be completed and tested on device.
 
-Next high-priority tasks: persist user settings (volume, I2S pins, device name/PIN) to NVS and complete the pairing flow with event streaming to the command interface.
+Notes on recent progress:
+- A small NVS persistence component (`components/nvs_storage`) was added and registered with CMake. Configuration keys for volume, I2S pins, local device name and a default PIN are persisted and retrieved via that component.
+- The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
+- Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
+
+Next high-priority tasks:
+- Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).
+- Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 
 ## Serial Command Protocol
 
