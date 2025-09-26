@@ -39,7 +39,7 @@ I2S and UART: practical defaults and recommendations
 - [ ] Add pairing management functionality
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
-- [ ] Add persistent settings storage in NVS
+ - [x] Add persistent settings storage in NVS
 
 Notes on progress:
 - I2S driver configuration (modern standard-mode API) and an audio processing task are implemented. The code exposes runtime setters to change I2S pins and sample rate.
@@ -52,9 +52,15 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
+Recent work (pairing & events):
+- Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
+- Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now call the appropriate GAP reply APIs on-device (`esp_bt_gap_ssp_confirm_reply()` and `esp_bt_gap_pin_reply()`), falling back to a stored default PIN from NVS when available. These handlers are guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
+
 Next high-priority tasks:
 - Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
+ - Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
+ - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 
 ## Serial Command Protocol
 
