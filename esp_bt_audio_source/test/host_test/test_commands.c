@@ -3,6 +3,12 @@
 #include "unity.h"
 #include "command_interface.h"
 #include "mock_uart.h"
+// Access mock gap helpers
+extern void mock_gap_reset(void);
+extern const char* mock_gap_get_last_mac(void);
+extern int mock_gap_get_last_pin_len(void);
+extern const char* mock_gap_get_last_pin(void);
+extern int mock_gap_get_last_confirm(void);
 
 // Test fixture
 void setUp(void) {
@@ -86,6 +92,35 @@ void test_command_processing(void) {
     TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
 }
 
+// New tests for pairing command handlers
+void test_confirm_pin_command(void) {
+    mock_gap_reset();
+    // Execute confirm command (MAC + accept)
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("CONFIRM_PIN AA:BB:CC:DD:EE:FF ACCEPT", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* mac = mock_gap_get_last_mac();
+    TEST_ASSERT_NOT_NULL(mac);
+    // Mock formats hex lowercase
+    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", mac);
+    TEST_ASSERT_EQUAL(1, mock_gap_get_last_confirm());
+}
+
+void test_enter_pin_command(void) {
+    mock_gap_reset();
+    // Execute enter pin command
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("ENTER_PIN AA:BB:CC:DD:EE:FF 1234", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* mac = mock_gap_get_last_mac();
+    TEST_ASSERT_NOT_NULL(mac);
+    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", mac);
+    TEST_ASSERT_EQUAL(4, mock_gap_get_last_pin_len());
+    TEST_ASSERT_EQUAL_STRING("1234", mock_gap_get_last_pin());
+}
+
 // Main test runner
 int main(void) {
     UNITY_BEGIN();
@@ -97,6 +132,10 @@ int main(void) {
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
+
+    // Pairing related tests
+    RUN_TEST(test_confirm_pin_command);
+    RUN_TEST(test_enter_pin_command);
     
     return UNITY_END();
 }

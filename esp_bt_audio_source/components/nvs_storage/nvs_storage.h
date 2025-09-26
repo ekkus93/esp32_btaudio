@@ -1,6 +1,7 @@
 #pragma once
 #include "esp_err.h"
 #include <stdint.h>
+#include <stddef.h>
 
 // Initialize NVS storage for the app
 esp_err_t nvs_storage_init(void);

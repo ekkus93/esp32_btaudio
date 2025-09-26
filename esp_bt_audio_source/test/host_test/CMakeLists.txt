@@ -14,6 +14,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
 )
 
 # Find the unity package for unit testing
@@ -31,7 +32,9 @@ endif()
 # Add test executables
 add_executable(test_commands test_commands.c 
     ../../components/command_interface/commands.c
-    mocks/mock_uart.c)
+    mocks/mock_uart.c
+    mocks/mock_gap.c)
+target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_commands unity)
 
 add_executable(test_bluetooth test_bluetooth.c 

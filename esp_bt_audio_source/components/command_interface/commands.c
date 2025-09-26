@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 // Audio processor APIs
 #ifdef ESP_PLATFORM
 #include "audio_processor.h"
@@ -24,6 +25,8 @@
 // Include mock UART header for host-based testing
 #include "mock_uart.h"
 #include "nvs_storage.h"
+// Include mock Bluetooth types for host tests (esp_bt_pin_code_t, etc.)
+#include "esp_bt.h"
 #endif
 
 // Private data
@@ -438,8 +441,17 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 cmd_send_response("ERR", "CONFIRM_PIN", "FAILED", NULL);
             }
 #else
-            // Host test: just echo
-            cmd_send_response("OK", "CONFIRM_PIN", accept ? "MOCK_ACCEPTED" : "MOCK_REJECTED", mac);
+            // Host test: call mock GAP API so tests can observe parameters
+            {
+                uint8_t bda[6] = {0};
+                if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+                           &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
+                    esp_bt_gap_ssp_confirm_reply(bda, accept);
+                    cmd_send_response("OK", "CONFIRM_PIN", accept ? "MOCK_ACCEPTED" : "MOCK_REJECTED", mac);
+                } else {
+                    cmd_send_response("ERR", "CONFIRM_PIN", "INVALID_MAC", NULL);
+                }
+            }
 #endif
         } break;
 
@@ -481,8 +493,21 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 cmd_send_response("ERR", "ENTER_PIN", "FAILED", NULL);
             }
 #else
-            // Host test: just echo
-            cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
+            // Host test: call mock GAP API so tests can observe parameters
+            {
+                uint8_t bda[6] = {0};
+                if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
+                           &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
+                    uint8_t pin_code[ESP_BT_PIN_CODE_LEN] = {0};
+                    size_t pin_len = strlen(pin);
+                    if (pin_len > ESP_BT_PIN_CODE_LEN) pin_len = ESP_BT_PIN_CODE_LEN;
+                    memcpy(pin_code, pin, pin_len);
+                    esp_bt_gap_pin_reply(bda, true, (uint8_t)pin_len, pin_code);
+                    cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
+                } else {
+                    cmd_send_response("ERR", "ENTER_PIN", "INVALID_MAC", NULL);
+                }
+            }
 #endif
         } break;
 

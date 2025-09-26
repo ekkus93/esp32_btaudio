@@ -36,10 +36,11 @@ I2S and UART: practical defaults and recommendations
 - [x] Initial A2DP source implementation
 - [x] Add I2S driver configuration for receiving audio
 - [x] Implement serial command protocol
-- [ ] Add pairing management functionality
+- [~] Add pairing management functionality (in-progress)
+  - Notes: Host-side command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests; on-device end-to-end pairing verification remains.
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
- - [x] Add persistent settings storage in NVS
+  - [x] Add persistent settings storage in NVS
 
 Notes on progress:
 - I2S driver configuration (modern standard-mode API) and an audio processing task are implemented. The code exposes runtime setters to change I2S pins and sample rate.
@@ -56,12 +57,45 @@ Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
 - Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now call the appropriate GAP reply APIs on-device (`esp_bt_gap_ssp_confirm_reply()` and `esp_bt_gap_pin_reply()`), falling back to a stored default PIN from NVS when available. These handlers are guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
 
+Recent changes (host-test and pairing work)
+- Host unit-test harness under `test/host_test` updated with additional mocks and tests to validate command handlers without device hardware.
+- Added minimal host-side mocks for Bluetooth GAP responses and NVS (`test/host_test/mocks/mock_gap.c`, `mocks/nvs_storage_mock.c`, `mocks/esp_bt.h`, `mocks/esp_err.h`) so `CONFIRM_PIN` and `ENTER_PIN` command handlers can be exercised by unit tests.
+- `components/command_interface/commands.c` has a small host-path branch that parses MAC and calls the GAP reply mocks so host tests can assert the expected behavior.
+
 Next high-priority tasks:
 - Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
- - Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
- - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
+- Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
+- Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 
+How to run host unit tests (fast, on your development machine)
+
+1. Create and enter a build directory for host tests:
+
+```bash
+cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
+mkdir -p build_host_tests && cd build_host_tests
+cmake ..
+```
+
+2. Build the test runner (example: `test_commands`):
+
+```bash
+cmake --build . --target test_commands -j$(nproc)
+```
+
+3. Run the test binary and capture output:
+
+```bash
+./test_commands |& tee test_commands.log
+echo "exit code: $?"
+```
+
+Notes:
+- The host-test harness compiles production code with `ESP_PLATFORM` undefined and links in test mock implementations from `test/host_test/mocks/` so tests run on your Linux machine.
+- If a test fails, edit or extend the mocks under `test/host_test/mocks/` (for example `mock_gap.c` or `nvs_storage_mock.c`) to simulate the expected runtime behavior.
+
+If you'd like, I can also add a short `test/host_test/README.md` with these commands and a quick map of where the mocks live.
 ## Serial Command Protocol
 
 This ESP32 accepts commands via UART using the text-based protocol described in the main project README. Key command categories include:

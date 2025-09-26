@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "esp_err.h"
 
 /**
  * @brief UART port numbers
@@ -17,13 +18,6 @@ typedef enum {
 /**
  * @brief ESP error codes
  */
-typedef enum {
-    ESP_OK = 0,                  /*!< Success */
-    ESP_FAIL = -1,               /*!< Generic failure */
-    ESP_ERR_NO_MEM = -100,       /*!< Out of memory */
-    ESP_ERR_INVALID_ARG = -101,  /*!< Invalid argument */
-    ESP_ERR_INVALID_STATE = -102 /*!< Invalid state */
-} esp_err_t;
 
 /**
  * @brief FreeRTOS tick type

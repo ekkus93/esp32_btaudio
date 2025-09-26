@@ -115,6 +115,18 @@ void esp_bt_mock_trigger_device_discovery(const char* name, const char* addr, in
 void esp_bt_mock_trigger_connection_state_changed(esp_a2d_connection_state_t state, const char* addr);
 void esp_bt_mock_trigger_audio_state_changed(esp_a2d_audio_state_t state);
 
+// Mock GAP reply APIs used by pairing handlers
+// Return values mimic esp_err_t semantics (0 = success)
+int esp_bt_gap_pin_reply(uint8_t *bd_addr, bool accept, uint8_t pin_code_len, uint8_t *pin_code);
+int esp_bt_gap_ssp_confirm_reply(uint8_t *bd_addr, bool accept);
+
+// PIN code definitions (used by commands.c)
+#ifndef ESP_BT_PIN_CODE_LEN
+#define ESP_BT_PIN_CODE_LEN 16
+#endif
+
+typedef uint8_t esp_bt_pin_code_t[ESP_BT_PIN_CODE_LEN];
+
 #ifdef __cplusplus
 }
 #endif
