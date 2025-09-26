@@ -58,12 +58,25 @@ static esp_err_t bt_classic_init(void)
         return ret;
     }
     
-    /* Set device name */
-    ret = esp_bt_dev_set_device_name("ESP32-A2DP-Source");
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set device name failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
+        /* Try setting device name via GAP API; fall back to deprecated API if it fails */
+        ret = esp_bt_gap_set_device_name("ESP32-A2DP-Source");
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s), attempting fallback", esp_err_to_name(ret));
+            /* Fall back to deprecated API when gap API is not available.
+             * Suppress the deprecation warning locally for this call. */
+    #if defined(__GNUC__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    #endif
+            ret = esp_bt_dev_set_device_name("ESP32-A2DP-Source");
+    #if defined(__GNUC__)
+    #pragma GCC diagnostic pop
+    #endif
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to set device name with fallback API: %s", esp_err_to_name(ret));
+                return ret;
+            }
+        }
     
     /* Set discoverable and connectable mode */
     ret = esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);

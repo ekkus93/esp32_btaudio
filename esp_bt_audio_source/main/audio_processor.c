@@ -479,8 +479,9 @@ static void audio_processing_task(void *pvParameters)
 
     // Buffer for raw I2S input
     uint8_t i2s_buffer[AUDIO_BLOCK_SIZE * 8]; // Larger buffer to accommodate different bit depths
-    // Buffer for processed audio
+    // Buffers for processed audio (two buffers to avoid overlap during conversion/resampling)
     uint8_t proc_buffer[AUDIO_BLOCK_SIZE * 8];
+    uint8_t proc_buffer2[AUDIO_BLOCK_SIZE * 8];
 
     // Task timing measurements for CPU load calculation
     int64_t task_start_time, task_end_time;
@@ -488,7 +489,7 @@ static void audio_processing_task(void *pvParameters)
     const int LOAD_CALC_INTERVALS = 50; // Calculate load every N iterations
     int interval_counter = 0;
 
-    size_t bytes_read, bytes_written, conv_size;
+    size_t bytes_read, conv_size;
     
     while (1) {
         // If not running, just sleep
@@ -520,8 +521,29 @@ static void audio_processing_task(void *pvParameters)
         s_audio_stats.samples_processed += samples_count;
 
         // Process audio (format conversion, resampling, etc.)
-        memcpy(proc_buffer, i2s_buffer, bytes_read);
-        conv_size = bytes_read;
+        // Use convert_audio_format and resample_audio helpers so they are exercised.
+        // First, attempt format conversion (may be a no-op if formats match)
+        esp_err_t cret = convert_audio_format(i2s_buffer, proc_buffer, bytes_read,
+                                             s_audio_config.bit_depth, s_audio_config.bit_depth,
+                                             &conv_size);
+        if (cret != ESP_OK) {
+            s_audio_stats.conversion_errors++;
+            // Skip this buffer
+            continue;
+        }
+
+        // Then attempt resampling (may be a no-op if rates match)
+        size_t res_size = 0;
+        esp_err_t rret = resample_audio(proc_buffer, proc_buffer2, conv_size,
+                                        s_audio_config.sample_rate, s_audio_config.sample_rate,
+                                        &res_size);
+        if (rret != ESP_OK) {
+            s_audio_stats.conversion_errors++;
+            continue;
+        }
+
+        // Final processed buffer is in proc_buffer2 with size res_size
+        conv_size = res_size;
 
         // Check available space in the buffer
         size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
@@ -534,7 +556,7 @@ static void audio_processing_task(void *pvParameters)
         }
 
         // Add processed audio to the buffer
-        UBaseType_t buf_ret = xRingbufferSend(s_audio_buffer, proc_buffer, conv_size, 0);
+        UBaseType_t buf_ret = xRingbufferSend(s_audio_buffer, proc_buffer2, conv_size, 0);
         if (buf_ret != pdTRUE) {
             s_audio_stats.buffer_overruns++;
         }
