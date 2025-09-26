@@ -1,5 +1,6 @@
 #include <string.h>
 #include <time.h>
+#include <inttypes.h> // Add for PRIu32 macros
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -12,13 +13,6 @@
 #include "esp_avrc_api.h"
 #include "bt_app_core.h"
 #include "bt_source.h"
-
-// Make sure these types are defined in bt_source.h or define them here if not:
-// typedef enum { ... } bt_connection_state_t;
-// typedef enum { ... } bt_streaming_state_t;
-// typedef struct { ... } bt_connection_info_t;
-// typedef struct { ... } bt_streaming_info_t;
-// typedef void (*bt_stream_callback_t)(bool, esp_err_t, void*);
 
 static const char *TAG = "BT_CONNECTION_MGR";
 
@@ -104,12 +98,13 @@ static void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd
     
     /* Notify application via callback */
     if (s_connection_callback) {
-        s_connection_callback(s_connection_state == BT_CONNECTION_STATE_CONNECTED, 
-                             ESP_OK, s_connection_callback_data);
+        bt_connection_info_t info;
+        memcpy(&info, &s_connection_info, sizeof(bt_connection_info_t));
+        s_connection_callback(&info, s_connection_callback_data);
     }
 }
 
-/*
+/* 
  * A2DP audio state callback
  */
 static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr)
@@ -119,23 +114,34 @@ static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd
     
     switch (state) {
         case ESP_A2D_AUDIO_STATE_STOPPED:
-            update_streaming_state(BT_STREAMING_STATE_STOPPED);
-            ESP_LOGI(TAG, "Audio streaming stopped");
-            break;
-            
-        case ESP_A2D_AUDIO_STATE_STARTING:
-            update_streaming_state(BT_STREAMING_STATE_STARTING);
-            ESP_LOGI(TAG, "Audio streaming starting");
+            // In ESP-IDF, ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND might be defined as the same value
+            // as ESP_A2D_AUDIO_STATE_STOPPED. We need to handle them differently based on context.
+            if (s_streaming_state == BT_STREAMING_STATE_STREAMING || 
+                s_streaming_state == BT_STREAMING_STATE_STARTING) {
+                // If we were streaming, this is likely a REMOTE_SUSPEND
+                update_streaming_state(BT_STREAMING_STATE_PAUSED);
+                ESP_LOGI(TAG, "Audio streaming suspended by remote");
+            } else {
+                // Normal stop
+                update_streaming_state(BT_STREAMING_STATE_STOPPED);
+                ESP_LOGI(TAG, "Audio streaming stopped");
+            }
             break;
             
         case ESP_A2D_AUDIO_STATE_STARTED:
-            update_streaming_state(BT_STREAMING_STATE_STREAMING);
-            ESP_LOGI(TAG, "Audio streaming started");
-            break;
-            
-        case ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND:
-            update_streaming_state(BT_STREAMING_STATE_PAUSED);
-            ESP_LOGI(TAG, "Audio streaming suspended by remote");
+            // When we first get started state, consider it as "starting"
+            if (s_streaming_state != BT_STREAMING_STATE_STREAMING) {
+                update_streaming_state(BT_STREAMING_STATE_STARTING);
+                ESP_LOGI(TAG, "Audio streaming starting");
+                
+                // After a short delay, transition to streaming state
+                // In a real implementation, this would typically be handled by data flow
+                vTaskDelay(pdMS_TO_TICKS(100));
+                update_streaming_state(BT_STREAMING_STATE_STREAMING);
+                ESP_LOGI(TAG, "Audio streaming started");
+            } else {
+                ESP_LOGI(TAG, "Audio streaming continues");
+            }
             break;
             
         default:
@@ -146,7 +152,7 @@ static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd
     /* Notify application via callback */
     if (s_stream_callback) {
         s_stream_callback(s_streaming_state == BT_STREAMING_STATE_STREAMING, 
-                         ESP_OK, s_stream_callback_data);
+                         &s_streaming_info, s_stream_callback_data);
     }
 }
 
@@ -195,10 +201,10 @@ static void attempt_reconnection(void)
 static void update_connection_state(bt_connection_state_t new_state)
 {
     s_connection_state = new_state;
-    s_connection_info.state = new_state;
     
     /* Update connected flag based on state */
     s_connection_info.connected = (new_state == BT_CONNECTION_STATE_CONNECTED);
+    s_connection_info.state = new_state;
     
     /* Reset streaming state if disconnected */
     if (new_state == BT_CONNECTION_STATE_DISCONNECTED) {
@@ -257,12 +263,12 @@ int bt_get_connection_state(void)
     return (s_connection_state == BT_CONNECTION_STATE_CONNECTED) ? 1 : 0;
 }
 
-bt_streaming_state_t bt_get_streaming_state_detailed(void)
+bt_streaming_state_t bt_get_streaming_state(void)
 {
     return s_streaming_state;
 }
 
-int bt_get_streaming_state(void)
+int bt_get_streaming_state_int(void)
 {
     return (s_streaming_state == BT_STREAMING_STATE_STREAMING) ? 1 : 0;
 }
@@ -287,7 +293,7 @@ esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
     return ESP_OK;
 }
 
-void bt_connection_manager_init(esp_a2d_connection_state_cb_t conn_cb, esp_a2d_audio_state_cb_t audio_cb)
+void bt_connection_manager_init(esp_a2d_cb_t conn_cb, esp_a2d_source_data_cb_t audio_cb)
 {
     /* Register A2DP callbacks */
     esp_a2d_register_callback(conn_cb);
@@ -302,4 +308,18 @@ void bt_connection_manager_init(esp_a2d_connection_state_cb_t conn_cb, esp_a2d_a
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
     
     ESP_LOGI(TAG, "Connection manager initialized");
+}
+
+/* 
+ * These functions are intended to be used as callbacks for the A2DP stack.
+ * Adding exports to remove unused function warnings.
+ */
+void bt_connection_state_cb(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr)
+{
+    bt_connection_state_handler(state, bd_addr);
+}
+
+void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr)
+{
+    bt_audio_state_handler(state, bd_addr);
 }

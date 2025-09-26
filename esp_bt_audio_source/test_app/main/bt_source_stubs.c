@@ -1,252 +1,396 @@
 /**
- * Stub implementations for BT functions used in tests
- * These are minimal implementations just to make the linker happy
+ * @file bt_source_stubs.c
+ * @brief Bluetooth source stub implementation for testing purposes
  */
-#include <stddef.h>
-#include <stdbool.h>
+
+#include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include <inttypes.h> // For PRIu32 macros
-#include "bt_source.h"
-// Fix the include path - use the header from bluetooth/include
-#include "bt_mock_devices.h"
-#include "esp_log.h"
-#include <stdlib.h>
-
-// Add FreeRTOS includes needed for timer functionality
 #include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_err.h"
+#include "bt_source.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
-// Forward declarations for functions that might not be properly recognized
-void bt_mock_init(void);
-void bt_mock_cleanup(void);
-void bt_mock_start_scan(void);
-void bt_mock_stop_scan(void);
-int bt_mock_get_scan_results(bt_device_t* devices, int max_count);
-esp_err_t bt_mock_start_pairing(const char* addr);
-esp_err_t bt_mock_send_pin(const char* pin);
-esp_err_t bt_mock_confirm_ssp(bool confirm);
-bool bt_mock_is_device_paired(const char* addr);
-esp_err_t bt_mock_set_default_pin(const char* pin);
-esp_err_t bt_mock_get_default_pin(char* pin, size_t size);  // Add this missing declaration
+// Provide weak attribute for functions to avoid conflicts with real implementations
+#define BT_WEAK_FN __attribute__((weak))
 
-static const char *TAG = "BT_STUBS";
+static const char *TAG = "BT_SOURCE_STUB";
 
-// Forward declaration for function used before its definition
-bt_pairing_state_t bt_get_pairing_state_internal(void);
+/* Mock device database */
+#define MAX_TEST_DEVICES 10
+static bt_device_t s_devices[MAX_TEST_DEVICES];
+static int s_device_count = 0;
 
-// Basic state variables - simplified for testing
-static bool bt_initialized = false;
-static bool bt_scanning = false;
-static TimerHandle_t scan_timer = NULL;
-static uint32_t scan_duration = 0;
+/* Mock paired device database */
+#define MAX_PAIRED_DEVICES 5
+static bt_device_t s_paired_devices[MAX_PAIRED_DEVICES];
+static int s_paired_device_count = 0;
 
-// Mock state for BT tests
-static bool s_is_streaming = false;
-static bt_streaming_state_t s_streaming_state = BT_STREAM_STATE_STOPPED;
-static bool s_is_connected = false;
-static char s_connected_addr[18] = {0};
-static char s_connected_name[64] = {0};
+/* Connection state tracking */
+static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
+static bt_pairing_state_t s_pairing_state = BT_PAIRING_STATE_IDLE;
+static bt_pairing_method_t s_pairing_method = BT_PAIRING_METHOD_NONE;
+static char s_connected_device_addr[18] = {0};
+static char s_connected_device_name[32] = {0};
+static char s_default_pin[8] = "1234";
+
+/* State flags */
+static bool s_is_scanning = false;
 static bool s_auto_reconnect = false;
+static bool s_is_connected = false;
+static bool s_ssp_supported = true;
+static bool s_simulate_pairing_failure = false;
+static bool s_simulate_pairing_timeout = false;
+static bool s_test_mode = false;
 
-// Define scan status enum to match bt_source.h
-typedef enum {
-    BT_SCAN_STARTED,
-    BT_SCAN_FOUND_DEVICES,
-    BT_SCAN_COMPLETE,
-    BT_SCAN_ERROR
-} bt_scan_status_t;
+/* Mock for SSP confirmation */
+static bool s_ssp_confirmation_requested = false;
+static char s_ssp_passkey[8] = "000000";
 
-// The callback function type definitions - must match bt_source.h
-typedef void (*bt_scan_results_cb_t)(bt_device_t* devices, int count, bt_scan_status_t status);
-typedef void (*bt_connect_status_cb_t)(bool connected, const char* addr);
-typedef void (*bt_pairing_status_cb_t)(bt_pairing_state_t state, bt_pairing_method_t method);
+/* Callback types */
+typedef void (*bt_connect_status_cb_t)(bt_connection_info_t* info, void* user_data);
+typedef void (*bt_pairing_status_cb_t)(bt_pairing_state_t state, void* user_data);
 
-// Simplified callback storage
-static bt_scan_results_cb_t scan_callback = NULL;
+/* Callbacks */
+static bt_discovery_cb_t scan_callback = NULL;
+static void *scan_callback_data = NULL;
 static bt_connect_status_cb_t connect_callback = NULL;
 static bt_pairing_status_cb_t pairing_callback = NULL;
 
-// Timer callback for scan timeout
-static void scan_timer_callback(TimerHandle_t timer) {
-    ESP_LOGI(TAG, "Scan timer expired, stopping scan");
-    bt_scan_stop();
-    
-    // Notify application through callback if set
-    if (scan_callback) {
-        scan_callback(NULL, 0, BT_SCAN_COMPLETE);
+/* Discovery task handle */
+static TaskHandle_t s_discovery_task_handle = NULL;
+
+/* SSP confirmation passkey for testing */
+static uint32_t s_passkey = 123456;
+static bool s_waiting_for_confirmation = false;
+
+/* Forward declarations */
+static void simulate_discovery_task(void *pvParameters);
+static void reset_device_database(void);
+
+/**
+ * @brief Reset Bluetooth state for testing purposes
+ */
+BT_WEAK_FN void bt_reset_for_test(void)
+{
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_pairing_state = BT_PAIRING_STATE_IDLE;
+    s_pairing_method = BT_PAIRING_METHOD_NONE;
+    s_is_scanning = false;
+    s_is_connected = false;
+
+    /* Reset device database */
+    reset_device_database();
+
+    ESP_LOGI(TAG, "BT mock state reset");
+}
+
+/**
+ * @brief Reset device database
+ */
+static void reset_device_database(void)
+{
+    s_device_count = 0;
+    s_paired_device_count = 0;
+    memset(s_devices, 0, sizeof(s_devices));
+    memset(s_paired_devices, 0, sizeof(s_paired_devices));
+}
+
+/**
+ * @brief Simulate failure during PIN pairing
+ */
+BT_WEAK_FN void bt_mock_simulate_pin_failure(void)
+{
+    s_simulate_pairing_failure = true;
+    ESP_LOGI(TAG, "Simulating PIN failure on next pairing attempt");
+}
+
+/**
+ * @brief Simulate pairing timeout
+ */
+BT_WEAK_FN void bt_mock_simulate_pairing_timeout(void)
+{
+    s_simulate_pairing_timeout = true;
+    ESP_LOGI(TAG, "Simulating pairing timeout on next pairing attempt");
+}
+
+/**
+ * @brief Set whether SSP is supported
+ */
+BT_WEAK_FN void bt_mock_set_ssp_supported(bool supported)
+{
+    s_ssp_supported = supported;
+    ESP_LOGI(TAG, "SSP support set to: %s", supported ? "true" : "false");
+}
+
+/**
+ * @brief Add a test device for simulated discovery
+ *
+ * @param addr_str   Device address string in format "XX:XX:XX:XX:XX:XX"
+ * @param name       Device name
+ * @param type       Device type
+ */
+BT_WEAK_FN void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_type_t type)
+{
+    if (s_device_count >= MAX_TEST_DEVICES) {
+        ESP_LOGE(TAG, "Cannot add more test devices, database full");
+        return;
     }
-}
 
-// Helper function to clean up scan resources
-static void cleanup_scan_resources(void) {
-    ESP_LOGI(TAG, "Cleaning up scan resources");
+    bt_device_t* device = &s_devices[s_device_count];
     
-    bt_scanning = false;
-    
-    // Stop and delete the timer if it exists
-    if (scan_timer != NULL) {
-        if (xTimerIsTimerActive(scan_timer)) {
-            xTimerStop(scan_timer, 0);
-        }
-        xTimerDelete(scan_timer, 0);
-        scan_timer = NULL;
-    }
-    
-    // Reset the scan callback
-    scan_callback = NULL;
-}
-
-// Private function to start scan with timeout
-static esp_err_t start_scan_with_timeout(uint32_t timeout_seconds) {
-    // Check if initialization has been done
-    if (!bt_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // Check if already scanning
-    if (bt_scanning) {
-        ESP_LOGW(TAG, "Already scanning");
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // Start mock scan
-    bt_mock_start_scan();
-    bt_scanning = true;
-    scan_duration = timeout_seconds;
-    
-    // Create timer for scan timeout
-    scan_timer = xTimerCreate(
-        "bt_scan_timer",
-        pdMS_TO_TICKS(timeout_seconds * 1000),
-        pdFALSE, // One-shot timer
-        NULL,    // No timer ID
-        scan_timer_callback
-    );
-    
-    // Start the timer
-    if (scan_timer != NULL) {
-        if (xTimerStart(scan_timer, 0) != pdPASS) {
-            ESP_LOGE(TAG, "Failed to start scan timer");
-            xTimerDelete(scan_timer, 0);
-            scan_timer = NULL;
-            bt_scanning = false;
-            return ESP_FAIL;
-        }
-    }
-    
-    return ESP_OK;
-}
-
-// Initialize Bluetooth
-esp_err_t bt_init(void) {
-    ESP_LOGI(TAG, "Stub: bt_init");
-    bt_initialized = true;
-    bt_mock_init();
-    return ESP_OK;
-}
-
-// Get current pairing state
-bt_pairing_state_t bt_get_pairing_state(void) {
-    return bt_get_pairing_state_internal();
-}
-
-// Start pairing with a device
-esp_err_t bt_start_pairing(const char* addr) {
-    ESP_LOGI(TAG, "Stub: bt_start_pairing %s", addr);
-    return bt_mock_start_pairing(addr);
-}
-
-// Send PIN code during pairing
-esp_err_t bt_send_pin_code(const char* pin) {
-    ESP_LOGI(TAG, "Mock: Sending PIN code");
-    return bt_mock_send_pin(pin);
-}
-
-// Confirm SSP pairing
-esp_err_t bt_ssp_confirm(bool confirm) {
-    ESP_LOGI(TAG, "Stub: bt_ssp_confirm %d", confirm);
-    return bt_mock_confirm_ssp(confirm);
-}
-
-// Check if a device is paired
-bool bt_is_device_paired(const char* addr) {
-    return bt_mock_is_device_paired(addr);
-}
-
-// Clean up resources
-void bt_cleanup(void) {
-    ESP_LOGI(TAG, "Stub: bt_cleanup");
-    bt_initialized = false;
-    bt_scanning = false;
-    bt_mock_cleanup();
-    
-    // Clean up any timer resources
-    cleanup_scan_resources();
-}
-
-// Implementing the bt_source.h function signatures correctly
-esp_err_t bt_scan_start(void) {
-    ESP_LOGI(TAG, "Stub: bt_scan_start default timeout");
-    // Use a default timeout of 10 seconds
-    return start_scan_with_timeout(10);
-}
-
-// Stop scanning for devices
-esp_err_t bt_scan_stop(void) {
-    ESP_LOGI(TAG, "Stub: bt_scan_stop");
-    
-    if (!bt_scanning) {
-        ESP_LOGW(TAG, "Stub: bt_scan_stop called but no scan active in our state");
-        return ESP_OK;
+    /* Parse address */
+    unsigned int addr[6];
+    if (sscanf(addr_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+               &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid address format: %s", addr_str);
+        return;
     }
     
-    // Cleanup resources
-    bt_mock_stop_scan();
-    cleanup_scan_resources();
-    bt_scanning = false;
+    for (int i = 0; i < 6; i++) {
+        device->addr[i] = (uint8_t)addr[i];
+    }
     
-    return ESP_OK;
+    strncpy(device->name, name, sizeof(device->name) - 1);
+    device->name[sizeof(device->name) - 1] = '\0';
+    device->rssi = -60; /* Default RSSI */
+    
+    /* Set class of device based on type */
+    switch (type) {
+        case BT_DEVICE_TYPE_AUDIO:
+            device->cod = 0x240404; /* Audio device */
+            break;
+        case BT_DEVICE_TYPE_PHONE:
+            device->cod = 0x200404; /* Phone */
+            break;
+        default:
+            device->cod = 0x120104; /* Computer */
+            break;
+    }
+    
+    s_device_count++;
+    ESP_LOGI(TAG, "Added test device: %s, %s", addr_str, name);
 }
 
-// Is currently scanning?
-bool bt_is_scanning(void) {
-    return bt_scanning;
-}
+/* Add a helper function to add mock devices */
+BT_WEAK_FN esp_err_t bt_mock_add_device(const char* addr_str, const char* name, bt_device_type_t type, bool paired)
+{
+    if (s_device_count >= MAX_TEST_DEVICES) {
+        ESP_LOGE(TAG, "Cannot add more test devices, database full");
+        return ESP_ERR_NO_MEM;
+    }
 
-// Implement with the correct signature from bt_source.h
-esp_err_t bt_scan_start_filtered(bt_device_type_t device_type) {
-    ESP_LOGI(TAG, "Stub: bt_scan_start_filtered for device type %d", device_type);
-    // Use a default timeout of 10 seconds
-    return start_scan_with_timeout(10);
-}
-
-// Implement with the correct signature from bt_source.h
-esp_err_t bt_scan(uint32_t duration_s) {
-    ESP_LOGI(TAG, "Stub: bt_scan for %" PRIu32 " seconds", duration_s);
-    return start_scan_with_timeout(duration_s);
-}
-
-// Get discovered device count - updated to match bt_source.h
-uint16_t bt_get_discovered_device_count(void) {
-    // Just return a fixed value for testing
-    return 3;
-}
-
-// Get discovered devices - updated to match bt_source.h
-esp_err_t bt_get_discovered_devices(bt_device_t* devices, uint16_t count, uint16_t *actual_count) {
-    if (devices == NULL || count == 0) {
-        if (actual_count) {
-            *actual_count = 0;
-        }
+    bt_device_t* device = &s_devices[s_device_count];
+    
+    /* Parse address */
+    unsigned int addr[6];
+    if (sscanf(addr_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+               &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]) != 6) {
+        ESP_LOGE(TAG, "Invalid address format: %s", addr_str);
         return ESP_ERR_INVALID_ARG;
     }
     
-    int num_devices = bt_mock_get_scan_results(devices, count);
-    
-    if (actual_count) {
-        *actual_count = num_devices;
+    for (int i = 0; i < 6; i++) {
+        device->addr[i] = (uint8_t)addr[i];
     }
+    
+    strncpy(device->name, name, sizeof(device->name) - 1);
+    device->name[sizeof(device->name) - 1] = '\0';
+    device->rssi = -60; /* Default RSSI */
+    device->paired = paired;
+    
+    /* Set class of device based on type */
+    switch (type) {
+        case BT_DEVICE_TYPE_AUDIO:
+            device->cod = 0x240404; /* Audio device */
+            break;
+        case BT_DEVICE_TYPE_PHONE:
+            device->cod = 0x200404; /* Phone */
+            break;
+        default:
+            device->cod = 0x120104; /* Computer */
+            break;
+    }
+    
+    s_device_count++;
+    ESP_LOGI(TAG, "Added test device: %s, %s (paired: %s)", addr_str, name, paired ? "yes" : "no");
+    
+    // Also add to paired devices if paired flag is set
+    if (paired && s_paired_device_count < MAX_PAIRED_DEVICES) {
+        memcpy(&s_paired_devices[s_paired_device_count++], device, sizeof(bt_device_t));
+    }
+    
+    return ESP_OK;
+}
+
+/* Add a paired device directly */
+BT_WEAK_FN esp_err_t bt_mock_add_paired_device(bt_device_t* device) 
+{
+    if (s_paired_device_count >= MAX_PAIRED_DEVICES) {
+        ESP_LOGE(TAG, "Cannot add more paired devices, database full");
+        return ESP_ERR_NO_MEM;
+    }
+    
+    if (device == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    memcpy(&s_paired_devices[s_paired_device_count++], device, sizeof(bt_device_t));
+    
+    ESP_LOGI(TAG, "Added paired device: %02x:%02x:%02x:%02x:%02x:%02x, %s",
+             device->addr[0], device->addr[1], device->addr[2],
+             device->addr[3], device->addr[4], device->addr[5],
+             device->name);
+    
+    return ESP_OK;
+}
+
+// For connect by name test
+static const char* s_connect_by_name_address = NULL; 
+static const char* s_connect_by_name_name = NULL;
+
+BT_WEAK_FN void bt_mock_set_connect_by_name_hook(const char* name, const char* addr) 
+{
+    s_connect_by_name_name = name;
+    s_connect_by_name_address = addr;
+    ESP_LOGI(TAG, "Set connect-by-name hook: %s -> %s", name, addr);
+}
+
+/* Mock function to reset state for testing */
+BT_WEAK_FN void bt_mock_reset(void)
+{
+    ESP_LOGI(TAG, "Resetting BT mock state");
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_pairing_state = BT_PAIRING_STATE_IDLE;
+    s_pairing_method = BT_PAIRING_METHOD_NONE;
+    s_is_scanning = false;
+    s_auto_reconnect = false;
+    s_is_connected = false;
+    s_ssp_supported = true;
+    s_simulate_pairing_failure = false;
+    s_simulate_pairing_timeout = false;
+    s_waiting_for_confirmation = false;
+
+    /* Reset device database */
+    reset_device_database();
+
+    /* Clear connection info */
+    memset(s_connected_device_addr, 0, sizeof(s_connected_device_addr));
+    memset(s_connected_device_name, 0, sizeof(s_connected_device_name));
+
+    /* Reset connect-by-name hook */
+    s_connect_by_name_address = NULL;
+    s_connect_by_name_name = NULL;
+}
+
+/**
+ * @brief Initialize Bluetooth
+ */
+BT_WEAK_FN esp_err_t bt_init(void)
+{
+    ESP_LOGI(TAG, "Initializing Bluetooth (stub)");
+    
+    if (s_test_mode) {
+        ESP_LOGI(TAG, "Already initialized in test mode");
+        return ESP_OK;
+    }
+    
+    reset_device_database();
+    
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_pairing_state = BT_PAIRING_STATE_IDLE;
+    
+    s_test_mode = true;
+    
+    /* Load any paired devices */
+    bt_load_paired_devices();
+    
+    ESP_LOGI(TAG, "BT initialization complete (stub)");
+    return ESP_OK;
+}
+
+/**
+ * @brief Clean up Bluetooth
+ */
+BT_WEAK_FN void bt_cleanup(void)
+{
+    if (!s_test_mode) {
+        return;
+    }
+    
+    if (s_discovery_task_handle != NULL) {
+        vTaskDelete(s_discovery_task_handle);
+        s_discovery_task_handle = NULL;
+    }
+    
+    s_test_mode = false;
+    ESP_LOGI(TAG, "BT cleaned up (stub)");
+}
+
+/**
+ * @brief Start BT scanning
+ */
+BT_WEAK_FN esp_err_t bt_scan_start(void)
+{
+    return bt_scan(10); // Default to 10 second scan
+}
+
+/**
+ * @brief Start filtered BT scan
+ */
+BT_WEAK_FN esp_err_t bt_scan_start_filtered(bt_device_type_t device_type)
+{
+    // For stub, just do a regular scan
+    return bt_scan_start();
+}
+
+/**
+ * @brief Stop BT scanning
+ */
+BT_WEAK_FN esp_err_t bt_scan_stop(void)
+{
+    if (!s_is_scanning) {
+        ESP_LOGW(TAG, "Scan not in progress");
+        return ESP_OK;
+    }
+    
+    s_is_scanning = false;
+    
+    if (s_discovery_task_handle != NULL) {
+        vTaskDelete(s_discovery_task_handle);
+        s_discovery_task_handle = NULL;
+    }
+    
+    ESP_LOGI(TAG, "Stopped scanning (stub)");
+    return ESP_OK;
+}
+
+/**
+ * @brief Start BT scanning with timeout
+ */
+BT_WEAK_FN esp_err_t bt_scan(uint32_t duration_s)
+{
+    if (s_is_scanning) {
+        ESP_LOGW(TAG, "Scan already in progress");
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Starting BT scanning with %" PRIu32 " second timeout (stub)", duration_s);
+    s_is_scanning = true;
+    
+    // Create a task to simulate discovery
+    xTaskCreate(simulate_discovery_task, "bt_discovery", 4096, NULL, 5, &s_discovery_task_handle);
+    
+    // In a real implementation we'd set up a timer, but for the mock we'll rely on
+    // the discovery task ending itself
     
     return ESP_OK;
 }
@@ -254,275 +398,776 @@ esp_err_t bt_get_discovered_devices(bt_device_t* devices, uint16_t count, uint16
 /**
  * @brief Connect to a device
  */
-esp_err_t bt_connect_device(const char* addr) {
-    ESP_LOGI(TAG, "Connecting to device %s (stub)", addr);
-    
-    if (addr == NULL) {
-        return ESP_ERR_INVALID_ARG;
+BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
+{
+    if (s_is_connected) {
+        ESP_LOGW(TAG, "Already connected to a device");
+        return ESP_ERR_INVALID_STATE;
     }
     
-    // Fix: Explicitly handle "11:22:33:44:55:66" as a failure case
-    // This ensures the test_connection_failure_handling test passes
-    if (strcmp(addr, "11:22:33:44:55:66") == 0) {
-        return ESP_FAIL;
+    /* Update connection state */
+    s_connection_state = BT_CONNECTION_STATE_CONNECTING;
+    
+    /* Save connected device info */
+    strncpy(s_connected_device_addr, addr, sizeof(s_connected_device_addr) - 1);
+    s_connected_device_addr[sizeof(s_connected_device_addr) - 1] = '\0';
+    
+    /* Find device in database */
+    bool found = false;
+    for (int i = 0; i < s_device_count; i++) {
+        char dev_addr[18];
+        sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
+                s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
+        
+        if (strcasecmp(dev_addr, addr) == 0) {
+            strncpy(s_connected_device_name, s_devices[i].name, sizeof(s_connected_device_name) - 1);
+            s_connected_device_name[sizeof(s_connected_device_name) - 1] = '\0';
+            found = true;
+            break;
+        }
     }
     
-    // Simulate connection failure for specific addresses
-    if (strcmp(addr, "AA:BB:CC:DD:EE:FF") == 0) {
-        return ESP_FAIL;
+    if (!found) {
+        /* If not found in discovered devices, check paired devices */
+        for (int i = 0; i < s_paired_device_count; i++) {
+            char dev_addr[18];
+            sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
+                    s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
+            
+            if (strcasecmp(dev_addr, addr) == 0) {
+                strncpy(s_connected_device_name, s_paired_devices[i].name, sizeof(s_connected_device_name) - 1);
+                s_connected_device_name[sizeof(s_connected_device_name) - 1] = '\0';
+                found = true;
+                break;
+            }
+        }
     }
     
-    // Store connected device details
-    strncpy(s_connected_addr, addr, sizeof(s_connected_addr) - 1);
-    s_connected_addr[sizeof(s_connected_addr) - 1] = '\0';
+    /* Create a connection simulation */
+    vTaskDelay(pdMS_TO_TICKS(500)); // Simulate connection delay
     
-    // Use a default name
-    snprintf(s_connected_name, sizeof(s_connected_name), "Test Device %s", addr);
-    
+    /* Update state */
+    s_connection_state = BT_CONNECTION_STATE_CONNECTED;
     s_is_connected = true;
-    return bt_mock_connect(addr);
+    
+    ESP_LOGI(TAG, "Connected to device: %s (stub)", addr);
+    return ESP_OK;
 }
 
 /**
- * @brief Connect to device by name
+ * @brief Connect to a device by name
  */
-esp_err_t bt_connect_device_by_name(const char* name) {
-    ESP_LOGI(TAG, "Connecting to device by name: %s (stub)", name);
-    
-    if (name == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Simulate connection failure for specific names
-    if (strcmp(name, "Failure Device") == 0) {
-        return ESP_FAIL;
+BT_WEAK_FN esp_err_t bt_connect_device_by_name(const char* name)
+{
+    /* First check if we have a special hook set up */
+    if (s_connect_by_name_name != NULL && strcmp(name, s_connect_by_name_name) == 0 &&
+        s_connect_by_name_address != NULL) {
+        ESP_LOGI(TAG, "Using connect-by-name hook for %s -> %s", name, s_connect_by_name_address);
+        return bt_connect_device(s_connect_by_name_address);
     }
 
-    // The test is specifically looking for the TEST_DEVICE_NAME which is "Test Audio Device"
-    // and expecting to connect to TEST_DEVICE_ADDR which is "AA:BB:CC:11:22:33"
+    /* Look up device by name in database */
+    for (int i = 0; i < s_device_count; i++) {
+        if (strcasecmp(s_devices[i].name, name) == 0) {
+            char addr[18];
+            sprintf(addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
+                    s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
+            
+            return bt_connect_device(addr);
+        }
+    }
     
-    // Make sure we never return ESP_ERR_INVALID_STATE (259)
-    s_is_connected = true;
-    strncpy(s_connected_name, name, sizeof(s_connected_name) - 1);
-    s_connected_name[sizeof(s_connected_name) - 1] = '\0';
-    
-    // Use the expected test address
-    strncpy(s_connected_addr, "AA:BB:CC:11:22:33", sizeof(s_connected_addr) - 1);
-    s_connected_addr[sizeof(s_connected_addr) - 1] = '\0';
-    
-    // Configure the hook for the mock system
-    bt_mock_set_connect_by_name_hook(name, s_connected_addr);
-    
-    // Although the mock call is void, we simulate a connection
-    bt_mock_connect(s_connected_addr);
-    
-    // Guarantee we return ESP_OK (0) exactly, not ESP_ERR_INVALID_STATE (259)
-    return ESP_OK;
+    ESP_LOGE(TAG, "Device with name '%s' not found", name);
+    return ESP_ERR_NOT_FOUND;
 }
 
 /**
  * @brief Disconnect from current device
  */
-esp_err_t bt_disconnect(void) {
-    ESP_LOGI(TAG, "Disconnecting device (stub)");
-    
+BT_WEAK_FN esp_err_t bt_disconnect(void)
+{
     if (!s_is_connected) {
+        ESP_LOGW(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
     }
     
-    // Stop streaming if it's active
-    if (s_is_streaming) {
-        bt_a2dp_stop_streaming();
-    }
+    /* Update state */
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTING;
+    vTaskDelay(pdMS_TO_TICKS(100)); // Simulate disconnect delay
     
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
     s_is_connected = false;
-    memset(s_connected_addr, 0, sizeof(s_connected_addr));
-    memset(s_connected_name, 0, sizeof(s_connected_name));
     
-    return bt_mock_disconnect();
+    ESP_LOGI(TAG, "Disconnected from device (stub)");
+    return ESP_OK;
 }
 
 /**
- * @brief Check if connected
+ * @brief Check if connected to a device
  */
-bool bt_is_connected(void) {
+BT_WEAK_FN bool bt_is_connected(void)
+{
     return s_is_connected;
 }
 
 /**
  * @brief Get connection info
  */
-esp_err_t bt_get_connection_info(bt_connection_info_t* info) {
-    ESP_LOGI(TAG, "Getting connection info (stub)");
-    
-    if (!info) {
+BT_WEAK_FN esp_err_t bt_get_connection_info(bt_connection_info_t* info)
+{
+    if (info == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    if (!s_is_connected) {
-        info->connected = false;
-        return ESP_OK;
-    }
-    
-    info->connected = true;
-    strncpy(info->addr, s_connected_addr, sizeof(info->addr) - 1);
+    info->connected = s_is_connected;
+    strncpy(info->addr, s_connected_device_addr, sizeof(info->addr) - 1);
     info->addr[sizeof(info->addr) - 1] = '\0';
-    
-    strncpy(info->name, s_connected_name, sizeof(info->name) - 1);
+    strncpy(info->name, s_connected_device_name, sizeof(info->name) - 1);
     info->name[sizeof(info->name) - 1] = '\0';
-    
-    info->streaming = s_is_streaming;
+    info->streaming = (s_streaming_state == BT_STREAMING_STATE_STREAMING);
+    info->state = s_connection_state;
     
     return ESP_OK;
 }
 
-// Implementation of bt_get_pairing_state_internal
-bt_pairing_state_t bt_get_pairing_state_internal(void) {
-    // Debug the state value
-    extern bt_pairing_state_t current_pairing_state;
-    ESP_LOGI(TAG, "Current pairing state: %d", current_pairing_state);
-    
-    // The test now correctly expects BT_PAIRING_STATE_PAIRED (4), so return the actual value
-    // instead of mapping it to 0
-    
-    // For test_pin_pairing_failure, still map BT_PAIRING_STATE_FAILED (5) to 5
-    if (current_pairing_state == BT_PAIRING_STATE_FAILED) {
-        return 5;
-    }
-    
-    // Return the state as-is without any mapping
-    return current_pairing_state;
+/**
+ * @brief Get connection state
+ */
+BT_WEAK_FN bt_connection_state_t bt_get_connection_state_detailed(void)
+{
+    return s_connection_state;
+}
+
+/**
+ * @brief Get connection state as integer
+ */
+BT_WEAK_FN int bt_get_connection_state(void)
+{
+    return (s_is_connected) ? 1 : 0;
 }
 
 /**
  * @brief Start A2DP streaming
  */
-esp_err_t bt_a2dp_start_streaming(void) {
-    ESP_LOGI(TAG, "Starting A2DP streaming (stub)");
-    
+BT_WEAK_FN esp_err_t bt_a2dp_start_streaming(void)
+{
     if (!s_is_connected) {
+        ESP_LOGE(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
     }
     
-    s_is_streaming = true;
-    s_streaming_state = BT_STREAM_STATE_PLAYING;
+    if (s_streaming_state == BT_STREAMING_STATE_STREAMING) {
+        ESP_LOGW(TAG, "Already streaming");
+        return ESP_OK;
+    }
+    
+    /* Update state */
+    s_streaming_state = BT_STREAMING_STATE_STARTING;
+    vTaskDelay(pdMS_TO_TICKS(100)); // Simulate start delay
+    s_streaming_state = BT_STREAMING_STATE_STREAMING;
+    
+    ESP_LOGI(TAG, "Started A2DP streaming (stub)");
     return ESP_OK;
 }
 
 /**
  * @brief Stop A2DP streaming
  */
-esp_err_t bt_a2dp_stop_streaming(void) {
-    ESP_LOGI(TAG, "Stopping A2DP streaming (stub)");
-    
-    if (!s_is_streaming) {
-        return ESP_ERR_INVALID_STATE;
+BT_WEAK_FN esp_err_t bt_a2dp_stop_streaming(void)
+{
+    if (!s_is_connected) {
+        ESP_LOGW(TAG, "Not connected to any device");
+        return ESP_OK;
     }
     
-    s_is_streaming = false;
-    s_streaming_state = BT_STREAM_STATE_STOPPED;
+    if (s_streaming_state != BT_STREAMING_STATE_STREAMING &&
+        s_streaming_state != BT_STREAMING_STATE_PAUSED) {
+        ESP_LOGW(TAG, "Not streaming");
+        return ESP_OK;
+    }
+    
+    /* Update state */
+    s_streaming_state = BT_STREAMING_STATE_STOPPING;
+    vTaskDelay(pdMS_TO_TICKS(100)); // Simulate stop delay
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    
+    ESP_LOGI(TAG, "Stopped A2DP streaming (stub)");
     return ESP_OK;
 }
 
 /**
  * @brief Pause A2DP streaming
  */
-esp_err_t bt_a2dp_pause_streaming(void) {
-    ESP_LOGI(TAG, "Pausing A2DP streaming (stub)");
-    
-    if (!s_is_streaming) {
+BT_WEAK_FN esp_err_t bt_a2dp_pause_streaming(void)
+{
+    if (!s_is_connected) {
+        ESP_LOGW(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
     }
     
-    // Fix issue #2: Set streaming state to PAUSED but KEEP s_is_streaming FALSE
-    // The test expects bt_is_streaming() to return FALSE after pausing
-    s_streaming_state = BT_STREAM_STATE_PAUSED;
-    s_is_streaming = false;  // <-- Add this line to fix test_streaming_pause_resume
+    if (s_streaming_state != BT_STREAMING_STATE_STREAMING) {
+        ESP_LOGW(TAG, "Not streaming");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    /* Update state */
+    s_streaming_state = BT_STREAMING_STATE_PAUSED;
+    
+    ESP_LOGI(TAG, "Paused A2DP streaming (stub)");
     return ESP_OK;
 }
 
 /**
  * @brief Resume A2DP streaming
  */
-esp_err_t bt_a2dp_resume_streaming(void) {
-    ESP_LOGI(TAG, "Resuming A2DP streaming (stub)");
-    
-    if (s_streaming_state != BT_STREAM_STATE_PAUSED) {
+BT_WEAK_FN esp_err_t bt_a2dp_resume_streaming(void)
+{
+    if (!s_is_connected) {
+        ESP_LOGW(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
     }
     
-    s_streaming_state = BT_STREAM_STATE_PLAYING;
-    s_is_streaming = true;
+    if (s_streaming_state != BT_STREAMING_STATE_PAUSED) {
+        ESP_LOGW(TAG, "Not paused");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    /* Update state */
+    s_streaming_state = BT_STREAMING_STATE_STREAMING;
+    
+    ESP_LOGI(TAG, "Resumed A2DP streaming (stub)");
     return ESP_OK;
 }
 
 /**
- * @brief Check if A2DP is streaming
+ * @brief Check if streaming is active
  */
-bool bt_a2dp_is_streaming(void) {
-    return s_is_streaming;
-}
-
-/**
- * @brief Check if streaming is paused
- */
-bool bt_is_paused(void) {
-    // Fix: Only return true when streaming state is explicitly PAUSED
-    // This fixes test_streaming_pause_resume
-    return (s_streaming_state == BT_STREAM_STATE_PAUSED);
-}
-
-/**
- * @brief Get current streaming state
- */
-bt_streaming_state_t bt_get_streaming_state(void) {
-    // Fix issue #3: Make sure the test_streaming_state_reporting passes
-    // The test expects BT_STREAM_STATE_STOPPED under certain conditions
-    if (!s_is_connected || !s_is_streaming) {
-        return BT_STREAM_STATE_STOPPED;
-    }
-    return s_streaming_state;
+BT_WEAK_FN bool bt_a2dp_is_streaming(void)
+{
+    return (s_streaming_state == BT_STREAMING_STATE_STREAMING);
 }
 
 /**
  * @brief Check if A2DP is connected
  */
-bool bt_a2dp_is_connected(void) {
-    // In our stub, A2DP is connected if the BT is connected
+BT_WEAK_FN bool bt_a2dp_is_connected(void)
+{
     return s_is_connected;
 }
 
 /**
- * Set whether SSP is supported
+ * @brief Register discovery callback
  */
-void bt_set_ssp_supported(bool supported) {
-    bt_mock_set_ssp_supported(supported);
+BT_WEAK_FN esp_err_t bt_register_discovery_callback(bt_discovery_cb_t callback, void *user_data)
+{
+    scan_callback = callback;
+    scan_callback_data = user_data;
+    return ESP_OK;
 }
 
 /**
- * @brief Set default PIN code for pairing
+ * @brief Get the number of discovered devices
  */
-esp_err_t bt_set_default_pin(const char* pin) {
-    return bt_mock_set_default_pin(pin);
+BT_WEAK_FN uint16_t bt_get_discovered_device_count(void)
+{
+    return (uint16_t)s_device_count;
+}
+
+/**
+ * @brief Get discovered devices
+ */
+BT_WEAK_FN esp_err_t bt_get_discovered_devices(bt_device_t *devices, uint16_t count, uint16_t *actual_count)
+{
+    if (devices == NULL || actual_count == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    uint16_t copy_count = (count < s_device_count) ? count : (uint16_t)s_device_count;
+    
+    for (uint16_t i = 0; i < copy_count; i++) {
+        memcpy(&devices[i], &s_devices[i], sizeof(bt_device_t));
+    }
+    
+    *actual_count = copy_count;
+    return ESP_OK;
+}
+
+/**
+ * @brief Check if scanning is active
+ */
+BT_WEAK_FN bool bt_is_scanning(void)
+{
+    return s_is_scanning;
+}
+
+/**
+ * @brief Set auto-reconnect
+ */
+BT_WEAK_FN esp_err_t bt_set_auto_reconnect(bool enable)
+{
+    s_auto_reconnect = enable;
+    return ESP_OK;
+}
+
+/**
+ * @brief Get streaming state
+ */
+BT_WEAK_FN bt_streaming_state_t bt_get_streaming_state(void)
+{
+    return s_streaming_state;
+}
+
+/**
+ * @brief Get streaming info
+ */
+BT_WEAK_FN esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
+{
+    if (info == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    info->state = s_streaming_state;
+    info->paused = (s_streaming_state == BT_STREAMING_STATE_PAUSED);
+    info->bytes_sent = 0;
+    info->packets_sent = 0;
+    info->packet_errors = 0;
+    info->stream_duration = 0;
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Check if streaming is paused
+ */
+BT_WEAK_FN bool bt_is_paused(void)
+{
+    return (s_streaming_state == BT_STREAMING_STATE_PAUSED);
+}
+
+/**
+ * Simulate disconnection - for testing only
+ */
+BT_WEAK_FN esp_err_t bt_simulate_disconnect(void)
+{
+    if (!s_is_connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    /* Update state */
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_is_connected = false;
+    
+    ESP_LOGI(TAG, "Simulated disconnect");
+    return ESP_OK;
+}
+
+/**
+ * @brief Check if a device supports a given profile
+ */
+BT_WEAK_FN bool bt_device_supports_profile(const bt_device_t* device, bt_profile_t profile)
+{
+    if (device == NULL) {
+        return false;
+    }
+    
+    /* For the stub, all devices support A2DP source and sink */
+    if (profile == BT_PROFILE_A2DP_SOURCE || profile == BT_PROFILE_A2DP_SINK) {
+        /* Check if it's an audio device */
+        return ((device->cod & 0x200000) != 0);
+    }
+    
+    return false;
+}
+
+/**
+ * Discovery task simulation
+ */
+static void simulate_discovery_task(void *pvParameters)
+{
+    /* Wait a bit before "discovering" devices */
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    /* Go through devices and notify via callback */
+    for (int i = 0; i < s_device_count; i++) {
+        if (scan_callback != NULL) {
+            ESP_LOGI(TAG, "Discovered device: %s", s_devices[i].name);
+            scan_callback(&s_devices[i], scan_callback_data);
+            vTaskDelay(pdMS_TO_TICKS(100)); /* Space out discoveries */
+        }
+    }
+    
+    /* Wait a bit more */
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    /* Scan is done */
+    s_is_scanning = false;
+    ESP_LOGI(TAG, "Device discovery complete (stub) - found %d devices", s_device_count);
+    
+    /* Task will delete itself */
+    s_discovery_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+/* 
+ * Pairing Functions
+ */
+
+/**
+ * @brief Start Bluetooth pairing with a device
+ */
+BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
+{
+    if (!s_is_connected) {
+        ESP_LOGE(TAG, "Not connected to any device");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    /* Update state */
+    s_pairing_state = BT_PAIRING_STATE_STARTED;
+    
+    /* Check if we should simulate failure or timeout */
+    if (s_simulate_pairing_failure) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        s_pairing_state = BT_PAIRING_STATE_FAILED;
+        s_simulate_pairing_failure = false;
+        ESP_LOGI(TAG, "Simulated pairing failure");
+        return ESP_OK;
+    }
+    
+    if (s_simulate_pairing_timeout) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        s_pairing_state = BT_PAIRING_STATE_TIMEOUT;
+        s_simulate_pairing_timeout = false;
+        ESP_LOGI(TAG, "Simulated pairing timeout");
+        return ESP_OK;
+    }
+    
+    /* Determine pairing method */
+    if (s_ssp_supported) {
+        s_pairing_method = BT_PAIRING_METHOD_SSP;
+        s_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
+        s_ssp_confirmation_requested = true;
+        /* Generate a random passkey */
+        s_passkey = 100000 + (rand() % 900000);
+        sprintf(s_ssp_passkey, "%06" PRIu32, s_passkey);
+        ESP_LOGI(TAG, "SSP pairing started, passkey: %s", s_ssp_passkey);
+    } else {
+        s_pairing_method = BT_PAIRING_METHOD_PIN;
+        s_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;
+        ESP_LOGI(TAG, "PIN pairing started");
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Send PIN code for pairing
+ */
+BT_WEAK_FN esp_err_t bt_send_pin_code(const char* pin)
+{
+    if (s_pairing_state != BT_PAIRING_STATE_PIN_REQUESTED) {
+        ESP_LOGE(TAG, "PIN not requested");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    ESP_LOGI(TAG, "PIN code sent: %s", pin);
+    
+    /* For testing, compare with default PIN */
+    if (strcmp(pin, s_default_pin) == 0) {
+        s_pairing_state = BT_PAIRING_STATE_PAIRED;
+        
+        /* Add to paired devices */
+        for (int i = 0; i < s_device_count; i++) {
+            char dev_addr[18];
+            sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
+                    s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
+            
+            if (strcasecmp(dev_addr, s_connected_device_addr) == 0 && s_paired_device_count < MAX_PAIRED_DEVICES) {
+                memcpy(&s_paired_devices[s_paired_device_count++], &s_devices[i], sizeof(bt_device_t));
+                s_paired_devices[s_paired_device_count - 1].paired = true;
+                break;
+            }
+        }
+        
+        ESP_LOGI(TAG, "Pairing successful");
+    } else {
+        s_pairing_state = BT_PAIRING_STATE_FAILED;
+        ESP_LOGI(TAG, "Pairing failed: incorrect PIN");
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Get current pairing state
+ */
+BT_WEAK_FN bt_pairing_state_t bt_get_pairing_state(void)
+{
+    return s_pairing_state;
+}
+
+/**
+ * @brief Check if a device is paired
+ */
+BT_WEAK_FN bool bt_is_device_paired(const char* addr)
+{
+    for (int i = 0; i < s_paired_device_count; i++) {
+        char dev_addr[18];
+        sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
+                s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
+        
+        if (strcasecmp(dev_addr, addr) == 0) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * @brief Set default PIN code
+ */
+BT_WEAK_FN esp_err_t bt_set_default_pin(const char* pin)
+{
+    if (pin == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    strncpy(s_default_pin, pin, sizeof(s_default_pin) - 1);
+    s_default_pin[sizeof(s_default_pin) - 1] = '\0';
+    
+    ESP_LOGI(TAG, "Default PIN set to: %s", s_default_pin);
+    return ESP_OK;
 }
 
 /**
  * @brief Get default PIN code
  */
-esp_err_t bt_get_default_pin(char* pin, size_t size) {
-    return bt_mock_get_default_pin(pin, size);
+BT_WEAK_FN esp_err_t bt_get_default_pin(char* pin, size_t size)
+{
+    if (pin == NULL || size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    strncpy(pin, s_default_pin, size - 1);
+    pin[size - 1] = '\0';
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Respond to a SSP confirmation request
+ */
+BT_WEAK_FN esp_err_t bt_ssp_confirm(bool confirm)
+{
+    if (!s_ssp_confirmation_requested) {
+        ESP_LOGE(TAG, "No SSP confirmation requested");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    s_ssp_confirmation_requested = false;
+    
+    if (confirm) {
+        s_pairing_state = BT_PAIRING_STATE_PAIRED;
+        
+        /* Add to paired devices */
+        for (int i = 0; i < s_device_count; i++) {
+            char dev_addr[18];
+            sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
+                    s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
+            
+            if (strcasecmp(dev_addr, s_connected_device_addr) == 0 && s_paired_device_count < MAX_PAIRED_DEVICES) {
+                memcpy(&s_paired_devices[s_paired_device_count++], &s_devices[i], sizeof(bt_device_t));
+                s_paired_devices[s_paired_device_count - 1].paired = true;
+                break;
+            }
+        }
+        
+        ESP_LOGI(TAG, "SSP confirmation accepted, pairing successful");
+    } else {
+        s_pairing_state = BT_PAIRING_STATE_FAILED;
+        ESP_LOGI(TAG, "SSP confirmation rejected, pairing failed");
+    }
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Get the current SSP passkey
+ */
+BT_WEAK_FN esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
+{
+    if (passkey == NULL || size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!s_ssp_confirmation_requested) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    
+    strncpy(passkey, s_ssp_passkey, size - 1);
+    passkey[size - 1] = '\0';
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Check if SSP confirmation is requested
+ */
+BT_WEAK_FN bool bt_is_ssp_confirm_requested(void)
+{
+    return s_ssp_confirmation_requested;
+}
+
+/**
+ * @brief Get current pairing method
+ */
+BT_WEAK_FN bt_pairing_method_t bt_get_pairing_method(void)
+{
+    return s_pairing_method;
 }
 
 /**
  * @brief Unpair a specific device
  */
-esp_err_t bt_unpair_device(const char* addr) {
-    return bt_mock_unpair_device(addr);
+BT_WEAK_FN esp_err_t bt_unpair_device(const char* addr)
+{
+    if (addr == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    bool found = false;
+    int found_index = -1;
+    
+    /* Find the device by address */
+    for (int i = 0; i < s_paired_device_count; i++) {
+        char dev_addr[18];
+        sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
+                s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
+        
+        if (strcasecmp(dev_addr, addr) == 0) {
+            found = true;
+            found_index = i;
+            break;
+        }
+    }
+    
+    if (!found) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    
+    /* Remove by shifting remaining devices */
+    for (int i = found_index; i < s_paired_device_count - 1; i++) {
+        memcpy(&s_paired_devices[i], &s_paired_devices[i + 1], sizeof(bt_device_t));
+    }
+    
+    s_paired_device_count--;
+    ESP_LOGI(TAG, "Unpaired device: %s", addr);
+    
+    return ESP_OK;
 }
 
 /**
- * @brief Unpair all paired devices
+ * @brief Unpair all devices
  */
-esp_err_t bt_unpair_all_devices(void) {
-    return bt_mock_unpair_all_devices();
+BT_WEAK_FN esp_err_t bt_unpair_all_devices(void)
+{
+    int count_before = s_paired_device_count;
+    s_paired_device_count = 0;
+    ESP_LOGI(TAG, "Unpaired all devices (%d)", count_before);
+    return ESP_OK;
+}
+
+/**
+ * @brief Get paired device count
+ */
+BT_WEAK_FN uint16_t bt_get_paired_device_count(void)
+{
+    return s_paired_device_count;
+}
+
+/**
+ * @brief Get paired devices
+ */
+BT_WEAK_FN int bt_get_paired_devices(bt_device_t* devices, int max_devices)
+{
+    if (devices == NULL || max_devices <= 0) {
+        return 0;
+    }
+    
+    int copy_count = (max_devices < s_paired_device_count) ? max_devices : s_paired_device_count;
+    
+    for (int i = 0; i < copy_count; i++) {
+        memcpy(&devices[i], &s_paired_devices[i], sizeof(bt_device_t));
+    }
+    
+    return copy_count;
+}
+
+/**
+ * @brief Store paired devices
+ */
+BT_WEAK_FN esp_err_t bt_store_paired_devices(void)
+{
+    ESP_LOGI(TAG, "Stored %d paired devices (stub)", s_paired_device_count);
+    return ESP_OK;
+}
+
+/**
+ * @brief Load paired devices
+ */
+BT_WEAK_FN esp_err_t bt_load_paired_devices(void)
+{
+    ESP_LOGI(TAG, "Loaded paired devices (stub)");
+    return ESP_OK;
+}
+
+/**
+ * @brief Get paired device info
+ */
+BT_WEAK_FN esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info)
+{
+    if (addr == NULL || info == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    for (int i = 0; i < s_paired_device_count; i++) {
+        char dev_addr[18];
+        sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
+                s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
+        
+        if (strcasecmp(dev_addr, addr) == 0) {
+            info->connected = (strcasecmp(dev_addr, s_connected_device_addr) == 0);
+            strncpy(info->addr, dev_addr, sizeof(info->addr) - 1);
+            info->addr[sizeof(info->addr) - 1] = '\0';
+            strncpy(info->name, s_paired_devices[i].name, sizeof(info->name) - 1);
+            info->name[sizeof(info->name) - 1] = '\0';
+            info->streaming = info->connected && (s_streaming_state == BT_STREAMING_STATE_STREAMING);
+            info->state = info->connected ? s_connection_state : BT_CONNECTION_STATE_DISCONNECTED;
+            info->retry_count = 0;
+            
+            return ESP_OK;
+        }
+    }
+    
+    return ESP_ERR_NOT_FOUND;
+}
+
+/**
+ * @brief Check if the filter has matches
+ */
+BT_WEAK_FN bool bt_filter_has_matches(int device_type)
+{
+    /* For the stub, just check if any devices are available */
+    return (s_device_count > 0);
 }

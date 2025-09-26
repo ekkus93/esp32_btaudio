@@ -1,46 +1,79 @@
 /**
- * Small, quick tests for the Bluetooth pairing functionality
- * These test the real implementation on actual hardware
+ * @file bt_pairing_esp_test.c
+ * @brief Tests for the Bluetooth pairing functionality on ESP32
  */
-#include <stdio.h>
-#include <string.h>  // Add string.h for strlen
-#include <stdlib.h>
-#include "unity.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
-#include "bt_source.h"
 
+#include <stdio.h>
+#include <string.h>
+#include "esp_log.h"
+#include "unity.h"
+#include "unity_fixture.h"  // Add this include for TEST_CASE macro
+#include "bt_source.h"
+#include "unity_test_utils.h"
+
+/* Log tag for this file */
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
 
-// Test fixtures
-void setUp(void) {
-    // Initialize Bluetooth for each test
-    bt_init();
-}
+/* Default PIN used for testing */
+static const char *DEFAULT_TEST_PIN = "1234";
 
-void tearDown(void) {
-    // Clean up after each test
-    bt_disconnect();
-}
+// Define test group
+TEST_GROUP(bt_pairing);
 
-// Test that we can get the default PIN
-TEST_CASE("Default PIN can be retrieved", "[bluetooth][pairing]")
+// Setup function - runs before each test
+TEST_SETUP(bt_pairing)
 {
-    char pin[16];
+    // Setup for each test
+}
+
+// Teardown function - runs after each test
+TEST_TEAR_DOWN(bt_pairing)
+{
+    // Cleanup after each test
+}
+
+/**
+ * @brief Test that the default PIN can be retrieved
+ */
+TEST(bt_pairing, DefaultPINCanBeRetrieved)
+{
+    char pin[8] = {0};
     esp_err_t ret = bt_get_default_pin(pin, sizeof(pin));
+    
     TEST_ASSERT_EQUAL(ESP_OK, ret);
-    TEST_ASSERT_NOT_EQUAL(0, strlen(pin));
+    TEST_ASSERT_EQUAL_STRING(DEFAULT_TEST_PIN, pin);
 }
 
-// Test that we can set custom PIN
-TEST_CASE("Custom PIN can be set", "[bluetooth][pairing]")
+/**
+ * @brief Test that a custom PIN can be set
+ */
+TEST(bt_pairing, CustomPINCanBeSet)
 {
-    esp_err_t ret = bt_set_default_pin("9876");
+    const char *custom_pin = "5678";
+    char pin[8] = {0};
+    
+    /* Set a custom PIN */
+    esp_err_t ret = bt_set_default_pin(custom_pin);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    char pin[16];
+    /* Retrieve the PIN and verify it matches */
     ret = bt_get_default_pin(pin, sizeof(pin));
     TEST_ASSERT_EQUAL(ESP_OK, ret);
-    TEST_ASSERT_EQUAL_STRING("9876", pin);
+    TEST_ASSERT_EQUAL_STRING(custom_pin, pin);
+    
+    /* Reset to default PIN for other tests */
+    bt_set_default_pin(DEFAULT_TEST_PIN);
+}
+
+// Register the tests
+TEST_GROUP_RUNNER(bt_pairing)
+{
+    RUN_TEST_CASE(bt_pairing, DefaultPINCanBeRetrieved);
+    RUN_TEST_CASE(bt_pairing, CustomPINCanBeSet);
+}
+
+// This can be called from the main test runner
+void run_bt_pairing_tests(void)
+{
+    RUN_TEST_GROUP(bt_pairing);
 }

@@ -1,14 +1,15 @@
 #include <string.h>
-#include <stdint.h>
+#include <inttypes.h> // Add for PRIu32 macros
+#include <math.h>     // Add for sin() and M_PI
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/ringbuf.h"
+#include "freertos/ringbuf.h" // Add for RingbufHandle_t
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
+#include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
-#include "bt_app_core.h"
 #include "bt_source.h"
 
 static const char *TAG = "BT_STREAM_MGR";
@@ -34,41 +35,50 @@ static bt_stream_callback_t s_stream_callback = NULL;
 static void* s_stream_callback_data = NULL;
 
 /* Function declarations */
-static void bt_audio_data_callback(uint8_t *data, uint32_t len);
+static int32_t bt_audio_data_callback(uint8_t *data, int32_t len);
 static void bt_audio_task(void *pvParameters);
 static void update_streaming_state(bt_streaming_state_t new_state);
 static uint32_t get_current_time_ms(void);
 
 /*
  * A2DP source data callback - called by A2DP when it needs audio data
+ * Changed return type to int32_t to match esp_a2d_source_data_cb_t
  */
-static void bt_audio_data_callback(uint8_t *data, uint32_t len)
+static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
 {
     if (s_streaming_state != BT_STREAMING_STATE_STREAMING && 
         s_streaming_state != BT_STREAMING_STATE_PAUSED) {
         /* Not streaming or paused - clear buffer */
         memset(data, 0, len);
-        return;
+        return len;
     }
 
     if (s_streaming_state == BT_STREAMING_STATE_PAUSED) {
         /* Paused - send silent audio */
         memset(data, 0, len);
-        return;
+        return len;
     }
 
     /* Read data from the audio buffer */
     size_t bytes_read = 0;
-    BaseType_t ret = xRingbufferReceiveUpTo(s_audio_buffer, data, len, 0, &bytes_read);
+    void *item = xRingbufferReceiveUpTo(s_audio_buffer, &bytes_read, len, 0);
     
-    if (ret != pdTRUE || bytes_read < len) {
+    if (item == NULL || bytes_read < len) {
         /* Buffer underrun - fill remaining with silence */
-        if (bytes_read < len) {
+        if (item != NULL) {
+            memcpy(data, item, bytes_read);
             memset(data + bytes_read, 0, len - bytes_read);
+            vRingbufferReturnItem(s_audio_buffer, item);
         } else {
             memset(data, 0, len);
+            bytes_read = 0;
         }
-        ESP_LOGW(TAG, "Audio buffer underrun (%u/%u bytes)", bytes_read, len);
+        ESP_LOGW(TAG, "Audio buffer underrun (%u/%u bytes)", 
+                (unsigned int)bytes_read, (unsigned int)len);
+    } else {
+        /* We got all the data we needed */
+        memcpy(data, item, len);
+        vRingbufferReturnItem(s_audio_buffer, item);
     }
 
     /* Update streaming statistics */
@@ -80,6 +90,8 @@ static void bt_audio_data_callback(uint8_t *data, uint32_t len)
     if (s_stream_start_time > 0) {
         s_streaming_info.stream_duration = current_time - s_stream_start_time;
     }
+    
+    return len;
 }
 
 /*
@@ -169,7 +181,7 @@ static void update_streaming_state(bt_streaming_state_t new_state)
     /* Notify application via callback */
     if (s_stream_callback) {
         s_stream_callback(s_streaming_state == BT_STREAMING_STATE_STREAMING, 
-                          ESP_OK, s_stream_callback_data);
+                         &s_streaming_info, s_stream_callback_data);
     }
 }
 

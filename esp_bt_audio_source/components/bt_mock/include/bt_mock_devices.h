@@ -1,7 +1,6 @@
 /**
- * Bluetooth Mock Devices
- *
- * This file provides mock implementations for Bluetooth device management functions.
+ * @file bt_mock_devices.h
+ * @brief Mock implementation of Bluetooth device management for testing
  */
 
 #pragma once
@@ -9,54 +8,70 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
-#include "bt_source.h" // Include the main header to use its type definitions
+#include "bt_source.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Mock control functions
-void bt_mock_reset(void);
-void bt_mock_cleanup(void);
-void bt_mock_add_device(const char *addr, const char *name, bt_device_type_t type, bool paired);
-esp_err_t bt_mock_connect(const char* addr);
-esp_err_t bt_mock_disconnect(void);
-bool bt_mock_is_connected(void);
-int bt_mock_get_scan_results(bt_device_t* devices, int max_count);
-void bt_mock_set_connect_by_name_hook(const char* name, const char* addr);
+/**
+ * @brief Initialize the mock device system
+ */
+void bt_mock_devices_init(void);
 
-// Scanning functions
-void bt_mock_start_scan(void);
-void bt_mock_stop_scan(void);
+/**
+ * @brief Clean up the mock device system
+ */
+void bt_mock_devices_cleanup(void);
 
-// Pairing functions
-esp_err_t bt_mock_start_pairing(const char* addr);
-bt_pairing_state_t bt_mock_get_pairing_state(void);
-bt_pairing_method_t bt_mock_get_pairing_method(void);
-esp_err_t bt_mock_send_pin(const char* pin);
-esp_err_t bt_mock_confirm_ssp(bool confirm);
-bool bt_mock_is_device_paired(const char* addr);
-esp_err_t bt_mock_add_paired_device(const bt_device_t* device);
-void bt_mock_set_ssp_supported(bool supported);
+/**
+ * @brief Reset all mock devices
+ */
+void bt_mock_devices_reset(void);
 
-// Query functions
-int bt_mock_get_paired_device_count(void);
-uint32_t bt_mock_get_ssp_passkey(void);
-const char* bt_mock_get_connected_addr(void);
+/**
+ * @brief Get count of mock devices
+ * 
+ * @return Count of devices
+ */
+int bt_mock_devices_count(void);
 
-// Add missing function declarations that are used in bt_source_stubs.c
-int bt_mock_get_paired_devices(bt_device_t* devices, int max_devices);
-bool bt_mock_is_ssp_confirm_requested(void);
-esp_err_t bt_mock_set_default_pin(const char* pin);
+/**
+ * @brief Add a mock device with parameters
+ * 
+ * @param addr_str Device address string
+ * @param name Device name
+ * @param type Device type
+ * @param paired Whether device is paired
+ * @return ESP_OK on success
+ */
+esp_err_t bt_mock_add_device(const char* addr_str, const char* name, bt_device_type_t type, bool paired);
 
-// Simulation functions - match the signatures from bt_source.h
-void bt_mock_simulate_pin_failure(void);
-void bt_mock_simulate_pairing_timeout(void);
-esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey);
+/**
+ * @brief Get device information by index
+ * 
+ * @param index Device index
+ * @param device Device information to populate
+ * @return ESP_OK on success
+ */
+esp_err_t bt_mock_get_device(int index, bt_device_t* device);
 
-// Unpair functions
-esp_err_t bt_mock_unpair_device(const char* addr);
-esp_err_t bt_mock_unpair_all_devices(void);
+/**
+ * @brief Remove a mock device by index
+ * 
+ * @param index Device index
+ * @return ESP_OK on success
+ */
+esp_err_t bt_mock_remove_device(int index);
+
+/**
+ * @brief Find a device by address
+ * 
+ * @param addr_str Address string in format "XX:XX:XX:XX:XX:XX"
+ * @param index Output parameter to store index if found
+ * @return true if found, false otherwise
+ */
+bool bt_mock_find_device(const char* addr_str, int* index);
 
 #ifdef __cplusplus
 }

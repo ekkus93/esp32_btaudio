@@ -10,64 +10,161 @@
 
 static const char *TAG = "BT_MOCK";
 
-// Remove 'static' from these variables so they can be accessed with extern
-bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;
-bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;
+// Define test device constants and storage
+#define MAX_TEST_DEVICES 10
+
+// Mock state - single cohesive structure with all state
+typedef struct {
+    // Connection state
+    bool is_connected;
+    bool is_scanning;
+    bool is_streaming;
+    bool is_paused;
+    bt_connection_state_t connection_state;
+    bt_streaming_state_t streaming_state;
+    char connected_addr[18];
+    char connected_name[64];
+    
+    // Device management
+    bt_device_t devices[MAX_TEST_DEVICES];
+    int device_count;
+    
+    // Connect-by-name hooks
+    bool connect_by_name_hook_enabled;
+    char connect_by_name_device[64];
+    char connect_by_name_addr[18];
+} bt_mock_internal_state_t;
+
+static bt_mock_internal_state_t mock_state = {0};
+
+// Pairing state variables
+static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;
+static bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;
 static char current_pairing_addr[18] = {0};
 static bool is_pairing = false;
 static bool s_ssp_support_enabled = true;
 static bool pin_failure_simulation = false;
-uint32_t s_ssp_passkey_value = 0;  // Remove 'static' to allow access
+static uint32_t s_ssp_passkey_value = 0;
 static char s_ssp_passkey[7] = {0};
-bool s_ssp_confirmation_requested = false;  // Remove 'static' from this variable
-
-// Default PIN code implementation
+static bool s_ssp_confirmation_requested = false;
 static char s_default_pin[16] = "1234"; // Default PIN
-
-// Define our internal state structure - make sure it doesn't conflict with header
-typedef struct {
-    bt_device_t devices[10];  // Maintain compatibility with bt_device_t 
-    int device_count;
-    bool connected;
-    char connected_addr[18];
-    bool scanning;
-    bool connect_by_name_hook_enabled;
-    char connect_by_name_device[64];
-    char connect_by_name_addr[18];
-} bt_mock_internal_state_t;  // Renamed to avoid conflict with header
-
-// Global mock state
-static bt_mock_internal_state_t mock_state = {0};
 
 void bt_mock_init(void) {
     memset(&mock_state, 0, sizeof(mock_state));
 }
 
-void bt_mock_reset(void) {
+/**
+ * @brief Reset all the BT mock component state
+ */
+void bt_mock_reset(void)
+{
+    // Reset mock state variables
     memset(&mock_state, 0, sizeof(mock_state));
+    mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    mock_state.streaming_state = BT_STREAMING_STATE_STOPPED;
     
     // Reset all static state variables to their default values
     current_pairing_state = BT_PAIRING_STATE_IDLE;
     current_pairing_method = BT_PAIRING_METHOD_NONE;
     memset(current_pairing_addr, 0, sizeof(current_pairing_addr));
     is_pairing = false;
-    s_ssp_support_enabled = true;  // Make sure SSP is enabled by default
+    s_ssp_support_enabled = true;
     pin_failure_simulation = false;
     s_ssp_passkey_value = 0;
     memset(s_ssp_passkey, 0, sizeof(s_ssp_passkey));
     s_ssp_confirmation_requested = false;
-    strcpy(s_default_pin, "1234"); // Reset to default PIN
+    strcpy(s_default_pin, "1234");
+    
+    ESP_LOGI(TAG, "BT mock state reset");
 }
 
-// Add the cleanup function expected in test_app_main.c
-void bt_mock_cleanup(void) {
-    bt_mock_reset();
+/**
+ * @brief Check if the mock BT device is connected
+ */
+bool bt_mock_is_connected(void)
+{
+    return mock_state.is_connected;
 }
 
-void bt_mock_add_device(const char* addr, const char* name, bt_device_type_t type, bool paired) {
-    if (mock_state.device_count >= 10) {
+/**
+ * @brief Simulate pairing timeout
+ */
+void bt_mock_simulate_pairing_timeout(void)
+{
+    current_pairing_state = BT_PAIRING_STATE_TIMEOUT;
+    is_pairing = false;
+}
+
+/**
+ * @brief Connect to a device
+ */
+esp_err_t bt_mock_connect(const char* addr)
+{
+    if (mock_state.is_connected) {
+        ESP_LOGI(TAG, "Already connected, ignoring connect request");
+        return ESP_FAIL;
+    }
+    
+    // Set as connected
+    mock_state.is_connected = true;
+    strcpy(mock_state.connected_addr, addr);
+    mock_state.connection_state = BT_CONNECTION_STATE_CONNECTED;
+    
+    ESP_LOGI(TAG, "Connected to %s", addr);
+    return ESP_OK;
+}
+
+/**
+ * @brief Disconnect device
+ */
+esp_err_t bt_mock_disconnect(void)
+{
+    if (!mock_state.is_connected) {
+        ESP_LOGI(TAG, "Not connected, ignoring disconnect request");
+        return ESP_FAIL;
+    }
+    
+    mock_state.is_connected = false;
+    mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    ESP_LOGI(TAG, "Disconnected");
+    return ESP_OK;
+}
+
+/**
+ * @brief Start scan
+ */
+void bt_mock_start_scan(void)
+{
+    mock_state.is_scanning = true;
+    ESP_LOGI(TAG, "Scanning started");
+}
+
+/**
+ * @brief Stop scan
+ */
+void bt_mock_stop_scan(void)
+{
+    mock_state.is_scanning = false;
+    ESP_LOGI(TAG, "Scanning stopped");
+}
+
+/**
+ * @brief Check if scanning
+ */
+bool bt_mock_is_scanning(void)
+{
+    return mock_state.is_scanning;
+}
+
+esp_err_t bt_mock_add_device(const char* addr, const char* name, bt_device_type_t type, bool paired) {
+    if (addr == NULL || name == NULL) {
+        ESP_LOGE(TAG, "Invalid parameters in bt_mock_add_device");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (mock_state.device_count >= MAX_TEST_DEVICES) {
         ESP_LOGE(TAG, "Cannot add more mock devices, list is full");
-        return;
+        return ESP_ERR_NO_MEM;
     }
     
     bt_device_t* device = &mock_state.devices[mock_state.device_count];
@@ -99,53 +196,8 @@ void bt_mock_add_device(const char* addr, const char* name, bt_device_type_t typ
     }
     
     mock_state.device_count++;
-}
-
-esp_err_t bt_mock_connect(const char* addr) {
-    if (mock_state.connected) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    // Save the address
-    strncpy(mock_state.connected_addr, addr, sizeof(mock_state.connected_addr) - 1);
-    mock_state.connected_addr[sizeof(mock_state.connected_addr) - 1] = '\0';
-    
-    mock_state.connected = true;
+    ESP_LOGI(TAG, "Added mock device %s (%s) at index %d", name, addr, mock_state.device_count - 1);
     return ESP_OK;
-}
-
-esp_err_t bt_mock_disconnect(void) {
-    if (!mock_state.connected) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    mock_state.connected = false;
-    memset(mock_state.connected_addr, 0, sizeof(mock_state.connected_addr));
-    return ESP_OK;
-}
-
-bool bt_mock_is_connected(void) {
-    return mock_state.connected;
-}
-
-void bt_mock_start_scan(void) {
-    mock_state.scanning = true;
-}
-
-void bt_mock_stop_scan(void) {
-    mock_state.scanning = false;
-}
-
-int bt_mock_get_scan_results(bt_device_t* devices, int max_count) {
-    if (!devices || max_count <= 0) {
-        return 0;
-    }
-    
-    int count = (mock_state.device_count <= max_count) ? 
-                 mock_state.device_count : max_count;
-    
-    memcpy(devices, mock_state.devices, count * sizeof(bt_device_t));
-    return count;
 }
 
 /**
@@ -245,16 +297,6 @@ static esp_err_t bt_mock_connect_by_name(const char* device_name) {
 // Keep the exported function that properly forwards to the real implementation
 esp_err_t bt_mock_hook_connect_by_name(const char* name) {
     return bt_mock_connect_by_name(name);
-}
-
-/**
- * Simulate timeout in pairing
- */
-void bt_mock_simulate_pairing_timeout(void)
-{
-    // Specifically set to TIMEOUT state (value 6)
-    current_pairing_state = BT_PAIRING_STATE_TIMEOUT;
-    is_pairing = false;
 }
 
 /**
@@ -539,4 +581,24 @@ int bt_mock_get_paired_device_count(void) {
         }
     }
     return count;
+}
+
+/**
+ * @brief Print the device list for debugging
+ */
+void bt_mock_print_device_list(void)
+{
+    ESP_LOGI(TAG, "Current device count: %d", mock_state.device_count);
+    
+    for (int i = 0; i < mock_state.device_count; i++) {
+        // Create a formatted address string
+        char device_addr[18];
+        sprintf(device_addr, "%02X:%02X:%02X:%02X:%02X:%02X", 
+                mock_state.devices[i].addr[0], mock_state.devices[i].addr[1],
+                mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+        
+        ESP_LOGI(TAG, "Device %d: %s, paired: %d",
+                i, device_addr, mock_state.devices[i].paired);
+    }
 }

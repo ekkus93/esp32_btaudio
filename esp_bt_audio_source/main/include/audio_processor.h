@@ -1,123 +1,140 @@
 #ifndef _AUDIO_PROCESSOR_H_
 #define _AUDIO_PROCESSOR_H_
 
-#include "esp_err.h"
-#include "driver/i2s.h"
 #include <stdint.h>
+#include "esp_err.h"
+#include "driver/i2s_std.h"  // Use the current standard I2S driver instead of deprecated one
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/**
- * @brief Audio sample rates supported by the processor
- */
-typedef enum {
-    AUDIO_SAMPLE_RATE_8K = 8000,
-    AUDIO_SAMPLE_RATE_16K = 16000,
-    AUDIO_SAMPLE_RATE_24K = 24000,
-    AUDIO_SAMPLE_RATE_32K = 32000,
-    AUDIO_SAMPLE_RATE_44K = 44100,
-    AUDIO_SAMPLE_RATE_48K = 48000
-} audio_sample_rate_t;
-
-/**
- * @brief Audio bit depths supported by the processor
- */
+// Audio bit depths
 typedef enum {
     AUDIO_BIT_DEPTH_16 = 16,
     AUDIO_BIT_DEPTH_24 = 24,
     AUDIO_BIT_DEPTH_32 = 32
 } audio_bit_depth_t;
 
-/**
- * @brief Audio channels configuration
- */
+// Audio sample rates
+typedef enum {
+    AUDIO_SAMPLE_RATE_8K = 8000,
+    AUDIO_SAMPLE_RATE_16K = 16000,
+    AUDIO_SAMPLE_RATE_22K = 22050,
+    AUDIO_SAMPLE_RATE_32K = 32000,
+    AUDIO_SAMPLE_RATE_44K = 44100,
+    AUDIO_SAMPLE_RATE_48K = 48000,
+    AUDIO_SAMPLE_RATE_96K = 96000
+} audio_sample_rate_t;
+
+// Audio channel modes
 typedef enum {
     AUDIO_CHANNEL_MONO = 1,
     AUDIO_CHANNEL_STEREO = 2
 } audio_channel_t;
 
-/**
- * @brief Audio processor configuration
- */
+// Audio configuration
 typedef struct {
     audio_sample_rate_t sample_rate;
     audio_bit_depth_t bit_depth;
     audio_channel_t channels;
-    uint8_t volume;        // 0-100
+    uint8_t volume;        // 0-100%
     bool mute;
-    i2s_port_t i2s_port;
+    i2s_port_t i2s_port;  // I2S port number
 } audio_config_t;
 
-/**
- * @brief Audio statistics structure
- */
+// Audio statistics
 typedef struct {
-    uint32_t current_buffer_level;  // Current buffer fill level in bytes
-    uint32_t peak_buffer_level;     // Peak buffer usage since last query
-    uint32_t buffer_underruns;      // Number of buffer underruns
-    uint32_t buffer_overruns;       // Number of buffer overruns
-    uint32_t samples_processed;     // Total samples processed
+    uint32_t samples_processed;
+    uint32_t buffer_overruns;
+    uint32_t buffer_underruns;
+    uint32_t conversion_errors;
+    float cpu_load;               // Percentage 0-1
+    uint32_t current_buffer_level;
+    uint32_t peak_buffer_level;
 } audio_stats_t;
 
-/**
- * Initialize the audio processor
+/** 
+ * @brief Initialize the audio processor
+ * 
+ * @param config Audio configuration
+ * @return esp_err_t ESP_OK on success
  */
-esp_err_t audio_processor_init(const audio_config_t *config);
+esp_err_t audio_processor_init(const audio_config_t* config);
 
 /**
- * Deinitialize the audio processor
+ * @brief Deinitialize the audio processor
+ * 
+ * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_deinit(void);
 
 /**
- * Start audio processing
+ * @brief Start audio processing
+ * 
+ * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_start(void);
 
 /**
- * Stop audio processing
+ * @brief Stop audio processing
+ * 
+ * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_stop(void);
 
 /**
- * Set audio volume
+ * @brief Set the output sample rate
+ * 
+ * @param sample_rate New sample rate
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate);
+
+/**
+ * @brief Set the output bit depth
+ * 
+ * @param bit_depth New bit depth
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth);
+
+/**
+ * @brief Set audio volume
+ * 
+ * @param volume Volume level (0-100%)
+ * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_set_volume(uint8_t volume);
 
 /**
- * Set audio mute state
+ * @brief Mute or unmute audio
+ * 
+ * @param mute true to mute, false to unmute
+ * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_set_mute(bool mute);
 
 /**
- * Get current audio configuration
+ * @brief Get current audio configuration
+ * 
+ * @param config Pointer to configuration structure to fill
+ * @return esp_err_t ESP_OK on success
  */
-esp_err_t audio_processor_get_config(audio_config_t *config);
+esp_err_t audio_processor_get_config(audio_config_t* config);
 
 /**
- * Set audio sample rate
+ * @brief Get audio processing statistics
+ * 
+ * @param stats Pointer to statistics structure to fill
+ * @return esp_err_t ESP_OK on success
  */
-esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t rate);
+esp_err_t audio_processor_get_stats(audio_stats_t* stats);
 
 /**
- * Set audio bit depth
+ * @brief Read processed audio data
+ * 
+ * @param buffer Buffer to store audio data
+ * @param size Size of the buffer
+ * @param bytes_read Number of bytes read
+ * @return esp_err_t ESP_OK on success
  */
-esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t depth);
-
-/**
- * Read audio data
- */
-esp_err_t audio_processor_read(uint8_t *buffer, size_t size, size_t *bytes_read);
-
-/**
- * Get audio processing statistics
- */
-esp_err_t audio_processor_get_stats(audio_stats_t *stats);
-
-#ifdef __cplusplus
-}
-#endif
+esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read);
 
 #endif /* _AUDIO_PROCESSOR_H_ */

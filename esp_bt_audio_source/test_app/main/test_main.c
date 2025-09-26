@@ -1,26 +1,92 @@
-// Add proper cleanup after tests complete
-
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_system.h"
 #include "esp_log.h"
-#include "bt_mock_devices.h"
+#include "nvs_flash.h"
 #include "unity.h"
 
-// ... existing includes and declarations ...
+// Include test headers
+#include "test_app_main.h"
 
-static const char *TAG = "BT_TEST_MAIN";
+static const char *TAG = "TEST_MAIN";
 
-void app_main(void) {
+// Declare external test function
+extern void app_test_main(void);
+
+// Run all Bluetooth-related tests
+void run_bluetooth_tests(void)
+{
+    ESP_LOGI(TAG, "========== STARTING BLUETOOTH TESTS ==========");
+    
+    // Start Unity test session with proper output
+    printf("\n\n----- UNITY TEST START -----\n");
+    UNITY_BEGIN();
+    
+    // Run the test application
+    app_test_main();
+    
+    // End Unity test session and capture the result
+    // The result will be printed by Unity itself
+    int result = UNITY_END();
+    printf("----- UNITY TEST COMPLETE: %s -----\n", result ? "FAIL" : "PASS");
+    
+    // Print our own custom summary using Unity's global structure
+    // Access the global Unity structure directly
+    printf("-------- BLUETOOTH TEST SUMMARY --------\n");
+    printf("Tests run    : %d\n", Unity.NumberOfTests);
+    printf("Tests passed : %d\n", Unity.NumberOfTests - Unity.TestFailures);
+    printf("Tests failed : %d\n", Unity.TestFailures);
+    printf("--------------------------------------\n");
+    
+    ESP_LOGI(TAG, "-------- BLUETOOTH TEST SUMMARY --------");
+    ESP_LOGI(TAG, "Tests run     : %d", Unity.NumberOfTests);
+    ESP_LOGI(TAG, "Tests passed  : %d", Unity.NumberOfTests - Unity.TestFailures);
+    ESP_LOGI(TAG, "Tests failed  : %d", Unity.TestFailures);
+    ESP_LOGI(TAG, "--------------------------------------");
+}
+
+void app_main(void)
+{
     ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite");
     
     // Run tests
-    // ... existing test runs ...
+    run_bluetooth_tests();
     
-    // Ensure proper cleanup - add this at the end of your app_main() function
-    bt_mock_cleanup();
+#ifdef CONFIG_BT_MOCK_TESTING
+    // Skip audio tests in mock testing mode
+    ESP_LOGI(TAG, "Audio tests skipped in BT mock testing mode");
+#endif
+
+    // Overall test summary
+    printf("======== OVERALL TEST SUMMARY ========\n");
+    printf("Tests run    : %d\n", Unity.NumberOfTests);
+    printf("Tests passed : %d\n", Unity.NumberOfTests - Unity.TestFailures);
+    printf("Tests failed : %d\n", Unity.TestFailures);
+    printf("Success rate : %.1f%%\n", (Unity.NumberOfTests > 0) ?
+           ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
+    printf("=====================================\n");
     
-    ESP_LOGI(TAG, "All tests completed. Test application will now restart.");
-    // Short delay before restarting to allow logs to flush
-    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "======== OVERALL TEST SUMMARY ========");
+    ESP_LOGI(TAG, "Tests run     : %d", Unity.NumberOfTests);
+    ESP_LOGI(TAG, "Tests passed  : %d", Unity.NumberOfTests - Unity.TestFailures);
+    ESP_LOGI(TAG, "Tests failed  : %d", Unity.TestFailures);
+    ESP_LOGI(TAG, "Success rate  : %.1f%%", (Unity.NumberOfTests > 0) ?
+             ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
+    ESP_LOGI(TAG, "=====================================");
+    
+    // CRITICAL: Modify this log message that's causing confusion
+    ESP_LOGI(TAG, "All tests completed. Test application will now enter idle loop.");
+    
+    // Display a clear marker that we're in idle loop so we can see it in the logs
+    printf("\n\n*** ENTERING IDLE LOOP - TESTS COMPLETE ***\n\n");
+    
+    // IMPORTANT: Enter idle loop instead of restarting!
+    while (1) {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // Print a heartbeat every second to show we're still running
+        printf(".");
+        fflush(stdout);
+    }
 }

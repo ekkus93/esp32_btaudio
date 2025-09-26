@@ -4,7 +4,7 @@
 #include "freertos/task.h"
 #include "freertos/ringbuf.h"
 #include "esp_log.h"
-#include "driver/i2s_std.h"
+#include "driver/i2s_std.h"  // Use the current I2S driver
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "audio_processor.h"
@@ -338,7 +338,7 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 /**
  * @brief Read processed audio data
  */
-esp_err_t audio_processor_read(void* buffer, size_t size, size_t* bytes_read)
+esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
@@ -359,14 +359,18 @@ esp_err_t audio_processor_read(void* buffer, size_t size, size_t* bytes_read)
 
     // Read from ring buffer
     size_t read_size = 0;
-    BaseType_t ret = xRingbufferReceiveUpTo(s_audio_buffer, buffer, size, 0, &read_size);
+    void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, size, 0);
     
-    if (ret != pdTRUE) {
+    if (item == NULL) {
         // Buffer is empty
         *bytes_read = 0;
         s_audio_stats.buffer_underruns++;
         return ESP_OK;
     }
+
+    // Copy data to output buffer
+    memcpy(buffer, item, read_size);
+    vRingbufferReturnItem(s_audio_buffer, item);
 
     // Apply volume if not at maximum
     if (s_volume_gain < 100) {
@@ -389,7 +393,7 @@ esp_err_t audio_processor_read(void* buffer, size_t size, size_t* bytes_read)
  *******************************/
 
 /**
- * @brief Configure I2S driver
+ * @brief Configure I2S driver using modern API
  */
 static esp_err_t configure_i2s(const audio_config_t* config)
 {
@@ -400,7 +404,7 @@ static esp_err_t configure_i2s(const audio_config_t* config)
         s_i2s_rx_handle = NULL;
     }
 
-    // Configure I2S standard mode
+    // Configure I2S channel with modern API
     i2s_chan_config_t chan_cfg = {
         .id = config->i2s_port,
         .role = I2S_ROLE_MASTER,
@@ -417,26 +421,30 @@ static esp_err_t configure_i2s(const audio_config_t* config)
         return ret;
     }
 
-    // Configure RX channel
+    // Convert bit depth to I2S format
+    i2s_data_bit_width_t bit_width;
+    switch (config->bit_depth) {
+        case AUDIO_BIT_DEPTH_16:
+            bit_width = I2S_DATA_BIT_WIDTH_16BIT;
+            break;
+        case AUDIO_BIT_DEPTH_24:
+            bit_width = I2S_DATA_BIT_WIDTH_24BIT;
+            break;
+        case AUDIO_BIT_DEPTH_32:
+            bit_width = I2S_DATA_BIT_WIDTH_32BIT;
+            break;
+        default:
+            bit_width = I2S_DATA_BIT_WIDTH_16BIT;
+            break;
+    }
+
+    // Configure RX channel in standard mode
     i2s_std_config_t std_cfg = {
-        .clk_cfg = {
-            .sample_rate_hz = config->sample_rate,
-            .clk_src = I2S_CLK_SRC_DEFAULT,
-            .mclk_multiple = I2S_MCLK_MULTIPLE_256,
-        },
-        .slot_cfg = {
-            .data_bit_width = config->bit_depth,
-            .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
-            .slot_mode = config->channels == AUDIO_CHANNEL_MONO ?
-                         I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO,
-            .slot_mask = I2S_STD_SLOT_BOTH,
-            .ws_width = I2S_STD_WS_WIDTH_16_BCLK,
-            .ws_pol = false,
-            .bit_shift = true,
-            .left_align = false,
-            .big_endian = false,
-            .bit_order_lsb = false,
-        },
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(config->sample_rate),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+            bit_width,
+            config->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO
+        ),
         .gpio_cfg = {
             .mclk = GPIO_NUM_0,     // Configure based on your hardware
             .bclk = GPIO_NUM_26,    // Configure based on your hardware

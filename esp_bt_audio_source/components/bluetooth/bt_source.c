@@ -16,25 +16,12 @@ static const char *TAG = "BT_SOURCE";
 static bool is_initialized = false;
 static bool is_connected = false;
 static bool is_scanning = false;
-static bt_streaming_state_t streaming_state = BT_STREAM_STATE_STOPPED;
+static bt_streaming_state_t streaming_state = BT_STREAMING_STATE_STOPPED;
 static bt_pairing_state_t pairing_state = BT_PAIRING_STATE_IDLE;
 static bt_pairing_method_t pairing_method = BT_PAIRING_METHOD_NONE;
 
-// Forward declarations for mock functions when in testing mode
-#ifdef BT_USE_MOCKS
-// Use declarations that match the functions in bt_mock_devices.h
-void bt_mock_reset(void);
-esp_err_t bt_mock_start_pairing(const char* addr);
-bt_pairing_state_t bt_mock_get_pairing_state(void);
-bt_pairing_method_t bt_mock_get_pairing_method(void);
-esp_err_t bt_mock_send_pin(const char* pin);
-esp_err_t bt_mock_confirm_ssp(bool confirm);
-bool bt_mock_is_device_paired(const char* addr);
-esp_err_t bt_mock_add_paired_device(bt_device_t* device);
-void bt_mock_set_ssp_supported(bool supported);
-#endif
-
 // Implementation of bt_init - simple version for now
+#ifndef BT_TEST_APP
 esp_err_t bt_init(void) {
 #ifdef BT_USE_MOCKS
     // Just delegate to mock in test mode
@@ -48,8 +35,12 @@ esp_err_t bt_init(void) {
     return ESP_OK;
 #endif
 }
+#else
+// In test app mode, this will be provided by the mock
+#endif
 
 // Implementation of bt_scan with proper format string
+#ifndef BT_TEST_APP
 esp_err_t bt_scan(uint32_t timeout_seconds) {
 #ifdef BT_USE_MOCKS
     // Just delegate to mock in test mode
@@ -63,6 +54,9 @@ esp_err_t bt_scan(uint32_t timeout_seconds) {
     return ESP_OK;
 #endif
 }
+#else
+// In test app mode, this will be provided by the mock
+#endif
 
 // Check scanning state
 bool bt_is_scanning(void) {
@@ -119,7 +113,7 @@ void bt_reset_for_test(void) {
     is_initialized = false;
     is_connected = false;
     is_scanning = false;
-    streaming_state = BT_STREAM_STATE_STOPPED;
+    streaming_state = BT_STREAMING_STATE_STOPPED;  // This was BT_STREAM_STATE_STOPPED
     pairing_state = BT_PAIRING_STATE_IDLE;
     pairing_method = BT_PAIRING_METHOD_NONE;
 }
@@ -141,6 +135,39 @@ esp_err_t bt_start_pairing(const char* addr) {
     
     return ret;
 #else
-    // ...existing implementation...
+    ESP_LOGI(TAG, "Starting pairing with device %s", addr);
+    
+    if (addr == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!is_initialized) {
+        ESP_LOGE(TAG, "Bluetooth not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Convert address string to ESP format
+    esp_bd_addr_t bda;
+    if (sscanf(addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != ESP_BD_ADDR_LEN) {
+        ESP_LOGE(TAG, "Invalid address format: %s", addr);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // In a real implementation, you would start the pairing process with:
+    // esp_err_t ret = esp_bt_gap_start_authentication(bda);
+    
+    // For now, just update the state
+    pairing_state = BT_PAIRING_STATE_STARTED;
+    pairing_method = BT_PAIRING_METHOD_PIN; // Default to PIN method
+    
+    return ESP_OK;
 #endif
+}
+
+// Replace with a real implementation that forwards to ESP-IDF API
+bool bt_is_ssp_supported(void) {
+    // In a real implementation, query capability from ESP-IDF
+    // For now, return true as most modern devices support SSP
+    return true;
 }

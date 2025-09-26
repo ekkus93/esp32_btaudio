@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
+// Add necessary ESP-IDF includes
+#include "esp_a2dp_api.h"
+#include "esp_gap_bt_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,12 +20,25 @@ typedef struct {
     bool paired;          // Is device paired?
 } bt_device_t;
 
+// Bluetooth connection states
+typedef enum {
+    BT_CONNECTION_STATE_DISCONNECTED = 0,
+    BT_CONNECTION_STATE_CONNECTING = 1,
+    BT_CONNECTION_STATE_CONNECTED = 2,
+    BT_CONNECTION_STATE_DISCONNECTING = 3,
+    BT_CONNECTION_STATE_FAILED = 4
+} bt_connection_state_t;
+
 // Connection info structure
 typedef struct {
     bool connected;       // Is currently connected
     char addr[18];        // Connected device address
     char name[64];        // Connected device name
     bool streaming;       // Is audio streaming active
+    // State tracking
+    bt_connection_state_t state;    // Current connection state
+    uint32_t connect_time;          // Time when connected (Unix timestamp)
+    uint8_t retry_count;            // Number of connection retries
 } bt_connection_info_t;
 
 // Bluetooth device types
@@ -52,12 +68,14 @@ typedef enum {
     BT_PAIRING_METHOD_SSP = 3         // Secure Simple Pairing
 } bt_pairing_method_t;
 
-// Streaming state enum
+// Bluetooth streaming states - make sure there's only ONE definition
 typedef enum {
-    BT_STREAM_STATE_STOPPED = 0,    // Streaming stopped
-    BT_STREAM_STATE_PLAYING = 1,    // Streaming active
-    BT_STREAM_STATE_PAUSED = 2,     // Streaming paused
-    BT_STREAM_STATE_ERROR = 3       // Streaming error
+    BT_STREAMING_STATE_STOPPED = 0,    // Streaming stopped 
+    BT_STREAMING_STATE_STARTING = 1,   // Streaming starting
+    BT_STREAMING_STATE_STREAMING = 2,  // Streaming active (playing)
+    BT_STREAMING_STATE_STOPPING = 3,   // Streaming stopping
+    BT_STREAMING_STATE_PAUSED = 4,     // Streaming paused
+    BT_STREAMING_STATE_ERROR = 5       // Streaming error
 } bt_streaming_state_t;
 
 // Profile enum
@@ -70,15 +88,30 @@ typedef enum {
     BT_PROFILE_PBAP = 5              // Phone Book Access Profile
 } bt_profile_t;
 
+/**
+ * @brief Information about the current streaming session
+ */
+typedef struct {
+    bt_streaming_state_t state;     // Current streaming state
+    uint32_t bytes_sent;            // Bytes sent during streaming
+    uint32_t packets_sent;          // Packets sent during streaming
+    uint32_t packet_errors;         // Packet errors during streaming
+    uint32_t stream_duration;       // in milliseconds
+    bool paused;                    // Is streaming paused
+} bt_streaming_info_t;
+
 // Callback type definitions
 typedef void (*bt_discovery_cb_t)(bt_device_t* device, void* user_data);
 typedef void (*bt_connection_callback_t)(bt_connection_info_t* info, void* user_data);
+typedef void (*bt_stream_callback_t)(bool streaming, const bt_streaming_info_t* info, void* user_data);
 
 // Interface structure for BT implementation
 typedef struct {
     // Implementation-specific data
     void* priv;
 } bt_interface_t;
+
+/* ----------------- Core Bluetooth API ----------------- */
 
 /**
  * @brief Initialize Bluetooth stack
@@ -155,6 +188,22 @@ bool bt_is_connected(void);
 esp_err_t bt_get_connection_info(bt_connection_info_t* info);
 
 /**
+ * @brief Get current connection state
+ * 
+ * @return Current connection state
+ */
+bt_connection_state_t bt_get_connection_state_detailed(void);
+
+/**
+ * @brief Get current connection state as integer (simpler version)
+ * 
+ * @return 1 if connected, 0 if not connected
+ */
+int bt_get_connection_state(void);
+
+/* ----------------- A2DP Streaming API ----------------- */
+
+/**
  * @brief Start audio streaming
  * 
  * @return ESP_OK on success
@@ -195,6 +244,8 @@ bool bt_a2dp_is_streaming(void);
  * @return true if connected, false otherwise
  */
 bool bt_a2dp_is_connected(void);
+
+/* ----------------- Device Management API ----------------- */
 
 /**
  * @brief Register device discovery callback
@@ -310,30 +361,19 @@ bool bt_is_paused(void);
 /**
  * @brief Get current streaming state
  * 
- * @return Current streaming state (STOPPED, PLAYING, PAUSED)
+ * @return Current streaming state
  */
 bt_streaming_state_t bt_get_streaming_state(void);
 
 /**
- * @brief Information about the current streaming session
- */
-typedef struct {
-    bt_streaming_state_t state;
-    uint32_t bytes_sent;
-    uint32_t packets_sent;
-    uint32_t packet_errors;
-    uint32_t stream_duration; // in milliseconds
-    bool paused;
-} bt_streaming_info_t;
-
-/**
- * @brief Callback type for streaming state changes
+ * @brief Get detailed streaming info
  * 
- * @param streaming True if streaming is active
- * @param info Pointer to current streaming info
- * @param user_data User data pointer
+ * @param info Pointer to streaming info structure to fill
+ * @return ESP_OK on success
  */
-typedef void (*bt_stream_callback_t)(bool streaming, const bt_streaming_info_t* info, void* user_data);
+esp_err_t bt_get_streaming_info(bt_streaming_info_t* info);
+
+/* ----------------- Pairing API ----------------- */
 
 /**
  * @brief Start Bluetooth pairing with a device
@@ -414,82 +454,39 @@ esp_err_t bt_load_paired_devices(void);
  */
 esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info);
 
+/* ----------------- TESTING FUNCTIONS (NOT FOR PRODUCTION) ----------------- */
 /**
- * Add a test device (for testing purposes only)
- * 
- * @param addr_str Device address string
- * @param name Device name
- * @param type Device type
+ * @brief Add a test device (for testing purposes only)
+ * @warning ONLY FOR USE IN TESTING
  */
 void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_type_t type);
 
-/* Mock functions for testing - these should only be defined in the test code */
+/**
+ * @brief Simulate PIN pairing failure (for testing purposes only)
+ * @warning ONLY FOR USE IN TESTING
+ */
 void bt_mock_simulate_pin_failure(void);
+
+/**
+ * @brief Simulate pairing timeout (for testing purposes only)
+ * @warning ONLY FOR USE IN TESTING
+ */
 void bt_mock_simulate_pairing_timeout(void);
 
-/* SSP Pairing Functions */
-
 /**
- * Respond to a SSP confirmation request
- * 
- * @param confirm True to accept the pairing, false to reject
- * @return ESP_OK if the response was sent successfully
- */
-esp_err_t bt_ssp_confirm(bool confirm);
-
-/**
- * Get the current SSP passkey/code displayed by remote device
- *
- * @param passkey Buffer to store the passkey (should be at least 7 bytes)
- * @param size Size of the passkey buffer
- * @return ESP_OK if successful, ESP_ERR_NOT_FOUND if no SSP request is active
- */
-esp_err_t bt_get_ssp_passkey(char* passkey, size_t size);
-
-/**
- * Check if a SSP confirmation request is active
- *
- * @return true if SSP confirmation is requested, false otherwise
- */
-bool bt_is_ssp_confirm_requested(void);
-
-/**
- * Get the current pairing method being used
- *
- * @return Current pairing method
- */
-bt_pairing_method_t bt_get_pairing_method(void);
-
-/**
- * Set whether SSP is supported by the mock
- * For testing purposes only
- * 
- * @param supported Whether SSP is supported
+ * @brief Set whether SSP is supported (for testing purposes only)
+ * @warning ONLY FOR USE IN TESTING
  */
 void bt_mock_set_ssp_supported(bool supported);
 
 /**
- * Get a list of paired devices
- *
- * @param devices Array to populate with paired device information
- * @param max_devices Maximum number of devices to retrieve
- * @return Number of devices retrieved
+ * @brief Reset Bluetooth stack state (for testing purposes only)
+ * @warning ONLY FOR USE IN TESTING
  */
-int bt_get_paired_devices(bt_device_t* devices, int max_devices);
+void bt_mock_reset(void); // Changed from bt_reset_for_test to bt_mock_reset
 
-/**
- * @brief Check if there are any devices that match the given filter
- * 
- * @param device_type Type of device to filter
- * @return true if there are matching devices, false otherwise
- */
-bool bt_filter_has_matches(int device_type);
-
-/**
- * Reset Bluetooth stack state for testing purposes
- * This function should only be used in test environments
- */
-void bt_reset_for_test(void);
+// Connection manager functions with correct ESP-IDF types
+void bt_connection_manager_init(esp_a2d_cb_t conn_cb, esp_a2d_source_data_cb_t audio_cb);
 
 #ifdef __cplusplus
 }

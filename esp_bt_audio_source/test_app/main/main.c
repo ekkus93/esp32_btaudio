@@ -17,6 +17,7 @@
 #include "nvs_flash.h"
 #include "esp_system.h"
 #include "esp_bt.h"
+#include "test_app_main.h"
 
 static const char *TAG = "TEST_MAIN";
 
@@ -49,6 +50,8 @@ void app_main_i2s_channel_tests(void) {
 }
 #endif
 
+#ifndef APP_MAIN_DEFINED
+#define APP_MAIN_DEFINED
 // Main entry point for all tests
 void app_main(void)
 {
@@ -92,3 +95,4 @@ void app_main(void)
     ESP_LOGI(TAG, "All tests completed. Test application will now restart.");
     esp_restart();
 }
+#endif

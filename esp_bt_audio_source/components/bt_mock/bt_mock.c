@@ -1,0 +1,148 @@
+/**
+ * @file bt_mock.c
+ * @brief Implementation of Bluetooth mock functionality for testing
+ */
+#include <string.h>
+#include <stdio.h>
+#include "esp_log.h"
+#include "bt_mock.h"
+#include "bt_mock_devices.h"
+
+static const char *TAG = "BT_MOCK";
+
+// Static variables to track mock state
+static bool s_mock_initialized = false;
+static bool s_mock_ssp_supported = true;
+static bool s_mock_pin_failure = false;
+static bool s_mock_pairing_timeout = false;
+
+esp_err_t bt_mock_init(void)
+{
+    if (s_mock_initialized) {
+        ESP_LOGW(TAG, "BT mock already initialized");
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "Initializing BT mock system");
+    bt_mock_devices_init();
+    s_mock_initialized = true;
+    return ESP_OK;
+}
+
+void bt_mock_cleanup(void)
+{
+    if (!s_mock_initialized) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Cleaning up BT mock system");
+    bt_mock_devices_cleanup();
+    s_mock_initialized = false;
+}
+
+// Implement bt_mock_reset function - this is the one we need to match the call in the tests
+void bt_mock_reset(void)
+{
+    ESP_LOGI(TAG, "Resetting Bluetooth mock state");
+    // Reset device counters and state
+    bt_mock_devices_reset();
+    
+    // Reset other internal state
+    s_mock_ssp_supported = true;
+    s_mock_pin_failure = false;
+    s_mock_pairing_timeout = false;
+    
+    ESP_LOGI(TAG, "Mock state reset complete");
+}
+
+// Update to use bt_device_type_t instead of int
+void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_type_t type)
+{
+    ESP_LOGI(TAG, "Adding test device: %s (%s)", name, addr_str);
+    // Adding false for paired parameter (test devices start unpaired)
+    bt_mock_add_device(addr_str, name, type, false);
+}
+
+void bt_mock_set_ssp_supported(bool supported)
+{
+    s_mock_ssp_supported = supported;
+    ESP_LOGI(TAG, "SSP support set to: %s", supported ? "enabled" : "disabled");
+}
+
+void bt_mock_simulate_pin_failure(void)
+{
+    s_mock_pin_failure = true;
+    ESP_LOGI(TAG, "PIN failure simulation enabled");
+}
+
+void bt_mock_simulate_pairing_timeout(void)
+{
+    s_mock_pairing_timeout = true;
+    ESP_LOGI(TAG, "Pairing timeout simulation enabled");
+}
+
+// Implement bt_filter_has_matches function for compatibility with API calls
+bool bt_filter_has_matches(int timeout)
+{
+    ESP_LOGI(TAG, "Check for filter matches with timeout %d seconds", timeout);
+    // In mock implementation, return true if we have any devices
+    return bt_mock_devices_count() > 0;
+}
+
+// Implement bt_ssp_confirm function for compatibility with API calls
+esp_err_t bt_ssp_confirm(bool confirm)
+{
+    ESP_LOGI(TAG, "SSP confirmation: %s", confirm ? "confirmed" : "rejected");
+    return ESP_OK;
+}
+
+// Implement bt_mock_add_paired_device
+esp_err_t bt_mock_add_paired_device(bt_device_t* device)
+{
+    if (!device) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    ESP_LOGI(TAG, "Adding paired device: %s", device->name);
+    device->paired = true;
+    return bt_mock_add_device((const char*)device->addr, device->name, device->type, true);
+}
+
+// Implement bt_mock_get_paired_device_count
+uint16_t bt_mock_get_paired_device_count(void)
+{
+    uint16_t count = 0;
+    int total = bt_mock_devices_count();
+    
+    // Count devices that are paired
+    for (int i = 0; i < total; i++) {
+        bt_device_t device;
+        if (bt_mock_get_device(i, &device) == ESP_OK && device.paired) {
+            count++;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Paired device count: %d", count);
+    return count;
+}
+
+// Implement bt_mock_get_paired_devices if needed
+esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, uint16_t *actual_count)
+{
+    if (!devices || !actual_count) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    *actual_count = 0;
+    int total = bt_mock_devices_count();
+    
+    for (int i = 0; i < total && *actual_count < max_count; i++) {
+        bt_device_t device;
+        if (bt_mock_get_device(i, &device) == ESP_OK && device.paired) {
+            memcpy(&devices[*actual_count], &device, sizeof(bt_device_t));
+            (*actual_count)++;
+        }
+    }
+    
+    return ESP_OK;
+}

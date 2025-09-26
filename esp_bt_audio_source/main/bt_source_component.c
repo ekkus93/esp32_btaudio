@@ -12,8 +12,10 @@
 static const char *TAG = "BT_SOURCE";
 
 /* Forward declarations for external components */
-extern void bt_connection_manager_init(esp_a2d_connection_state_cb_t conn_cb, esp_a2d_audio_state_cb_t audio_cb);
+extern void bt_connection_manager_init(esp_a2d_cb_t conn_cb, esp_a2d_source_data_cb_t audio_cb);
 extern void bt_streaming_manager_init(void);
+extern void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr);
+extern void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr);
 
 /* Static function declarations */
 static void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
@@ -262,8 +264,11 @@ esp_err_t bt_connect(const char* addr)
 
 esp_err_t bt_disconnect(void)
 {
+    uint8_t remote_bda[ESP_BD_ADDR_LEN] = {0};
+    /* Since we need to provide an address, use zeros if we don't have a specific one */
+    
     /* Disconnect from device */
-    esp_err_t ret = esp_a2d_source_disconnect();
+    esp_err_t ret = esp_a2d_source_disconnect(remote_bda);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to disconnect: %s", esp_err_to_name(ret));
         return ret;

@@ -3,11 +3,11 @@ idf_component_register(
         "bt_mock_devices.c"
     INCLUDE_DIRS 
         "include"
-    REQUIRES 
-        bluetooth
+    REQUIRES
+        "esp_common"
+        "bluetooth"
+        "log"
 )
 
-# Create a public header directory 
-target_include_directories(${COMPONENT_LIB} PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
+# Add compile definition to enable test features
+target_compile_definitions(${COMPONENT_LIB} PUBLIC BT_USE_MOCKS CONFIG_BT_MOCK_TESTING)

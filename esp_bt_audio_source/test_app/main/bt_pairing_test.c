@@ -3,16 +3,17 @@
  * @brief Implementation of Bluetooth pairing tests and mock interface functions.
  */
 
+#include "bt_test_setup.h"
 #include "test_config.h"
-#include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
+#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "bt_source.h"
-#include "bt_mock_devices.h"
 #include "unity.h"
+#include "bt_source.h"
+#include "bt_mock.h" 
+#include "bt_mock_setup.h" // Update this include
 
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
 
@@ -32,8 +33,12 @@ static bt_mock_state_t mock_state = {0};
 /**
  * Set up the mock BT implementation
  */
-void setup_mock_bt_implementation(void)
+static void setup_mock_bt_implementation(void)
 {
+    esp_err_t ret = bt_init();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_mock_reset(); // Consistent naming
+    
     // Initialize to default values
     mock_state.pairing_state = BT_PAIRING_STATE_IDLE;
     mock_state.pairing_method = BT_PAIRING_METHOD_NONE;
@@ -42,18 +47,15 @@ void setup_mock_bt_implementation(void)
     mock_state.is_connected = false;
     memset(mock_state.connected_addr, 0, sizeof(mock_state.connected_addr));
     memset(mock_state.ssp_passkey, 0, sizeof(mock_state.ssp_passkey));
-    
-    // Reset the mock BT state
-    bt_mock_reset();
 }
 
 /**
  * Get the BT implementation for tests - fix the return type to match header
  */
-bt_test_interface_t* get_bt_implementation(void)
+bt_interface_t* get_bt_implementation(void)
 {
-    // Cast to the expected return type
-    return (bt_test_interface_t*)&mock_state;
+    // Return the mock interface with appropriate casting
+    return (bt_interface_t*)&mock_state;
 }
 
 /**
@@ -70,10 +72,10 @@ const char* bt_mock_get_connected_addr(void)
 /**
  * Get the list of paired devices
  */
-int bt_mock_get_paired_devices(bt_device_t* devices, int max_count)
+esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, uint16_t *actual_count)
 {
-    if (!devices || max_count <= 0) {
-        return 0;
+    if (!devices || max_count == 0 || !actual_count) {
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Create a sample paired device
@@ -89,10 +91,12 @@ int bt_mock_get_paired_devices(bt_device_t* devices, int max_count)
         devices[0].paired = true;
         devices[0].cod = 0x240404; // Audio device
         
-        return 1; // Return 1 device
+        *actual_count = 1; // Return 1 device
+        return ESP_OK;
     }
     
-    return 0;
+    *actual_count = 0;
+    return ESP_OK;
 }
 
 /**
@@ -152,29 +156,26 @@ void test_pin_pairing_success(void)
 {
     ESP_LOGI(TAG, "Testing PIN pairing success");
     
-    // Get the test implementation - fix the type to match what's returned
-    bt_test_interface_t* impl = get_bt_implementation();
-    TEST_ASSERT_NOT_NULL(impl);
+    bt_mock_setup_common(); // Instead of bt_test_setup_common
     
-    // Start pairing with a PIN-based device
-    mock_state.pairing_method = BT_PAIRING_METHOD_PIN;
-    mock_state.pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;
-    
-    const char* test_addr = "12:34:56:78:9A:BC";
-    esp_err_t ret = bt_start_pairing(test_addr);
+    // Connect to device
+    esp_err_t ret = bt_connect_device(TEST_DEVICE_ADDR);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Send PIN code
+    // Start pairing
+    ret = bt_start_pairing(TEST_DEVICE_ADDR);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    
+    // Send PIN code (should match what bt_source_stubs.c expects)
     ret = bt_send_pin_code("1234");
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Verify pairing state is now complete
-    // FIX: Use the correct enum value BT_PAIRING_STATE_PAIRED (4) from bt_source.h
-    // instead of assuming it's 0
+    // Check pairing state is PAIRED
     TEST_ASSERT_EQUAL(BT_PAIRING_STATE_PAIRED, bt_get_pairing_state());
+    TEST_ASSERT_TRUE(bt_is_device_paired(TEST_DEVICE_ADDR));
     
-    // Device should now be paired
-    TEST_ASSERT_TRUE(bt_is_device_paired(test_addr));
+    // Clean up
+    bt_disconnect();
     
     ESP_LOGI(TAG, "PIN pairing success test completed");
 }

@@ -25,6 +25,12 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - RX: GPIO16 (receives commands)
 - TX: GPIO17 (sends responses/events)
 
+I2S and UART: practical defaults and recommendations
+- I2S recommended default format: 16-bit PCM, stereo, 44.1 kHz (44100 Hz). This minimizes runtime processing on the Bluetooth ESP32 — send raw PCM frames from the decoder/producer ESP32 over I2S for the lowest CPU load on the Bluetooth device.
+- I2S master/slave recommendation: make the audio producer (the ESP32 doing decoding/producing samples) the I2S master and this Bluetooth ESP32 the I2S slave. That way the producer supplies BCLK/WCLK and the BT device simply consumes the samples.
+- UART defaults: 115200 baud, 8 data bits, no parity, 1 stop bit ("115200 8N1"). Commands are newline-terminated (\n).
+- USB-serial adapter / TTL note: Use a 3.3V TTL USB-serial adapter (for example FTDI, CP2102, CH340 variants). Do not connect 5V-level UART adapters directly to the ESP32 pins. Cross RX/TX and always connect a common ground.
+
 ## Implementation Tasks
 
 - [x] Initial A2DP source implementation
@@ -137,6 +143,25 @@ In addition to command responses, the ESP32 may send unsolicited event messages:
 > CONNECT 11:22:33:44:55:66
 < OK|CONNECT|CONNECTED|11:22:33:44:55:66
 ```
+
+Notes about commands and responses
+
+- Commands are case-sensitive. Use uppercase command tokens (for example: `SCAN`, `CONNECT`, `START`).
+- Line endings: commands must end with a newline character (`\n`). The parser expects the exact format and may reject extra whitespace.
+- Error response format (recommended): `ERR|<COMMAND>|<CODE>|<MESSAGE>`
+   - Example: `ERR|CONNECT|NOT_FOUND|Device not in range`
+   - Suggested error codes: `BAD_SYNTAX`, `BAD_PARAM`, `NOT_FOUND`, `BUSY`, `FAILED`.
+- IO convention used in this README: `>` denotes user/host input, `<` denotes device output (responses or events).
+
+Persistent storage and small-file storage
+
+- NVS is used for configuration and small structured data (paired device entries, config keys). The partition table includes an `nvs` partition by default.
+- If you need to store small audio clips (e.g., .wav), add SPIFFS or LittleFS to the partition table and store files there. Keep file sizes small or use external flash for large media.
+
+Testing suggestions
+
+- Host-based unit tests: put parser and business logic behind an interface and mock ESP-IDF APIs. Use the `test/host_test` CMake host-test harness to run fast tests on your development machine.
+- On-device: keep Unity-based tests in `test_app` for integration verification. Run fast host tests during development and run on-device tests before major merges.
 
 ## Build and Installation Guide
 

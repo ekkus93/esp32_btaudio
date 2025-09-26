@@ -1,19 +1,20 @@
-# ESP-IDF Component CMake file for test application
-
-# The following lines of boilerplate have to be in your project's
-# CMakeLists in this exact order for cmake to work correctly
+# ESP-IDF BT Audio Source Test App
 cmake_minimum_required(VERSION 3.16)
 
-# Set mock testing flag globally for all components
-add_compile_definitions(CONFIG_BT_MOCK_TESTING)
-add_compile_definitions(BT_USE_MOCKS)
-
-# Add the bt_mock component to your project
+# Set extra components directory
 set(EXTRA_COMPONENT_DIRS "../components")
 
-# Unity configuration - set before including project.cmake
-add_compile_definitions(UNITY_INCLUDE_CONFIG_H)
-add_compile_definitions(UNITY_EXTENSION_FIXTURE=1)
-
+# Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+# Set project name
 project(esp_bt_audio_source_test)
+
+# Optionally add compile definitions for testing mode
+target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
+
+# Add bt_mock component to include directories
+idf_component_get_property(bt_mock_dir bt_mock COMPONENT_DIR)
+target_include_directories(${PROJECT_NAME}.elf PUBLIC 
+    "${bt_mock_dir}/include"
+)

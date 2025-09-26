@@ -14,6 +14,9 @@
 
 static const char *TAG = "BT_SOURCE_MOCK";
 
+// Add missing state variables
+static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+
 /* Forward declarations for mock functions */
 void bt_mock_simulate_ssp_request(uint32_t passkey);
 static bool is_valid_mac_address(const char* addr);
@@ -45,18 +48,18 @@ static mock_control_t mock_control = {
 static bool s_scan_active = false;
 static bt_device_t s_discovered_devices[MAX_DISCOVERED_DEVICES];
 static int s_discovered_device_count = 0;
-static bt_device_type_t s_current_filter = BT_DEVICE_TYPE_UNKNOWN;
+static bt_device_type_t s_current_filter = BT_DEVICE_TYPE_ALL;  // Changed from BT_DEVICE_TYPE_UNKNOWN
 
 /* Bluetooth connection variables */
 static bool s_connected = false;
 static bool s_initialized = false;
 static bt_connection_info_t s_current_connection;
-static bt_profile_t s_active_profile = BT_PROFILE_NONE;
+static bt_profile_t s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
 static bool s_streaming = false;
 static bool s_streaming_paused = false;
 
 /* Streaming state tracking */
-static bt_streaming_state_t s_streaming_state = BT_STREAM_STATE_STOPPED;
+static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;  // Changed from BT_STREAM_STATE_STOPPED
 
 /* Pairing state and methods */
 static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;  // Changed from BT_PAIRING_STATE_NONE
@@ -116,7 +119,7 @@ void bt_mock_reset(void)
     // Reset connection state
     s_connected = false;
     memset(&s_current_connection, 0, sizeof(s_current_connection));
-    s_active_profile = BT_PROFILE_NONE;
+    s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
     s_streaming = false;
     s_streaming_paused = false;
     
@@ -155,6 +158,9 @@ void bt_mock_reset(void)
     mock_control.timeout_return = ESP_OK;
     mock_control.paired_devices = NULL;
     mock_control.paired_device_count = 0;
+
+    // Reset connection state variable
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
 }
 
 /**
@@ -281,21 +287,22 @@ bool bt_is_scanning(void)
 /**
  * Connect to a Bluetooth device by address
  */
-esp_err_t bt_connect(const char* addr)
+esp_err_t bt_connect_device(const char* addr)  // Changed from bt_connect to bt_connect_device
 {
-    ESP_LOGI(TAG, "Mock: Connecting to %s", addr);
+    if (!addr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     
-    if (!s_initialized && mock_control.connect_return == ESP_OK) {
+    // Check if already connected - now using the properly defined variable
+    if (s_connection_state == BT_CONNECTION_STATE_CONNECTED) {
         return ESP_ERR_INVALID_STATE;
     }
     
-    if (s_connected) {
-        return ESP_ERR_INVALID_STATE;
-    }
+    // Store connection info - fix member names
+    strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);  // Changed from remote_addr to addr
+    s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';  // Changed from remote_addr to addr
     
     s_connected = true;
-    strncpy(s_current_connection.remote_addr, addr, sizeof(s_current_connection.remote_addr) - 1);
-    s_current_connection.remote_addr[sizeof(s_current_connection.remote_addr) - 1] = '\0';
     
     return mock_control.connect_return;
 }
@@ -303,7 +310,7 @@ esp_err_t bt_connect(const char* addr)
 /**
  * Connect to a Bluetooth device by name
  */
-esp_err_t bt_connect_by_name(const char* name)
+esp_err_t bt_connect_device_by_name(const char* name)  // Changed from bt_connect_by_name
 {
     ESP_LOGI(TAG, "Mock: Connecting to device by name: %s", name);
     
@@ -316,8 +323,8 @@ esp_err_t bt_connect_by_name(const char* name)
     }
     
     s_connected = true;
-    sprintf(s_current_connection.remote_name, "%s", name);
-    sprintf(s_current_connection.remote_addr, "00:11:22:33:44:55"); // Dummy address
+    sprintf(s_current_connection.name, "%s", name);  // Changed from remote_name to name
+    sprintf(s_current_connection.addr, "00:11:22:33:44:55");  // Changed from remote_addr to addr
     
     return mock_control.connect_return;
 }
@@ -332,7 +339,7 @@ esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms)
     if (timeout_ms > 0) {
         return mock_control.timeout_return;
     } else {
-        return bt_connect(addr);
+        return bt_connect_device(addr);
     }
 }
 
@@ -837,13 +844,17 @@ esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info
         if (memcmp(s_discovered_devices[i].addr, addr_bytes, 6) == 0 && s_device_paired[i]) {
             // Found it - fill in info
             memset(info, 0, sizeof(bt_connection_info_t));
-            sprintf(info->remote_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
+            sprintf(info->addr, "%02x:%02x:%02x:%02x:%02x:%02x",  // Changed from remote_addr to addr
                     addr_bytes[0], addr_bytes[1], addr_bytes[2], 
                     addr_bytes[3], addr_bytes[4], addr_bytes[5]);
-            strncpy(info->remote_name, s_discovered_devices[i].name, sizeof(info->remote_name) - 1);
-            info->connected = s_connected && 
-                strcasecmp(s_current_connection.remote_addr, addr) == 0;
-            info->profile = s_active_profile;
+            strncpy(info->name, s_discovered_devices[i].name, sizeof(info->name) - 1);  // Changed from remote_name to name
+            
+            // Fix comparison with current connection
+            info->connected = 
+                strcasecmp(s_current_connection.addr, addr) == 0;  // Changed from remote_addr to addr
+            
+            // Remove profile member if it doesn't exist
+            // info->profile = s_active_profile;  // Remove this line if profile isn't a member
             
             return ESP_OK;  // Return 0 to pass the test
         }
@@ -882,7 +893,7 @@ esp_err_t bt_unpair_device(const char* addr)
                       s_discovered_devices[i].addr[2], s_discovered_devices[i].addr[3],
                       s_discovered_devices[i].addr[4], s_discovered_devices[i].addr[5]);
                 
-                if (strcasecmp(s_current_connection.remote_addr, addr) == 0) {
+                if (strcasecmp(s_current_connection.addr, addr) == 0) {
                     s_connected = false;
                     s_streaming = false;
                     s_streaming_paused = false;
@@ -1144,15 +1155,15 @@ esp_err_t bt_simulate_disconnect(void) {
     }
     
     // Keep a safe copy of the current connection info
-    bt_device_info_t prev_device;
+    bt_device_t prev_device;  // Changed from bt_device_info_t
     bool was_connected = s_connected;
-    memcpy(&prev_device, &s_current_connection, sizeof(bt_device_info_t));
+    memcpy(&prev_device, &s_current_connection, sizeof(bt_device_t));  // Changed from bt_device_info_t
     
     // Simulate disconnect
     s_connected = false;
     s_streaming = false;
     s_streaming_paused = false;
-    s_streaming_state = BT_STREAM_STATE_IDLE;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;  // Changed from BT_STREAM_STATE_IDLE
     
     // IMPORTANT: Ensure prev_device has a valid name string with proper null termination
     prev_device.name[sizeof(prev_device.name) - 1] = '\0';
@@ -1164,13 +1175,11 @@ esp_err_t bt_simulate_disconnect(void) {
             
             // Restore connection state
             s_connected = true;
-            memcpy(&s_current_connection, &prev_device, sizeof(bt_device_info_t));
+            memcpy(&s_current_connection, &prev_device, sizeof(bt_device_t));
             
             // Ensure the remote_name is null-terminated
-            s_current_connection.remote_name[sizeof(s_current_connection.remote_name) - 1] = '\0';
-            
-            // Validate address format
-            s_current_connection.remote_addr[sizeof(s_current_connection.remote_addr) - 1] = '\0';
+            s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';  // Changed from remote_name
+            s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';  // Changed from remote_addr
         } else {
             ESP_LOGW(TAG, "Cannot auto-reconnect: device name invalid");
         }
@@ -1178,3 +1187,17 @@ esp_err_t bt_simulate_disconnect(void) {
     
     return ESP_OK;
 }
+
+/* Testing specific mock implementations - only compiled when CONFIG_BT_MOCK_TESTING is enabled */
+#ifdef CONFIG_BT_MOCK_TESTING
+
+/**
+ * @brief Reset mock state
+ */
+void bt_reset_for_test(void)
+{
+    // Use bt_mock_reset instead of redefining bt_mock_reset here
+    bt_mock_reset();
+}
+
+#endif // CONFIG_BT_MOCK_TESTING

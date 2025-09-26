@@ -1,10 +1,16 @@
 #include <stdio.h>
-#include <inttypes.h>  // Add this for PRIu32
+#include <inttypes.h>
 #include "unity.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"   // Make sure this is included
+#include "esp_log.h"
 #include "audio_processor.h"
+#include "driver/i2s_std.h"  // This include is correct
+
+// Define I2S_NUM_0 if not already defined
+#ifndef I2S_NUM_0
+#define I2S_NUM_0 0
+#endif
 
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
 #define I2S_BIT_DEPTH   AUDIO_BIT_DEPTH_16
