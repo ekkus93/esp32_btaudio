@@ -37,6 +37,11 @@ typedef struct {
     uint8_t volume;        // 0-100%
     bool mute;
     i2s_port_t i2s_port;  // I2S port number
+    /* Optional I2S pin configuration (GPIO numbers). Use GPIO_NUM_NC for unused pins. */
+    int i2s_bclk_pin;
+    int i2s_ws_pin;
+    int i2s_din_pin;
+    int i2s_dout_pin;
 } audio_config_t;
 
 // Audio statistics
@@ -136,5 +141,29 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats);
  * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read);
+
+/**
+ * @brief Simple audio runtime status
+ */
+typedef struct {
+    bool initialized;
+    bool running;
+    uint8_t volume;    // 0-100
+    bool mute;
+    audio_sample_rate_t sample_rate;
+    audio_bit_depth_t bit_depth;
+    audio_channel_t channels;
+} audio_status_t;
+
+/**
+ * @brief Get a compact runtime status of the audio processor
+ */
+esp_err_t audio_processor_get_status(audio_status_t* status);
+
+/**
+ * @brief Set I2S pins (bclk/ws/din[,dout]) at runtime.
+ * If the audio processor is running it will be stopped and restarted to apply pins.
+ */
+esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin);
 
 #endif /* _AUDIO_PROCESSOR_H_ */

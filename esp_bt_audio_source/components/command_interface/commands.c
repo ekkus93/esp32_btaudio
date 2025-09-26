@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+// Audio processor APIs
+#ifdef ESP_PLATFORM
+#include "audio_processor.h"
+#else
+// In host tests these symbols may be mocked; include a local header if available
+#include "audio_processor.h"
+#endif
 
 // Define this for ESP32 builds
 #ifdef ESP_PLATFORM
@@ -254,12 +261,168 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
     // Handlers for each command type will be implemented here
     // Example:
     switch (ctx->type) {
-        case CMD_TYPE_STATUS:
-            cmd_send_response("OK", "STATUS", "DISCONNECTED,STOPPED,50", NULL);
-            break;
+        case CMD_TYPE_STATUS: {
+            audio_status_t status;
+            if (audio_processor_get_status(&status) == ESP_OK) {
+                char data[128];
+                snprintf(data, sizeof(data), "init=%d,run=%d,vol=%d",
+                         status.initialized, status.running, status.volume);
+                cmd_send_response("OK", "STATUS", "CURRENT", data);
+            } else {
+                cmd_send_response("ERR", "STATUS", "NO_AUDIO", NULL);
+            }
+        } break;
+
         case CMD_TYPE_VERSION:
             cmd_send_response("OK", "VERSION", "1.0.0", NULL);
             break;
+
+        case CMD_TYPE_SCAN: {
+#ifdef ESP_PLATFORM
+            if (bt_start_scan() == BT_SUCCESS) {
+                cmd_send_response("OK", "SCAN", "STARTED", NULL);
+            } else {
+                cmd_send_response("ERR", "SCAN", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_CONNECT: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "CONNECT", "MISSING_PARAM", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (bt_connect(ctx->params[0]) == BT_SUCCESS) {
+                cmd_send_response("OK", "CONNECT", "INITIATED", NULL);
+            } else {
+                cmd_send_response("ERR", "CONNECT", "FAILED", NULL);
+            }
+#else
+            // Host test: simulate connect
+            cmd_send_response("OK", "CONNECT", "MOCK_CONNECTED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_DISCONNECT: {
+#ifdef ESP_PLATFORM
+            if (bt_disconnect() == BT_SUCCESS) {
+                cmd_send_response("OK", "DISCONNECT", "INITIATED", NULL);
+            } else {
+                cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "DISCONNECT", "MOCK_DISCONNECTED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_START: {
+#ifdef ESP_PLATFORM
+            if (bt_start_audio() == BT_SUCCESS) {
+                cmd_send_response("OK", "START", "AUDIO_STARTED", NULL);
+            } else {
+                cmd_send_response("ERR", "START", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_STOP: {
+#ifdef ESP_PLATFORM
+            if (bt_stop_audio() == BT_SUCCESS) {
+                cmd_send_response("OK", "STOP", "AUDIO_STOPPED", NULL);
+            } else {
+                cmd_send_response("ERR", "STOP", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_VOLUME: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "VOLUME", "MISSING_PARAM", NULL);
+                break;
+            }
+            int vol = atoi(ctx->params[0]);
+            if (vol < 0 || vol > 100) {
+                cmd_send_response("ERR", "VOLUME", "OUT_OF_RANGE", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (audio_processor_set_volume((uint8_t)vol) == ESP_OK) {
+                cmd_send_response("OK", "VOLUME", "SET", ctx->params[0]);
+            } else {
+                cmd_send_response("ERR", "VOLUME", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "VOLUME", "MOCK_SET", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_I2S_CONFIG: {
+            // Expect params: bclk,wclk,din[,dout]
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "I2S_CONFIG", "MISSING_PARAM", NULL);
+                break;
+            }
+            // Parse comma-separated pins
+            int pins[4] = { -1, -1, -1, -1 };
+            char param_copy[128];
+            strncpy(param_copy, ctx->params[0], sizeof(param_copy)-1);
+            param_copy[sizeof(param_copy)-1] = '\0';
+            char* tok = strtok(param_copy, ",");
+            int idx = 0;
+            while (tok != NULL && idx < 4) {
+                pins[idx++] = atoi(tok);
+                tok = strtok(NULL, ",");
+            }
+#ifdef ESP_PLATFORM
+            if (audio_processor_set_i2s_pins(pins[0], pins[1], pins[2], pins[3]) == ESP_OK) {
+                cmd_send_response("OK", "I2S_CONFIG", "APPLIED", ctx->params[0]);
+            } else {
+                cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "I2S_CONFIG", "MOCK_APPLIED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_PAIR: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "PAIR", "MISSING_PARAM", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (bt_pair(ctx->params[0]) == BT_SUCCESS) {
+                cmd_send_response("OK", "PAIR", "INITIATED", NULL);
+            } else {
+                cmd_send_response("ERR", "PAIR", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_UNPAIR: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "UNPAIR", "MISSING_PARAM", NULL);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (bt_unpair(ctx->params[0]) == BT_SUCCESS) {
+                cmd_send_response("OK", "UNPAIR", "REMOVED", NULL);
+            } else {
+                cmd_send_response("ERR", "UNPAIR", "FAILED", NULL);
+            }
+#else
+            cmd_send_response("OK", "UNPAIR", "MOCK_REMOVED", ctx->params[0]);
+#endif
+        } break;
+
         default:
             cmd_send_response("INFO", "COMMAND", "RECEIVED", "Not implemented yet");
             break;

@@ -34,12 +34,20 @@ I2S and UART: practical defaults and recommendations
 ## Implementation Tasks
 
 - [x] Initial A2DP source implementation
-- [ ] Add I2S driver configuration for receiving audio
-- [ ] Implement serial command protocol
+- [x] Add I2S driver configuration for receiving audio
+- [x] Implement serial command protocol
 - [ ] Add pairing management functionality
-- [ ] Add volume/mute control
-- [ ] Implement device scanning and connection management
+- [x] Add volume/mute control
+- [~] Implement device scanning and connection management (partial)
 - [ ] Add persistent settings storage in NVS
+
+Notes on progress:
+- I2S driver configuration (modern standard-mode API) and an audio processing task are implemented. The code exposes runtime setters to change I2S pins and sample rate.
+- The serial command protocol has been implemented in `components/command_interface` and supports commands such as `SCAN`, `CONNECT`, `DISCONNECT`, `START`, `STOP`, `VOLUME`, `I2S_CONFIG`, `PAIR` and `UNPAIR`. Handlers are implemented with ESP guards so host-based unit tests remain functional.
+- Volume and mute controls are implemented in the audio processor (`audio_processor_set_volume`, `audio_processor_set_mute`) and are wired into the command handlers.
+- Device scanning and connection management APIs are available in `components/bt_manager` (scan/connect/disconnect functions). The scanning result/event streaming and full pairing flows (PIN/SSP confirmation and persistent pairing state) remain to be completed and tested on device.
+
+Next high-priority tasks: persist user settings (volume, I2S pins, device name/PIN) to NVS and complete the pairing flow with event streaming to the command interface.
 
 ## Serial Command Protocol
 

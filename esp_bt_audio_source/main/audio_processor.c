@@ -30,6 +30,10 @@ static audio_config_t s_audio_config = {
     .volume = 80,  // Default volume 80%
     .mute = false,
     .i2s_port = I2S_NUM_0,
+    .i2s_bclk_pin = GPIO_NUM_26,
+    .i2s_ws_pin = GPIO_NUM_25,
+    .i2s_din_pin = GPIO_NUM_22,
+    .i2s_dout_pin = GPIO_NUM_NC,
 };
 
 // Audio statistics
@@ -407,8 +411,14 @@ static esp_err_t configure_i2s(const audio_config_t* config)
     // Configure I2S channel with modern API
     i2s_chan_config_t chan_cfg = {
         .id = config->i2s_port,
-        .role = I2S_ROLE_MASTER,
-        .dma_desc_num = 8,
+        /* Default to SLAVE: this device is typically the I2S consumer
+         * and the audio producer supplies BCLK/WS. Change to MASTER if
+         * you want this device to generate clocks. */
+        .role = I2S_ROLE_SLAVE,
+        /* Keep DMA descriptor counts modest to reduce RAM usage while
+         * avoiding underruns. These values are reasonable defaults for
+         * A2DP use-cases; tweak if you see buffer underruns/overruns. */
+        .dma_desc_num = 4,
         .dma_frame_num = 64,
         .auto_clear = true,
     };
@@ -446,11 +456,13 @@ static esp_err_t configure_i2s(const audio_config_t* config)
             config->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO
         ),
         .gpio_cfg = {
-            .mclk = GPIO_NUM_0,     // Configure based on your hardware
-            .bclk = GPIO_NUM_26,    // Configure based on your hardware
-            .ws = GPIO_NUM_25,      // Configure based on your hardware
-            .din = GPIO_NUM_22,     // Configure based on your hardware
-            .dout = GPIO_NUM_NC,    // Not used for RX
+            /* Don't request MCLK output by default; many codecs don't need it
+             * when the producer is the I2S master. Set to GPIO_NUM_NC if unused. */
+            .mclk = GPIO_NUM_NC,
+            .bclk = config->i2s_bclk_pin,
+            .ws = config->i2s_ws_pin,
+            .din = config->i2s_din_pin,
+            .dout = config->i2s_dout_pin,    // May be NC when RX-only
             .invert_flags = {
                 .mclk_inv = false,
                 .bclk_inv = false,
@@ -468,6 +480,45 @@ static esp_err_t configure_i2s(const audio_config_t* config)
     }
 
     return ESP_OK;
+}
+
+esp_err_t audio_processor_get_status(audio_status_t* status)
+{
+    if (status == NULL) return ESP_ERR_INVALID_ARG;
+    status->initialized = s_is_initialized;
+    status->running = s_is_running;
+    status->volume = s_volume_gain;
+    status->mute = s_audio_config.mute;
+    status->sample_rate = s_audio_config.sample_rate;
+    status->bit_depth = s_audio_config.bit_depth;
+    status->channels = s_audio_config.channels;
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
+{
+    if (!s_is_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bool was_running = s_is_running;
+    if (was_running) {
+        esp_err_t ret = audio_processor_stop();
+        if (ret != ESP_OK) return ret;
+    }
+
+    s_audio_config.i2s_bclk_pin = bclk_pin;
+    s_audio_config.i2s_ws_pin = ws_pin;
+    s_audio_config.i2s_din_pin = din_pin;
+    s_audio_config.i2s_dout_pin = dout_pin;
+
+    esp_err_t ret = configure_i2s(&s_audio_config);
+
+    if (was_running && ret == ESP_OK) {
+        ret = audio_processor_start();
+    }
+
+    return ret;
 }
 
 /**
@@ -500,10 +551,10 @@ static void audio_processing_task(void *pvParameters)
 
         task_start_time = esp_timer_get_time();
 
-        // Read audio from I2S
+        // Read audio from I2S (with a modest timeout)
         esp_err_t ret = i2s_channel_read(s_i2s_rx_handle, i2s_buffer, sizeof(i2s_buffer), 
-                                         &bytes_read, 100 / portTICK_PERIOD_MS);
-        
+                                         &bytes_read, 50 / portTICK_PERIOD_MS);
+
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "I2S read failed: %d", ret);
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -511,13 +562,15 @@ static void audio_processing_task(void *pvParameters)
         }
 
         if (bytes_read == 0) {
-            // No data read
+            // No data available yet
             vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
 
         // Count the samples
-        int samples_count = bytes_read / (s_audio_config.bit_depth / 8) / s_audio_config.channels;
+    int bytes_per_sample = s_audio_config.bit_depth / 8;
+    if (bytes_per_sample <= 0) bytes_per_sample = 2; // fallback
+    int samples_count = bytes_read / (bytes_per_sample * s_audio_config.channels);
         s_audio_stats.samples_processed += samples_count;
 
         // Process audio (format conversion, resampling, etc.)
