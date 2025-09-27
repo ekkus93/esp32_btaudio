@@ -10,6 +10,11 @@
 #include <string.h>
 #include <stdbool.h>
 #include <inttypes.h>
+/* Include both mock header variants: bt_mock.h is authoritative for prototypes
+ * and defines BT_MOCK_PROVIDES_PROTOTYPES, while bt_mock_devices.h exposes
+ * some legacy/int-style declarations. Prefer bt_mock.h where available.
+ */
+#include "bt_mock.h"
 #include "bt_mock_devices.h"  // Include the mock devices header
 
 static const char *TAG = "BT_SHIM";

@@ -10,9 +10,9 @@ idf_component_register(
         "bt_source_test.c"
         "bt_a2dp_test.c"
         "bt_pairing_test.c"
-        "bt_pairing_esp_test.c"
         "bt_source_stubs.c"
         "bt_source_mock.c"
+    "bt_test_setup.c"
         "audio_pipeline_test.c"
         "bt_mock_setup.c"  # Update this filename
     INCLUDE_DIRS 

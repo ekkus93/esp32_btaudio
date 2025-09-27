@@ -3,6 +3,9 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdbool.h>
+/* Ensure component-provided mock prototypes are visible to this TU */
+#include "bt_mock_devices.h"
+#include "bt_mock.h"
 
 static const char *TAG = "BT_CONNECTION_TEST";
 

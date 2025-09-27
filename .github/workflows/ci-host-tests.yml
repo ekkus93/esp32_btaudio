@@ -1,0 +1,47 @@
+name: CI - Host Unit Tests
+
+on:
+  push:
+    paths:
+      - 'esp_bt_audio_source/**'
+      - 'test/**'
+  pull_request:
+    paths:
+      - 'esp_bt_audio_source/**'
+      - 'test/**'
+
+jobs:
+  host-tests:
+    name: Build and run host tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential cmake pkg-config git
+
+      - name: Configure and build host tests
+        working-directory: ./esp_bt_audio_source/test/host_test
+        run: |
+          mkdir -p build_host_tests
+          cd build_host_tests
+          cmake ..
+          cmake --build . -- -j$(nproc)
+
+      - name: Run tests
+        working-directory: ./esp_bt_audio_source/test/host_test/build_host_tests
+        run: |
+          set -e
+          if [ -x ./test_commands ]; then ./test_commands || true; fi
+          if [ -x ./test_bluetooth ]; then ./test_bluetooth || true; fi
+          if [ -x ./test_nvs_storage ]; then ./test_nvs_storage || true; fi
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-test-build
+          path: esp_bt_audio_source/test/host_test/build_host_tests

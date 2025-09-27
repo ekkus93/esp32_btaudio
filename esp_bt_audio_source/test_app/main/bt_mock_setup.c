@@ -1,5 +1,6 @@
 #include "bt_mock_setup.h"
 #include "test_config.h"
+#include "bt_source_mock.h"
 #include "esp_log.h"
 #include <string.h>  // Add this for strcpy
 
@@ -43,16 +44,12 @@ void bt_mock_setup_paired_devices(void)
     bt_mock_reset();
     
     // Create a paired device - Fix the structure initialization to match bt_device_t definition
-    bt_device_t paired_device;
-    
-    // Initialize the address (MAC address as bytes)
-    uint8_t mac_addr[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    memcpy(paired_device.addr, mac_addr, sizeof(paired_device.addr));
-    
-    // Set other fields
-    strcpy((char*)paired_device.name, TEST_DEVICE_NAME);
+    bt_device_t paired_device = {0};
+    const uint8_t mac_addr[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    memcpy(paired_device.addr, mac_addr, sizeof(mac_addr));
+    strncpy(paired_device.name, TEST_DEVICE_NAME, sizeof(paired_device.name) - 1);
     paired_device.rssi = -50;  // Example signal strength
-    paired_device.cod = 0;     // Class of device
+    paired_device.cod = 0x240404;     // Audio device class of device
     paired_device.paired = true;
     
     // Add as paired device

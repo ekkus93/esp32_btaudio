@@ -1,6 +1,8 @@
 #include "bt_test_setup.h"
 #include "test_config.h"
+#include "bt_source_mock.h"
 #include "esp_log.h"
+#include <string.h>
 
 static const char *TAG = "BT_TEST_SETUP";
 
@@ -42,13 +44,20 @@ void bt_mock_setup_paired_devices(void)
     bt_mock_reset();
     
     // Create a paired device
-    bt_device_t paired_device = {
-        .addr = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
-        .type = BT_DEVICE_TYPE_AUDIO,
-        .paired = true,
-    };
-    strcpy((char*)paired_device.name, TEST_DEVICE_NAME);
+    bt_device_t paired_device = {0};
+    const uint8_t addr_bytes[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    memcpy(paired_device.addr, addr_bytes, sizeof(addr_bytes));
+    strncpy(paired_device.name, TEST_DEVICE_NAME, sizeof(paired_device.name) - 1);
+    paired_device.rssi = -50;
+    paired_device.cod = 0x240404; // Audio device class of device
+    paired_device.paired = true;
     
     // Add as paired device
     bt_mock_add_paired_device(&paired_device);
+}
+
+void setup_mock_devices(void)
+{
+    ESP_LOGI(TAG, "setup_mock_devices shim invoked");
+    bt_mock_setup_devices();
 }

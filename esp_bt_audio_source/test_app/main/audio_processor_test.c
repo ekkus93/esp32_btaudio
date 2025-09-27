@@ -318,18 +318,6 @@ void test_audio_format_conversion(void)
     esp_err_t ret = audio_processor_init(&config);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Declare the source buffer
-    int16_t src_buffer_16[256];
-    
-    // Fill source buffer with test pattern
-    for (int i = 0; i < 256; i++) {
-        src_buffer_16[i] = i * 100; 
-    }
-    
-    // Test buffer for conversion results
-    uint8_t test_buffer[2048];
-    size_t bytes_read;
-    
     // Force a format conversion by changing bit depth
     ret = audio_processor_set_bit_depth(AUDIO_BIT_DEPTH_32);
     TEST_ASSERT_EQUAL(ESP_OK, ret);

@@ -8,29 +8,54 @@
 
 #include "bt_source.h"
 #include "esp_err.h"
+#include "bt_mock.h" /* include the component mock header so BT_MOCK_PROVIDES_PROTOTYPES is defined
+					  * before we check it — avoids static inline vs non-static prototype
+					  * collisions when this header is included before bt_mock.h
+					  * in a translation unit.
+					  */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Reset the mock state
+void bt_source_mock_reset_impl(void);
+static inline void bt_source_mock_reset(void) {
+	bt_source_mock_reset_impl();
+}
+/* If the bt_mock component already provides external prototypes, don't
+ * declare internal inline wrappers for the same symbols to avoid
+ * conflicting linkage. The component header defines BT_MOCK_PROVIDES_PROTOTYPES
+ * when it provides the canonical prototypes.
  */
-void bt_mock_reset(void);
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
+static inline void bt_mock_reset(void) { bt_source_mock_reset_impl(); }
+#endif
 
 /**
  * Simulate SSP pairing request
  * 
  * @param passkey Passkey to display (6-digit number)
  */
-void bt_mock_simulate_ssp_request(uint32_t passkey);
+void bt_source_mock_simulate_ssp_request_impl(uint32_t passkey);
+static inline void bt_source_mock_simulate_ssp_request(uint32_t passkey) {
+	bt_source_mock_simulate_ssp_request_impl(passkey);
+}
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
+static inline void bt_mock_simulate_ssp_request(uint32_t passkey) { bt_source_mock_simulate_ssp_request_impl(passkey); }
+#endif
 
 /**
  * Set whether SSP is supported
  * 
  * @param supported Whether SSP is supported
  */
-void bt_mock_set_ssp_supported(bool supported);
+void bt_source_mock_set_ssp_supported_impl(bool supported);
+static inline void bt_source_mock_set_ssp_supported(bool supported) {
+	bt_source_mock_set_ssp_supported_impl(supported);
+}
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
+static inline void bt_mock_set_ssp_supported(bool supported) { bt_source_mock_set_ssp_supported_impl(supported); }
+#endif
 
 /**
  * Add a test device to the mock
@@ -44,12 +69,24 @@ void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_t
 /**
  * Simulate PIN pairing failure
  */
-void bt_mock_simulate_pin_failure(void);
+void bt_source_mock_simulate_pin_failure_impl(void);
+static inline void bt_source_mock_simulate_pin_failure(void) {
+	bt_source_mock_simulate_pin_failure_impl();
+}
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
+static inline void bt_mock_simulate_pin_failure(void) { bt_source_mock_simulate_pin_failure_impl(); }
+#endif
 
 /**
  * Simulate pairing timeout
  */
-void bt_mock_simulate_pairing_timeout(void);
+void bt_source_mock_simulate_pairing_timeout_impl(void);
+static inline void bt_source_mock_simulate_pairing_timeout(void) {
+	bt_source_mock_simulate_pairing_timeout_impl();
+}
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
+static inline void bt_mock_simulate_pairing_timeout(void) { bt_source_mock_simulate_pairing_timeout_impl(); }
+#endif
 
 /**
  * Set discovered devices for the mock

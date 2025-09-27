@@ -14,6 +14,11 @@
 #include "bt_source.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+/* Include component-provided mock prototypes when available so delegated
+ * calls to bt_mock_* are declared. This header defines BT_MOCK_PROVIDES_PROTOTYPES
+ * which the file already checks in guarded delegation branches.
+ */
+#include "bt_mock.h"
 
 // Provide weak attribute for functions to avoid conflicts with real implementations
 #define BT_WEAK_FN __attribute__((weak))
@@ -59,8 +64,6 @@ typedef void (*bt_pairing_status_cb_t)(bt_pairing_state_t state, void* user_data
 /* Callbacks */
 static bt_discovery_cb_t scan_callback = NULL;
 static void *scan_callback_data = NULL;
-static bt_connect_status_cb_t connect_callback = NULL;
-static bt_pairing_status_cb_t pairing_callback = NULL;
 
 /* Discovery task handle */
 static TaskHandle_t s_discovery_task_handle = NULL;
@@ -229,7 +232,13 @@ BT_WEAK_FN esp_err_t bt_mock_add_device(const char* addr_str, const char* name, 
     return ESP_OK;
 }
 
-/* Add a paired device directly */
+/* Add a paired device directly
+ * Only provide a local implementation when the component does NOT provide
+ * prototypes/implementation. If BT_MOCK_PROVIDES_PROTOTYPES is defined the
+ * authoritative component will provide bt_mock_add_paired_device and we must
+ * not define a conflicting symbol here (to avoid recursion/duplicate defs).
+ */
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
 BT_WEAK_FN esp_err_t bt_mock_add_paired_device(bt_device_t* device) 
 {
     if (s_paired_device_count >= MAX_PAIRED_DEVICES) {
@@ -250,6 +259,7 @@ BT_WEAK_FN esp_err_t bt_mock_add_paired_device(bt_device_t* device)
     
     return ESP_OK;
 }
+#endif
 
 // For connect by name test
 static const char* s_connect_by_name_address = NULL; 
@@ -940,11 +950,14 @@ BT_WEAK_FN esp_err_t bt_set_default_pin(const char* pin)
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_set_default_pin(pin);
+#else
     strncpy(s_default_pin, pin, sizeof(s_default_pin) - 1);
     s_default_pin[sizeof(s_default_pin) - 1] = '\0';
-    
     ESP_LOGI(TAG, "Default PIN set to: %s", s_default_pin);
     return ESP_OK;
+#endif
 }
 
 /**
@@ -956,10 +969,13 @@ BT_WEAK_FN esp_err_t bt_get_default_pin(char* pin, size_t size)
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_default_pin(pin, size);
+#else
     strncpy(pin, s_default_pin, size - 1);
     pin[size - 1] = '\0';
-    
     return ESP_OK;
+#endif
 }
 
 /**
@@ -1081,10 +1097,14 @@ BT_WEAK_FN esp_err_t bt_unpair_device(const char* addr)
  */
 BT_WEAK_FN esp_err_t bt_unpair_all_devices(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_unpair_all_devices();
+#else
     int count_before = s_paired_device_count;
     s_paired_device_count = 0;
     ESP_LOGI(TAG, "Unpaired all devices (%d)", count_before);
     return ESP_OK;
+#endif
 }
 
 /**
@@ -1092,7 +1112,11 @@ BT_WEAK_FN esp_err_t bt_unpair_all_devices(void)
  */
 BT_WEAK_FN uint16_t bt_get_paired_device_count(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_paired_device_count();
+#else
     return s_paired_device_count;
+#endif
 }
 
 /**
@@ -1104,6 +1128,18 @@ BT_WEAK_FN int bt_get_paired_devices(bt_device_t* devices, int max_devices)
         return 0;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Component API uses an out-parameter for actual count and returns ESP_OK on
+     * success (see components' bt_mock.h). Convert that to the expected int
+     * return (number of devices copied) for the stub API.
+     */
+    uint16_t actual = 0;
+    esp_err_t err = bt_mock_get_paired_devices(devices, (uint16_t)max_devices, &actual);
+    if (err != ESP_OK) {
+        return 0;
+    }
+    return (int)actual;
+#else
     int copy_count = (max_devices < s_paired_device_count) ? max_devices : s_paired_device_count;
     
     for (int i = 0; i < copy_count; i++) {
@@ -1111,6 +1147,7 @@ BT_WEAK_FN int bt_get_paired_devices(bt_device_t* devices, int max_devices)
     }
     
     return copy_count;
+#endif
 }
 
 /**

@@ -4,6 +4,12 @@
  */
 #pragma once
 
+/* Indicate this header provides bt_mock_* prototypes so test headers can avoid
+ * defining conflicting inline wrappers or macros. Test-only headers should
+ * check this macro before providing aliases for the same names.
+ */
+#define BT_MOCK_PROVIDES_PROTOTYPES 1
+
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"

@@ -190,7 +190,7 @@ esp_err_t nvs_storage_get_paired_device_by_index(int index, char* mac, size_t ma
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
     if (err != ESP_OK) return err;
     char key[32];
-    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, index);
+    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)index);
     // Read blob
     size_t required = 0;
     err = nvs_get_blob(h, key, NULL, &required);
@@ -204,7 +204,7 @@ esp_err_t nvs_storage_get_paired_device_by_index(int index, char* mac, size_t ma
     // format into mac string
     format_mac_str(mac_bin, mac, mac_len);
     if (name && name_len > 0) {
-        snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, index);
+    snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)index);
         size_t nreq = name_len;
         if (nvs_get_str(h, key, name, &nreq) != ESP_OK) {
             name[0] = '\0';
@@ -228,7 +228,7 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
     // Check for duplicates (binary compare)
     char key[32];
     for (int i = 0; i < c; i++) {
-        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
+        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)i);
         size_t req = 0;
         if (nvs_get_blob(h, key, NULL, &req) == ESP_OK && req == 6) {
             uint8_t stored[6];
@@ -241,10 +241,10 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
         }
     }
     // Append at index c
-    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, c);
+    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)c);
     err = nvs_set_blob(h, key, mac_bin, 6);
     if (err == ESP_OK && name) {
-        snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, c);
+    snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)c);
         err = nvs_set_str(h, key, name);
     }
     if (err == ESP_OK) {
@@ -270,7 +270,7 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     int found = -1;
     char key[32];
     for (int i = 0; i < c; i++) {
-        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
+        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)i);
         size_t req = 0;
         if (nvs_get_blob(h, key, NULL, &req) == ESP_OK && req == 6) {
             uint8_t stored[6];
@@ -284,31 +284,31 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     for (int i = found; i < c - 1; i++) {
         uint8_t src_mac[6];
         char src_name[64];
-        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i+1);
+        snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)(i+1));
         size_t req = 0;
         if (nvs_get_blob(h, key, NULL, &req) != ESP_OK || req != 6) {
             // erase dest
-            snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
+            snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)i);
             nvs_erase_key(h, key);
         } else {
             if (nvs_get_blob(h, key, src_mac, &req) != ESP_OK) { memset(src_mac,0,6); }
             snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
             nvs_set_blob(h, key, src_mac, 6);
         }
-        snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, i+1);
+        snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)(i+1));
         req = sizeof(src_name);
         if (nvs_get_str(h, key, src_name, &req) != ESP_OK) {
-            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, i);
+            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)i);
             nvs_erase_key(h, key);
         } else {
-            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, i);
+            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)i);
             nvs_set_str(h, key, src_name);
         }
     }
     // Erase last
-    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, c-1);
+    snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)(c-1));
     nvs_erase_key(h, key);
-    snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, c-1);
+    snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)(c-1));
     nvs_erase_key(h, key);
     c--;
     nvs_set_i32(h, PAIRED_COUNT_KEY, c);
@@ -327,9 +327,9 @@ esp_err_t nvs_storage_clear_paired_devices(void)
     if (nvs_get_i32(h, PAIRED_COUNT_KEY, &c) == ESP_OK) {
         char key[32];
         for (int i = 0; i < c; i++) {
-            snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
+            snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)i);
             nvs_erase_key(h, key);
-            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, i);
+            snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)i);
             nvs_erase_key(h, key);
         }
         nvs_erase_key(h, PAIRED_COUNT_KEY);

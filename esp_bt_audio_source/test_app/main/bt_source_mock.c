@@ -7,6 +7,36 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "bt_source.h"
+#include "bt_source_mock.h"
+#include "bt_mock.h"
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Forward declarations for component-level mock helpers so this compilation unit
+ * has prototypes when delegating to bt_mock_* functions. These match the
+ * declarations in components/bluetooth/include/bt_mock_devices.h.
+ */
+esp_err_t bt_mock_start_pairing(const char* addr);
+esp_err_t bt_mock_send_pin(const char* pin);
+esp_err_t bt_mock_unpair_all_devices(void);
+esp_err_t bt_mock_unpair_device(const char* addr);
+/* Prefer component-provided prototypes when available */
+#include "bt_mock.h"
+
+esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, uint16_t *actual_count);
+esp_err_t bt_mock_get_default_pin(char* pin, size_t size);
+/* Pairing state/method helpers and paired-device query provided by component mock */
+bt_pairing_state_t bt_mock_get_pairing_state(void);
+bt_pairing_method_t bt_mock_get_pairing_method(void);
+bool bt_mock_is_device_paired(const char* addr);
+
+#ifdef __cplusplus
+}
+#endif
+#endif
 
 /* Uncomment to use real implementation directly
 #include "bt_source.h"
@@ -17,8 +47,7 @@ static const char *TAG = "BT_SOURCE_MOCK";
 // Add missing state variables
 static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
 
-/* Forward declarations for mock functions */
-void bt_mock_simulate_ssp_request(uint32_t passkey);
+/* Forward declarations for internal helpers */
 static bool is_valid_mac_address(const char* addr);
 
 /* Constants */
@@ -62,18 +91,18 @@ static bool s_streaming_paused = false;
 static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;  // Changed from BT_STREAM_STATE_STOPPED
 
 /* Pairing state and methods */
-static bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;  // Changed from BT_PAIRING_STATE_NONE
-static bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;  // Changed from BT_PAIRING_NONE
+bt_pairing_state_t current_pairing_state = BT_PAIRING_STATE_IDLE;  // Changed from BT_PAIRING_STATE_NONE
+bt_pairing_method_t current_pairing_method = BT_PAIRING_METHOD_NONE;  // Changed from BT_PAIRING_NONE
 static char current_pairing_addr[18] = {0};
 static char default_pin[16] = "1234"; // Default PIN
 static bool pin_failure_simulation = false;
 static bool is_pairing = false;
 
 /* SSP pairing related variables */
-static bool s_ssp_support_enabled = true;  // Default: SSP is supported
-static bool s_ssp_confirmation_requested = false;
+static bool s_ssp_support_enabled = false;  // Default: fall back to PIN unless explicitly enabled
+bool s_ssp_confirmation_requested = false;
 static char s_ssp_passkey[7] = {0};
-static uint32_t s_ssp_passkey_value = 0;
+uint32_t s_ssp_passkey_value = 0;
 
 /* Paired devices tracking */
 static bool s_device_paired[MAX_DISCOVERED_DEVICES] = {false};
@@ -101,20 +130,15 @@ static auto_reconnect_config_t s_auto_reconnect_config = {
     .retry_interval_ms = 5000
 };
 
-/* Constants for BT_PAIRING_STATE values that match test expectations */
-// Update these values to match what the tests expect
-#define BT_PAIRING_STATE_NONE 0
-#define BT_PAIRING_STATE_PIN_REQUESTED 1     // Test expects 1
-#define BT_PAIRING_STATE_PIN_ENTERED 2       // Doesn't seem to be used
-#define BT_PAIRING_STATE_SSP_CONFIRM 3       // Test expects 3
-#define BT_PAIRING_STATE_COMPLETE 4          // Test expects 4
-#define BT_PAIRING_STATE_FAILED 5            // Test expects 5
-#define BT_PAIRING_STATE_TIMEOUT 6           // Test expects 6
+/* Use canonical pairing state enums from bt_source.h.
+ * Avoid redefining BT_PAIRING_STATE_* macros here — the header defines
+ * the authoritative values used by the tests.
+ */
 
 /**
  * Reset the mock - completely reset all variables
  */
-void bt_mock_reset(void)
+void bt_source_mock_reset_impl(void)
 {
     // Reset connection state
     s_connected = false;
@@ -122,6 +146,7 @@ void bt_mock_reset(void)
     s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
     s_streaming = false;
     s_streaming_paused = false;
+    s_initialized = false;
     
     // Reset scan state
     s_scan_active = false;
@@ -129,7 +154,7 @@ void bt_mock_reset(void)
     memset(s_discovered_devices, 0, sizeof(s_discovered_devices));
     
     // Reset pairing state
-    current_pairing_state = BT_PAIRING_STATE_NONE;
+    current_pairing_state = BT_PAIRING_STATE_IDLE;
     current_pairing_method = BT_PAIRING_METHOD_NONE;
     memset(current_pairing_addr, 0, sizeof(current_pairing_addr));
     strcpy(default_pin, "1234");
@@ -141,7 +166,7 @@ void bt_mock_reset(void)
     memset(s_device_paired, 0, sizeof(s_device_paired));
     
     // Reset SSP variables
-    s_ssp_support_enabled = true;
+    s_ssp_support_enabled = false;
     s_ssp_confirmation_requested = false;
     memset(s_ssp_passkey, 0, sizeof(s_ssp_passkey));
     s_ssp_passkey_value = 0;
@@ -223,11 +248,19 @@ esp_err_t bt_init(void)
 {
     ESP_LOGI(TAG, "Mock: Initializing Bluetooth stack");
     
-    if (s_initialized && mock_control.init_return == ESP_OK) {
-        return ESP_ERR_INVALID_STATE;
+    if (mock_control.init_return == ESP_OK) {
+        s_initialized = true;
     }
-    
-    s_initialized = true;
+
+    // If no discovered devices were seeded by the test setup, attempt to
+    // call the test helper bt_mock_setup_devices() (defined in test helper
+    // code) to populate some devices so scan tests have targets.
+    extern void bt_mock_setup_devices(void);
+    if (s_discovered_device_count == 0) {
+        // It's safe to call even if the symbol resolves to a weak stub.
+        bt_mock_setup_devices();
+    }
+
     return mock_control.init_return;
 }
 
@@ -461,7 +494,11 @@ bt_streaming_state_t bt_get_streaming_state(void)
 /* Get paired device count - Fix return type to match header */
 uint16_t bt_get_paired_device_count(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_paired_device_count();
+#else
     return s_paired_device_count;
+#endif
 }
 
 /* Register connection callback */
@@ -510,7 +547,11 @@ bool bt_device_supports_profile(const bt_device_t* device, bt_profile_t profile)
  */
 bt_pairing_state_t bt_get_pairing_state(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_pairing_state();
+#else
     return current_pairing_state;
+#endif
 }
 
 /**
@@ -524,6 +565,9 @@ esp_err_t bt_start_pairing(const char* addr)
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_start_pairing(addr);
+#else
     // Store the address
     strncpy(current_pairing_addr, addr, sizeof(current_pairing_addr) - 1);
     is_pairing = true;
@@ -534,14 +578,15 @@ esp_err_t bt_start_pairing(const char* addr)
         current_pairing_method = BT_PAIRING_METHOD_SSP;  // Changed from BT_PAIRING_SSP
         
         // For testing, simulate SSP request right away
-        bt_mock_simulate_ssp_request(123456);
+        bt_source_mock_simulate_ssp_request_impl(123456);
     } else {
-        // For PIN - explicitly set PIN_REQUESTED state to 1 as tests expect
-        current_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;  // Value is 1
-        current_pairing_method = BT_PAIRING_METHOD_PIN;  // Changed from BT_PAIRING_PIN
+        // For PIN - set pairing to STARTED so tests that expect STARTED on fallback pass.
+        current_pairing_state = BT_PAIRING_STATE_STARTED;  // Value is 1
+        current_pairing_method = BT_PAIRING_METHOD_PIN;
     }
     
     return ESP_OK;
+#endif
 }
 
 /**
@@ -551,6 +596,9 @@ esp_err_t bt_send_pin_code(const char* pin)
 {
     ESP_LOGI(TAG, "Mock: Sending PIN code");
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_send_pin(pin);
+#else
     if (!is_pairing || current_pairing_method != BT_PAIRING_METHOD_PIN) {  // Changed from BT_PAIRING_PIN
         return ESP_ERR_INVALID_STATE;
     }
@@ -592,12 +640,13 @@ esp_err_t bt_send_pin_code(const char* pin)
     }
     
     // Update pairing state to complete
-    current_pairing_state = BT_PAIRING_STATE_COMPLETE;  // Value is 4
+    current_pairing_state = BT_PAIRING_STATE_PAIRED;  // Value is 4
     
     // Store paired devices
     bt_store_paired_devices();
     
     return ESP_OK;  // Return 0 for test_pin_pairing_success to pass
+#endif
 }
 
 /**
@@ -605,7 +654,7 @@ esp_err_t bt_send_pin_code(const char* pin)
  * 
  * @param passkey The 6-digit passkey for SSP confirmation
  */
-void bt_mock_simulate_ssp_request(uint32_t passkey)
+void bt_source_mock_simulate_ssp_request_impl(uint32_t passkey)
 {
     if (!s_ssp_support_enabled || !is_pairing) {
         return;
@@ -616,7 +665,7 @@ void bt_mock_simulate_ssp_request(uint32_t passkey)
     snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, passkey);
     
     // Set state to SSP confirm (3)
-    current_pairing_state = BT_PAIRING_STATE_SSP_CONFIRM;  // Value is 3
+    current_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;  // Value is 3
 }
 
 /**
@@ -625,6 +674,7 @@ void bt_mock_simulate_ssp_request(uint32_t passkey)
  * @param confirm True to accept, false to reject
  * @return ESP_OK if successful
  */
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
 esp_err_t bt_ssp_confirm(bool confirm)
 {
     if (!s_ssp_confirmation_requested) {
@@ -662,7 +712,7 @@ esp_err_t bt_ssp_confirm(bool confirm)
         }
         
         // Set pairing state to complete (4)
-        current_pairing_state = BT_PAIRING_STATE_COMPLETE;  // Value is 4
+    current_pairing_state = BT_PAIRING_STATE_PAIRED;  // Value is 4
         
         // Store paired devices
         bt_store_paired_devices();
@@ -670,10 +720,11 @@ esp_err_t bt_ssp_confirm(bool confirm)
         return ESP_OK;
     } else {
         // Reject pairing - set state to failed (5)
-        current_pairing_state = BT_PAIRING_STATE_FAILED;  // Value is 5
+    current_pairing_state = BT_PAIRING_STATE_FAILED;  // Value is 5
         return ESP_OK;
     }
 }
+#endif
 
 /**
  * Get current SSP passkey
@@ -950,13 +1001,21 @@ esp_err_t bt_unpair_all_devices(void)
     
     // Reset stored paired device list
     s_stored_paired_device_count = 0;
-    
+
+    // Also inform the component-level mock to clear its paired devices so
+    // tests that use component helpers (bt_mock_*) remain consistent.
+    esp_err_t comp_ret = ESP_OK;
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    comp_ret = bt_mock_unpair_all_devices();
+#endif
+
     ESP_LOGI(TAG, "Mock: Unpaired %d devices", unpaired_count);
-    
+
     // Store the empty paired device list
     bt_store_paired_devices();
-    
-    return ESP_OK;
+
+    // If the component-level call failed, propagate the error; otherwise return ESP_OK
+    return comp_ret;
 }
 
 /**
@@ -964,12 +1023,23 @@ esp_err_t bt_unpair_all_devices(void)
  */
 int bt_get_paired_devices(bt_device_t* devices, int max_devices)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    // Delegate to component-level mock which holds the authoritative paired list
     if (!devices || max_devices <= 0) {
         return 0;
     }
-    
+    uint16_t actual = 0;
+    if (bt_mock_get_paired_devices(devices, (uint16_t)max_devices, &actual) == ESP_OK) {
+        return (int)actual;
+    }
+    return 0;
+#else
+    if (!devices || max_devices <= 0) {
+        return 0;
+    }
+
     int count = 0;
-    
+
     // Copy paired devices to output array
     for (int i = 0; i < s_discovered_device_count && count < max_devices; i++) {
         if (s_device_paired[i]) {
@@ -978,8 +1048,9 @@ int bt_get_paired_devices(bt_device_t* devices, int max_devices)
             count++;
         }
     }
-    
+
     return count;
+#endif
 }
 
 /**
@@ -1004,27 +1075,46 @@ bool bt_is_auto_reconnect_enabled(void)
  * 
  * @param supported Whether SSP is supported
  */
-void bt_mock_set_ssp_supported(bool supported)
+void bt_source_mock_set_ssp_supported_impl(bool supported)
 {
     s_ssp_support_enabled = supported;
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_set_ssp_supported(supported);
+#endif
 }
 
 /**
  * Simulate PIN pairing failure
  */
-void bt_mock_simulate_pin_failure(void)
+void bt_source_mock_simulate_pin_failure_impl(void)
 {
+    // Configure the mock to simulate a PIN failure when bt_send_pin_code is called.
     pin_failure_simulation = true;
-    current_pairing_state = BT_PAIRING_STATE_FAILED;  // Value is 5
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_simulate_pin_failure();
+#else
+    // Ensure pairing is active and method set to PIN so subsequent bt_send_pin_code
+    // behaves like the component-level mock.
+    is_pairing = true;
+    current_pairing_method = BT_PAIRING_METHOD_PIN;
+    current_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;  // Set to 2 (PIN requested)
+#endif
 }
 
 /**
  * Simulate timeout in pairing
  */
-void bt_mock_simulate_pairing_timeout(void)
+void bt_source_mock_simulate_pairing_timeout_impl(void)
 {
+    // Simulate a timeout: pairing becomes inactive and state set to TIMEOUT.
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_simulate_pairing_timeout();
+#else
     current_pairing_state = BT_PAIRING_STATE_TIMEOUT;  // Value is 6
     is_pairing = false;
+    current_pairing_method = BT_PAIRING_METHOD_NONE;
+#endif
 }
 
 /**
@@ -1051,7 +1141,14 @@ bool bt_is_device_paired(const char* addr)
         }
     }
     
+    // If not found in this mock's discovered list, fall back to component-level
+    // mock helper if available. This keeps the two mock implementations
+    // consistent when tests manipulate paired devices via component helpers.
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_is_device_paired(addr);
+#else
     return false;
+#endif
 }
 
 /**
@@ -1077,10 +1174,13 @@ esp_err_t bt_set_default_pin(const char* pin)
  */
 esp_err_t bt_get_default_pin(char* pin, size_t size)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_default_pin(pin, size);
+#else
     if (!pin || size == 0) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     if (strlen(default_pin) < size) {
         strcpy(pin, default_pin);
         return ESP_OK;
@@ -1090,6 +1190,7 @@ esp_err_t bt_get_default_pin(char* pin, size_t size)
         pin[size - 1] = '\0';
         return ESP_ERR_INVALID_SIZE;
     }
+#endif
 }
 
 /**
@@ -1097,7 +1198,11 @@ esp_err_t bt_get_default_pin(char* pin, size_t size)
  */
 bt_pairing_method_t bt_get_pairing_method(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_pairing_method();
+#else
     return current_pairing_method;
+#endif
 }
 
 /* Now most functions just delegate to the real implementation

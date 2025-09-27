@@ -12,7 +12,9 @@
 #include "esp_log.h"
 #include "unity.h"
 #include "bt_source.h"
-#include "bt_mock.h" 
+#include "bt_source_mock.h"
+#include "bt_mock.h"
+#include "bt_mock_devices.h"
 #include "bt_mock_setup.h" // Update this include
 
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
@@ -69,85 +71,10 @@ const char* bt_mock_get_connected_addr(void)
     return mock_state.connected_addr;
 }
 
-/**
- * Get the list of paired devices
+/* Use component-provided bt_mock_* helpers (declared in bt_mock.h)
+ * instead of local stub implementations so tests observe the
+ * authoritative component mock state.
  */
-esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, uint16_t *actual_count)
-{
-    if (!devices || max_count == 0 || !actual_count) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    // Create a sample paired device
-    if (max_count > 0) {
-        strcpy(devices[0].name, "Mock Paired Device");
-        devices[0].addr[0] = 0x12;
-        devices[0].addr[1] = 0x34;
-        devices[0].addr[2] = 0x56;
-        devices[0].addr[3] = 0x78;
-        devices[0].addr[4] = 0x9A;
-        devices[0].addr[5] = 0xBC;
-        devices[0].rssi = -70;
-        devices[0].paired = true;
-        devices[0].cod = 0x240404; // Audio device
-        
-        *actual_count = 1; // Return 1 device
-        return ESP_OK;
-    }
-    
-    *actual_count = 0;
-    return ESP_OK;
-}
-
-/**
- * Get the current pairing state
- */
-bt_pairing_state_t bt_mock_get_pairing_state(void)
-{
-    // We need to make sure we're using the "current_pairing_state" from bt_mock_devices.c
-    // We need to declare this as an extern so we can access it
-    extern bt_pairing_state_t current_pairing_state;
-    
-    // Return the actual state from bt_mock_devices.c rather than our local state
-    return current_pairing_state;
-}
-
-/**
- * Get the current pairing method
- */
-bt_pairing_method_t bt_mock_get_pairing_method(void)
-{
-    // Similarly, we need to access the method from bt_mock_devices.c
-    extern bt_pairing_method_t current_pairing_method;
-    
-    // Return the actual method from bt_mock_devices.c
-    return current_pairing_method;
-}
-
-/**
- * Check if SSP confirmation is requested
- */
-bool bt_mock_is_ssp_confirm_requested(void)
-{
-    // Access the SSP confirmation flag from bt_mock_devices.c
-    extern bool s_ssp_confirmation_requested;
-    
-    // Return the actual value from bt_mock_devices.c
-    return s_ssp_confirmation_requested;
-}
-
-/**
- * Get the SSP passkey - fixed to match header return type
- */
-uint32_t bt_mock_get_ssp_passkey(void)
-{
-    // Access global variable from bt_mock_devices.c
-    extern uint32_t s_ssp_passkey_value;
-    
-    // Return the global passkey value, which should be non-zero
-    // when bt_mock_simulate_ssp_request() is called
-    return s_ssp_passkey_value;
-}
 
 /**
  * Test PIN pairing success scenario
@@ -201,11 +128,10 @@ void test_pin_pairing_failure(void)
     // Don't test the return value since ESP_FAIL is expected but may vary
     
     // Verify pairing state is failed - must match BT_PAIRING_STATE_FAILED (5)
-    extern bt_pairing_state_t current_pairing_state; // Access the global value
-    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_FAILED, current_pairing_state);
+    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_FAILED, bt_mock_get_pairing_state());
     
-    // Print the actual values to help debug
-    ESP_LOGI(TAG, "Expected: %d, Got: %d", BT_PAIRING_STATE_FAILED, current_pairing_state);
+    // Print the actual value to help debug (use authoritative helper)
+    ESP_LOGI(TAG, "Expected: %d, Got: %d", BT_PAIRING_STATE_FAILED, bt_mock_get_pairing_state());
     
     ESP_LOGI(TAG, "PIN pairing failure test completed");
 }
@@ -245,8 +171,11 @@ void test_ssp_confirmation_request(void)
     // Verify SSP confirmation is requested
     TEST_ASSERT_TRUE(bt_mock_is_ssp_confirm_requested());
     
-    // Get and verify passkey
-    uint32_t passkey = bt_mock_get_ssp_passkey();
+    // Get and verify passkey using public API bt_get_ssp_passkey
+    char passkey_buf[16] = {0};
+    esp_err_t perr = bt_get_ssp_passkey(passkey_buf, sizeof(passkey_buf));
+    TEST_ASSERT_EQUAL(ESP_OK, perr);
+    uint32_t passkey = (uint32_t)atoi(passkey_buf);
     TEST_ASSERT_NOT_EQUAL(0, passkey);
     
     ESP_LOGI(TAG, "SSP confirmation request test completed");
@@ -285,13 +214,9 @@ void test_ssp_confirmation_rejected(void)
 {
     ESP_LOGI(TAG, "Testing SSP confirmation rejected");
     
-    // Set up SSP mock with proper global state
-    extern bool s_ssp_confirmation_requested;
-    extern bt_pairing_state_t current_pairing_state;
-    
-    // Setup the test
-    s_ssp_confirmation_requested = true;
-    current_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
+    // Set up SSP mock state via component helpers so the authoritative
+    // component state is used by the API under test.
+    bt_mock_simulate_ssp_request(123456);
     mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
     mock_state.pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
     mock_state.ssp_confirmation_requested = true;
@@ -326,14 +251,11 @@ void test_ssp_fallback_to_pin(void)
     esp_err_t ret = bt_start_pairing(test_addr);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
-    // Verify pairing method is PIN
-    extern bt_pairing_method_t current_pairing_method;
-    TEST_ASSERT_EQUAL(BT_PAIRING_METHOD_PIN, current_pairing_method);
-    
-    // Directly access the global variable to make sure we test the actual state
-    extern bt_pairing_state_t current_pairing_state;
+    // Verify pairing method is PIN (from component mock)
+    TEST_ASSERT_EQUAL(BT_PAIRING_METHOD_PIN, bt_mock_get_pairing_method());
+
     // Verify pairing state is BT_PAIRING_STATE_STARTED (1)
-    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_STARTED, current_pairing_state);
+    TEST_ASSERT_EQUAL(BT_PAIRING_STATE_STARTED, bt_mock_get_pairing_state());
     
     ESP_LOGI(TAG, "SSP fallback to PIN test completed");
 }

@@ -7,6 +7,14 @@
 #include "esp_a2dp_api.h"
 #include "esp_gap_bt_api.h"
 
+/* If bt_source.h exposes test helper prototypes (bt_mock_*), advertise that
+ * to test-only headers so they avoid emitting conflicting static inline
+ * wrappers. Multiple headers may define this; guard to avoid redefinition.
+ */
+#ifndef BT_MOCK_PROVIDES_PROTOTYPES
+#define BT_MOCK_PROVIDES_PROTOTYPES 1
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
