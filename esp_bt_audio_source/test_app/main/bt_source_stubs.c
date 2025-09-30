@@ -100,6 +100,8 @@ static bool s_waiting_for_confirmation = false;
 /* Forward declarations */
 static void simulate_discovery_task(void *pvParameters);
 static void reset_device_database(void);
+/* Forward declaration for timeout task created when delegating timed scans */
+static void bt_mock_scan_timeout_task(void *pvParameters);
 
 /**
  * @brief Reset Bluetooth state for testing purposes
@@ -463,6 +465,7 @@ BT_WEAK_FN esp_err_t bt_scan(uint32_t duration_s)
     bt_mock_start_scan();
     s_is_scanning = bt_mock_is_scanning();
     s_device_count = bt_mock_get_scan_results(s_devices, MAX_TEST_DEVICES);
+        xTaskCreate(bt_mock_scan_timeout_task, "bt_mock_scan_timeout", 2048, (void*)(uintptr_t)duration_s, 5, NULL);
     for (int i = 0; i < s_device_count; i++) {
         if (scan_callback) scan_callback(&s_devices[i], scan_callback_data);
     }
@@ -1025,6 +1028,31 @@ static void simulate_discovery_task(void *pvParameters)
     
     /* Task will delete itself */
     s_discovery_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+/**
+ * Task used when delegating scans to the component mock to stop the scan
+ * after the requested timeout. We pass the duration in seconds as the
+ * task parameter via (void*)(uintptr_t)duration_s.
+ */
+static void bt_mock_scan_timeout_task(void *pvParameters)
+{
+    uint32_t duration_s = (uint32_t)(uintptr_t)pvParameters;
+
+    if (duration_s == 0) {
+        vTaskDelete(NULL);
+        return;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(duration_s * 1000));
+
+    /* Stop component-level scan and keep local flag in sync */
+    bt_mock_stop_scan();
+    s_is_scanning = bt_mock_is_scanning();
+
+    ESP_LOGI(TAG, "Delegated scan timeout expired, stopped scan after %" PRIu32 " s", duration_s);
+
     vTaskDelete(NULL);
 }
 
