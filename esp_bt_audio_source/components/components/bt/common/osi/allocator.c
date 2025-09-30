@@ -97,9 +97,10 @@ void osi_mem_dbg_record(void *p, int size, const char *func, int line)
     }
 
     if (i >= OSI_MEM_DBG_INFO_MAX) {
-    OSI_TRACE_ERROR("%s full %s %d !!\n", __func__, func, line);
+        /* Diagnostic: print failing pointer and current count to help on-device debugging */
+        OSI_TRACE_ERROR("%s full %s %d !! p=%p mem_dbg_count=%d\n", __func__, func, line, p, mem_dbg_count);
 #ifdef UNIT_TEST
-    fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_record: mem_dbg_info full, attempted to record p=%p size=%d\n", p, size);
+        fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_record: mem_dbg_info full, attempted to record p=%p size=%d\n", p, size);
 #endif
     }
 
@@ -145,9 +146,10 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
     }
 
     if (i >= OSI_MEM_DBG_INFO_MAX) {
-        OSI_TRACE_ERROR("%s full %s %d !!\n", __func__, func, line);
+    /* Not found during clean: print pointer and current count for diagnostics */
+    OSI_TRACE_ERROR("%s not-found %s %d !! p=%p mem_dbg_count=%d\n", __func__, func, line, p, mem_dbg_count);
 #ifdef UNIT_TEST
-        fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_clean: pointer not found p=%p\n", p);
+    fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_clean: pointer not found p=%p\n", p);
 #endif
     }
 }
@@ -173,6 +175,11 @@ uint32_t osi_mem_dbg_get_max_size(void)
 uint32_t osi_mem_dbg_get_current_size(void)
 {
     return mem_dbg_current_size;
+}
+
+uint32_t osi_mem_dbg_get_entry_count(void)
+{
+    return mem_dbg_count;
 }
 
 void osi_men_dbg_set_section_start(uint8_t index)

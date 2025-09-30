@@ -18,6 +18,11 @@
 #include "esp_system.h"
 #include "esp_log.h"
 
+#if HEAP_MEMORY_DEBUG
+#include "esp_heap_caps.h"
+#include "osi/allocator.h"
+#endif
+
 // Bluetooth includes
 #include "esp_bt.h"
 #include "bt_app_core.h"
@@ -114,6 +119,33 @@ static esp_avrc_rn_evt_cap_mask_t s_avrc_peer_rn_cap;         /* AVRC target not
 static TimerHandle_t s_tmr;                                   /* handle of heart beat timer */
 
 static const char remote_device_name[] = CONFIG_EXAMPLE_PEER_DEVICE_NAME;
+
+#if HEAP_MEMORY_DEBUG
+static void bt_log_allocator_snapshot(const char *reason, bool dump_entries)
+{
+    size_t free_default = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t largest_default = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    uint32_t tracked_current = osi_mem_dbg_get_current_size();
+    uint32_t tracked_peak = osi_mem_dbg_get_max_size();
+    uint32_t tracked_entries = osi_mem_dbg_get_entry_count();
+
+    ESP_LOGW(BT_AV_TAG,
+             "allocator snapshot (%s): tracked_current=%" PRIu32 "B tracked_peak=%" PRIu32
+             "B entries=%" PRIu32 " free_default=%zuB free_internal=%zuB largest_default=%zuB",
+             reason ? reason : "?",
+             tracked_current,
+             tracked_peak,
+             tracked_entries,
+             free_default,
+             free_internal,
+             largest_default);
+
+    if (dump_entries) {
+        osi_mem_dbg_show();
+    }
+}
+#endif
 
 /* global variables for beep generation */
 #define MIDDLE_C_FREQ 261.63f  // Middle C frequency in Hz
@@ -252,10 +284,16 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
             } else {
                 /* not discovered, continue to discover */
                 ESP_LOGI(BT_AV_TAG, "Device discovery failed, continue to discover...");
+#if HEAP_MEMORY_DEBUG
+                bt_log_allocator_snapshot("gap:discovery-stopped-no-peer", true);
+#endif
                 esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
             }
         } else if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STARTED) {
             ESP_LOGI(BT_AV_TAG, "Discovery started.");
+#if HEAP_MEMORY_DEBUG
+            bt_log_allocator_snapshot("gap:discovery-started", false);
+#endif
         }
         break;
     }
