@@ -1285,6 +1285,10 @@ BT_WEAK_FN esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component-level mock which holds authoritative SSP passkey */
+    return bt_mock_get_ssp_passkey(passkey, size);
+#else
     if (!s_ssp_confirmation_requested) {
         return ESP_ERR_NOT_FOUND;
     }
@@ -1293,6 +1297,7 @@ BT_WEAK_FN esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
     passkey[size - 1] = '\0';
     
     return ESP_OK;
+#endif
 }
 
 /**
