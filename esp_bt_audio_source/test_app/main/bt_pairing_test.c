@@ -20,18 +20,11 @@
 
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
 
-// Mock Bluetooth implementation state
-typedef struct {
-    bt_pairing_state_t pairing_state;
-    bt_pairing_method_t pairing_method;
-    bool ssp_confirmation_requested;
-    char ssp_passkey[7];
-    char default_pin[16];
-    char connected_addr[18];
-    bool is_connected;
-} bt_mock_state_t;
-
-static bt_mock_state_t mock_state = {0};
+/* Use the component-provided mock state and helpers. When
+ * BT_MOCK_PROVIDES_PROTOTYPES is defined the authoritative mock is
+ * implemented in the bt_mock component; tests should call those
+ * helpers instead of keeping a duplicate local state.
+ */
 
 /**
  * Set up the mock BT implementation
@@ -40,37 +33,24 @@ static void setup_mock_bt_implementation(void)
 {
     esp_err_t ret = bt_init();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
-    bt_mock_reset(); // Consistent naming
-    
-    // Initialize to default values
-    mock_state.pairing_state = BT_PAIRING_STATE_IDLE;
-    mock_state.pairing_method = BT_PAIRING_METHOD_NONE;
-    mock_state.ssp_confirmation_requested = false;
-    strcpy(mock_state.default_pin, "1234");
-    mock_state.is_connected = false;
-    memset(mock_state.connected_addr, 0, sizeof(mock_state.connected_addr));
-    memset(mock_state.ssp_passkey, 0, sizeof(mock_state.ssp_passkey));
+    bt_mock_reset(); // authoritative component reset
+    /* Ensure a known default PIN for tests */
+    bt_mock_set_default_pin("1234");
 }
 
 /**
  * Get the BT implementation for tests - fix the return type to match header
  */
-bt_interface_t* get_bt_implementation(void)
-{
-    // Return the mock interface with appropriate casting
-    return (bt_interface_t*)&mock_state;
-}
+/* get_bt_implementation is provided by test_config.c and returns the
+ * appropriate mock interface; do not provide a duplicate here.
+ */
 
 /**
  * Get the connected device address
  */
-const char* bt_mock_get_connected_addr(void)
-{
-    if (!mock_state.is_connected) {
-        return NULL;
-    }
-    return mock_state.connected_addr;
-}
+/* Use component helper bt_mock_get_connected_addr(char*, size_t) instead
+ * of a local wrapper to read connected address.
+ */
 
 /* Use component-provided bt_mock_* helpers (declared in bt_mock.h)
  * instead of local stub implementations so tests observe the
@@ -152,10 +132,9 @@ void test_ssp_confirmation_request(void)
     // Explicitly enable SSP support to ensure it's set
     bt_mock_set_ssp_supported(true);
     
-    // Set up SSP mock
-    mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
-    mock_state.pairing_state = BT_PAIRING_STATE_IDLE;
-    mock_state.ssp_confirmation_requested = false;
+    // Ensure SSP-related state is clean; authoritative helpers will set these
+    bt_mock_set_ssp_supported(true);
+    bt_mock_devices_simulate_pairing_timeout(); // ensure no stale pairing in component
     
     // Start pairing
     esp_err_t ret = bt_start_pairing(test_addr);
@@ -189,11 +168,8 @@ void test_ssp_confirmation_accepted(void)
 {
     ESP_LOGI(TAG, "Testing SSP confirmation accepted");
     
-    // Set up SSP mock
-    mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
-    mock_state.pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
-    mock_state.ssp_confirmation_requested = true;
-    strcpy(mock_state.ssp_passkey, "123456");
+    /* Set up SSP request in the component mock with a known passkey */
+    bt_mock_simulate_ssp_request(123456);
     
     // Confirm SSP pairing
     esp_err_t ret = bt_ssp_confirm(true);
@@ -217,10 +193,7 @@ void test_ssp_confirmation_rejected(void)
     
     // Set up SSP mock state via component helpers so the authoritative
     // component state is used by the API under test.
-    bt_mock_simulate_ssp_request(123456);
-    mock_state.pairing_method = BT_PAIRING_METHOD_SSP;
-    mock_state.pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
-    mock_state.ssp_confirmation_requested = true;
+    /* bt_mock_simulate_ssp_request already sets SSP request state in component */
     
     // Reject SSP pairing
     esp_err_t ret = bt_ssp_confirm(false);

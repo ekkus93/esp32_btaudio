@@ -484,18 +484,41 @@ BT_WEAK_FN esp_err_t bt_scan(uint32_t duration_s)
  */
 BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate connection to authoritative component mock */
+    esp_err_t err = bt_mock_connect(addr);
+    if (err != ESP_OK) return err;
+
+    /* Synchronize local visible connection info for APIs that read it */
+    s_is_connected = bt_mock_is_connected();
+    strncpy(s_connected_device_addr, addr, sizeof(s_connected_device_addr) - 1);
+    s_connected_device_addr[sizeof(s_connected_device_addr) - 1] = '\0';
+
+    /* If device exists in component list, copy its name locally */
+    int idx = -1;
+    if (bt_mock_find_device(addr, &idx) && idx >= 0) {
+        bt_device_t tmp;
+        if (bt_mock_get_device(idx, &tmp) == ESP_OK) {
+            strncpy(s_connected_device_name, tmp.name, sizeof(s_connected_device_name) - 1);
+            s_connected_device_name[sizeof(s_connected_device_name) - 1] = '\0';
+        }
+    }
+
+    ESP_LOGI(TAG, "Connected to device: %s (delegated to mock)", addr);
+    return ESP_OK;
+#else
     if (s_is_connected) {
         ESP_LOGW(TAG, "Already connected to a device");
         return ESP_ERR_INVALID_STATE;
     }
-    
+
     /* Update connection state */
     s_connection_state = BT_CONNECTION_STATE_CONNECTING;
-    
+
     /* Save connected device info */
     strncpy(s_connected_device_addr, addr, sizeof(s_connected_device_addr) - 1);
     s_connected_device_addr[sizeof(s_connected_device_addr) - 1] = '\0';
-    
+
     /* Find device in database */
     bool found = false;
     for (int i = 0; i < s_device_count; i++) {
@@ -503,7 +526,7 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
         sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
                 s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
                 s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
-        
+
         if (strcasecmp(dev_addr, addr) == 0) {
             strncpy(s_connected_device_name, s_devices[i].name, sizeof(s_connected_device_name) - 1);
             s_connected_device_name[sizeof(s_connected_device_name) - 1] = '\0';
@@ -511,7 +534,7 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
             break;
         }
     }
-    
+
     if (!found) {
         /* If not found in discovered devices, check paired devices */
         for (int i = 0; i < s_paired_device_count; i++) {
@@ -519,7 +542,7 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
             sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
                     s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
                     s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
-            
+
             if (strcasecmp(dev_addr, addr) == 0) {
                 strncpy(s_connected_device_name, s_paired_devices[i].name, sizeof(s_connected_device_name) - 1);
                 s_connected_device_name[sizeof(s_connected_device_name) - 1] = '\0';
@@ -528,16 +551,22 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
             }
         }
     }
-    
+
+    if (!found) {
+        ESP_LOGE(TAG, "Device with address '%s' not found", addr);
+        return ESP_ERR_NOT_FOUND;
+    }
+
     /* Create a connection simulation */
     vTaskDelay(pdMS_TO_TICKS(500)); // Simulate connection delay
-    
+
     /* Update state */
     s_connection_state = BT_CONNECTION_STATE_CONNECTED;
     s_is_connected = true;
-    
+
     ESP_LOGI(TAG, "Connected to device: %s (stub)", addr);
     return ESP_OK;
+#endif
 }
 
 /**
@@ -545,6 +574,36 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
  */
 BT_WEAK_FN esp_err_t bt_connect_device_by_name(const char* name)
 {
+    /* If component provides prototypes, allow bt_mock to handle connect-by-name
+     * (it may implement hooks or a different device lookup). Delegate and then
+     * synchronize local visible connection state so other stub APIs remain
+     * consistent with the component's authoritative state.
+     */
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    esp_err_t err = bt_mock_hook_connect_by_name(name);
+    if (err != ESP_OK) return err;
+
+    /* If component made the connection, update local flags from component */
+    if (bt_mock_is_connected()) {
+        s_is_connected = true;
+        char conn_addr[18] = {0};
+        if (bt_mock_get_connected_addr(conn_addr, sizeof(conn_addr)) == ESP_OK) {
+            strncpy(s_connected_device_addr, conn_addr, sizeof(s_connected_device_addr)-1);
+            s_connected_device_addr[sizeof(s_connected_device_addr)-1] = '\0';
+        }
+        /* Attempt to copy the device name if available */
+        int idx = -1;
+        if (bt_mock_find_device(s_connected_device_addr, &idx) && idx >= 0) {
+            bt_device_t tmp;
+            if (bt_mock_get_device(idx, &tmp) == ESP_OK) {
+                strncpy(s_connected_device_name, tmp.name, sizeof(s_connected_device_name)-1);
+                s_connected_device_name[sizeof(s_connected_device_name)-1] = '\0';
+            }
+        }
+    }
+
+    return ESP_OK;
+#else
     /* First check if we have a special hook set up */
     if (s_connect_by_name_name != NULL && strcmp(name, s_connect_by_name_name) == 0 &&
         s_connect_by_name_address != NULL) {
@@ -566,6 +625,7 @@ BT_WEAK_FN esp_err_t bt_connect_device_by_name(const char* name)
     
     ESP_LOGE(TAG, "Device with name '%s' not found", name);
     return ESP_ERR_NOT_FOUND;
+#endif
 }
 
 /**
@@ -573,6 +633,22 @@ BT_WEAK_FN esp_err_t bt_connect_device_by_name(const char* name)
  */
 BT_WEAK_FN esp_err_t bt_disconnect(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate disconnect to component-level mock and sync state */
+    esp_err_t err = bt_mock_disconnect();
+    if (err != ESP_OK) return err;
+
+    s_is_connected = bt_mock_is_connected();
+    if (!s_is_connected) {
+        s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+        s_streaming_state = BT_STREAMING_STATE_STOPPED;
+        s_connected_device_addr[0] = '\0';
+        s_connected_device_name[0] = '\0';
+    }
+
+    ESP_LOGI(TAG, "Disconnected from device (delegated to mock)");
+    return ESP_OK;
+#else
     if (!s_is_connected) {
         ESP_LOGW(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
@@ -588,6 +664,7 @@ BT_WEAK_FN esp_err_t bt_disconnect(void)
     
     ESP_LOGI(TAG, "Disconnected from device (stub)");
     return ESP_OK;
+#endif
 }
 
 /**
@@ -607,6 +684,44 @@ BT_WEAK_FN esp_err_t bt_get_connection_info(bt_connection_info_t* info)
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Populate from component-level authoritative state if available */
+    if (bt_mock_is_connected()) {
+        info->connected = true;
+        /* copy connected addr from authoritative component mock */
+        if (bt_mock_get_connected_addr(info->addr, sizeof(info->addr)) != ESP_OK) {
+            info->addr[0] = '\0';
+        }
+
+        /* try to find device name */
+        int idx = -1;
+        if (bt_mock_find_device(info->addr, &idx) && idx >= 0) {
+            bt_device_t tmp;
+            if (bt_mock_get_device(idx, &tmp) == ESP_OK) {
+                strncpy(info->name, tmp.name, sizeof(info->name) - 1);
+                info->name[sizeof(info->name) - 1] = '\0';
+            } else {
+                info->name[0] = '\0';
+            }
+        } else {
+            info->name[0] = '\0';
+        }
+
+    /* bt_mock_get_streaming_state is provided by the component; call it
+     * directly. Avoid checking the function pointer's address which is
+     * always true and triggers -Werror=address on newer compilers. */
+    info->streaming = (bt_mock_get_streaming_state() == BT_STREAMING_STATE_STREAMING);
+        info->state = bt_mock_is_connected() ? BT_CONNECTION_STATE_CONNECTED : BT_CONNECTION_STATE_DISCONNECTED;
+    } else {
+        info->connected = false;
+        info->addr[0] = '\0';
+        info->name[0] = '\0';
+        info->streaming = false;
+        info->state = BT_CONNECTION_STATE_DISCONNECTED;
+    }
+
+    return ESP_OK;
+#else
     info->connected = s_is_connected;
     strncpy(info->addr, s_connected_device_addr, sizeof(info->addr) - 1);
     info->addr[sizeof(info->addr) - 1] = '\0';
@@ -616,6 +731,7 @@ BT_WEAK_FN esp_err_t bt_get_connection_info(bt_connection_info_t* info)
     info->state = s_connection_state;
     
     return ESP_OK;
+#endif
 }
 
 /**
@@ -979,7 +1095,7 @@ BT_WEAK_FN esp_err_t bt_send_pin_code(const char* pin)
     /* Accept PIN when the pairing state indicates a PIN request or when
      * pairing has just started but the implementation treats STARTED as an
      * acceptable moment to provide a PIN. Some component mocks use
-     * BT_PAIRING_STATE_STARTED when falling back from SSP to PIN, so be
+        return ESP_ERR_NOT_FOUND;
      * permissive here to match component behavior.
      */
     if (s_pairing_state != BT_PAIRING_STATE_PIN_REQUESTED &&
