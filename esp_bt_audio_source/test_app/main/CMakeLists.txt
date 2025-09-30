@@ -13,6 +13,7 @@ idf_component_register(
         "bt_source_stubs.c"
         "bt_source_mock.c"
     "bt_test_setup.c"
+        "bt_pairing_persistence_test.c"
         "audio_pipeline_test.c"
         "bt_mock_setup.c"  # Update this filename
     INCLUDE_DIRS 
@@ -22,6 +23,7 @@ idf_component_register(
         bt_mock
         bluetooth
         command_interface
+        nvs_storage
         audio
         unity
 )
