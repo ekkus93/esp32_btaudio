@@ -15,6 +15,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
 )
 
 # Find the unity package for unit testing
@@ -37,15 +38,32 @@ add_executable(test_commands test_commands.c
 target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_commands unity)
 
+# Enable CTest and register the test executables so `ctest` can discover them
+enable_testing()
+add_test(NAME test_commands COMMAND $<TARGET_FILE:test_commands>)
+
 add_executable(test_bluetooth test_bluetooth.c 
     ../../components/bt_manager/bt_manager.c
     mocks/mock_i2s.c)
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
+add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 add_executable(test_nvs_storage test_nvs_storage.c
     mocks/nvs_storage_mock.c)
 target_link_libraries(test_nvs_storage unity)
+add_test(NAME test_nvs_storage COMMAND $<TARGET_FILE:test_nvs_storage>)
+
+# Osi allocator debug tests (host)
+add_executable(test_osi_allocator test_bt_osi_allocator.c 
+    ../../components/components/bt/common/osi/allocator.c)
+target_compile_definitions(test_osi_allocator PRIVATE HEAP_MEMORY_DEBUG)
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
+# allocator.c depends on bt_common.h which lives in the bt common include path
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
+target_link_libraries(test_osi_allocator unity)
+add_test(NAME test_osi_allocator COMMAND $<TARGET_FILE:test_osi_allocator>)
 
 # Create a consolidated test runner
 add_custom_target(run_tests

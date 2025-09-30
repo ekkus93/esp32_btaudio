@@ -71,8 +71,10 @@ void osi_mem_dbg_record(void *p, int size, const char *func, int line)
 {
     int i;
 
+    /* If pointer is NULL or size is zero, quietly ignore. Many callers
+     * call osi_free(NULL) or allocate zero bytes; treat these as no-ops
+     * to avoid noisy error logs while preserving debug bookkeeping. */
     if (!p || size == 0) {
-        OSI_TRACE_ERROR("%s invalid !!\n", __func__);
         return;
     }
 
@@ -109,8 +111,9 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
 {
     int i;
 
+    /* Ignore NULL frees in debug mode - free(NULL) is valid in C and many
+     * call sites rely on that. Avoid logging an error for NULL pointers. */
     if (!p) {
-        OSI_TRACE_ERROR("%s invalid\n", __func__);
         return;
     }
 

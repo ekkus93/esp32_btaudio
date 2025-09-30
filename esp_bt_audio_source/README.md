@@ -54,6 +54,18 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
+Current test status (2025-09-30)
+--------------------------------
+- All unit tests are currently passing: host-based tests under `test/host_test` and on-device Unity tests in `test_app` are green. This validates the command handlers, NVS mocks, and the authoritative `bt_mock` component behaviors exercised by the test-suite.
+
+Remaining work (short list)
+--------------------------
+- On-device end-to-end verification: run a few real-device scenarios to validate pairing persistence across reboot and interoperability with common phones/speakers.
+- Expand timing and fault-injection tests: add simulated connection timeouts, drops, and auto-reconnect scenarios in the mock harness.
+- CI automation: add jobs to run host tests on every PR and consider a hardware-backed runner for selected on-device Unity tests.
+- Documentation: add `test/host_test/README.md` with the quick-start commands already documented above.
+- Static analysis & coverage: enable linting (clang-format/clang-tidy) and produce test coverage for host tests to identify gaps.
+
 Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
 - Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now call the appropriate GAP reply APIs on-device (`esp_bt_gap_ssp_confirm_reply()` and `esp_bt_gap_pin_reply()`), falling back to a stored default PIN from NVS when available. These handlers are guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
@@ -334,6 +346,62 @@ On-device tests use ESP-IDF's Unity framework integration:
    cd test_app
    idf.py -p PORT flash monitor
    ```
+
+On-device Unity tests (detailed)
+--------------------------------
+These tests run on the target ESP32 and use ESP-IDF's Unity integration. The `test_app/` application is already configured to run the Unity tests on boot and print results to the serial console.
+
+Quick commands
+
+```bash
+# from the project root
+cd esp_bt_audio_source/test_app
+# build the test firmware
+idf.py build
+# flash and open the serial monitor (replace PORT with your device, e.g. /dev/ttyUSB0)
+idf.py -p PORT flash monitor
+```
+
+What to expect
+
+- After flashing, the device boots the test application and the Unity runner executes the registered TEST_CASEs.
+- Test output appears on the serial monitor. Look for lines like:
+
+   "Running 3 tests..."
+   "[ RUN ] Test Bluetooth connection"
+   "[ PASS ] Test Bluetooth connection"
+   "--- SUMMARY ---"
+   "3 Tests 0 Failures 0 Ignored"
+
+- On failure, Unity prints a failing assertion and the test name. Use the monitor output to trace back to the failing test and inspect logs produced by the firmware.
+
+Running only the build (no flash)
+
+If you want to build without flashing (for a faster compile-check):
+
+```bash
+cd esp_bt_audio_source/test_app
+idf.py build
+```
+
+Capturing logs
+
+- The serial monitor shows test output live. To capture it to a file, run:
+
+```bash
+idf.py -p PORT flash monitor |& tee esp32_unity_test.log
+```
+
+CI and automated test runners
+
+- For CI runners that support serial access, flash the firmware and read the serial output capturing the Unity summary. Some CI setups use a hardware test harness (lab runner) that can power-cycle the device and collect logs automatically.
+
+Troubleshooting
+
+- No tests appear on the console: ensure you flashed the `test_app` binary (the main firmware won't run the Unity tests unless you run the test application).
+- Build failures referencing missing ESP-IDF symbols: ensure your ESP-IDF environment is sourced (run `. $HOME/esp/esp-idf/export.sh`) and you're using a compatible IDF version.
+- Serial monitor shows a crash early during boot: capture the logs, increase the monitor baud rate to match `CONFIG_ESP_CONSOLE_UART_BAUDRATE` in your `sdkconfig` (default 115200), and inspect stack traces. You can also use `idf.py monitor` with `--monitor` options to decode backtraces.
+
 
 ### 3. Component Design for Testability
 

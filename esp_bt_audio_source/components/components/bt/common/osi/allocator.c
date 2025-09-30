@@ -17,6 +17,7 @@
  ******************************************************************************/
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "bt_common.h"
 #include "osi/allocator.h"
@@ -71,10 +72,18 @@ void osi_mem_dbg_record(void *p, int size, const char *func, int line)
 {
     int i;
 
+    /* If pointer is NULL or size is zero, quietly ignore. Many callers
+     * call osi_free(NULL) or allocate zero bytes; treat these as no-ops
+     * to avoid noisy error logs while preserving debug bookkeeping. */
     if (!p || size == 0) {
-        OSI_TRACE_ERROR("%s invalid !!\n", __func__);
         return;
     }
+
+#ifdef UNIT_TEST
+    /* Extra tracing when running host unit tests to help diagnose crashes */
+    fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_record entry: p=%p size=%d func=%s line=%d mem_dbg_count=%u\n",
+            p, size, func ? func : "?", line, mem_dbg_count);
+#endif
 
     for (i = 0; i < OSI_MEM_DBG_INFO_MAX; i++) {
         if (mem_dbg_info[i].p == NULL) {
@@ -88,7 +97,10 @@ void osi_mem_dbg_record(void *p, int size, const char *func, int line)
     }
 
     if (i >= OSI_MEM_DBG_INFO_MAX) {
-        OSI_TRACE_ERROR("%s full %s %d !!\n", __func__, func, line);
+    OSI_TRACE_ERROR("%s full %s %d !!\n", __func__, func, line);
+#ifdef UNIT_TEST
+    fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_record: mem_dbg_info full, attempted to record p=%p size=%d\n", p, size);
+#endif
     }
 
     mem_dbg_current_size += size;
@@ -109,10 +121,16 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
 {
     int i;
 
+    /* Ignore NULL frees in debug mode - free(NULL) is valid in C and many
+     * call sites rely on that. Avoid logging an error for NULL pointers. */
     if (!p) {
-        OSI_TRACE_ERROR("%s invalid\n", __func__);
         return;
     }
+
+#ifdef UNIT_TEST
+    fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_clean entry: p=%p func=%s line=%d mem_dbg_count=%u\n",
+            p, func ? func : "?", line, mem_dbg_count);
+#endif
 
     for (i = 0; i < OSI_MEM_DBG_INFO_MAX; i++) {
         if (mem_dbg_info[i].p == p) {
@@ -128,6 +146,9 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
 
     if (i >= OSI_MEM_DBG_INFO_MAX) {
         OSI_TRACE_ERROR("%s full %s %d !!\n", __func__, func, line);
+#ifdef UNIT_TEST
+        fprintf(stderr, "[UNIT_TEST] osi_mem_dbg_clean: pointer not found p=%p\n", p);
+#endif
     }
 }
 

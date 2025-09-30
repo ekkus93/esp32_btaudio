@@ -8,6 +8,8 @@ idf_component_register(
         "esp_common"
         "bluetooth"
         "log"
+    PRIV_REQUIRES
+        "command_interface"
 )
 
 # Add compile definition to enable test features
