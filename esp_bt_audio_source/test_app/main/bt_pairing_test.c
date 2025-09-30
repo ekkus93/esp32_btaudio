@@ -7,6 +7,7 @@
 #include "test_config.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -421,8 +422,8 @@ void test_unpair_all_devices(void)
     TEST_ASSERT_TRUE(bt_is_device_paired(test_addr2));
     
     // Get paired device count before unpairing
-    int count_before = bt_mock_get_paired_device_count();
-    TEST_ASSERT_GREATER_THAN(0, count_before);
+    uint16_t count_before = bt_mock_get_paired_device_count();
+    TEST_ASSERT_GREATER_THAN(0, (int)count_before);
     
     // Unpair all devices
     esp_err_t ret = bt_unpair_all_devices();
@@ -433,8 +434,8 @@ void test_unpair_all_devices(void)
     TEST_ASSERT_FALSE(bt_is_device_paired(test_addr2));
     
     // Get paired device count after unpairing
-    int count_after = bt_mock_get_paired_device_count();
-    TEST_ASSERT_EQUAL(0, count_after);
+    uint16_t count_after = bt_mock_get_paired_device_count();
+    TEST_ASSERT_EQUAL(0, (int)count_after);
     
     ESP_LOGI(TAG, "Unpair all devices test completed");
 }

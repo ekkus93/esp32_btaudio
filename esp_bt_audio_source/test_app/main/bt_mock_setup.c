@@ -15,9 +15,25 @@ void bt_mock_setup_common(void)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize BT: %d", ret);
     }
+    // Initialize component-level mock state if available so its internal
+    // structures are allocated/zeroed before we call bt_mock_reset() and
+    // populate devices. bt_mock_init is provided by the component mock.
+    #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_init();
+    #endif
     
-    // Reset BT mock system
+    // Reset both the test-app stub state and the component-level mock state so
+    // tests start from a clean slate. bt_reset_for_test() is a weak symbol
+    // provided by the test-app stub implementation and clears stub-local
+    // variables like connection/scan/pairing flags. bt_mock_reset() resets the
+    // component-level mock state.
+    bt_reset_for_test();
     bt_mock_reset();
+
+    // Default to PIN pairing for tests unless a test explicitly enables SSP.
+    // This makes tests that expect PIN-based flows (bt_send_pin_code) behave
+    // deterministically.
+    bt_mock_set_ssp_supported(false);
     
     // Add some test devices
     bt_mock_setup_devices();
@@ -41,6 +57,9 @@ void bt_mock_setup_paired_devices(void)
     
     // Initialize BT and reset mock
     bt_init();
+    #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_init();
+    #endif
     bt_mock_reset();
     
     // Create a paired device - Fix the structure initialization to match bt_device_t definition

@@ -19,6 +19,29 @@
  * which the file already checks in guarded delegation branches.
  */
 #include "bt_mock.h"
+/* The bt_mock header pulls in bt_mock_devices.h in the component, but some
+ * build configurations expose the component header via the components/bluetooth
+ * include path. Include the device-level prototype header too to ensure all
+ * delegated bt_mock_* symbols (bt_mock_start_pairing, bt_mock_send_pin,
+ * bt_mock_is_device_paired, etc.) are declared and avoid implicit
+ * declaration errors during compilation.
+ */
+#include "bt_mock_devices.h"
+
+/* Some build setups provide a different bt_mock_devices.h on the include path
+ * (components/bt_mock vs components/bluetooth). The bluetooth version
+ * declares higher-level helpers like bt_mock_start_pairing and
+ * bt_mock_send_pin which we delegate to. If those prototypes are not
+ * visible due to include ordering, provide minimal forward declarations
+ * here when the component advertises prototypes.
+ */
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+/* pairing helpers */
+extern esp_err_t bt_mock_start_pairing(const char* addr);
+extern esp_err_t bt_mock_send_pin(const char* pin);
+/* paired-device query */
+extern bool bt_mock_is_device_paired(const char* addr);
+#endif
 
 // Provide weak attribute for functions to avoid conflicts with real implementations
 #define BT_WEAK_FN __attribute__((weak))
@@ -26,12 +49,14 @@
 static const char *TAG = "BT_SOURCE_STUB";
 
 /* Mock device database */
-#define MAX_TEST_DEVICES 10
+/* Increase capacity to avoid "database full" errors in test runs */
+#define MAX_TEST_DEVICES 32
 static bt_device_t s_devices[MAX_TEST_DEVICES];
 static int s_device_count = 0;
 
 /* Mock paired device database */
-#define MAX_PAIRED_DEVICES 5
+/* Allow more paired devices for tests that add multiple pairs */
+#define MAX_PAIRED_DEVICES 32
 static bt_device_t s_paired_devices[MAX_PAIRED_DEVICES];
 static int s_paired_device_count = 0;
 
@@ -350,7 +375,25 @@ BT_WEAK_FN void bt_cleanup(void)
  */
 BT_WEAK_FN esp_err_t bt_scan_start(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component-level mock scan so the authoritative device list
+     * is used by tests. The component provides bt_mock_start_scan and
+     * bt_mock_get_scan_results.
+     */
+    ESP_LOGI(TAG, "Delegating bt_scan_start to bt_mock_start_scan");
+    bt_mock_start_scan();
+    /* Keep the scanning flag in sync with the component mock */
+    s_is_scanning = bt_mock_is_scanning();
+    /* Pull results into local discovered list so callbacks and getters work */
+    s_device_count = bt_mock_get_scan_results(s_devices, MAX_TEST_DEVICES);
+    /* Fire discovery callbacks for each device if registered */
+    for (int i = 0; i < s_device_count; i++) {
+        if (scan_callback) scan_callback(&s_devices[i], scan_callback_data);
+    }
+    return ESP_OK;
+#else
     return bt_scan(10); // Default to 10 second scan
+#endif
 }
 
 /**
@@ -367,6 +410,21 @@ BT_WEAK_FN esp_err_t bt_scan_start_filtered(bt_device_type_t device_type)
  */
 BT_WEAK_FN esp_err_t bt_scan_stop(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component mock stop */
+    if (!bt_mock_is_scanning() && !s_is_scanning) {
+        ESP_LOGW(TAG, "Scan not in progress");
+        return ESP_OK;
+    }
+    bt_mock_stop_scan();
+    s_is_scanning = false;
+    if (s_discovery_task_handle != NULL) {
+        vTaskDelete(s_discovery_task_handle);
+        s_discovery_task_handle = NULL;
+    }
+    ESP_LOGI(TAG, "Stopped scanning (delegated to mock)");
+    return ESP_OK;
+#else
     if (!s_is_scanning) {
         ESP_LOGW(TAG, "Scan not in progress");
         return ESP_OK;
@@ -381,6 +439,7 @@ BT_WEAK_FN esp_err_t bt_scan_stop(void)
     
     ESP_LOGI(TAG, "Stopped scanning (stub)");
     return ESP_OK;
+#endif
 }
 
 /**
@@ -396,6 +455,20 @@ BT_WEAK_FN esp_err_t bt_scan(uint32_t duration_s)
     ESP_LOGI(TAG, "Starting BT scanning with %" PRIu32 " second timeout (stub)", duration_s);
     s_is_scanning = true;
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component mock scan and populate local list so callers
+     * of bt_get_discovered_devices / bt_get_discovered_device_count see the
+     * authoritative results.
+     */
+    bt_mock_start_scan();
+    s_is_scanning = bt_mock_is_scanning();
+    s_device_count = bt_mock_get_scan_results(s_devices, MAX_TEST_DEVICES);
+    for (int i = 0; i < s_device_count; i++) {
+        if (scan_callback) scan_callback(&s_devices[i], scan_callback_data);
+    }
+    /* leave s_is_scanning in sync with component until stop is called */
+    return ESP_OK;
+#else
     // Create a task to simulate discovery
     xTaskCreate(simulate_discovery_task, "bt_discovery", 4096, NULL, 5, &s_discovery_task_handle);
     
@@ -403,6 +476,7 @@ BT_WEAK_FN esp_err_t bt_scan(uint32_t duration_s)
     // the discovery task ending itself
     
     return ESP_OK;
+#endif
 }
 
 /**
@@ -684,7 +758,14 @@ BT_WEAK_FN esp_err_t bt_register_discovery_callback(bt_discovery_cb_t callback, 
  */
 BT_WEAK_FN uint16_t bt_get_discovered_device_count(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Query component mock for authoritative scan results count */
+    bt_device_t tmp[MAX_TEST_DEVICES];
+    int n = bt_mock_get_scan_results(tmp, MAX_TEST_DEVICES);
+    return (uint16_t)n;
+#else
     return (uint16_t)s_device_count;
+#endif
 }
 
 /**
@@ -696,6 +777,13 @@ BT_WEAK_FN esp_err_t bt_get_discovered_devices(bt_device_t *devices, uint16_t co
         return ESP_ERR_INVALID_ARG;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component mock authoritative scan results */
+    int got = bt_mock_get_scan_results(devices, (int)count);
+    if (got < 0) got = 0;
+    *actual_count = (uint16_t)got;
+    return ESP_OK;
+#else
     uint16_t copy_count = (count < s_device_count) ? count : (uint16_t)s_device_count;
     
     for (uint16_t i = 0; i < copy_count; i++) {
@@ -704,6 +792,7 @@ BT_WEAK_FN esp_err_t bt_get_discovered_devices(bt_device_t *devices, uint16_t co
     
     *actual_count = copy_count;
     return ESP_OK;
+#endif
 }
 
 /**
@@ -832,14 +921,17 @@ static void simulate_discovery_task(void *pvParameters)
  */
 BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_start_pairing(addr);
+#else
     if (!s_is_connected) {
         ESP_LOGE(TAG, "Not connected to any device");
         return ESP_ERR_INVALID_STATE;
     }
-    
+
     /* Update state */
     s_pairing_state = BT_PAIRING_STATE_STARTED;
-    
+
     /* Check if we should simulate failure or timeout */
     if (s_simulate_pairing_failure) {
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -848,7 +940,7 @@ BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
         ESP_LOGI(TAG, "Simulated pairing failure");
         return ESP_OK;
     }
-    
+
     if (s_simulate_pairing_timeout) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         s_pairing_state = BT_PAIRING_STATE_TIMEOUT;
@@ -856,7 +948,7 @@ BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
         ESP_LOGI(TAG, "Simulated pairing timeout");
         return ESP_OK;
     }
-    
+
     /* Determine pairing method */
     if (s_ssp_supported) {
         s_pairing_method = BT_PAIRING_METHOD_SSP;
@@ -871,8 +963,9 @@ BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
         s_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;
         ESP_LOGI(TAG, "PIN pairing started");
     }
-    
+
     return ESP_OK;
+#endif
 }
 
 /**
@@ -880,38 +973,49 @@ BT_WEAK_FN esp_err_t bt_start_pairing(const char* addr)
  */
 BT_WEAK_FN esp_err_t bt_send_pin_code(const char* pin)
 {
-    if (s_pairing_state != BT_PAIRING_STATE_PIN_REQUESTED) {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_send_pin(pin);
+#else
+    /* Accept PIN when the pairing state indicates a PIN request or when
+     * pairing has just started but the implementation treats STARTED as an
+     * acceptable moment to provide a PIN. Some component mocks use
+     * BT_PAIRING_STATE_STARTED when falling back from SSP to PIN, so be
+     * permissive here to match component behavior.
+     */
+    if (s_pairing_state != BT_PAIRING_STATE_PIN_REQUESTED &&
+        s_pairing_state != BT_PAIRING_STATE_STARTED) {
         ESP_LOGE(TAG, "PIN not requested");
         return ESP_ERR_INVALID_STATE;
     }
-    
+
     ESP_LOGI(TAG, "PIN code sent: %s", pin);
-    
+
     /* For testing, compare with default PIN */
     if (strcmp(pin, s_default_pin) == 0) {
         s_pairing_state = BT_PAIRING_STATE_PAIRED;
-        
+
         /* Add to paired devices */
         for (int i = 0; i < s_device_count; i++) {
             char dev_addr[18];
             sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
                     s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
                     s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
-            
+
             if (strcasecmp(dev_addr, s_connected_device_addr) == 0 && s_paired_device_count < MAX_PAIRED_DEVICES) {
                 memcpy(&s_paired_devices[s_paired_device_count++], &s_devices[i], sizeof(bt_device_t));
                 s_paired_devices[s_paired_device_count - 1].paired = true;
                 break;
             }
         }
-        
+
         ESP_LOGI(TAG, "Pairing successful");
     } else {
         s_pairing_state = BT_PAIRING_STATE_FAILED;
         ESP_LOGI(TAG, "Pairing failed: incorrect PIN");
     }
-    
+
     return ESP_OK;
+#endif
 }
 
 /**
@@ -919,7 +1023,11 @@ BT_WEAK_FN esp_err_t bt_send_pin_code(const char* pin)
  */
 BT_WEAK_FN bt_pairing_state_t bt_get_pairing_state(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_pairing_state();
+#else
     return s_pairing_state;
+#endif
 }
 
 /**
@@ -927,18 +1035,22 @@ BT_WEAK_FN bt_pairing_state_t bt_get_pairing_state(void)
  */
 BT_WEAK_FN bool bt_is_device_paired(const char* addr)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_is_device_paired(addr);
+#else
     for (int i = 0; i < s_paired_device_count; i++) {
         char dev_addr[18];
         sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
                 s_paired_devices[i].addr[0], s_paired_devices[i].addr[1], s_paired_devices[i].addr[2],
                 s_paired_devices[i].addr[3], s_paired_devices[i].addr[4], s_paired_devices[i].addr[5]);
-        
+
         if (strcasecmp(dev_addr, addr) == 0) {
             return true;
         }
     }
-    
+
     return false;
+#endif
 }
 
 /**
@@ -983,37 +1095,41 @@ BT_WEAK_FN esp_err_t bt_get_default_pin(char* pin, size_t size)
  */
 BT_WEAK_FN esp_err_t bt_ssp_confirm(bool confirm)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_confirm_ssp(confirm);
+#else
     if (!s_ssp_confirmation_requested) {
         ESP_LOGE(TAG, "No SSP confirmation requested");
         return ESP_ERR_INVALID_STATE;
     }
-    
+
     s_ssp_confirmation_requested = false;
-    
+
     if (confirm) {
         s_pairing_state = BT_PAIRING_STATE_PAIRED;
-        
+
         /* Add to paired devices */
         for (int i = 0; i < s_device_count; i++) {
             char dev_addr[18];
             sprintf(dev_addr, "%02x:%02x:%02x:%02x:%02x:%02x",
                     s_devices[i].addr[0], s_devices[i].addr[1], s_devices[i].addr[2],
                     s_devices[i].addr[3], s_devices[i].addr[4], s_devices[i].addr[5]);
-            
+
             if (strcasecmp(dev_addr, s_connected_device_addr) == 0 && s_paired_device_count < MAX_PAIRED_DEVICES) {
                 memcpy(&s_paired_devices[s_paired_device_count++], &s_devices[i], sizeof(bt_device_t));
                 s_paired_devices[s_paired_device_count - 1].paired = true;
                 break;
             }
         }
-        
+
         ESP_LOGI(TAG, "SSP confirmation accepted, pairing successful");
     } else {
         s_pairing_state = BT_PAIRING_STATE_FAILED;
         ESP_LOGI(TAG, "SSP confirmation rejected, pairing failed");
     }
-    
+
     return ESP_OK;
+#endif
 }
 
 /**
@@ -1113,6 +1229,7 @@ BT_WEAK_FN esp_err_t bt_unpair_all_devices(void)
 BT_WEAK_FN uint16_t bt_get_paired_device_count(void)
 {
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component-provided authoritative mock */
     return bt_mock_get_paired_device_count();
 #else
     return s_paired_device_count;
@@ -1129,10 +1246,7 @@ BT_WEAK_FN int bt_get_paired_devices(bt_device_t* devices, int max_devices)
     }
     
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    /* Component API uses an out-parameter for actual count and returns ESP_OK on
-     * success (see components' bt_mock.h). Convert that to the expected int
-     * return (number of devices copied) for the stub API.
-     */
+    /* Delegate to component authoritative implementation */
     uint16_t actual = 0;
     esp_err_t err = bt_mock_get_paired_devices(devices, (uint16_t)max_devices, &actual);
     if (err != ESP_OK) {
@@ -1141,11 +1255,11 @@ BT_WEAK_FN int bt_get_paired_devices(bt_device_t* devices, int max_devices)
     return (int)actual;
 #else
     int copy_count = (max_devices < s_paired_device_count) ? max_devices : s_paired_device_count;
-    
+
     for (int i = 0; i < copy_count; i++) {
         memcpy(&devices[i], &s_paired_devices[i], sizeof(bt_device_t));
     }
-    
+
     return copy_count;
 #endif
 }

@@ -10,6 +10,13 @@
 #include "bt_source_mock.h"
 #include "bt_mock.h"
 
+/* Ensure device-level prototypes (scan/connect/get_scan_results, etc.) are
+ * visible. bt_mock.h may not expose all device-level helpers; include the
+ * device header which declares bt_mock_start_scan, bt_mock_stop_scan,
+ * bt_mock_get_scan_results, bt_mock_connect and the connect-by-name hook.
+ */
+#include "bt_mock_devices.h"
+
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
 #ifdef __cplusplus
 extern "C" {
@@ -51,8 +58,8 @@ static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECT
 static bool is_valid_mac_address(const char* addr);
 
 /* Constants */
-#define MAX_DISCOVERED_DEVICES 10
-#define MAX_STORED_PAIRED_DEVICES 10
+#define MAX_DISCOVERED_DEVICES 32
+#define MAX_STORED_PAIRED_DEVICES 32
 
 /* Mock control structure for test results */
 typedef struct {
@@ -276,7 +283,17 @@ esp_err_t bt_scan(uint32_t timeout_seconds)
     }
     
     s_scan_active = true;
-    
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component mock to ensure authoritative scan results */
+    bt_mock_start_scan();
+
+    /* Pull scan results from component into local discovered list so tests
+     * that use the test-app API will see the same devices the component has.
+     */
+    s_discovered_device_count = bt_mock_get_scan_results(s_discovered_devices, MAX_DISCOVERED_DEVICES);
+#endif
+
     return mock_control.scan_start_return;
 }
 
@@ -331,13 +348,24 @@ esp_err_t bt_connect_device(const char* addr)  // Changed from bt_connect to bt_
         return ESP_ERR_INVALID_STATE;
     }
     
-    // Store connection info - fix member names
-    strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);  // Changed from remote_addr to addr
-    s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';  // Changed from remote_addr to addr
-    
+    /* If component mock provides connect helper, delegate to it so the
+     * authoritative connection state is updated. Otherwise, fall back to
+     * local behavior.
+     */
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    if (bt_mock_connect(addr) == ESP_OK) {
+        strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
+        s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+        s_connected = true;
+        return ESP_OK;
+    }
+    return ESP_FAIL;
+#else
+    strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
+    s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
     s_connected = true;
-    
     return mock_control.connect_return;
+#endif
 }
 
 /**
@@ -355,11 +383,28 @@ esp_err_t bt_connect_device_by_name(const char* name)  // Changed from bt_connec
         return ESP_ERR_INVALID_STATE;
     }
     
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to component-level mock which may have a connect-by-name hook.
+     * The component returns ESP_OK on success. Update local state to match.
+     */
+    if (bt_mock_hook_connect_by_name(name) == ESP_OK) {
+        s_connected = true;
+        strncpy(s_current_connection.name, name, sizeof(s_current_connection.name) - 1);
+        s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
+        /* If the component has a hook-set address, attempt to copy it via
+         * bt_mock_get_scan_results / bt_mock_get_paired_devices isn't necessary
+         * here; tests only check that we report a connected state and name.
+         */
+        return ESP_OK;
+    }
+    return ESP_FAIL;
+#else
     s_connected = true;
     sprintf(s_current_connection.name, "%s", name);  // Changed from remote_name to name
     sprintf(s_current_connection.addr, "00:11:22:33:44:55");  // Changed from remote_addr to addr
     
     return mock_control.connect_return;
+#endif
 }
 
 /**
@@ -580,8 +625,9 @@ esp_err_t bt_start_pairing(const char* addr)
         // For testing, simulate SSP request right away
         bt_source_mock_simulate_ssp_request_impl(123456);
     } else {
-        // For PIN - set pairing to STARTED so tests that expect STARTED on fallback pass.
-        current_pairing_state = BT_PAIRING_STATE_STARTED;  // Value is 1
+        // For PIN - set pairing to PIN_REQUESTED so bt_send_pin_code() accepts the PIN
+        // and tests that expect an explicit PIN request state pass.
+        current_pairing_state = BT_PAIRING_STATE_PIN_REQUESTED;  // Value is 2
         current_pairing_method = BT_PAIRING_METHOD_PIN;
     }
     

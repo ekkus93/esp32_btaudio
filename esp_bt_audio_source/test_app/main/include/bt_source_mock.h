@@ -22,6 +22,12 @@ void bt_source_mock_reset_impl(void);
 static inline void bt_source_mock_reset(void) {
 	bt_source_mock_reset_impl();
 }
+/* Legacy name: provide a prototype for bt_reset_for_test so callers get a
+ * declaration. The real implementation may be the weak stub in
+ * `bt_source_stubs.c` or a component-provided function; we avoid inlining a
+ * definition to prevent redefinition conflicts across translation units.
+ */
+void bt_reset_for_test(void);
 /* If the bt_mock component already provides external prototypes, don't
  * declare internal inline wrappers for the same symbols to avoid
  * conflicting linkage. The component header defines BT_MOCK_PROVIDES_PROTOTYPES
