@@ -41,6 +41,8 @@ extern esp_err_t bt_mock_start_pairing(const char* addr);
 extern esp_err_t bt_mock_send_pin(const char* pin);
 /* paired-device query */
 extern bool bt_mock_is_device_paired(const char* addr);
+/* unpair helpers */
+extern esp_err_t bt_mock_unpair_device(const char* addr);
 #endif
 
 // Provide weak attribute for functions to avoid conflicts with real implementations
@@ -1324,7 +1326,15 @@ BT_WEAK_FN esp_err_t bt_unpair_device(const char* addr)
     if (addr == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate unpair operation to component-level authoritative mock */
+    esp_err_t err = bt_mock_unpair_device(addr);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Unpaired device: %s (delegated to mock)", addr);
+    }
+    return err;
+#else
     bool found = false;
     int found_index = -1;
     
@@ -1355,6 +1365,7 @@ BT_WEAK_FN esp_err_t bt_unpair_device(const char* addr)
     ESP_LOGI(TAG, "Unpaired device: %s", addr);
     
     return ESP_OK;
+#endif
 }
 
 /**
