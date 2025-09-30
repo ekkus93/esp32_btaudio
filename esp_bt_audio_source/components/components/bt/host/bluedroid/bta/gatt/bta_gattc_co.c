@@ -606,7 +606,8 @@ BOOLEAN bta_gattc_co_cache_append_assoc_addr(BD_ADDR src_addr, BD_ADDR assoc_add
     if ((addr_index = bta_gattc_co_find_addr_in_cache(src_addr)) != INVALID_ADDR_NUM) {
         addr_info = &cache_env->cache_addr[addr_index];
         if (addr_info->assoc_addr == NULL) {
-            addr_info->assoc_addr =list_new(NULL);
+            /* Ensure the assoc list always owns its payloads to keep ownership semantics consistent */
+            addr_info->assoc_addr = list_new(osi_free_func);
         }
         return list_append(addr_info->assoc_addr, p_assoc_buf);
     } else {
