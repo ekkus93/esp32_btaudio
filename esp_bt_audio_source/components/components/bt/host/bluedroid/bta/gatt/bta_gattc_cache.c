@@ -562,8 +562,8 @@ void bta_gattc_update_include_service(const list_t *services) {
                 //update
                 include_service->included_service = bta_gattc_find_matching_service(services, include_service->incl_srvc_s_handle);
                 if(!include_service->included_service) {
-                    //not match, free it
-                    list_remove(service->included_svc, include_service);
+                    // not match: remove node without double-freeing payload, then free it
+                    list_delete(service->included_svc, include_service);
                     osi_free(include_service);
                 }
             }

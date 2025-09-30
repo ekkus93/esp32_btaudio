@@ -56,6 +56,17 @@ add_executable(test_nvs_storage test_nvs_storage.c
 target_link_libraries(test_nvs_storage unity)
 add_test(NAME test_nvs_storage COMMAND $<TARGET_FILE:test_nvs_storage>)
 
+# List ownership tests
+add_executable(test_list_ownership test_list_ownership.c
+    ../../components/components/bt/common/osi/allocator.c
+    ../../components/components/bt/common/osi/list.c)
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
+target_link_libraries(test_list_ownership unity)
+add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
+# allocator.c and list.c depend on bt_common.h which lives in the bt common include path
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
+
 # Osi allocator debug tests (host)
 add_executable(test_osi_allocator test_bt_osi_allocator.c 
     ../../components/components/bt/common/osi/allocator.c)
