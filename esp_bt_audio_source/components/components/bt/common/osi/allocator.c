@@ -170,13 +170,16 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
             p, func ? func : "?", line, mem_dbg_count);
 #endif
 
+    int matched_size = 0;
     for (i = 0; i < OSI_MEM_DBG_INFO_MAX; i++) {
         if (mem_dbg_info[i].p == p) {
+            matched_size = mem_dbg_info[i].size;
             mem_dbg_current_size -= mem_dbg_info[i].size;
             mem_dbg_info[i].p = NULL;
             mem_dbg_info[i].size = 0;
             mem_dbg_info[i].func = NULL;
             mem_dbg_info[i].line = 0;
+            mem_dbg_info[i].caller = NULL;
             mem_dbg_count--;
             break;
         }
@@ -187,17 +190,9 @@ void osi_mem_dbg_clean(void *p, const char *func, int line)
      * We store the size as best-effort by looking up the record we just
      * cleared (if present). */
     {
-        int freed_size = 0;
-        /* If we found the record (i < OSI_MEM_DBG_INFO_MAX), try to reuse
-         * the size we cleared above; otherwise size remains 0. */
-        if (i < OSI_MEM_DBG_INFO_MAX) {
-            /* mem_dbg_info[i] has already been cleared; size was stored
-             * in a local variable earlier if needed. We don't keep it,
-             * so best-effort: 0 indicates unknown. */
-            freed_size = 0;
-        }
+        int freed_size = matched_size;
         mem_dbg_free_hist[mem_dbg_free_idx].p = p;
-        mem_dbg_free_hist[mem_dbg_free_idx].size = freed_size;
+        mem_dbg_free_hist[mem_dbg_free_idx].size = freed_size; /* 0 if unknown */
         mem_dbg_free_hist[mem_dbg_free_idx].caller = __builtin_return_address(0);
         mem_dbg_free_hist[mem_dbg_free_idx].func = func;
         mem_dbg_free_hist[mem_dbg_free_idx].line = line;
