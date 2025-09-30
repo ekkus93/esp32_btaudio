@@ -12,6 +12,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
+#include "osi/allocator.h"
 
 static const char *TAG = "BT_APP_CORE";
 
@@ -167,7 +168,7 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
         return BT_APP_WORK_FAIL;
     }
     
-    msg->param = malloc(len);
+    msg->param = osi_malloc(len);
     if (msg->param) {
         memcpy(msg->param, p_dest, len);
         msg->param_free_cb = bt_app_param_free_cb;
@@ -181,6 +182,6 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
 void bt_app_param_free_cb(void *param)
 {
     if (param) {
-        free(param);
+        osi_free(param);
     }
 }
