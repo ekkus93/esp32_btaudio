@@ -193,7 +193,11 @@ void test_ssp_confirmation_rejected(void)
     
     // Set up SSP mock state via component helpers so the authoritative
     // component state is used by the API under test.
-    /* bt_mock_simulate_ssp_request already sets SSP request state in component */
+    /* Ensure an SSP request exists in the component mock so that
+     * bt_ssp_confirm(false) actually processes a rejection and updates
+     * the authoritative pairing state to BT_PAIRING_STATE_FAILED.
+     */
+    bt_mock_simulate_ssp_request(123456);
     
     // Reject SSP pairing
     esp_err_t ret = bt_ssp_confirm(false);
