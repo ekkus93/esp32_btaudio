@@ -432,6 +432,15 @@ esp_err_t bt_set_default_pin(const char* pin);
 esp_err_t bt_get_default_pin(char* pin, size_t size);
 
 /**
+ * @brief Get current SSP passkey (for tests)
+ *
+ * @param passkey Buffer to receive passkey string
+ * @param size Size of buffer
+ * @return ESP_OK on success, ESP_ERR_NOT_FOUND if no passkey available
+ */
+esp_err_t bt_get_ssp_passkey(char* passkey, size_t size);
+
+/**
  * Unpair a specific device
  * 
  * @param addr Device address

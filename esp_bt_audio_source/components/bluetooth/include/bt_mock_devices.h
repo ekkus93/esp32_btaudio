@@ -46,13 +46,13 @@ void bt_mock_simulate_pin_failure(void);
 
 // Device management
 bool bt_mock_is_device_paired(const char* addr);
-esp_err_t bt_mock_add_paired_device(const bt_device_t* device);
-int bt_mock_get_paired_devices(bt_device_t* devices, int max_count);
+esp_err_t bt_mock_add_paired_device(bt_device_t* device);
+esp_err_t bt_mock_get_paired_devices(bt_device_t* devices, uint16_t max_count, uint16_t *actual_count);
 esp_err_t bt_mock_unpair_device(const char* addr);
 esp_err_t bt_mock_unpair_all_devices(void);
-int bt_mock_get_paired_device_count(void);
+uint16_t bt_mock_get_paired_device_count(void);
 esp_err_t bt_mock_set_default_pin(const char* pin);
-esp_err_t bt_mock_get_default_pin(char* pin, size_t size);  // Add this declaration
+esp_err_t bt_mock_get_default_pin(char* pin, size_t size);
 
 #ifdef __cplusplus
 }

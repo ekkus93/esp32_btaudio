@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS 
         "bt_mock_devices.c"
+        "bt_mock.c"
     INCLUDE_DIRS 
         "include"
     REQUIRES

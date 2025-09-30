@@ -63,22 +63,18 @@ void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_t
     bt_mock_add_device(addr_str, name, type, false);
 }
 
-void bt_mock_set_ssp_supported(bool supported)
-{
-    s_mock_ssp_supported = supported;
-    ESP_LOGI(TAG, "SSP support set to: %s", supported ? "enabled" : "disabled");
-}
-
-void bt_mock_simulate_pin_failure(void)
-{
-    s_mock_pin_failure = true;
-    ESP_LOGI(TAG, "PIN failure simulation enabled");
-}
+// bt_mock_set_ssp_supported and bt_mock_simulate_pin_failure are implemented
+// in bt_mock_devices.c. Do not duplicate them here to avoid multiple
+// definition/linker conflicts.
 
 void bt_mock_simulate_pairing_timeout(void)
 {
     s_mock_pairing_timeout = true;
     ESP_LOGI(TAG, "Pairing timeout simulation enabled");
+    /* Also inform device-level mock so that bt_mock_get_pairing_state()
+     * (the authoritative source used in tests) transitions to TIMEOUT.
+     */
+    bt_mock_devices_simulate_pairing_timeout();
 }
 
 // Implement bt_filter_has_matches function for compatibility with API calls
@@ -93,7 +89,11 @@ bool bt_filter_has_matches(int timeout)
 esp_err_t bt_ssp_confirm(bool confirm)
 {
     ESP_LOGI(TAG, "SSP confirmation: %s", confirm ? "confirmed" : "rejected");
-    return ESP_OK;
+    /* Delegate to the device-level mock implementation which updates pairing
+     * state and the paired-device list (bt_mock_confirm_ssp is implemented in
+     * bt_mock_devices.c). This keeps authoritative state in one place.
+     */
+    return bt_mock_confirm_ssp(confirm);
 }
 
 // Implement bt_mock_add_paired_device
@@ -105,26 +105,26 @@ esp_err_t bt_mock_add_paired_device(bt_device_t* device)
     
     ESP_LOGI(TAG, "Adding paired device: %s", device->name);
     device->paired = true;
-    return bt_mock_add_device((const char*)device->addr, device->name, device->type, true);
+
+    /* Convert binary address to string "AA:BB:CC:DD:EE:FF" expected by
+     * bt_mock_add_device() and derive device type from COD field.
+     */
+    char addr_str[18] = {0};
+    snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             device->addr[0], device->addr[1], device->addr[2],
+             device->addr[3], device->addr[4], device->addr[5]);
+
+    bt_device_type_t type = BT_DEVICE_TYPE_OTHER;
+    if ((device->cod & 0x200000) != 0) {
+        type = BT_DEVICE_TYPE_AUDIO;
+    }
+
+    return bt_mock_add_device(addr_str, device->name, type, true);
 }
 
 // Implement bt_mock_get_paired_device_count
-uint16_t bt_mock_get_paired_device_count(void)
-{
-    uint16_t count = 0;
-    int total = bt_mock_devices_count();
-    
-    // Count devices that are paired
-    for (int i = 0; i < total; i++) {
-        bt_device_t device;
-        if (bt_mock_get_device(i, &device) == ESP_OK && device.paired) {
-            count++;
-        }
-    }
-    
-    ESP_LOGI(TAG, "Paired device count: %d", count);
-    return count;
-}
+// bt_mock_get_paired_device_count is implemented in bt_mock_devices.c; keep
+// the authoritative implementation there to avoid duplicate symbols.
 
 // Implement bt_mock_get_paired_devices if needed
 esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, uint16_t *actual_count)
