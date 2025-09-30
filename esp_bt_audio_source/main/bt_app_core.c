@@ -40,8 +40,14 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
     msg.event = event;
     msg.cb = p_cback;
 
-    if (param_len && p_params && p_copy_cback) {
-        if (p_copy_cback(&msg, p_params, param_len) != BT_APP_WORK_OK) {
+    /* If caller provided parameters to dispatch, ensure they are copied into
+     * the message. If the caller did not provide a custom copy callback,
+     * use the default deep-copy helper `bt_app_work_copy_cb` so the task
+     * receives a valid `param` pointer. This prevents NULL dereferences in
+     * handlers that assume param is present for non-zero param_len. */
+    if (param_len && p_params) {
+        bt_app_copy_cb_t copy_cb = p_copy_cback ? p_copy_cback : bt_app_work_copy_cb;
+        if (copy_cb(&msg, p_params, param_len) != BT_APP_WORK_OK) {
             return false;
         }
     }
@@ -94,7 +100,11 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
     
     bt_app_evt_msg_t evt_msg;
     evt_msg.msg = msg;
-    evt_msg.param = param;
+    /* Prefer the parameter stored inside the message (msg.param) which
+     * holds a deep-copied buffer when bt_app_work_dispatch copied it.
+     * The caller may pass `param` as NULL (the prior bug), so using
+     * msg.param ensures handlers receive the actual data pointer. */
+    evt_msg.param = msg.param;
     
     if (xQueueSend(s_bt_app_queue, &evt_msg, 10 / portTICK_PERIOD_MS) != pdTRUE) {
         ESP_LOGE(TAG, "%s: xQueue send failed", __func__);
