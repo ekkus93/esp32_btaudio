@@ -46,6 +46,15 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
      * receives a valid `param` pointer. This prevents NULL dereferences in
      * handlers that assume param is present for non-zero param_len. */
     if (param_len && p_params) {
+        /* Copy semantics / ownership contract:
+         * - Callers may pass a pointer to parameters with non-zero param_len.
+         * - If they provide a custom copy callback (p_copy_cback), it will
+         *   be used to copy/attach the data into the message.
+         * - If no copy callback is provided, the dispatcher will perform a
+         *   default deep copy into heap memory via bt_app_work_copy_cb.
+         * - The queued event will carry ownership of the copied buffer and
+         *   will free it using msg.param_free_cb when processed.
+         */
         bt_app_copy_cb_t copy_cb = p_copy_cback ? p_copy_cback : bt_app_work_copy_cb;
         if (copy_cb(&msg, p_params, param_len) != BT_APP_WORK_OK) {
             return false;

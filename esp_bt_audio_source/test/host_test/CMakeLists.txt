@@ -16,6 +16,8 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bluetooth/include
 )
 
 # Find the unity package for unit testing
@@ -64,6 +66,19 @@ target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
 target_link_libraries(test_osi_allocator unity)
 add_test(NAME test_osi_allocator COMMAND $<TARGET_FILE:test_osi_allocator>)
+
+# Dispatch copy regression test
+add_executable(test_dispatch_copy_regression test_dispatch_copy_regression.c
+    mocks/bt_app_core_host_stub.c
+)
+target_link_libraries(test_dispatch_copy_regression unity m)
+target_include_directories(test_dispatch_copy_regression PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bluetooth/include
+)
+target_compile_definitions(test_dispatch_copy_regression PRIVATE UNIT_TEST)
+add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_copy_regression>)
 
 # Create a consolidated test runner
 add_custom_target(run_tests
