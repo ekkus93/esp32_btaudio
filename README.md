@@ -1,4 +1,5 @@
 # ESP32 Audio Project
+[![CI - Host Unit Tests](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml/badge.svg)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml)
 
 This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
