@@ -1,6 +1,7 @@
 // Negative and edge-case tests for pairing reply flows
 #include "unity.h"
 #include "esp_bt.h"
+#include <string.h>
 
 extern void mock_gap_reset(void);
 extern const char* mock_gap_get_last_mac(void);
