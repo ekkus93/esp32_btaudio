@@ -104,24 +104,64 @@ jobs:
             echo "No test-results.xml found"
           fi
 
-      - name: Inspect JUnit XML and print summary (safe alternative)
-        # Avoid using dorny/test-reporter to prevent input validation failures.
-        # This step will look for JUnit XML files and print the first 200 lines for debugging.
+      - name: Annotate JUnit XML as GitHub annotations
+        # Parse JUnit XML test results and emit GitHub workflow annotation commands
+        # for any <failure> or <error> entries. This avoids external actions and
+        # provides inline annotations visible in the run summary.
         if: always()
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
-          echo "Looking for JUnit XML files..."
+          echo "Searching for JUnit XML files to annotate..."
           shopt -s nullglob || true
-          files=( *.xml )
-          if [ ${#files[@]} -eq 0 ]; then
+          xmls=( *.xml )
+          if [ ${#xmls[@]} -eq 0 ]; then
             echo "No JUnit XML files found"
-          else
-            for f in "${files[@]}"; do
-              echo "---- $f (head) ----"
-              head -n 200 "$f" || true
-              echo "---- end $f ----"
-            done
+            exit 0
           fi
+          python3 - <<'PY'
+          import glob, re, xml.etree.ElementTree as ET
+          files = glob.glob('*.xml')
+          for f in files:
+              try:
+                  tree = ET.parse(f)
+              except Exception as e:
+                  print(f"::warning file={f}::Could not parse XML: {e}")
+                  continue
+              root = tree.getroot()
+              for testcase in root.findall('.//testcase'):
+                  name = testcase.attrib.get('name','(unnamed)')
+                  classname = testcase.attrib.get('classname','')
+                  # Look for file/line attributes on testcase or nested elements
+                  file_attr = testcase.attrib.get('file') or testcase.attrib.get('classname') or ''
+                  line_attr = testcase.attrib.get('line') or ''
+                  node = testcase.find('failure') or testcase.find('error')
+                  if node is None:
+                      continue
+                  title = f"{classname}.{name}" if classname else name
+                  msg = (node.text or '') + ' ' + (node.attrib.get('message','') or '')
+                  msg = msg.strip()
+                  # Try to extract file/line from failure text (Python traceback common pattern)
+                  if not file_attr:
+                      m = re.search(r'File "([^"]+)", line (\d+)', msg)
+                      if m:
+                          file_attr = m.group(1)
+                          line_attr = m.group(2)
+                  # Truncate message to reasonable size
+                  if len(msg) > 1200:
+                      msg = msg[:1200] + '...'
+                  # Escape per workflow command requirements
+                  esc = lambda s: s.replace('%','%25').replace('\n','%0A').replace('\r','%0D')
+                  title_e = esc(title)
+                  msg_e = esc(msg)
+                  if file_attr and line_attr:
+                      file_e = esc(file_attr)
+                      print(f"::error file={file_e},line={line_attr},title={title_e}::{msg_e}")
+                  elif file_attr:
+                      file_e = esc(file_attr)
+                      print(f"::error file={file_e},title={title_e}::{msg_e}")
+                  else:
+                      print(f"::error title={title_e}::{msg_e}")
+          PY
 
       - name: Compress build directory for failure artifacts
         if: failure()
