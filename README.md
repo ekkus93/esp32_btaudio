@@ -378,3 +378,19 @@ GND           ------------- GND
 - Check for I2S clock jitter
 - Try shorter I2S cables
 - Ensure both ESP32s are using the same I2S clock
+
+## Developer tools
+
+A small helper script is available to post-process pairing serial logs and resolve ELF addresses to symbols:
+
+- Script: `tools/symbolize_pairing/symbolize_pairing.py` — extracts addresses from `build/pairing_e2_logs/serial.log` and uses `addr2line` with the built ELF to produce either a symbolized timeline or an aggregated CSV (address,count,symbol).
+
+Example (sorted top 20):
+```bash
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv /tmp/pairing_addrs_sorted.csv --sort --top 20
+```
+
+Set `ADDR2LINE` env var if your toolchain's `addr2line` is not on PATH.
