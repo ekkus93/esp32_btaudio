@@ -1,4 +1,26 @@
-# Prerequisites
+# Ignore local GitHub Actions run downloads and test artifacts
+gh-run-*/
+**/gh-run-*/
+artifacts/
+
+# Ignore local build directories for host tests
+**/build_host_tests/
+
+# OS/editor files
+.DS_Store
+*.swp
+.vscode/# Ignore local GitHub Actions run downloads and test artifacts
+gh-run-*/
+**/gh-run-*/
+artifacts/
+
+# Ignore local build directories for host tests
+**/build_host_tests/
+
+# OS/editor files
+.DS_Store
+*.swp
+.vscode/# Prerequisites
 *.d
 
 # Object files
