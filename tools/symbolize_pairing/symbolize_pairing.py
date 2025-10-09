@@ -23,6 +23,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import csv
 
 
 ADDR_RE = re.compile(r"0x[0-9a-fA-F]{6,16}")
@@ -94,14 +95,73 @@ def symbolize_log(log_path, elf_path, out_path=None):
     return 0
 
 
+def write_csv_aggregation(log_path, elf_path, csv_path=None):
+    """Aggregate addresses in the log, resolve symbols, and write CSV.
+
+    CSV columns: address,count,symbol
+    symbol is the addr2line output (function at file:line) or an error marker.
+    """
+    if not os.path.exists(log_path):
+        print(f'Log file not found: {log_path}', file=sys.stderr)
+        return 2
+    if not os.path.exists(elf_path):
+        print(f'ELF file not found: {elf_path}', file=sys.stderr)
+        return 2
+
+    addr2line = find_addr2line()
+    if not addr2line:
+        print('addr2line not found. Set ADDR2LINE env var to your toolchain addr2line.', file=sys.stderr)
+        return 3
+
+    counts = {}
+    order = []
+    with open(log_path, 'r', errors='replace') as f:
+        for line in f:
+            addrs = ADDR_RE.findall(line)
+            if not addrs:
+                continue
+            # count unique occurrences per appearance
+            for a in addrs:
+                counts[a] = counts.get(a, 0) + 1
+                if a not in order:
+                    order.append(a)
+
+    # Resolve symbols for each unique address in order
+    resolved = {}
+    for a in order:
+        resolved[a] = run_addr2line(addr2line, elf_path, a)
+
+    # Emit CSV
+    out_f = None
+    try:
+        if csv_path:
+            out_f = open(csv_path, 'w', newline='')
+            writer = csv.writer(out_f)
+        else:
+            writer = csv.writer(sys.stdout)
+
+        writer.writerow(['address', 'count', 'symbol'])
+        for a in order:
+            writer.writerow([a, counts.get(a, 0), resolved.get(a, '')])
+        if csv_path:
+            print(f'Wrote CSV aggregation to: {csv_path}')
+    finally:
+        if out_f:
+            out_f.close()
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description='Symbolize pairing serial logs using addr2line')
     ap.add_argument('--log', '-l', required=True, help='Path to serial log')
     ap.add_argument('--elf', '-e', required=True, help='Path to built ELF (for addr2line)')
     ap.add_argument('--out', '-o', help='Optional output path for symbolized log')
+    ap.add_argument('--csv', help='Optional CSV output path for aggregated address counts')
     args = ap.parse_args()
-
-    rc = symbolize_log(args.log, args.elf, args.out)
+    if args.csv:
+        rc = write_csv_aggregation(args.log, args.elf, args.csv)
+    else:
+        rc = symbolize_log(args.log, args.elf, args.out)
     sys.exit(rc)
 
 
