@@ -1,3 +1,84 @@
+# Symbolize Pairing Tool
+
+A small helper to post-process pairing serial logs and resolve ELF addresses to symbols using addr2line.
+
+Location
+- `tools/symbolize_pairing/symbolize_pairing.py`
+
+Purpose
+- Extract addresses from `build/pairing_e2_logs/serial.log` and either:
+  - produce a symbolized timeline (original log lines with resolved symbols appended), or
+  - emit an aggregated CSV of address,count,symbol for further analysis.
+
+Basic usage
+```bash
+# Symbolize the timeline and print to stdout
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf
+
+# Symbolize to a file
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  -o /tmp/serial.symbolized.log
+```
+
+CSV aggregation
+```bash
+# Emit unsorted CSV to stdout
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv -
+
+# Emit CSV to a file
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv /tmp/pairing_addrs.csv
+```
+
+Sorting and top-N
+```bash
+# Emit a CSV sorted by count (descending)
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv /tmp/pairing_addrs_sorted.csv --sort
+
+# Emit only top 50 addresses (most frequent)
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv /tmp/pairing_addrs_top50.csv --sort --top 50
+```
+
+No-resolve (fast)
+```bash
+# Skip addr2line lookups and just emit addresses and counts quickly
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+  --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+  --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+  --csv /tmp/pairing_addrs_noresolve.csv --no-resolve --sort --top 20
+```
+
+Sample CSV output (address,count,symbol)
+```
+address,count,symbol
+0x401160a4,71,list_new_internal at .../list.c:26
+0x401162d7,62,list_append at .../list.c:157
+0x400dcaae,36,osi_strdup at .../allocator.c:344
+0x401164c2,22,list_free_node at .../list.c:294
+0x00001000,6,?? ??:0
+```
+
+Notes
+- If your toolchain's `addr2line` is not on PATH, set `ADDR2LINE=/path/to/xtensa-esp32-elf-addr2line` in the environment.
+- `--no-resolve` is useful when you only need address frequencies (faster and doesn't require the ELF to be present).
+
+License
+- This helper is provided as-is for developer convenience.
 # Pairing serial log symbolizer
 
 This tool helps you convert addresses in the serial capture produced during on-device pairing runs into human-readable file:line symbols using `addr2line` and the built ELF.
