@@ -82,6 +82,18 @@ jobs:
             esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
             esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
 
+      - name: Publish JUnit as GitHub Check annotations (optional)
+        # Convert JUnit XML -> GitHub check annotations so failing tests show inline on PRs.
+        # Uses dorny/test-reporter which supports JUnit and many formats.
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: host-tests
+          path: esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
+          reporter: junit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Compress build directory for failure artifacts
         if: failure()
         working-directory: esp_bt_audio_source/test/host_test
