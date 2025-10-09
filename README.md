@@ -394,3 +394,5 @@ python3 tools/symbolize_pairing/symbolize_pairing.py \
 ```
 
 Set `ADDR2LINE` env var if your toolchain's `addr2line` is not on PATH.
+
+Tip: use `--no-resolve` to skip addr2line lookups when you only need address counts quickly; the symbol column will contain `<no-resolve>`.
