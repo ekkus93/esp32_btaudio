@@ -43,12 +43,16 @@ jobs:
           cd build_host_tests
           cmake ..
           cmake --build . -- -j$(nproc)
+          # show build dir contents for debugging
+          ls -la .. || true
 
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
           # Run tests. Try producing JUnit XML (supported in newer CTest); fall back to plain log.
           set -e
+          # ensure the build directory exists (safety if previous step failed or path changed)
+          mkdir -p esp_bt_audio_source/test/host_test/build_host_tests
           cd esp_bt_audio_source/test/host_test/build_host_tests
           if ctest --help | grep -q "--output-junit"; then
             ctest --output-on-failure -j1 --output-junit test-results.xml || true
