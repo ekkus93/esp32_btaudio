@@ -104,20 +104,24 @@ jobs:
             echo "No test-results.xml found"
           fi
 
-      - name: Publish test-results as GitHub Check annotations (dorny/test-reporter)
-        # Convert JUnit XML (if present) to GitHub check annotations. Continue on error
-        # so parsing issues don't fail the job; the step above will print the XML when present.
+      - name: Inspect JUnit XML and print summary (safe alternative)
+        # Avoid using dorny/test-reporter to prevent input validation failures.
+        # This step will look for JUnit XML files and print the first 200 lines for debugging.
         if: always()
-        uses: dorny/test-reporter@v1
-        continue-on-error: true
-        with:
-          name: host-tests
-          # Accept a glob in case the file name or location varies slightly
-          path: esp_bt_audio_source/test/host_test/build_host_tests/*.xml
-          # Use the 'junit' reporter name (the action validates this value)
-          reporter: junit
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: esp_bt_audio_source/test/host_test/build_host_tests
+        run: |
+          echo "Looking for JUnit XML files..."
+          shopt -s nullglob || true
+          files=( *.xml )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No JUnit XML files found"
+          else
+            for f in "${files[@]}"; do
+              echo "---- $f (head) ----"
+              head -n 200 "$f" || true
+              echo "---- end $f ----"
+            done
+          fi
 
       - name: Compress build directory for failure artifacts
         if: failure()
