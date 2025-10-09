@@ -187,11 +187,20 @@ tBTM_STATUS BTM_SetPowerMode (UINT8 pm_id, BD_ADDR remote_bda, tBTM_PM_PWR_MD *p
         return BTM_ILLEGAL_VALUE;
     }
 
+    /* Defensive: copy incoming p_mode into a local, zero-initialized structure
+     * to avoid depending on callers to fully initialize all fields. Some
+     * call-sites only set .mode and leave other fields uninitialized which
+     * can trigger static-analysis warnings or undefined behavior when fields
+     * are read. Using a local copy ensures deterministic defaults. */
+    tBTM_PM_PWR_MD mode_safe;
+    memset(&mode_safe, 0, sizeof(mode_safe));
+    mode_safe = *p_mode;
+
     BTM_TRACE_API( "BTM_SetPowerMode: pm_id %d BDA: %08x mode:0x%x", pm_id,
-                   (remote_bda[2] << 24) + (remote_bda[3] << 16) + (remote_bda[4] << 8) + remote_bda[5], p_mode->mode);
+                   (remote_bda[2] << 24) + (remote_bda[3] << 16) + (remote_bda[4] << 8) + remote_bda[5], mode_safe.mode);
 
     /* take out the force bit */
-    mode = p_mode->mode & ~BTM_PM_MD_FORCE;
+    mode = mode_safe.mode & ~BTM_PM_MD_FORCE;
 
     p_acl_cb = btm_bda_to_acl(remote_bda, BT_TRANSPORT_BR_EDR);
     if (p_acl_cb == NULL){
@@ -211,9 +220,9 @@ tBTM_STATUS BTM_SetPowerMode (UINT8 pm_id, BD_ADDR remote_bda, tBTM_PM_PWR_MD *p
     if (mode == p_cb->state) { /* the requested mode is current mode */
         /* already in the requested mode and the current interval has less latency than the max */
         if ( (mode == BTM_PM_MD_ACTIVE) ||
-                ((p_mode->mode & BTM_PM_MD_FORCE) && (p_mode->max >= p_cb->interval) && (p_mode->min <= p_cb->interval)) ||
-                ((p_mode->mode & BTM_PM_MD_FORCE) == 0 && (p_mode->max >= p_cb->interval)) ) {
-            BTM_TRACE_DEBUG( "BTM_SetPowerMode: mode:0x%x interval %d max:%d, min:%d", p_mode->mode, p_cb->interval, p_mode->max, p_mode->min);
+                ((mode_safe.mode & BTM_PM_MD_FORCE) && (mode_safe.max >= p_cb->interval) && (mode_safe.min <= p_cb->interval)) ||
+                ((mode_safe.mode & BTM_PM_MD_FORCE) == 0 && (mode_safe.max >= p_cb->interval)) ) {
+            BTM_TRACE_DEBUG( "BTM_SetPowerMode: mode:0x%x interval %d max:%d, min:%d", mode_safe.mode, p_cb->interval, mode_safe.max, mode_safe.min);
             return BTM_SUCCESS;
         }
     }
@@ -233,7 +242,8 @@ tBTM_STATUS BTM_SetPowerMode (UINT8 pm_id, BD_ADDR remote_bda, tBTM_PM_PWR_MD *p
 #endif  // BTM_PM_DEBUG
         /* Make sure mask is set to BTM_PM_REG_SET */
         btm_cb.pm_reg_db[temp_pm_id].mask |= BTM_PM_REG_SET;
-        *(&p_cb->req_mode[temp_pm_id]) = *((tBTM_PM_PWR_MD *)p_mode);
+        /* Save the safe copy into the per-ACL requested-mode table */
+        p_cb->req_mode[temp_pm_id] = mode_safe;
         p_cb->chg_ind = TRUE;
     }
 
@@ -255,7 +265,9 @@ tBTM_STATUS BTM_SetPowerMode (UINT8 pm_id, BD_ADDR remote_bda, tBTM_PM_PWR_MD *p
 
 
 
-    return btm_pm_snd_md_req(pm_id, p_acl_cb->hci_handle, p_mode);
+    /* Use the safe local copy when sending the mode request to avoid
+     * depending on the caller to provide fully initialized data. */
+    return btm_pm_snd_md_req(pm_id, p_acl_cb->hci_handle, &mode_safe);
 }
 
 /*******************************************************************************

@@ -1,3 +1,41 @@
+# Host-side Unit Tests (quick start)
+
+This short README explains how to run the host-based unit tests for `esp_bt_audio_source` on your development machine. The host tests compile production code with `ESP_PLATFORM` undefined and use mock implementations (in `test/host_test/mocks/`) so tests run on Linux quickly.
+
+Quick steps
+1. Create and enter a build directory for host tests:
+
+```bash
+cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test
+mkdir -p build_host_tests && cd build_host_tests
+cmake ..
+```
+
+2. Build the test runner (example target `test_commands`):
+
+```bash
+cmake --build . --target test_commands -j$(nproc)
+```
+
+3. Run the test binary and capture output:
+
+```bash
+./test_commands |& tee test_commands.log
+echo "exit code: $?"
+```
+
+Where the mocks live
+- `test/host_test/mocks/esp_bt.h` and `mock_gap.c` — Bluetooth GAP and stack mocks
+- `test/host_test/mocks/nvs_storage_mock.c` — NVS persistence mock
+- `test/host_test/mocks/mock_i2s.c`, `mock_uart.c` — peripheral mocks
+
+If a test fails
+- Inspect the failing test output in `test_commands.log`.
+- Adjust or extend the mocks under `test/host_test/mocks/` to simulate the expected platform behaviour.
+
+Notes
+- Host tests are fast and are the preferred development loop for command parsing and business logic.
+- For on-device integration and timing-sensitive tests, use the `test_app` Unity tests described in the main README.
 # Host test quick start
 
 This directory contains host-run unit tests for the project. The tests compile the production code for a host environment and link small mocks for ESP-IDF APIs so tests run on your Linux machine without flashing a device.

@@ -38,7 +38,7 @@ I2S and UART: practical defaults and recommendations
 - [x] Implement serial command protocol
 - [~] Add pairing management functionality (in-progress)
    - Host-side: command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests (CONFIRM_PIN / ENTER_PIN and `nvs_storage` tests).
-   - On-device: end-to-end pairing verification (pair → reboot → persisted list verification) remains manual/pending.
+   - On-device: end-to-end pairing verification (pair → reboot → persisted list verification) remains manual/pending. Recent on-device instrumentation and defensive fixes were applied to aid debugging (see "Recent changes" below).
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
   - [x] Add persistent settings storage in NVS
@@ -66,6 +66,36 @@ Remaining work (short list)
 - Documentation: add `test/host_test/README.md` with the quick-start commands already documented above.
 - Static analysis & coverage: enable linting (clang-format/clang-tidy) and produce test coverage for host tests to identify gaps.
 
+Prioritized next steps (actionable)
+----------------------------------
+1. On-device E2E pairing verification (High)
+   - Task: Run pairing scenarios with representative sinks (phone, speaker, car stereo).
+   - Acceptance: pairing → reboot → verify paired list persists and device connects as expected.
+
+2. Finalize pairing confirmation & event streaming (High)
+   - Task: Ensure `EVENT|PAIR|...` messages (PIN_REQUEST, CONFIRM, SUCCESS/FAILED) are reliably emitted and that `CONFIRM_PIN` / `ENTER_PIN` commands invoke the GAP reply APIs on-device.
+   - Acceptance: Host-driven pairing flows complete successfully on hardware.
+
+3. Add/extend host unit tests (Medium)
+   - Task: Add tests covering CONFIRM_PIN/ENTER_PIN flows, invalid-MAC cases, and NVS persistence edge cases.
+   - Acceptance: New tests added to `test/host_test` and pass locally.
+
+4. Expand timing/fault-injection tests in mocks (Medium)
+   - Task: Simulate timeouts, connection drops, and auto-reconnect in `test/host_test/mocks/` and assert recovery logic.
+   - Acceptance: Tests reproduce and validate reconnect logic and timeouts.
+
+5. Diagnostics & timeline analysis (Medium)
+   - Task: Parse `build/pairing_e2_logs/serial.log`, map runtime addresses to file:line using the built ELF, and correlate allocator frees with BTM events.
+   - Acceptance: A short report describing root cause candidates and recommended fix (guard or ownership change).
+
+6. CI & static checks (Lower)
+   - Task: Add a CI job to run host tests and a lint step (clang-format/clang-tidy). Optionally add coverage reporting for host tests.
+   - Acceptance: CI runs host tests on PRs and flags formatting/lint issues.
+
+7. Documentation (Quick wins)
+   - Task: Add `test/host_test/README.md` (done) and a short how-to for capturing and resolving on-device serial logs for pairing analysis.
+   - Acceptance: New docs live in the repo and make it easy for contributors to run tests and collect logs.
+
 Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
 - Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now call the appropriate GAP reply APIs on-device (`esp_bt_gap_ssp_confirm_reply()` and `esp_bt_gap_pin_reply()`), falling back to a stored default PIN from NVS when available. These handlers are guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
@@ -76,11 +106,39 @@ Recent changes (host-test and pairing work)
 - `components/command_interface/commands.c` has a small host-path branch that parses MAC and calls the GAP reply mocks so host tests can assert the expected behavior.
  - New `nvs_storage` host tests were added and expanded (capacity and invalid-MAC cases); all host `nvs_storage` tests pass locally (6 tests, 0 failures).
 
+Recent on-device pairing diagnostics and status
+
+- On-device E2E pairing runs have been executed and serial monitor output was persisted to `build/pairing_e2_logs/serial.log` for post-run analysis. This log contains allocator diagnostic dumps (the allocator prints `osi_mem_dbg_clean not-found` with a `recent-free-history` buffer), temporary BTM lifecycle traces and additional WARN/ERRORs inserted for timeline correlation.
+- Minimal defensive fixes applied to aid stability and debug:
+   - `BTM_SetPowerMode` now uses a zero-initialized local copy of the caller-provided `tBTM_PM_PWR_MD` structure before using it internally and before sending it to the power manager helper. This reduces reliance on caller memory lifetime.
+   - `bta_dm_pm_sniff` contains an ACL-existence guard that skips requesting a power-mode change when no ACL is present; it logs the skip and returns a non-success status. This avoids invoking power-mode transitions during disconnect transient windows.
+- Current status: serial capture step is complete; parsing and correlating allocator traces against BTM lifecycle events is in-progress to decide whether a deeper ownership/double-free fix is required or whether conservative guards + tests suffice.
+
+Next steps
+
+- Complete timestamped parsing of `build/pairing_e2_logs/serial.log`, map runtime addresses to source file:line using the built ELF, and build an event timeline that correlates allocator frees with BTM events and ACL lifecycle.
+- Based on the correlation, either (A) keep the conservative guards and add host/unit tests that reproduce the timing/race, or (B) implement a minimal ownership fix in the implicated module(s), add tests, and revalidate on-device.
+- Produce a concise PR-ready report that includes the findings, diffs, test results, and instructions to reproduce the on-device capture.
+
 Next high-priority tasks:
 - Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 - Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
+
+Developer tools / Diagnostics
+-----------------------------
+- Host-test quick-start: see `test/host_test/README.md` for fast host-side test instructions and a map of the mocks used by the harness.
+- Pairing log symbolizer: see `tools/symbolize_pairing/README.md`. Example usage:
+
+```bash
+python3 tools/symbolize_pairing/symbolize_pairing.py \
+   --log esp_bt_audio_source/build/pairing_e2_logs/serial.log \
+   --elf esp_bt_audio_source/build/esp_bt_audio_source.elf \
+   --out esp_bt_audio_source/build/pairing_e2_logs/serial.symbolized.log
+```
+
+- If your toolchain's `addr2line` is not on PATH, set `ADDR2LINE` to the full path of the toolchain binary (for example `xtensa-esp32-elf-addr2line`) before running the symbolizer.
 
 How to run host unit tests (fast, on your development machine)
 

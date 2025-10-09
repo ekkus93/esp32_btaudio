@@ -52,6 +52,22 @@
 
 static void btm_read_remote_features (UINT16 handle);
 static void btm_read_remote_ext_features (UINT16 handle, UINT8 page_number);
+
+/* Temporary test utilities: one-shot RSSI read callback used for debugging
+ * to record link quality immediately after ACL comes up. */
+static void btm_test_rssi_cb(void *p)
+{
+    tBTM_RSSI_RESULTS *res = (tBTM_RSSI_RESULTS *)p;
+    if (!res) return;
+    if (res->status == BTM_SUCCESS) {
+        BTM_TRACE_WARNING("BTM_TEST: RSSI for %02x:%02x:%02x:%02x:%02x:%02x = %d\n",
+                          res->rem_bda[0], res->rem_bda[1], res->rem_bda[2],
+                          res->rem_bda[3], res->rem_bda[4], res->rem_bda[5],
+                          res->rssi);
+    } else {
+        BTM_TRACE_WARNING("BTM_TEST: RSSI read failed (status=0x%02x)\n", res->status);
+    }
+}
 static void btm_process_remote_ext_features (tACL_CONN *p_acl_cb, UINT8 num_read_pages);
 
 #define BTM_DEV_REPLY_TIMEOUT   3       /* 3 second timeout waiting for responses */
@@ -2703,6 +2719,34 @@ void btm_acl_connected(BD_ADDR bda, UINT16 handle, UINT8 link_type, UINT8 enc_mo
         } while (0);
 
         l2c_link_hci_conn_comp(status, handle, bda);
+
+        /* -- Temporary test hook: request active mode (unsniff) and read RSSI once -- */
+        do {
+            tBTM_PM_PWR_MD settings;
+            /* Be defensive: explicitly initialize all fields rather than rely solely on memset.
+             * Some static analysis tools (and future code paths) may expect all numeric fields
+             * to hold defined values even when requesting ACTIVE mode. */
+            memset(&settings, 0, sizeof(settings));
+            settings.max = 0;
+            settings.min = 0;
+            settings.attempt = 0;
+            settings.timeout = 0;
+            settings.mode = BTM_PM_MD_ACTIVE; /* request active mode to avoid sniff-related surprises */
+            if (BTM_SetPowerMode (BTM_PM_SET_ONLY_ID, bda, &settings) == BTM_CMD_STARTED) {
+                BTM_TRACE_WARNING("BTM_TEST: Requested ACTIVE power mode for %02x:%02x:%02x:%02x:%02x:%02x\n",
+                                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+            } else {
+                BTM_TRACE_WARNING("BTM_TEST: Failed to request ACTIVE mode for peer\n");
+            }
+
+            /* One-shot RSSI read to log link quality immediately after connect */
+            if (BTM_ReadRSSI(bda, BT_TRANSPORT_BR_EDR, (tBTM_CMPL_CB *)btm_test_rssi_cb) == BTM_CMD_STARTED) {
+                BTM_TRACE_WARNING("BTM_TEST: Issued BTM_ReadRSSI for %02x:%02x:%02x:%02x:%02x:%02x\n",
+                                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+            } else {
+                BTM_TRACE_WARNING("BTM_TEST: BTM_ReadRSSI not started\n");
+            }
+        } while (0);
     }
 #if BTM_SCO_INCLUDED == TRUE
     else if (link_type == HCI_LINK_TYPE_SCO) {
@@ -2739,6 +2783,16 @@ void btm_acl_disconnected(UINT16 handle, UINT8 reason)
             bdcpy(evt_data.link_act.disconn_cmpl.bd_addr, conn->remote_addr);
             btm_acl_link_stat_report(&evt_data);
         }
+    }
+
+    /* Temporary debug log: print disconnect reason and remote BD_ADDR */
+    if (conn) {
+        BTM_TRACE_WARNING("BTM_TEST: ACL disconnected: handle=%d reason=0x%02x remote=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                          handle, reason,
+                          conn->remote_addr[0], conn->remote_addr[1], conn->remote_addr[2],
+                          conn->remote_addr[3], conn->remote_addr[4], conn->remote_addr[5]);
+    } else {
+        BTM_TRACE_WARNING("BTM_TEST: ACL disconnected: handle=%d reason=0x%02x (no conn record)\n", handle, reason);
     }
 
 #if BTM_SCO_INCLUDED == TRUE

@@ -5,6 +5,9 @@
 		}
 	],
 	"settings": {
+		"files.associations": {
+			"*.inc": "c"
+		},
 		"dotnet.defaultSolution": "disable"
 	}
 }

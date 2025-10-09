@@ -709,7 +709,17 @@ static BOOLEAN bta_dm_pm_sniff(tBTA_DM_PEER_DEVICE *p_peer_dev, UINT8 index)
         if (p_peer_dev->info & BTA_DM_DI_INT_SNIFF) {
             pwr_md.mode |= BTM_PM_MD_FORCE;
         }
-        status = BTM_SetPowerMode (bta_dm_cb.pm_id, p_peer_dev->peer_bdaddr, &pwr_md);
+        /* Guard: ensure an ACL connection exists before requesting power mode change
+         * Some call sites may request sniff/park after the ACL was torn down which
+         * results in BTM_SetPowerMode returning BTM_UNKNOWN_ADDR. Check that the
+         * ACL is up first to avoid spurious errors and avoid races with disconnect.
+         */
+        if (BTM_IsAclConnectionUp(p_peer_dev->peer_bdaddr, BT_TRANSPORT_BR_EDR)) {
+            status = BTM_SetPowerMode (bta_dm_cb.pm_id, p_peer_dev->peer_bdaddr, &pwr_md);
+        } else {
+            APPL_TRACE_WARNING("bta_dm_pm_sniff: ACL not up for peer, skip SetPowerMode");
+            status = BTM_UNKNOWN_ADDR; /* preserve existing error-path behavior */
+        }
         if (status == BTM_CMD_STORED || status == BTM_CMD_STARTED) {
             p_peer_dev->info &= ~(BTA_DM_DI_INT_SNIFF | BTA_DM_DI_ACP_SNIFF);
             p_peer_dev->info |= BTA_DM_DI_SET_SNIFF;
