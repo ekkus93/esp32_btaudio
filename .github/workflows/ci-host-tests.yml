@@ -51,6 +51,11 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install pytest
 
+      - name: Run Python unit tests
+        run: |
+          echo "Running Python unit tests (symbolizer)..."
+          python3 -m pytest -q tools/symbolize_pairing
+
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
