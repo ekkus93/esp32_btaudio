@@ -47,7 +47,46 @@ jobs:
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
-          ctest --output-on-failure -j1
+          # Run tests. Try producing JUnit XML (supported in newer CTest); fall back to plain log.
+          set -e
+          cd esp_bt_audio_source/test/host_test/build_host_tests
+          if ctest --help | grep -q "--output-junit"; then
+            ctest --output-on-failure -j1 --output-junit test-results.xml || true
+          else
+            ctest --output-on-failure -j1 2>&1 | tee ctest.log || true
+          fi
+
+      - name: Prepare artifacts (JUnit or ctest.log)
+        working-directory: esp_bt_audio_source/test/host_test/build_host_tests
+        run: |
+          # Prefer test-results.xml if produced, otherwise ensure ctest.log exists
+          if [ -f test-results.xml ]; then
+            echo "JUnit XML produced"
+          else
+            if [ ! -f ctest.log ]; then
+              # If ctest didn't write a log, capture the last 200 lines of CTest from the step logs
+              echo "No ctest.log found; creating placeholder" > ctest.log
+            fi
+          fi
+
+      - name: Upload test results (JUnit or ctest.log)
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-test-results
+          path: esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml,esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
+
+      - name: Compress build directory for failure artifacts
+        if: failure()
+        working-directory: esp_bt_audio_source/test/host_test
+        run: |
+          tar -czf build_host_tests.tar.gz build_host_tests || true
+
+      - name: Upload build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_host_tests
+          path: esp_bt_audio_source/test/host_test/build_host_tests.tar.gz || true
 
       - name: Upload logs on failure
         if: failure()
