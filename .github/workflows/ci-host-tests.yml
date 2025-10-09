@@ -78,7 +78,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: host-test-results
-          path: esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml,esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
+          path: |
+            esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
+            esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
 
       - name: Compress build directory for failure artifacts
         if: failure()
