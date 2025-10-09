@@ -46,6 +46,11 @@ jobs:
           # show build dir contents for debugging
           ls -la .. || true
 
+      - name: Install Python test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pytest
+
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
