@@ -95,7 +95,7 @@ def symbolize_log(log_path, elf_path, out_path=None):
     return 0
 
 
-def write_csv_aggregation(log_path, elf_path, csv_path=None):
+def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=None):
     """Aggregate addresses in the log, resolve symbols, and write CSV.
 
     CSV columns: address,count,symbol
@@ -126,9 +126,27 @@ def write_csv_aggregation(log_path, elf_path, csv_path=None):
                 if a not in order:
                     order.append(a)
 
-    # Resolve symbols for each unique address in order
+    # Resolve symbols for each unique address in order (or after sorting)
+    # Prepare list of (address, count) pairs
+    items = [(a, counts.get(a, 0)) for a in order]
+
+    # Optionally sort by count descending (most frequent first)
+    if sort:
+        items.sort(key=lambda x: x[1], reverse=True)
+
+    # Optionally limit to top N
+    if top is not None:
+        try:
+            top_n = int(top)
+            if top_n > 0:
+                items = items[:top_n]
+        except Exception:
+            # ignore invalid top and proceed with full list
+            pass
+
+    # Resolve symbols for each address in final items list
     resolved = {}
-    for a in order:
+    for a, _ in items:
         resolved[a] = run_addr2line(addr2line, elf_path, a)
 
     # Emit CSV
@@ -141,8 +159,8 @@ def write_csv_aggregation(log_path, elf_path, csv_path=None):
             writer = csv.writer(sys.stdout)
 
         writer.writerow(['address', 'count', 'symbol'])
-        for a in order:
-            writer.writerow([a, counts.get(a, 0), resolved.get(a, '')])
+        for a, c in items:
+            writer.writerow([a, c, resolved.get(a, '')])
         if csv_path:
             print(f'Wrote CSV aggregation to: {csv_path}')
     finally:
@@ -157,9 +175,11 @@ def main():
     ap.add_argument('--elf', '-e', required=True, help='Path to built ELF (for addr2line)')
     ap.add_argument('--out', '-o', help='Optional output path for symbolized log')
     ap.add_argument('--csv', help='Optional CSV output path for aggregated address counts')
+    ap.add_argument('--sort', action='store_true', help='Sort CSV by count (descending)')
+    ap.add_argument('--top', type=int, help='Limit CSV to top N addresses by count')
     args = ap.parse_args()
     if args.csv:
-        rc = write_csv_aggregation(args.log, args.elf, args.csv)
+        rc = write_csv_aggregation(args.log, args.elf, args.csv, sort=args.sort, top=args.top)
     else:
         rc = symbolize_log(args.log, args.elf, args.out)
     sys.exit(rc)
