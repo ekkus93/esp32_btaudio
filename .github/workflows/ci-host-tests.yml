@@ -49,13 +49,14 @@ jobs:
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
-          # Run tests. Try producing JUnit XML (supported in newer CTest); fall back to plain log.
+          # Run tests. Produce JUnit XML when supported. Always capture full CTest output to ctest.log.
           set -e
           # ensure the build directory exists (safety if previous step failed or path changed)
           mkdir -p .
-          # We're already in the build directory via 'working-directory', avoid nested paths
+          # Capture output to ctest.log in all cases so the artifact uploader always finds something.
           if ctest --help | grep -q -- --output-junit; then
-            ctest --output-on-failure -j1 --output-junit test-results.xml || true
+            # Produce JUnit XML and also tee output to ctest.log
+            ctest --output-on-failure -j1 --output-junit test-results.xml 2>&1 | tee ctest.log || true
           else
             ctest --output-on-failure -j1 2>&1 | tee ctest.log || true
           fi
