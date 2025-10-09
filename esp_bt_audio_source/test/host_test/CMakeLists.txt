@@ -108,6 +108,12 @@ target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_enter_pin unity)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
+add_executable(test_pairing_negative test_pairing_negative.c
+    mocks/mock_gap.c)
+target_link_libraries(test_pairing_negative unity)
+target_sources(test_pairing_negative PRIVATE mocks/nvs_storage_mock.c)
+add_test(NAME test_pairing_negative COMMAND $<TARGET_FILE:test_pairing_negative>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

@@ -31,13 +31,14 @@ int esp_bt_gap_pin_reply(uint8_t *bd_addr, bool accept, uint8_t pin_code_len, ui
     } else {
         last_mac[0] = '\0';
     }
-    last_pin_len = pin_code_len;
     if (pin_code && pin_code_len > 0) {
         size_t cpy = pin_code_len < sizeof(last_pin)-1 ? pin_code_len : sizeof(last_pin)-1;
         memcpy(last_pin, pin_code, cpy);
         last_pin[cpy] = '\0';
+        last_pin_len = (int)cpy;
     } else {
         last_pin[0] = '\0';
+        last_pin_len = 0;
     }
     (void)accept; // silence unused in-host tests
     return 0; // success
