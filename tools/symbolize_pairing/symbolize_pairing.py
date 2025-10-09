@@ -64,8 +64,8 @@ def symbolize_log(log_path, elf_path, out_path=None):
 
     addr2line = find_addr2line()
     if not addr2line:
-        print('addr2line not found. Set ADDR2LINE env var to your toolchain addr2line.', file=sys.stderr)
-        return 3
+        # addr2line may be optional if caller requests no-resolve
+        addr2line = None
 
     out_lines = []
     with open(log_path, 'r', errors='replace') as f:
@@ -83,7 +83,10 @@ def symbolize_log(log_path, elf_path, out_path=None):
                         seen.add(a)
                         unique.append(a)
                 for a in unique:
-                    sym = run_addr2line(addr2line, elf_path, a)
+                    if addr2line:
+                        sym = run_addr2line(addr2line, elf_path, a)
+                    else:
+                        sym = '<no-resolve>'
                     out_lines.append(f'    -> {a} : {sym}')
 
     if out_path:
@@ -95,7 +98,7 @@ def symbolize_log(log_path, elf_path, out_path=None):
     return 0
 
 
-def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=None):
+def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=None, no_resolve=False):
     """Aggregate addresses in the log, resolve symbols, and write CSV.
 
     CSV columns: address,count,symbol
@@ -110,8 +113,7 @@ def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=Non
 
     addr2line = find_addr2line()
     if not addr2line:
-        print('addr2line not found. Set ADDR2LINE env var to your toolchain addr2line.', file=sys.stderr)
-        return 3
+        addr2line = None
 
     counts = {}
     order = []
@@ -144,10 +146,13 @@ def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=Non
             # ignore invalid top and proceed with full list
             pass
 
-    # Resolve symbols for each address in final items list
+    # Resolve symbols for each address in final items list (unless no_resolve)
     resolved = {}
     for a, _ in items:
-        resolved[a] = run_addr2line(addr2line, elf_path, a)
+        if no_resolve or not addr2line:
+            resolved[a] = '<no-resolve>'
+        else:
+            resolved[a] = run_addr2line(addr2line, elf_path, a)
 
     # Emit CSV
     out_f = None
@@ -177,11 +182,17 @@ def main():
     ap.add_argument('--csv', help='Optional CSV output path for aggregated address counts')
     ap.add_argument('--sort', action='store_true', help='Sort CSV by count (descending)')
     ap.add_argument('--top', type=int, help='Limit CSV to top N addresses by count')
+    ap.add_argument('--no-resolve', action='store_true', help='Do not call addr2line; emit CSV/timeline without symbol resolution')
     args = ap.parse_args()
     if args.csv:
-        rc = write_csv_aggregation(args.log, args.elf, args.csv, sort=args.sort, top=args.top)
+        rc = write_csv_aggregation(args.log, args.elf, args.csv, sort=args.sort, top=args.top, no_resolve=args.no_resolve)
     else:
-        rc = symbolize_log(args.log, args.elf, args.out)
+        # Pass no-resolve via environment; symbolize_log will handle missing addr2line
+        if args.no_resolve:
+            # don't require addr2line
+            rc = symbolize_log(args.log, args.elf, args.out)
+        else:
+            rc = symbolize_log(args.log, args.elf, args.out)
     sys.exit(rc)
 
 
