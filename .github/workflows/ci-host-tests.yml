@@ -52,9 +52,9 @@ jobs:
           # Run tests. Try producing JUnit XML (supported in newer CTest); fall back to plain log.
           set -e
           # ensure the build directory exists (safety if previous step failed or path changed)
-          mkdir -p esp_bt_audio_source/test/host_test/build_host_tests
-          cd esp_bt_audio_source/test/host_test/build_host_tests
-          if ctest --help | grep -q "--output-junit"; then
+          mkdir -p .
+          # We're already in the build directory via 'working-directory', avoid nested paths
+          if ctest --help | grep -q -- --output-junit; then
             ctest --output-on-failure -j1 --output-junit test-results.xml || true
           else
             ctest --output-on-failure -j1 2>&1 | tee ctest.log || true
