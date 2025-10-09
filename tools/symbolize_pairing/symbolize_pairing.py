@@ -26,7 +26,8 @@ import sys
 import csv
 
 
-ADDR_RE = re.compile(r"0x[0-9a-fA-F]{6,16}")
+# Match hex addresses with 1 to 16 hex digits (tests and some logs use short addresses like 0x1)
+ADDR_RE = re.compile(r"0x[0-9a-fA-F]{1,16}")
 
 
 def find_addr2line():
@@ -54,7 +55,7 @@ def run_addr2line(addr2line, elf, addr):
         return f'<error: {e}>'
 
 
-def symbolize_log(log_path, elf_path, out_path=None):
+def symbolize_log(log_path, elf_path, out_path=None, no_resolve=False):
     if not os.path.exists(log_path):
         print(f'Log file not found: {log_path}', file=sys.stderr)
         return 2
@@ -63,8 +64,8 @@ def symbolize_log(log_path, elf_path, out_path=None):
         return 2
 
     addr2line = find_addr2line()
-    if not addr2line:
-        # addr2line may be optional if caller requests no-resolve
+    # Honor explicit no_resolve request: do not call addr2line even if found
+    if no_resolve:
         addr2line = None
 
     out_lines = []
@@ -188,11 +189,7 @@ def main():
         rc = write_csv_aggregation(args.log, args.elf, args.csv, sort=args.sort, top=args.top, no_resolve=args.no_resolve)
     else:
         # Pass no-resolve via environment; symbolize_log will handle missing addr2line
-        if args.no_resolve:
-            # don't require addr2line
-            rc = symbolize_log(args.log, args.elf, args.out)
-        else:
-            rc = symbolize_log(args.log, args.elf, args.out)
+        rc = symbolize_log(args.log, args.elf, args.out, no_resolve=args.no_resolve)
     sys.exit(rc)
 
 
