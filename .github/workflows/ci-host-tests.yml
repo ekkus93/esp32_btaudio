@@ -105,15 +105,17 @@ jobs:
           fi
 
       - name: Publish test-results as GitHub Check annotations (dorny/test-reporter)
-        # Try to convert test-results.xml to GitHub check annotations. Continue on error
-        # so parsing issues don't fail the job; inspect step above will show file contents.
+        # Convert JUnit XML (if present) to GitHub check annotations. Continue on error
+        # so parsing issues don't fail the job; the step above will print the XML when present.
         if: always()
         uses: dorny/test-reporter@v1
         continue-on-error: true
         with:
           name: host-tests
-          path: esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
-          reporter: junit-xml
+          # Accept a glob in case the file name or location varies slightly
+          path: esp_bt_audio_source/test/host_test/build_host_tests/*.xml
+          # Use the 'junit' reporter name (the action validates this value)
+          reporter: junit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
