@@ -2,6 +2,17 @@
 
 This project implements the Bluetooth A2DP audio source component of the ESP32 Audio Project. It receives I2S audio data from another ESP32 and streams it to Bluetooth speakers or headphones.
 
+## Contents (quick links)
+
+- [Features](#features)
+- [Hardware Configuration](#hardware-configuration)
+- [Implementation Tasks](#implementation-tasks)
+- [Developer tools / Diagnostics](#developer-tools-diagnostics)
+- [How to run host unit tests](#how-to-run-host-unit-tests)
+- [Build and Installation Guide](#build-and-installation-guide)
+
+
+<a id="features"></a>
 ## Features
 
 - **A2DP Audio Source:** Implements the Bluetooth Advanced Audio Distribution Profile
@@ -10,6 +21,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Multiple Device Support:** Can scan for and connect to various Bluetooth audio sinks
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
 
+<a id="hardware-configuration"></a>
 ## Hardware Configuration
 
 ### GPIO Assignments (ESP32 WROOM32)
@@ -31,6 +43,7 @@ I2S and UART: practical defaults and recommendations
 - UART defaults: 115200 baud, 8 data bits, no parity, 1 stop bit ("115200 8N1"). Commands are newline-terminated (\n).
 - USB-serial adapter / TTL note: Use a 3.3V TTL USB-serial adapter (for example FTDI, CP2102, CH340 variants). Do not connect 5V-level UART adapters directly to the ESP32 pins. Cross RX/TX and always connect a common ground.
 
+<a id="implementation-tasks"></a>
 ## Implementation Tasks
 
 - [x] Initial A2DP source implementation
@@ -126,6 +139,7 @@ Next high-priority tasks:
 - Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 
+<a id="developer-tools-diagnostics"></a>
 Developer tools / Diagnostics
 -----------------------------
 - Host-test quick-start: see `test/host_test/README.md` for fast host-side test instructions and a map of the mocks used by the harness.
@@ -140,6 +154,7 @@ python3 tools/symbolize_pairing/symbolize_pairing.py \
 
 - If your toolchain's `addr2line` is not on PATH, set `ADDR2LINE` to the full path of the toolchain binary (for example `xtensa-esp32-elf-addr2line`) before running the symbolizer.
 
+<a id="how-to-run-host-unit-tests"></a>
 How to run host unit tests (fast, on your development machine)
 
 1. Create and enter a build directory for host tests:
@@ -342,6 +357,7 @@ Testing suggestions
 
 This project uses a dual testing approach for faster Test-Driven Development (TDD):
 
+<a id="build-and-installation-guide"></a>
 ### 1. Host-based Testing (Primary for TDD)
 
 Host-based tests run on your development computer rather than on the ESP32, providing:
