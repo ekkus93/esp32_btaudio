@@ -82,15 +82,28 @@ jobs:
             esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
             esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
 
-      - name: Publish JUnit as GitHub Check annotations (optional)
-        # Convert JUnit XML -> GitHub check annotations so failing tests show inline on PRs.
-        # Uses dorny/test-reporter which supports JUnit and many formats.
+      - name: Inspect JUnit artifact (debug)
+        if: always()
+        working-directory: esp_bt_audio_source/test/host_test/build_host_tests
+        run: |
+          echo "PWD: $(pwd)"
+          if [ -f test-results.xml ]; then
+            echo "Found test-results.xml (head):"
+            head -n 80 test-results.xml || true
+          else
+            echo "No test-results.xml found"
+          fi
+
+      - name: Publish test-results as GitHub Check annotations (dorny/test-reporter)
+        # Try to convert test-results.xml to GitHub check annotations. Continue on error
+        # so parsing issues don't fail the job; inspect step above will show file contents.
         if: always()
         uses: dorny/test-reporter@v1
+        continue-on-error: true
         with:
           name: host-tests
           path: esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
-          reporter: junit
+          reporter: junit-xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
