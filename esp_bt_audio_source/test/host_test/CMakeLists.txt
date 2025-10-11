@@ -11,8 +11,8 @@ add_compile_options(-UESP_PLATFORM)
 
 # Add include directories
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
@@ -51,6 +51,22 @@ add_executable(test_bluetooth test_bluetooth.c
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
+
+# Audio processor unit tests (host)
+add_executable(test_audio_processor ../../../test/component/test_audio_processor.c
+    ../../components/audio_processor/audio_processor.c
+    mocks/mock_i2s.c
+    mocks/test_main_wrapper.c)
+target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../test/component)
+# Ensure this target uses the full test shim (which defines audio_config_t)
+# rather than the lightweight mock header. Put the shim first on the include
+# path for this target only.
+## Ensure `test_audio_processor` uses the real component header from main/include
+## (so it will compile against the real `audio_processor.c`). Put the
+## production include path before mocks/includes for this target only.
+target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_link_libraries(test_audio_processor unity m)
+add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
 
 add_executable(test_nvs_storage test_nvs_storage.c
     mocks/nvs_storage_mock.c)

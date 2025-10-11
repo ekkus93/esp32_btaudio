@@ -43,6 +43,16 @@ typedef struct {
     uint8_t volume;
 } audio_status_t;
 
+typedef struct {
+    uint32_t samples_processed;
+    uint32_t buffer_overruns;
+    uint32_t buffer_underruns;
+    uint32_t conversion_errors;
+    float cpu_load;
+    uint32_t current_buffer_level;
+    uint32_t peak_buffer_level;
+} audio_stats_t;
+
 // Minimal function stubs used by host tests. Implementations in mocks
 // (if needed) will override these symbols when linked. Keep inline so
 // the compiler can optimize them away when not used.

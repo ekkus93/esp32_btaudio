@@ -7,6 +7,7 @@ idf_component_register(
         "test_main.c"
         "test_app_main.c"
         "audio_processor_test.c"
+        "../components/test_audio_processor.c"
         "bt_source_test.c"
         "bt_a2dp_test.c"
         "bt_pairing_test.c"

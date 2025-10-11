@@ -7,12 +7,23 @@
 
 /**
  * @brief I2S port number
+ *
+ * Guard the typedef so it doesn't conflict when the production headers
+ * provide a different definition (e.g. `typedef int i2s_port_t`).
  */
+/* If the production headers (which define `i2s_port_t` as an `int`) are
+ * already included we must not redefine this type. Check the production
+ * header guard `_AUDIO_PROCESSOR_H_` as a heuristic. Also allow an explicit
+ * __I2S_PORT_T_DEFINED guard if set by other headers.
+ */
+#if !defined(_AUDIO_PROCESSOR_H_) && !defined(__I2S_PORT_T_DEFINED)
 typedef enum {
     I2S_NUM_0 = 0, /*!< I2S port 0 */
     I2S_NUM_1 = 1, /*!< I2S port 1 */
     I2S_NUM_MAX    /*!< Max I2S port number */
 } i2s_port_t;
+#define __I2S_PORT_T_DEFINED
+#endif
 
 /**
  * @brief I2S communication format
@@ -85,7 +96,11 @@ typedef struct {
 
 /**
  * @brief ESP error codes
+ *
+ * Guard these definitions so they don't conflict with a test-provided
+ * `esp_err.h` that may define `esp_err_t` and `ESP_OK` as macros/typedefs.
  */
+#ifndef __ESP_ERR_T_DEFINED
 typedef enum {
     ESP_OK = 0,                  /*!< Success */
     ESP_FAIL = -1,               /*!< Generic failure */
@@ -93,6 +108,8 @@ typedef enum {
     ESP_ERR_INVALID_ARG = -101,  /*!< Invalid argument */
     ESP_ERR_INVALID_STATE = -102 /*!< Invalid state */
 } esp_err_t;
+#define __ESP_ERR_T_DEFINED
+#endif
 
 /**
  * @brief FreeRTOS tick type

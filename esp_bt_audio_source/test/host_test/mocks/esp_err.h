@@ -31,6 +31,14 @@ typedef int esp_err_t;
 #define ESP_ERR_NO_MEM (-12)
 #endif
 
+#ifndef ESP_FAIL
+#define ESP_FAIL (-1)
+#endif
+
+#ifndef ESP_ERR_INVALID_STATE
+#define ESP_ERR_INVALID_STATE (-102)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

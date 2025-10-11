@@ -321,6 +321,10 @@ Testing suggestions
 
 2. Activate the ESP-IDF environment:
    ```bash
+   # Activate the Python environment used for tests and tools
+   conda activate python310
+
+   # Source the ESP-IDF environment so idf.py and toolchain are available
    . $HOME/esp/esp-idf/export.sh  # Adjust path if necessary
    ```
 
