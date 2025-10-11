@@ -1,0 +1,3 @@
+[pytest11]
+pytest_embedded=pytest_embedded.plugin
+

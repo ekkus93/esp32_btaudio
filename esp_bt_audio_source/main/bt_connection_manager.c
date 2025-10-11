@@ -283,16 +283,6 @@ esp_err_t bt_get_connection_info(bt_connection_info_t* info)
     return ESP_OK;
 }
 
-esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
-{
-    if (info == NULL) {
-        return ESP_FAIL;
-    }
-    
-    memcpy(info, &s_streaming_info, sizeof(bt_streaming_info_t));
-    return ESP_OK;
-}
-
 void bt_connection_manager_init(esp_a2d_cb_t conn_cb, esp_a2d_source_data_cb_t audio_cb)
 {
     /* Register A2DP callbacks */

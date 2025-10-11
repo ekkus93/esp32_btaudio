@@ -7,6 +7,8 @@
 #include <stdio.h>
 
 static const char* TAG = "nvs_storage";
+/* TAG may be unused under some build configs; keep a quiet reference to avoid warnings */
+static void __attribute__((unused)) _nvs_storage_suppress_unused_tag(void) { (void)TAG; }
 static const char* NVS_NAMESPACE = "bt_audio_cfg";
 
 esp_err_t nvs_storage_init(void)

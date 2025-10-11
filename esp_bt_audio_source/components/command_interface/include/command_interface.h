@@ -43,6 +43,7 @@ typedef enum {
     CMD_TYPE_SET_DEFAULT_PIN,
     CMD_TYPE_UNPAIR,
     CMD_TYPE_UNPAIR_ALL,
+    CMD_TYPE_HELP,
     // Add new command types here
     CMD_TYPE_UNKNOWN
 } cmd_type_t;

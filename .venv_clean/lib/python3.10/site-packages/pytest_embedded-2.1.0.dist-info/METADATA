@@ -1,0 +1,33 @@
+Metadata-Version: 2.4
+Name: pytest-embedded
+Version: 2.1.0
+Summary: A pytest plugin that designed for embedded testing.
+Author-email: Fu Hanxi <fuhanxi@espressif.com>
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Framework :: Pytest
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python
+Classifier: Topic :: Software Development :: Testing
+License-File: LICENSE
+Requires-Dist: pytest>=7.0
+Requires-Dist: pexpect>=4.4
+Requires-Dist: filelock>=3.12.2
+Project-URL: changelog, https://github.com/espressif/pytest-embedded/blob/main/CHANGELOG.md
+Project-URL: documentation, https://docs.espressif.com/projects/pytest-embedded/en/latest/
+Project-URL: homepage, https://github.com/espressif/pytest-embedded
+Project-URL: repository, https://github.com/espressif/pytest-embedded
+
+### pytest-embedded
+
+A pytest plugin for embedded systems. Could activate different services for extra functionalities.
+

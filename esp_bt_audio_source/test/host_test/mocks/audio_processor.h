@@ -1,5 +1,5 @@
-#ifndef TEST_MOCK_AUDIO_PROCESSOR_H
-#define TEST_MOCK_AUDIO_PROCESSOR_H
+#ifndef _AUDIO_PROCESSOR_H_
+#define _AUDIO_PROCESSOR_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -39,4 +39,4 @@ static inline esp_err_t audio_processor_set_i2s_pins(int bclk, int ws, int din, 
     return ESP_OK;
 }
 
-#endif // TEST_MOCK_AUDIO_PROCESSOR_H
+#endif /* _AUDIO_PROCESSOR_H_ */

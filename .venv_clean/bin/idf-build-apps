@@ -1,0 +1,7 @@
+#!/home/phil/work/esp32/esp32_btaudio/.venv_clean/bin/python3
+import sys
+from idf_build_apps import main
+if __name__ == '__main__':
+    if sys.argv[0].endswith('.exe'):
+        sys.argv[0] = sys.argv[0][:-4]
+    sys.exit(main.main())

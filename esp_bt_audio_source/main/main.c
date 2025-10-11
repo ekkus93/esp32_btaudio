@@ -6,7 +6,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <inttypes.h>
 #include <math.h>  // For sinf()
@@ -23,7 +22,7 @@
 #include "osi/allocator.h"
 #endif
 
-// Bluetooth includes
+/* Bluetooth includes */
 #include "esp_bt.h"
 #include "bt_app_core.h"
 #include "esp_bt_main.h"
@@ -31,6 +30,7 @@
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"
+#include "command_interface.h"
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
@@ -47,6 +47,15 @@ enum {
     BT_APP_STACK_UP_EVT   = 0x0000,    /* event for stack up */
     BT_APP_HEART_BEAT_EVT = 0xff00,    /* event for heart beat */
 };
+
+/* Small FreeRTOS task that polls the command interface */
+static void cmd_process_task(void* arg) {
+    (void)arg;
+    for (;;) {
+        cmd_process();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
 
 /* A2DP global states */
 enum {
@@ -117,8 +126,13 @@ static int s_connecting_intv = 0;                             /* count of heart 
 static uint32_t s_pkt_cnt = 0;                                /* count of packets */
 static esp_avrc_rn_evt_cap_mask_t s_avrc_peer_rn_cap;         /* AVRC target notification event capability bit mask */
 static TimerHandle_t s_tmr;                                   /* handle of heart beat timer */
+/* suppress unused variable warnings in certain build configs */
+static void __attribute__((unused)) _main_suppress_unused(void) { (void)s_tmr; }
 
 static const char remote_device_name[] = CONFIG_EXAMPLE_PEER_DEVICE_NAME;
+
+/* Avoid unused variable warning for remote_device_name in some build configs */
+static void __attribute__((unused)) _main_remote_name_used(void) { (void)remote_device_name; }
 
 #if HEAP_MEMORY_DEBUG
 static void bt_log_allocator_snapshot(const char *reason, bool dump_entries)
@@ -175,7 +189,7 @@ static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
     return str;
 }
 
-static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
+static bool __attribute__((unused)) get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
 {
     uint8_t *rmt_bdname = NULL;
     uint8_t rmt_bdname_len = 0;
@@ -754,7 +768,7 @@ void bt_av_notify_evt_handler(uint8_t event_id, esp_avrc_rn_param_t *event_param
 }
 
 /* AVRC controller event handler */
-static void bt_av_hdl_avrc_ct_evt(uint16_t event, void *p_param)
+static void __attribute__((unused)) bt_av_hdl_avrc_ct_evt(uint16_t event, void *p_param)
 {
     ESP_LOGD(BT_RC_CT_TAG, "%s evt %d", __func__, event);
     esp_avrc_ct_cb_param_t *rc = (esp_avrc_ct_cb_param_t *)(p_param);
@@ -909,6 +923,19 @@ void app_main(void)
     
     // Initialize and start Bluetooth
     bt_init();
+
+    // Initialize command interface for serial commands and events
+    // This will create the UART driver and prepare the command parser.
+    // The cmd_process() function must be called regularly; create a
+    // small FreeRTOS task to poll for incoming command lines.
+#ifdef ESP_PLATFORM
+    if (cmd_init() != CMD_SUCCESS) {
+        ESP_LOGW(BT_AV_TAG, "cmd_init() failed or already initialized");
+    }
+
+    // Create a tiny task dedicated to processing command input
+    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+#endif
     
     ESP_LOGI(BT_AV_TAG, "====================================================");
     ESP_LOGI(BT_AV_TAG, "Bluetooth will scan for and connect to audio devices");

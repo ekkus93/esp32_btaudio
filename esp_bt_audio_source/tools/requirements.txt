@@ -1,0 +1,12 @@
+pytest
+pytest-asyncio
+pyserial
+pexpect
+pyelftools
+psutil
+construct
+jsonschema
+# Optional helpers used during triage (install only in CI images that need them)
+pyshark==0.6
+spinel==1.1.5
+pyspinel==1.0.3

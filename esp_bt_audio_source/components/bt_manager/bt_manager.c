@@ -133,6 +133,11 @@ bt_status_t bt_manager_init(const bt_manager_init_t* config) {
             for (int i = 0; i < count && bt_ctx.paired_devices.count < 20; i++) {
                 char mac[32] = {0};
                 char name[32] = {0};
+                /* Some build configurations may not use 'name' visibly
+                 * (e.g., stripped logging). Mark as used to avoid
+                 * -Wunused-variable warnings while preserving logic.
+                 */
+                (void)name;
                 if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
                     int idx = bt_ctx.paired_devices.count;
                     strncpy(bt_ctx.paired_devices.devices[idx].mac, mac, sizeof(bt_ctx.paired_devices.devices[idx].mac)-1);

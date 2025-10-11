@@ -2,8 +2,22 @@
 #define _AUDIO_PROCESSOR_H_
 
 #include <stdint.h>
+#include <stddef.h>
 #include "esp_err.h"
+
+/* When building against ESP-IDF the platform headers provide i2s types.
+ * Host/unit tests (and desktop builds) don't have those headers, so provide
+ * lightweight fallbacks to allow compiling the public header for tests.
+ */
+#ifdef ESP_PLATFORM
 #include "driver/i2s_std.h"  // Use the current standard I2S driver instead of deprecated one
+#else
+/* Minimal host-side substitutes used only for building unit tests */
+typedef int i2s_port_t;
+#ifndef GPIO_NUM_NC
+#define GPIO_NUM_NC (-1)
+#endif
+#endif
 
 // Audio bit depths
 typedef enum {

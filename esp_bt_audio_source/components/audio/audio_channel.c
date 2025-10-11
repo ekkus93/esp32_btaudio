@@ -3,6 +3,8 @@
 #include "audio_channel.h"
 
 static const char *TAG = "AUDIO_CHANNEL";
+/* TAG may be unused in certain build configurations; reference it to avoid warnings */
+static void __attribute__((unused)) _audio_channel_suppress_unused_tag(void) { (void)TAG; }
 
 // Convert stereo to mono by averaging channels
 void convert_stereo_to_mono(int16_t *stereo_buffer, int16_t *mono_buffer, int frame_count) {
