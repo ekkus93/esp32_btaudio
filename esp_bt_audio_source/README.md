@@ -357,6 +357,8 @@ Testing suggestions
    ```
    Replace `PORT` with your device's serial port (e.g., `/dev/ttyUSB0` on Linux)
 
+Note: On most Linux systems the common USB serial adapter shows up as `/dev/ttyUSB0` by default. If you don't have a different preference, you can use `/dev/ttyUSB0` in the command above (for example: `idf.py -p /dev/ttyUSB0 flash monitor`). If your adapter enumerates as `/dev/ttyACM0` or a different device node, replace the port accordingly.
+
 ## Unit Testing Framework
 
 This project uses a dual testing approach for faster Test-Driven Development (TDD):

@@ -97,10 +97,14 @@ typedef struct {
 /**
  * @brief ESP error codes
  *
- * Guard these definitions so they don't conflict with a test-provided
- * `esp_err.h` that may define `esp_err_t` and `ESP_OK` as macros/typedefs.
+ * Only provide these mock definitions when the real esp_err.h hasn't
+ * already defined them.  In ESP-IDF builds esp_err.h defines the
+ * macro `ESP_OK` and typedef `esp_err_t`, which would collide with the
+ * symbols below (macro expansion breaks enum identifiers).  Prefer the
+ * real definitions when available.
  */
-#ifndef __ESP_ERR_T_DEFINED
+/* If either the standard guard or the ESP_OK macro is present, skip defining */
+#if !defined(__ESP_ERR_T_DEFINED) && !defined(ESP_OK)
 typedef enum {
     ESP_OK = 0,                  /*!< Success */
     ESP_FAIL = -1,               /*!< Generic failure */

@@ -30,6 +30,10 @@ void run_bluetooth_tests(void)
     // End Unity test session and capture the result
     // The result will be printed by Unity itself
     int result = UNITY_END();
+    // Emit a stable, machine-parseable marker used by capture tooling
+    // (kept for backward-compatibility with CI/scripts that look for
+    //  '--- SUMMARY ---')
+    printf("--- SUMMARY ---\n");
     printf("----- UNITY TEST COMPLETE: %s -----\n", result ? "FAIL" : "PASS");
     
     // Print our own custom summary using Unity's global structure

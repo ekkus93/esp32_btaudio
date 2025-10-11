@@ -33,7 +33,12 @@ void app_test_main(void)
     // REMOVE THIS LINE! It's causing the restart:
     // esp_restart();
     
-    // Don't restart, let the main function handle the completion
+    // Don't restart here; return to the caller so the Unity harness
+    // (in `test_main.c`) can call UNITY_END() and print the summary.
+    // Wait briefly to flush logs then return.
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    ESP_LOGI(TAG, "Tests complete — returning to test harness to finish summary");
+    return;
 }
 
 void app_main_bt_pairing_tests(void)
