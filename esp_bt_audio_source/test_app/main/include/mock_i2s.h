@@ -1,3 +1,3 @@
-// Forwarder for mock_i2s used by tests. Includes the repository mock implementation.
+// Forwarder for mock_i2s used by tests. Includes the repository mock implementation under mocks/include.
 #pragma once
-#include "../../test/host_test/mocks/mock_i2s.h"
+#include "mock_i2s.h"

@@ -1,10 +1,6 @@
+// Mock version of the ESP-IDF Bluetooth API header (host tests)
 #ifndef ESP_BT_H
 #define ESP_BT_H
-
-/**
- * Mock version of the ESP-IDF Bluetooth API header
- * This provides minimal implementations needed for testing
- */
 
 #include <stdint.h>
 #include <stdbool.h>

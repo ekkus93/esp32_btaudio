@@ -1,3 +1,4 @@
+// Minimal esp_err.h for host unit tests
 #ifndef ESP_ERR_H
 #define ESP_ERR_H
 
@@ -7,8 +8,6 @@ extern "C" {
 
 /*
  * Canonical minimal esp_err_t and error macros for host tests.
- * Provide guarded definitions so multiple mock headers can include
- * this file without causing typedef/macro redefinition problems.
  */
 #ifndef __ESP_ERR_T_DEFINED
 typedef int esp_err_t;
