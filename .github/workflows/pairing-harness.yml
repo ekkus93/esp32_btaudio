@@ -1,6 +1,8 @@
 name: Pairing Harness
 
 on:
+  push:
+    branches: [ master ]
   workflow_dispatch:
     inputs:
       port:
@@ -84,7 +86,9 @@ jobs:
         id: run-mock
         run: |
           set -euo pipefail
-          python3 esp_bt_audio_source/tools/run_harness_with_mock.py --mac "${{ github.event.inputs.mac }}" --timeout "${{ github.event.inputs.timeout }}"
+          MAC="${{ github.event.inputs.mac || 'AA:BB:CC:DD:EE:FF' }}"
+          TIMEOUT="${{ github.event.inputs.timeout || '30' }}"
+          python3 esp_bt_audio_source/tools/run_harness_with_mock.py --mac "$MAC" --timeout "$TIMEOUT"
 
       - name: Upload mock log
         if: always()
