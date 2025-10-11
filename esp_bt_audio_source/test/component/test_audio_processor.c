@@ -1,4 +1,4 @@
-// Moved from repo-root test/component/test_audio_processor.c
+// Moved from top-level test/component/test_audio_processor.c
 #include <string.h>
 #include "unity.h"
 #include "audio_processor.h"

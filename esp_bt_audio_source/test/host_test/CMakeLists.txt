@@ -53,11 +53,11 @@ target_link_libraries(test_bluetooth unity m)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 # Audio processor unit tests (host)
-add_executable(test_audio_processor ../../../test/component/test_audio_processor.c
+add_executable(test_audio_processor ../../test/component/test_audio_processor.c
     ../../components/audio_processor/audio_processor.c
     mocks/mock_i2s.c
     mocks/test_main_wrapper.c)
-target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../test/component)
+target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component)
 # Ensure this target uses the full test shim (which defines audio_config_t)
 # rather than the lightweight mock header. Put the shim first on the include
 # path for this target only.
