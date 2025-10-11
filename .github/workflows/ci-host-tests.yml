@@ -49,12 +49,12 @@ jobs:
       - name: Install Python test deps
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest
+          python3 -m pip install pytest pyserial
 
       - name: Run Python unit tests
         run: |
-          echo "Running Python unit tests (symbolizer)..."
-          python3 -m pytest -q tools/symbolize_pairing
+          echo "Running Python unit tests (tools/tests)..."
+          python3 -m pytest -q esp_bt_audio_source/tools/tests
 
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
