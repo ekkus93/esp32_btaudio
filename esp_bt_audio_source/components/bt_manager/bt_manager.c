@@ -595,7 +595,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
 
             ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
             // Notify command interface: EVENT|PAIR|PIN_REQUEST|<MAC>
-            cmd_send_response("EVENT", "PAIR", "PIN_REQUEST", bda_str);
+            cmd_send_event_pair("PIN_REQUEST", bda_str);
             break;
         }
 
@@ -611,7 +611,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
             ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
             // Notify command interface: EVENT|PAIR|CONFIRM|<MAC>,<NUM>
-            cmd_send_response("EVENT", "PAIR", "CONFIRM", data);
+            cmd_send_event_pair("CONFIRM", data);
             break;
         }
 
@@ -625,7 +625,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             }
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
-                cmd_send_response("EVENT", "PAIR", "SUCCESS", bda_str);
+                cmd_send_event_pair("SUCCESS", bda_str);
                 // Persist paired device
                 // Try to get a device name from discovered list if available
                 char dev_name[32] = {0};
@@ -638,7 +638,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                 nvs_storage_add_paired_device(bda_str, dev_name[0] ? dev_name : NULL);
             } else {
                 ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
-                cmd_send_response("EVENT", "PAIR", "FAILED", bda_str);
+                cmd_send_event_pair("FAILED", bda_str);
             }
             break;
         }

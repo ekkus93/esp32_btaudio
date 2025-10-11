@@ -89,8 +89,8 @@ jobs:
         with:
           name: host-test-results
           path: |
-            esp_bt_audio_source/test/host_test/build_host_tests/test-results.xml
-            esp_bt_audio_source/test/host_test/build_host_tests/ctest.log
+            esp_bt_audio_source/test/host_test/build_host_tests/*.xml
+            esp_bt_audio_source/test/host_test/build_host_tests/*.log
 
       - name: Inspect JUnit artifact (debug)
         if: always()
@@ -167,18 +167,22 @@ jobs:
         if: failure()
         working-directory: esp_bt_audio_source/test/host_test
         run: |
-          tar -czf build_host_tests.tar.gz build_host_tests || true
+          if [ -d build_host_tests ]; then
+            tar -czf build_host_tests.tar.gz build_host_tests || true
+          else
+            echo "No build_host_tests directory to archive"
+          fi
 
       - name: Upload build artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build_host_tests
-          path: esp_bt_audio_source/test/host_test/build_host_tests.tar.gz || true
+          path: esp_bt_audio_source/test/host_test/build_host_tests.tar.gz
 
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: host-test-logs
-          path: esp_bt_audio_source/test/host_test/build_host_tests/*.log || true
+          path: esp_bt_audio_source/test/host_test/build_host_tests/*.log

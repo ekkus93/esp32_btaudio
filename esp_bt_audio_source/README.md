@@ -643,3 +643,25 @@ See the [main project README](/home/phil/work/esp32/esp32_btaudio/README.md) for
 - Detailed command protocol specification
 - Connection diagram for both ESP32s
 - Audio format requirements
+
+## CI improvements (future work)
+
+The repository currently runs host-based unit tests and captures CTest output and JUnit XML as part of the `CI — host tests (optimized)` workflow. The following are suggested, prioritized enhancements you may want to add later to improve CI coverage, diagnostics, and developer experience.
+
+High priority
+- Add a dedicated PR job that runs the host tests and the Python symbolizer unit tests on every pull request. This gives faster feedback to contributors.
+- Persist build artifacts (JUnit XML, ctest.log, pairing logs, and debug symbols) for failed runs so failures can be downloaded and inspected from the run UI.
+
+Medium priority
+- Annotator enhancements: extend the embedded JUnit annotator to resolve native addresses using `addr2line` and the built ELF when failures include addresses, producing file:line annotations.
+- Add a job that runs static formatting and lint checks (clang-format, clang-tidy) to catch style/regression issues early.
+
+Low priority
+- Add coverage collection for host tests (gcov/lcov or pytest coverage for Python parts) and upload coverage artifacts; optionally fail CI on coverage regression.
+- Add a scheduled workflow that performs longer integration tests (flaky/resilience scenarios) and preserves logs for triage.
+- Investigate hardware-backed CI runners to run on-device Unity tests automatically (requires access to hardware and runner setup).
+
+Notes
+- Start with the High priority items first — they provide the largest immediate developer ROI with minimal infra cost.
+- When adding addr2line resolution in workflows, ensure build artifacts (ELF, debug symbols) are preserved and accessible to the runner step performing resolution.
+- For hardware-backed runners, create a small, well-documented runner playbook describing power cycling, serial capture, and artifact upload procedures.

@@ -109,4 +109,14 @@ cmd_status_t cmd_send_response(const char* status, const char* command,
  */
 cmd_status_t cmd_process(void);
 
+/**
+ * Convenience helper to emit pairing-related events to the serial interface.
+ * This wraps the standard response format using status=EVENT and command=PAIR.
+ *
+ * @param subtype Event subtype (e.g. "PIN_REQUEST", "CONFIRM", "SUCCESS", "FAILED")
+ * @param data Optional data string (MAC, PIN, or comma-separated values)
+ * @return CMD_SUCCESS if the event was emitted
+ */
+cmd_status_t cmd_send_event_pair(const char* subtype, const char* data);
+
 #endif // COMMAND_INTERFACE_H

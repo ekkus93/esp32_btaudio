@@ -19,8 +19,41 @@
 #define CMD_UART_NUM UART_NUM_1
 #define CMD_BUF_SIZE 256
 #include "nvs_storage.h"
-#include "bt_manager.h"
 #include "esp_gap_bt_api.h"
+
+// Avoid including bt_manager.h / bt_registry.h / bt_mock_devices.h here because
+// those headers define overlapping types (bt_device_t, bt_interface_t, etc.)
+// which conflict with types from other components when combined in this
+// translation unit. Instead, forward-declare the limited set of symbols used by
+// the command interface to keep compile units independent and avoid duplicate
+// type definitions.
+
+// Basic return code used by bt_manager APIs (treat 0 as success)
+#ifndef BT_SUCCESS
+#define BT_SUCCESS 0
+#endif
+
+// Forward declarations for small subset of BT helper APIs used by commands.c
+extern int bt_set_name(const char* name);
+extern int bt_pair(const char* mac);
+extern int bt_unpair(const char* mac);
+extern int bt_start_scan(void);
+extern int bt_connect(const char* mac);
+extern int bt_disconnect(void);
+extern int bt_start_audio(void);
+extern int bt_stop_audio(void);
+
+// Forward declarations for mock controls (from bt_core / bt_mock components)
+extern void bt_use_mock_implementation(void);
+extern void bt_mock_init(void);
+extern esp_err_t bt_mock_add_device(const char* addr_str, const char* name, int type, bool paired);
+extern esp_err_t bt_mock_start_pairing(const char* addr_str);
+
+// If the BT device type macros are not available, define the audio type used by
+// the debug mock API as a fallback value.
+#ifndef BT_DEVICE_TYPE_AUDIO
+#define BT_DEVICE_TYPE_AUDIO 1
+#endif
 #else
 // Include mock UART header for host-based testing
 #include "mock_uart.h"
@@ -126,6 +159,12 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx) {
     char cmd_copy[256];
     strncpy(cmd_copy, cmd_str, sizeof(cmd_copy) - 1);
     trim_string(cmd_copy);
+
+    // Accept optional envelope prefix 'CMD|' used by host scripts (e.g. "CMD|DEBUG ...")
+    if (strncmp(cmd_copy, "CMD|", 4) == 0) {
+        size_t l = strlen(cmd_copy + 4) + 1;
+        memmove(cmd_copy, cmd_copy + 4, l);
+    }
     
     // Extract command name
     char* token = strtok(cmd_copy, " ");
@@ -215,13 +254,28 @@ cmd_status_t cmd_send_response(const char* status, const char* command,
     }
     
 #ifdef ESP_PLATFORM
+    // Write to command UART (UART1)
     uart_write_bytes(CMD_UART_NUM, response, len);
+    // Also mirror responses to the USB serial (UART0) so host-side
+    // tooling which listens on the console sees events even if the
+    // command UART isn't connected to the host directly.
+    uart_write_bytes(UART_NUM_0, response, len);
 #else
-    // For testing without ESP-IDF
+    // For unit/host tests without ESP-IDF UART0 availability we still use
+    // the mocked UART write helper (UART_NUM_1).
     uart_write_bytes(UART_NUM_1, response, len);
 #endif
     
     return CMD_SUCCESS;
+}
+
+// Helper to emit pairing events with standard envelope: EVENT|PAIR|<SUBTYPE>|<DATA>\r\n
+cmd_status_t cmd_send_event_pair(const char* subtype, const char* data) {
+    if (!cmd_ctx.initialized) {
+        return CMD_ERROR_NOT_INITIALIZED;
+    }
+    // Reuse cmd_send_response formatting
+    return cmd_send_response("EVENT", "PAIR", subtype, data);
 }
 
 // Process incoming data from UART and handle complete commands
@@ -233,7 +287,21 @@ cmd_status_t cmd_process(void) {
     // Simple mock implementation for testing
     // Read a command from UART and process it
     uint8_t buf[128];
+    int len = 0;
+#ifdef ESP_PLATFORM
+    /* Prefer reading from the dedicated command UART (UART1). If there's
+     * no data there, also check the USB console (UART0) so host scripts
+     * that talk to /dev/ttyUSB0 (monitor) can send commands during tests.
+     */
+    len = uart_read_bytes(CMD_UART_NUM, buf, sizeof(buf), 20 / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "cmd_process: read %d bytes from CMD_UART (UART1)", len);
+    if (len <= 0) {
+        len = uart_read_bytes(UART_NUM_0, buf, sizeof(buf), 20 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "cmd_process: read %d bytes from USB console (UART0)", len);
+    }
+#else
     int len = uart_read_bytes(UART_NUM_1, buf, sizeof(buf), 0);
+#endif
     
     if (len > 0) {
         // Null terminate the command
@@ -243,6 +311,22 @@ cmd_status_t cmd_process(void) {
             buf[sizeof(buf) - 1] = '\0';
         }
         
+        // Echo raw input for debugging so host-side tests can see that the
+        // device actually received the line. This helps distinguish whether
+        // the TX from the host reached the CMD UART or not.
+        // Send as INFO|RAW|RECV|<data>\r\n
+        {
+            // Truncate to reasonable size
+            char raw[128];
+            int rlen = len < (int)sizeof(raw)-1 ? len : (int)sizeof(raw)-1;
+            memcpy(raw, buf, rlen);
+            raw[rlen] = '\0';
+            // Trim trailing newlines for nicer output
+            for (int i = rlen-1; i >= 0; --i) {
+                if (raw[i] == '\r' || raw[i] == '\n') raw[i] = '\0'; else break;
+            }
+            cmd_send_response("INFO", "RAW", "RECV", raw);
+        }
         // Process command (simple test implementation)
         cmd_context_t ctx;
         if (cmd_parse((const char*)buf, &ctx) == CMD_SUCCESS) {
@@ -520,7 +604,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 #ifdef ESP_PLATFORM
             if (nvs_storage_set_device_name(ctx->params[0]) == ESP_OK) {
                 // Try to set the name in bt_manager if provided
-                if (bt_set_name != NULL) bt_set_name(ctx->params[0]);
+                bt_set_name(ctx->params[0]);
                 cmd_send_response("OK", "SET_NAME", "SUCCESS", ctx->params[0]);
             } else {
                 cmd_send_response("ERR", "SET_NAME", "FAILED", NULL);
@@ -530,6 +614,71 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             cmd_send_response("OK", "SET_NAME", "MOCK_SUCCESS", ctx->params[0]);
 #endif
         } break;
+
+        case CMD_TYPE_DEBUG: {
+            // Support quick debug commands for development/testing
+            // Usage: DEBUG MOCK_ON
+            //        DEBUG MOCK_ADD <MAC>,<NAME>
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "DEBUG", "MISSING_PARAM", NULL);
+                break;
+            }
+            if (strcasecmp(ctx->params[0], "MOCK_ON") == 0) {
+#ifdef ESP_PLATFORM
+                bt_use_mock_implementation();
+                bt_mock_init();
+                cmd_send_response("OK", "DEBUG", "MOCK_ON", NULL);
+#else
+                cmd_send_response("OK", "DEBUG", "MOCK_ON_MOCKED", NULL);
+#endif
+            } else if (strcasecmp(ctx->params[0], "MOCK_ADD") == 0) {
+                // params[1] should contain 'MAC,NAME'
+                if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) {
+                    cmd_send_response("ERR", "DEBUG", "MOCK_ADD_MISSING", NULL);
+                    break;
+                }
+                char payload[128];
+                strncpy(payload, ctx->params[1], sizeof(payload)-1);
+                payload[sizeof(payload)-1] = '\0';
+                char* comma = strchr(payload, ',');
+                if (!comma) {
+                    cmd_send_response("ERR", "DEBUG", "MOCK_ADD_INVALID", ctx->params[1]);
+                    break;
+                }
+                *comma = '\0';
+                const char* mac = payload;
+                const char* name = comma + 1;
+#ifdef ESP_PLATFORM
+                if (bt_mock_add_device(mac, name, BT_DEVICE_TYPE_AUDIO, false) == ESP_OK) {
+                    cmd_send_response("OK", "DEBUG", "MOCK_ADD", ctx->params[1]);
+                } else {
+                    cmd_send_response("ERR", "DEBUG", "MOCK_ADD_FAILED", ctx->params[1]);
+                }
+#else
+                cmd_send_response("OK", "DEBUG", "MOCK_ADD_MOCKED", ctx->params[1]);
+#endif
+            } else {
+                cmd_send_response("ERR", "DEBUG", "UNKNOWN_SUBCMD", ctx->params[0]);
+            }
+            // Support MOCK_PAIR: DEBUG MOCK_PAIR <MAC>
+            if (strcasecmp(ctx->params[0], "MOCK_PAIR") == 0) {
+                if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) {
+                    cmd_send_response("ERR", "DEBUG", "MOCK_PAIR_MISSING", NULL);
+                } else {
+#ifdef ESP_PLATFORM
+                    if (bt_mock_start_pairing(ctx->params[1]) == ESP_OK) {
+                        cmd_send_response("OK", "DEBUG", "MOCK_PAIR_STARTED", ctx->params[1]);
+                    } else {
+                        cmd_send_response("ERR", "DEBUG", "MOCK_PAIR_FAILED", ctx->params[1]);
+                    }
+#else
+                    cmd_send_response("OK", "DEBUG", "MOCK_PAIR_MOCKED", ctx->params[1]);
+#endif
+                }
+            }
+        } break;
+
+        
 
         case CMD_TYPE_SET_DEFAULT_PIN: {
             if (ctx->param_count < 1) {

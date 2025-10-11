@@ -304,7 +304,7 @@ esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey)
     }
     char data[64];
     snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)passkey);
-    cmd_send_response("EVENT", "PAIR", "CONFIRM", data);
+    cmd_send_event_pair("CONFIRM", data);
 #endif
     return ESP_OK;
 }
@@ -322,7 +322,7 @@ esp_err_t bt_mock_confirm_ssp(bool confirm)
     if (current_pairing_addr[0]) {
         strncpy(bda_str, current_pairing_addr, sizeof(bda_str)-1);
     }
-    cmd_send_response("EVENT", "PAIR", confirm ? "SUCCESS" : "FAILED", bda_str);
+    cmd_send_event_pair(confirm ? "SUCCESS" : "FAILED", bda_str);
 #endif
     return ESP_OK;
 }
@@ -353,14 +353,14 @@ esp_err_t bt_mock_start_pairing(const char* addr)
         /* Notify host about SSP confirm request */
         char data[64];
         snprintf(data, sizeof(data), "%s,%u", current_pairing_addr, (unsigned int)s_ssp_passkey_value);
-        cmd_send_response("EVENT", "PAIR", "CONFIRM", data);
+    cmd_send_event_pair("CONFIRM", data);
 #endif
     } else {
         current_pairing_method = BT_PAIRING_METHOD_PIN;
         current_pairing_state = BT_PAIRING_STATE_STARTED;
 #ifdef ESP_PLATFORM
         /* Notify host about legacy PIN request */
-        cmd_send_response("EVENT", "PAIR", "PIN_REQUEST", current_pairing_addr);
+    cmd_send_event_pair("PIN_REQUEST", current_pairing_addr);
 #endif
     }
     return ESP_OK;
@@ -381,9 +381,9 @@ esp_err_t bt_mock_send_pin(const char* pin)
 
 #ifdef ESP_PLATFORM
     /* Emit pairing success so host can observe the result */
-    if (current_pairing_addr[0] != '\0') {
-        cmd_send_response("EVENT", "PAIR", "SUCCESS", current_pairing_addr);
-    }
+        if (current_pairing_addr[0] != '\0') {
+            cmd_send_event_pair("SUCCESS", current_pairing_addr);
+        }
 #endif
 
     /* If the device already exists in the device list, mark it paired. */
