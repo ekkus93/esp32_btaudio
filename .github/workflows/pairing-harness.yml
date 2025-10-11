@@ -17,8 +17,6 @@ on:
         description: 'Timeout seconds'
         required: false
         default: '30'
-  schedule:
-    - cron: '0 2 * * *' # daily at 02:00 UTC - runs the mock job
 
 jobs:
   run-harness:
