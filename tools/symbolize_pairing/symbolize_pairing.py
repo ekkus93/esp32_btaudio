@@ -19,7 +19,6 @@ below each original line for easy timeline analysis.
 import argparse
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -85,7 +84,11 @@ def symbolize_log(log_path, elf_path, out_path=None, no_resolve=False):
                         unique.append(a)
                 for a in unique:
                     if addr2line:
-                        sym = run_addr2line(addr2line, elf_path, a)
+                        sym = run_addr2line(
+                            addr2line,
+                            elf_path,
+                            a,
+                        )
                     else:
                         sym = '<no-resolve>'
                     out_lines.append(f'    -> {a} : {sym}')
@@ -176,17 +179,44 @@ def write_csv_aggregation(log_path, elf_path, csv_path=None, sort=False, top=Non
 
 
 def main():
-    ap = argparse.ArgumentParser(description='Symbolize pairing serial logs using addr2line')
+    ap = argparse.ArgumentParser(
+        description='Symbolize pairing serial logs using addr2line'
+    )
     ap.add_argument('--log', '-l', required=True, help='Path to serial log')
-    ap.add_argument('--elf', '-e', required=True, help='Path to built ELF (for addr2line)')
+    ap.add_argument(
+        '--elf', '-e', required=True,
+        help='Path to built ELF (for addr2line)'
+    )
     ap.add_argument('--out', '-o', help='Optional output path for symbolized log')
-    ap.add_argument('--csv', help='Optional CSV output path for aggregated address counts')
-    ap.add_argument('--sort', action='store_true', help='Sort CSV by count (descending)')
-    ap.add_argument('--top', type=int, help='Limit CSV to top N addresses by count')
-    ap.add_argument('--no-resolve', action='store_true', help='Do not call addr2line; emit CSV/timeline without symbol resolution')
+    ap.add_argument(
+        '--csv',
+        help='Optional CSV output path for aggregated address counts'
+    )
+    ap.add_argument(
+        '--sort', action='store_true',
+        help='Sort CSV by count (descending)'
+    )
+    ap.add_argument(
+        '--top', type=int,
+        help='Limit CSV to top N addresses by count'
+    )
+    ap.add_argument(
+        '--no-resolve', action='store_true',
+        help=(
+            'Do not call addr2line; emit CSV/timeline without symbol '
+            'resolution'
+        )
+    )
     args = ap.parse_args()
     if args.csv:
-        rc = write_csv_aggregation(args.log, args.elf, args.csv, sort=args.sort, top=args.top, no_resolve=args.no_resolve)
+        rc = write_csv_aggregation(
+            args.log,
+            args.elf,
+            args.csv,
+            sort=args.sort,
+            top=args.top,
+            no_resolve=args.no_resolve,
+        )
     else:
         # Pass no-resolve via environment; symbolize_log will handle missing addr2line
         rc = symbolize_log(args.log, args.elf, args.out, no_resolve=args.no_resolve)

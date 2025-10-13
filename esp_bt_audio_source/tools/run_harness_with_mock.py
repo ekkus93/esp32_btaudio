@@ -17,7 +17,6 @@ without serial hardware.
 import argparse
 import os
 import pty
-import os
 import sys
 import time
 import threading
@@ -27,17 +26,22 @@ import subprocess
 def mock_device(master_fd, mac, passkey='1234', delay=0.5):
     """Simple mock device that speaks the same protocol used by the firmware."""
     w = os.fdopen(master_fd, 'wb', buffering=0)
+
     def write_line(s):
         w.write((s + '\r\n').encode())
         # small flush delay
         time.sleep(0.01)
     try:
-        # initial idle logs
-        write_line(f"I (0) CMD_IF: cmd_process: read 0 bytes from USB console (UART0)")
+        # initial idle log (reduced verbosity to avoid flooding monitors)
+        # The firmware previously printed zero-byte read lines; this mock used to
+        # emulate that, but it makes serial logs noisy. Emit a single READY line
+        # instead so test harnesses can detect the mock is up without flooding.
+        write_line('INFO|MOCK|READY')
         time.sleep(delay)
         # respond to DEBUG MOCK_ON / MOCK_ADD / MOCK_PAIR sequence
         # Simulate acknowledging MOCK_ON
-        line = os.read(master_fd, 1024)  # consume any input
+        # Consume any input without assigning to a local variable
+        os.read(master_fd, 1024)
     except Exception:
         pass
 
@@ -109,7 +113,14 @@ def run(args):
     t.start()
 
     # run the real harness pointing at the slave pty
-    cmd = [sys.executable, 'esp_bt_audio_source/tools/host_pairing_driver.py', '--port', slave_name, '--mac', args.mac, '--timeout', str(args.timeout), '--log-dir', args.log_dir]
+    cmd = [
+        sys.executable,
+        'esp_bt_audio_source/tools/host_pairing_driver.py',
+        '--port', slave_name,
+        '--mac', args.mac,
+        '--timeout', str(args.timeout),
+        '--log-dir', args.log_dir,
+    ]
     print('Running:', ' '.join(cmd))
     p = subprocess.run(cmd, capture_output=False)
     return p.returncode

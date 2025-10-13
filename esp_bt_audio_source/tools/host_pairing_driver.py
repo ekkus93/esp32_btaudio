@@ -136,22 +136,22 @@ def run_harness(port, baud, mac, timeout, log_dir, watchdog=0, watchdog_source='
                     # Format: EVENT|PAIR|CONFIRM|<MAC>,<PASSKEY>
                     parts = line.split('|')
                     if len(parts) >= 4:
-                        data = parts[3]
+                        # parts[3] contains '<MAC>,<PASSKEY>' but we don't need it here
                         writeln('TX: CMD|CONFIRM_PIN|1', source='tx')
                         ser.write(b'CMD|CONFIRM_PIN|1\r\n')
                 elif 'PAIR|SUCCESS' in line or line.startswith('OK|PAIR|SUCCESS'):
-                        writeln('Pairing succeeded; exiting')
-                        result['status'] = 'success'
-                        result['end_ts'] = now_ts()
-                        stop_event.set()
-                        return result, 0
+                    writeln('Pairing succeeded; exiting')
+                    result['status'] = 'success'
+                    result['end_ts'] = now_ts()
+                    stop_event.set()
+                    return result, 0
                 elif 'PAIR|FAILED' in line or line.startswith('OK|PAIR|FAILED'):
-                        writeln('Pairing failed; exiting')
-                        result['status'] = 'failed'
-                        result['reason'] = 'device_reported_failure'
-                        result['end_ts'] = now_ts()
-                        stop_event.set()
-                        return result, 2
+                    writeln('Pairing failed; exiting')
+                    result['status'] = 'failed'
+                    result['reason'] = 'device_reported_failure'
+                    result['end_ts'] = now_ts()
+                    stop_event.set()
+                    return result, 2
         except Exception as e:
             writeln('Error: ' + str(e))
             # Some pyserial/read errors indicate the pseudo-tty closed (EOF); treat as timeout
@@ -201,13 +201,43 @@ def parse_args():
     p.add_argument('--mac', '-m', default='AA:BB:CC:DD:EE:FF')
     p.add_argument('--timeout', '-t', type=int, default=30)
     p.add_argument('--log-dir', '-l', default='build/pairing_e2e_manual_logs')
-    p.add_argument('--watchdog', '-w', type=int, default=0, help='Watchdog inactivity timeout in seconds; 0 disables watchdog')
-    p.add_argument('--watchdog-source', choices=['both', 'rx', 'tx'], default='both', help='What counts as activity for the watchdog: rx (incoming), tx (outgoing), or both')
+    p.add_argument(
+        '--watchdog', '-w', type=int, default=0,
+        help='Watchdog inactivity timeout in seconds; 0 disables watchdog'
+    )
+    p.add_argument(
+        '--watchdog-source',
+        choices=['both', 'rx', 'tx'],
+        default='both',
+        help=(
+            'What counts as activity for the watchdog: rx (incoming), '
+            'tx (outgoing), or both'
+        ),
+    )
+    p.add_argument(
+        '--simulate',
+        action='store_true',
+        help='Run in simulate mode and emit a single JSON result (no serial required)',
+    )
     return p.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
+    # If simulate flag is set, emit a quick JSON result without touching serial
+    if getattr(args, 'simulate', False):
+        res = {
+            'start_ts': now_ts(),
+            'port': args.port,
+            'baud': args.baud,
+            'mac': args.mac,
+            'logfile': None,
+            'status': 'success',
+            'reason': None,
+            'events': [],
+        }
+        print(json.dumps(res))
+        sys.exit(0)
     # pass watchdog_source through by setting closure var after creating result
     res, code = run_harness(args.port, args.baud, args.mac, args.timeout, args.log_dir, watchdog=args.watchdog)
     # Print single-line JSON result to stdout for CI parsing
