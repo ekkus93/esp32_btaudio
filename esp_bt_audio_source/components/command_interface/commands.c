@@ -504,23 +504,71 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
 // Read from UART and process one command line if available.
 cmd_status_t cmd_process(void)
 {
-    uint8_t buf[CMD_BUF_SIZE];
-    /* Read from the configured command UART. Using CMD_UART_NUM avoids
-     * calling into an uninstalled UART driver when the console is on a
-     * different port (e.g. UART0). */
+    /* Implement a small persistent line buffer so partial UART reads are
+     * accumulated across calls to cmd_process(). This also allows a single
+     * uart_read_bytes() to contain multiple newline-terminated commands. */
+    static char line_buf[CMD_BUF_SIZE];
+    static size_t line_len = 0;
+    uint8_t read_buf[CMD_BUF_SIZE];
+
     // Only attempt to read if the driver is installed for the command UART.
+    // For host/unit tests the mock UART is always available; skip the
+    // runtime driver-installed check in that configuration.
+#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
+    (void)CMD_UART_NUM;
+#else
     if (!uart_is_driver_installed(CMD_UART_NUM)) {
         return CMD_SUCCESS;
     }
-    int r = uart_read_bytes(CMD_UART_NUM, buf, CMD_BUF_SIZE-1, 0);
-    if (r <= 0) return CMD_SUCCESS;
-    buf[r] = '\0';
-    // Find line terminator
-    char* nl = (char*)memchr(buf, '\n', (size_t)r);
-    if (!nl) nl = (char*)memchr(buf, '\r', (size_t)r);
-    if (nl) *nl = '\0';
+#endif
 
-    cmd_context_t ctx;
-    if (cmd_parse((const char*)buf, &ctx) != CMD_SUCCESS) return CMD_ERROR_UNKNOWN;
-    return cmd_execute(&ctx);
+    int r = uart_read_bytes(CMD_UART_NUM, read_buf, sizeof(read_buf)-1, 0);
+    if (r <= 0) {
+        return CMD_SUCCESS;
+    }
+
+    // Append to persistent buffer (clip to available space)
+    size_t to_copy = (size_t)r;
+    if (line_len + to_copy >= sizeof(line_buf)) {
+        // Buffer overflow: reset to keep system responsive and log the event
+#ifdef ESP_PLATFORM
+        ESP_LOGW(TAG, "cmd_process: line buffer overflow, resetting buffer");
+#endif
+        line_len = 0;
+        to_copy = sizeof(line_buf) - 1;
+    }
+    memcpy(line_buf + line_len, read_buf, to_copy);
+    line_len += to_copy;
+    line_buf[line_len] = '\0';
+
+    // Process complete lines (terminated by '\n' or '\r') one at a time
+    char* start = line_buf;
+    while (true) {
+        char* nl = (char*)memchr(start, '\n', (size_t)(line_buf + line_len - start));
+        char* cr = (char*)memchr(start, '\r', (size_t)(line_buf + line_len - start));
+        char* term = nl ? nl : cr;
+        if (!term) break;
+
+        // Null-terminate the line and parse/execute
+        *term = '\0';
+        // Trim trailing spaces
+        char* end = term - 1; while (end >= start && isspace((unsigned char)*end)) { *end = '\0'; --end; }
+
+        cmd_context_t ctx;
+        if (cmd_parse(start, &ctx) == CMD_SUCCESS) {
+            cmd_execute(&ctx);
+        }
+
+        // Move to the next character after the terminator
+        start = term + 1;
+        while (start < line_buf + line_len && (*start == '\n' || *start == '\r')) ++start;
+    }
+
+    // Move any remaining bytes to the start of the buffer
+    size_t remaining = (size_t)(line_buf + line_len - start);
+    if (remaining > 0) memmove(line_buf, start, remaining);
+    line_len = remaining;
+    line_buf[line_len] = '\0';
+
+    return CMD_SUCCESS;
 }
