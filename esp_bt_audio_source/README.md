@@ -5,6 +5,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Contents (quick links)
 
 - [Features](#features)
+- [Project status — October 2025](#project-status--october-2025)
 - [Hardware Configuration](#hardware-configuration)
 - [Implementation Tasks](#implementation-tasks)
 - [Developer tools / Diagnostics](#developer-tools-diagnostics)
@@ -20,6 +21,14 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Serial Command Interface:** Accepts control commands over UART
 - **Multiple Device Support:** Can scan for and connect to various Bluetooth audio sinks
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
+
+<a id="project-status--october-2025"></a>
+## Project status — October 2025
+
+- Latest firmware commit `cb53afee` (2025-10-11) reorganizes host mocks under `test/host_test/mocks/include/` and checks in the device monitor capture `device_test_monitor.log`.
+- Host unit tests in `test/host_test` pass locally after the mock cleanup, covering pairing command flows, NVS persistence, and serial command parsing.
+- On-device Unity suite (`test_app`) was rebuilt and reflashed on 2025-10-11; the captured monitor log shows 11 pairing tests and 22 command tests looping without failures. The raw output lives at `device_test_monitor.log` alongside the test artifacts.
+- Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; the event timeline and allocator correlation are still to be documented (see [Remaining work](#remaining-work-short-list)).
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
@@ -52,6 +61,7 @@ I2S and UART: practical defaults and recommendations
 - [~] Add pairing management functionality (in-progress)
    - Host-side: command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests (CONFIRM_PIN / ENTER_PIN and `nvs_storage` tests).
    - On-device: end-to-end pairing verification (pair → reboot → persisted list verification) remains manual/pending. Recent on-device instrumentation and defensive fixes were applied to aid debugging (see "Recent changes" below).
+   - Host mocks and headers were deduplicated and centralized in `test/host_test/mocks/include/` so host and device builds share consistent interfaces.
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
   - [x] Add persistent settings storage in NVS
@@ -67,45 +77,46 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-09-30)
+Current test status (2025-10-11)
 --------------------------------
-- All unit tests are currently passing: host-based tests under `test/host_test` and on-device Unity tests in `test_app` are green. This validates the command handlers, NVS mocks, and the authoritative `bt_mock` component behaviors exercised by the test-suite.
+- Host-based tests under `test/host_test` remain green after the mock reorganization, validating command handlers, NVS persistence helpers, and Bluetooth GAP reply paths.
+- On-device Unity tests in `test_app` were rebuilt and reflashed on 2025-10-11. The captured monitor output (`device_test_monitor.log`) shows the full loop of 11 pairing tests and 22 command tests passing repeatedly without failures.
 
 Remaining work (short list)
 --------------------------
-- On-device end-to-end verification: run a few real-device scenarios to validate pairing persistence across reboot and interoperability with common phones/speakers.
-- Expand timing and fault-injection tests: add simulated connection timeouts, drops, and auto-reconnect scenarios in the mock harness.
-- CI automation: add jobs to run host tests on every PR and consider a hardware-backed runner for selected on-device Unity tests.
-- Documentation: add `test/host_test/README.md` with the quick-start commands already documented above.
-- Static analysis & coverage: enable linting (clang-format/clang-tidy) and produce test coverage for host tests to identify gaps.
+- On-device end-to-end verification: run a few real-device scenarios to validate pairing persistence across reboot and interoperability with common phones/speakers (**~2–3 days**).
+- Expand timing and fault-injection tests: add simulated connection timeouts, drops, and auto-reconnect scenarios in the mock harness (**~1–2 days**).
+- CI automation: add jobs to run host tests on every PR and consider a hardware-backed runner for selected on-device Unity tests (**~0.5–1 day** initially, hardware runner optional follow-up).
+- Documentation: add a short how-to for capturing and interpreting on-device serial logs for pairing analysis (host test quick-start already lives in `test/host_test/README.md`) (**~0.5 day**).
+- Static analysis & coverage: enable linting (clang-format/clang-tidy) and produce test coverage for host tests to identify gaps (**~1 day** for initial setup).
 
 Prioritized next steps (actionable)
 ----------------------------------
-1. On-device E2E pairing verification (High)
+1. On-device E2E pairing verification (High, **~2–3 days**)
    - Task: Run pairing scenarios with representative sinks (phone, speaker, car stereo).
    - Acceptance: pairing → reboot → verify paired list persists and device connects as expected.
 
-2. Finalize pairing confirmation & event streaming (High)
+2. Finalize pairing confirmation & event streaming (High, **~1–1.5 days**)
    - Task: Ensure `EVENT|PAIR|...` messages (PIN_REQUEST, CONFIRM, SUCCESS/FAILED) are reliably emitted and that `CONFIRM_PIN` / `ENTER_PIN` commands invoke the GAP reply APIs on-device.
    - Acceptance: Host-driven pairing flows complete successfully on hardware.
 
-3. Add/extend host unit tests (Medium)
+3. Add/extend host unit tests (Medium, **~1 day**)
    - Task: Add tests covering CONFIRM_PIN/ENTER_PIN flows, invalid-MAC cases, and NVS persistence edge cases.
    - Acceptance: New tests added to `test/host_test` and pass locally.
 
-4. Expand timing/fault-injection tests in mocks (Medium)
+4. Expand timing/fault-injection tests in mocks (Medium, **~1–2 days**)
    - Task: Simulate timeouts, connection drops, and auto-reconnect in `test/host_test/mocks/` and assert recovery logic.
    - Acceptance: Tests reproduce and validate reconnect logic and timeouts.
 
-5. Diagnostics & timeline analysis (Medium)
+5. Diagnostics & timeline analysis (Medium, **~1 day**)
    - Task: Parse `build/pairing_e2_logs/serial.log`, map runtime addresses to file:line using the built ELF, and correlate allocator frees with BTM events.
    - Acceptance: A short report describing root cause candidates and recommended fix (guard or ownership change).
 
-6. CI & static checks (Lower)
+6. CI & static checks (Lower, **~0.5–1 day**)
    - Task: Add a CI job to run host tests and a lint step (clang-format/clang-tidy). Optionally add coverage reporting for host tests.
    - Acceptance: CI runs host tests on PRs and flags formatting/lint issues.
 
-7. Documentation (Quick wins)
+7. Documentation (Quick wins, **~0.5 day**)
    - Task: Add `test/host_test/README.md` (done) and a short how-to for capturing and resolving on-device serial logs for pairing analysis.
    - Acceptance: New docs live in the repo and make it easy for contributors to run tests and collect logs.
 
@@ -115,6 +126,7 @@ Recent work (pairing & events):
 
 Recent changes (host-test and pairing work)
 - Host unit-test harness under `test/host_test` updated with additional mocks and tests to validate command handlers without device hardware.
+- Header and mock files for host tests were reorganized under `test/host_test/mocks/include/` so production and test builds share consistent interfaces.
 - Added minimal host-side mocks for Bluetooth GAP responses and NVS (`test/host_test/mocks/mock_gap.c`, `mocks/nvs_storage_mock.c`, `mocks/esp_bt.h`, `mocks/esp_err.h`) so `CONFIRM_PIN` and `ENTER_PIN` command handlers can be exercised by unit tests.
 - `components/command_interface/commands.c` has a small host-path branch that parses MAC and calls the GAP reply mocks so host tests can assert the expected behavior.
  - New `nvs_storage` host tests were added and expanded (capacity and invalid-MAC cases); all host `nvs_storage` tests pass locally (6 tests, 0 failures).
@@ -122,6 +134,7 @@ Recent changes (host-test and pairing work)
 Recent on-device pairing diagnostics and status
 
 - On-device E2E pairing runs have been executed and serial monitor output was persisted to `build/pairing_e2_logs/serial.log` for post-run analysis. This log contains allocator diagnostic dumps (the allocator prints `osi_mem_dbg_clean not-found` with a `recent-free-history` buffer), temporary BTM lifecycle traces and additional WARN/ERRORs inserted for timeline correlation.
+- Unity test monitor output from 2025-10-11 is checked into `device_test_monitor.log` to document the passing baseline while pairing diagnostics continue.
 - Minimal defensive fixes applied to aid stability and debug:
    - `BTM_SetPowerMode` now uses a zero-initialized local copy of the caller-provided `tBTM_PM_PWR_MD` structure before using it internally and before sending it to the power manager helper. This reduces reliance on caller memory lifetime.
    - `bta_dm_pm_sniff` contains an ACL-existence guard that skips requesting a power-mode change when no ACL is present; it logs the skip and returns a non-success status. This avoids invoking power-mode transitions during disconnect transient windows.

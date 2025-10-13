@@ -209,8 +209,15 @@ static void bt_app_rc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t
     }
 }
 
-/* Public API implementations */
-
+/* Public API implementations
+ *
+ * NOTE: The project contains an alternative implementation of the bt_* APIs
+ * (components/bt_manager). To avoid duplicate symbol definitions when that
+ * component is built, the public wrappers implemented here are intentionally
+ * disabled. The bt_manager component provides the concrete implementations
+ * expected by other components (command_interface, etc.).
+ */
+#if 0
 esp_err_t bt_init(void)
 {
     return bt_classic_init();
@@ -306,3 +313,4 @@ esp_err_t bt_disconnect(void)
     ESP_LOGI(TAG, "Disconnecting from device");
     return ESP_OK;
 }
+#endif

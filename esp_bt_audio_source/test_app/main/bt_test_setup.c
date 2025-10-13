@@ -27,12 +27,19 @@ void bt_mock_setup_devices(void)
 {
     ESP_LOGI(TAG, "Setting up mock devices");
     
-    // Add test audio device
+    // Add test audio device. Prefer component-level authoritative helper
+    // when available so other delegated calls (connect-by-name, scan)
+    // observe the same device list.
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_add_device(TEST_DEVICE_ADDR, TEST_DEVICE_NAME, BT_DEVICE_TYPE_AUDIO, false);
+    bt_mock_add_device("22:33:44:55:66:77", "Test_Phone", BT_DEVICE_TYPE_PHONE, false);
+    bt_mock_add_device("33:44:55:66:77:88", "Test_Computer", BT_DEVICE_TYPE_OTHER, false);
+#else
+    // Fallback to local test-app helper when component mock is not present
     bt_mock_add_test_device(TEST_DEVICE_ADDR, TEST_DEVICE_NAME, BT_DEVICE_TYPE_AUDIO);
-    
-    // Add some additional devices for testing
     bt_mock_add_test_device("22:33:44:55:66:77", "Test_Phone", BT_DEVICE_TYPE_PHONE);
     bt_mock_add_test_device("33:44:55:66:77:88", "Test_Computer", BT_DEVICE_TYPE_OTHER);
+#endif
 }
 
 void bt_mock_setup_paired_devices(void)

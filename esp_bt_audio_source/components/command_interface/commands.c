@@ -8,10 +8,18 @@
 #include "audio_processor.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
+#include "bt_manager.h"
 #ifdef ESP_PLATFORM
 #include "esp_gap_bt_api.h"
 #endif
 
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+
+// Provide a minimal UART abstraction for host/unit-test builds so the same
+// symbols are available across build targets. On-device builds include the
+// real driver header.
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
 #include "mock_uart.h"
 #else
@@ -22,13 +30,59 @@
 #include "esp_log.h"
 #include "driver/uart.h"
 #define TAG "CMD_IF"
+/* Prefer the configured console UART if available so we don't call into an
+ * uninstalled UART driver (which logs "uart driver error"). Fall back to
+ * UART_NUM_1 for platforms that don't provide CONFIG_ESP_CONSOLE_UART_NUM. */
+#ifdef CONFIG_ESP_CONSOLE_UART_NUM
+#define CMD_UART_NUM CONFIG_ESP_CONSOLE_UART_NUM
+#else
 #define CMD_UART_NUM UART_NUM_1
+#endif
 #define CMD_BUF_SIZE 256
+#else
+/* Host/unit tests should map CMD_UART_NUM to the mock UART port. The mock
+ * implementation defines UART_NUM_1 or provides compatible symbols. If the
+ * mock doesn't provide CMD_UART_NUM, default to UART_NUM_1 so host tests
+ * behave like the device default. */
+#ifndef CMD_UART_NUM
+#define CMD_UART_NUM UART_NUM_1
+#endif
 #endif
 
 // Minimal BT-success macro for compatibility
 #ifndef BT_SUCCESS
 #define BT_SUCCESS 0
+#endif
+
+// Compatibility mappings: older code used bt_manager_* names; map them
+// to the currently exported bt_* functions in `bt_manager.h` when
+// available. Provide a no-op fallback for set_name if the symbol is
+// missing in the current API.
+#ifdef ESP_PLATFORM
+#ifndef bt_manager_start_scan
+#define bt_manager_start_scan bt_start_scan
+#endif
+#ifndef bt_manager_connect
+#define bt_manager_connect bt_connect
+#endif
+#ifndef bt_connect_by_name
+/* bt_connect_by_name is expected from bt_manager; fall through if present */
+#endif
+#ifndef bt_manager_disconnect
+#define bt_manager_disconnect bt_disconnect
+#endif
+#ifndef bt_manager_start_audio
+#define bt_manager_start_audio bt_start_audio
+#endif
+#ifndef bt_manager_stop_audio
+#define bt_manager_stop_audio bt_stop_audio
+#endif
+#ifndef bt_manager_pair
+#define bt_manager_pair bt_pair
+#endif
+#ifndef bt_manager_set_name
+static inline void bt_manager_set_name(const char* name) { (void)name; }
+#endif
 #endif
 
 // Lightweight internal mock state used for deterministic host-mode pairing
@@ -268,7 +322,23 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     else if (strcasecmp(ctx->params[0], "MOCK_ADD") == 0) { if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) { cmd_send_response("ERR", "DEBUG", "MOCK_ADD_MISSING", NULL); } else { char payload[128]; strncpy(payload, ctx->params[1], sizeof(payload)-1); payload[sizeof(payload)-1] = '\0'; char* comma = strchr(payload, ','); if (!comma) { cmd_send_response("ERR", "DEBUG", "MOCK_ADD_INVALID", ctx->params[1]); } else { *comma = '\0'; const char* mac = payload; strncpy(s_cmd_mock_pairing_addr, mac, sizeof(s_cmd_mock_pairing_addr)-1); s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr)-1] = '\0'; cmd_send_response("OK", "DEBUG", "MOCK_ADD", ctx->params[1]); } } }
     else if (strcasecmp(ctx->params[0], "MOCK_PAIR") == 0) { if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) { cmd_send_response("ERR", "DEBUG", "MOCK_PAIR_MISSING", NULL); } else {
 #ifdef ESP_PLATFORM
-            s_cmd_mock_enabled = true; strncpy(s_cmd_mock_pairing_addr, ctx->params[1], sizeof(s_cmd_mock_pairing_addr)-1); s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr)-1] = '\0'; char pass[16] = "000000"; size_t maclen = strlen(s_cmd_mock_pairing_addr); if (maclen >= 2) { const char* tail = s_cmd_mock_pairing_addr + (maclen > 5 ? maclen - 5 : 0); snprintf(pass, sizeof(pass), "%s", tail); } strncpy(s_cmd_mock_passkey, pass, sizeof(s_cmd_mock_passkey)-1); s_cmd_mock_passkey[sizeof(s_cmd_mock_passkey)-1] = '\0'; char data[64]; snprintf(data, sizeof(data), "%s,%s", s_cmd_mock_pairing_addr, s_cmd_mock_passkey); cmd_send_event_pair("CONFIRM", data); cmd_send_response("OK", "DEBUG", "MOCK_PAIR_STARTED", ctx->params[1]);
+            s_cmd_mock_enabled = true;
+            strncpy(s_cmd_mock_pairing_addr, ctx->params[1], sizeof(s_cmd_mock_pairing_addr)-1);
+            s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr)-1] = '\0';
+            char pass[16] = "000000";
+            size_t maclen = strlen(s_cmd_mock_pairing_addr);
+            if (maclen >= 2) {
+                const char* tail = s_cmd_mock_pairing_addr + (maclen > 5 ? maclen - 5 : 0);
+                /* Copy at most sizeof(pass)-1 characters from tail to avoid overflow */
+                strncpy(pass, tail, sizeof(pass)-1);
+                pass[sizeof(pass)-1] = '\0';
+            }
+            strncpy(s_cmd_mock_passkey, pass, sizeof(s_cmd_mock_passkey)-1);
+            s_cmd_mock_passkey[sizeof(s_cmd_mock_passkey)-1] = '\0';
+            char data[64];
+            snprintf(data, sizeof(data), "%s,%s", s_cmd_mock_pairing_addr, s_cmd_mock_passkey);
+            cmd_send_event_pair("CONFIRM", data);
+            cmd_send_response("OK", "DEBUG", "MOCK_PAIR_STARTED", ctx->params[1]);
 #else
             cmd_send_response("OK", "DEBUG", "MOCK_PAIR_MOCKED", ctx->params[1]);
 #endif
@@ -332,10 +402,19 @@ cmd_status_t cmd_send_response(const char* status, const char* command, const ch
     const char* d = data ? data : "";
     int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n", status ? status : "", command ? command : "", result ? result : "", d);
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    uart_write_bytes(UART_NUM_1, buf, (size_t)len);
-#else
-    // On device, write to command UART (if available)
+    /* For host/unit tests the mock UART maps UART_NUM_1 to a local buffer.
+     * Use CMD_UART_NUM so tests can override which port is used. */
     uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
+#else
+    // On device, write to command UART (if available). If the UART driver
+    // hasn't been installed for the console UART (common for UART0 used
+    // as stdout), fall back to printf to avoid "uart driver error" logs.
+    if (uart_is_driver_installed(CMD_UART_NUM)) {
+        uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
+    } else {
+        // Console is available via stdio; print the structured response there.
+        printf("%s", buf);
+    }
 #endif
     return CMD_SUCCESS;
 }
@@ -426,7 +505,14 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
 cmd_status_t cmd_process(void)
 {
     uint8_t buf[CMD_BUF_SIZE];
-    int r = uart_read_bytes(UART_NUM_1, buf, CMD_BUF_SIZE-1, 0);
+    /* Read from the configured command UART. Using CMD_UART_NUM avoids
+     * calling into an uninstalled UART driver when the console is on a
+     * different port (e.g. UART0). */
+    // Only attempt to read if the driver is installed for the command UART.
+    if (!uart_is_driver_installed(CMD_UART_NUM)) {
+        return CMD_SUCCESS;
+    }
+    int r = uart_read_bytes(CMD_UART_NUM, buf, CMD_BUF_SIZE-1, 0);
     if (r <= 0) return CMD_SUCCESS;
     buf[r] = '\0';
     // Find line terminator

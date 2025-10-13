@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "commands.c"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES main
+    PRIV_REQUIRES main bt_manager
     PRIV_INCLUDE_DIRS
 )
 

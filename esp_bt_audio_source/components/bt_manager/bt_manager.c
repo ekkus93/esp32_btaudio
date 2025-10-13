@@ -38,10 +38,12 @@ static struct {
 };
 
 #ifdef ESP_PLATFORM
+#include "nvs_flash.h"
 // Callback declarations
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
-static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len);
+// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
+static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #include "command_interface.h"
 #include "nvs_storage.h"
 #endif
@@ -448,13 +450,25 @@ bt_status_t bt_pair(const char* mac) {
         return BT_ERROR_INVALID_PARAM;
     }
     
-    // Start pairing
+    // Start pairing. Some IDF versions don't expose esp_bt_gap_start_authentication;
+    // attempt a best-effort fallback that will trigger the system pairing flow.
+    // Prefer a direct authentication API when available, otherwise try initiating
+    // an A2DP connect which will usually start the pairing flow on the remote.
+#if 0
+    // Preferred API (unavailable in some IDF versions):
     if (esp_bt_gap_start_authentication(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start authentication with device: %s", mac);
         return BT_ERROR_INIT_FAILED;
     }
-    
     ESP_LOGI(TAG, "Started pairing with device: %s", mac);
+#else
+    ESP_LOGW(TAG, "esp_bt_gap_start_authentication unavailable on this IDF - attempting connect to start pairing");
+    if (esp_a2d_source_connect(bda) != ESP_OK) {
+        ESP_LOGE(TAG, "Fallback connect to initiate pairing failed for device: %s", mac);
+        return BT_ERROR_INIT_FAILED;
+    }
+    ESP_LOGI(TAG, "Attempted connect to start pairing with device: %s", mac);
+#endif
 #endif
     
     return BT_SUCCESS;
@@ -535,6 +549,50 @@ bt_status_t bt_set_pin(const char* pin) {
 #endif
     
     return BT_SUCCESS;
+}
+
+// C-compatible wrappers expected by other components (command_interface)
+// These provide a simple int-based return (0=success) while delegating to
+// the bt_manager-style APIs above.
+// Manager-prefixed C wrappers that forward to the bt_manager API. These are
+// used by other components after we update their forward declarations.
+int bt_manager_set_name(const char* name) {
+#ifdef ESP_PLATFORM
+    if (!bt_ctx.initialized) return -1;
+    esp_err_t err = esp_bt_gap_set_device_name(name);
+    return (err == ESP_OK) ? 0 : -1;
+#else
+    (void)name;
+    return 0;
+#endif
+}
+
+int bt_manager_pair(const char* mac) {
+    return (bt_pair(mac) == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_unpair(const char* mac) {
+    return (bt_unpair(mac) == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_start_scan(void) {
+    return (bt_start_scan() == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_connect(const char* mac) {
+    return (bt_connect(mac) == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_disconnect(void) {
+    return (bt_disconnect() == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_start_audio(void) {
+    return (bt_start_audio() == BT_SUCCESS) ? 0 : -1;
+}
+
+int bt_manager_stop_audio(void) {
+    return (bt_stop_audio() == BT_SUCCESS) ? 0 : -1;
 }
 
 #ifdef ESP_PLATFORM
@@ -623,11 +681,10 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
         case ESP_BT_GAP_AUTH_CMPL_EVT: {
             // Authentication complete (pairing result)
             char bda_str[18] = {0};
-            if (param->auth_cmpl.bda) {
-                sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                       param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
-                       param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
-            }
+            /* bda is an array member (not a pointer) - format directly */
+            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                   param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
+                   param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
                 cmd_send_event_pair("SUCCESS", bda_str);
@@ -703,18 +760,14 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
     }
 }
 
-// A2DP data callback to provide audio data
-static void bt_app_a2d_data_callback(const uint8_t *data, uint32_t len) {
-    // This callback is called when the A2DP stack needs more audio data to send
-    // Here you would read from the I2S input and return it
-    // For now, just use a simple sine wave pattern for testing
-    
-    if (len < 4 || data == NULL) {
-        return;
+// Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
+static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
+    if (len <= 0 || buf == NULL) {
+        return 0;
     }
-    
-    // In the actual implementation, this would read from the I2S audio input
-    // and copy to the A2DP buffer for transmission
+    // Provide silence by default to avoid sending garbage
+    memset(buf, 0, len);
+    return len;
 }
 #endif
 

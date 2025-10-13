@@ -51,10 +51,17 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install pytest pyserial
 
+      - name: Run linter (flake8)
+        run: |
+          python3 -m pip install flake8
+          echo "Running flake8 on tools and esp_bt_audio_source/tools"
+          python3 -m flake8 tools esp_bt_audio_source/tools || true
+
       - name: Run Python unit tests
         run: |
           echo "Running Python unit tests (tools/tests)..."
-          python3 -m pytest -q esp_bt_audio_source/tools/tests
+          # Run existing tests and the new normalize_line unit tests
+          python3 -m pytest -q esp_bt_audio_source/tools/tests tools/test_normalize_line.py
 
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
