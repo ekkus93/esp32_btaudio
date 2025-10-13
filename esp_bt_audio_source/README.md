@@ -210,6 +210,23 @@ This ESP32 accepts commands via UART using the text-based protocol described in 
 
 All commands use a simple text-based format ending with a newline character (`\n`). Responses follow the `<STATUS>|<COMMAND>|<RESULT>[|<DATA>]` format.
 
+### Commands still needing on-device implementation / hardening
+
+The majority of commands are implemented and exercised by host unit tests. However a few command flows still need additional on-device work (end-to-end testing, event-stream reliability or small API wiring) before we consider them "complete" on hardware:
+
+- PAIR — Status: partially implemented. Host-side pairing flows (mocked PIN/SSP handling) are covered by unit tests, but on-device end-to-end pairing (PIN/SSP request → host reply → successful persistent pair entry across reboot) needs manual verification and hardening.
+- CONFIRM_PIN / ENTER_PIN — Status: implemented for host tests and calls into GAP reply APIs on-device, but event-streaming (reliable `EVENT|PAIR|...` messages) and recovery from transient errors should be validated on hardware.
+- CONNECT_NAME — Status: implemented in the command parser but depends on the Bluetooth manager providing a `connect-by-name` helper. If `bt_connect_by_name()` is not available on a given `bt_manager` implementation this flow falls back to a mock on host; add or wire a name-based connect helper in `components/bt_manager` for on-device use.
+- SCAN / device-found streaming — Status: scanning APIs exist but the serial event stream for discovered devices and the `OK|SCAN|COMPLETE` termination need reliability testing on-device (throttling and noise mitigation may be needed under heavy Bluetooth traffic).
+- PAIRED / UNPAIR / UNPAIR_ALL — Status: commands exist and host tests validate NVS helpers; on-device persistence verification (pairing list persists across reboot and unpair edge cases) still requires full E2E testing and any required retry/rollback logic.
+
+Next steps to finish these flows on-device:
+
+1. Run on-device pairing scenarios (phone/speaker) and capture serial logs to verify the `EVENT|PAIR|...` sequence and persistence across reboots.
+2. Wire or implement `bt_connect_by_name()` in `components/bt_manager` (or add a name-lookup helper) so `CONNECT_NAME` works without host mocks.
+3. Harden event emission (rate-limit noisy events, ensure ordering) and add targeted host tests that mimic high-noise serial output so the command interface remains usable during heavy BT activity.
+
+
 ### Connection Commands
 
 | Command | Description | Parameters | Response | Example |

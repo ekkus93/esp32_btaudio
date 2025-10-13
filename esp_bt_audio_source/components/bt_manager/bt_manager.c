@@ -310,6 +310,13 @@ bt_status_t bt_connect_by_name(const char* name) {
         }
     }
     
+    // Not found in discovered list — try paired devices (persisted)
+    for (int i = 0; i < bt_ctx.paired_devices.count; i++) {
+        if (strcmp(bt_ctx.paired_devices.devices[i].name, name) == 0) {
+            return bt_connect(bt_ctx.paired_devices.devices[i].mac);
+        }
+    }
+    
     return BT_ERROR_CONNECT_FAILED;
 }
 
