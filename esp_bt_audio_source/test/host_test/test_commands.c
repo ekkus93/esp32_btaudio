@@ -3,6 +3,7 @@
 #include "unity.h"
 #include "command_interface.h"
 #include "mock_uart.h"
+#include "nvs_storage.h"
 // Access mock gap helpers
 extern void mock_gap_reset(void);
 extern const char* mock_gap_get_last_mac(void);
@@ -137,5 +138,121 @@ int main(void) {
     RUN_TEST(test_confirm_pin_command);
     RUN_TEST(test_enter_pin_command);
     
+    // Forward-declare tests implemented below
+    extern void test_mute_unmute_command(void);
+    extern void test_unpair_all_command(void);
+    extern void test_status_command(void);
+    extern void test_reset_command(void);
+
+    // New tests for mute/unmute and unpair_all
+    RUN_TEST(test_mute_unmute_command);
+    RUN_TEST(test_unpair_all_command);
+    
+    // New tests for PAIRED and SAMPLE_RATE
+    extern void test_paired_command(void);
+    extern void test_sample_rate_command(void);
+    RUN_TEST(test_paired_command);
+    RUN_TEST(test_sample_rate_command);
+    RUN_TEST(test_status_command);
+    RUN_TEST(test_reset_command);
+    
     return UNITY_END();
+}
+
+// Test mute and unmute flow
+void test_mute_unmute_command(void) {
+    mock_uart_reset_tx();
+    // Mute
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("MUTE", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
+
+    mock_uart_reset_tx();
+    // Unmute
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNMUTE", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "UNMUTE") != NULL);
+}
+
+// Test UNPAIR_ALL clears stored paired devices
+void test_unpair_all_command(void) {
+    // Seed mock NVS with paired devices
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("aa:bb:cc:11:22:33", "Speaker"));
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("11:22:33:44:55:66", "Phone"));
+
+    int before = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&before));
+    TEST_ASSERT_TRUE(before >= 2);
+
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR_ALL", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "UNPAIR_ALL") != NULL);
+
+    int after = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&after));
+    TEST_ASSERT_EQUAL(0, after);
+}
+
+// Test listing paired devices
+void test_paired_command(void) {
+    // Seed mock NVS
+    nvs_storage_clear_paired_devices();
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("aa:bb:cc:11:22:33", "Speaker"));
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("11:22:33:44:55:66", "Phone"));
+
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PAIRED", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "PAIRED") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "COUNT") != NULL);
+}
+
+// Test setting sample rate
+void test_sample_rate_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SAMPLE_RATE 48000", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "48000") != NULL || strstr(tx, "MOCK_APPLIED") != NULL);
+}
+
+// Test STATUS returns key fields
+void test_status_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STATUS", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "STATUS") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL || strstr(tx, "SAMPLE") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "PAIRED_COUNT") != NULL || strstr(tx, "COUNT") != NULL);
+}
+
+// Test RESET in host-mode returns a mock reboot response
+void test_reset_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("RESET", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "RESET") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MOCK_REBOOT") != NULL || strstr(tx, "REBOOTING") != NULL);
 }

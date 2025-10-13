@@ -334,10 +334,16 @@ cmd_status_t cmd_process(void) {
      * that talk to /dev/ttyUSB0 (monitor) can send commands during tests.
      */
     len = uart_read_bytes(CMD_UART_NUM, buf, sizeof(buf), 20 / portTICK_PERIOD_MS);
-    ESP_LOGI(TAG, "cmd_process: read %d bytes from CMD_UART (UART1)", len);
+    /* Only log non-zero or error reads to avoid flooding the console with
+     * repeated messages when there is simply no incoming data. */
+    if (len != 0) {
+        ESP_LOGI(TAG, "cmd_process: read %d bytes from CMD_UART (UART1)", len);
+    }
     if (len <= 0) {
         len = uart_read_bytes(UART_NUM_0, buf, sizeof(buf), 20 / portTICK_PERIOD_MS);
-        ESP_LOGI(TAG, "cmd_process: read %d bytes from USB console (UART0)", len);
+        if (len != 0) {
+            ESP_LOGI(TAG, "cmd_process: read %d bytes from USB console (UART0)", len);
+        }
     }
 #else
     /* Reuse the previously-declared 'len' variable instead of re-declaring it
@@ -664,20 +670,50 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
     // Example:
     switch (ctx->type) {
         case CMD_TYPE_STATUS: {
-            audio_status_t status;
+            // Compose a compact status summary including mute state, sample rate,
+            // paired device count and basic audio state so host scripts can
+            // quickly parse the device health.
+            audio_status_t status = {0};
+            int paired_count = 0;
+            // Default values
+            int mute_val = -1;
+            int sample_rate_val = 0;
+#ifdef ESP_PLATFORM
             if (audio_processor_get_status(&status) == ESP_OK) {
-                char data[128];
-                snprintf(data, sizeof(data), "init=%d,run=%d,vol=%d",
-                         status.initialized, status.running, status.volume);
-                cmd_send_response("OK", "STATUS", "CURRENT", data);
-            } else {
-                cmd_send_response("ERR", "STATUS", "NO_AUDIO", NULL);
+                mute_val = status.mute ? 1 : 0;
+                sample_rate_val = (int)status.sample_rate;
             }
+#else
+            if (audio_processor_get_status(&status) == ESP_OK) {
+                // Host-side audio_status_t does not expose mute/sample_rate
+                // directly in the test shim; use conservative defaults.
+                mute_val = 0;
+                sample_rate_val = 0;
+            }
+#endif
+            // Query paired count (ignore errors)
+            (void)nvs_storage_get_paired_count(&paired_count);
+            char data[256];
+            snprintf(data, sizeof(data), "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d",
+                     mute_val, sample_rate_val, paired_count,
+                     status.initialized, status.running, status.volume);
+            cmd_send_response("OK", "STATUS", "CURRENT", data);
         } break;
 
         case CMD_TYPE_VERSION:
             cmd_send_response("OK", "VERSION", "1.0.0", NULL);
             break;
+
+    case CMD_TYPE_RESET: {
+#ifdef ESP_PLATFORM
+        // Respond first then perform restart
+        cmd_send_response("OK", "RESET", "REBOOTING", NULL);
+        esp_restart();
+#else
+        // Host test: no-op reboot
+        cmd_send_response("OK", "RESET", "MOCK_REBOOT", NULL);
+#endif
+    } break;
 
         case CMD_TYPE_SCAN: {
 #ifdef ESP_PLATFORM
@@ -729,13 +765,10 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 cmd_send_response("ERR", "CONNECT_NAME", "FAILED", NULL);
             }
 #else
-            // Host test: forward to bt_manager helper which provides a
-            // bt_connect_by_name() test shim. Compare against 0 (success).
-            if (bt_connect_by_name(name_buf) == 0) {
-                cmd_send_response("OK", "CONNECT_NAME", "MOCK_INITIATED", name_buf);
-            } else {
-                cmd_send_response("ERR", "CONNECT_NAME", "MOCK_FAILED", name_buf);
-            }
+            // Host test: avoid linking to bt_manager in this test target; return a mock
+            // initiated response so host-mode tests remain self-contained.
+            (void)name_buf;
+            cmd_send_response("OK", "CONNECT_NAME", "MOCK_INITIATED", name_buf);
 #endif
         } break;
 
@@ -772,6 +805,32 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             }
 #else
             cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_MUTE: {
+#ifdef ESP_PLATFORM
+            if (audio_processor_set_mute(true) == ESP_OK) {
+                cmd_send_response("OK", "MUTE", "MUTED", NULL);
+            } else {
+                cmd_send_response("ERR", "MUTE", "FAILED", NULL);
+            }
+#else
+            // Host test: don't link audio_processor implementation here; just respond
+            cmd_send_response("OK", "MUTE", "MOCK_MUTED", NULL);
+#endif
+        } break;
+
+        case CMD_TYPE_UNMUTE: {
+#ifdef ESP_PLATFORM
+            if (audio_processor_set_mute(false) == ESP_OK) {
+                cmd_send_response("OK", "UNMUTE", "UNMUTED", NULL);
+            } else {
+                cmd_send_response("ERR", "UNMUTE", "FAILED", NULL);
+            }
+#else
+            // Host test: no-op and respond
+            cmd_send_response("OK", "UNMUTE", "MOCK_UNMUTED", NULL);
 #endif
         } break;
 
@@ -837,6 +896,70 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             }
 #else
             cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
+#endif
+        } break;
+
+        case CMD_TYPE_PAIRED: {
+            // Return a list/count of paired devices from NVS storage
+#ifdef ESP_PLATFORM
+            int count = 0;
+            if (nvs_storage_get_paired_count(&count) == ESP_OK) {
+                char data[64];
+                snprintf(data, sizeof(data), "%d", count);
+                cmd_send_response("OK", "PAIRED", "COUNT", data);
+                // Emit each paired device as an INFO event for machine parsing
+                for (int i = 0; i < count; ++i) {
+                    char mac[32]; char name[64];
+                    if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
+                        char buf[128];
+                        snprintf(buf, sizeof(buf), "%s,%s", mac, name);
+                        cmd_send_response("INFO", "PAIRED", "ITEM", buf);
+                    }
+                }
+            } else {
+                cmd_send_response("ERR", "PAIRED", "READ_FAILED", NULL);
+            }
+#else
+            // Host test: use mock NVS helpers
+            int count = 0;
+            if (nvs_storage_get_paired_count(&count) == ESP_OK) {
+                char data[64];
+                snprintf(data, sizeof(data), "%d", count);
+                cmd_send_response("OK", "PAIRED", "COUNT", data);
+                for (int i = 0; i < count; ++i) {
+                    char mac[32]; char name[64];
+                    if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
+                        char buf[128];
+                        snprintf(buf, sizeof(buf), "%s,%s", mac, name);
+                        cmd_send_response("INFO", "PAIRED", "ITEM", buf);
+                    }
+                }
+            } else {
+                cmd_send_response("ERR", "PAIRED", "READ_FAILED", NULL);
+            }
+#endif
+        } break;
+
+        case CMD_TYPE_SAMPLE_RATE: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "SAMPLE_RATE", "MISSING_PARAM", NULL);
+                break;
+            }
+            int rate = atoi(ctx->params[0]);
+            // Validate some common sample rates
+            if (rate != 8000 && rate != 16000 && rate != 22050 && rate != 32000 && rate != 44100 && rate != 48000 && rate != 96000) {
+                cmd_send_response("ERR", "SAMPLE_RATE", "INVALID_RATE", ctx->params[0]);
+                break;
+            }
+#ifdef ESP_PLATFORM
+            if (audio_processor_set_sample_rate((audio_sample_rate_t)rate) == ESP_OK) {
+                cmd_send_response("OK", "SAMPLE_RATE", "APPLIED", ctx->params[0]);
+            } else {
+                cmd_send_response("ERR", "SAMPLE_RATE", "FAILED", NULL);
+            }
+#else
+            // Host test: just accept and store in NVS mock if desired
+            cmd_send_response("OK", "SAMPLE_RATE", "MOCK_APPLIED", ctx->params[0]);
 #endif
         } break;
 
@@ -1070,6 +1193,21 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
             cmd_send_response("OK", "UNPAIR", "MOCK_REMOVED", ctx->params[0]);
 #endif
         } break;
+
+    case CMD_TYPE_UNPAIR_ALL: {
+#ifdef ESP_PLATFORM
+        // Use NVS helper to clear paired devices and notify
+        if (nvs_storage_clear_paired_devices() == ESP_OK) {
+        cmd_send_response("OK", "UNPAIR_ALL", "CLEARED", NULL);
+        } else {
+        cmd_send_response("ERR", "UNPAIR_ALL", "FAILED", NULL);
+        }
+#else
+        // Host mock supports clearing paired devices
+        nvs_storage_clear_paired_devices();
+        cmd_send_response("OK", "UNPAIR_ALL", "MOCK_CLEARED", NULL);
+#endif
+    } break;
 
         case CMD_TYPE_HELP: {
             // Emit a concise list of supported commands with syntax and brief descriptions
