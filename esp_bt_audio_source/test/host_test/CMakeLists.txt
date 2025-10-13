@@ -117,6 +117,15 @@ target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_confirm unity)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
+add_executable(test_connect_name test_connect_name.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    mocks/mock_gap.c
+    mocks/mock_uart.c)
+target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
+target_link_libraries(test_connect_name unity)
+add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
+
 add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
     ../../components/command_interface/commands.c
     mocks/mock_gap.c

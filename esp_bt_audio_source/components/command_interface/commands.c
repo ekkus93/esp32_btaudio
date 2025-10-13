@@ -45,14 +45,18 @@
 #endif
 
 // Forward declarations for small subset of BT helper APIs used by commands.c
-extern int bt_set_name(const char* name);
-extern int bt_pair(const char* mac);
-extern int bt_unpair(const char* mac);
-extern int bt_start_scan(void);
-extern int bt_connect(const char* mac);
-extern int bt_disconnect(void);
-extern int bt_start_audio(void);
-extern int bt_stop_audio(void);
+// Updated to use bt_manager_* wrappers implemented by the bt_manager
+// component so the command interface doesn't depend on internal symbol names.
+extern int bt_manager_set_name(const char* name);
+extern int bt_manager_pair(const char* mac);
+extern int bt_manager_unpair(const char* mac);
+extern int bt_manager_start_scan(void);
+extern int bt_manager_connect(const char* mac);
+extern int bt_manager_disconnect(void);
+extern int bt_manager_start_audio(void);
+extern int bt_manager_stop_audio(void);
+// Name-based connect helper (maps to bt_connect_by_name in bt_manager)
+extern int bt_connect_by_name(const char* name);
 
 // Internal lightweight mock-mode state used by the command interface to
 // simulate pairing events for host E2E tests without pulling in the
@@ -72,6 +76,9 @@ static char s_cmd_mock_passkey[16] = {0};
 #include "nvs_storage.h"
 // Include mock Bluetooth types for host tests (esp_bt_pin_code_t, etc.)
 #include "esp_bt.h"
+// Forward-declare name-based connect for host tests (bt_manager provides
+// bt_connect_by_name in the bt_manager test build)
+extern int bt_connect_by_name(const char* name);
 // Internal lightweight mock-mode state used by the command interface to
 // simulate pairing events for host E2E tests without pulling in the
 // full bt_mock component (keeps binary size smaller).
@@ -447,10 +454,12 @@ cmd_status_t cmd_process(void) {
         // Process command (simple test implementation)
         cmd_context_t ctx;
         if (cmd_parse((const char*)buf, &ctx) == CMD_SUCCESS) {
+            bool handled = false; // set true for inline-handled commands to avoid double-processing
             // Minimal inline handlers for a small set of commands used by
             // host E2E tests. We avoid calling cmd_execute() to prevent
             // pulling many BT symbols into this object (keeps binary size down).
             if (ctx.type == CMD_TYPE_DEBUG) {
+                handled = true;
                 if (ctx.param_count < 1) {
                     cmd_send_response("ERR", "DEBUG", "MISSING_PARAM", NULL);
                 } else if (strcasecmp(ctx.params[0], "MOCK_ON") == 0) {
@@ -518,6 +527,7 @@ cmd_status_t cmd_process(void) {
                     cmd_send_response("ERR", "DEBUG", "UNKNOWN_SUBCMD", ctx.params[0]);
                 }
             } else if (ctx.type == CMD_TYPE_CONFIRM_PIN) {
+                handled = true;
                 // Expect params: <MAC> [ACCEPT|REJECT]
                 // Support shorthand from host tests: CMD|CONFIRM_PIN|1 (accept)
                 if (ctx.param_count < 1) {
@@ -573,6 +583,7 @@ cmd_status_t cmd_process(void) {
                     }
                 }
             } else if (ctx.type == CMD_TYPE_ENTER_PIN) {
+                handled = true;
                 // Expect params: <MAC> <PIN>
                 if (ctx.param_count < 1) {
                     cmd_send_response("ERR", "ENTER_PIN", "MISSING_PARAM", NULL);
@@ -629,6 +640,13 @@ cmd_status_t cmd_process(void) {
                     }
                 }
             }
+            // If we didn't handle the command inline above, pass to the
+            // general cmd_execute() which implements the rest of the
+            // command handlers (HELP, CONNECT, START, etc.). This keeps
+            // the inline path small but ensures HELP is executed.
+            if (!handled) {
+                cmd_execute(&ctx);
+            }
         }
     }
     
@@ -663,7 +681,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 
         case CMD_TYPE_SCAN: {
 #ifdef ESP_PLATFORM
-            if (bt_start_scan() == BT_SUCCESS) {
+            if (bt_manager_start_scan() == BT_SUCCESS) {
                 cmd_send_response("OK", "SCAN", "STARTED", NULL);
             } else {
                 cmd_send_response("ERR", "SCAN", "FAILED", NULL);
@@ -679,7 +697,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 break;
             }
 #ifdef ESP_PLATFORM
-            if (bt_connect(ctx->params[0]) == BT_SUCCESS) {
+            if (bt_manager_connect(ctx->params[0]) == BT_SUCCESS) {
                 cmd_send_response("OK", "CONNECT", "INITIATED", NULL);
             } else {
                 cmd_send_response("ERR", "CONNECT", "FAILED", NULL);
@@ -690,9 +708,40 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 #endif
         } break;
 
+        case CMD_TYPE_CONNECT_NAME: {
+            if (ctx->param_count < 1) {
+                cmd_send_response("ERR", "CONNECT_NAME", "MISSING_PARAM", NULL);
+                break;
+            }
+            // Expect a device name which may include spaces; params[0] holds the
+            // first token. If the name contains spaces the parser places the
+            // remainder into subsequent params - join them here.
+            char name_buf[64] = {0};
+            strncpy(name_buf, ctx->params[0], sizeof(name_buf)-1);
+            for (int i = 1; i < ctx->param_count; ++i) {
+                strncat(name_buf, " ", sizeof(name_buf) - strlen(name_buf) - 1);
+                strncat(name_buf, ctx->params[i], sizeof(name_buf) - strlen(name_buf) - 1);
+            }
+#ifdef ESP_PLATFORM
+            if (bt_connect_by_name(name_buf) == BT_SUCCESS) {
+                cmd_send_response("OK", "CONNECT_NAME", "INITIATED", NULL);
+            } else {
+                cmd_send_response("ERR", "CONNECT_NAME", "FAILED", NULL);
+            }
+#else
+            // Host test: forward to bt_manager helper which provides a
+            // bt_connect_by_name() test shim. Compare against 0 (success).
+            if (bt_connect_by_name(name_buf) == 0) {
+                cmd_send_response("OK", "CONNECT_NAME", "MOCK_INITIATED", name_buf);
+            } else {
+                cmd_send_response("ERR", "CONNECT_NAME", "MOCK_FAILED", name_buf);
+            }
+#endif
+        } break;
+
         case CMD_TYPE_DISCONNECT: {
 #ifdef ESP_PLATFORM
-            if (bt_disconnect() == BT_SUCCESS) {
+            if (bt_manager_disconnect() == BT_SUCCESS) {
                 cmd_send_response("OK", "DISCONNECT", "INITIATED", NULL);
             } else {
                 cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
@@ -704,7 +753,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 
         case CMD_TYPE_START: {
 #ifdef ESP_PLATFORM
-            if (bt_start_audio() == BT_SUCCESS) {
+            if (bt_manager_start_audio() == BT_SUCCESS) {
                 cmd_send_response("OK", "START", "AUDIO_STARTED", NULL);
             } else {
                 cmd_send_response("ERR", "START", "FAILED", NULL);
@@ -716,7 +765,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 
         case CMD_TYPE_STOP: {
 #ifdef ESP_PLATFORM
-            if (bt_stop_audio() == BT_SUCCESS) {
+            if (bt_manager_stop_audio() == BT_SUCCESS) {
                 cmd_send_response("OK", "STOP", "AUDIO_STOPPED", NULL);
             } else {
                 cmd_send_response("ERR", "STOP", "FAILED", NULL);
@@ -781,7 +830,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 break;
             }
 #ifdef ESP_PLATFORM
-            if (bt_pair(ctx->params[0]) == BT_SUCCESS) {
+            if (bt_manager_pair(ctx->params[0]) == BT_SUCCESS) {
                 cmd_send_response("OK", "PAIR", "INITIATED", NULL);
             } else {
                 cmd_send_response("ERR", "PAIR", "FAILED", NULL);
@@ -906,7 +955,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
 #ifdef ESP_PLATFORM
             if (nvs_storage_set_device_name(ctx->params[0]) == ESP_OK) {
                 // Try to set the name in bt_manager if provided
-                bt_set_name(ctx->params[0]);
+                bt_manager_set_name(ctx->params[0]);
                 cmd_send_response("OK", "SET_NAME", "SUCCESS", ctx->params[0]);
             } else {
                 cmd_send_response("ERR", "SET_NAME", "FAILED", NULL);
@@ -1012,7 +1061,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx) {
                 break;
             }
 #ifdef ESP_PLATFORM
-            if (bt_unpair(ctx->params[0]) == BT_SUCCESS) {
+            if (bt_manager_unpair(ctx->params[0]) == BT_SUCCESS) {
                 cmd_send_response("OK", "UNPAIR", "REMOVED", NULL);
             } else {
                 cmd_send_response("ERR", "UNPAIR", "FAILED", NULL);
