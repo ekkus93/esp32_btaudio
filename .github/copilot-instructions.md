@@ -6,6 +6,10 @@
 - Project layout: `main/`, optional `components/<name>/`, top‑level `CMakeLists.txt`, `sdkconfig` and/or `sdkconfig.defaults`. **Respect existing structure.**
 - Targets: match repo (e.g., `esp32`, `esp32s3`, `esp32c3`). **Never change target** silently.
 - Language level: C99 by default. Prefer `static` internal linkage; use `const`/`volatile` appropriately.
+- To initialize ESP-IDF environment, run:
+  ```bash
+  . $HOME/esp/esp-idf/export.sh  
+  ```
 
 > If another `.github/copilot-instructions.md` exists, **merge** with these rules rather than replacing. Prefer repo‑specifics when in conflict.
 
@@ -163,6 +167,18 @@ I recommend [A/B/C] because […]. Please confirm.
 6) **Safety & integrity.** Validate parameters, buffer lengths, and concurrency; never block in ISRs.
 7) **Change‑proposal protocol:** output *Problem*, *Root cause*, *Minimal fix (≤10 lines)*, *Impact*, *Alternatives* before sweeping edits.
 8) **If uncertain… ask.** Prefer a question or minimal diff over broad speculative changes.
+
+---
+
+## Direct questions (MANDATORY)
+- If I ask you a direct question, always answer it directly and completely.
+
+---
+
+## Unit tests
+- When adding new features, include unit tests where feasible.
+- The main purpose of unit tests is to test production code logic in isolation, not to test the mocks themselves.
+- Unit tests that only test the mocks are not useful and should be avoided. If you create unit tests like this, you are just mocking me. If I catch you doing this, I will be very angry at you.
 
 ---
 

@@ -50,9 +50,8 @@
 #endif
 
 // Minimal BT-success macro for compatibility
-#ifndef BT_SUCCESS
-#define BT_SUCCESS 0
-#endif
+// Use esp_err_t / ESP_OK for result semantics instead of legacy BT_SUCCESS macro
+#include "esp_err.h"
 
 // Compatibility mappings: older code used bt_manager_* names; map them
 // to the currently exported bt_* functions in `bt_manager.h` when
@@ -136,7 +135,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     case CMD_TYPE_SCAN:
 #ifdef ESP_PLATFORM
-    if (bt_manager_start_scan() == BT_SUCCESS)
+    if (bt_manager_start_scan() == ESP_OK)
         cmd_send_response("OK", "SCAN", "STARTED", NULL);
     else
         cmd_send_response("ERR", "SCAN", "FAILED", NULL);
@@ -148,7 +147,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     case CMD_TYPE_CONNECT:
     if (ctx->param_count < 1) { cmd_send_response("ERR", "CONNECT", "MISSING_PARAM", NULL); break; }
 #ifdef ESP_PLATFORM
-    if (bt_manager_connect(ctx->params[0]) == BT_SUCCESS) cmd_send_response("OK", "CONNECT", "INITIATED", NULL);
+    if (bt_manager_connect(ctx->params[0]) == ESP_OK) cmd_send_response("OK", "CONNECT", "INITIATED", NULL);
     else cmd_send_response("ERR", "CONNECT", "FAILED", NULL);
 #else
     cmd_send_response("OK", "CONNECT", "MOCK_CONNECTED", ctx->params[0]);
@@ -161,7 +160,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     strncpy(name_buf, ctx->params[0], sizeof(name_buf)-1);
     for (int i = 1; i < ctx->param_count; ++i) { strncat(name_buf, " ", sizeof(name_buf)-strlen(name_buf)-1); strncat(name_buf, ctx->params[i], sizeof(name_buf)-strlen(name_buf)-1); }
 #ifdef ESP_PLATFORM
-    if (bt_connect_by_name(name_buf) == BT_SUCCESS) cmd_send_response("OK", "CONNECT_NAME", "INITIATED", NULL);
+    if (bt_connect_by_name(name_buf) == ESP_OK) cmd_send_response("OK", "CONNECT_NAME", "INITIATED", NULL);
     else cmd_send_response("ERR", "CONNECT_NAME", "FAILED", NULL);
 #else
     cmd_send_response("OK", "CONNECT_NAME", "MOCK_INITIATED", name_buf);
@@ -170,7 +169,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     case CMD_TYPE_DISCONNECT:
 #ifdef ESP_PLATFORM
-    if (bt_manager_disconnect() == BT_SUCCESS) cmd_send_response("OK", "DISCONNECT", "INITIATED", NULL);
+    if (bt_manager_disconnect() == ESP_OK) cmd_send_response("OK", "DISCONNECT", "INITIATED", NULL);
     else cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
 #else
     cmd_send_response("OK", "DISCONNECT", "MOCK_DISCONNECTED", NULL);
@@ -179,7 +178,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     case CMD_TYPE_START:
 #ifdef ESP_PLATFORM
-    if (bt_manager_start_audio() == BT_SUCCESS) cmd_send_response("OK", "START", "AUDIO_STARTED", NULL);
+    if (bt_manager_start_audio() == ESP_OK) cmd_send_response("OK", "START", "AUDIO_STARTED", NULL);
     else cmd_send_response("ERR", "START", "FAILED", NULL);
 #else
     cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
@@ -188,7 +187,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     case CMD_TYPE_STOP:
 #ifdef ESP_PLATFORM
-    if (bt_manager_stop_audio() == BT_SUCCESS) cmd_send_response("OK", "STOP", "AUDIO_STOPPED", NULL);
+    if (bt_manager_stop_audio() == ESP_OK) cmd_send_response("OK", "STOP", "AUDIO_STOPPED", NULL);
     else cmd_send_response("ERR", "STOP", "FAILED", NULL);
 #else
     cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
@@ -238,7 +237,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     case CMD_TYPE_PAIR:
     if (ctx->param_count < 1) { cmd_send_response("ERR", "PAIR", "MISSING_PARAM", NULL); break; }
 #ifdef ESP_PLATFORM
-    if (bt_manager_pair(ctx->params[0]) == BT_SUCCESS) cmd_send_response("OK", "PAIR", "INITIATED", NULL); else cmd_send_response("ERR", "PAIR", "FAILED", NULL);
+    if (bt_manager_pair(ctx->params[0]) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED", NULL); else cmd_send_response("ERR", "PAIR", "FAILED", NULL);
 #else
     cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
 #endif

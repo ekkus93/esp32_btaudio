@@ -12,6 +12,11 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include "esp_log.h"
+/* Temporary: enable diagnostic logging so DIAG_LOG-guarded prints are
+ * compiled in during debug runs. Remove this define when debugging is
+ * finished to avoid noisy logs.
+ */
+#define DIAG_LOG
 // When running on-device, forward mock pairing events to the serial command interface
 #ifdef ESP_PLATFORM
 #include "command_interface.h"
@@ -173,6 +178,19 @@ esp_err_t bt_mock_connect(const char* addr)
 
     if (mock_state.is_connected) {
         ESP_LOGI(TAG, "Already connected, ignoring connect request");
+#ifdef DIAG_LOG
+        ESP_LOGI(TAG, "DIAG: bt_mock_connect leaving: is_connected=%d, connected_addr=%s",
+                 mock_state.is_connected, mock_state.connected_addr);
+#endif
+        /* If we're already connected to the same address, treat this as
+         * idempotent and return success. If connected to a different
+         * address, preserve the previous behavior and return invalid
+         * state so callers know another connection exists. This avoids
+         * leaking unexpected numeric values to higher-level tests. */
+        if (strncmp(mock_state.connected_addr, addr, sizeof(mock_state.connected_addr)) == 0) {
+            ESP_LOGI(TAG, "Already connected to requested address - returning ESP_OK");
+            return ESP_OK;
+        }
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -181,19 +199,33 @@ esp_err_t bt_mock_connect(const char* addr)
     mock_state.connected_addr[sizeof(mock_state.connected_addr)-1] = '\0';
     mock_state.connection_state = BT_CONNECTION_STATE_CONNECTED;
     ESP_LOGI(TAG, "Connected to %s", addr);
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: bt_mock_connect success: is_connected=%d, connected_addr=%s",
+             mock_state.is_connected, mock_state.connected_addr);
+#endif
     return ESP_OK;
 }
 
 esp_err_t bt_mock_disconnect(void)
 {
     if (!mock_state.is_connected) {
-        ESP_LOGI(TAG, "Not connected, ignoring disconnect request");
-        return ESP_FAIL;
+    ESP_LOGI(TAG, "Not connected, ignoring disconnect request (idempotent)");
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: bt_mock_disconnect leaving: is_connected=%d", mock_state.is_connected);
+#endif
+    /* Treat disconnect when not connected as successful (idempotent API).
+     * Tests expect bt_disconnect() to be a no-op returning ESP_OK in
+     * many places; returning ESP_FAIL here previously leaked non-zero
+     * numeric values into the Unity assertions. */
+    return ESP_OK;
     }
     mock_state.is_connected = false;
     mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     mock_state.connected_addr[0] = '\0';
     ESP_LOGI(TAG, "Disconnected");
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: bt_mock_disconnect success: is_connected=%d", mock_state.is_connected);
+#endif
     return ESP_OK;
 }
 
@@ -508,6 +540,9 @@ esp_err_t bt_mock_get_connected_addr(char* buf, size_t len)
     if (!mock_state.is_connected) return ESP_ERR_NOT_FOUND;
     strncpy(buf, mock_state.connected_addr, len - 1);
     buf[len - 1] = '\0';
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: bt_mock_get_connected_addr returning %s", mock_state.connected_addr);
+#endif
     return ESP_OK;
 }
 

@@ -502,6 +502,126 @@ Capturing logs
 idf.py -p PORT flash monitor |& tee esp32_unity_test.log
 ```
 
+Locked-down reproducible runner (recommended)
+---------------------------------------------
+
+Before you run the runner, ensure the ESP‑IDF environment is active in your shell so `idf.py` and the toolchain tools are on `PATH`.
+
+Quick pre-check and activation (example):
+
+```bash
+# verify idf.py is visible
+which idf.py || echo "idf.py not found"
+
+# if not found, source your ESP-IDF export (adjust path as needed)
+. $HOME/esp/esp-idf/export.sh
+
+# verify again
+which idf.py || (echo "ERROR: idf.py still not found; fix your ESP-IDF export" && exit 1)
+```
+
+We provide `tools/run_unity.py` to make flashing, monitoring, and extracting Unity test results reproducible and scriptable.
+
+What it does:
+- Runs `idf.py -p <PORT> flash monitor` in the project you point it at.
+- Saves the full monitor output to `build/one_run_unity.log`.
+- Watches the serial output for Unity summary markers and exits with a status code:
+   - 0 = tests passed
+   - 1 = tests failed
+   - 2 = no Unity summary found (timeout)
+   - 3 = error/interrupt
+
+📌 **Important:** Unity lives in the `test_app/` project. If you run the helper from the production app root, it will happily flash `esp_bt_audio_source` and you will *not* see any Unity output. Always point the runner at `test_app/` (either by changing directories or using `--project-root`).
+
+Canonical sequence:
+
+```bash
+# 1. Build the Unity firmware once (incremental rebuilds are cheap)
+cd esp_bt_audio_source/test_app
+idf.py build
+
+# 2. Flash + monitor using the locked-down runner
+python3 ../tools/run_unity.py --port /dev/ttyUSB0 --timeout 600
+```
+
+If you prefer to stay at the repository root, pass the test app directory explicitly:
+
+```bash
+cd esp_bt_audio_source
+python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout 600
+```
+
+The script writes the canonical serial capture to `build/one_run_unity.log` inside the selected project. In CI, run the script and fail the job when the exit code is non-zero; upload `build/one_run_unity.log` as an artifact for triage.
+
+Run & debug on-device Unity tests
+-----------------------------------------------------
+Use the exact sequence below to run Unity tests reliably and capture the canonical log. This avoids interactive monitor confusion and ensures instrumentation (for example `DIAG:` lines) is compiled into the flashed image.
+
+1) Build (recommended: clean when iterating on instrumentation)
+```bash
+source $HOME/esp/esp-idf/export.sh
+cd test_app
+idf.py fullclean   # optional but useful when changing instrumented files
+idf.py build
+```
+
+2) Flash + capture using the project's locked-down runner (preferred)
+```bash
+# from repository root
+source $HOME/esp/esp-idf/export.sh
+python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout 600
+```
+The runner flashes the image, captures serial to `test_app/build/one_run_unity.log`, watches for the Unity summary, and exits automatically (exit codes: 0=pass, 1=fail, 2=timeout, 3=error/interrupt).
+
+3) Manual flash + monitor (fallback)
+```bash
+# from test_app/
+source $HOME/esp/esp-idf/export.sh
+idf.py -p /dev/ttyUSB0 flash
+idf.py -p /dev/ttyUSB0 monitor --monitor-baud 115200 | tee build/one_run_unity.log
+```
+To avoid manual Ctrl-C in automation, wrap `monitor` with `timeout`:
+```bash
+timeout 600s idf.py -p /dev/ttyUSB0 monitor --monitor-baud 115200 | tee build/one_run_unity.log
+```
+
+Quick checks after a run
+- Search for Unity summary markers:
+```bash
+grep -n "--- SUMMARY ---\|Tests:\|FAIL" test_app/build/one_run_unity.log || true
+```
+- Search for instrumentation (example `DIAG:`):
+```bash
+grep -n "DIAG:" test_app/build/one_run_unity.log || true
+```
+
+Common pitfalls & tips
+- Wrong project: running the runner from the production app root will flash the wrong image and you won't see Unity output. Always point `--project-root` at `test_app` (or `cd test_app` first).
+- Stale builds: if your instrumentation doesn't appear in the serial log, run `idf.py fullclean` before `idf.py build` to force recompilation of edited files.
+- Serial port: verify the correct device (e.g., `/dev/ttyUSB0` vs `/dev/ttyACM0`) using `dmesg` or `ls /dev/ttyUSB*`.
+- Monitor behavior: `idf.py monitor` is interactive; prefer the runner or `timeout` for unattended runs.
+
+
+Manual fallback (if you prefer raw commands)
+-----------------------------------------
+
+If you want to run the steps manually, here's the canonical sequence:
+
+```bash
+# build the test_app
+cd test_app
+idf.py build
+# flash and capture monitor to the canonical file
+idf.py -p /dev/ttyUSB0 flash monitor |& tee ../build/one_run_unity.log
+```
+
+Then search the canonical log for Unity summary markers:
+
+```bash
+grep -n "--- SUMMARY ---\|Tests:\|FAILED\|OK" -i build/one_run_unity.log || true
+```
+
+
 CI and automated test runners
 
 - For CI runners that support serial access, flash the firmware and read the serial output capturing the Unity summary. Some CI setups use a hardware test harness (lab runner) that can power-cycle the device and collect logs automatically.

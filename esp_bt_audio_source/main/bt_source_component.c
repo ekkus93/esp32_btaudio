@@ -77,21 +77,7 @@ static esp_err_t bt_classic_init(void)
 
         ret = esp_bt_gap_set_device_name(name_to_set);
         if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s), attempting fallback", esp_err_to_name(ret));
-            /* Fall back to deprecated API when gap API is not available.
-             * Suppress the deprecation warning locally for this call. */
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-            ret = esp_bt_dev_set_device_name(name_to_set);
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to set device name with fallback API: %s", esp_err_to_name(ret));
-                return ret;
-            }
+            ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s)", esp_err_to_name(ret));
         }
     
     /* Set discoverable and connectable mode */

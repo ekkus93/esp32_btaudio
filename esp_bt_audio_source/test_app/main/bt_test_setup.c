@@ -10,6 +10,13 @@ void bt_mock_setup_common(void)
 {
     ESP_LOGI(TAG, "Setting up common BT test environment");
     
+    /* Reset the stub-side state as well so repeated tests start from a clean
+     * slate even if previous runs aborted before disconnecting or stopping
+     * streaming. This keeps the local stub view in sync with the component
+     * mock we reset below.
+     */
+    bt_reset_for_test();
+
     // Make sure BT is initialized
     esp_err_t ret = bt_init();
     if (ret != ESP_OK) {
@@ -66,5 +73,13 @@ void bt_mock_setup_paired_devices(void)
 void setup_mock_devices(void)
 {
     ESP_LOGI(TAG, "setup_mock_devices shim invoked");
+
+    /* Ensure both the stub-level state and the component mock are cleared so
+     * connection attempts in individual tests are not polluted by earlier
+     * runs that might have left the system connected.
+     */
+    bt_reset_for_test();
+    bt_mock_reset();
+
     bt_mock_setup_devices();
 }

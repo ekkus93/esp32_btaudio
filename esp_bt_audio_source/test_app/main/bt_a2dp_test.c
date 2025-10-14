@@ -202,6 +202,7 @@ void test_bluetooth_connection(void) {
     
     // Connect to device
     esp_err_t ret = bt_connect_device(TEST_DEVICE_ADDR);
+    ESP_LOGI(TAG, "DIAG_TEST: bt_connect_device(%s) returned %d (0x%08x)", TEST_DEVICE_ADDR, (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Check connection status
@@ -209,6 +210,7 @@ void test_bluetooth_connection(void) {
     
     // Disconnect
     ret = bt_disconnect();
+    ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_FALSE(bt_is_connected());
     
@@ -225,6 +227,7 @@ void test_connect_by_name(void) {
     
     // Connect by name
     esp_err_t ret = bt_connect_device_by_name(TEST_DEVICE_NAME);
+    ESP_LOGI(TAG, "DIAG_TEST: bt_connect_device_by_name(%s) returned %d (0x%08x)", TEST_DEVICE_NAME, (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Check connection status
@@ -232,6 +235,7 @@ void test_connect_by_name(void) {
     
     // Disconnect
     ret = bt_disconnect();
+    ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
@@ -274,6 +278,7 @@ void test_connection_status_info(void) {
     
     // Connect to device
     esp_err_t ret = bt_connect_device(TEST_DEVICE_ADDR);
+    ESP_LOGI(TAG, "DIAG_TEST: bt_connect_device(%s) returned %d (0x%08x)", TEST_DEVICE_ADDR, (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Check connection status
@@ -289,6 +294,7 @@ void test_connection_status_info(void) {
     
     // Disconnect
     ret = bt_disconnect();
+    ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
@@ -311,6 +317,7 @@ void test_connect_to_a2dp_sink(void) {
     
     // Connect to audio device
     esp_err_t ret = bt_connect_device(TEST_DEVICE_ADDR);
+    ESP_LOGI(TAG, "DIAG_TEST: bt_connect_device(%s) returned %d (0x%08x)", TEST_DEVICE_ADDR, (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Check A2DP connection status
@@ -321,6 +328,7 @@ void test_connect_to_a2dp_sink(void) {
     
     // Disconnect
     ret = bt_disconnect();
+    ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
@@ -334,6 +342,7 @@ void test_a2dp_streaming(void) {
     
     // Connect to audio device
     esp_err_t ret = bt_connect_device(TEST_DEVICE_ADDR);
+    ESP_LOGI(TAG, "DIAG_TEST: bt_connect_device(%s) returned %d (0x%08x)", TEST_DEVICE_ADDR, (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Start audio streaming

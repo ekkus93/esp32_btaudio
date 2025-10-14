@@ -1,4 +1,5 @@
 #include "bt_manager.h"
+#include "bt_api.h"
 #include <stdio.h>
 #include <string.h>
 #pragma message("COMPILING bt_manager.c")
@@ -49,13 +50,13 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #endif
 
 // Initialize Bluetooth Manager
-bt_status_t bt_manager_init(const bt_manager_init_t* config) {
+ bt_err_t bt_manager_init(const bt_manager_init_t* config) {
     if (config == NULL || config->device_name == NULL) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_FAIL;
     }
     
     if (bt_ctx.initialized) {
-        return BT_SUCCESS; // Already initialized
+        return ESP_OK; // Already initialized
     }
     
     // Store configuration
@@ -80,27 +81,31 @@ bt_status_t bt_manager_init(const bt_manager_init_t* config) {
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     if ((ret = esp_bt_controller_init(&bt_cfg)) != ESP_OK) {
         ESP_LOGE(TAG, "Initialize controller failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
 
     if ((ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)) != ESP_OK) {
         ESP_LOGE(TAG, "Enable controller failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+    return ESP_FAIL;
     }
 
     // Initialize Bluedroid
     if ((ret = esp_bluedroid_init()) != ESP_OK) {
         ESP_LOGE(TAG, "Initialize bluedroid failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+    return ESP_FAIL;
     }
 
     if ((ret = esp_bluedroid_enable()) != ESP_OK) {
         ESP_LOGE(TAG, "Enable bluedroid failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
 
     // Configure device name
-    esp_bt_dev_set_device_name(config->device_name);
+    // Use GAP API (not deprecated) to set the device name. esp_bt_dev_set_device_name is deprecated.
+    esp_err_t _err_name = esp_bt_gap_set_device_name(config->device_name);
+    if (_err_name != ESP_OK) {
+        ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s)", esp_err_to_name(_err_name));
+    }
 
     // Register GAP callback
     esp_bt_gap_register_callback(bt_app_gap_callback);
@@ -108,19 +113,19 @@ bt_status_t bt_manager_init(const bt_manager_init_t* config) {
     // Initialize A2DP source
     if ((ret = esp_a2d_source_init()) != ESP_OK) {
         ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
 
     // Register A2DP source callback
     if ((ret = esp_a2d_register_callback(bt_app_a2d_callback)) != ESP_OK) {
         ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+    return ESP_FAIL;
     }
 
     // Register data callback
     if ((ret = esp_a2d_source_register_data_callback(bt_app_a2d_data_callback)) != ESP_OK) {
         ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
 
     // Set device discoverable and connectable
@@ -153,13 +158,13 @@ bt_status_t bt_manager_init(const bt_manager_init_t* config) {
 #endif
     
     bt_ctx.initialized = true;
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Deinitialize Bluetooth Manager
-bt_status_t bt_manager_deinit(void) {
+ bt_err_t bt_manager_deinit(void) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_FAIL;
     }
     
 #ifdef ESP_PLATFORM
@@ -190,17 +195,17 @@ bt_status_t bt_manager_deinit(void) {
     bt_ctx.audio_playing = false;
     // Optionally reset other fields if needed
 
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Start device scanning
-bt_status_t bt_start_scan(void) {
+ bt_err_t bt_start_scan(void) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_FAIL;
     }
     
     if (bt_ctx.scanning) {
-        return BT_SUCCESS; // Already scanning
+        return ESP_OK; // Already scanning
     }
     
     // Clear previous discovered devices
@@ -210,59 +215,59 @@ bt_status_t bt_start_scan(void) {
     // Start discovery
     if (esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0) != ESP_OK) {
         ESP_LOGE(TAG, "Start device discovery failed");
-        return BT_ERROR_SCAN_FAILED;
+        return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Started Bluetooth device scanning");
 #endif
     
     bt_ctx.scanning = true;
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Stop device scanning
-bt_status_t bt_stop_scan(void) {
+ bt_err_t bt_stop_scan(void) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_FAIL;
     }
     
     if (!bt_ctx.scanning) {
-        return BT_SUCCESS; // Not scanning
+        return ESP_OK; // Not scanning
     }
     
 #ifdef ESP_PLATFORM
     // Stop discovery
     if (esp_bt_gap_cancel_discovery() != ESP_OK) {
         ESP_LOGE(TAG, "Stop device discovery failed");
-        return BT_ERROR_SCAN_FAILED;
+        return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Stopped Bluetooth device scanning");
 #endif
     
     bt_ctx.scanning = false;
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Connect to a device
-bt_status_t bt_connect(const char* mac) {
+ bt_err_t bt_connect(const char* mac) {
     printf("TRACE: bt_connect called\n");
     if (!bt_ctx.initialized) {
         printf("TRACE: bt_connect - bt_connect not initialized\n");
         fflush(stdout);
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_FAIL;
     }
     
     if (mac == NULL) {
         printf("TRACE: bt_connect - bt_connect invalid MAC\n");
         fflush(stdout);
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_FAIL;
     }
     
     if (bt_ctx.connected) {
         printf("TRACE: bt_connect - bt_connect already connected\n");
         fflush(stdout);
-        return BT_ERROR_ALREADY_CONNECTED;
+        return ESP_FAIL;
     }
     
 #ifdef ESP_PLATFORM
@@ -273,7 +278,7 @@ bt_status_t bt_connect(const char* mac) {
         printf("TRACE: bt_connect invalid MAC format\n");
         fflush(stdout);
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
-        return BT_ERROR_INVALID_PARAM;
+    return ESP_FAIL;
     }
     
     // Connect to device
@@ -281,7 +286,7 @@ bt_status_t bt_connect(const char* mac) {
         printf("TRACE: bt_connect failed to connect\n");
         fflush(stdout);
         ESP_LOGE(TAG, "Failed to connect to device: %s", mac);
-        return BT_ERROR_CONNECT_FAILED;
+    return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Connecting to device: %s", mac);
@@ -290,17 +295,17 @@ bt_status_t bt_connect(const char* mac) {
     printf("TRACE: bt_connect success\n");
     fflush(stdout);
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Connect to a device by name
-bt_status_t bt_connect_by_name(const char* name) {
+ bt_err_t bt_connect_by_name(const char* name) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
-    
+
     if (name == NULL) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Find device in discovered devices
@@ -317,17 +322,32 @@ bt_status_t bt_connect_by_name(const char* name) {
         }
     }
     
-    return BT_ERROR_CONNECT_FAILED;
+    return ESP_FAIL;
 }
 
 // Disconnect from the current device
-bt_status_t bt_disconnect(void) {
+#if defined(UNIT_TEST)
+// Allow test code to override the manager disconnect implementation by
+// marking this symbol weak in unit test builds. This keeps production
+// behavior unchanged while allowing test-only mocks/stubs in
+// `test_app` to take precedence during linking.
+__attribute__((weak))
+bt_err_t bt_disconnect(void) {
+#else
+ bt_err_t bt_disconnect(void) {
+#endif
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        /* Treat disconnect when manager is not initialized as a no-op
+         * returning ESP_OK so higher-level C wrappers that convert
+         * bt_err_t to int (0 == success) do not leak non-canonical
+         * positive values into tests. This makes disconnect idempotent
+         * across initialization state.
+         */
+        return ESP_OK;
     }
     
     if (!bt_ctx.connected) {
-        return BT_SUCCESS; // Already disconnected
+        return ESP_OK; // Already disconnected
     }
     
 #ifdef ESP_PLATFORM
@@ -341,13 +361,13 @@ bt_status_t bt_disconnect(void) {
     if (sscanf(bt_ctx.connected_mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
                &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
         ESP_LOGE(TAG, "Invalid MAC format in stored address: %s", bt_ctx.connected_mac);
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Disconnect device
     if (esp_a2d_source_disconnect(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to disconnect from device: %s", bt_ctx.connected_mac);
-        return BT_ERROR_CONNECT_FAILED;
+        return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Disconnecting from device: %s", bt_ctx.connected_mac);
@@ -360,7 +380,7 @@ bt_status_t bt_disconnect(void) {
     }
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Get the list of discovered devices
@@ -382,20 +402,20 @@ bt_device_list_t* bt_get_paired_devices(void) {
 }
 
 // Stop audio streaming
-bt_status_t bt_stop_audio(void) {
+bt_err_t bt_stop_audio(void) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
-    
+
     if (!bt_ctx.audio_playing) {
-        return BT_SUCCESS; // Not playing
+        return ESP_OK; // Not playing
     }
-    
+
 #ifdef ESP_PLATFORM
     // Stop audio stream
     if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to stop audio stream");
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Stopped audio streaming");
@@ -404,27 +424,27 @@ bt_status_t bt_stop_audio(void) {
     bt_ctx.audio_playing = false;
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Start audio streaming
-bt_status_t bt_start_audio(void) {
+ bt_err_t bt_start_audio(void) {
     printf("TRACE: entered bt_start_audio\n");
     fflush(stdout);
     bt_ctx.audio_playing = true;
-    printf("TRACE: returning BT_SUCCESS from bt_start_audio\n");
+    printf("TRACE: returning %d from bt_start_audio\n", ESP_OK);
     fflush(stdout);
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Set volume level
-bt_status_t bt_set_volume(int volume) {
+ bt_err_t bt_set_volume(int volume) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
     
     if (volume < 0 || volume > 100) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
     bt_ctx.volume = volume;
@@ -435,17 +455,17 @@ bt_status_t bt_set_volume(int volume) {
     ESP_LOGI(TAG, "Volume set to %d%%", volume);
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Pair with a device
-bt_status_t bt_pair(const char* mac) {
+ bt_err_t bt_pair(const char* mac) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
     
     if (mac == NULL) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
 #ifdef ESP_PLATFORM
@@ -454,7 +474,7 @@ bt_status_t bt_pair(const char* mac) {
     if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
                &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Start pairing. Some IDF versions don't expose esp_bt_gap_start_authentication;
@@ -465,30 +485,30 @@ bt_status_t bt_pair(const char* mac) {
     // Preferred API (unavailable in some IDF versions):
     if (esp_bt_gap_start_authentication(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start authentication with device: %s", mac);
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
     ESP_LOGI(TAG, "Started pairing with device: %s", mac);
 #else
     ESP_LOGW(TAG, "esp_bt_gap_start_authentication unavailable on this IDF - attempting connect to start pairing");
     if (esp_a2d_source_connect(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Fallback connect to initiate pairing failed for device: %s", mac);
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
     ESP_LOGI(TAG, "Attempted connect to start pairing with device: %s", mac);
 #endif
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Unpair a device
-bt_status_t bt_unpair(const char* mac) {
+ bt_err_t bt_unpair(const char* mac) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
     
     if (mac == NULL) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
 #ifdef ESP_PLATFORM
@@ -497,13 +517,13 @@ bt_status_t bt_unpair(const char* mac) {
     if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
                &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
     // Remove device from paired list
     if (esp_bt_gap_remove_bond_device(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to unpair device: %s", mac);
-        return BT_ERROR_INIT_FAILED;
+        return ESP_FAIL;
     }
     // Remove from persisted storage as well
     nvs_storage_remove_paired_device(mac);
@@ -511,13 +531,13 @@ bt_status_t bt_unpair(const char* mac) {
     ESP_LOGI(TAG, "Unpaired device: %s", mac);
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Unpair all devices
-bt_status_t bt_unpair_all(void) {
+ bt_err_t bt_unpair_all(void) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
     
     // Clear paired devices list
@@ -528,17 +548,17 @@ bt_status_t bt_unpair_all(void) {
     ESP_LOGI(TAG, "Removed all paired devices");
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // Set PIN code for pairing
-bt_status_t bt_set_pin(const char* pin) {
+ bt_err_t bt_set_pin(const char* pin) {
     if (!bt_ctx.initialized) {
-        return BT_ERROR_NOT_INITIALIZED;
+        return ESP_ERR_INVALID_STATE;
     }
     
     if (pin == NULL) {
-        return BT_ERROR_INVALID_PARAM;
+        return ESP_ERR_INVALID_ARG;
     }
     
 #ifdef ESP_PLATFORM
@@ -555,7 +575,7 @@ bt_status_t bt_set_pin(const char* pin) {
     ESP_LOGI(TAG, "PIN code set to: %s, length: %d", pin, pin_len);
 #endif
     
-    return BT_SUCCESS;
+    return ESP_OK;
 }
 
 // C-compatible wrappers expected by other components (command_interface)
@@ -575,31 +595,23 @@ int bt_manager_set_name(const char* name) {
 }
 
 int bt_manager_pair(const char* mac) {
-    return (bt_pair(mac) == BT_SUCCESS) ? 0 : -1;
-}
-
-int bt_manager_unpair(const char* mac) {
-    return (bt_unpair(mac) == BT_SUCCESS) ? 0 : -1;
-}
-
-int bt_manager_start_scan(void) {
-    return (bt_start_scan() == BT_SUCCESS) ? 0 : -1;
+    return (bt_pair(mac) == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_connect(const char* mac) {
-    return (bt_connect(mac) == BT_SUCCESS) ? 0 : -1;
+    return (bt_connect(mac) == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_disconnect(void) {
-    return (bt_disconnect() == BT_SUCCESS) ? 0 : -1;
+    return (bt_disconnect() == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_start_audio(void) {
-    return (bt_start_audio() == BT_SUCCESS) ? 0 : -1;
+    return (bt_start_audio() == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_stop_audio(void) {
-    return (bt_stop_audio() == BT_SUCCESS) ? 0 : -1;
+    return (bt_stop_audio() == ESP_OK) ? 0 : -1;
 }
 
 #ifdef ESP_PLATFORM

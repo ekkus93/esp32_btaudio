@@ -23,6 +23,7 @@ idf_component_register(
     REQUIRES 
         bt_mock
         bluetooth
+        bt_manager
         command_interface
         nvs_storage
         audio

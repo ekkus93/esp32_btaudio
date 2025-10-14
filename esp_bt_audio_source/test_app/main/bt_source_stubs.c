@@ -27,6 +27,12 @@
  * declaration errors during compilation.
  */
 #include "bt_mock_devices.h"
+#include "bt_api.h"
+
+/* Temporary: enable diagnostic logging for test runs so DIAG_LOG-guarded
+ * prints are compiled in. Remove this define after debugging is complete.
+ */
+#define DIAG_LOG
 
 /* Some build setups provide a different bt_mock_devices.h on the include path
  * (components/bt_mock vs components/bluetooth). The bluetooth version
@@ -351,6 +357,13 @@ BT_WEAK_FN esp_err_t bt_init(void)
     
     /* Load any paired devices */
     bt_load_paired_devices();
+
+    /* One-time diagnostic: log the numeric value of ESP_ERR_INVALID_STATE so we
+     * can detect which esp_err.h variant the build selected (negative vs
+     * positive codes). Remove after debugging. */
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: ESP_ERR_INVALID_STATE numeric value = %d (0x%08x)", (int)ESP_ERR_INVALID_STATE, (unsigned int)ESP_ERR_INVALID_STATE);
+#endif
     
     ESP_LOGI(TAG, "BT initialization complete (stub)");
     return ESP_OK;
@@ -492,7 +505,24 @@ BT_WEAK_FN esp_err_t bt_connect_device(const char* addr)
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
     /* Delegate connection to authoritative component mock */
     esp_err_t err = bt_mock_connect(addr);
-    if (err != ESP_OK) return err;
+    /* Diagnostic logging: capture the raw numeric return from the component mock. */
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: bt_mock_connect(%s) returned %d (0x%08x)", addr, (int)err, (unsigned int)err);
+#endif
+    /* Previously we heuristically mapped positive, non-zero return values to
+     * ESP_FAIL here. That masked upstream producers and made diagnosing the
+     * root cause difficult. Instead: log the raw numeric value and return it
+     * unchanged so callers (and the test harness) see the true producer. If
+     * unexpected positive values appear, the diagnostic logs will show the
+     * definition chosen for esp_err.h (see the one-time diagnostic below).
+     */
+    if (err != ESP_OK) {
+#ifdef DIAG_LOG
+        ESP_LOGI(TAG, "DIAG: bt_mock_connect raw err=%d (0x%08x), is_connected=%d, connected_addr=%s",
+                 (int)err, (unsigned int)err, bt_mock_is_connected(), (bt_mock_is_connected() ? (char*)"<connected>" : (char*)"<none>"));
+#endif
+        return err;
+    }
 
     /* Synchronize local visible connection info for APIs that read it */
     s_is_connected = bt_mock_is_connected();
@@ -586,7 +616,13 @@ BT_WEAK_FN esp_err_t bt_connect_device_by_name(const char* name)
      */
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
     esp_err_t err = bt_mock_hook_connect_by_name(name);
-    if (err != ESP_OK) return err;
+    ESP_LOGI(TAG, "bt_mock_hook_connect_by_name(%s) returned %d (0x%08x)", name, (int)err, (unsigned int)err);
+    if (err != ESP_OK) {
+#ifdef DIAG_LOG
+        ESP_LOGI(TAG, "DIAG: bt_mock_hook_connect_by_name raw err=%d (0x%08x)", (int)err, (unsigned int)err);
+#endif
+        return err;
+    }
 
     /* If component made the connection, update local flags from component */
     if (bt_mock_is_connected()) {
@@ -641,7 +677,13 @@ BT_WEAK_FN esp_err_t bt_disconnect(void)
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
     /* Delegate disconnect to component-level mock and sync state */
     esp_err_t err = bt_mock_disconnect();
-    if (err != ESP_OK) return err;
+    ESP_LOGI(TAG, "bt_mock_disconnect() returned %d (0x%08x)", (int)err, (unsigned int)err);
+    if (err != ESP_OK) {
+#ifdef DIAG_LOG
+        ESP_LOGI(TAG, "DIAG: bt_mock_disconnect raw err=%d (0x%08x)", (int)err, (unsigned int)err);
+#endif
+        return err;
+    }
 
     s_is_connected = bt_mock_is_connected();
     if (!s_is_connected) {

@@ -3,21 +3,25 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "bt_api.h"
 
 /**
  * Bluetooth Manager - Handles A2DP source functionality
  */
 
 // Status codes
+// Legacy bt_status_t replaced by canonical bt_err_t (esp_err_t). Use
+// bt_err_t for new callers. Old enum kept for backwards compatibility where
+// necessary, but public APIs below will return bt_err_t.
 typedef enum {
-    BT_SUCCESS = 0,
-    BT_ERROR_INVALID_PARAM,
-    BT_ERROR_INIT_FAILED,
-    BT_ERROR_SCAN_FAILED,
-    BT_ERROR_CONNECT_FAILED,
-    BT_ERROR_NOT_INITIALIZED,
-    BT_ERROR_ALREADY_CONNECTED
-} bt_status_t;
+    BT_STATUS_SUCCESS = 0,
+    BT_STATUS_ERROR_INVALID_PARAM,
+    BT_STATUS_ERROR_INIT_FAILED,
+    BT_STATUS_ERROR_SCAN_FAILED,
+    BT_STATUS_ERROR_CONNECT_FAILED,
+    BT_STATUS_ERROR_NOT_INITIALIZED,
+    BT_STATUS_ERROR_ALREADY_CONNECTED
+} bt_status_t; // kept for compatibility, do not use for new APIs
 
 // Device info structure
 typedef struct {
@@ -47,53 +51,53 @@ typedef struct {
  * Initialize Bluetooth Manager
  *
  * @param config Initialization parameters
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_manager_init(const bt_manager_init_t* config);
+bt_err_t bt_manager_init(const bt_manager_init_t* config);
 
 /**
  * Deinitialize Bluetooth Manager
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_manager_deinit(void);
+bt_err_t bt_manager_deinit(void);
 
 /**
  * Start device scanning
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_start_scan(void);
+bt_err_t bt_start_scan(void);
 
 /**
  * Stop device scanning
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_stop_scan(void);
+bt_err_t bt_stop_scan(void);
 
 /**
  * Connect to a device
  *
  * @param mac MAC address of the device
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_connect(const char* mac);
+bt_err_t bt_connect(const char* mac);
 
 /**
  * Connect to a device by name
  *
  * @param name Name of the device
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_connect_by_name(const char* name);
+bt_err_t bt_connect_by_name(const char* name);
 
 /**
  * Disconnect from the current device
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_disconnect(void);
+bt_err_t bt_disconnect(void);
 
 /**
  * Get the list of discovered devices
@@ -112,55 +116,55 @@ bt_device_list_t* bt_get_paired_devices(void);
 /**
  * Start audio streaming
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_start_audio(void);
+bt_err_t bt_start_audio(void);
 
 /**
  * Stop audio streaming
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_stop_audio(void);
+bt_err_t bt_stop_audio(void);
 
 /**
  * Set volume level
  *
  * @param volume Volume level (0-100)
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_set_volume(int volume);
+bt_err_t bt_set_volume(int volume);
 
 /**
  * Pair with a device
  *
  * @param mac MAC address of the device
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_pair(const char* mac);
+bt_err_t bt_pair(const char* mac);
 
 /**
  * Unpair a device
  *
  * @param mac MAC address of the device
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_unpair(const char* mac);
+bt_err_t bt_unpair(const char* mac);
 
 /**
  * Unpair all devices
  *
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_unpair_all(void);
+bt_err_t bt_unpair_all(void);
 
 /**
  * Set PIN code for pairing
  *
  * @param pin PIN code
- * @return BT_SUCCESS if successful
+ * @return ESP_OK (bt_err_t) if successful
  */
-bt_status_t bt_set_pin(const char* pin);
+bt_err_t bt_set_pin(const char* pin);
 
 // Functions for testing only - not for production use
 #ifdef UNIT_TEST

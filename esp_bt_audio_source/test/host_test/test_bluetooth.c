@@ -2,6 +2,7 @@
 #include <string.h>
 #include "unity.h"
 #include "bt_manager.h"
+#include "esp_err.h"
 #include "mock_i2s.h"
 #include "esp_bt.h"
 
@@ -47,18 +48,18 @@ void setUp(void) {
         .disconnected_cb = test_bt_disconnected_cb
     };
     
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_manager_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
 }
 
 void tearDown(void) {
     // Clean up BT manager
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_manager_deinit());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
 }
 
 // Test basic initialization and deinitialization
 void test_bt_init_deinit(void) {
     // Already initialized in setUp()
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_manager_deinit());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
     
     // Initialize again with different config
     bt_manager_init_t config = {
@@ -67,13 +68,13 @@ void test_bt_init_deinit(void) {
         .disconnected_cb = test_bt_disconnected_cb
     };
     
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_manager_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
 }
 
 // Test device scanning
 void test_bt_scanning(void) {
     // Start scan
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_start_scan());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
     
     // Simulate device discovery events
     bt_device_t mock_device1 = {
@@ -92,7 +93,7 @@ void test_bt_scanning(void) {
     bt_manager_mock_device_found(&mock_device2);
     
     // Stop scan
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_stop_scan());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_scan());
     
     // Check discovered devices
     bt_device_list_t* devices = bt_get_device_list();
@@ -114,7 +115,7 @@ void test_bt_connect_disconnect(void) {
     const char* test_name = "Test Speaker";
     
     // Start connection
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_connect(test_mac));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect(test_mac));
     
     // Simulate connection established
     bt_manager_mock_connection_established(test_mac, test_name);
@@ -125,7 +126,7 @@ void test_bt_connect_disconnect(void) {
     TEST_ASSERT_EQUAL_STRING(test_name, bt_connected_name);
     
     // Disconnect
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_disconnect());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
     
     // Simulate disconnection
     bt_manager_mock_connection_closed(test_mac);
@@ -138,7 +139,7 @@ void test_bt_connect_disconnect(void) {
 // Test connection by name
 void test_bt_connect_by_name(void) {
     // Start scan
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_start_scan());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
     
     // Simulate device discovery
     bt_device_t mock_device1 = {
@@ -157,10 +158,10 @@ void test_bt_connect_by_name(void) {
     bt_manager_mock_device_found(&mock_device2);
     
     // Stop scan
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_stop_scan());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_scan());
     
     // Connect by name
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_connect_by_name("Living Room Speaker"));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_by_name("Living Room Speaker"));
     
     // Simulate connection established
     bt_manager_mock_connection_established("DD:EE:FF:44:55:66", "Living Room Speaker");
@@ -178,7 +179,7 @@ void test_bt_audio_operations(void) {
     const char* test_name = "Test Speaker";
 
     // Connect
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_connect(test_mac));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect(test_mac));
     bt_manager_mock_connection_established(test_mac, test_name);
 
 #ifdef UNIT_TEST
@@ -189,22 +190,22 @@ void test_bt_audio_operations(void) {
     printf("TEST: about to call bt_start_audio()\n");
     int ret = bt_start_audio();
     printf("TEST: bt_start_audio() returned %d\n", ret);
-    TEST_ASSERT_EQUAL(BT_SUCCESS, ret);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Simulate audio started
     bt_manager_mock_audio_state_changed(2); // Use integer 2 for STARTED state
     
     // Set volume
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_set_volume(75));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_volume(75));
     
     // Stop audio
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_stop_audio());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_audio());
     
     // Simulate audio stopped
     bt_manager_mock_audio_state_changed(1); // Use integer 1 for STOPPED state
     
     // Disconnect
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_disconnect());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
 }
 
 // Test pairing operations
@@ -212,16 +213,16 @@ void test_bt_pairing(void) {
     const char* test_mac = "BB:CC:DD:11:22:33";
     
     // Start pairing
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_pair(test_mac));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_pair(test_mac));
     
     // Simulate pairing success
     bt_manager_mock_pairing_complete(test_mac, true);
     
     // Test unpair
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_unpair(test_mac));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_unpair(test_mac));
     
     // Test set PIN
-    TEST_ASSERT_EQUAL(BT_SUCCESS, bt_set_pin("1234"));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_pin("1234"));
 }
 
 // Main test runner

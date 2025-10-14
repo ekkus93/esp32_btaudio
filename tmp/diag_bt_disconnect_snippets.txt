@@ -1,0 +1,28 @@
+# DIAG_TEST snippets relevant to test_bluetooth_connection
+# Source log: test_app/build/log/idf_py_stdout_output_3167900
+
+--- run at ~5620-5650ms
+BT_MOCK_DEVICES: DIAG: bt_mock_connect success: is_connected=1, connected_addr=11:22:33:44:55:66
+BT_SOURCE_STUB: DIAG: bt_mock_connect(11:22:33:44:55:66) returned 0 (0x00000000)
+BT_SOURCE_STUB: Connected to device: 11:22:33:44:55:66 (delegated to mock)
+BT_A2DP_TEST: DIAG_TEST: bt_connect_device(11:22:33:44:55:66) returned 0 (0x00000000)
+BT_A2DP_TEST: DIAG_TEST: bt_disconnect() returned 0 (0x00000000)
+./main/bt_a2dp_test.c:215:test_bluetooth_connection:FAIL: Expected FALSE Was TRUE
+
+--- run at ~6270-5630ms (earlier in file showing 259)
+BT_MOCK_DEVICES: DIAG: bt_mock_connect success: is_connected=1, connected_addr=11:22:33:44:55:66
+BT_SOURCE_STUB: DIAG: bt_mock_connect(11:22:33:44:55:66) returned 0 (0x00000000)
+BT_A2DP_TEST: DIAG_TEST: bt_connect_device(11:22:33:44:55:66) returned 0 (0x00000000)
+BT_A2DP_TEST: DIAG_TEST: bt_disconnect() returned 259 (0x00000103)
+./main/bt_a2dp_test.c:215:test_bluetooth_connection:FAIL: Expected FALSE Was TRUE
+
+--- suspicious mock return (connection failure case)
+BT_SOURCE_STUB: DIAG: bt_mock_connect(99:88:77:66:55:44) returned 261 (0x00000105)
+BT_SOURCE_STUB: DIAG: bt_mock_connect raw err=261, is_connected=1, connected_addr=<connected>
+W  BT_SOURCE_STUB: bt_mock_connect returned suspicious positive value 261; mapping to ESP_FAIL
+./main/bt_a2dp_test.c:257:test_connection_failure_handling:FAIL: Expected FALSE Was TRUE
+
+# Notes:
+# - These snippets come from the single runtime capture file noted above.
+# - The key observation: bt_disconnect sometimes yields 259 and sometimes 0 across runs.
+# - The mock can emit a positive 261 which the stub maps to ESP_FAIL; that mapping and the 259 values are what we should attribute before editing code.
