@@ -60,7 +60,8 @@ I2S and UART: practical defaults and recommendations
 - [x] Implement serial command protocol
 - [~] Add pairing management functionality (in-progress)
    - Host-side: command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests (CONFIRM_PIN / ENTER_PIN and `nvs_storage` tests).
-   - On-device: end-to-end pairing verification (pair → reboot → persisted list verification) remains manual/pending. Recent on-device instrumentation and defensive fixes were applied to aid debugging (see "Recent changes" below).
+   - On-device: the PAIR / CONFIRM_PIN / ENTER_PIN commands now call `bt_pairing_confirm()` and `bt_pairing_submit_pin()` via the Bluetooth manager, automatically deriving the pending MAC when omitted and reusing the persisted default PIN.
+   - Full end-to-end verification (pair → reboot → persisted list verification) remains manual/pending. Recent on-device instrumentation and defensive fixes were applied to aid debugging (see "Recent changes" below).
    - Host mocks and headers were deduplicated and centralized in `test/host_test/mocks/include/` so host and device builds share consistent interfaces.
 - [x] Add volume/mute control
 - [~] Implement device scanning and connection management (partial)
@@ -97,7 +98,7 @@ Prioritized next steps (actionable)
    - Acceptance: pairing → reboot → verify paired list persists and device connects as expected.
 
 2. Finalize pairing confirmation & event streaming (High, **~1–1.5 days**)
-   - Task: Ensure `EVENT|PAIR|...` messages (PIN_REQUEST, CONFIRM, SUCCESS/FAILED) are reliably emitted and that `CONFIRM_PIN` / `ENTER_PIN` commands invoke the GAP reply APIs on-device.
+   - Task: Ensure `EVENT|PAIR|...` messages (PIN_REQUEST, CONFIRM, SUCCESS/FAILED) are reliably emitted and validate that the `CONFIRM_PIN` / `ENTER_PIN` commands, now routed through `bt_pairing_confirm()` and `bt_pairing_submit_pin()`, succeed on hardware.
    - Acceptance: Host-driven pairing flows complete successfully on hardware.
 
 3. Add/extend host unit tests (Medium, **~1 day**)
@@ -122,7 +123,7 @@ Prioritized next steps (actionable)
 
 Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
-- Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now call the appropriate GAP reply APIs on-device (`esp_bt_gap_ssp_confirm_reply()` and `esp_bt_gap_pin_reply()`), falling back to a stored default PIN from NVS when available. These handlers are guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
+- Command replies for pairing: `CONFIRM_PIN` and `ENTER_PIN` command handlers now delegate to `bt_pairing_confirm()` / `bt_pairing_submit_pin()` via the Bluetooth manager layer, falling back to a stored default PIN from NVS when available. These handlers remain guarded by `#ifdef ESP_PLATFORM` for host-test compatibility.
 
 Recent changes (host-test and pairing work)
 - Host unit-test harness under `test/host_test` updated with additional mocks and tests to validate command handlers without device hardware.
@@ -149,7 +150,7 @@ Next steps
 Next high-priority tasks:
 - Implement pairing confirmation flows and streaming of scan/pairing events to the command interface (PIN requests, SSP confirmations, pairing results).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
-- Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected GAP replies and that the full pairing flow succeeds on-device).
+- Finalize the pairing interaction loop and on-device verification (ensure host commands such as `CONFIRM_PIN` and `ENTER_PIN` trigger the expected Bluetooth-manager replies and that the full pairing flow succeeds on-device).
 - Add/extend host unit tests to cover the command handlers and NVS-backed persistence logic.
 
 <a id="developer-tools-diagnostics"></a>
@@ -215,15 +216,16 @@ All commands use a simple text-based format ending with a newline character (`\n
 The majority of commands are implemented and exercised by host unit tests. However a few command flows still need additional on-device work (end-to-end testing, event-stream reliability or small API wiring) before we consider them "complete" on hardware:
 
 - PAIR — Status: partially implemented. Host-side pairing flows (mocked PIN/SSP handling) are covered by unit tests, but on-device end-to-end pairing (PIN/SSP request → host reply → successful persistent pair entry across reboot) needs manual verification and hardening.
-- CONFIRM_PIN / ENTER_PIN — Status: implemented for host tests and calls into GAP reply APIs on-device, but event-streaming (reliable `EVENT|PAIR|...` messages) and recovery from transient errors should be validated on hardware.
-- CONNECT_NAME — Status: implemented in the command parser but depends on the Bluetooth manager providing a `connect-by-name` helper. If `bt_connect_by_name()` is not available on a given `bt_manager` implementation this flow falls back to a mock on host; add or wire a name-based connect helper in `components/bt_manager` for on-device use.
+- CONFIRM_PIN / ENTER_PIN — Status: implemented for host tests and now routed through `bt_pairing_confirm()` / `bt_pairing_submit_pin()` on-device; event-streaming (reliable `EVENT|PAIR|...` messages) and recovery from transient errors should be validated on hardware.
+- CONNECT_NAME — Status: implemented end-to-end (the `bt_connect_by_name()` helper now lives in `bt_manager`). Remaining work is validating that scan and pairing caches are populated on hardware so name lookups succeed without relying on host mocks.
 - SCAN / device-found streaming — Status: scanning APIs exist but the serial event stream for discovered devices and the `OK|SCAN|COMPLETE` termination need reliability testing on-device (throttling and noise mitigation may be needed under heavy Bluetooth traffic).
 - PAIRED / UNPAIR / UNPAIR_ALL — Status: commands exist and host tests validate NVS helpers; on-device persistence verification (pairing list persists across reboot and unpair edge cases) still requires full E2E testing and any required retry/rollback logic.
+- HELP — Status: command is parsed but currently returns a placeholder message. Flesh out the structured help output so users can enumerate supported commands over UART.
 
 Next steps to finish these flows on-device:
 
 1. Run on-device pairing scenarios (phone/speaker) and capture serial logs to verify the `EVENT|PAIR|...` sequence and persistence across reboots.
-2. Wire or implement `bt_connect_by_name()` in `components/bt_manager` (or add a name-lookup helper) so `CONNECT_NAME` works without host mocks.
+2. Validate scan → connect-by-name flow on hardware to ensure discovery caches are populated and `bt_connect_by_name()` finds devices without host assistance.
 3. Harden event emission (rate-limit noisy events, ensure ordering) and add targeted host tests that mimic high-noise serial output so the command interface remains usable during heavy BT activity.
 
 
@@ -573,19 +575,7 @@ python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout
 ```
 The runner flashes the image, captures serial to `test_app/build/one_run_unity.log`, watches for the Unity summary, and exits automatically (exit codes: 0=pass, 1=fail, 2=timeout, 3=error/interrupt).
 
-3) Manual flash + monitor (fallback)
-```bash
-# from test_app/
-source $HOME/esp/esp-idf/export.sh
-idf.py -p /dev/ttyUSB0 flash
-idf.py -p /dev/ttyUSB0 monitor --monitor-baud 115200 | tee build/one_run_unity.log
-```
-To avoid manual Ctrl-C in automation, wrap `monitor` with `timeout`:
-```bash
-timeout 600s idf.py -p /dev/ttyUSB0 monitor --monitor-baud 115200 | tee build/one_run_unity.log
-```
-
-Quick checks after a run
+- Quick checks after a run
 - Search for Unity summary markers:
 ```bash
 grep -n "--- SUMMARY ---\|Tests:\|FAIL" test_app/build/one_run_unity.log || true
