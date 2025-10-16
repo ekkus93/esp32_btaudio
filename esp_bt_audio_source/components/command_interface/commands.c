@@ -7,10 +7,12 @@
 // Include platform headers and storage/bt mocks so host builds have prototypes
 #include "audio_processor.h"
 #include "nvs_storage.h"
-#include "esp_bt.h"
 #include "bt_manager.h"
-#ifdef ESP_PLATFORM
+
+#if defined(ESP_PLATFORM)
 #include "esp_gap_bt_api.h"
+#else
+#include "esp_bt.h"
 #endif
 
 #ifdef ESP_PLATFORM
@@ -20,7 +22,7 @@
 // Provide a minimal UART abstraction for host/unit-test builds so the same
 // symbols are available across build targets. On-device builds include the
 // real driver header.
-#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
+#if defined(UNIT_TEST) && !defined(ESP_PLATFORM)
 #include "mock_uart.h"
 #else
 #include "driver/uart.h"

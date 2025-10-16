@@ -13,6 +13,8 @@
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #define TAG "BT_MGR"
 #endif
 
@@ -336,6 +338,16 @@ bt_err_t bt_disconnect(void) {
 #else
  bt_err_t bt_disconnect(void) {
 #endif
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+    const char *task_name = pcTaskGetName(NULL);
+    ESP_LOGI(TAG,
+             "DIAG: mgr_bt_disconnect entry task=\"%s\" initialized=%d connected=%d audio_playing=%d mac=\"%s\"",
+             task_name ? task_name : "<unknown>",
+             bt_ctx.initialized,
+             bt_ctx.connected,
+             bt_ctx.audio_playing,
+             bt_ctx.connected ? bt_ctx.connected_mac : "<none>");
+#endif
     if (!bt_ctx.initialized) {
         /* Treat disconnect when manager is not initialized as a no-op
          * returning ESP_OK so higher-level C wrappers that convert
@@ -343,16 +355,25 @@ bt_err_t bt_disconnect(void) {
          * positive values into tests. This makes disconnect idempotent
          * across initialization state.
          */
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect short-circuit (manager not initialized)");
+#endif
         return ESP_OK;
     }
     
     if (!bt_ctx.connected) {
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect short-circuit (already disconnected)");
+#endif
         return ESP_OK; // Already disconnected
     }
     
 #ifdef ESP_PLATFORM
     // Stop audio if playing
     if (bt_ctx.audio_playing) {
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect stopping audio before disconnect");
+#endif
         bt_stop_audio();
     }
     
@@ -361,16 +382,27 @@ bt_err_t bt_disconnect(void) {
     if (sscanf(bt_ctx.connected_mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
                &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
         ESP_LOGE(TAG, "Invalid MAC format in stored address: %s", bt_ctx.connected_mac);
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGE(TAG, "DIAG: mgr_bt_disconnect aborting due to invalid MAC string");
+#endif
         return ESP_ERR_INVALID_ARG;
     }
     
     // Disconnect device
     if (esp_a2d_source_disconnect(bda) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to disconnect from device: %s", bt_ctx.connected_mac);
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGE(TAG, "DIAG: mgr_bt_disconnect esp_a2d_source_disconnect() returned error");
+#endif
         return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Disconnecting from device: %s", bt_ctx.connected_mac);
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+    ESP_LOGI(TAG,
+             "DIAG: mgr_bt_disconnect invoked esp_a2d_source_disconnect(), bt_ctx.connected=%d",
+             bt_ctx.connected);
+#endif
 #else
     // For testing without ESP-IDF
     bt_ctx.connected = false;
@@ -378,8 +410,18 @@ bt_err_t bt_disconnect(void) {
     if (bt_ctx.disconnected_callback != NULL) {
         bt_ctx.disconnected_callback(bt_ctx.connected_mac);
     }
+#if defined(CONFIG_BT_MOCK_TESTING)
+    printf("DIAG: mgr_bt_disconnect (mock build) set connected flag to %d\n", bt_ctx.connected);
+#endif
 #endif
     
+#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+    ESP_LOGI(TAG,
+             "DIAG: mgr_bt_disconnect exit connected=%d audio_playing=%d mac=\"%s\"",
+             bt_ctx.connected,
+             bt_ctx.audio_playing,
+             bt_ctx.connected ? bt_ctx.connected_mac : "<none>");
+#endif
     return ESP_OK;
 }
 

@@ -19,14 +19,17 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
     "${bt_mock_dir}/include"
 )
 
-# Add host test mocks/include directories so test-only headers (mock_i2s_std.h)
-# are available when building the test_app. Also prefer the project's main/include
-# to avoid duplicate local test headers shadowing the real public headers.
+# Surface only the production headers and the local test mocks required by the
+# on-device Unity firmware. Host-only mock directories are intentionally
+# excluded here to prevent them from shadowing the real ESP-IDF headers.
 target_include_directories(${PROJECT_NAME}.elf PUBLIC
     "${CMAKE_SOURCE_DIR}/../main/include"
-    "${CMAKE_SOURCE_DIR}/../test/mocks"
     "${CMAKE_SOURCE_DIR}/components/test_mocks/include"
 )
+
+# Ensure components expose their unit-test hooks when building the Unity firmware.
+idf_component_get_property(bt_manager_lib bt_manager COMPONENT_LIB)
+target_compile_definitions(${bt_manager_lib} PRIVATE UNIT_TEST)
 
 # Ensure linker pulls in the command_interface symbols when resolving
 # references from bt_mock by explicitly linking the component libraries
@@ -34,3 +37,4 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 idf_component_get_property(bt_mock_lib bt_mock COMPONENT_LIB)
 idf_component_get_property(command_interface_lib command_interface COMPONENT_LIB)
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_mock_lib} ${command_interface_lib})
+

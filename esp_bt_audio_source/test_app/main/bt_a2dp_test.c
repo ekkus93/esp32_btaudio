@@ -6,6 +6,7 @@
 #include "test_config.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include "unity.h"
 #include "esp_log.h"
 // Add required FreeRTOS includes
@@ -15,8 +16,41 @@
 #include "bt_mock_devices.h"
 #include "bt_mock.h"
 #include "bt_mock_setup.h"  // Update this include
+#include "bt_test_setup.h"
+#include "unity_config.h"
 
 static const char *TAG = "BT_A2DP_TEST";
+
+// Helper: wait until bt_is_connected() equals expected, or timeout (ms) elapses.
+static bool wait_for_connected_state(bool expected, int timeout_ms)
+{
+    int waited = 0;
+    const int step_ms = 10;
+    while (bt_is_connected() != expected && waited < timeout_ms) {
+        vTaskDelay(pdMS_TO_TICKS(step_ms));
+        waited += step_ms;
+    }
+    return bt_is_connected() == expected;
+}
+
+// Wait until both the stub-local and component mock report the expected
+// connection state. This is slightly more conservative and reduces flakiness
+// when multiple mock layers are present.
+static bool wait_for_authoritative_connected_state(bool expected, int timeout_ms)
+{
+    int waited = 0;
+    const int step_ms = 10;
+    while (waited < timeout_ms) {
+        bool stub_state = bt_is_connected();
+        bool mock_state = bt_mock_is_connected();
+        if (stub_state == expected && mock_state == expected) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(step_ms));
+        waited += step_ms;
+    }
+    return false;
+}
 
 // Test 1: Bluetooth stack initialization
 void test_bluetooth_stack_init(void) {
@@ -209,10 +243,12 @@ void test_bluetooth_connection(void) {
     TEST_ASSERT_TRUE(bt_is_connected());
     
     // Disconnect
+    ESP_LOGI(TAG, "DIAG_TEST_MARKER: about to call bt_disconnect() (test_connect_by_addr)");
     ret = bt_disconnect();
     ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
-    TEST_ASSERT_FALSE(bt_is_connected());
+    /* Wait for both stub and authoritative mock to reflect the disconnect. */
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
     
     ESP_LOGI(TAG, "Bluetooth connection test completed");
 }
@@ -234,6 +270,7 @@ void test_connect_by_name(void) {
     TEST_ASSERT_TRUE(bt_is_connected());
     
     // Disconnect
+    ESP_LOGI(TAG, "DIAG_TEST_MARKER: about to call bt_disconnect() (test_connect_by_name)");
     ret = bt_disconnect();
     ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -252,9 +289,9 @@ void test_connection_failure_handling(void) {
     
     // We expect either ESP_FAIL or ESP_ERR_NOT_FOUND
     TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
-    
-    // Verify not connected
-    TEST_ASSERT_FALSE(bt_is_connected());
+
+    // Verify not connected: wait for authoritative state to be false
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
 }
 
 // Test 12: Handle connection timeout
@@ -293,6 +330,7 @@ void test_connection_status_info(void) {
     TEST_ASSERT_TRUE(info.connected);
     
     // Disconnect
+    ESP_LOGI(TAG, "DIAG_TEST_MARKER: about to call bt_disconnect() (test_connection_status_info)");
     ret = bt_disconnect();
     ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -327,6 +365,7 @@ void test_connect_to_a2dp_sink(void) {
     TEST_ASSERT_TRUE(bt_a2dp_is_connected());
     
     // Disconnect
+    ESP_LOGI(TAG, "DIAG_TEST_MARKER: about to call bt_disconnect() (test_connect_to_a2dp_sink)");
     ret = bt_disconnect();
     ESP_LOGI(TAG, "DIAG_TEST: bt_disconnect() returned %d (0x%08x)", (int)ret, (unsigned int)ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -360,6 +399,7 @@ void test_a2dp_streaming(void) {
     TEST_ASSERT_FALSE(bt_a2dp_is_streaming());
     
     // Disconnect
+    ESP_LOGI(TAG, "DIAG_TEST_MARKER: about to call bt_disconnect() (test_a2dp_streaming)");
     ret = bt_disconnect();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
@@ -444,6 +484,8 @@ void test_streaming_requires_connection(void) {
     
     // Should fail
     TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+    /* If we had to disconnect above, allow a short window for authoritative state to settle. */
+    TEST_ASSERT_TRUE(wait_for_connected_state(false, 1000));
     TEST_ASSERT_FALSE(bt_a2dp_is_streaming());
 }
 
@@ -516,6 +558,7 @@ void run_bt_a2dp_tests(void)
     ESP_LOGI(TAG, "Starting Bluetooth A2DP tests");
     
     // Initialize the Unity test framework
+    UNITY_SET_SETUP(bt_manager_test_setup);
     UNITY_BEGIN();
     
     // 1. Basic Bluetooth initialization and scanning tests
@@ -548,6 +591,7 @@ void run_bt_a2dp_tests(void)
     
     // Finish Unity tests
     UNITY_END();
+    UNITY_SET_SETUP(NULL);
     
     ESP_LOGI(TAG, "Bluetooth A2DP tests completed");
 }

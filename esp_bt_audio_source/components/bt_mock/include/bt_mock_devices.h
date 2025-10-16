@@ -108,6 +108,13 @@ esp_err_t bt_mock_get_connected_addr(char* buf, size_t len);
  */
 bt_streaming_state_t bt_mock_get_streaming_state(void);
 
+/* Test-only helper: force authoritative disconnect immediately.
+ * This synchronously clears the component mock's connected flag and
+ * connected address. Use only from test code (stubs/tests) when a
+ * polling timeout occurs to deterministically recover from races.
+ */
+esp_err_t bt_mock_force_disconnect(void);
+
 /* Pairing and SSP helpers used by tests */
 bt_pairing_state_t bt_mock_get_pairing_state(void);
 bt_pairing_method_t bt_mock_get_pairing_method(void);

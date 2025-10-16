@@ -29,23 +29,3 @@ void tearDown(void) {
         unity_teardown_function();
     }
 }
-
-// Ensure Unity output is visible
-void unity_putc(int c)
-{
-    putchar(c);
-    fflush(stdout);
-}
-
-// Do not modify or disable Unity output functions
-void unity_flush(void)
-{
-    fflush(stdout);
-}
-
-// Do not intercept or override test results
-void unity_print_results(void)
-{
-    // Let Unity handle this with default implementation
-    // Avoid overriding it to ensure test counts are reported
-}

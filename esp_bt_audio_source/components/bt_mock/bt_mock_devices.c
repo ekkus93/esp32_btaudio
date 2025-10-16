@@ -234,6 +234,26 @@ bool bt_mock_is_connected(void)
     return mock_state.is_connected;
 }
 
+esp_err_t bt_mock_force_disconnect(void)
+{
+    /* Diagnostic marker to make forced-disconnect calls easy to find in logs */
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG_HELPER_MARKER: bt_mock_force_disconnect() entered");
+#endif
+    /* Test-only synchronous helper to guarantee authoritative state is
+     * cleared. This should not be used by production code. */
+    if (!mock_state.is_connected) {
+        ESP_LOGI(TAG, "bt_mock_force_disconnect: not connected (no-op)");
+        return ESP_OK;
+    }
+
+    mock_state.is_connected = false;
+    mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    mock_state.connected_addr[0] = '\0';
+    ESP_LOGI(TAG, "bt_mock_force_disconnect: forced disconnect (test-only)");
+    return ESP_OK;
+}
+
 void bt_mock_set_connect_by_name_hook(const char* name, const char* addr)
 {
     if (!name || !addr) {

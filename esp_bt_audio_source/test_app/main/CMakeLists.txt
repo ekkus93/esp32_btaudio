@@ -13,7 +13,8 @@ idf_component_register(
         "bt_pairing_test.c"
         "bt_source_stubs.c"
         "bt_source_mock.c"
-    "bt_test_setup.c"
+        "bt_test_setup.c"
+        "unity_config.c"
         "bt_pairing_persistence_test.c"
         "audio_pipeline_test.c"
         "bt_mock_setup.c"  # Update this filename

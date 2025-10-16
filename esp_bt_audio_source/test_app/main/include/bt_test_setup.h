@@ -25,3 +25,12 @@ void bt_mock_setup_devices(void);
  * - Adds paired test devices
  */
 void bt_mock_setup_paired_devices(void);
+
+/**
+ * @brief Ensure the Bluetooth manager is initialized for tests
+ *
+ * Calls bt_manager_init with a deterministic configuration so that
+ * manager-backed APIs used by the test suite do not early-out when the
+ * manager hasn't been started.
+ */
+void bt_manager_test_setup(void);
