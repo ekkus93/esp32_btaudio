@@ -169,45 +169,138 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     } break;
 
-    case CMD_TYPE_DISCONNECT:
+    case CMD_TYPE_CONFIRM_PIN: {
+    if (ctx->param_count < 1) { cmd_send_response("ERR", "CONFIRM_PIN", "MISSING_PARAM", NULL); break; }
+    const char* mac_param = NULL;
+    const char* decision_param = NULL;
+    if (ctx->param_count >= 1) {
+        if (strchr(ctx->params[0], ':') != NULL) mac_param = ctx->params[0]; else decision_param = ctx->params[0];
+    }
+    if (ctx->param_count >= 2) {
+        if (mac_param == NULL) {
+            mac_param = ctx->params[0];
+            decision_param = ctx->params[1];
+        } else {
+            decision_param = ctx->params[1];
+        }
+    }
+    bool accept = true;
+    if (decision_param != NULL) {
+        if (strcasecmp(decision_param, "REJECT") == 0 || strcasecmp(decision_param, "NO") == 0 || strcmp(decision_param, "0") == 0) accept = false;
+        else if (strcasecmp(decision_param, "ACCEPT") == 0 || strcasecmp(decision_param, "YES") == 0 || strcmp(decision_param, "1") == 0) accept = true;
+        else if (decision_param[0] != '\0' && strchr(decision_param, ':') == NULL) {
+            // Unknown keyword: treat as error to avoid silently accepting
+            cmd_send_response("ERR", "CONFIRM_PIN", "BAD_PARAM", decision_param);
+            break;
+        }
+    }
 #ifdef ESP_PLATFORM
-    if (bt_manager_disconnect() == ESP_OK) cmd_send_response("OK", "DISCONNECT", "INITIATED", NULL);
-    else cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+    bt_pairing_request_info_t pending = {0};
+    if ((mac_param == NULL || mac_param[0] == '\0') && !bt_pairing_get_pending_request(&pending)) {
+        cmd_send_response("ERR", "CONFIRM_PIN", "NO_PENDING", NULL);
+        break;
+    }
+    const char* target_mac = mac_param && mac_param[0] ? mac_param : pending.mac;
+    if (target_mac == NULL || target_mac[0] == '\0') {
+        cmd_send_response("ERR", "CONFIRM_PIN", "NO_MAC", NULL);
+        break;
+    }
+    esp_err_t cerr = bt_pairing_confirm(target_mac, accept);
+    if (cerr == ESP_OK) {
+        cmd_send_response("OK", "CONFIRM_PIN", accept ? "ACCEPTED" : "REJECTED", target_mac);
+    } else {
+        cmd_send_response("ERR", "CONFIRM_PIN", esp_err_to_name(cerr), target_mac);
+    }
 #else
-    cmd_send_response("OK", "DISCONNECT", "MOCK_DISCONNECTED", NULL);
+    const char* mac = mac_param;
+    if (mac == NULL) {
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) mac = s_cmd_mock_pairing_addr;
+        else { cmd_send_response("ERR", "CONFIRM_PIN", "NO_MOCK", NULL); break; }
+    }
+    uint8_t bda[6] = {0};
+    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
+        esp_bt_gap_ssp_confirm_reply(bda, accept);
+        cmd_send_response("OK", "CONFIRM_PIN", accept ? "MOCK_ACCEPTED" : "MOCK_REJECTED", mac);
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0 && strcmp(mac, s_cmd_mock_pairing_addr) == 0) {
+        cmd_send_event_pair(accept ? "SUCCESS" : "FAILED", s_cmd_mock_pairing_addr);
+        s_cmd_mock_enabled = false; s_cmd_mock_pairing_addr[0] = '\0'; s_cmd_mock_passkey[0] = '\0';
+        }
+    } else {
+        cmd_send_response("ERR", "CONFIRM_PIN", "INVALID_MAC", NULL);
+    }
 #endif
-    break;
+    } break;
 
-    case CMD_TYPE_START:
+    case CMD_TYPE_ENTER_PIN: {
+    const char* mac_param = NULL;
+    const char* pin_param = NULL;
+    char default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
+    if (ctx->param_count >= 1) {
+        mac_param = ctx->params[0];
+    }
+    if (ctx->param_count >= 2) {
+        pin_param = ctx->params[1];
+    }
 #ifdef ESP_PLATFORM
-    if (bt_manager_start_audio() == ESP_OK) cmd_send_response("OK", "START", "AUDIO_STARTED", NULL);
-    else cmd_send_response("ERR", "START", "FAILED", NULL);
+    bt_pairing_request_info_t pending = {0};
+    if (mac_param == NULL || mac_param[0] == '\0') {
+        if (!bt_pairing_get_pending_request(&pending)) {
+            cmd_send_response("ERR", "ENTER_PIN", "NO_PENDING", NULL);
+            break;
+        }
+        mac_param = pending.mac;
+    }
+    if (pin_param == NULL || pin_param[0] == '\0') {
+        if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0) {
+            pin_param = default_pin;
+        }
+    }
+    if (pin_param == NULL || pin_param[0] == '\0') {
+        cmd_send_response("ERR", "ENTER_PIN", "MISSING_PIN", mac_param);
+        break;
+    }
+    esp_err_t perr = bt_pairing_submit_pin(mac_param, pin_param);
+    if (perr == ESP_OK) {
+        cmd_send_response("OK", "ENTER_PIN", "SENT", mac_param);
+    } else {
+        cmd_send_response("ERR", "ENTER_PIN", esp_err_to_name(perr), mac_param);
+    }
 #else
-    cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
+    const char* mac = mac_param;
+    if (mac == NULL || mac[0] == '\0') {
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) mac = s_cmd_mock_pairing_addr;
+        else { cmd_send_response("ERR", "ENTER_PIN", "NO_MOCK", NULL); break; }
+    }
+    if (pin_param == NULL || pin_param[0] == '\0') {
+        if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0) pin_param = default_pin;
+    }
+    if (pin_param == NULL || pin_param[0] == '\0') { cmd_send_response("ERR", "ENTER_PIN", "MISSING_PARAM", mac); break; }
+    uint8_t bda[6] = {0};
+    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
+        uint8_t pin_code[ESP_BT_PIN_CODE_LEN] = {0}; size_t pin_len = strlen(pin_param); if (pin_len > ESP_BT_PIN_CODE_LEN) pin_len = ESP_BT_PIN_CODE_LEN; memcpy(pin_code, pin_param, pin_len);
+        esp_bt_gap_pin_reply(bda, true, (uint8_t)pin_len, pin_code);
+        cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0 && strcmp(mac, s_cmd_mock_pairing_addr) == 0) {
+        cmd_send_event_pair("SUCCESS", s_cmd_mock_pairing_addr); s_cmd_mock_enabled = false; s_cmd_mock_pairing_addr[0] = '\0'; s_cmd_mock_passkey[0] = '\0';
+        }
+    } else {
+        cmd_send_response("ERR", "ENTER_PIN", "INVALID_MAC", NULL);
+    }
 #endif
-    break;
-
-    case CMD_TYPE_STOP:
-#ifdef ESP_PLATFORM
-    if (bt_manager_stop_audio() == ESP_OK) cmd_send_response("OK", "STOP", "AUDIO_STOPPED", NULL);
-    else cmd_send_response("ERR", "STOP", "FAILED", NULL);
-#else
-    cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
-#endif
-    break;
+    } break;
 
     case CMD_TYPE_MUTE:
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_mute(true) == ESP_OK) cmd_send_response("OK", "MUTE", "MUTED", NULL);
+    if (audio_processor_set_mute(true) == ESP_OK) cmd_send_response("OK", "MUTE", "SET", NULL);
     else cmd_send_response("ERR", "MUTE", "FAILED", NULL);
 #else
-    cmd_send_response("OK", "MUTE", "MOCK_MUTED", NULL);
+    cmd_send_response("OK", "MUTE", "MOCK_SET", NULL);
 #endif
     break;
 
     case CMD_TYPE_UNMUTE:
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_mute(false) == ESP_OK) cmd_send_response("OK", "UNMUTE", "UNMUTED", NULL);
+    if (audio_processor_set_mute(false) == ESP_OK) cmd_send_response("OK", "UNMUTE", "CLEARED", NULL);
     else cmd_send_response("ERR", "UNMUTE", "FAILED", NULL);
 #else
     cmd_send_response("OK", "UNMUTE", "MOCK_UNMUTED", NULL);
@@ -236,14 +329,36 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     } break;
 
-    case CMD_TYPE_PAIR:
+    case CMD_TYPE_PAIR: {
     if (ctx->param_count < 1) { cmd_send_response("ERR", "PAIR", "MISSING_PARAM", NULL); break; }
+    // If the first param contains a colon, treat it as a MAC address. Otherwise
+    // treat the whole param list as a device name (may contain spaces).
+    const char* first = ctx->params[0];
+    bool looks_like_mac = (strchr(first, ':') != NULL);
+    if (looks_like_mac) {
 #ifdef ESP_PLATFORM
-    if (bt_manager_pair(ctx->params[0]) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED", NULL); else cmd_send_response("ERR", "PAIR", "FAILED", NULL);
+        if (bt_manager_pair(first) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED", first);
+        else cmd_send_response("ERR", "PAIR", "FAILED", first);
 #else
-    cmd_send_response("OK", "PAIR", "MOCK_INITIATED", ctx->params[0]);
+        cmd_send_response("OK", "PAIR", "MOCK_INITIATED", first);
 #endif
-    break;
+    } else {
+        // Join all params into a single name string
+        char name_buf[128] = {0};
+        strncpy(name_buf, first, sizeof(name_buf)-1);
+        for (int i = 1; i < ctx->param_count; ++i) {
+            strncat(name_buf, " ", sizeof(name_buf)-strlen(name_buf)-1);
+            strncat(name_buf, ctx->params[i], sizeof(name_buf)-strlen(name_buf)-1);
+        }
+#ifdef ESP_PLATFORM
+        // Try connect-by-name which triggers pairing as needed
+        if (bt_connect_by_name(name_buf) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED_BY_NAME", name_buf);
+        else cmd_send_response("ERR", "PAIR", "FAILED_BY_NAME", name_buf);
+#else
+        cmd_send_response("OK", "PAIR", "MOCK_INITIATED_BY_NAME", name_buf);
+#endif
+    }
+    } break;
 
     case CMD_TYPE_PAIRED: {
     int count = 0;
@@ -264,48 +379,6 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     cmd_send_response("OK", "SAMPLE_RATE", "MOCK_APPLIED", ctx->params[0]);
 #endif
     break;
-
-    case CMD_TYPE_CONFIRM_PIN: {
-    if (ctx->param_count < 1) { cmd_send_response("ERR", "CONFIRM_PIN", "MISSING_PARAM", NULL); break; }
-    const char* mac = NULL; bool accept = true;
-    if (ctx->param_count == 1 && (strcmp(ctx->params[0], "1") == 0 || strcmp(ctx->params[0], "0") == 0)) {
-        accept = (strcmp(ctx->params[0], "1") == 0);
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) mac = s_cmd_mock_pairing_addr; else { cmd_send_response("ERR", "CONFIRM_PIN", "NO_MOCK", NULL); break; }
-    } else {
-        mac = ctx->params[0]; if (ctx->param_count >= 2) { const char* p = ctx->params[1]; if (p == NULL) accept = true; else if (strcasecmp(p, "REJECT") == 0 || strcasecmp(p, "NO") == 0 || strcmp(p, "0") == 0) accept = false; }
-    }
-    uint8_t bda[6] = {0};
-    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
-        esp_bt_gap_ssp_confirm_reply(bda, accept);
-        cmd_send_response("OK", "CONFIRM_PIN", accept ? "MOCK_ACCEPTED" : "MOCK_REJECTED", mac);
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0 && strcmp(mac, s_cmd_mock_pairing_addr) == 0) {
-        cmd_send_event_pair(accept ? "SUCCESS" : "FAILED", s_cmd_mock_pairing_addr);
-        s_cmd_mock_enabled = false; s_cmd_mock_pairing_addr[0] = '\0'; s_cmd_mock_passkey[0] = '\0';
-        }
-    } else {
-        cmd_send_response("ERR", "CONFIRM_PIN", "INVALID_MAC", NULL);
-    }
-    } break;
-
-    case CMD_TYPE_ENTER_PIN: {
-    const char* mac = NULL; const char* pin = NULL; char default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
-    if (ctx->param_count == 1) {
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) { mac = s_cmd_mock_pairing_addr; pin = ctx->params[0]; }
-        else { mac = ctx->params[0]; if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0) pin = default_pin; }
-    } else if (ctx->param_count >= 2) { mac = ctx->params[0]; pin = ctx->params[1]; }
-    if (mac == NULL || pin == NULL) { cmd_send_response("ERR", "ENTER_PIN", "MISSING_PARAM", NULL); break; }
-    uint8_t bda[6] = {0};
-    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6) {
-        uint8_t pin_code[ESP_BT_PIN_CODE_LEN] = {0}; size_t pin_len = strlen(pin); if (pin_len > ESP_BT_PIN_CODE_LEN) pin_len = ESP_BT_PIN_CODE_LEN; memcpy(pin_code, pin, pin_len);
-        esp_bt_gap_pin_reply(bda, true, (uint8_t)pin_len, pin_code);
-        cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0 && strcmp(mac, s_cmd_mock_pairing_addr) == 0) {
-        cmd_send_event_pair("SUCCESS", s_cmd_mock_pairing_addr); s_cmd_mock_enabled = false; s_cmd_mock_pairing_addr[0] = '\0'; s_cmd_mock_passkey[0] = '\0';
-        }
-    } else {
-        cmd_send_response("ERR", "ENTER_PIN", "INVALID_MAC", NULL);
-    }
-    } break;
 
     case CMD_TYPE_SET_NAME:
     if (ctx->param_count < 1) { cmd_send_response("ERR", "SET_NAME", "MISSING_PARAM", NULL); break; }

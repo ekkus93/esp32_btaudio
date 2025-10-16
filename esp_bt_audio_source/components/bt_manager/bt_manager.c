@@ -41,6 +41,7 @@ static struct {
 };
 
 #ifdef ESP_PLATFORM
+#include <inttypes.h>
 #include "nvs_flash.h"
 // Callback declarations
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
@@ -49,6 +50,65 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #include "command_interface.h"
 #include "nvs_storage.h"
+
+typedef struct {
+    bool pin_pending;
+    bool ssp_pending;
+    esp_bd_addr_t bda;
+    char mac[18];
+    uint32_t passkey;
+} bt_pairing_pending_t;
+
+static bt_pairing_pending_t s_pair_pending = {0};
+
+static void bt_pairing_format_mac(const esp_bd_addr_t bda, char* out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    snprintf(out, out_len, "%02X:%02X:%02X:%02X:%02X:%02X",
+             bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+    out[out_len - 1] = '\0';
+}
+
+static void bt_pairing_set_pending_addr(const esp_bd_addr_t bda)
+{
+    memcpy(s_pair_pending.bda, bda, sizeof(esp_bd_addr_t));
+    bt_pairing_format_mac(bda, s_pair_pending.mac, sizeof(s_pair_pending.mac));
+}
+
+static void bt_pairing_clear_pending_flags(bool clear_pin, bool clear_ssp)
+{
+    if (clear_pin) {
+        s_pair_pending.pin_pending = false;
+    }
+    if (clear_ssp) {
+        s_pair_pending.ssp_pending = false;
+    }
+    if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
+        memset(s_pair_pending.bda, 0, sizeof(s_pair_pending.bda));
+        s_pair_pending.mac[0] = '\0';
+        s_pair_pending.passkey = 0;
+    }
+}
+
+static bool bt_pairing_parse_mac_string(const char* mac, esp_bd_addr_t out)
+{
+    if (!mac || !out) {
+        return false;
+    }
+    unsigned int b0, b1, b2, b3, b4, b5;
+    if (sscanf(mac, "%02x:%02x:%02x:%02x:%02x:%02x", &b0, &b1, &b2, &b3, &b4, &b5) != 6) {
+        return false;
+    }
+    out[0] = (uint8_t)b0;
+    out[1] = (uint8_t)b1;
+    out[2] = (uint8_t)b2;
+    out[3] = (uint8_t)b3;
+    out[4] = (uint8_t)b4;
+    out[5] = (uint8_t)b5;
+    return true;
+}
 #endif
 
 // Initialize Bluetooth Manager
@@ -620,6 +680,104 @@ bt_err_t bt_stop_audio(void) {
     return ESP_OK;
 }
 
+bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
+{
+    if (!info) {
+        return false;
+    }
+#ifdef ESP_PLATFORM
+    if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
+        memset(info, 0, sizeof(*info));
+        return false;
+    }
+    info->pin_request_pending = s_pair_pending.pin_pending;
+    info->ssp_confirm_pending = s_pair_pending.ssp_pending;
+    strncpy(info->mac, s_pair_pending.mac, sizeof(info->mac) - 1);
+    info->mac[sizeof(info->mac) - 1] = '\0';
+    info->passkey = s_pair_pending.passkey;
+    return true;
+#else
+    memset(info, 0, sizeof(*info));
+    return false;
+#endif
+}
+
+bt_err_t bt_pairing_confirm(const char* mac, bool accept)
+{
+    (void)mac;
+    (void)accept;
+#ifdef ESP_PLATFORM
+    if (!bt_ctx.initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_bd_addr_t target = {0};
+    const char* mac_to_use = mac;
+
+    if (mac && mac[0] != '\0') {
+        if (!bt_pairing_parse_mac_string(mac, target)) {
+            return ESP_ERR_INVALID_ARG;
+        }
+    } else if (s_pair_pending.ssp_pending) {
+        memcpy(target, s_pair_pending.bda, sizeof(target));
+        mac_to_use = s_pair_pending.mac;
+    } else {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = esp_bt_gap_ssp_confirm_reply(target, accept);
+    if (err == ESP_OK) {
+        bt_pairing_clear_pending_flags(false, true);
+    }
+    return err;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
+{
+    (void)mac;
+    (void)pin;
+#ifdef ESP_PLATFORM
+    if (!bt_ctx.initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (pin == NULL || pin[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_bd_addr_t target = {0};
+    const char* mac_to_use = mac;
+
+    if (mac && mac[0] != '\0') {
+        if (!bt_pairing_parse_mac_string(mac, target)) {
+            return ESP_ERR_INVALID_ARG;
+        }
+    } else if (s_pair_pending.pin_pending) {
+        memcpy(target, s_pair_pending.bda, sizeof(target));
+        mac_to_use = s_pair_pending.mac;
+    } else {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint8_t pin_code[ESP_BT_PIN_CODE_LEN] = {0};
+    size_t pin_len = strlen(pin);
+    if (pin_len > ESP_BT_PIN_CODE_LEN) {
+        pin_len = ESP_BT_PIN_CODE_LEN;
+    }
+    memcpy(pin_code, pin, pin_len);
+
+    esp_err_t err = esp_bt_gap_pin_reply(target, true, (uint8_t)pin_len, pin_code);
+    if (err == ESP_OK) {
+        bt_pairing_clear_pending_flags(true, false);
+    }
+    return err;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
 // C-compatible wrappers expected by other components (command_interface)
 // These provide a simple int-based return (0=success) while delegating to
 // the bt_manager-style APIs above.
@@ -718,6 +876,9 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                    param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
 
             ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
+            bt_pairing_set_pending_addr(param->pin_req.bda);
+            s_pair_pending.pin_pending = true;
+            s_pair_pending.passkey = 0;
             // Notify command interface: EVENT|PAIR|PIN_REQUEST|<MAC>
             cmd_send_event_pair("PIN_REQUEST", bda_str);
             break;
@@ -734,6 +895,9 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             char data[64];
             snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
             ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
+            bt_pairing_set_pending_addr(param->cfm_req.bda);
+            s_pair_pending.ssp_pending = true;
+            s_pair_pending.passkey = param->cfm_req.num_val;
             // Notify command interface: EVENT|PAIR|CONFIRM|<MAC>,<NUM>
             cmd_send_event_pair("CONFIRM", data);
             break;
@@ -763,6 +927,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                 ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
                 cmd_send_event_pair("FAILED", bda_str);
             }
+            bt_pairing_clear_pending_flags(true, true);
             break;
         }
 

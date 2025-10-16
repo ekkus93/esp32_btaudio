@@ -36,6 +36,14 @@ typedef struct {
     int count;
 } bt_device_list_t;
 
+// Pending pairing request details exposed to higher layers
+typedef struct {
+    bool pin_request_pending;      /**< Legacy PIN request is awaiting a reply */
+    bool ssp_confirm_pending;      /**< SSP numeric comparison awaiting confirm */
+    char mac[18];                  /**< MAC address associated with the request */
+    uint32_t passkey;              /**< SSP passkey (valid only when ssp_confirm_pending) */
+} bt_pairing_request_info_t;
+
 // Callback function types
 typedef void (*bt_connected_cb)(const char* mac, const char* name);
 typedef void (*bt_disconnected_cb)(const char* mac);
@@ -165,6 +173,33 @@ bt_err_t bt_unpair_all(void);
  * @return ESP_OK (bt_err_t) if successful
  */
 bt_err_t bt_set_pin(const char* pin);
+
+/**
+ * Retrieve the current pending pairing request information (if any).
+ *
+ * @param info Output structure populated with pending state when available.
+ * @return true when a pairing request is pending and @p info was populated.
+ */
+bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info);
+
+/**
+ * Reply to an SSP numeric comparison confirmation request.
+ *
+ * @param mac Optional MAC address to confirm; if NULL the most recent pending
+ *            request (see bt_pairing_get_pending_request) is used.
+ * @param accept true to accept the pairing, false to reject it.
+ * @return ESP_OK on success or an esp_err_t value on failure.
+ */
+bt_err_t bt_pairing_confirm(const char* mac, bool accept);
+
+/**
+ * Provide a PIN code for a legacy pairing request.
+ *
+ * @param mac Optional MAC address; if NULL the most recent pending request is used.
+ * @param pin ASCII PIN code to reply with.
+ * @return ESP_OK on success or an esp_err_t value on failure.
+ */
+bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin);
 
 // Functions for testing only - not for production use
 #ifdef UNIT_TEST
