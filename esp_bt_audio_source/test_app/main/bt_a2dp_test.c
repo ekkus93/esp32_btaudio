@@ -19,6 +19,14 @@
 #include "bt_test_setup.h"
 #include "unity_config.h"
 
+/* Forward declarations for pairing tests added in test_pairing_commands.c
+ * These functions live in a separate translation unit; provide prototypes
+ * so RUN_TEST can reference them without causing implicit/undeclared
+ * identifier compile errors. */
+void test_pairing_commands_happy_path(void);
+void test_enter_pin_uses_default_when_missing(void);
+void test_confirm_pin_without_pending_request_returns_error_event(void);
+
 static const char *TAG = "BT_A2DP_TEST";
 
 // Helper: wait until bt_is_connected() equals expected, or timeout (ms) elapses.
@@ -579,6 +587,11 @@ void run_bt_a2dp_tests(void)
     RUN_TEST(test_connection_status_info);
     RUN_TEST(test_auto_reconnect);
     RUN_TEST(test_connect_to_a2dp_sink);
+
+    /* Pairing command tests (added separately in test_pairing_commands.c) */
+    RUN_TEST(test_pairing_commands_happy_path);
+    RUN_TEST(test_enter_pin_uses_default_when_missing);
+    RUN_TEST(test_confirm_pin_without_pending_request_returns_error_event);
     
     // 3. A2DP streaming tests
     RUN_TEST(test_a2dp_streaming);

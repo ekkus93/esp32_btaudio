@@ -19,6 +19,11 @@
 #include "bt_mock_devices.h"
 #include "bt_mock_setup.h" // Update this include
 
+// Additional Unity tests covering the command interface pairing commands
+extern void test_pairing_commands_happy_path(void);
+extern void test_enter_pin_uses_default_when_missing(void);
+extern void test_confirm_pin_without_pending_request_returns_error_event(void);
+
 static const char *TAG = "BT_PAIRING_ESP32_TEST";
 
 /* Use the component-provided mock state and helpers. When
@@ -444,6 +449,9 @@ void run_bt_pairing_tests(void)
     RUN_TEST(test_ssp_fallback_to_pin);
     RUN_TEST(test_unpair_specific_device);
     RUN_TEST(test_unpair_all_devices);
+    RUN_TEST(test_pairing_commands_happy_path);
+    RUN_TEST(test_enter_pin_uses_default_when_missing);
+    RUN_TEST(test_confirm_pin_without_pending_request_returns_error_event);
     
     // Finish Unity tests
     UNITY_END();

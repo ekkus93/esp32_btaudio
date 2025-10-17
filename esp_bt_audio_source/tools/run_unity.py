@@ -66,10 +66,14 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
                 decoded = str(line)
 
             if RUN_COMPLETE_RE.search(decoded):
+                # Debug: log that we saw the completion marker
+                print("[run_unity DEBUG] RUN_COMPLETE_RE matched in monitor output", file=sys.stderr)
                 summary_event.set()
             if BOOT_BANNER_RE.search(decoded):
                 # if we see a boot banner, signal boot_event — this usually means the
                 # device restarted (for example after tests completed and the test_app rebooted)
+                # Debug: log that we saw a boot banner
+                print("[run_unity DEBUG] BOOT_BANNER_RE matched in monitor output", file=sys.stderr)
                 boot_event.set()
             if stop_event.is_set():
                 break

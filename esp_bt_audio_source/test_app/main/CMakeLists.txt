@@ -2,21 +2,20 @@
 
 # Register the component and specify dependencies
 idf_component_register(
-    SRCS 
+    SRCS
         "main.c"
         "test_main.c"
         "test_app_main.c"
-        "audio_processor_test.c"
-        "../components/test_audio_processor.c"
         "bt_source_test.c"
         "bt_a2dp_test.c"
         "bt_pairing_test.c"
+        "test_pairing_commands.c"
+        "test_pairing_adapters.c"
         "bt_source_stubs.c"
         "bt_source_mock.c"
         "bt_test_setup.c"
         "unity_config.c"
         "bt_pairing_persistence_test.c"
-        "audio_pipeline_test.c"
         "bt_mock_setup.c"  # Update this filename
     INCLUDE_DIRS 
         "."
@@ -27,8 +26,8 @@ idf_component_register(
         bt_manager
         command_interface
         nvs_storage
-        audio
         unity
+        test_utils
 )
 
 # Component-specific compile definitions

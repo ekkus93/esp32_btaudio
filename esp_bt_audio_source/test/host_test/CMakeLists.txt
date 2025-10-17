@@ -140,6 +140,15 @@ target_link_libraries(test_pairing_negative unity)
 target_sources(test_pairing_negative PRIVATE mocks/nvs_storage_mock.c)
 add_test(NAME test_pairing_negative COMMAND $<TARGET_FILE:test_pairing_negative>)
 
+# Edge-case pairing tests (invalid MACs, missing pending request behavior)
+add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
+    ../../components/command_interface/commands.c
+    mocks/mock_gap.c
+    mocks/mock_uart.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
+target_link_libraries(test_pairing_edge_cases unity)
+add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

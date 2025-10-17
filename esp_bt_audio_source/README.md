@@ -535,6 +535,34 @@ What it does:
 
 📌 **Important:** Unity lives in the `test_app/` project. If you run the helper from the production app root, it will happily flash `esp_bt_audio_source` and you will *not* see any Unity output. Always point the runner at `test_app/` (either by changing directories or using `--project-root`).
 
+Unity quickstart (host + on-device)
+-----------------------------------
+1. **Host Unity/CTests (no hardware required)**
+   ```bash
+   cd esp_bt_audio_source/test/host_test
+   cmake -S . -B build_host_tests
+   cmake --build build_host_tests -- -j"$(nproc)"
+   cd build_host_tests
+   ctest --output-on-failure
+   ```
+   The binaries land in `build_host_tests/` (for example `test_audio_processor`). JUnit/CTest logs remain in the same directory for CI artifacts.
+
+2. **Bluetooth Unity firmware (`test_app`)**
+   ```bash
+   cd esp_bt_audio_source/test_app
+   idf.py build
+   python3 ../tools/run_unity.py --port /dev/ttyUSB0 --timeout 600
+   ```
+   The runner flashes `build/esp_bt_audio_source_test.bin`, streams Unity output, and saves the canonical capture to `test_app/build/one_run_unity.log`.
+
+3. **Audio Unity firmware (`test_app_audio`)**
+   ```bash
+   cd esp_bt_audio_source/test_app_audio
+   idf.py build
+   python3 ../tools/run_unity.py --project-root test_app_audio --port /dev/ttyUSB0 --timeout 600
+   ```
+   This image (`build/esp_bt_audio_source_audio_test.bin`) exercises the audio/I²S suites. The log is written to `test_app_audio/build/one_run_unity.log`.
+
 Canonical sequence:
 
 ```bash

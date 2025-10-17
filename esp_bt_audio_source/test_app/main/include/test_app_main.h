@@ -11,11 +11,6 @@ void app_main_bt_pairing_tests(void);
 void app_main_bt_a2dp_tests(void);
 
 /**
- * @brief Run all audio tests
- */
-void app_main_audio_tests(void);
-
-/**
  * @brief Run a specific test group by name
  * 
  * @param test_group The name of the test group to run

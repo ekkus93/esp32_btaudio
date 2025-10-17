@@ -38,6 +38,10 @@ typedef int esp_err_t;
 #define ESP_ERR_INVALID_STATE (-102)
 #endif
 
+#ifndef ESP_ERR_NOT_SUPPORTED
+#define ESP_ERR_NOT_SUPPORTED (-104)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

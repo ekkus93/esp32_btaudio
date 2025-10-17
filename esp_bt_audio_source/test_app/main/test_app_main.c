@@ -12,7 +12,6 @@ static const char *TAG = "TEST_APP_MAIN";
 // External test function declarations
 extern void run_bt_pairing_tests(void);
 extern void run_bt_a2dp_tests(void);
-extern void run_all_audio_tests(void);
 
 void app_test_main(void)
 {
@@ -23,12 +22,6 @@ void app_test_main(void)
     ESP_LOGI(TAG, "Starting Bluetooth A2DP tests");
     run_bt_a2dp_tests();
     ESP_LOGI(TAG, "Bluetooth A2DP tests completed");
-
-#ifndef CONFIG_BT_MOCK_TESTING
-    ESP_LOGI(TAG, "Starting audio processing tests");
-    app_main_audio_tests();
-    ESP_LOGI(TAG, "Audio processing tests completed");
-#endif
 
     // REMOVE THIS LINE! It's causing the restart:
     // esp_restart();
@@ -53,16 +46,6 @@ void app_main_bt_a2dp_tests(void)
     run_bt_a2dp_tests();
 }
 
-void app_main_audio_tests(void)
-{
-#ifdef CONFIG_BT_MOCK_TESTING
-    ESP_LOGW(TAG, "Audio tests skipped in BT mock testing mode");
-#else
-    ESP_LOGI(TAG, "Running aggregated audio test group");
-    run_all_audio_tests();
-#endif
-}
-
 void run_test_group(const char *test_group)
 {
     if (test_group == NULL) {
@@ -74,8 +57,6 @@ void run_test_group(const char *test_group)
         app_main_bt_pairing_tests();
     } else if (strcmp(test_group, "bt_a2dp") == 0) {
         app_main_bt_a2dp_tests();
-    } else if (strcmp(test_group, "audio") == 0) {
-        app_main_audio_tests();
     } else {
         ESP_LOGW(TAG, "Unknown test group '%s'", test_group);
     }
