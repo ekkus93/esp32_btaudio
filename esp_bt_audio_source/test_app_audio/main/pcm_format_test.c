@@ -31,7 +31,7 @@ static void test_pcm_16bit_format(void)
     TEST_ASSERT_EQUAL_INT16(128, test_buffer_16bit[1]);
     TEST_ASSERT_EQUAL_INT16(256, test_buffer_16bit[2]);
     float rms = calculate_rms(test_buffer_16bit, TEST_BUFFER_SIZE, 0, 1);
-    TEST_ASSERT_GREATER_THAN(0.0f, rms);
+    TEST_ASSERT_TRUE_MESSAGE(rms > 0.0f, "RMS value should be positive for 16-bit PCM ramp");
     test_buffer_16bit[0] = 12345;
     TEST_ASSERT_EQUAL_INT16(12345, test_buffer_16bit[0]);
 }
