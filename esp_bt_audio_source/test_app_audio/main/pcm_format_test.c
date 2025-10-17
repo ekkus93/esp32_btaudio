@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "unity.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -43,7 +44,14 @@ static void test_pcm_24bit_format(void)
         test_buffer_16bit[i] = (i % 256) * 128;
     }
     test_convert_16bit_to_24bit(test_buffer_16bit, test_buffer_24bit, TEST_BUFFER_SIZE);
-    TEST_ASSERT_NOT_EQUAL(0, test_buffer_24bit[0] | test_buffer_24bit[1] | test_buffer_24bit[2]);
+    bool any_nonzero = false;
+    for (int i = 0; i < TEST_BUFFER_SIZE * 3; i++) {
+        if (test_buffer_24bit[i] != 0) {
+            any_nonzero = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(any_nonzero, "Converted 24-bit buffer should contain non-zero bytes");
     test_convert_24bit_to_16bit(test_buffer_24bit, result_buffer_16bit, TEST_BUFFER_SIZE);
     for (int i = 0; i < TEST_BUFFER_SIZE; i++) {
         TEST_ASSERT_INT16_WITHIN(2, test_buffer_16bit[i], result_buffer_16bit[i]);
