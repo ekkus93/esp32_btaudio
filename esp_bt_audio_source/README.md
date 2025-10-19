@@ -26,7 +26,9 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — October 2025
 
 - Latest firmware commit `cb53afee` (2025-10-11) reorganized host mocks under `test/host_test/mocks/include/` and checked in the device monitor capture `device_test_monitor.log`. No code changes have landed since that refactor.
-- Host Unity/ctest bundle was rebuilt on 2025-10-18; all 12 executables (46 individual assertions) pass via `ctest` and the canonical log sits at `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
+ - Latest firmware commit `cb53afee` (2025-10-11) reorganized host mocks under `test/host_test/mocks/include/` and checked in the device monitor capture `device_test_monitor.log`.
+ - Host Unity/ctest bundle was rebuilt on 2025-10-18 and again on 2025-10-19 after additional test work; all 12 host-test executables (52 individual assertions) pass via `ctest`. The canonical log sits at `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
+ - Recent host-test additions (2025-10-19): added negative/failure-path unit tests for `bt_manager` (DISCONNECT/START/STOP), a small test-hooks mock, and routed the UNIT_TEST command paths through the manager wrappers so failures surface to the command interface. Implicit-declaration warnings were fixed and these changes have been merged to `master`.
 - On-device Unity suites were rerun on 2025-10-18 using `tools/run_unity.py`:
    - `test_app_audio`: 3 post-reset passes × 26 cases each = 78/78 tests green (`test_app_audio/build/one_run_unity.log`).
    - `test_app`: 14 full loops plus additional pairing laps = 602/602 tests green (`test_app/build/one_run_unity.log`).
@@ -80,9 +82,9 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-10-18)
+Current test status (2025-10-19)
 ---------------------------------
-- Host-based tests under `test/host_test` were rebuilt from a clean tree and executed via `ctest`; all 12 binaries passed and the summary lives in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
+- Host-based tests under `test/host_test` were rebuilt and executed via `ctest` (including the recent negative-path tests); all 12 host binaries passed — total: 52 tests, 0 failures. The summary lives in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
 - On-device Unity tests were rerun on hardware on 2025-10-18 using the scripted runner:
    - `test_app_audio`: 78 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
    - `test_app`: 602 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
