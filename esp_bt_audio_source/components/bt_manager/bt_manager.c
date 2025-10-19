@@ -803,14 +803,29 @@ int bt_manager_connect(const char* mac) {
 }
 
 int bt_manager_disconnect(void) {
+#ifdef UNIT_TEST
+    /* Test hook: allow unit tests to force a failure path. Implemented in
+     * test code via a weak symbol returning non-zero when a failure should
+     * be simulated. */
+    extern int bt_manager_forced_disconnect_failure(void);
+    if (bt_manager_forced_disconnect_failure()) return -1;
+#endif
     return (bt_disconnect() == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_start_audio(void) {
+#ifdef UNIT_TEST
+    extern int bt_manager_forced_start_failure(void);
+    if (bt_manager_forced_start_failure()) return -1;
+#endif
     return (bt_start_audio() == ESP_OK) ? 0 : -1;
 }
 
 int bt_manager_stop_audio(void) {
+#ifdef UNIT_TEST
+    extern int bt_manager_forced_stop_failure(void);
+    if (bt_manager_forced_stop_failure()) return -1;
+#endif
     return (bt_stop_audio() == ESP_OK) ? 0 : -1;
 }
 

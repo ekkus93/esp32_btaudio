@@ -165,6 +165,14 @@ int main(void) {
     extern void test_stop_command(void);
     RUN_TEST(test_start_command);
     RUN_TEST(test_stop_command);
+
+    // Negative-path failure simulations
+    extern void test_disconnect_failure_command(void);
+    extern void test_start_failure_command(void);
+    extern void test_stop_failure_command(void);
+    RUN_TEST(test_disconnect_failure_command);
+    RUN_TEST(test_start_failure_command);
+    RUN_TEST(test_stop_failure_command);
     
     return UNITY_END();
 }
@@ -301,4 +309,63 @@ void test_stop_command(void) {
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_TRUE(strstr(tx, "STOP") != NULL);
     TEST_ASSERT_TRUE(strstr(tx, "MOCK_STOPPED") != NULL || strstr(tx, "STOPPED") != NULL || strstr(tx, "FAILED") != NULL);
+}
+
+// Negative-path: simulate backend failure for DISCONNECT
+void test_disconnect_failure_command(void) {
+    mock_uart_reset_tx();
+    // Enable forced failure
+    extern void bt_manager_test_set_force_disconnect_failure(int v);
+    extern void bt_manager_test_reset_forces(void);
+    bt_manager_test_set_force_disconnect_failure(1);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DISCONNECT", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "DISCONNECT") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
+
+    // Reset forces for other tests
+    bt_manager_test_reset_forces();
+}
+
+// Negative-path: simulate backend failure for START
+void test_start_failure_command(void) {
+    mock_uart_reset_tx();
+    extern void bt_manager_test_set_force_start_failure(int v);
+    extern void bt_manager_test_reset_forces(void);
+    bt_manager_test_set_force_start_failure(1);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("START", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "START") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
+
+    bt_manager_test_reset_forces();
+}
+
+// Negative-path: simulate backend failure for STOP
+void test_stop_failure_command(void) {
+    mock_uart_reset_tx();
+    extern void bt_manager_test_set_force_stop_failure(int v);
+    extern void bt_manager_test_reset_forces(void);
+    bt_manager_test_set_force_stop_failure(1);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "STOP") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
+
+    bt_manager_test_reset_forces();
 }

@@ -9,6 +9,22 @@
 #include "nvs_storage.h"
 #include "bt_manager.h"
 
+/*
+ * Ensure prototypes are visible to unit-test builds. In some host/unit-test
+ * configurations the compatibility macros below remap bt_manager_* names to
+ * other symbols; however the compiler still needs a prototype. The public
+ * header `bt_manager.h` provides canonical prototypes (bt_disconnect,
+ * bt_start_audio, bt_stop_audio). For legacy code that calls the
+ * bt_manager_* names in unit tests we provide small forward declarations
+ * that match the wrapper signatures used here (returning int on host).
+ */
+#if defined(UNIT_TEST) && !defined(ESP_PLATFORM)
+/* forward-declare the wrappers used by the command layer during unit tests */
+int bt_manager_disconnect(void);
+int bt_manager_start_audio(void);
+int bt_manager_stop_audio(void);
+#endif
+
 #if defined(ESP_PLATFORM)
 #include "esp_gap_bt_api.h"
 #else
@@ -160,6 +176,12 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #ifdef ESP_PLATFORM
     if (bt_manager_disconnect() == ESP_OK) cmd_send_response("OK", "DISCONNECT", "DONE", NULL);
     else cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+#elif defined(UNIT_TEST)
+    /* In unit tests use the real manager wrapper so tests can simulate
+     * failure via the bt_manager_test hooks. Preserve the MOCK_* result
+     * string on success to remain compatible with existing expectations. */
+    if (bt_manager_disconnect() == 0) cmd_send_response("OK", "DISCONNECT", "MOCK_DONE", NULL);
+    else cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
 #else
     cmd_send_response("OK", "DISCONNECT", "MOCK_DONE", NULL);
 #endif
@@ -169,6 +191,9 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #ifdef ESP_PLATFORM
     if (bt_manager_start_audio() == ESP_OK) cmd_send_response("OK", "START", "STARTED", NULL);
     else cmd_send_response("ERR", "START", "FAILED", NULL);
+#elif defined(UNIT_TEST)
+    if (bt_manager_start_audio() == 0) cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
+    else cmd_send_response("ERR", "START", "FAILED", NULL);
 #else
     cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
 #endif
@@ -177,6 +202,9 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     case CMD_TYPE_STOP:
 #ifdef ESP_PLATFORM
     if (bt_manager_stop_audio() == ESP_OK) cmd_send_response("OK", "STOP", "STOPPED", NULL);
+    else cmd_send_response("ERR", "STOP", "FAILED", NULL);
+#elif defined(UNIT_TEST)
+    if (bt_manager_stop_audio() == 0) cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
     else cmd_send_response("ERR", "STOP", "FAILED", NULL);
 #else
     cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
