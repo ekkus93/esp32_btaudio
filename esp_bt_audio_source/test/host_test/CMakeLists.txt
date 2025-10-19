@@ -36,9 +36,11 @@ endif()
 # Add test executables
 add_executable(test_commands test_commands.c 
     ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
 target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_commands unity)
 
 # Enable CTest and register the test executables so `ctest` can discover them
@@ -48,6 +50,8 @@ add_test(NAME test_commands COMMAND $<TARGET_FILE:test_commands>)
 add_executable(test_bluetooth test_bluetooth.c 
     ../../components/bt_manager/bt_manager.c
     mocks/mock_i2s.c)
+# Ensure test hooks are linked for bt_manager tests
+target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
@@ -115,6 +119,8 @@ add_executable(test_pairing_confirm test_pairing_confirm.c
     mocks/mock_uart.c)
 target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_confirm unity)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
 add_executable(test_connect_name test_connect_name.c
@@ -123,6 +129,7 @@ add_executable(test_connect_name test_connect_name.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_connect_name unity)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
 
@@ -132,6 +139,8 @@ add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
     mocks/mock_uart.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_enter_pin unity)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
 add_executable(test_pairing_negative test_pairing_negative.c
@@ -147,6 +156,8 @@ add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
     mocks/mock_uart.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_edge_cases unity)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
 # Create a consolidated test runner
