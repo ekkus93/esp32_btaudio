@@ -165,6 +165,24 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     break;
 
+    case CMD_TYPE_START:
+#ifdef ESP_PLATFORM
+    if (bt_manager_start_audio() == ESP_OK) cmd_send_response("OK", "START", "STARTED", NULL);
+    else cmd_send_response("ERR", "START", "FAILED", NULL);
+#else
+    cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
+#endif
+    break;
+
+    case CMD_TYPE_STOP:
+#ifdef ESP_PLATFORM
+    if (bt_manager_stop_audio() == ESP_OK) cmd_send_response("OK", "STOP", "STOPPED", NULL);
+    else cmd_send_response("ERR", "STOP", "FAILED", NULL);
+#else
+    cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
+#endif
+    break;
+
     case CMD_TYPE_CONNECT_NAME: {
     if (ctx->param_count < 1) { cmd_send_response("ERR", "CONNECT_NAME", "MISSING_PARAM", NULL); break; }
     char name_buf[128] = {0};

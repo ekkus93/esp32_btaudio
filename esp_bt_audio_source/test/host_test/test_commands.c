@@ -160,6 +160,12 @@ int main(void) {
     extern void test_disconnect_command(void);
     RUN_TEST(test_disconnect_command);
     
+    // Test START and STOP commands
+    extern void test_start_command(void);
+    extern void test_stop_command(void);
+    RUN_TEST(test_start_command);
+    RUN_TEST(test_stop_command);
+    
     return UNITY_END();
 }
 
@@ -271,4 +277,28 @@ void test_disconnect_command(void) {
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_TRUE(strstr(tx, "DISCONNECT") != NULL);
     TEST_ASSERT_TRUE(strstr(tx, "MOCK_DONE") != NULL || strstr(tx, "DONE") != NULL || strstr(tx, "FAILED") != NULL);
+}
+
+// Test START command behavior
+void test_start_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("START", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "START") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MOCK_STARTED") != NULL || strstr(tx, "STARTED") != NULL || strstr(tx, "FAILED") != NULL);
+}
+
+// Test STOP command behavior
+void test_stop_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "STOP") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MOCK_STOPPED") != NULL || strstr(tx, "STOPPED") != NULL || strstr(tx, "FAILED") != NULL);
 }
