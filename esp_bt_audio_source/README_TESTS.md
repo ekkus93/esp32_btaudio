@@ -64,8 +64,4 @@ adjust the CMake for test builds.
 
 ---
 
-If you want, I can:
-- Add a small `scripts/run_tests.sh` wrapper that runs both Python and C tests.
-- Move the host build fallbacks into a test-only shim instead of editing the
-  public header.
 
