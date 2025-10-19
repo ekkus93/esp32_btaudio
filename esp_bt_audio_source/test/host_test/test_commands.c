@@ -156,6 +156,10 @@ int main(void) {
     RUN_TEST(test_status_command);
     RUN_TEST(test_reset_command);
     
+    // Test DISCONNECT command
+    extern void test_disconnect_command(void);
+    RUN_TEST(test_disconnect_command);
+    
     return UNITY_END();
 }
 
@@ -255,4 +259,16 @@ void test_reset_command(void) {
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_TRUE(strstr(tx, "RESET") != NULL);
     TEST_ASSERT_TRUE(strstr(tx, "MOCK_REBOOT") != NULL || strstr(tx, "REBOOTING") != NULL);
+}
+
+// Test DISCONNECT command behavior
+void test_disconnect_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DISCONNECT", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "DISCONNECT") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MOCK_DONE") != NULL || strstr(tx, "DONE") != NULL || strstr(tx, "FAILED") != NULL);
 }

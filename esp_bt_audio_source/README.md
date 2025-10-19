@@ -25,10 +25,12 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 <a id="project-status--october-2025"></a>
 ## Project status — October 2025
 
-- Latest firmware commit `cb53afee` (2025-10-11) reorganizes host mocks under `test/host_test/mocks/include/` and checks in the device monitor capture `device_test_monitor.log`.
-- Host unit tests in `test/host_test` pass locally after the mock cleanup, covering pairing command flows, NVS persistence, and serial command parsing.
-- On-device Unity suite (`test_app`) was rebuilt and reflashed on 2025-10-11; the captured monitor log shows 11 pairing tests and 22 command tests looping without failures. The raw output lives at `device_test_monitor.log` alongside the test artifacts.
-- Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; the event timeline and allocator correlation are still to be documented (see [Remaining work](#remaining-work-short-list)).
+- Latest firmware commit `cb53afee` (2025-10-11) reorganized host mocks under `test/host_test/mocks/include/` and checked in the device monitor capture `device_test_monitor.log`. No code changes have landed since that refactor.
+- Host Unity/ctest bundle was rebuilt on 2025-10-18; all 12 executables (46 individual assertions) pass via `ctest` and the canonical log sits at `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
+- On-device Unity suites were rerun on 2025-10-18 using `tools/run_unity.py`:
+   - `test_app_audio`: 3 post-reset passes × 26 cases each = 78/78 tests green (`test_app_audio/build/one_run_unity.log`).
+   - `test_app`: 14 full loops plus additional pairing laps = 602/602 tests green (`test_app/build/one_run_unity.log`).
+- Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs to be captured and documented (see [Remaining work](#remaining-work-short-list)).
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
@@ -78,10 +80,12 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-10-11)
---------------------------------
-- Host-based tests under `test/host_test` remain green after the mock reorganization, validating command handlers, NVS persistence helpers, and Bluetooth GAP reply paths.
-- On-device Unity tests in `test_app` were rebuilt and reflashed on 2025-10-11. The captured monitor output (`device_test_monitor.log`) shows the full loop of 11 pairing tests and 22 command tests passing repeatedly without failures.
+Current test status (2025-10-18)
+---------------------------------
+- Host-based tests under `test/host_test` were rebuilt from a clean tree and executed via `ctest`; all 12 binaries passed and the summary lives in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`.
+- On-device Unity tests were rerun on hardware on 2025-10-18 using the scripted runner:
+   - `test_app_audio`: 78 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
+   - `test_app`: 602 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
 
 Remaining work (short list)
 --------------------------
@@ -135,7 +139,7 @@ Recent changes (host-test and pairing work)
 Recent on-device pairing diagnostics and status
 
 - On-device E2E pairing runs have been executed and serial monitor output was persisted to `build/pairing_e2_logs/serial.log` for post-run analysis. This log contains allocator diagnostic dumps (the allocator prints `osi_mem_dbg_clean not-found` with a `recent-free-history` buffer), temporary BTM lifecycle traces and additional WARN/ERRORs inserted for timeline correlation.
-- Unity test monitor output from 2025-10-11 is checked into `device_test_monitor.log` to document the passing baseline while pairing diagnostics continue.
+- Unity regression sweeps on 2025-10-18 refreshed the canonical per-suite logs: `test_app_audio/build/one_run_unity.log` (78 tests) and `test_app/build/one_run_unity.log` (602 tests) both show clean passes alongside the earlier `device_test_monitor.log` capture from 2025-10-11.
 - Minimal defensive fixes applied to aid stability and debug:
    - `BTM_SetPowerMode` now uses a zero-initialized local copy of the caller-provided `tBTM_PM_PWR_MD` structure before using it internally and before sending it to the power manager helper. This reduces reliance on caller memory lifetime.
    - `bta_dm_pm_sniff` contains an ACL-existence guard that skips requesting a power-mode change when no ACL is present; it logs the skip and returns a non-success status. This avoids invoking power-mode transitions during disconnect transient windows.

@@ -156,6 +156,15 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     break;
 
+    case CMD_TYPE_DISCONNECT:
+#ifdef ESP_PLATFORM
+    if (bt_manager_disconnect() == ESP_OK) cmd_send_response("OK", "DISCONNECT", "DONE", NULL);
+    else cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+#else
+    cmd_send_response("OK", "DISCONNECT", "MOCK_DONE", NULL);
+#endif
+    break;
+
     case CMD_TYPE_CONNECT_NAME: {
     if (ctx->param_count < 1) { cmd_send_response("ERR", "CONNECT_NAME", "MISSING_PARAM", NULL); break; }
     char name_buf[128] = {0};
