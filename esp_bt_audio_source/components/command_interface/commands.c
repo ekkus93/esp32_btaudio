@@ -447,8 +447,66 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     case CMD_TYPE_DEBUG: {
     if (ctx->param_count < 1) { cmd_send_response("ERR", "DEBUG", "MISSING_PARAM", NULL); break; }
+    /* Emit diagnostics via ESP logging on-device so they respect log
+     * configuration, and fall back to printf for host/unit tests. */
+#ifdef ESP_PLATFORM
+    ESP_LOGI(TAG, "DIAG-DEBUG-ENTRY subcmd=%s param_count=%d", ctx->params[0], ctx->param_count);
+#else
+    printf("DIAG-DEBUG-ENTRY subcmd=%s param_count=%d\n", ctx->params[0], ctx->param_count);
+#endif
     if (strcasecmp(ctx->params[0], "MOCK_ON") == 0) { s_cmd_mock_enabled = true; cmd_send_response("OK", "DEBUG", "MOCK_ON", NULL); }
-    else if (strcasecmp(ctx->params[0], "MOCK_ADD") == 0) { if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) { cmd_send_response("ERR", "DEBUG", "MOCK_ADD_MISSING", NULL); } else { char payload[128]; strncpy(payload, ctx->params[1], sizeof(payload)-1); payload[sizeof(payload)-1] = '\0'; char* comma = strchr(payload, ','); if (!comma) { cmd_send_response("ERR", "DEBUG", "MOCK_ADD_INVALID", ctx->params[1]); } else { *comma = '\0'; const char* mac = payload; strncpy(s_cmd_mock_pairing_addr, mac, sizeof(s_cmd_mock_pairing_addr)-1); s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr)-1] = '\0'; cmd_send_response("OK", "DEBUG", "MOCK_ADD", ctx->params[1]); } } }
+    else if (strcasecmp(ctx->params[0], "MOCK_ADD") == 0) {
+        if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) {
+            cmd_send_response("ERR", "DEBUG", "MOCK_ADD_MISSING", NULL);
+        } else {
+            /* Join remaining params with a comma so callers may provide
+             * either `MAC,PASS` or `MAC PASS` forms. This makes the
+             * test-friendly space-separated form accepted while remaining
+             * compatible with the original comma-separated syntax. */
+            char payload[128];
+            size_t pos = 0;
+            for (int i = 1; i < ctx->param_count && pos + 1 < sizeof(payload); ++i) {
+                const char* p = ctx->params[i];
+                size_t l = strlen(p);
+                if (pos + l + 1 >= sizeof(payload)) break;
+                if (i > 1) payload[pos++] = ',';
+                memcpy(&payload[pos], p, l);
+                pos += l;
+            }
+            payload[pos] = '\0';
+
+            /* Accept either a single MAC (no comma) or MAC,extra form. */
+            char* comma = strchr(payload, ',');
+            const char* mac = payload;
+            if (comma) {
+                *comma = '\0';
+            }
+            /* store the MAC we will use for the mock pairing */
+            strncpy(s_cmd_mock_pairing_addr, mac, sizeof(s_cmd_mock_pairing_addr)-1);
+            s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr)-1] = '\0';
+
+            /* Diagnostic: indicate we've reached the MOCK_ADD path and
+             * show the MAC that will be used. This helps confirm the
+             * execution path is taken at runtime even if subsequent
+             * event delivery is missed. */
+            printf("DIAG-MOCK-ADD: %s\n", s_cmd_mock_pairing_addr);
+            /* Use ESP logging on-device to guarantee visibility even if
+             * stdout redirection changes, but still print to stdout for
+             * host tests. */
+#ifdef ESP_PLATFORM
+            ESP_LOGI(TAG, "DIAG-DEBUG-MOCK-ADD-BEFORE-SEND: mac=%s", s_cmd_mock_pairing_addr);
+#else
+            printf("DIAG-DEBUG-MOCK-ADD-BEFORE-SEND: mac=%s\n", s_cmd_mock_pairing_addr);
+#endif
+            /* Emit a pairing event so tests that call cmd_execute() and
+             * then test_capture_event() can observe that the mock was
+             * added. Previously only a response was emitted which
+             * caused test expectations to fail. */
+            cmd_send_event_pair("ADDED", s_cmd_mock_pairing_addr);
+            printf("DIAG-MOCK-ADD-AFTER-SEND\n");
+            cmd_send_response("OK", "DEBUG", "MOCK_ADD", s_cmd_mock_pairing_addr);
+        }
+    }
     else if (strcasecmp(ctx->params[0], "MOCK_PAIR") == 0) { if (ctx->param_count < 2 || strlen(ctx->params[1]) == 0) { cmd_send_response("ERR", "DEBUG", "MOCK_PAIR_MISSING", NULL); } else {
 #ifdef ESP_PLATFORM
             s_cmd_mock_enabled = true;
@@ -551,7 +609,52 @@ cmd_status_t cmd_send_response(const char* status, const char* command, const ch
 // Convenience wrapper for pairing events
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data)
 {
-    return cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", data);
+    /* Build the same EVENT line we emit on the console so tests can
+     * optionally capture it via a weakly-linked hook. The hook is
+     * provided by the test adapter and is intentionally weak so
+     * production builds are unaffected. */
+    char buf[512];
+    const char* d = data ? data : "";
+    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", d);
+    /* Emit on serial/console as usual */
+    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", data);
+
+    /* Diagnostic: also print an explicit, easily-greppable line so
+     * test runs and log collectors can detect emitted events even if
+     * serial parsing/bridging is flaky. This must not change behavior
+     * other than producing an extra log line. */
+#ifdef ESP_PLATFORM
+    ESP_LOGI(TAG, "DIAG-EVENT: %s", buf);
+#else
+    /* Host/unit tests: print to stdout so the test log captures it. */
+    printf("DIAG-EVENT: %s\n", buf);
+#endif
+    /* Also print via printf unconditionally so even if logging is disabled
+     * the diagnostic marker is present in the serial console output. */
+    printf("DIAG-EVENT: %s\n", buf);
+
+    /* If a test-side receiver is linked, forward the same formatted
+     * event string so `test_capture_event` can observe it without
+     * relying on serial-bridge tooling. Insert a guaranteed printf
+     * immediately before calling the weak hook so monitor logs will
+     * show that we attempted the forwarding. This helps distinguish
+     * between the code path not being reached and the hook not being
+     * linked into the image. */
+#if defined(__GNUC__)
+    extern void test_push_event(const char* ev) __attribute__((weak));
+#else
+    extern void test_push_event(const char* ev);
+#endif
+    /* Guaranteed marker that's easy to grep in serial logs */
+    printf("HOOK-DEBUG: about to call test_push_event (len=%d)\n", n);
+    if (n > 0 && test_push_event) {
+        printf("HOOK-DEBUG: test_push_event symbol present, forwarding event\n");
+        test_push_event(buf);
+    } else {
+        printf("HOOK-DEBUG: test_push_event not present or n<=0\n");
+    }
+
+    return CMD_SUCCESS;
 }
 
 // Lightweight command parser used by host tests. Parses command name and up
@@ -576,6 +679,7 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     char* save = NULL;
     char* token = strtok_r(s, " \t", &save);
     if (!token) return CMD_ERROR_UNKNOWN;
+    printf("PARSE-DIAG: token='%s'\n", token);
     // Map command to type (case-insensitive)
     if (strcasecmp(token, "SCAN") == 0) ctx->type = CMD_TYPE_SCAN;
     else if (strcasecmp(token, "CONNECT") == 0) ctx->type = CMD_TYPE_CONNECT;
@@ -643,15 +747,29 @@ cmd_status_t cmd_process(void)
     // Only attempt to read if the driver is installed for the command UART.
     // For host/unit tests the mock UART is always available; skip the
     // runtime driver-installed check in that configuration.
+    int read_uart = -1;
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
     (void)CMD_UART_NUM;
+    read_uart = CMD_UART_NUM;
 #else
-    if (!uart_is_driver_installed(CMD_UART_NUM)) {
+    // Prefer the configured command UART. If it's not installed, fall back
+    // to the console UART (UART_NUM_0) if that driver is installed. This
+    // helps boards that use the console driver for input but didn't install
+    // a separate driver for the command UART.
+    if (uart_is_driver_installed(CMD_UART_NUM)) {
+        read_uart = CMD_UART_NUM;
+    } else if (uart_is_driver_installed(UART_NUM_0)) {
+#ifdef ESP_LOGW
+        ESP_LOGW(TAG, "cmd_process: command UART %d not installed; falling back to console UART 0", CMD_UART_NUM);
+#endif
+        read_uart = UART_NUM_0;
+    } else {
+        // No available UART driver — nothing to read.
         return CMD_SUCCESS;
     }
 #endif
 
-    int r = uart_read_bytes(CMD_UART_NUM, read_buf, sizeof(read_buf)-1, 0);
+    int r = uart_read_bytes(read_uart, read_buf, sizeof(read_buf)-1, 0);
     if (r <= 0) {
         return CMD_SUCCESS;
     }

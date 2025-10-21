@@ -7,7 +7,8 @@
 // Mock UART driver for testing
 
 // Buffer sizes
-#define MOCK_UART_BUFFER_SIZE 2048
+// Increased buffer size for stress tests to reduce truncation warnings
+#define MOCK_UART_BUFFER_SIZE 32768
 #define MOCK_UART_MAX_PORTS 2
 
 // UART ports

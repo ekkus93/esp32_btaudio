@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "commands.c"
+    SRCS "command_interface.c" "commands.c"
     INCLUDE_DIRS "include"
     PRIV_REQUIRES main bt_manager driver
     PRIV_INCLUDE_DIRS

@@ -31,6 +31,7 @@
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"
 #include "command_interface.h"
+#include "driver/uart.h"
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
@@ -911,7 +912,48 @@ static void bt_init(void)
 
 void app_main(void)
 {
+    /* Very early unbuffered boot marker for programmatic captures. This
+     * appears before most initialization and helps external injectors
+     * avoid racing the device boot sequence. Use both printf and the
+     * ROM-level esp_rom_printf when available. */
+    printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
+#ifdef esp_rom_printf
+    esp_rom_printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
+#endif
+
     ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting");
+    /* Ensure the console UART driver is installed early so command layer
+     * can synchronously read/write without racing with other subsystems.
+     * This mirrors the conservative install performed in the command
+     * interface but moves it earlier in startup to reduce races. */
+#ifdef ESP_PLATFORM
+    {
+    const int uart_rx_buf = 1024;
+    const int uart_tx_buf = 1024;
+    /* Resolve the console UART number from config when available; fall
+     * back to UART_NUM_0 which is commonly the primary UART on ESP32.
+     */
+#ifdef CONFIG_ESP_CONSOLE_UART_NUM
+    int console_uart = CONFIG_ESP_CONSOLE_UART_NUM;
+#else
+    int console_uart = UART_NUM_0;
+#endif
+    /* Best-effort delete then install to ensure a clean state */
+    (void)uart_driver_delete(console_uart);
+    esp_err_t r = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
+    printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+#ifdef esp_rom_printf
+    esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+#endif
+    if (uart_is_driver_installed(console_uart)) {
+        const char ready[] = "DIAG|BOOT|UART_READY_FOR_CMD_LAYER\r\n";
+        uart_write_bytes(console_uart, ready, sizeof(ready)-1);
+        /* Ensure the ready string is transmitted before proceeding so host
+         * injectors that watch for this marker don't miss it due to buffering. */
+        (void)uart_wait_tx_done(console_uart, pdMS_TO_TICKS(50));
+    }
+    }
+#endif
     
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -932,9 +974,34 @@ void app_main(void)
     if (cmd_init() != CMD_SUCCESS) {
         ESP_LOGW(BT_AV_TAG, "cmd_init() failed or already initialized");
     }
+    /* Unconditional boot-time diagnostic: print a plain-text marker so
+     * non-interactive captures can reliably detect that command
+     * initialization has completed and which UART is in use. Use printf
+     * to ensure the message appears on the console even if the UART driver
+     * isn't fully installed yet. */
+    printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+    /* Also emit an unbuffered ROM-level print so host captures see this even if stdio is buffered */
+#ifdef CONFIG_IDF_TARGET_ESP32
+    esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+#endif
 
     // Create a tiny task dedicated to processing command input
     xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+    /* One-time diagnostic to indicate the command processing task was created
+     * and should be running. This helps programmatic captures detect that the
+     * task is active even when the UART driver installation may be delayed. */
+    printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+    /* duplicate as ROM-level immediate output to reduce race with host capture */
+#ifdef CONFIG_IDF_TARGET_ESP32
+    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#endif
+#ifdef esp_rom_printf
+    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#endif
+
+    /* Runtime diagnostic: print whether the UART driver is installed for the command UART */
+    int uart_installed = uart_is_driver_installed(CONFIG_ESP_CONSOLE_UART_NUM);
+    printf("DIAG|CMD_IF|UART_DRIVER_INSTALLED|uart=%d|installed=%d\r\n", CONFIG_ESP_CONSOLE_UART_NUM, uart_installed);
 #endif
     
     ESP_LOGI(BT_AV_TAG, "====================================================");

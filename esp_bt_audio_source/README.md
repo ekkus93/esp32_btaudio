@@ -589,6 +589,144 @@ python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout
 
 The script writes the canonical serial capture to `build/one_run_unity.log` inside the selected project. In CI, run the script and fail the job when the exit code is non-zero; upload `build/one_run_unity.log` as an artifact for triage.
 
+### Gathering Unity summaries (canonical workflow)
+
+When you want a single, reproducible summary of all Unity test runs recorded in this repository (host + on-device runs and recorded idf.py monitor captures), follow this canonical workflow. It restricts scanning to known artifact locations (runner captures and CTest LastTest logs) to avoid accidental matches in README files or other non-test outputs.
+
+1) Host tests (ctest)
+
+- Build and run host tests as documented above. The host CTest summary is written to the LastTest.log files under each host-test build dir, for example:
+
+```bash
+cd esp_bt_audio_source/test/host_test
+cmake -S . -B build_host_tests
+cmake --build build_host_tests -- -j$(nproc)
+cd build_host_tests
+ctest --output-on-failure |& tee ctest_full_output.log
+echo "Host LastTest: $(pwd)/Testing/Temporary/LastTest.log"
+```
+
+2) On-device Unity tests
+
+- Use the locked-down runner to build, flash, and capture the device Unity output. The runner writes the canonical serial capture into each test app's `build/one_run_unity.log`. Example:
+
+```bash
+# from repository root
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app --port /dev/ttyUSB0 --timeout 600
+echo "Device test_app log: esp_bt_audio_source/test_app/build/one_run_unity.log"
+
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --port /dev/ttyUSB0 --timeout 600
+echo "Device test_app_audio log: esp_bt_audio_source/test_app_audio/build/one_run_unity.log"
+```
+
+3) idf.py stdout captures (optional)
+
+- CI runs or scripted idf.py invocations sometimes leave `idf_py_stdout_output_*` captures under `esp_bt_audio_source/test_app/build/log/`. Include these only if you use the runner or CI that produces them.
+
+4) Canonical aggregation (recommended)
+
+- Quick grep (one-liner) to spot Unity summary lines in canonical locations:
+
+```bash
+grep -E "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored" \
+  esp_bt_audio_source/test_app/build/one_run_unity.log \
+  esp_bt_audio_source/test_app_audio/build/one_run_unity.log \
+  esp_bt_audio_source/device_test_monitor.log \\
+  esp_bt_audio_source/test_app/build/log/idf_py_stdout_output_* \
+  test/host_test/**/Testing/Temporary/LastTest.log || true
+```
+
+- Recommended: run the small aggregator below. It scans only the canonical artifact locations and writes a JSON summary to `tmp/canonical_unity_summary.json` in the repository root. The JSON contains the aggregated totals and a per-file breakdown.
+
+```bash
+python3 - <<'PY'
+import os,re,json
+root=os.path.abspath('.')
+pattern=re.compile(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored")
+paths=[]
+# canonical device logs
+paths.append(os.path.join(root,'esp_bt_audio_source','test_app','build','one_run_unity.log'))
+paths.append(os.path.join(root,'esp_bt_audio_source','test_app_audio','build','one_run_unity.log'))
+paths.append(os.path.join(root,'esp_bt_audio_source','device_test_monitor.log'))
+# idf.py captured logs (optional)
+logdir=os.path.join(root,'esp_bt_audio_source','test_app','build','log')
+if os.path.isdir(logdir):
+   for fn in os.listdir(logdir):
+      if fn.startswith('idf_py_stdout_output_'):
+         paths.append(os.path.join(logdir,fn))
+# host LastTest logs - common build dirs used in this repo
+paths.append(os.path.join(root,'esp_bt_audio_source','test','host_test','build_host_tests','Testing','Temporary','LastTest.log'))
+paths.append(os.path.join(root,'esp_bt_audio_source','test','host_test','build-host','Testing','Temporary','LastTest.log'))
+paths.append(os.path.join(root,'test','host_test','build_host_tests','Testing','Temporary','LastTest.log'))
+# CI artifact test-results.xml (optional)
+artdir=os.path.join(root,'.github','artifacts')
+if os.path.isdir(artdir):
+   for sub in os.listdir(artdir):
+      p=os.path.join(artdir,sub,'test-results.xml')
+      if os.path.isfile(p):
+         paths.append(p)
+
+summary={'total':{'tests':0,'failures':0,'ignored':0},'byfile':{}}
+for p in paths:
+   if not os.path.isfile(p):
+      continue
+   with open(p,'r',encoding='utf-8',errors='ignore') as f:
+      txt=f.read()
+   occ=0;ts=fs=ig=0
+   for m in pattern.finditer(txt):
+      t=int(m.group(1));f=int(m.group(2));i=int(m.group(3))
+      ts+=t; fs+=f; ig+=i; occ+=1
+   if occ>0:
+      summary['byfile'][p]={'tests':ts,'failures':fs,'ignored':ig,'occurrences':occ}
+      summary['total']['tests']+=ts
+      summary['total']['failures']+=fs
+      summary['total']['ignored']+=ig
+
+outdir=os.path.join(root,'tmp')
+os.makedirs(outdir,exist_ok=True)
+outpath=os.path.join(outdir,'canonical_unity_summary.json')
+with open(outpath,'w') as outf:
+   json.dump(summary,outf,indent=2)
+print('WROTE',outpath)
+PY
+```
+
+Quick automated aggregator
+-------------------------
+
+To avoid accidental double-counting and to make CI and local runs reproducible, this repository includes a tiny helper script that scans only the canonical artifact locations and writes a JSON summary.
+
+Location: `tools/aggregate_unity.py`
+
+Usage examples:
+
+```bash
+# write aggregated totals (sums all matched summary lines in canonical files)
+python3 tools/aggregate_unity.py --output tmp/canonical_unity_summary.json
+
+# write aggregated totals but keep only the last summary per file ("latest-run only")
+python3 tools/aggregate_unity.py --latest-only --output tmp/canonical_unity_summary.json
+```
+
+The script prints the files it found and writes a JSON file with the following shape:
+
+{
+   "generated_at": "...",
+   "total": { "tests": N, "failures": M, "ignored": K },
+   "by_file": { "path": { "entries": [ {"tests":.., "failures":.. } ], "count": X }, ... }
+}
+
+Notes:
+- The script intentionally scans only canonical artifact locations (build/one_run_unity.log and host LastTest.log locations) to avoid README or other stray matches.
+- In CI you can run this script after the locked-down runner and upload `tmp/canonical_unity_summary.json` as an artifact.
+
+
+Notes:
+- The aggregator intentionally scans only canonical artifact locations to avoid README/script/.git false-positives. Add more paths to the `paths` list if your CI uses different artifact locations.
+- If you want a "latest-run only" snapshot instead of summing repeated occurrences, modify the script to keep only the last matched summary per file (or sort `idf_py_stdout_output_*` by mtime and pick the newest).
+
+With this documented workflow you (or CI) can reproduce the canonical aggregation used by the project and avoid accidental double-counting from unrelated files.
+
 Run & debug on-device Unity tests
 -----------------------------------------------------
 Use the exact sequence below to run Unity tests reliably and capture the canonical log. This avoids interactive monitor confusion and ensures instrumentation (for example `DIAG:` lines) is compiled into the flashed image.

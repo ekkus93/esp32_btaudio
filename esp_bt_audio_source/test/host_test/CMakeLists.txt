@@ -160,6 +160,52 @@ target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_ma
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
+# Event stress test: validates ordering and basic rate-limiting instrumentation
+add_executable(test_event_stress test_event_stress.c
+    ../../components/command_interface/commands.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c)
+target_link_libraries(test_event_stress unity)
+add_test(NAME test_event_stress COMMAND $<TARGET_FILE:test_event_stress>)
+# Enable SEQ/TS emission in host-mode for this test target
+target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
+# Ensure commands.c links with bt_manager and nvs storage for host tests
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
+
+# Helper binary: run the same burst and print the mock UART TX buffer for parsing
+add_executable(dump_event_stress_output dump_event_stress_output.c
+    ../../components/command_interface/commands.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c)
+target_link_libraries(dump_event_stress_output m)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c)
+target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
+target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
+target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
+add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
+
+## Adapter runner: compile test_app pairing test and the adapter code so we can
+# exercise the host-mode adapter instrumentation (`test_pairing_adapters.c`) as
+# a native host binary. This helps capture the `TEST_ADAPT` logs and in-memory
+# event queue behavior without flashing a device.
+add_executable(test_pairing_adapter_runner
+    ../../test_app/main/test_pairing_commands.c
+    ../../test_app/main/test_pairing_adapters.c
+    ../../components/command_interface/commands.c
+    mocks/mock_gap.c
+    mocks/mock_uart.c
+)
+target_sources(test_pairing_adapter_runner PRIVATE test_pairing_adapter_main.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_pairing_adapter_runner unity)
+add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_adapter_runner>)
+# Enable SEQ/TS emission for this runner so we can validate ordering/timestamps
+target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

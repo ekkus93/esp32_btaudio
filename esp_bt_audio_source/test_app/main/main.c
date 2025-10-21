@@ -18,6 +18,7 @@
 #include "esp_system.h"
 #include "esp_bt.h"
 #include "test_app_main.h"
+#include "bt_source.h"
 
 static const char *TAG = "TEST_MAIN";
 
@@ -41,6 +42,16 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
     
     ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite");
+
+    // Start a short scan on boot to make the device emit DEVICE_FOUND events
+    // This helps capture events during host stress runs when an interactive
+    // monitor isn't used. Keep the scan short to avoid altering test timing.
+    esp_err_t scan_ret = bt_scan(10); // 10 second scan
+    if (scan_ret == ESP_OK) {
+        ESP_LOGI(TAG, "Started boot scan (10s)");
+    } else {
+        ESP_LOGW(TAG, "Boot scan call returned: %d", scan_ret);
+    }
     
     // Run BT pairing tests
     app_main_bt_pairing_tests();

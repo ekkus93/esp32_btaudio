@@ -13,6 +13,7 @@ idf_component_register(
         "test_pairing_adapters.c"
         "bt_source_stubs.c"
         "bt_source_mock.c"
+        "audio_processor_stub.c"
         "bt_test_setup.c"
         "unity_config.c"
         "bt_pairing_persistence_test.c"
@@ -28,6 +29,8 @@ idf_component_register(
         nvs_storage
         unity
         test_utils
+    PRIV_REQUIRES
+        driver
 )
 
 # Component-specific compile definitions

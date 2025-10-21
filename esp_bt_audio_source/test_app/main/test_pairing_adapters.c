@@ -4,10 +4,23 @@
 // translation unit links when the IDF-provided test_utils symbols are not
 // available under the expected names.
 
+#define _POSIX_C_SOURCE 199309L
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
+#include "esp_log.h"
+
+/*
+ * Some host-mode builds or minimal test environments may not define
+ * IDF logging configuration macros (e.g. CONFIG_LOG_MAXIMUM_LEVEL). In
+ * that case define a small fallback so tests can still print diagnostics.
+ */
+#ifndef CONFIG_LOG_MAXIMUM_LEVEL
+#undef ESP_LOGI
+#define ESP_LOGI(tag, fmt, ...) do { printf("[%s] " fmt "\n", tag, ##__VA_ARGS__); } while (0)
+#endif
 
 // Small in-memory event queue used by tests in this tree. The real test
 // harness provides more sophisticated capture; this minimal adapter records
@@ -33,13 +46,46 @@ static void event_queue_push(const char *event)
     if (!event) {
         return;
     }
+#if 1
+    /* Always print an easy-to-find adapter marker to the console so
+     * monitoring scripts can detect when the adapter receives an
+     * event. ESP_LOGI may be compiled out in some configs; use printf
+     * to guarantee visibility in the serial capture. */
+    printf("ADAPTER-EVENT: %s\n", event);
+#endif
+#ifdef TEST_INCLUDE_SEQ
+    /* Append SEQ and TS to help verify ordering and timing in host tests.
+     * Use a simple monotonic sequence counter and CLOCK_MONOTONIC for ms timestamp.
+     */
+    static unsigned long s_seq = 0;
+    struct timespec _ts;
+    clock_gettime(CLOCK_MONOTONIC, &_ts);
+    /* Produce microsecond-resolution timestamp using CLOCK_MONOTONIC */
+    unsigned long us = (unsigned long)(_ts.tv_sec * 1000000UL + _ts.tv_nsec / 1000UL);
+
+    char annotated[768];
+    int n = snprintf(annotated, sizeof(annotated), "%s,SEQ=%lu,TS=%lu", event, s_seq++, us);
+    if (n < 0 || n >= (int)sizeof(annotated)) {
+        /* Fallback: copy original event if snprintf failed/truncated */
+        strncpy(annotated, event, sizeof(annotated)-1);
+        annotated[sizeof(annotated)-1] = '\0';
+    }
+    ESP_LOGI("TEST_ADAPT", "event_queue_push called: %s", annotated);
+#else
+    ESP_LOGI("TEST_ADAPT", "event_queue_push called: %s", event);
+#endif
     // If queue is full, overwrite the oldest entry (drop head)
     if (s_event_count == EVENT_QUEUE_DEPTH) {
         s_event_head = (s_event_head + 1) % EVENT_QUEUE_DEPTH;
         --s_event_count;
     }
+#ifdef TEST_INCLUDE_SEQ
+    strncpy(s_event_queue[s_event_tail], annotated, sizeof(s_event_queue[0]) - 1);
+    s_event_queue[s_event_tail][sizeof(s_event_queue[0]) - 1] = '\0';
+#else
     strncpy(s_event_queue[s_event_tail], event, sizeof(s_event_queue[0]) - 1);
     s_event_queue[s_event_tail][sizeof(s_event_queue[0]) - 1] = '\0';
+#endif
     s_event_tail = (s_event_tail + 1) % EVENT_QUEUE_DEPTH;
     ++s_event_count;
 }
@@ -91,10 +137,13 @@ bool test_send_serial_cmd(const char *cmd)
     // If a test helper is linked provide, call it. Otherwise, emulate by
     // calling a weakly-linked command processor symbol if present.
     if (cmd_send_line_to_parser) {
+        ESP_LOGI("TEST_ADAPT", "test_send_serial_cmd: using cmd_send_line_to_parser for: %s", tmp);
         cmd_send_line_to_parser(tmp);
     } else if (cmd_process_line) {
+        ESP_LOGI("TEST_ADAPT", "test_send_serial_cmd: using cmd_process_line for: %s", tmp);
         cmd_process_line(tmp);
     } else {
+        ESP_LOGI("TEST_ADAPT", "test_send_serial_cmd: emulating command: %s", tmp);
         // No parser hook found; emulate by constructing EVENT strings for
         // the pairing commands supported by the project. This is a very
         // small shim to let pairing tests exercise logic without the
@@ -172,4 +221,13 @@ bool test_send_serial_cmd(const char *cmd)
 bool test_capture_event(char *out_buf, size_t out_len)
 {
     return event_queue_pop(out_buf, out_len);
+}
+
+/* Weakly-exported function used by command layer to push events directly
+ * into the adapter queue during device-side tests. The symbol is weakly
+ * referenced by production code so it has no effect outside of the test
+ * harness. */
+void test_push_event(const char* ev)
+{
+    event_queue_push(ev);
 }

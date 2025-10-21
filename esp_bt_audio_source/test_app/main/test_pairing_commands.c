@@ -4,6 +4,23 @@
 #include <string.h>
 #include <stdbool.h>
 
+// Helper: normalize an EVENT string by removing any trailing ",SEQ=..." suffix
+// so tests tolerate the host-side annotated form `...,SEQ=<n>,TS=<ms>`.
+static void normalize_event(const char *in, char *out, size_t out_len) {
+    if (!in || !out || out_len == 0) return;
+    const char *p = strstr(in, ",SEQ=");
+    if (!p) {
+        // copy whole string
+        strncpy(out, in, out_len-1);
+        out[out_len-1] = '\0';
+        return;
+    }
+    size_t copy_len = (size_t)(p - in);
+    if (copy_len >= out_len) copy_len = out_len - 1;
+    memcpy(out, in, copy_len);
+    out[copy_len] = '\0';
+}
+
 // Reuse helper that sends a serial command into the command parser and
 // captures emitted EVENT lines injected into the test harness. Existing
 // test_app provides `test_send_serial_cmd()` and `test_capture_event()`.
@@ -36,15 +53,19 @@ void test_pairing_commands_happy_path(void) {
     // Expect a PIN_REQUEST event
     char ev[128];
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|PIN_REQUEST|11:22:33:44:55:66", ev);
+    char norm[256];
+    normalize_event(ev, norm, sizeof(norm));
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|PIN_REQUEST|11:22:33:44:55:66", norm);
 
     // Submit PIN
     test_send_serial_cmd("ENTER_PIN 11:22:33:44:55:66 123456\r\n");
     // Expect CONFIRM then SUCCESS events (mock behavior)
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|11:22:33:44:55:66,123456", ev);
+    normalize_event(ev, norm, sizeof(norm));
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|11:22:33:44:55:66,123456", norm);
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|SUCCESS|11:22:33:44:55:66", ev);
+    normalize_event(ev, norm, sizeof(norm));
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|SUCCESS|11:22:33:44:55:66", norm);
 }
 
 void test_enter_pin_uses_default_when_missing(void) {
@@ -52,14 +73,17 @@ void test_enter_pin_uses_default_when_missing(void) {
     // Simulate PAIR that requests PIN
     test_send_serial_cmd("PAIR 22:33:44:55:66:77\r\n");
     char ev[128];
+    char norm[256];
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|PIN_REQUEST|22:33:44:55:66:77", ev);
+    normalize_event(ev, norm, sizeof(norm));
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|PIN_REQUEST|22:33:44:55:66:77", norm);
 
     // Call ENTER_PIN without providing a PIN — command handler should use NVS default PIN
     test_send_serial_cmd("ENTER_PIN 22:33:44:55:66:77\r\n");
     // Expect CONFIRM with the default pin (test utils sets default to 000000)
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|22:33:44:55:66:77,000000", ev);
+    normalize_event(ev, norm, sizeof(norm));
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|22:33:44:55:66:77,000000", norm);
 }
 
 void test_confirm_pin_without_pending_request_returns_error_event(void) {
@@ -67,11 +91,13 @@ void test_confirm_pin_without_pending_request_returns_error_event(void) {
     // Confirm for a device with no pending pairing should emit FAILED or no-op
     test_send_serial_cmd("CONFIRM_PIN AA:BB:CC:DD:EE:FF 123456\r\n");
     char ev[128];
+    char norm[256];
     // Depending on implementation, either no event or FAILED
     bool got = test_capture_event(ev, sizeof(ev));
     if (got) {
         // If an event was produced, ensure it's a FAIL/FAILED event for that addr
-        TEST_ASSERT_TRUE(strstr(ev, "FAILED") != NULL || strstr(ev, "FAIL") != NULL);
+        normalize_event(ev, norm, sizeof(norm));
+        TEST_ASSERT_TRUE(strstr(norm, "FAILED") != NULL || strstr(norm, "FAIL") != NULL);
     } else {
         TEST_PASS_MESSAGE("No event produced (acceptable for no pending request)");
     }
