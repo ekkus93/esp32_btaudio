@@ -16,12 +16,10 @@ import glob
 from datetime import datetime
 
 PATTERNS = [
-    # device canonical logs
-    'esp_bt_audio_source/test_app/build/one_run_unity.log',
-    'esp_bt_audio_source/test_app_audio/build/one_run_unity.log',
-    'esp_bt_audio_source/device_test_monitor.log',
+    # device canonical logs (use a small recursive pattern to tolerate
+    # slightly different build dir layouts while still limiting scope)
+    'esp_bt_audio_source/**/build/one_run_unity.log',
     # host LastTest.log common locations (may vary slightly between builds)
-    'esp_bt_audio_source/test/host_test/**/Testing/Temporary/LastTest.log',
     'esp_bt_audio_source/test/host_test/**/Testing/Temporary/LastTest.log',
     'test/host_test/**/Testing/Temporary/LastTest.log',
 ]
@@ -52,6 +50,23 @@ def parse_file(path):
                     failures = int(m.group(2))
                     ignored = int(m.group(3))
                     results.append({'tests': tests, 'failures': failures, 'ignored': ignored, 'line': line.strip()})
+            # If we didn't find a numeric Unity summary line, try a fallback:
+            # some test runs print per-test PASS/FAIL lines (e.g.
+            # "./main/test_main.c:96:test_i2s_driver_init:PASS"). If no
+            # numeric summary exists, count those occurrences and synthesize
+            # a single derived entry so this file is included in aggregation.
+            if not results:
+                try:
+                    f.seek(0)
+                    text = f.read()
+                    pass_count = len(re.findall(r":\s*PASS\b", text, re.IGNORECASE))
+                    fail_count = len(re.findall(r":\s*FAIL\b", text, re.IGNORECASE))
+                    total = pass_count + fail_count
+                    if total > 0:
+                        results.append({'tests': total, 'failures': fail_count, 'ignored': 0, 'line': 'derived from per-test PASS/FAIL lines'})
+                except Exception:
+                    # ignore fallback errors; return empty entries below
+                    pass
     except Exception as e:
         return {'error': str(e), 'entries': []}
     return {'entries': results}
@@ -59,32 +74,91 @@ def parse_file(path):
 
 def aggregate(files, latest_only=False):
     by_file = {}
-    total = {'tests': 0, 'failures': 0, 'ignored': 0}
+    # First, attempt to collect per-test PASS/FAIL/IGNORE lines from files and dedupe by test name.
+    per_test_re = re.compile(r":\d+:([^:\s]+):(PASS|FAIL|IGNORE)", re.IGNORECASE)
+    # fallback generic pattern (less strict) to catch other formats if needed
+    per_test_re2 = re.compile(r"\b([^\s:]+)\s*:\s*(PASS|FAIL|IGNORE)\b", re.IGNORECASE)
+
+    # aggregate per-file raw entries and also record per-test outcomes across files
+    per_test_map = {}  # test_name -> {'result': 'PASS'|'FAIL'|'IGNORE', 'files': set()}
+    def worse(a, b):
+        # return the worse of two results: FAIL > IGNORE > PASS
+        order = {'PASS': 0, 'IGNORE': 1, 'FAIL': 2}
+        return a if order[a] >= order[b] else b
+
     for p in files:
         parsed = parse_file(p)
         if 'error' in parsed:
             by_file[p] = {'error': parsed['error']}
             continue
         entries = parsed['entries']
-        if not entries:
-            by_file[p] = {'entries': []}
-            continue
-        if latest_only:
-            e = entries[-1]
-            by_file[p] = {'entries': [e], 'count': 1}
-            total['tests'] += e['tests']
-            total['failures'] += e['failures']
-            total['ignored'] += e['ignored']
-        else:
-            by_file[p] = {'entries': entries, 'count': len(entries)}
-            for e in entries:
+        by_file[p] = {'entries': entries, 'count': len(entries)}
+
+        # scan file for per-test lines (preferred) and record occurrences
+        try:
+            with open(p, 'r', encoding='utf-8', errors='ignore') as fh:
+                text = fh.read()
+        except Exception:
+            text = ''
+
+        found_any = False
+        for m in per_test_re.finditer(text):
+            found_any = True
+            test = m.group(1).strip()
+            result = m.group(2).upper()
+            if test in per_test_map:
+                per_test_map[test]['result'] = worse(per_test_map[test]['result'], result)
+                per_test_map[test]['files'].add(p)
+            else:
+                per_test_map[test] = {'result': result, 'files': {p}}
+
+        if not found_any:
+            # try the looser pattern
+            for m in per_test_re2.finditer(text):
+                test = m.group(1).strip()
+                result = m.group(2).upper()
+                if test in per_test_map:
+                    per_test_map[test]['result'] = worse(per_test_map[test]['result'], result)
+                    per_test_map[test]['files'].add(p)
+                else:
+                    per_test_map[test] = {'result': result, 'files': {p}}
+
+    # If we found per-test entries, compute deduped totals from them. Otherwise, fall back to numeric summing.
+    total = {'tests': 0, 'failures': 0, 'ignored': 0}
+    per_test_list = []
+    if per_test_map:
+        for t, info in sorted(per_test_map.items()):
+            total['tests'] += 1
+            if info['result'] == 'FAIL':
+                total['failures'] += 1
+            elif info['result'] == 'IGNORE':
+                total['ignored'] += 1
+            per_test_list.append({'name': t, 'result': info['result'], 'files': sorted(list(info['files']))})
+    else:
+        # fallback to previous numeric behavior (summing or latest_only)
+        total = {'tests': 0, 'failures': 0, 'ignored': 0}
+        for p in files:
+            parsed = parse_file(p)
+            if 'error' in parsed:
+                continue
+            entries = parsed['entries']
+            if not entries:
+                continue
+            if latest_only:
+                e = entries[-1]
                 total['tests'] += e['tests']
                 total['failures'] += e['failures']
                 total['ignored'] += e['ignored']
+            else:
+                for e in entries:
+                    total['tests'] += e['tests']
+                    total['failures'] += e['failures']
+                    total['ignored'] += e['ignored']
     summary = {
         'generated_at': datetime.utcnow().isoformat() + 'Z',
         'total': total,
         'by_file': by_file,
+        'per_test': per_test_list,
     }
     return summary
 
