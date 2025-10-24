@@ -6,7 +6,8 @@
 	],
 	"settings": {
 		"files.associations": {
-			"*.inc": "c"
+			"*.inc": "c",
+			"list": "cpp"
 		},
 		"dotnet.defaultSolution": "disable"
 	}

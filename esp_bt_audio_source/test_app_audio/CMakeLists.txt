@@ -8,7 +8,6 @@ cmake_minimum_required(VERSION 3.16)
 set(EXTRA_COMPONENT_DIRS
     "../components/audio"
     "../components/nvs_storage"
-    "${CMAKE_SOURCE_DIR}/components"
     "../test_app/components"
 )
 

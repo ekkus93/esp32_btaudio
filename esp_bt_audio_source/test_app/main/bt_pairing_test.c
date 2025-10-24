@@ -11,8 +11,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "include/unity_config.h"
 #include "unity.h"
-#include "unity_config.h"
 #include "bt_source.h"
 #include "bt_source_mock.h"
 #include "bt_mock.h"
@@ -431,7 +431,7 @@ void run_bt_pairing_tests(void)
     ESP_LOGI(TAG, "Starting Bluetooth pairing tests");
     
     // Initialize the Unity test framework
-    UNITY_SET_SETUP(bt_manager_test_setup);
+    unity_set_setup_function(bt_manager_test_setup);
     UNITY_BEGIN();
     
     // Set up the mock BT implementation for testing
@@ -455,7 +455,7 @@ void run_bt_pairing_tests(void)
     
     // Finish Unity tests
     UNITY_END();
-    UNITY_SET_SETUP(NULL);
+    unity_set_setup_function(NULL);
     
     ESP_LOGI(TAG, "Bluetooth pairing tests completed");
 }

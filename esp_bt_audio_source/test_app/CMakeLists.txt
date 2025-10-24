@@ -39,7 +39,6 @@ idf_component_get_property(command_interface_lib command_interface COMPONENT_LIB
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_mock_lib} ${command_interface_lib})
 
 # Add device-side Unity test that exercises the real command parser.
-target_sources(${PROJECT_NAME}.elf PRIVATE
-    "${CMAKE_SOURCE_DIR}/main/command_parser_test.c"
-)
+# The component's own CMakeLists already registers the `main/` sources. Do
+# not add them again here or the linker will see duplicate symbols.
 

@@ -59,8 +59,25 @@ if(NOT BOOTLOADER_BUILD)
     endif()
 endif()
 
-idf_component_register(SRCS ${srcs}
-                    INCLUDE_DIRS ${include_dirs}
-                    LDFRAGMENTS linker.lf)
+if(NOT CONFIG_APP_NO_BLOBS)
+    idf_component_register(SRCS ${srcs}
+                        INCLUDE_DIRS ${include_dirs}
+                        LDFRAGMENTS linker.lf)
 
-target_link_libraries(${COMPONENT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/${target}/libxt_hal.a")
+    # Link the prebuilt Xtensa HAL archive only if the file exists. In some
+    # workspace layouts the prebuilt archive may be absent (e.g. when blobs
+    # are intentionally omitted). Avoid injecting a hard-coded path into the
+    # final link command when the file isn't present.
+    set(xt_hal_path "${CMAKE_CURRENT_SOURCE_DIR}/${target}/libxt_hal.a")
+    if(EXISTS ${xt_hal_path})
+        target_link_libraries(${COMPONENT_LIB} PUBLIC "${xt_hal_path}")
+    else()
+        message(STATUS "xtensa: prebuilt xtensa HAL not found, skipping: ${xt_hal_path}")
+    endif()
+else()
+    # When CONFIG_APP_NO_BLOBS is set, don't pull in the prebuilt Xtensa HAL blob.
+    # Register component without the prebuilt archive or linker fragment so the
+    # rest of the build can use source-based headers and optional fallbacks.
+    idf_component_register(SRCS ${srcs}
+                        INCLUDE_DIRS ${include_dirs})
+endif()

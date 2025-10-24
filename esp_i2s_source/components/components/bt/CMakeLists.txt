@@ -21,7 +21,6 @@ endif()
 
 set(common_include_dirs
     common/api/include/api
-    common/btc/profile/esp/blufi/include
     common/btc/profile/esp/include
     common/hci_log/include
     common/ble_log/include
@@ -111,12 +110,9 @@ if(CONFIG_BT_ENABLED)
     list(APPEND include_dirs ${common_include_dirs})
 
     list(APPEND srcs "common/btc/core/btc_alarm.c"
-         "common/api/esp_blufi_api.c"
          "common/hci_log/bt_hci_log.c"
          "common/btc/core/btc_manage.c"
          "common/btc/core/btc_task.c"
-         "common/btc/profile/esp/blufi/blufi_prf.c"
-         "common/btc/profile/esp/blufi/blufi_protocol.c"
          "common/osi/alarm.c"
          "common/osi/allocator.c"
          "common/osi/buffer.c"
@@ -135,6 +131,20 @@ if(CONFIG_BT_ENABLED)
          "porting/mem/bt_osi_mem.c"
          "common/ble_log/ble_log_spi_out.c"
          )
+
+    # BLUFI core sources (API and protocol) reference Wi‑Fi types. Only
+    # compile these and export the BLUFI public include directory when
+    # esp_wifi (or a host-provided Wi‑Fi shim) is enabled. This prevents
+    # BLUFI headers from being visible during a Bluetooth-only build.
+    if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+        # esp_blufi_api.c depends on esp_wifi types
+        list(APPEND srcs "common/api/esp_blufi_api.c"
+                         "common/btc/profile/esp/blufi/blufi_prf.c"
+                         "common/btc/profile/esp/blufi/blufi_protocol.c")
+        list(APPEND include_dirs "common/btc/profile/esp/blufi/include")
+    else()
+        message(STATUS "bt: esp_wifi disabled; BLUFI core sources and public BLUFI include dir will NOT be added")
+    endif()
 
     # Host Bluedroid
     if(CONFIG_BT_BLUEDROID_ENABLED)
@@ -181,7 +191,7 @@ if(CONFIG_BT_ENABLED)
 
         list(APPEND include_dirs ${bluedroid_include_dirs})
 
-        list(APPEND srcs "host/bluedroid/api/esp_a2dp_api.c"
+    list(APPEND srcs "host/bluedroid/api/esp_a2dp_api.c"
                    "host/bluedroid/api/esp_avrc_api.c"
                    "host/bluedroid/api/esp_bluedroid_hci.c"
                    "host/bluedroid/api/esp_bt_device.c"
@@ -445,7 +455,13 @@ if(CONFIG_BT_ENABLED)
                    "host/bluedroid/config/stack_config.c")
 
 
-        list(APPEND srcs "common/btc/profile/esp/blufi/bluedroid_host/esp_blufi.c")
+        # BLUFI host implementation (Bluedroid). Only include when Wi‑Fi
+        # is enabled so BLUFI doesn't pull in wifi types when disabled.
+        if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+            list(APPEND srcs "common/btc/profile/esp/blufi/bluedroid_host/esp_blufi.c")
+        else()
+            message(STATUS "bt: esp_wifi disabled; skipping bluedroid BLUFI host implementation (esp_blufi.c)")
+        endif()
 
         if(CONFIG_BLE_MESH)
             list(APPEND srcs "esp_ble_mesh/core/bluedroid_host/adapter.c")
@@ -800,8 +816,14 @@ if(CONFIG_BT_ENABLED)
             list(APPEND include_dirs ${nimble_hci_include_dirs})
         endif()
 
-        list(APPEND srcs
-                    "common/btc/profile/esp/blufi/nimble_host/esp_blufi.c")
+        # Nimble-hosted BLUFI implementation: only include when Wi‑Fi is
+        # available to avoid wifi-type references in a Bluetooth-only build.
+        if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+            list(APPEND srcs
+                        "common/btc/profile/esp/blufi/nimble_host/esp_blufi.c")
+        else()
+            message(STATUS "bt: esp_wifi disabled; skipping nimble BLUFI host implementation (nimble_host/esp_blufi.c)")
+        endif()
 
         if(CONFIG_BLE_MESH)
             list(APPEND srcs "esp_ble_mesh/core/nimble_host/adapter.c")
@@ -856,10 +878,21 @@ if(CONFIG_BT_ENABLED)
 
 endif()
 
+set(_requires esp_timer)
+# Some BT source files (for example, the BLUFI API) include wifi headers
+# such as <esp_wifi_types.h>. Ensure the esp_wifi component is listed as a
+# requirement only when Bluetooth is enabled or Wi‑Fi is otherwise available
+# so its public include dirs are exported to consumers of the bt component.
+if(CONFIG_BT_ENABLED)
+    list(APPEND _requires esp_wifi)
+elseif(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+    list(APPEND _requires esp_wifi)
+endif()
+
 idf_component_register(SRCS "${srcs}"
                        INCLUDE_DIRS "${include_dirs}"
                        PRIV_INCLUDE_DIRS "${priv_include_dirs}"
-                       REQUIRES esp_timer esp_wifi
+                       REQUIRES ${_requires}
                        PRIV_REQUIRES nvs_flash soc esp_pm esp_phy esp_coex mbedtls esp_driver_uart vfs esp_ringbuf
                                      esp_driver_spi esp_driver_gpio
                        LDFRAGMENTS "${ldscripts}")

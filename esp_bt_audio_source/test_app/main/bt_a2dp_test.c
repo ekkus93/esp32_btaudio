@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include "include/unity_config.h"
 #include "unity.h"
 #include "esp_log.h"
 // Add required FreeRTOS includes
@@ -17,7 +18,6 @@
 #include "bt_mock.h"
 #include "bt_mock_setup.h"  // Update this include
 #include "bt_test_setup.h"
-#include "unity_config.h"
 
 /* Forward declarations for pairing tests added in test_pairing_commands.c
  * These functions live in a separate translation unit; provide prototypes
@@ -566,7 +566,7 @@ void run_bt_a2dp_tests(void)
     ESP_LOGI(TAG, "Starting Bluetooth A2DP tests");
     
     // Initialize the Unity test framework
-    UNITY_SET_SETUP(bt_manager_test_setup);
+    unity_set_setup_function(bt_manager_test_setup);
     UNITY_BEGIN();
     
     // 1. Basic Bluetooth initialization and scanning tests
@@ -604,7 +604,7 @@ void run_bt_a2dp_tests(void)
     
     // Finish Unity tests
     UNITY_END();
-    UNITY_SET_SETUP(NULL);
+    unity_set_setup_function(NULL);
     
     ESP_LOGI(TAG, "Bluetooth A2DP tests completed");
 }

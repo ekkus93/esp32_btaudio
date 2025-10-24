@@ -1,27 +1,58 @@
-idf_build_get_property(target IDF_TARGET)
+idf_build_get_property(idf_target IDF_TARGET)
 
-if(${target} STREQUAL "linux")
+if("${idf_target}" STREQUAL "linux")
     return() # This component is not supported by the POSIX/Linux simulator
 endif()
 
 if(CONFIG_IDF_TARGET_ESP32S3)
-    set(target_name "esp32c3")
+    set(target_name "esp32s3")
 elseif(CONFIG_IDF_TARGET_ESP32C61)
     set(target_name "esp32c6")
+elseif(CONFIG_IDF_TARGET_ESP32C5)
+    set(target_name "esp32c5")
+elseif(CONFIG_IDF_TARGET_ESP32C2)
+    set(target_name "esp32c2")
+elseif(CONFIG_IDF_TARGET_ESP32C3)
+    set(target_name "esp32c3")
+elseif(CONFIG_IDF_TARGET_ESP32H2)
+    set(target_name "esp32h2")
+elseif(CONFIG_IDF_TARGET_ESP32H4)
+    set(target_name "esp32h4")
+elseif(CONFIG_IDF_TARGET_ESP32)
+    set(target_name "esp32")
 else()
+    # Fallback to idf_target if no specific mapping matched
     set(target_name "${idf_target}")
 endif()
 
 # API headers that are used in the docs are also compiled
 # even if CONFIG_BT_ENABLED=n as long as CONFIG_IDF_DOC_BUILD=y
 
-if(CONFIG_SOC_BT_SUPPORTED)
-    set(target_specific_include_dirs include/${target_name}/include)
+# The bt headers are organized per-chip under include/<chip>/include
+# Compute the expected per-target include dir unconditionally and check existence
+set(target_specific_include_dirs "include/${target_name}/include")
+message(STATUS "bt: expected target_specific_include_dirs='${target_specific_include_dirs}'")
+
+# Compute absolute path for the per-target include dir early so later checks
+# can reliably test for its existence (avoid referencing undefined vars).
+set(_abs_target_specific_include_dir "${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+
+# If the per-target public headers directory exists, expose it now so that
+# dependent components receive the correct -I flag even if feature flags
+# later select no source files. Prefer the relative path when present so
+# the serialized INCLUDE_DIRS remain portable.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+    message(STATUS "bt: target-specific include dir exists; appending: ${target_specific_include_dirs}")
+    list(APPEND include_dirs ${target_specific_include_dirs})
+elseif(EXISTS "${_abs_target_specific_include_dir}")
+    message(STATUS "bt: appending absolute per-target include dir: ${_abs_target_specific_include_dir}")
+    list(APPEND include_dirs ${_abs_target_specific_include_dir})
+else()
+    message(STATUS "bt: target-specific include dir NOT found: ${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
 endif()
 
 set(common_include_dirs
     common/api/include/api
-    common/btc/profile/esp/blufi/include
     common/btc/profile/esp/include
     common/hci_log/include
     common/ble_log/include
@@ -71,9 +102,29 @@ endif()
 
 if(CONFIG_BT_ENABLED)
 
-    set(srcs "")
-    set(include_dirs "")
+    # Start with a guaranteed placeholder source so this component will be
+    # treated as a library and will be serialized with INCLUDE_DIRS. This
+    # avoids being marked CONFIG_ONLY when feature flags cause no sources
+    # to be selected.
+    set(srcs "dummy_bt.c")
+    # Do NOT reinitialize include_dirs here; it may have been populated by
+    # earlier checks (per-target public include dir). Reinitializing would
+    # discard the previously appended per-target include path and other
+    # computed include dirs.
     set(ldscripts "linker_common.lf")
+    # expose target-specific public headers for the host API (esp_bt.h etc.)
+    # Prefer appending the relative path so the serialized include_dirs remain
+    # portable, but fall back to the absolute path if necessary.
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+        message(STATUS "bt: target-specific include dir exists; appending: ${target_specific_include_dirs}")
+    list(APPEND include_dirs ${target_specific_include_dirs})
+    elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${_abs_target_specific_include_dir}")
+        # this branch should normally not be taken, but keep it for robustness
+        message(STATUS "bt: appending absolute per-target include dir: ${_abs_target_specific_include_dir}")
+        list(APPEND include_dirs ${_abs_target_specific_include_dir})
+    else()
+        message(STATUS "bt: target-specific include dir NOT found: ${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+    endif()
     if(CONFIG_BT_CONTROLLER_ENABLED)
         list(APPEND srcs "controller/${target_name}/bt.c")
 
@@ -110,13 +161,45 @@ if(CONFIG_BT_ENABLED)
         )
     list(APPEND include_dirs ${common_include_dirs})
 
+    # Ensure host API include directories (bluedroid/nimble) are exported as
+    # public INCLUDE_DIRS when their features are enabled. Some of these
+    # directories live under host/ and must be provided as public includes so
+    # other components that #include <esp_bt.h> and related headers can find
+    # them during compilation.
+    if(CONFIG_BT_BLUEDROID_ENABLED)
+        # Export host bluedroid API include dir(s) as public includes so that
+        # other components that #include <esp_bt_main.h> and related headers
+        # receive the correct -I flags during compilation.
+        list(APPEND include_dirs ${bluedroid_include_dirs})
+        # Also append other host bluedroid include trees which contain
+        # esp_bt_main.h and related headers. Append absolute paths computed
+        # from CMAKE_CURRENT_LIST_DIR so the build metadata serializes them
+        # in a form that consumers reliably receive (avoids relative path
+        # resolution issues during generation).
+        # Append absolute host bluedroid include directories only if they exist.
+        # Some repos may organize headers differently; avoid failing configure
+        # when an expected path is absent.
+        set(_bluedroid_abs_includes
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/api/include/api"
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/common/include"
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/stack/include"
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/stack/gatt/include"
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/stack/gap/include"
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/stack/hci/include"
+        )
+        foreach(_inc IN LISTS _bluedroid_abs_includes)
+            if(EXISTS "${_inc}")
+                list(APPEND include_dirs "${_inc}")
+            else()
+                message(STATUS "bt: skipping non-existent bluedroid include dir: ${_inc}")
+            endif()
+        endforeach()
+    endif()
+
     list(APPEND srcs "common/btc/core/btc_alarm.c"
-         "common/api/esp_blufi_api.c"
-         "common/hci_log/bt_hci_log.c"
-         "common/btc/core/btc_manage.c"
-         "common/btc/core/btc_task.c"
-         "common/btc/profile/esp/blufi/blufi_prf.c"
-         "common/btc/profile/esp/blufi/blufi_protocol.c"
+        "common/hci_log/bt_hci_log.c"
+        "common/btc/core/btc_manage.c"
+        "common/btc/core/btc_task.c"
          "common/osi/alarm.c"
          "common/osi/allocator.c"
          "common/osi/buffer.c"
@@ -135,6 +218,21 @@ if(CONFIG_BT_ENABLED)
          "porting/mem/bt_osi_mem.c"
          "common/ble_log/ble_log_spi_out.c"
          )
+
+    # BLUFI core sources (API and protocol) reference Wi‑Fi types. Only
+    # compile these and export the BLUFI public include directory when
+    # esp_wifi (or a host-provided Wi‑Fi shim) is enabled. This prevents
+    # BLUFI headers from being visible during a Bluetooth-only build.
+    if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+        list(APPEND srcs "common/api/esp_blufi_api.c"
+                         "common/btc/profile/esp/blufi/blufi_prf.c"
+                         "common/btc/profile/esp/blufi/blufi_protocol.c")
+        # Export BLUFI public include dir only when Wi‑Fi is enabled
+        list(APPEND include_dirs "common/btc/profile/esp/blufi/include")
+    else()
+        # Explicitly ensure BLUFI headers are NOT exposed when Wi‑Fi is disabled
+        message(STATUS "bt: esp_wifi disabled; BLUFI core sources and public BLUFI include dir will NOT be added")
+    endif()
 
     # Host Bluedroid
     if(CONFIG_BT_BLUEDROID_ENABLED)
@@ -445,7 +543,13 @@ if(CONFIG_BT_ENABLED)
                    "host/bluedroid/config/stack_config.c")
 
 
-        list(APPEND srcs "common/btc/profile/esp/blufi/bluedroid_host/esp_blufi.c")
+        # BLUFI host implementation (Bluedroid). Skip if esp_wifi is disabled
+        # because BLUFI bridges Wi‑Fi and Bluetooth and references Wi‑Fi types.
+        if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+            list(APPEND srcs "common/btc/profile/esp/blufi/bluedroid_host/esp_blufi.c")
+        else()
+            message(STATUS "bt: esp_wifi disabled; skipping bluedroid BLUFI host implementation (esp_blufi.c)")
+        endif()
 
         if(CONFIG_BLE_MESH)
             list(APPEND srcs "esp_ble_mesh/core/bluedroid_host/adapter.c")
@@ -650,27 +754,27 @@ if(CONFIG_BT_ENABLED)
     if(CONFIG_BT_NIMBLE_ENABLED)
 
         list(APPEND include_dirs
-                    host/nimble/nimble/nimble/host/include
-                    host/nimble/nimble/nimble/include
-                    host/nimble/nimble/nimble/host/services/ans/include
-                    host/nimble/nimble/nimble/host/services/bas/include
-                    host/nimble/nimble/nimble/host/services/dis/include
-                    host/nimble/nimble/nimble/host/services/gap/include
-                    host/nimble/nimble/nimble/host/services/gatt/include
-                    host/nimble/nimble/nimble/host/services/hr/include
-                    host/nimble/nimble/nimble/host/services/htp/include
-                    host/nimble/nimble/nimble/host/services/ias/include
-                    host/nimble/nimble/nimble/host/services/ipss/include
-                    host/nimble/nimble/nimble/host/services/lls/include
-                    host/nimble/nimble/nimble/host/services/prox/include
-                    host/nimble/nimble/nimble/host/services/cts/include
-                    host/nimble/nimble/nimble/host/services/tps/include
-                    host/nimble/nimble/nimble/host/services/hid/include
-                    host/nimble/nimble/nimble/host/services/sps/include
-                    host/nimble/nimble/nimble/host/services/cte/include
-                    host/nimble/nimble/nimble/host/util/include
-                    host/nimble/nimble/nimble/host/store/ram/include
-                    host/nimble/nimble/nimble/host/store/config/include
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/ans/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/bas/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/dis/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/gap/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/gatt/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/hr/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/htp/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/ias/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/ipss/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/lls/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/prox/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/cts/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/tps/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/hid/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/sps/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/services/cte/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/util/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/store/ram/include"
+                    "${CMAKE_CURRENT_LIST_DIR}/host/nimble/nimble/nimble/host/store/config/include"
                     )
 
         list(APPEND srcs "host/nimble/nimble/nimble/transport/src/transport.c"
@@ -757,7 +861,7 @@ if(CONFIG_BT_ENABLED)
                 "host/nimble/port/src/nvs_port.c"
             )
 
-            list(APPEND include_dirs
+        list(APPEND include_dirs
                 host/nimble/nimble/porting/nimble/include
                 host/nimble/port/include
                 host/nimble/nimble/nimble/transport/include
@@ -769,6 +873,15 @@ if(CONFIG_BT_ENABLED)
                     host/nimble/nimble/nimble/transport/common/hci_h4/include
                 )
             endif()
+
+        # Ensure top-level NimBLE host include dirs are exported publicly as
+        # well so dependents can find nimble host headers when CONFIG_BT_NIMBLE_ENABLED.
+        list(APPEND include_dirs
+            host/nimble/nimble/nimble/host/include
+            host/nimble/nimble/nimble/include
+            host/nimble/port/include
+            host/nimble/nimble/porting/npl/freertos/include
+        )
 
         if(NOT CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT)
             list(APPEND srcs
@@ -800,8 +913,13 @@ if(CONFIG_BT_ENABLED)
             list(APPEND include_dirs ${nimble_hci_include_dirs})
         endif()
 
-        list(APPEND srcs
-                    "common/btc/profile/esp/blufi/nimble_host/esp_blufi.c")
+        # NimBLE-hosted BLUFI implementation: skip when esp_wifi is disabled
+        if(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+            list(APPEND srcs
+                        "common/btc/profile/esp/blufi/nimble_host/esp_blufi.c")
+        else()
+            message(STATUS "bt: esp_wifi disabled; skipping nimble BLUFI host implementation (nimble_host/esp_blufi.c)")
+        endif()
 
         if(CONFIG_BLE_MESH)
             list(APPEND srcs "esp_ble_mesh/core/nimble_host/adapter.c")
@@ -856,13 +974,92 @@ if(CONFIG_BT_ENABLED)
 
 endif()
 
-idf_component_register(SRCS "${srcs}"
-                       INCLUDE_DIRS "${include_dirs}"
-                       PRIV_INCLUDE_DIRS "${priv_include_dirs}"
-                       REQUIRES esp_timer esp_wifi
-                       PRIV_REQUIRES nvs_flash soc esp_pm esp_phy esp_coex mbedtls esp_driver_uart vfs esp_ringbuf
-                                     esp_driver_spi esp_driver_gpio
-                       LDFRAGMENTS "${ldscripts}")
+## Debugging: print computed include lists at configure time (move before registration)
+message(STATUS "bt: computed include_dirs='${include_dirs}'")
+message(STATUS "bt: computed priv_include_dirs='${priv_include_dirs}'")
+
+# Additional diagnostics: print absolute paths used to check for per-target include dir
+set(_abs_target_specific_include_dir "${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+message(STATUS "bt: CMAKE_CURRENT_LIST_DIR='${CMAKE_CURRENT_LIST_DIR}'")
+message(STATUS "bt: abs_target_specific_include_dir='${_abs_target_specific_include_dir}'")
+
+# Workaround: if CONFIG_BT_ENABLED but include_dirs is still empty, force-append
+# the target-specific include dir as a last resort. This ensures public headers
+# such as include/<chip>/include/esp_bt.h are exported to dependents.
+if(CONFIG_BT_ENABLED)
+    # Ensure we export the per-target public include dir so dependents can find esp_bt.h.
+    # If the relative path exists, append it; otherwise append the absolute path if it exists.
+    if(NOT include_dirs)
+        message(STATUS "bt: include_dirs empty after computation; attempting to append per-target include dir ${target_specific_include_dirs}")
+        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${target_specific_include_dirs}")
+            message(STATUS "bt: appending relative per-target include dir: ${target_specific_include_dirs}")
+            list(APPEND include_dirs ${target_specific_include_dirs})
+        elseif(EXISTS "${_abs_target_specific_include_dir}")
+            message(STATUS "bt: appending absolute per-target include dir: ${_abs_target_specific_include_dir}")
+            list(APPEND include_dirs ${_abs_target_specific_include_dir})
+        else()
+            message(STATUS "bt: per-target include dir not found (neither relative nor absolute): ${target_specific_include_dirs}")
+        endif()
+    endif()
+endif()
+
+# When Wi‑Fi is disabled in the authoritative sdkconfig, some BT headers
+# (for example the BLUFI API header) still reference wifi types such as
+# wifi_mode_t. To allow a Bluetooth-only build without re-enabling the
+# whole esp_wifi component, provide a minimal local stub header directory
+# and expose it here. The stub is only appended when esp_wifi is not
+# enabled.
+if(NOT (CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED))
+    message(STATUS "bt: Wi‑Fi disabled; adding include/stubs to provide minimal esp_wifi types for build")
+    list(APPEND include_dirs "include/stubs")
+endif()
+
+# Backup fallback: if include_dirs is STILL empty here, append the absolute path unconditionally.
+# This is a last-resort workaround to ensure the public headers are exported to dependents
+# so that #include "esp_bt.h" resolves even if the component was marked CONFIG_ONLY earlier.
+if(CONFIG_BT_ENABLED)
+    if(NOT include_dirs)
+        message(STATUS "bt: include_dirs STILL empty after fallback checks; force-appending absolute include dir: ${_abs_target_specific_include_dir}")
+        list(APPEND include_dirs ${_abs_target_specific_include_dir})
+    endif()
+endif()
+
+# Pass include directories as lists (do not quote the list variables)
+set(_requires esp_timer)
+# Some BT source files (for example, the BLUFI API) include wifi types
+# headers such as <esp_wifi_types.h>. Ensure the esp_wifi component is
+# listed as a dependency when BT is enabled so its public include dirs are
+# exported to consumers of the bt component. This avoids hard failures when
+# bt sources reference wifi types while the authoritative sdkconfig has
+# CONFIG_ESP_WIFI_ENABLED unset (Option A workflows).
+if(CONFIG_BT_ENABLED)
+    list(APPEND _requires esp_wifi)
+elseif(CONFIG_ESP_WIFI_ENABLED OR DEFINED CONFIG_ESP_HOST_WIFI_ENABLED)
+    list(APPEND _requires esp_wifi)
+endif()
+
+if(CONFIG_BT_ENABLED)
+    # When Bluetooth is enabled, ensure esp_wifi is explicitly listed as a
+    # requirement so its public include directories are exported during
+    # compilation. Some bt sources (for example BLUFI) include wifi headers
+    # such as <esp_wifi_types.h> and the component dependency must be
+    # declared here so consumers receive the correct -I flags.
+    idf_component_register(SRCS ${srcs}
+                           INCLUDE_DIRS ${include_dirs}
+                           PRIV_INCLUDE_DIRS ${priv_include_dirs}
+                           REQUIRES esp_wifi ${_requires}
+                           PRIV_REQUIRES nvs_flash soc esp_pm esp_phy esp_coex mbedtls esp_driver_uart vfs esp_ringbuf
+                                         esp_driver_spi esp_driver_gpio esp_wifi
+                           LDFRAGMENTS ${ldscripts})
+else()
+    idf_component_register(SRCS ${srcs}
+                           INCLUDE_DIRS ${include_dirs}
+                           PRIV_INCLUDE_DIRS ${priv_include_dirs}
+                           REQUIRES ${_requires}
+                           PRIV_REQUIRES nvs_flash soc esp_pm esp_phy esp_coex mbedtls esp_driver_uart vfs esp_ringbuf
+                                         esp_driver_spi esp_driver_gpio
+                           LDFRAGMENTS ${ldscripts})
+endif()
 
 if(CONFIG_BT_ENABLED)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough -Wno-unused-const-variable)

@@ -49,6 +49,16 @@ void app_main(void)
     ESP_LOGI(TAG, "=====================================");
     ESP_LOGI(TAG, "All tests completed. Test application will now enter idle loop.");
     printf("\n\n*** ENTERING IDLE LOOP - TESTS COMPLETE ***\n\n");
+    /* Print a deterministic, machine-parseable final summary line so
+       test runners that rely on a numeric summary can detect completion.
+       Format matches the runner's expected regex: "<N> Tests <F> Failures <I> Ignored" */
+    printf("%d Tests %d Failures %d Ignored\n", Unity.NumberOfTests, Unity.TestFailures, 0);
+    /* Also emit a clear token for humans/diagnostics */
+    printf("TEST_RUN_COMPLETE: %d %d %d\n", Unity.NumberOfTests, Unity.TestFailures, 0);
+    fflush(stdout);
+    /* Give the UART a moment to drain before entering the idle loop */
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+
     while (1) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         printf(".");

@@ -74,4 +74,5 @@ Mkfile.old
 dkms.conf
 
 build*/
+tmp/
 

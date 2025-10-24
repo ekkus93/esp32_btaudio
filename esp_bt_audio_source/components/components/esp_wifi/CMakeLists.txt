@@ -93,12 +93,17 @@ if(CONFIG_ESP_WIFI_ENABLED OR CONFIG_ESP_HOST_WIFI_ENABLED)
         endif()
 
         foreach(blob ${blobs})
-            add_prebuilt_library(${blob} "${CMAKE_CURRENT_SOURCE_DIR}/lib/${target_name}/lib${blob}.a"
-                                REQUIRES ${COMPONENT_NAME})
-            set(blob_reqs ${blobs})
-            list(REMOVE_ITEM blob_reqs ${blob}) # remove itself from requirements
-            set_property(TARGET ${blob} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${blob_reqs})
-            target_link_libraries(${COMPONENT_LIB} PUBLIC ${blob})
+            set(blob_path "${CMAKE_CURRENT_SOURCE_DIR}/lib/${target_name}/lib${blob}.a")
+            if(EXISTS ${blob_path})
+                add_prebuilt_library(${blob} "${blob_path}"
+                                    REQUIRES ${COMPONENT_NAME})
+                set(blob_reqs ${blobs})
+                list(REMOVE_ITEM blob_reqs ${blob}) # remove itself from requirements
+                set_property(TARGET ${blob} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${blob_reqs})
+                target_link_libraries(${COMPONENT_LIB} PUBLIC ${blob})
+            else()
+                message(STATUS "esp_wifi: prebuilt blob not found, skipping: ${blob_path}")
+            endif()
         endforeach()
     endif()
 endif()
