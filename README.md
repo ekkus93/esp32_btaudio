@@ -396,3 +396,39 @@ python3 tools/symbolize_pairing/symbolize_pairing.py \
 Set `ADDR2LINE` env var if your toolchain's `addr2line` is not on PATH.
 
 Tip: use `--no-resolve` to skip addr2line lookups when you only need address counts quickly; the symbol column will contain `<no-resolve>`.
+
+## Running host Unity tests (Linux)
+
+Host-side Unity tests live under `esp_bt_audio_source/test/host_test`. They build a native Linux runner with mocks so you can exercise the business logic without flashing hardware. Use the flow below whenever you need a clean run:
+
+1. Install prerequisites (if you have not already):
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y build-essential cmake pkg-config
+  ```
+2. Configure a fresh build directory:
+  ```bash
+  cd esp_bt_audio_source/test/host_test
+  rm -rf build_host_tests
+  mkdir build_host_tests && cd build_host_tests
+  cmake ..
+  ```
+3. Build every host-test binary so they register with CTest:
+  ```bash
+  cmake --build . -j"$(nproc)"
+  ```
+4. Run the complete Unity suite and show detailed output on failure (tests are deduplicated by CTest):
+  ```bash
+  ctest --output-on-failure | tee test_results.log
+  ```
+5. To confirm coverage, list the discovered tests and compare against the Unity registrations in `test_*.c`:
+  ```bash
+  ctest -N
+  grep -R "RUN_TEST" .. -n
+  ```
+6. Capture the pass/fail tally from the saved log (the final summary line from CTest is sufficient for reports):
+   ```bash
+   grep -E "tests (passed|failed)" test_results.log
+   ```
+
+Additional tips, including Valgrind usage and mock locations, are documented in `esp_bt_audio_source/test/host_test/README.md`.
