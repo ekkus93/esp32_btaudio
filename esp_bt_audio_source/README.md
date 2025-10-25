@@ -569,6 +569,40 @@ Unity quickstart (host + on-device)
    ```
    This image (`build/esp_bt_audio_source_audio_test.bin`) exercises the audio/I²S suites. The log is written to `test_app_audio/build/one_run_unity.log`.
 
+3.1 **Additional Unity firmware (`test_app2`)**
+
+   A second test image, `test_app2`, bundles additional Bluetooth-focused test cases (for example, newly-enabled BT suites and the auto-runner that invokes all compiled `test_...` symbols). Use the same locked-down runner to build, flash, and capture the canonical log for `test_app2`:
+
+```bash
+cd esp_bt_audio_source/test_app2
+idf.py build
+python3 ../tools/run_unity.py --project-root test_app2 --port /dev/ttyUSB0 --timeout 600
+```
+
+   The runner will flash the image and write the canonical serial capture to `test_app2/build/one_run_unity.log`. The Unity summary lines in that file report the totals in the standard Unity format, for example:
+
+```
+3 Tests 0 Failures 0 Ignored
+```
+
+   To extract just the numeric totals (tests/failures/ignored) from the canonical capture, a simple grep + awk does the job:
+
+```bash
+grep -E "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored" test_app2/build/one_run_unity.log | tail -n1
+# or parse into variables
+read tests failures ignored < <(grep -oE "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored" test_app2/build/one_run_unity.log | awk '{print $1,$3,$5}')
+echo "tests=$tests failures=$failures ignored=$ignored"
+```
+
+   The repository-level aggregator (`tools/aggregate_unity.py`) also scans canonical locations (including `test_app2/build/one_run_unity.log`) and writes the combined totals to `tmp/canonical_unity_summary.json`:
+
+```bash
+python3 tools/aggregate_unity.py --output tmp/canonical_unity_summary.json
+cat tmp/canonical_unity_summary.json
+```
+
+   Note: `test_app2` was added to exercise additional Bluetooth test cases — if you change instrumentation or add new tests, run `idf.py fullclean` in `test_app2` before rebuilding to avoid stale object files.
+
 Canonical sequence:
 
 ```bash

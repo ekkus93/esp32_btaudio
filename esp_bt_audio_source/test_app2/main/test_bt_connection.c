@@ -6,6 +6,8 @@
 /* Ensure component-provided mock prototypes are visible to this TU */
 #include "bt_mock_devices.h"
 #include "bt_mock.h"
+/* Legacy mock prototypes (contains bt_reset_for_test declaration) */
+#include "bt_source_mock.h"
 
 static const char *TAG = "BT_CONNECTION_TEST";
 

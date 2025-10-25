@@ -1,12 +1,14 @@
 #include "bt_manager.h"
 #include "bt_api.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #pragma message("COMPILING bt_manager.c")
 
 // Define this for ESP32 builds
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
+#include "sdkconfig.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
@@ -60,6 +62,19 @@ typedef struct {
 } bt_pairing_pending_t;
 
 static bt_pairing_pending_t s_pair_pending = {0};
+
+#if CONFIG_BT_MOCK_TESTING
+#define BT_SOURCE_SKIP_DEVICE_STRUCT 1
+#include "bt_source.h"
+#undef BT_SOURCE_SKIP_DEVICE_STRUCT
+/* Forward declarations from the Bluetooth abstraction so we can delegate
+ * pairing to the mock implementation when mock testing configuration is
+ * enabled. These symbols live in the bt_mock component. */
+esp_err_t bt_start_pairing(const char* addr);
+esp_err_t bt_mock_send_pin(const char* pin);
+bt_pairing_method_t bt_mock_get_pairing_method(void);
+esp_err_t bt_mock_get_ssp_passkey(char* passkey, size_t size);
+#endif
 
 static void bt_pairing_format_mac(const esp_bd_addr_t bda, char* out, size_t out_len)
 {
@@ -579,6 +594,34 @@ bt_err_t bt_stop_audio(void) {
         return ESP_ERR_INVALID_ARG;
     }
     
+#if CONFIG_BT_MOCK_TESTING
+    /* Under the mock-testing configuration use the higher-level pairing helper
+     * so tests exercise the mock's deterministic flow instead of attempting to
+     * touch the real controller. Capture the pending pairing state so command
+     * handlers can accept PIN submissions later. */
+    esp_err_t mock_err = bt_start_pairing(mac);
+    if (mock_err == ESP_OK) {
+        bt_pairing_clear_pending_flags(true, true);
+        bt_pairing_set_pending_addr(bda);
+        bt_pairing_method_t method = bt_mock_get_pairing_method();
+        if (method == BT_PAIRING_METHOD_SSP) {
+            s_pair_pending.ssp_pending = true;
+            char passkey_str[16] = {0};
+            if (bt_mock_get_ssp_passkey(passkey_str, sizeof(passkey_str)) == ESP_OK) {
+                s_pair_pending.passkey = (uint32_t)strtoul(passkey_str, NULL, 10);
+            } else {
+                s_pair_pending.passkey = 0;
+            }
+        } else if (method == BT_PAIRING_METHOD_PIN) {
+            s_pair_pending.pin_pending = true;
+            s_pair_pending.passkey = 0;
+        } else {
+            s_pair_pending.passkey = 0;
+        }
+    }
+    return mock_err;
+#endif
+
     // Start pairing. Some IDF versions don't expose esp_bt_gap_start_authentication;
     // attempt a best-effort fallback that will trigger the system pairing flow.
     // Prefer a direct authentication API when available, otherwise try initiating
@@ -737,8 +780,6 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
 
 bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
 {
-    (void)mac;
-    (void)pin;
 #ifdef ESP_PLATFORM
     if (!bt_ctx.initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -747,6 +788,38 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
         return ESP_ERR_INVALID_ARG;
     }
 
+#if CONFIG_BT_MOCK_TESTING
+    esp_bd_addr_t target = {0};
+    char formatted_mac[18] = {0};
+    const char* mac_to_emit = NULL;
+
+    if (mac && mac[0] != '\0') {
+        if (!bt_pairing_parse_mac_string(mac, target)) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        bt_pairing_format_mac(target, formatted_mac, sizeof(formatted_mac));
+        mac_to_emit = formatted_mac;
+    } else if (s_pair_pending.pin_pending) {
+        memcpy(target, s_pair_pending.bda, sizeof(target));
+        mac_to_emit = s_pair_pending.mac;
+    } else {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!mac_to_emit || mac_to_emit[0] == '\0') {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    char confirm_payload[64];
+    snprintf(confirm_payload, sizeof(confirm_payload), "%s,%s", mac_to_emit, pin);
+    cmd_send_event_pair("CONFIRM", confirm_payload);
+
+    esp_err_t mock_err = bt_mock_send_pin(pin);
+    if (mock_err == ESP_OK) {
+        bt_pairing_clear_pending_flags(true, false);
+    }
+    return mock_err;
+#else
     esp_bd_addr_t target = {0};
     const char* mac_to_use = mac;
 
@@ -773,7 +846,10 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
         bt_pairing_clear_pending_flags(true, false);
     }
     return err;
+#endif
 #else
+    (void)mac;
+    (void)pin;
     return ESP_ERR_NOT_SUPPORTED;
 #endif
 }

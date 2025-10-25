@@ -3,20 +3,21 @@
 # Register the component and specify dependencies
 idf_component_register(
     SRCS
-        "main.c"
         "test_main.c"
         "test_app_main.c"
-        "audio_pipeline_test.c"
-        "audio_processor_test.c"
-        "audio_test_main.c"
+        "bt_pairing_test.c"
+        "bt_a2dp_test.c"
         "bt_mock_setup.c"
         "bt_pairing_persistence_test.c"
-        "bt_source_mock.c"
+        "audio_processor_stub.c"
+    "bt_source_mock.c"
+    "bt_source_stubs.c"
+    # Provide mock implementations of the bt_source API expected by tests
         "bt_source_test.c"
         "bt_test_setup.c"
         "command_interface_test.c"
+        "test_utils_adapters.c"
         "esp32_bt_shim.c"
-        "i2s_channel_test.c"
         "test_bt_scan.c"
         "test_pairing_commands.c"
         "unity_config.c"

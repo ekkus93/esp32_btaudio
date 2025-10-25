@@ -190,9 +190,14 @@ add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_o
 # exercise the host-mode adapter instrumentation (`test_pairing_adapters.c`) as
 # a native host binary. This helps capture the `TEST_ADAPT` logs and in-memory
 # event queue behavior without flashing a device.
+set(TEST_PAIRING_ADAPTER_SRC ../../test_app/main/test_pairing_adapters.c)
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_PAIRING_ADAPTER_SRC}")
+    set(TEST_PAIRING_ADAPTER_SRC ../../test_app2/main/test_pairing_adapters.c)
+endif()
+
 add_executable(test_pairing_adapter_runner
     ../../test_app/main/test_pairing_commands.c
-    ../../test_app/main/test_pairing_adapters.c
+    ${TEST_PAIRING_ADAPTER_SRC}
     ../../components/command_interface/commands.c
     mocks/mock_gap.c
     mocks/mock_uart.c

@@ -7,6 +7,30 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 
 ## System Architecture
 
+## Running Unity Firmware Tests
+
+The on-device Unity suites live in `esp_bt_audio_source/test_app` (command-interface focus) and `esp_bt_audio_source/test_app2` (Bluetooth-heavy coverage). The DUT is assumed to be connected at `/dev/ttyUSB0` unless stated otherwise.
+
+1. Ensure the ESP-IDF environment is active:
+  ```bash
+  . "$HOME/esp/esp-idf/export.sh"
+  ```
+2. Build the desired test firmware (example for `test_app`):
+  ```bash
+  cd esp_bt_audio_source/test_app
+  idf.py build
+  ```
+3. From the repository root, run the provided helper to flash, monitor, and auto-stop when the Unity summary appears (adjust the port or project directory as needed):
+  ```bash
+  cd /home/phil/work/esp32/esp32_btaudio
+  ./tools/flash_and_watch.py --port /dev/ttyUSB0 --project-dir esp_bt_audio_source/test_app
+  ```
+   - The script sources ESP-IDF if necessary, runs `idf.py flash monitor`, stops automatically once `*** ENTERING IDLE LOOP - TESTS COMPLETE ***` prints, and saves the full capture to `esp_bt_audio_source/test_app/build/one_run_unity.log`.
+4. Inspect the exit code (`0` = pass, `1` = failures detected) and review the saved log if you need detailed failure context. The Unity footer in the log lists totals such as `37 Tests 18 Failures 0 Ignored`.
+5. For the Bluetooth integration suites in `test_app2`, rerun the same command with `--project-dir esp_bt_audio_source/test_app2`.
+
+> Prefer to drive `idf.py` manually? You can still run `idf.py -p /dev/ttyUSB0 -b 115200 flash monitor | tee unity.log`, but remember to press `Ctrl+]` once the Unity footer appears because `idf.py monitor` will continue running otherwise.
+
 ### ESP32 Bluetooth Audio Source
 - **Function**: Captures audio input and transmits it over Bluetooth A2DP
 - **Input**: I2S audio interface

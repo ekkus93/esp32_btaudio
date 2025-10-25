@@ -1,0 +1,24 @@
+/* Minimal esp_event_base.h stub for Bluetooth-only builds.
+ * Provides the ESP event base definitions required by the Wi-Fi type shim
+ * when the esp_event component is not part of the build.
+ */
+
+#ifndef __ESP_EVENT_BASE_STUB_H__
+#define __ESP_EVENT_BASE_STUB_H__
+
+#include <stdint.h>
+
+typedef const char *esp_event_base_t;
+typedef void *esp_event_loop_handle_t;
+typedef void (*esp_event_handler_t)(void *event_handler_arg,
+                                    esp_event_base_t event_base,
+                                    int32_t event_id,
+                                    void *event_data);
+typedef void *esp_event_handler_instance_t;
+
+#define ESP_EVENT_DECLARE_BASE(id) extern esp_event_base_t const id
+#define ESP_EVENT_DEFINE_BASE(id) esp_event_base_t const id = #id
+#define ESP_EVENT_ANY_BASE NULL
+#define ESP_EVENT_ANY_ID   (-1)
+
+#endif /* __ESP_EVENT_BASE_STUB_H__ */

@@ -1,7 +1,17 @@
+set(priv_requires
+    main
+    bt_manager
+    bt
+    driver)
+
+if(CONFIG_APP_NO_BLOBS)
+    list(APPEND priv_requires bt_stack_stub)
+endif()
+
 idf_component_register(
     SRCS "command_interface.c" "commands.c"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES main bt_manager driver
+    PRIV_REQUIRES ${priv_requires}
     PRIV_INCLUDE_DIRS
 )
 

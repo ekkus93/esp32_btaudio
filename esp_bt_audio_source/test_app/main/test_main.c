@@ -12,8 +12,30 @@
 
 static const char *TAG = "TEST_MAIN";
 
+// Unity test suite is fairly stack hungry (command parser, mock layers, large
+// printf buffers). Running everything on the default main task stack (configured
+// to 3584 bytes in the active sdkconfig) trips FreeRTOS stack overflow checks
+// when the scan-heavy tests execute. Run the Unity harness from a dedicated
+// task with an explicit stack budget so the main task remains minimal.
+#define UNITY_TASK_STACK_BYTES   (16384)
+#define UNITY_TASK_STACK_WORDS   (UNITY_TASK_STACK_BYTES / sizeof(StackType_t))
+#define UNITY_TASK_PRIORITY      (tskIDLE_PRIORITY + 3)
+
 // Declare external test function
 extern void app_test_main(void);
+
+static void unity_runner_task(void *arg);
+
+static void init_nvs_or_die(void)
+{
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "NVS init returned %s, erasing and retrying", esp_err_to_name(ret));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+}
 
 // Run all Bluetooth-related tests
 void run_bluetooth_tests(void)
@@ -51,13 +73,15 @@ void run_bluetooth_tests(void)
     ESP_LOGI(TAG, "--------------------------------------");
 }
 
-void app_main(void)
+static void unity_runner_task(void *arg)
 {
+    (void)arg;
+
     ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite");
-    
+    init_nvs_or_die();
+
     // Run tests
     run_bluetooth_tests();
-    
 
     // Overall test summary
     printf("======== OVERALL TEST SUMMARY ========\n");
@@ -76,6 +100,12 @@ void app_main(void)
              ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
     ESP_LOGI(TAG, "=====================================");
     
+    // Capture remaining stack to validate the configured budget
+    UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "Unity runner stack high-water mark: %lu words (%lu bytes)",
+             (unsigned long)watermark,
+             (unsigned long)(watermark * sizeof(StackType_t)));
+
     // CRITICAL: Modify this log message that's causing confusion
     ESP_LOGI(TAG, "All tests completed. Test application will now enter idle loop.");
     
@@ -84,9 +114,23 @@ void app_main(void)
     
     // IMPORTANT: Enter idle loop instead of restarting!
     while (1) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         // Print a heartbeat every second to show we're still running
         printf(".");
         fflush(stdout);
+    }
+}
+
+void app_main(void)
+{
+    BaseType_t rc = xTaskCreate(unity_runner_task,
+                                "unity_runner",
+                                UNITY_TASK_STACK_WORDS,
+                                NULL,
+                                UNITY_TASK_PRIORITY,
+                                NULL);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create Unity runner task; running inline on main stack");
+        unity_runner_task(NULL);
     }
 }

@@ -46,6 +46,10 @@ if(NOT BOOTLOADER_BUILD)
         "xtensa_intr.c"
         "xtensa_vectors.S")
 
+    if(CONFIG_APP_NO_BLOBS)
+        list(APPEND srcs "xtensa_hal_compat.S")
+    endif()
+
     if(CONFIG_ESP32_IRAM_AS_8BIT_ACCESSIBLE_MEMORY)
         list(APPEND srcs "xtensa_loadstore_handler.S")
     endif()

@@ -121,6 +121,10 @@ extern void cmd_process_line(const char *line) __attribute__((weak));
 
 bool test_send_serial_cmd(const char *cmd)
 {
+    // Guard against NULL input which some adapters/tests may pass.
+    if (!cmd) {
+        return false;
+    }
     // Trim trailing CR/LF for convenience
     size_t len = strlen(cmd);
     char tmp[256];

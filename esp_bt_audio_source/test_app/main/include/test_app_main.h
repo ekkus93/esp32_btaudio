@@ -1,6 +1,11 @@
 #pragma once
 
 /**
+ * @brief Entry point invoked by the Unity harness to execute all suites.
+ */
+void app_test_main(void);
+
+/**
  * @brief Run all BT pairing tests
  */
 void app_main_bt_pairing_tests(void);

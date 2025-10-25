@@ -1,0 +1,16 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.4.1
+  test_utils:
+    dependencies: []
+    source:
+      path: /home/phil/esp/v5.4.1/esp-idf/tools/unit-test-app/components/test_utils
+      type: local
+    version: '*'
+direct_dependencies:
+- test_utils
+manifest_hash: 51b96b00ad18fdd94b3e7a23c380c972bb0a207a5f7799b14c9621b62f679b3c
+target: esp32
+version: 2.0.0

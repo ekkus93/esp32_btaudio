@@ -9,9 +9,10 @@
 
 static const char *TAG = "TEST_APP_MAIN";
 
-// External test function declarations
+// External test suite runners (defined in this component)
 extern void run_bt_pairing_tests(void);
 extern void run_bt_a2dp_tests(void);
+extern void run_command_interface_tests(void);
 
 void app_test_main(void)
 {
@@ -23,12 +24,10 @@ void app_test_main(void)
     run_bt_a2dp_tests();
     ESP_LOGI(TAG, "Bluetooth A2DP tests completed");
 
-    // REMOVE THIS LINE! It's causing the restart:
-    // esp_restart();
-    
-    // Don't restart here; return to the caller so the Unity harness
-    // (in `test_main.c`) can call UNITY_END() and print the summary.
-    // Wait briefly to flush logs then return.
+    ESP_LOGI(TAG, "Starting command interface tests");
+    run_command_interface_tests();
+    ESP_LOGI(TAG, "Command interface tests completed");
+
     vTaskDelay(pdMS_TO_TICKS(2000));
     ESP_LOGI(TAG, "Tests complete — returning to test harness to finish summary");
     return;
@@ -57,6 +56,9 @@ void run_test_group(const char *test_group)
         app_main_bt_pairing_tests();
     } else if (strcmp(test_group, "bt_a2dp") == 0) {
         app_main_bt_a2dp_tests();
+    } else if (strcmp(test_group, "command_interface") == 0) {
+        ESP_LOGI(TAG, "Running command interface test group");
+        run_command_interface_tests();
     } else {
         ESP_LOGW(TAG, "Unknown test group '%s'", test_group);
     }

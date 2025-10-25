@@ -34,7 +34,5 @@ void test_uart_command_interface_setup(void)
 
 void run_command_interface_tests(void)
 {
-    UNITY_BEGIN();
     RUN_TEST(test_uart_command_interface_setup);
-    UNITY_END();
 }

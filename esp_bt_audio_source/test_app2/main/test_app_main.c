@@ -10,18 +10,13 @@
 static const char *TAG = "TEST_APP_MAIN";
 
 // External test function declarations
-extern void run_bt_pairing_tests(void);
-extern void run_bt_a2dp_tests(void);
+extern void run_auto_tests(void);
 
 void app_test_main(void)
 {
-    ESP_LOGI(TAG, "Starting Bluetooth pairing tests");
-    run_bt_pairing_tests();
-    ESP_LOGI(TAG, "Bluetooth pairing tests completed");
-
-    ESP_LOGI(TAG, "Starting Bluetooth A2DP tests");
-    run_bt_a2dp_tests();
-    ESP_LOGI(TAG, "Bluetooth A2DP tests completed");
+    ESP_LOGI(TAG, "Starting auto-run of all compiled tests");
+    run_auto_tests();
+    ESP_LOGI(TAG, "Auto-run of tests completed");
 
     // REMOVE THIS LINE! It's causing the restart:
     // esp_restart();
@@ -37,13 +32,17 @@ void app_test_main(void)
 void app_main_bt_pairing_tests(void)
 {
     ESP_LOGI(TAG, "Running Bluetooth pairing test group");
-    run_bt_pairing_tests();
+    /* Forward to the auto-runner so pairing tests are included
+     * in the unified on-device run. This avoids duplicate symbols
+     * and keeps group-based entry points working. */
+    run_auto_tests();
 }
 
 void app_main_bt_a2dp_tests(void)
 {
     ESP_LOGI(TAG, "Running Bluetooth A2DP test group");
-    run_bt_a2dp_tests();
+    /* Forward to the auto-runner so A2DP tests are included. */
+    run_auto_tests();
 }
 
 void run_test_group(const char *test_group)

@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 // Device information structure
+#if !defined(BT_SOURCE_SKIP_DEVICE_STRUCT)
 typedef struct {
     uint8_t addr[6];      // Bluetooth address (MAC)
     char name[64];        // Device name
@@ -27,6 +28,7 @@ typedef struct {
     uint32_t cod;         // Class of device
     bool paired;          // Is device paired?
 } bt_device_t;
+#endif
 
 // Bluetooth connection states
 typedef enum {

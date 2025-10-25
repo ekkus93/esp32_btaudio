@@ -91,6 +91,22 @@ if(CONFIG_BT_CONTROLLER_ENABLED OR CONFIG_IDF_DOC_BUILD)
 set(nimble_hci_include_dirs host/nimble/esp-hci/include)
 endif()
 
+if(NOT CONFIG_BT_ENABLED)
+    # Ensure classic BT public headers remain visible even when the runtime
+    # stack is disabled. This allows applications to compile against mock or
+    # stub implementations that still depend on the API definitions.
+    list(APPEND include_dirs ${bluedroid_include_dirs})
+    list(APPEND include_dirs common/osi/include)
+    set(_bluedroid_abs_includes
+        "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/api/include/api"
+    )
+    foreach(_inc IN LISTS _bluedroid_abs_includes)
+        if(EXISTS "${_inc}")
+            list(APPEND include_dirs "${_inc}")
+        endif()
+    endforeach()
+endif()
+
 if(CONFIG_IDF_DOC_BUILD)
     list(APPEND include_dirs
          ${target_specific_include_dirs}
@@ -192,6 +208,19 @@ if(CONFIG_BT_ENABLED)
                 list(APPEND include_dirs "${_inc}")
             else()
                 message(STATUS "bt: skipping non-existent bluedroid include dir: ${_inc}")
+            endif()
+        endforeach()
+    else()
+        # Even when Bluedroid is disabled expose its public headers so
+        # application code that references classic BT APIs can still
+        # compile against lightweight stubs or mocks.
+        list(APPEND include_dirs ${bluedroid_include_dirs})
+        set(_bluedroid_abs_includes
+            "${CMAKE_CURRENT_LIST_DIR}/host/bluedroid/api/include/api"
+        )
+        foreach(_inc IN LISTS _bluedroid_abs_includes)
+            if(EXISTS "${_inc}")
+                list(APPEND include_dirs "${_inc}")
             endif()
         endforeach()
     endif()

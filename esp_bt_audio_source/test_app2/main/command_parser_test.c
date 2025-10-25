@@ -8,8 +8,8 @@
 // test_pairing_adapters.c provides this symbol; declare it here.
 extern bool test_capture_event(char *out_buf, size_t out_len);
 
-void setUp(void) {}
-void tearDown(void) {}
+// Use the common setUp/tearDown defined in unity_config.c
+// (do not redefine them here to avoid multiple-definition at link time)
 
 void test_cmd_parse_and_execute_debug_mock_add(void)
 {
@@ -44,9 +44,8 @@ void test_cmd_parse_and_execute_debug_mock_add(void)
     TEST_ASSERT_MESSAGE(got, "No event captured after DEBUG MOCK_ADD execution");
 }
 
-void app_main(void)
-{
-    UNITY_BEGIN();
-    RUN_TEST(test_cmd_parse_and_execute_debug_mock_add);
-    UNITY_END();
-}
+// The test function is now invoked from the unified auto-runner
+// (auto_run_tests.c). Keep this file as a collection of test helpers
+// and test functions only; the single `app_main`/Unity harness is
+// provided by the runner to avoid duplicate mains.
+

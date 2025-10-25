@@ -6,18 +6,27 @@ idf_component_register(
         "main.c"
         "test_main.c"
         "test_app_main.c"
-        "bt_source_test.c"
         "bt_a2dp_test.c"
         "bt_pairing_test.c"
-        "test_pairing_commands.c"
+        "bt_pairing_esp_test.c"
         "test_pairing_adapters.c"
-        "bt_source_stubs.c"
-        "bt_source_mock.c"
+    # Bring over common test setup and pairing helpers used by several tests
+    "bt_mock_setup.c"
+    "bt_test_setup.c"
+    "test_pairing_commands.c"
+    "auto_run_tests.c"
+    "test_bt_connection.c"
+    "command_parser_test.c"
+    "bt_source_stubs.c"
+    "bt_connection_shim.c"
+        "bt_streaming_mock.c"
         "audio_processor_stub.c"
-        "bt_test_setup.c"
+    # audio_test_helpers.c moved to test_app_audio/main - excluded
+    # i2s_audio_test.c moved to test_app_audio/main - excluded
+    # i2s_test.c moved to test_app_audio/main - excluded
+    # pcm_format_test.c moved to test_app_audio/main - excluded
+        "esp32_bt_shim.c"
         "unity_config.c"
-        "bt_pairing_persistence_test.c"
-        "bt_mock_setup.c"  # Update this filename
     INCLUDE_DIRS 
         "."
         "include"

@@ -4,12 +4,16 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <ctype.h>  // For tolower()
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "bt_source.h"
 #include "bt_source_mock.h"
 #include "bt_mock.h"
 #include "bt_api.h"
+#include "nvs_storage.h"
+#include "nvs_flash.h"
 
 /* Ensure device-level prototypes (scan/connect/get_scan_results, etc.) are
  * visible. bt_mock.h may not expose all device-level helpers; include the
@@ -55,8 +59,16 @@ static const char *TAG = "BT_SOURCE_MOCK";
 // Add missing state variables
 static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
 
+/* Helper provided by bt_source_stubs.c to synchronize its internal
+ * connection bookkeeping with the mock's authoritative state. Without this
+ * both implementations drift, causing downstream APIs (e.g. A2DP helpers)
+ * to observe stale connectivity. */
+extern void bt_source_stub_sync_connected_state(bool connected, const char* addr, const char* name);
+
 /* Forward declarations for internal helpers */
 static bool is_valid_mac_address(const char* addr);
+static void cancel_scan_timer(void);
+static void scan_timeout_callback(TimerHandle_t timer);
 
 /* Constants */
 #define MAX_DISCOVERED_DEVICES 32
@@ -86,6 +98,7 @@ static bool s_scan_active = false;
 static bt_device_t s_discovered_devices[MAX_DISCOVERED_DEVICES];
 static int s_discovered_device_count = 0;
 static bt_device_type_t s_current_filter = BT_DEVICE_TYPE_ALL;  // Changed from BT_DEVICE_TYPE_UNKNOWN
+static TimerHandle_t s_scan_timer = NULL;
 
 /* Bluetooth connection variables */
 static bool s_connected = false;
@@ -157,6 +170,11 @@ void bt_source_mock_reset_impl(void)
     s_initialized = false;
     
     // Reset scan state
+    cancel_scan_timer();
+    if (s_scan_timer != NULL) {
+        xTimerDelete(s_scan_timer, 0);
+        s_scan_timer = NULL;
+    }
     s_scan_active = false;
     s_discovered_device_count = 0;
     memset(s_discovered_devices, 0, sizeof(s_discovered_devices));
@@ -273,42 +291,129 @@ esp_err_t bt_init(void)
 }
 
 /**
- * Start Bluetooth device scan
+ * Start Bluetooth device scan without timeout (matches bt_scan_start API)
+ */
+esp_err_t bt_scan_start(void)
+{
+    ESP_LOGI(TAG, "Mock: Starting Bluetooth scan");
+
+    if (!s_initialized && mock_control.scan_start_return == ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (mock_control.scan_start_return != ESP_OK) {
+        s_scan_active = false;
+        return mock_control.scan_start_return;
+    }
+
+    cancel_scan_timer();
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Delegate to the component-level mock so authoritative scan state/results
+     * stay in sync with bt_mock. */
+    bt_mock_start_scan();
+    s_scan_active = bt_mock_is_scanning();
+    s_discovered_device_count = bt_mock_get_scan_results(s_discovered_devices, MAX_DISCOVERED_DEVICES);
+#else
+    s_scan_active = true;
+#endif
+
+    return ESP_OK;
+}
+
+/**
+ * Start Bluetooth device scan with timeout
  */
 esp_err_t bt_scan(uint32_t timeout_seconds)
 {
     ESP_LOGI(TAG, "Mock: Starting Bluetooth scan with timeout %" PRIu32 "s", timeout_seconds);
-    
+
     if (!s_initialized && mock_control.scan_start_return == ESP_OK) {
         return ESP_ERR_INVALID_STATE;
     }
-    
-    s_scan_active = true;
+
+    if (mock_control.scan_start_return != ESP_OK) {
+        s_scan_active = false;
+        return mock_control.scan_start_return;
+    }
+
+    cancel_scan_timer();
 
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    /* Delegate to component mock to ensure authoritative scan results */
     bt_mock_start_scan();
-
-    /* Pull scan results from component into local discovered list so tests
-     * that use the test-app API will see the same devices the component has.
-     */
+    s_scan_active = bt_mock_is_scanning();
     s_discovered_device_count = bt_mock_get_scan_results(s_discovered_devices, MAX_DISCOVERED_DEVICES);
+#else
+    s_scan_active = true;
 #endif
 
-    return mock_control.scan_start_return;
+    if (timeout_seconds > 0U) {
+        uint64_t timeout_ms = (uint64_t)timeout_seconds * 1000ULL;
+        if (timeout_ms > UINT32_MAX) {
+            timeout_ms = UINT32_MAX;
+        }
+        TickType_t timeout_ticks = pdMS_TO_TICKS((uint32_t)timeout_ms);
+        if (timeout_ticks == 0) {
+            timeout_ticks = 1;
+        }
+
+        if (s_scan_timer == NULL) {
+            s_scan_timer = xTimerCreate("scan_timeout",
+                                        timeout_ticks,
+                                        pdFALSE,
+                                        NULL,
+                                        scan_timeout_callback);
+            if (s_scan_timer == NULL) {
+                ESP_LOGE(TAG, "Failed to allocate scan timeout timer");
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+                bt_mock_stop_scan();
+                s_scan_active = bt_mock_is_scanning();
+#else
+                s_scan_active = false;
+#endif
+                return ESP_ERR_NO_MEM;
+            }
+        } else {
+            if (xTimerIsTimerActive(s_scan_timer) != pdFALSE) {
+                (void)xTimerStop(s_scan_timer, 0);
+            }
+            if (xTimerChangePeriod(s_scan_timer, timeout_ticks, 0) != pdPASS) {
+                ESP_LOGE(TAG, "Failed to set scan timeout period");
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+                bt_mock_stop_scan();
+                s_scan_active = bt_mock_is_scanning();
+#else
+                s_scan_active = false;
+#endif
+                return ESP_FAIL;
+            }
+        }
+
+        if (xTimerStart(s_scan_timer, 0) != pdPASS) {
+            ESP_LOGE(TAG, "Failed to start scan timeout timer");
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+            bt_mock_stop_scan();
+            s_scan_active = bt_mock_is_scanning();
+#else
+            s_scan_active = false;
+#endif
+            return ESP_FAIL;
+        }
+    }
+
+    return ESP_OK;
 }
 
 /**
  * Start Bluetooth device scan with filtering
- * 
+ *
  * Note: Implementation matches the header - only device_type parameter
  */
 esp_err_t bt_scan_start_filtered(bt_device_type_t device_type)
 {
     ESP_LOGI(TAG, "Mock: Starting filtered Bluetooth scan");
     s_current_filter = device_type;
-    s_scan_active = true;
-    return mock_control.scan_start_return;
+    return bt_scan_start();
 }
 
 /**
@@ -317,22 +422,55 @@ esp_err_t bt_scan_start_filtered(bt_device_type_t device_type)
 esp_err_t bt_scan_stop(void)
 {
     ESP_LOGI(TAG, "Mock: Stopping Bluetooth scan");
-    
-    // Check if not scanning - meaningful behavior
+
     if (!s_scan_active) {
         return ESP_ERR_INVALID_STATE;
     }
-    
-    // Update state
+
+    cancel_scan_timer();
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_stop_scan();
+    s_scan_active = bt_mock_is_scanning();
+#else
     s_scan_active = false;
-    
+#endif
+
     return ESP_OK;
 }
 
 /* Check if scanning */
 bool bt_is_scanning(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    s_scan_active = bt_mock_is_scanning();
+#endif
     return s_scan_active;
+}
+
+static void cancel_scan_timer(void)
+{
+    if (s_scan_timer != NULL && xTimerIsTimerActive(s_scan_timer) != pdFALSE) {
+        (void)xTimerStop(s_scan_timer, 0);
+    }
+}
+
+static void scan_timeout_callback(TimerHandle_t timer)
+{
+    (void)timer;
+
+    if (!s_scan_active) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Mock: Scan timeout expired; stopping scan");
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_stop_scan();
+    s_scan_active = bt_mock_is_scanning();
+#else
+    s_scan_active = false;
+#endif
 }
 
 /**
@@ -354,17 +492,48 @@ esp_err_t bt_connect_device(const char* addr)  // Changed from bt_connect to bt_
      * local behavior.
      */
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    if (bt_mock_connect(addr) == ESP_OK) {
+    esp_err_t err = bt_mock_connect(addr);
+    if (err == ESP_OK) {
         strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
         s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+    s_current_connection.connected = true;
+    s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+        s_connection_state = BT_CONNECTION_STATE_CONNECTED;
         s_connected = true;
+
+        s_current_connection.name[0] = '\0';
+        int device_idx = -1;
+        if (bt_mock_find_device(addr, &device_idx) && device_idx >= 0) {
+            bt_device_t device;
+            if (bt_mock_get_device(device_idx, &device) == ESP_OK) {
+                strncpy(s_current_connection.name, device.name, sizeof(s_current_connection.name) - 1);
+                s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
+            }
+        }
+
+        bt_source_stub_sync_connected_state(true,
+                                            s_current_connection.addr,
+                                            (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
         return ESP_OK;
     }
-    return ESP_FAIL;
+
+    s_connection_state = BT_CONNECTION_STATE_FAILED;
+    s_current_connection.connected = false;
+    s_current_connection.state = BT_CONNECTION_STATE_FAILED;
+    s_current_connection.name[0] = '\0';
+    s_current_connection.addr[0] = '\0';
+    s_connected = false;
+    bt_source_stub_sync_connected_state(false, NULL, NULL);
+    return err;
 #else
     strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
     s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+    s_current_connection.connected = true;
+    s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+    s_connection_state = BT_CONNECTION_STATE_CONNECTED;
     s_connected = true;
+    bt_source_stub_sync_connected_state(true, s_current_connection.addr,
+                                        (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
     return mock_control.connect_return;
 #endif
 }
@@ -390,20 +559,53 @@ esp_err_t bt_connect_device_by_name(const char* name)  // Changed from bt_connec
      */
     if (bt_mock_hook_connect_by_name(name) == ESP_OK) {
         s_connected = true;
+        s_current_connection.connected = true;
+        s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+        s_connection_state = BT_CONNECTION_STATE_CONNECTED;
+
+        /* copy reported name; if the component reports a different canonical
+         * name we will overwrite it below when we fetch the device entry. */
         strncpy(s_current_connection.name, name, sizeof(s_current_connection.name) - 1);
         s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
-        /* If the component has a hook-set address, attempt to copy it via
-         * bt_mock_get_scan_results / bt_mock_get_paired_devices isn't necessary
-         * here; tests only check that we report a connected state and name.
-         */
+
+        char conn_addr[18] = {0};
+        if (bt_mock_get_connected_addr(conn_addr, sizeof(conn_addr)) == ESP_OK) {
+            strncpy(s_current_connection.addr, conn_addr, sizeof(s_current_connection.addr) - 1);
+            s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+        } else {
+            s_current_connection.addr[0] = '\0';
+        }
+
+        int device_idx = -1;
+        if (s_current_connection.addr[0] != '\0' && bt_mock_find_device(s_current_connection.addr, &device_idx) &&
+            device_idx >= 0) {
+            bt_device_t device;
+            if (bt_mock_get_device(device_idx, &device) == ESP_OK) {
+                strncpy(s_current_connection.name, device.name, sizeof(s_current_connection.name) - 1);
+                s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
+            }
+        }
+
+        bt_source_stub_sync_connected_state(true,
+                                            (s_current_connection.addr[0] != '\0') ? s_current_connection.addr : NULL,
+                                            (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
         return ESP_OK;
     }
+
+    s_connected = false;
+    s_current_connection.connected = false;
+    s_current_connection.state = BT_CONNECTION_STATE_FAILED;
+    s_connection_state = BT_CONNECTION_STATE_FAILED;
+    bt_source_stub_sync_connected_state(false, NULL, NULL);
     return ESP_FAIL;
 #else
     s_connected = true;
     sprintf(s_current_connection.name, "%s", name);  // Changed from remote_name to name
     sprintf(s_current_connection.addr, "00:11:22:33:44:55");  // Changed from remote_addr to addr
-    
+    s_current_connection.connected = true;
+    s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+    s_connection_state = BT_CONNECTION_STATE_CONNECTED;
+    bt_source_stub_sync_connected_state(true, s_current_connection.addr, s_current_connection.name);
     return mock_control.connect_return;
 #endif
 }
@@ -444,6 +646,12 @@ esp_err_t bt_disconnect(void)
     // Update state
     s_connected = false;
     s_current_connection.connected = false;
+    s_current_connection.state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_current_connection.name[0] = '\0';
+    s_current_connection.addr[0] = '\0';
+
+    bt_source_stub_sync_connected_state(false, NULL, NULL);
 
     return ESP_OK;
 }
@@ -787,14 +995,22 @@ esp_err_t bt_ssp_confirm(bool confirm)
  */
 esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
 {
-    if (!s_ssp_confirmation_requested || !passkey || size < 7) {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_get_ssp_passkey(passkey, size);
+#else
+    if (!passkey || size == 0) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
+    if (!s_ssp_confirmation_requested || !is_pairing) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     strncpy(passkey, s_ssp_passkey, size - 1);
     passkey[size - 1] = '\0';
-    
+
     return ESP_OK;
+#endif
 }
 
 /**
@@ -804,11 +1020,19 @@ esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
  */
 bool bt_is_ssp_confirm_requested(void)
 {
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    return bt_mock_is_ssp_confirm_requested();
+#else
     return s_ssp_confirmation_requested;
+#endif
 }
 
+#if !defined(BT_MOCK_PROVIDES_PROTOTYPES)
 /**
- * Add a test device
+ * Add a test device when the component mock does not provide an implementation.
+ * The authoritative bt_mock component supplies this symbol when
+ * BT_MOCK_PROVIDES_PROTOTYPES is defined, so avoid redefining the
+ * function in that configuration to prevent linker conflicts.
  */
 void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_type_t type)
 {
@@ -852,6 +1076,7 @@ void bt_mock_add_test_device(const char* addr_str, const char* name, bt_device_t
     
     s_discovered_device_count++;
 }
+#endif // !BT_MOCK_PROVIDES_PROTOTYPES
 
 /**
  * Store paired devices to persistent storage - Fix to actually store devices
@@ -1015,12 +1240,25 @@ esp_err_t bt_unpair_device(const char* addr)
         }
     }
     
-    // Update stored paired devices
-    if (found) {
-        bt_store_paired_devices();
+    bool unpaired = found;
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    if (!unpaired) {
+        esp_err_t mock_ret = bt_mock_unpair_device(addr);
+        if (mock_ret == ESP_OK) {
+            unpaired = true;
+        } else if (mock_ret != ESP_ERR_NOT_FOUND) {
+            return mock_ret;
+        }
     }
-    
-    return found ? ESP_OK : ESP_ERR_NOT_FOUND;
+#endif
+
+    if (unpaired) {
+        bt_store_paired_devices();
+        return ESP_OK;
+    }
+
+    return ESP_ERR_NOT_FOUND;
 }
 
 /**
@@ -1068,41 +1306,6 @@ esp_err_t bt_unpair_all_devices(void)
 
     // If the component-level call failed, propagate the error; otherwise return ESP_OK
     return comp_ret;
-}
-
-/**
- * Get paired devices - Fix to return actual paired devices
- */
-int bt_get_paired_devices(bt_device_t* devices, int max_devices)
-{
-#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    // Delegate to component-level mock which holds the authoritative paired list
-    if (!devices || max_devices <= 0) {
-        return 0;
-    }
-    uint16_t actual = 0;
-    if (bt_mock_get_paired_devices(devices, (uint16_t)max_devices, &actual) == ESP_OK) {
-        return (int)actual;
-    }
-    return 0;
-#else
-    if (!devices || max_devices <= 0) {
-        return 0;
-    }
-
-    int count = 0;
-
-    // Copy paired devices to output array
-    for (int i = 0; i < s_discovered_device_count && count < max_devices; i++) {
-        if (s_device_paired[i]) {
-            memcpy(&devices[count], &s_discovered_devices[i], sizeof(bt_device_t));
-            devices[count].paired = true; // Ensure paired flag is set
-            count++;
-        }
-    }
-
-    return count;
-#endif
 }
 
 /**
@@ -1208,17 +1411,43 @@ bool bt_is_device_paired(const char* addr)
  */
 esp_err_t bt_set_default_pin(const char* pin)
 {
-    if (pin == NULL) {
+    if (!pin) {
         return ESP_ERR_INVALID_ARG;
     }
-    
-    if (strlen(pin) > 0 && strlen(pin) < sizeof(default_pin)) {
-        strncpy(default_pin, pin, sizeof(default_pin) - 1);
-        default_pin[sizeof(default_pin) - 1] = '\0';
-        return ESP_OK;
+
+    size_t pin_len = strlen(pin);
+    if (pin_len == 0 || pin_len >= sizeof(default_pin)) {
+        return ESP_ERR_INVALID_ARG;
     }
-    
-    return ESP_ERR_INVALID_ARG;
+
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    /* Keep component mock's persisted PIN in sync with the test-app copy. */
+    esp_err_t err = bt_mock_set_default_pin(pin);
+    if (err != ESP_OK) {
+        return err;
+    }
+#endif
+
+    memcpy(default_pin, pin, pin_len + 1);
+
+    esp_err_t nvs_err = nvs_storage_set_default_pin(pin);
+    if (nvs_err == ESP_ERR_NVS_NOT_INITIALIZED) {
+        esp_err_t init_err = nvs_storage_init();
+        if (init_err == ESP_OK) {
+            nvs_err = nvs_storage_set_default_pin(pin);
+        } else {
+            ESP_LOGW(TAG, "nvs_storage_init failed while setting default PIN (%s)",
+                     esp_err_to_name(init_err));
+            return init_err;
+        }
+    }
+
+    if (nvs_err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_storage_set_default_pin failed (%s)", esp_err_to_name(nvs_err));
+        return nvs_err;
+    }
+
+    return ESP_OK;
 }
 
 /**
