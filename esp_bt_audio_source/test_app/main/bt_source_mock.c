@@ -56,6 +56,11 @@ bool bt_mock_is_device_paired(const char* addr);
 
 static const char *TAG = "BT_SOURCE_MOCK";
 
+/* Diagnostic sequence counter to trace when this mock delegates to the
+ * component-level implementation. Helps correlate with the stub and
+ * device-side markers during test runs. */
+static uint32_t s_diag_seq_mock = 0;
+
 // Add missing state variables
 static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
 
@@ -492,7 +497,9 @@ esp_err_t bt_connect_device(const char* addr)  // Changed from bt_connect to bt_
      * local behavior.
      */
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    ESP_LOGI(TAG, "DIAG_SEQ: mock_delegate_before #%u addr=%s", (unsigned int)++s_diag_seq_mock, addr ? addr : "<null>");
     esp_err_t err = bt_mock_connect(addr);
+    ESP_LOGI(TAG, "DIAG_SEQ: mock_delegate_after #%u addr=%s err=%d connected=%d", (unsigned int)s_diag_seq_mock, addr ? addr : "<null>", (int)err, (int)bt_mock_is_connected());
     if (err == ESP_OK) {
         strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
         s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';

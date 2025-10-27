@@ -24,6 +24,10 @@
 
 static const char *TAG = "BT_MOCK_DEVICES";
 
+/* Diagnostic sequence counter so device-level connect/disconnect markers can
+ * be correlated with test-side stub and mock logs on the serial console. */
+static uint32_t s_diag_seq_devices = 0;
+
 #define MAX_TEST_DEVICES 32
 
 typedef struct {
@@ -168,6 +172,8 @@ esp_err_t bt_mock_connect(const char* addr)
 {
     if (!addr) return ESP_ERR_INVALID_ARG;
 
+    ESP_LOGI(TAG, "DIAG_SEQ: device_connect_entry #%u addr=%s", (unsigned int)++s_diag_seq_devices, addr ? addr : "<null>");
+
     /* Only allow connecting to addresses present in the authoritative
      * device list. Tests expect connecting to unknown addresses to fail. */
     int idx = -1;
@@ -200,8 +206,8 @@ esp_err_t bt_mock_connect(const char* addr)
     mock_state.connection_state = BT_CONNECTION_STATE_CONNECTED;
     ESP_LOGI(TAG, "Connected to %s", addr);
 #ifdef DIAG_LOG
-    ESP_LOGI(TAG, "DIAG: bt_mock_connect success: is_connected=%d, connected_addr=%s",
-             mock_state.is_connected, mock_state.connected_addr);
+    ESP_LOGI(TAG, "DIAG_SEQ: device_connect_success #%u is_connected=%d addr=%s",
+             (unsigned int)s_diag_seq_devices, mock_state.is_connected, mock_state.connected_addr);
 #endif
     return ESP_OK;
 }

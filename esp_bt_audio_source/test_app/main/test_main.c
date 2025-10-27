@@ -64,6 +64,8 @@ void run_bluetooth_tests(void)
     printf("Tests run    : %d\n", Unity.NumberOfTests);
     printf("Tests passed : %d\n", Unity.NumberOfTests - Unity.TestFailures);
     printf("Tests failed : %d\n", Unity.TestFailures);
+    // NOTE(2025-10-27): `test_bluetooth_connection`, `test_connection_failure_handling`,
+    // and `test_a2dp_paired_devices` remain red; keep this list in sync until we land fixes.
     printf("--------------------------------------\n");
     
     ESP_LOGI(TAG, "-------- BLUETOOTH TEST SUMMARY --------");

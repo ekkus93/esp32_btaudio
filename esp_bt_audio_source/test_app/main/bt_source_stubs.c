@@ -56,6 +56,12 @@ extern esp_err_t bt_mock_unpair_device(const char* addr);
 
 static const char *TAG = "BT_SOURCE_STUB";
 
+/* Diagnostic sequence counter to trace ordering between component mock and
+ * test-side stub synchronization. Incremented each time we synchronize or
+ * inspect connection state so logs can be correlated across translation
+ * units when running on-device. Kept local to this file. */
+static uint32_t s_diag_seq = 0;
+
 /* Mock device database */
 /* Increase capacity to avoid "database full" errors in test runs */
 #define MAX_TEST_DEVICES 32
@@ -113,6 +119,13 @@ static void bt_mock_scan_timeout_task(void *pvParameters);
 
 void bt_source_stub_sync_connected_state(bool connected, const char* addr, const char* name)
 {
+    /* Emit a compact sequence marker so we can correlate ordering in logs. */
+    ESP_LOGI(TAG, "DIAG_SEQ: stub_sync #%u connected=%d addr=%s name=%s",
+             (unsigned int)++s_diag_seq,
+             connected,
+             addr ? addr : "<null>",
+             name ? name : "<null>");
+
     s_is_connected = connected;
 
     if (connected) {
