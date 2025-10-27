@@ -10,6 +10,14 @@
 
 static const char *TAG = "BT_MOCK";
 
+/* Optional hook implemented by the test-app mock to keep its local caches in
+ * sync when the authoritative component-level mock mutates the paired device
+ * list. Guarded through a weak declaration so production builds that link this
+ * component without the test harness do not require the symbol.
+ */
+extern void bt_source_mock_cache_paired_device(const bt_device_t* device)
+    __attribute__((weak));
+
 // Static variables to track mock state
 static bool s_mock_initialized = false;
 static bool s_mock_ssp_supported = true;
@@ -119,7 +127,24 @@ esp_err_t bt_mock_add_paired_device(bt_device_t* device)
         type = BT_DEVICE_TYPE_AUDIO;
     }
 
-    return bt_mock_add_device(addr_str, device->name, type, true);
+    esp_err_t add_res = bt_mock_add_device(addr_str, device->name, type, true);
+    if (add_res == ESP_OK && bt_source_mock_cache_paired_device) {
+        int idx = -1;
+        bt_device_t cached = {0};
+
+        if (bt_mock_find_device(addr_str, &idx) && idx >= 0) {
+            if (bt_mock_get_device(idx, &cached) != ESP_OK) {
+                cached = *device;
+            }
+        } else {
+            cached = *device;
+        }
+
+        cached.paired = true;
+        bt_source_mock_cache_paired_device(&cached);
+    }
+
+    return add_res;
 }
 
 // Implement bt_mock_get_paired_device_count

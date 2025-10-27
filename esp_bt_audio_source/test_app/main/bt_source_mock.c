@@ -140,6 +140,52 @@ static bt_device_t s_stored_paired_devices[MAX_STORED_PAIRED_DEVICES];
 static uint8_t s_stored_paired_device_count = 0;
 static bool s_persistence_enabled = true;
 
+static int find_discovered_device_index(const uint8_t addr[6])
+{
+    for (int i = 0; i < s_discovered_device_count; ++i) {
+        if (memcmp(s_discovered_devices[i].addr, addr, sizeof(s_discovered_devices[i].addr)) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void cache_discovered_device(const bt_device_t* device)
+{
+    if (!device) {
+        return;
+    }
+
+    int idx = find_discovered_device_index(device->addr);
+    if (idx >= 0) {
+        memcpy(&s_discovered_devices[idx], device, sizeof(bt_device_t));
+        s_device_paired[idx] = device->paired;
+        return;
+    }
+
+    if (s_discovered_device_count >= MAX_DISCOVERED_DEVICES) {
+        ESP_LOGW(TAG, "Discovered cache full; cannot track paired device %02X:%02X:%02X:%02X:%02X:%02X",
+                 device->addr[0], device->addr[1], device->addr[2],
+                 device->addr[3], device->addr[4], device->addr[5]);
+        return;
+    }
+
+    memcpy(&s_discovered_devices[s_discovered_device_count], device, sizeof(bt_device_t));
+    s_device_paired[s_discovered_device_count] = device->paired;
+    s_discovered_device_count++;
+}
+
+void bt_source_mock_cache_paired_device(const bt_device_t* device)
+{
+    if (!device) {
+        return;
+    }
+
+    bt_device_t cached = *device;
+    cached.paired = true;
+    cache_discovered_device(&cached);
+}
+
 /* Connection callback */
 static bt_connection_callback_t s_connection_callback = NULL;
 static void* s_connection_callback_data = NULL;

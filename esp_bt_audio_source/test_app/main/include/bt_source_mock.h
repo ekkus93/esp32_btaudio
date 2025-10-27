@@ -117,6 +117,13 @@ esp_err_t bt_unpair_all_devices(void);
 uint16_t bt_get_paired_device_count(void);
 
 /**
+ * Synchronize the mock's cached device list with the authoritative
+ * component-level paired device entry so bt_is_device_paired() sees the
+ * updated state.
+ */
+void bt_source_mock_cache_paired_device(const bt_device_t* device);
+
+/**
  * Release the deferred disconnect visibility flag maintained by the mock so
  * stub helpers and Unity tests see the authoritative connected state.
  */

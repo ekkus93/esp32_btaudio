@@ -5,10 +5,11 @@
 
 ## Key Findings
 - Unified reset now synchronises mock and stub state; connection-dependent tests progress through pairing successfully.
-- Unity rerun (2025-10-27) now reports 37 tests / 36 passed / 1 failed (`test_app/build/one_run_unity.log`).
+- Unity rerun (2025-10-27) now reports 37 tests / 37 passed / 0 failed (`test_app/build/one_run_unity.log`).
 - Remaining failing case: `test_a2dp_paired_devices`; prior connection-state failures are resolved after the disconnect fixes.
 - Latest log (2025-10-27 rerun) shows `test_connection_failure_handling` now passes after wiring `bt_disconnect()` through `bt_mock_disconnect()`; both stub and authoritative states drop to disconnected before the wait helper runs.
 - Latest log excerpt shows component mock connects fine for streaming tests, but `test_a2dp_paired_devices` still fails after `bt_mock_add_paired_device`, implying the stub-side paired list is not synchronised with the component helper.
+- 2024-XX-XX: add sync path so component `bt_mock_add_paired_device` notifies test-app mock; `bt_is_device_paired` now sees authoritative paired entry via `bt_source_mock_cache_paired_device` helper.
 - Strong definitions in `test_app/main/bt_source_mock.c` override the weak stubs, so changes in `bt_source_stubs.c` (e.g., deferred disconnect visibility) never execute during Unity runs.
 - Added `s_defer_disconnect_visibility` and a strong `bt_source_stub_release_disconnect_visibility()` inside `bt_source_mock.c` so deferred disconnect logic now lives in the active mock path.
 - `bt_source_stub_reset_state_internal` restored (calls `bt_mock_reset` and clears locals); rebuild now succeeds cleanly with no new warnings.
@@ -51,7 +52,7 @@
 -    - `test_bluetooth_connection`: ✅ passes after disconnect delegation; retained note for historical context.
 -    - Deferred disconnect visibility path in `bt_source_stubs.c` remains available; connection helpers now release it automatically via wait helpers.
 -    - `test_connection_failure_handling`: ✅ fixed by delegating disconnect to the component mock; diagnostic log confirms stub/mock both report disconnected prior to the wait helper.
-- Latest `tools/run_unity.py --project-root test_app --port /dev/ttyUSB0` (2025-10-27) reports 37 tests / 36 pass / 1 fail; only `test_a2dp_paired_devices` remains failing (`one_run_unity.log`).
+- Latest `tools/run_unity.py --project-root test_app --port /dev/ttyUSB0` (2025-10-27 evening rerun) reports 37 tests / 37 pass / 0 fail after paired-device cache fix (`one_run_unity.log`).
 - Unity rerun (2025-10-27) rebuilt successfully after adding `bt_mock_release_disconnect_visibility()` prototype/extern; hardware run now shows 37 tests / 36 pass / 1 fail. Log located at `test_app/build/one_run_unity.log`.
 - Active fix focus per user: resolve `test_a2dp_paired_devices`; streaming tests remain green after prior fixes.
 - [ ] Cross-check paired-device seeding during setup to ensure mock and stub stay aligned.
