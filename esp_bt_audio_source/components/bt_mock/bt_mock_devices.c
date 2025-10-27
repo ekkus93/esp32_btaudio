@@ -387,8 +387,17 @@ esp_err_t bt_mock_confirm_ssp(bool confirm)
 
 esp_err_t bt_mock_get_ssp_passkey(char* passkey, size_t size)
 {
-    if (!passkey || size == 0) return ESP_ERR_INVALID_ARG;
-    if (!s_ssp_confirmation_requested) return ESP_ERR_NOT_FOUND;
+    if (!passkey || size == 0) {
+        ESP_LOGW(TAG,
+                 "bt_mock_get_ssp_passkey arg check failed: passkey=%p size=%zu",
+                 (void*)passkey,
+                 size);
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_ssp_confirmation_requested) {
+        ESP_LOGW(TAG, "bt_mock_get_ssp_passkey called with no pending confirm");
+        return ESP_ERR_NOT_FOUND;
+    }
     /* copy up to size-1 bytes and NUL terminate */
     strncpy(passkey, s_ssp_passkey, size - 1);
     passkey[size - 1] = '\0';

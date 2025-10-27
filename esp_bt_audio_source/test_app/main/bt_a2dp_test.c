@@ -19,6 +19,9 @@
 #include "bt_mock_setup.h"  // Update this include
 #include "bt_test_setup.h"
 
+/* Test-only stub helper that clears the deferred disconnect visibility flag. */
+void bt_source_stub_release_disconnect_visibility(void);
+
 /* Forward declarations for pairing tests added in test_pairing_commands.c
  * These functions live in a separate translation unit; provide prototypes
  * so RUN_TEST can reference them without causing implicit/undeclared
@@ -32,6 +35,12 @@ static const char *TAG = "BT_A2DP_TEST";
 // Helper: wait until bt_is_connected() equals expected, or timeout (ms) elapses.
 static bool wait_for_connected_state(bool expected, int timeout_ms)
 {
+    if (!expected) {
+        /* Ensure deferred disconnect visibility is cleared so bt_is_connected()
+         * can reflect the true disconnected state before we start polling. */
+        bt_source_stub_release_disconnect_visibility();
+    }
+
     int waited = 0;
     const int step_ms = 10;
     while (bt_is_connected() != expected && waited < timeout_ms) {
@@ -46,6 +55,13 @@ static bool wait_for_connected_state(bool expected, int timeout_ms)
 // when multiple mock layers are present.
 static bool wait_for_authoritative_connected_state(bool expected, int timeout_ms)
 {
+    if (!expected) {
+        /* Allow bt_is_connected() to report the true disconnected state during
+         * the subsequent polling loop by clearing any deferred visibility
+         * overrides the stub enabled while servicing bt_disconnect(). */
+        bt_source_stub_release_disconnect_visibility();
+    }
+
     int waited = 0;
     const int step_ms = 10;
     while (waited < timeout_ms) {

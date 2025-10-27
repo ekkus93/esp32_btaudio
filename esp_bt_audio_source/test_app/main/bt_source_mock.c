@@ -107,6 +107,7 @@ static TimerHandle_t s_scan_timer = NULL;
 
 /* Bluetooth connection variables */
 static bool s_connected = false;
+static bool s_defer_disconnect_visibility = false;
 static bool s_initialized = false;
 static bt_connection_info_t s_current_connection;
 static bt_profile_t s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
@@ -168,6 +169,7 @@ void bt_source_mock_reset_impl(void)
 {
     // Reset connection state
     s_connected = false;
+    s_defer_disconnect_visibility = false;
     memset(&s_current_connection, 0, sizeof(s_current_connection));
     s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
     s_streaming = false;
@@ -503,15 +505,16 @@ esp_err_t bt_connect_device(const char* addr)  // Changed from bt_connect to bt_
     if (err == ESP_OK) {
         strncpy(s_current_connection.addr, addr, sizeof(s_current_connection.addr) - 1);
         s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
-    s_current_connection.connected = true;
-    s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+        s_current_connection.connected = true;
+        s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
         s_connection_state = BT_CONNECTION_STATE_CONNECTED;
+        s_defer_disconnect_visibility = false;
         s_connected = true;
 
         s_current_connection.name[0] = '\0';
         int device_idx = -1;
         if (bt_mock_find_device(addr, &device_idx) && device_idx >= 0) {
-            bt_device_t device;
+            bt_device_t device = {0};
             if (bt_mock_get_device(device_idx, &device) == ESP_OK) {
                 strncpy(s_current_connection.name, device.name, sizeof(s_current_connection.name) - 1);
                 s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
@@ -634,7 +637,15 @@ esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms)
 /* Check if connected */
 bool bt_is_connected(void)
 {
-    return s_connected;
+    bool reported = s_defer_disconnect_visibility ? true : s_connected;
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG,
+             "DIAG: bt_is_connected() -> reported=%d (mock_connected=%d deferred=%d)",
+             reported,
+             s_connected,
+             s_defer_disconnect_visibility);
+#endif
+    return reported;
 }
 
 /* Disconnect */
@@ -652,6 +663,12 @@ esp_err_t bt_disconnect(void)
 
     // Update state
     s_connected = false;
+    s_defer_disconnect_visibility = true;
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG,
+             "DIAG: deferring disconnect visibility until explicit release (mock path)");
+    ESP_LOGI(TAG, "Mock: bt_disconnect invoked while connected; proceeding with disconnect simulation");
+#endif
     s_current_connection.connected = false;
     s_current_connection.state = BT_CONNECTION_STATE_DISCONNECTED;
     s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
@@ -765,6 +782,16 @@ uint16_t bt_get_paired_device_count(void)
 #else
     return s_paired_device_count;
 #endif
+}
+
+void bt_mock_release_disconnect_visibility(void)
+{
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG,
+             "DIAG: clearing deferred disconnect visibility (defer=%d)",
+             s_defer_disconnect_visibility);
+#endif
+    s_defer_disconnect_visibility = false;
 }
 
 /* Register connection callback */
@@ -1003,7 +1030,17 @@ esp_err_t bt_ssp_confirm(bool confirm)
 esp_err_t bt_get_ssp_passkey(char* passkey, size_t size)
 {
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    return bt_mock_get_ssp_passkey(passkey, size);
+    esp_err_t err = bt_mock_get_ssp_passkey(passkey, size);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "Mock: bt_get_ssp_passkey returning %s (passkey=%p size=%zu req=%d state=%d)",
+                 esp_err_to_name(err),
+                 (void*)passkey,
+                 size,
+                 bt_mock_is_ssp_confirm_requested() ? 1 : 0,
+                 (int)bt_mock_get_pairing_state());
+    }
+    return err;
 #else
     if (!passkey || size == 0) {
         return ESP_ERR_INVALID_ARG;

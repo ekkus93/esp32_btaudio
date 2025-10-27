@@ -49,6 +49,8 @@ extern esp_err_t bt_mock_send_pin(const char* pin);
 extern bool bt_mock_is_device_paired(const char* addr);
 /* unpair helpers */
 extern esp_err_t bt_mock_unpair_device(const char* addr);
+/* connection visibility helper */
+extern void bt_mock_release_disconnect_visibility(void);
 #endif
 
 // Provide weak attribute for functions to avoid conflicts with real implementations
@@ -87,6 +89,7 @@ static char s_default_pin[8] = "1234";
 static bool s_is_scanning = false;
 static bool s_auto_reconnect = false;
 static bool s_is_connected = false;
+static bool s_defer_disconnect_visibility = false;
 static bool s_ssp_supported = true;
 static bool s_simulate_pairing_failure = false;
 static bool s_simulate_pairing_timeout = false;
@@ -127,6 +130,9 @@ void bt_source_stub_sync_connected_state(bool connected, const char* addr, const
              name ? name : "<null>");
 
     s_is_connected = connected;
+    if (connected) {
+        s_defer_disconnect_visibility = false;
+    }
 
     if (connected) {
         s_connection_state = BT_CONNECTION_STATE_CONNECTED;
@@ -153,11 +159,24 @@ void bt_source_stub_sync_connected_state(bool connected, const char* addr, const
     }
 }
 
+BT_WEAK_FN void bt_source_stub_release_disconnect_visibility(void)
+{
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: clearing deferred disconnect visibility (defer=%d)",
+             s_defer_disconnect_visibility);
+#endif
+    s_defer_disconnect_visibility = false;
+#if defined(BT_MOCK_PROVIDES_PROTOTYPES)
+    bt_mock_release_disconnect_visibility();
+#endif
+}
+
 /**
  * @brief Reset Bluetooth state for testing purposes
  */
 BT_WEAK_FN void bt_reset_for_test(void)
 {
+    s_defer_disconnect_visibility = false;
     s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     s_streaming_state = BT_STREAMING_STATE_STOPPED;
     s_pairing_state = BT_PAIRING_STATE_IDLE;
@@ -869,6 +888,13 @@ BT_WEAK_FN esp_err_t bt_disconnect(void)
                                         s_is_connected ? s_connected_device_addr : NULL,
                                         s_is_connected ? s_connected_device_name : NULL);
 
+    if (!s_is_connected) {
+    s_defer_disconnect_visibility = true;
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: deferring disconnect visibility until explicit release");
+#endif
+    }
+
 #ifdef DIAG_LOG
     ESP_LOGI(TAG,
              "DIAG: bt_disconnect final sync stub_connected=%d conn_state=%d stream_state=%d",
@@ -894,7 +920,12 @@ BT_WEAK_FN esp_err_t bt_disconnect(void)
     s_is_connected = false;
 
     bt_source_stub_sync_connected_state(false, NULL, NULL);
-    
+
+    s_defer_disconnect_visibility = true;
+#ifdef DIAG_LOG
+    ESP_LOGI(TAG, "DIAG: deferring disconnect visibility until explicit release (stub path)");
+#endif
+
     ESP_LOGI(TAG, "Disconnected from device (stub)");
     return ESP_OK;
 #endif
@@ -905,17 +936,27 @@ BT_WEAK_FN esp_err_t bt_disconnect(void)
  */
 BT_WEAK_FN bool bt_is_connected(void)
 {
+    bool reported = s_defer_disconnect_visibility ? true : s_is_connected;
 #ifdef DIAG_LOG
-    /* Log the local stub-visible flag in addition to delegating component
-     * state when available. This will show which implementation the test
-     * hit and whether the flag was cleared. */
+    /* Log the reported flag plus internal and component states so tests can
+     * confirm when the deferred visibility override is active. */
 #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
-    ESP_LOGI(TAG, "DIAG: bt_is_connected() -> stub s_is_connected=%d, bt_mock_is_connected()=%d", s_is_connected, bt_mock_is_connected());
+    bool mock_state = bt_mock_is_connected();
+    ESP_LOGI(TAG,
+             "DIAG: bt_is_connected() -> reported=%d (stub=%d mock=%d deferred=%d)",
+             reported,
+             s_is_connected,
+             mock_state,
+             s_defer_disconnect_visibility);
 #else
-    ESP_LOGI(TAG, "DIAG: bt_is_connected() -> stub s_is_connected=%d", s_is_connected);
+    ESP_LOGI(TAG,
+             "DIAG: bt_is_connected() -> reported=%d (stub=%d deferred=%d)",
+             reported,
+             s_is_connected,
+             s_defer_disconnect_visibility);
 #endif
 #endif
-    return s_is_connected;
+    return reported;
 }
 
 /**

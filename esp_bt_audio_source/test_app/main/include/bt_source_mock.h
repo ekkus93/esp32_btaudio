@@ -116,6 +116,12 @@ esp_err_t bt_unpair_all_devices(void);
  */
 uint16_t bt_get_paired_device_count(void);
 
+/**
+ * Release the deferred disconnect visibility flag maintained by the mock so
+ * stub helpers and Unity tests see the authoritative connected state.
+ */
+void bt_mock_release_disconnect_visibility(void);
+
 #ifdef __cplusplus
 }
 #endif
