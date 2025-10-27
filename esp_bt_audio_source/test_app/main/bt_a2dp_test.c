@@ -64,15 +64,23 @@ static bool wait_for_authoritative_connected_state(bool expected, int timeout_ms
 
     int waited = 0;
     const int step_ms = 10;
+    bool last_stub_state = false;
+    bool last_mock_state = false;
     while (waited < timeout_ms) {
-        bool stub_state = bt_is_connected();
-        bool mock_state = bt_mock_is_connected();
-        if (stub_state == expected && mock_state == expected) {
+        last_stub_state = bt_is_connected();
+        last_mock_state = bt_mock_is_connected();
+        if (last_stub_state == expected && last_mock_state == expected) {
             return true;
         }
         vTaskDelay(pdMS_TO_TICKS(step_ms));
         waited += step_ms;
     }
+    ESP_LOGW(TAG,
+             "wait_for_authoritative_connected_state timeout: expected=%d stub=%d mock=%d waited_ms=%d",
+             expected,
+             last_stub_state,
+             last_mock_state,
+             waited);
     return false;
 }
 
@@ -313,6 +321,14 @@ void test_connection_failure_handling(void) {
     
     // We expect either ESP_FAIL or ESP_ERR_NOT_FOUND
     TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+
+    /* Log current connection states before waiting so we can observe stub vs
+     * authoritative mock divergence when the assertion below fails. */
+    bt_source_stub_release_disconnect_visibility();
+    ESP_LOGI(TAG,
+             "DIAG_TEST: after failed connect stub_connected=%d mock_connected=%d",
+             bt_is_connected(),
+             bt_mock_is_connected());
 
     // Verify not connected: wait for authoritative state to be false
     TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));

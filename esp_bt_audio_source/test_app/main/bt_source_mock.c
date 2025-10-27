@@ -657,8 +657,21 @@ esp_err_t bt_disconnect(void)
     // mismatch led to observed numeric values in on-device logs. Normalize
     // to ESP_OK here to keep behavior deterministic for tests.
     if (!s_connected) {
+        /* Ensure authoritative mock state is also cleared so future tests
+         * observe a consistent disconnected view even if local state thinks
+         * we're idle. The component mock treats redundant disconnects as
+         * idempotent ESP_OK, so ignore the return value in this path. */
+        (void)bt_mock_disconnect();
         ESP_LOGW(TAG, "bt_disconnect called when not connected - treating as success for tests");
         return ESP_OK;
+    }
+
+    esp_err_t mock_err = bt_mock_disconnect();
+    if (mock_err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "bt_mock_disconnect returned %d (0x%08x); continuing to clear local state",
+                 (int)mock_err,
+                 (unsigned int)mock_err);
     }
 
     // Update state
@@ -676,6 +689,12 @@ esp_err_t bt_disconnect(void)
     s_current_connection.addr[0] = '\0';
 
     bt_source_stub_sync_connected_state(false, NULL, NULL);
+
+    /* After clearing authoritative state, double-check that the mock reports
+     * disconnected so wait_for_authoritative_connected_state() can succeed. */
+    if (bt_mock_is_connected()) {
+        ESP_LOGW(TAG, "Authoritative mock still reports connected after disconnect");
+    }
 
     return ESP_OK;
 }
