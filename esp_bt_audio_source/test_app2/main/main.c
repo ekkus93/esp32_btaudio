@@ -17,14 +17,14 @@
 #include "nvs_flash.h"
 #include "esp_system.h"
 #include "esp_bt.h"
+#include "unity.h"
 #include "test_app_main.h"
 #include "bt_source.h"
 
 static const char *TAG = "TEST_MAIN";
 
-// Forward declarations for BT tests - these are implemented
-extern void app_main_bt_pairing_tests(void);
-extern void app_main_bt_a2dp_tests(void);
+// Forward declaration for the consolidated auto-run harness
+extern void app_test_main(void);
 
 
 #ifndef APP_MAIN_DEFINED
@@ -53,16 +53,51 @@ void app_main(void)
         ESP_LOGW(TAG, "Boot scan call returned: %d", scan_ret);
     }
     
-    // Run BT pairing tests
-    app_main_bt_pairing_tests();
-    
-    // Run BT A2DP tests
-    app_main_bt_a2dp_tests();
-    
-    // Add a delay between test sets to keep logs readable
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    printf("\n\n----- UNITY TEST START -----\n");
+    UNITY_BEGIN();
 
-    ESP_LOGI(TAG, "All tests completed. Test application will now restart.");
-    esp_restart();
+    // Run the consolidated auto-test harness once; it drives every
+    // compiled Unity test via RUN_TEST and defers to component mocks.
+    app_test_main();
+
+    // Close out the Unity session so the standard footer is emitted.
+    int result = UNITY_END();
+    printf("--- SUMMARY ---\n");
+    printf("----- UNITY TEST COMPLETE: %s -----\n", result ? "FAIL" : "PASS");
+    printf("-------- BLUETOOTH TEST SUMMARY --------\n");
+    printf("Tests run    : %d\n", Unity.NumberOfTests);
+    printf("Tests passed : %d\n", Unity.NumberOfTests - Unity.TestFailures);
+    printf("Tests failed : %d\n", Unity.TestFailures);
+    printf("--------------------------------------\n");
+
+    ESP_LOGI(TAG, "-------- BLUETOOTH TEST SUMMARY --------");
+    ESP_LOGI(TAG, "Tests run     : %d", Unity.NumberOfTests);
+    ESP_LOGI(TAG, "Tests passed  : %d", Unity.NumberOfTests - Unity.TestFailures);
+    ESP_LOGI(TAG, "Tests failed  : %d", Unity.TestFailures);
+    ESP_LOGI(TAG, "--------------------------------------");
+
+    printf("======== OVERALL TEST SUMMARY ========\n");
+    printf("Tests run    : %d\n", Unity.NumberOfTests);
+    printf("Tests passed : %d\n", Unity.NumberOfTests - Unity.TestFailures);
+    printf("Tests failed : %d\n", Unity.TestFailures);
+    printf("Success rate : %.1f%%\n", (Unity.NumberOfTests > 0) ?
+           ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
+    printf("=====================================\n");
+
+    ESP_LOGI(TAG, "======== OVERALL TEST SUMMARY ========");
+    ESP_LOGI(TAG, "Tests run     : %d", Unity.NumberOfTests);
+    ESP_LOGI(TAG, "Tests passed  : %d", Unity.NumberOfTests - Unity.TestFailures);
+    ESP_LOGI(TAG, "Tests failed  : %d", Unity.TestFailures);
+    ESP_LOGI(TAG, "Success rate  : %.1f%%",
+             (Unity.NumberOfTests > 0) ?
+             ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
+    ESP_LOGI(TAG, "=====================================");
+
+    ESP_LOGI(TAG, "All tests completed. Test application will now enter idle loop.");
+    printf("\n\n*** ENTERING IDLE LOOP - TESTS COMPLETE ***\n\n");
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 #endif
