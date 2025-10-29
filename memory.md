@@ -2,7 +2,9 @@
 - Validate the shim-backed connection info path now that tests publish through it.
 - Keep `bt_source_stubs.c` aligned with asynchronous connect semantics from the mock component.
 - Maintain Unity runner output so downstream tooling captures pass/fail summaries.
-- Re-run Unity suites (`test_app`, `test_app_audio`, `test_app2`) on request once serial port access is confirmed.
+- [x] Re-run `test_app` Unity suite
+- [x] Re-run `test_app_audio` Unity suite
+- [x] Re-run `test_app2` Unity suite
 
 ## Key Findings
 - 2025-10-28: Added host-mode FreeRTOS/A2DP stubs plus `test_bt_connection_manager` Unity target to exercise real connection manager state transitions and auto-reconnect logic.
@@ -12,6 +14,10 @@
 - Updated `bt_connect_device()` failure branch in `test_app2/main/bt_source_stubs.c` so it clears local connection state and still returns `ESP_OK`, matching Unity test expectations for asynchronous failure reporting.
 - Unified reset keeps stub and component mock state in sync; connection-dependent tests progress through pairing successfully.
 - Unity runner script now sees the canonical summary line (`<tests> Tests <failures> Failures <ignored> Ignored`), so exit codes reflect real pass/fail status.
+- 2025-10-29: Disabled BLE in main `sdkconfig`/defaults; main binary shrank to 0xC1BB0 bytes (~24% partition free).
+- 2025-10-29: Flashed BLE-disabled main firmware via `idf.py -p /dev/ttyUSB0 flash`; ready for runtime validation.
+- 2025-10-29: Re-ran `test_app_audio` Unity suite post-BLE-disable → 26/0/0 pass (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`).
+- 2025-10-29: Re-ran `test_app2` Unity suite post-BLE-disable → 45/0/0 pass (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
 
 ## Assumptions & Constraints
 - No sdkconfig, partition, or target changes without explicit approval per repo policy.

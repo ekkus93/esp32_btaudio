@@ -33,6 +33,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
    - `test_app_audio`: 3 post-reset passes × 26 cases each = 78/78 tests green (`test_app_audio/build/one_run_unity.log`).
    - `test_app`: 14 full loops plus additional pairing laps = 602/602 tests green (`test_app/build/one_run_unity.log`).
 - Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs to be captured and documented (see [Remaining work](#remaining-work-short-list)).
+- Known warning: ESP-IDF builds currently print duplicate-definition notices for `ESP_EVENT_ANY_ID` because our legacy Bluetooth shim header (`components/components/bt/include/esp32/include/esp_event_base.h`) still defines the macro; plan is to guard/remove that old definition in a future cleanup.
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
