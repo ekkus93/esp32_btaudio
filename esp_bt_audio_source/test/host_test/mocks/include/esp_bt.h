@@ -33,6 +33,10 @@ typedef enum {
     ESP_BT_MODE_DUAL = 0x03
 } esp_bt_mode_t;
 
+#ifndef ESP_BD_ADDR_LEN
+#define ESP_BD_ADDR_LEN 6
+#endif
+
 // Bluetooth controller config
 typedef struct {
     esp_bt_mode_t mode;
@@ -83,9 +87,12 @@ typedef enum {
 } esp_a2d_media_ctrl_t;
 
 // Bluetooth device address
-typedef struct {
-    uint8_t addr[6];
-} esp_bd_addr_t;
+typedef uint8_t esp_bd_addr_t[ESP_BD_ADDR_LEN];
+
+typedef int esp_a2d_cb_event_t;
+typedef struct esp_a2d_cb_param_t esp_a2d_cb_param_t;
+typedef void (*esp_a2d_cb_t)(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+typedef int32_t (*esp_a2d_source_data_cb_t)(uint8_t *buf, int32_t len);
 
 // Mock function prototypes
 esp_bt_status_t esp_bt_controller_init(esp_bt_controller_config_t *cfg);
@@ -101,9 +108,11 @@ esp_bt_status_t esp_bluedroid_disable(void);
 // A2DP source functions
 esp_bt_status_t esp_a2d_source_init(void);
 esp_bt_status_t esp_a2d_source_deinit(void);
-esp_bt_status_t esp_a2d_source_connect(esp_bd_addr_t *remote_bda);
-esp_bt_status_t esp_a2d_source_disconnect(esp_bd_addr_t *remote_bda);
+esp_bt_status_t esp_a2d_source_connect(esp_bd_addr_t remote_bda);
+esp_bt_status_t esp_a2d_source_disconnect(esp_bd_addr_t remote_bda);
 esp_bt_status_t esp_a2d_media_ctrl(esp_a2d_media_ctrl_t ctrl);
+esp_bt_status_t esp_a2d_register_callback(esp_a2d_cb_t callback);
+esp_bt_status_t esp_a2d_source_register_data_callback(esp_a2d_source_data_cb_t callback);
 
 // Testing helper functions
 void esp_bt_gap_set_scan_mode(bool discoverable, bool connectable);

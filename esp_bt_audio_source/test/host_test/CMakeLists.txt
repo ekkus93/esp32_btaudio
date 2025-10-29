@@ -174,6 +174,18 @@ target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_manager.
 target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
 
+add_executable(test_bt_connection_manager
+    test_bt_connection_manager.c
+    ../../main/bt_connection_manager.c
+    mocks/mock_a2dp.c
+    mocks/mock_gap.c
+)
+target_include_directories(test_bt_connection_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+)
+target_link_libraries(test_bt_connection_manager unity)
+add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connection_manager>)
+
 # Helper binary: run the same burst and print the mock UART TX buffer for parsing
 add_executable(dump_event_stress_output dump_event_stress_output.c
     ../../components/command_interface/commands.c

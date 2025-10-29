@@ -82,6 +82,8 @@ static void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd
             }
             addr_str[ESP_BD_ADDR_LEN*3-1] = '\0';
             strncpy(s_last_connected_addr, addr_str, sizeof(s_last_connected_addr)-1);
+            strncpy(s_connection_info.addr, addr_str, sizeof(s_connection_info.addr) - 1);
+            s_connection_info.addr[sizeof(s_connection_info.addr) - 1] = '\0';
             s_connection_info.connect_time = (uint32_t)time(NULL);
             s_reconnect_attempts = 0;
             break;
@@ -177,8 +179,8 @@ static void attempt_reconnection(void)
     if (sscanf(s_last_connected_addr, "%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX",
                &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]) == ESP_BD_ADDR_LEN) {
         if (esp_a2d_source_connect(addr) == ESP_OK) {
-            update_connection_state(BT_CONNECTION_STATE_CONNECTING);
             s_reconnect_attempts++;
+            update_connection_state(BT_CONNECTION_STATE_CONNECTING);
         } else {
             ESP_LOGE(TAG, "Failed to initiate reconnection");
             update_connection_state(BT_CONNECTION_STATE_FAILED);
@@ -313,3 +315,40 @@ void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr)
 {
     bt_audio_state_handler(state, bd_addr);
 }
+
+#ifdef UNIT_TEST
+void bt_connection_manager_reset_state_for_test(void)
+{
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    memset(&s_connection_info, 0, sizeof(s_connection_info));
+    s_connection_info.state = BT_CONNECTION_STATE_DISCONNECTED;
+    memset(&s_streaming_info, 0, sizeof(s_streaming_info));
+    s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
+    memset(s_peer_bd_addr, 0, sizeof(s_peer_bd_addr));
+    s_a2d_conn_state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+    s_a2d_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
+    s_reconnect_attempts = 0;
+    s_auto_reconnect = true;
+    s_last_connected_addr[0] = '\0';
+    s_connection_callback = NULL;
+    s_connection_callback_data = NULL;
+    s_stream_callback = NULL;
+    s_stream_callback_data = NULL;
+}
+
+void bt_connection_manager_set_auto_reconnect_for_test(bool enable)
+{
+    s_auto_reconnect = enable;
+}
+
+const char *bt_connection_manager_get_last_connected_addr_for_test(void)
+{
+    return s_last_connected_addr;
+}
+
+uint8_t bt_connection_manager_get_reconnect_attempts_for_test(void)
+{
+    return s_reconnect_attempts;
+}
+#endif
