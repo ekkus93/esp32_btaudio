@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "bt_source.h"
+#include "bt_connection_shim.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdbool.h>
@@ -169,10 +170,10 @@ void test_bt_connection_info(void) {
     mock_info.connected = true;
     strcpy(mock_info.addr, test_addr);  // Fixed member name
     strcpy(mock_info.name, test_name);
-    
-    // Call the bt_connection_state_cb function directly with a connected state
-    // (This doesn't exist in the API, but should be implemented in your bt_mock)
-    
+
+    // Publish the simulated connection so bt_get_connection_info() sees it
+    bt_connection_shim_publish_info(&mock_info);
+
     // Get connection information
     bt_connection_info_t info;
     esp_err_t err = bt_get_connection_info(&info);
