@@ -55,6 +55,8 @@ static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 static bool s_is_initialized = false;
 static bool s_is_running = false;
 static uint8_t s_volume_gain = 80; // Internal volume as percentage
+// Beep override state: number of bytes enqueued as beep that should bypass mute
+size_t s_beep_remaining_bytes = 0;
 
 // Diagnostics throttling state for high-frequency logging inside the
 // audio processing task. We emit the first log immediately and then
@@ -510,8 +512,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
-    // If muted, just fill with zeros
-    if (s_audio_config.mute) {
+    // If muted and no beep override is pending, just fill with zeros
+    extern size_t s_beep_remaining_bytes; /* declared below */
+    if (s_audio_config.mute && s_beep_remaining_bytes == 0) {
         memset(buffer, 0, size);
         *bytes_read = size;
         return ESP_OK;
@@ -531,6 +534,13 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     // Copy data to output buffer
     memcpy(buffer, item, read_size);
     vRingbufferReturnItem(s_audio_buffer, item);
+
+    /* If part of this data was scheduled as a beep, decrement remaining
+     * counter so subsequent reads know when to re-enable mute behavior. */
+    if (s_beep_remaining_bytes > 0) {
+        if (read_size >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
+        else s_beep_remaining_bytes -= read_size;
+    }
 
     // Apply volume if not at maximum
     if (s_volume_gain < 100) {
@@ -686,6 +696,93 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     }
 
     return ret;
+}
+
+/**
+ * @brief Enqueue a short beep tone into the audio pipeline.
+ *
+ * This generates a simple square-wave beep at 1kHz and pushes the PCM
+ * data into the audio ring buffer so it will be played even when the
+ * normal I2S source is silent/muted. The function increments
+ * s_beep_remaining_bytes so reads can track and bypass mute for the
+ * duration of the beep.
+ */
+esp_err_t audio_processor_beep(uint32_t duration_ms)
+{
+    if (!s_is_initialized) {
+        ESP_LOGW(TAG, "audio_processor_beep: not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (duration_ms == 0) return ESP_OK;
+
+    int sample_rate = s_audio_config.sample_rate;
+    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample <= 0) bytes_per_sample = 2;
+    int channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+
+    size_t total_frames = ((size_t)sample_rate * (size_t)duration_ms) / 1000U;
+    if (total_frames == 0) return ESP_OK;
+
+    size_t total_bytes = total_frames * frame_bytes;
+
+    /* Cap per-chunk generation to our work buffer size to avoid large
+     * stack or temporary allocations. AUDIO_WORK_BUFFER_BYTES is defined
+     * above and represents a safe chunk size. */
+    size_t max_chunk = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    size_t bytes_remaining = total_bytes;
+
+    /* Use a simple square wave at 1kHz. */
+    const int tone_hz = 1000;
+    size_t samples_per_period = (size_t)sample_rate / (size_t)tone_hz;
+    if (samples_per_period == 0) samples_per_period = 1;
+
+    while (bytes_remaining > 0) {
+        size_t chunk = bytes_remaining > max_chunk ? max_chunk : bytes_remaining;
+        size_t frames = chunk / frame_bytes;
+
+        /* Fill the proc buffer with the tone samples. Support 16-bit and
+         * 32-bit containers (24-bit stored in 32-bit). Other depths fall
+         * back to a 16-bit-like representation. */
+        if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+            int16_t* out = (int16_t*)s_proc_buffer;
+            for (size_t f = 0; f < frames; ++f) {
+                int16_t sample = ((f % samples_per_period) < (samples_per_period/2)) ? 30000 : -30000;
+                for (int ch = 0; ch < channels; ++ch) {
+                    *out++ = sample;
+                }
+            }
+        } else {
+            /* 32-bit container (32- or 24-bit) */
+            int32_t* out32 = (int32_t*)s_proc_buffer;
+            for (size_t f = 0; f < frames; ++f) {
+                int32_t sample = ((f % samples_per_period) < (samples_per_period/2)) ? 0x3FFFFFFF : -0x3FFFFFFF;
+                for (int ch = 0; ch < channels; ++ch) {
+                    *out32++ = sample;
+                }
+            }
+        }
+
+        /* Try to push into the ring buffer; if it fails we bail but still
+         * mark the remaining bytes so reads behave consistently. */
+        BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, 0);
+        if (sent != pdTRUE) {
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, queued %zu/%zu bytes", total_bytes - bytes_remaining, total_bytes);
+            break;
+        }
+
+        bytes_remaining -= (size_t)frames * frame_bytes;
+    }
+
+    /* Mark remaining bytes so reads will bypass mute until beep data is
+     * consumed. Note that if the ringbuffer didn't accept the whole beep
+     * we still set the counter for the portion that was queued. */
+    size_t queued = total_bytes - bytes_remaining;
+    s_beep_remaining_bytes += queued;
+
+    ESP_LOGI(TAG, "audio_processor_beep: queued %zu bytes (%u ms)", queued, (unsigned)duration_ms);
+    return ESP_OK;
 }
 
 /**

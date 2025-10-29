@@ -8,6 +8,14 @@
 #include "audio_processor.h"
 #include "nvs_storage.h"
 #include "bt_manager.h"
+// Ensure bt_get_connection_state is declared for device builds. The
+// declaration usually lives in the bluetooth component headers, but some
+// build configurations don't expose that include path to this component.
+// Provide a local extern declaration to avoid implicit-function warnings
+// and keep the production behavior unchanged.
+#if defined(ESP_PLATFORM) && !defined(UNIT_TEST)
+extern int bt_get_connection_state(void);
+#endif
 
 /*
  * Ensure prototypes are visible to unit-test builds. In some host/unit-test
@@ -23,6 +31,7 @@
 int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
 int bt_manager_stop_audio(void);
+int bt_get_connection_state(void);
 #endif
 
 #if defined(ESP_PLATFORM)
@@ -160,6 +169,17 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #else
     cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
 #endif
+
+    case CMD_TYPE_BEEP: {
+    /* Emit a short audible beep only when a BT device is connected. Use
+     * bt_get_connection_state() (returns 1 when connected) for host tests
+     * and the audio_processor_beep() API to request the tone. */
+    if (bt_get_connection_state() != 1) { cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL); break; }
+    /* Use a 200ms default beep duration; production implementation may
+     * ignore or implement frequency/duration semantics. */
+    if (audio_processor_beep(200) == ESP_OK) cmd_send_response("OK", "BEEP", "SENT", NULL);
+    else cmd_send_response("ERR", "BEEP", "FAILED", NULL);
+    } break;
     break;
 
     case CMD_TYPE_CONNECT:
@@ -698,6 +718,7 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     else if (strcasecmp(token, "DEBUG") == 0) ctx->type = CMD_TYPE_DEBUG;
     else if (strcasecmp(token, "SAMPLE_RATE") == 0) ctx->type = CMD_TYPE_SAMPLE_RATE;
     else if (strcasecmp(token, "I2S_CONFIG") == 0) ctx->type = CMD_TYPE_I2S_CONFIG;
+    else if (strcasecmp(token, "BEEP") == 0) ctx->type = CMD_TYPE_BEEP;
     else if (strcasecmp(token, "PAIR") == 0) ctx->type = CMD_TYPE_PAIR;
     else if (strcasecmp(token, "CONFIRM_PIN") == 0) ctx->type = CMD_TYPE_CONFIRM_PIN;
     else if (strcasecmp(token, "ENTER_PIN") == 0) ctx->type = CMD_TYPE_ENTER_PIN;

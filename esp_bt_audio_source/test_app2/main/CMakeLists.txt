@@ -21,6 +21,7 @@ idf_component_register(
     "bt_connection_shim.c"
         "bt_streaming_mock.c"
         "audio_processor_stub.c"
+    "audio_processor_beep_stub.c"
     # audio_test_helpers.c moved to test_app_audio/main - excluded
     # i2s_audio_test.c moved to test_app_audio/main - excluded
     # i2s_test.c moved to test_app_audio/main - excluded

@@ -9,7 +9,8 @@ idf_component_register(
         "bt_a2dp_test.c"
         "bt_mock_setup.c"
         "bt_pairing_persistence_test.c"
-        "audio_processor_stub.c"
+    "audio_processor_stub.c"
+    "audio_processor_beep_stub.c"
     "bt_source_mock.c"
     "bt_source_stubs.c"
     # Provide mock implementations of the bt_source API expected by tests

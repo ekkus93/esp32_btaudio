@@ -41,6 +41,7 @@ add_executable(test_commands test_commands.c
     mocks/mock_gap.c)
 target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_link_libraries(test_commands unity)
 
 # Enable CTest and register the test executables so `ctest` can discover them
@@ -54,6 +55,7 @@ add_executable(test_bluetooth test_bluetooth.c
 target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
+target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 # Audio processor unit tests (host)
@@ -121,6 +123,7 @@ target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_confirm unity)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
 add_executable(test_connect_name test_connect_name.c
@@ -131,6 +134,7 @@ add_executable(test_connect_name test_connect_name.c
 target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_connect_name unity)
+target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
 
 add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
@@ -141,6 +145,7 @@ target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_enter_pin unity)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
 add_executable(test_pairing_negative test_pairing_negative.c
@@ -158,6 +163,7 @@ target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_edge_cases unity)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
 # Event stress test: validates ordering and basic rate-limiting instrumentation
@@ -173,6 +179,7 @@ target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
 
 add_executable(test_bt_connection_manager
     test_bt_connection_manager.c
@@ -186,6 +193,17 @@ target_include_directories(test_bt_connection_manager PRIVATE
 target_link_libraries(test_bt_connection_manager unity)
 add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connection_manager>)
 
+# Small test to lock mock-connection helper behavior: ensure the mock
+# helpers can be called without explicit manager init and the test-visible
+# getter (bt_get_connection_state) reflects the changes.
+add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
+    ../../components/bt_manager/bt_manager.c
+    mocks/mock_audio_and_btstate.c)
+# Provide test hooks used by bt_manager wrappers (forced-failure hooks)
+target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_mock_connection_helpers unity)
+add_test(NAME test_mock_connection_helpers COMMAND $<TARGET_FILE:test_mock_connection_helpers>)
+
 # Helper binary: run the same burst and print the mock UART TX buffer for parsing
 add_executable(dump_event_stress_output dump_event_stress_output.c
     ../../components/command_interface/commands.c
@@ -196,6 +214,7 @@ target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_m
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
 target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
 target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(dump_event_stress_output PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
 ## Adapter runner: compile test_app pairing test and the adapter code so we can
@@ -222,6 +241,7 @@ target_link_libraries(test_pairing_adapter_runner unity)
 add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_adapter_runner>)
 # Enable SEQ/TS emission for this runner so we can validate ordering/timestamps
 target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 
 # Create a consolidated test runner
 add_custom_target(run_tests

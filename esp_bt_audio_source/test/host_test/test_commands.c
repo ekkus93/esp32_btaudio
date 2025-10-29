@@ -174,6 +174,12 @@ int main(void) {
     RUN_TEST(test_start_failure_command);
     RUN_TEST(test_stop_failure_command);
     
+    // Tests for BEEP command
+    extern void test_beep_command_not_connected(void);
+    extern void test_beep_command_connected(void);
+    RUN_TEST(test_beep_command_not_connected);
+    RUN_TEST(test_beep_command_connected);
+    
     return UNITY_END();
 }
 
@@ -368,4 +374,40 @@ void test_stop_failure_command(void) {
     TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
 
     bt_manager_test_reset_forces();
+}
+
+// Test BEEP when not connected should return an error
+void test_beep_command_not_connected(void) {
+    mock_uart_reset_tx();
+    // Ensure mock BT has no connection
+    // Some harnesses default to disconnected; be explicit by closing
+    extern void bt_manager_mock_connection_closed(const char* mac);
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "NOT_CONNECTED") != NULL || strstr(tx, "ERR") != NULL);
+}
+
+// Test BEEP when connected should call the audio API and return OK
+void test_beep_command_connected(void) {
+    mock_uart_reset_tx();
+    // Simulate a BT connection
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
+    // Accept either SENT/OK or a mock variant depending on harness
+    TEST_ASSERT_TRUE(strstr(tx, "SENT") != NULL || strstr(tx, "OK") != NULL || strstr(tx, "MOCK") != NULL);
 }

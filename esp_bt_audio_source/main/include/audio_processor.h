@@ -181,4 +181,12 @@ esp_err_t audio_processor_get_status(audio_status_t* status);
  */
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin);
 
+/**
+ * @brief Emit a short beep/tone via the audio pipeline (test-friendly API)
+ *
+ * @param duration_ms Duration of the beep in milliseconds (implementation may ignore)
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_processor_beep(uint32_t duration_ms);
+
 #endif /* _AUDIO_PROCESSOR_H_ */

@@ -157,3 +157,13 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     s_config.i2s_dout_pin = dout_pin;
     return ESP_OK;
 }
+
+// Simple beep implementation used by host/unit tests. Production builds
+// should provide a proper hardware-backed implementation.
+esp_err_t audio_processor_beep(uint32_t duration_ms)
+{
+    (void)duration_ms;
+    if (!s_status.initialized) return ESP_ERR_INVALID_STATE;
+    // No-op for host tests; report success so command layer can respond.
+    return ESP_OK;
+}

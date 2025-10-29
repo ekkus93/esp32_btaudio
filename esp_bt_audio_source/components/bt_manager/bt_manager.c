@@ -52,6 +52,8 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #include "command_interface.h"
 #include "nvs_storage.h"
+// Audio processor API - used by A2DP data callback to pull PCM
+#include "audio_processor.h"
 
 typedef struct {
     bool pin_pending;
@@ -905,6 +907,7 @@ int bt_manager_stop_audio(void) {
     return (bt_stop_audio() == ESP_OK) ? 0 : -1;
 }
 
+
 #ifdef ESP_PLATFORM
 // GAP callback for Bluetooth events
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
@@ -1082,7 +1085,13 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
     if (len <= 0 || buf == NULL) {
         return 0;
     }
-    // Provide silence by default to avoid sending garbage
+    // Attempt to pull data from the audio processor so A2DP sends live audio.
+    size_t bytes_read = 0;
+    if (audio_processor_read(buf, (size_t)len, &bytes_read) == ESP_OK && bytes_read > 0) {
+        return (int32_t)bytes_read;
+    }
+
+    // Fallback: provide silence if no data available
     memset(buf, 0, len);
     return len;
 }
@@ -1109,7 +1118,14 @@ void bt_manager_mock_device_found(const bt_device_t* device) {
 void bt_manager_mock_connection_established(const char* mac, const char* name) {
     printf("TRACE: bt_manager_mock_connection_established called\n");
     if (!bt_ctx.initialized) {
-        return;
+        /*
+         * Unit tests often call the mock connection helpers without
+         * first calling the full manager init sequence. Make the mock
+         * helper tolerant by forcing the manager into an initialized
+         * state so subsequent state changes and callbacks behave as
+         * tests expect.
+         */
+        bt_ctx.initialized = true;
     }
     
     bt_ctx.connected = true;
@@ -1122,10 +1138,26 @@ void bt_manager_mock_connection_established(const char* mac, const char* name) {
     if (bt_ctx.connected_callback != NULL) {
         bt_ctx.connected_callback(mac, name);
     }
+
+    /* Test hook: when unit tests are built, call into a test-provided
+     * setter so host-mode mocks can keep a test-visible connection flag in
+     * step with bt_ctx.connected. The symbol is optional and only present
+     * in unit-test builds where the test shim provides it. */
+#ifdef UNIT_TEST
+    extern void bt_manager_test_set_connection_state(int);
+    bt_manager_test_set_connection_state(1);
+#endif
+
 }
 
 void bt_manager_mock_connection_closed(const char* mac) {
-    if (!bt_ctx.initialized || !bt_ctx.connected) {
+    if (!bt_ctx.initialized) {
+        /* Ensure the context exists for the mock close operation so the
+         * function can consistently clear connection state even if the
+         * test harness didn't call bt_manager_force_initialized(). */
+        bt_ctx.initialized = true;
+    }
+    if (!bt_ctx.connected) {
         return;
     }
     
@@ -1138,6 +1170,12 @@ void bt_manager_mock_connection_closed(const char* mac) {
     if (bt_ctx.disconnected_callback != NULL) {
         bt_ctx.disconnected_callback(mac);
     }
+
+#ifdef UNIT_TEST
+    extern void bt_manager_test_set_connection_state(int);
+    bt_manager_test_set_connection_state(0);
+#endif
+
 }
 
 void bt_manager_mock_audio_state_changed(int state) {

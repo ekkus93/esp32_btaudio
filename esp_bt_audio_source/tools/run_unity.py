@@ -41,6 +41,10 @@ UNITY_RESULT_RE = re.compile(r"(?P<total>\d+)\s+Tests?\s+(?P<fail>\d+)\s+Failure
 RUN_COMPLETE_RE = re.compile(
     r"(ENTERING IDLE LOOP - TESTS COMPLETE|======== OVERALL TEST SUMMARY ========|----- UNITY TEST COMPLETE|ALL TESTS COMPLETED)",
     re.IGNORECASE)
+# Explicit deterministic marker emitted by the device-side test runner. When
+# present we should treat this as a definitive signal to stop the monitor and
+# consider the run finished.
+TEST_RUN_COMPLETE_RE = re.compile(r"TEST_RUN_COMPLETE:\s*(\d+)\s+(\d+)\s+(\d+)", re.IGNORECASE)
 # Patterns that indicate the ESP32 has rebooted / booted. Monitor should stop after we
 # see a boot banner following test completion so CI/runners don't need to manually stop.
 # Include generic 'ets' (month varies), 'rst:', hard reset lines and the monitor header.
@@ -48,7 +52,7 @@ BOOT_BANNER_RE = re.compile(r"(ESP-IDF|rst:|\bets\b|Chip is ESP32|Hard resetting
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
 
 
-def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_event):
+def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_event, test_complete_event):
     """Read process stdout line-by-line, write to logfile, and signal when summary seen."""
     with open(logfile_path, "ab", buffering=0) as fh:
         while True:
@@ -76,7 +80,16 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
             # include tokens like "PASS"/"OK" and can cause the monitor to be
             # stopped prematurely. Also accept the device-emitted deterministic
             # marker: "TEST_RUN_COMPLETE: <total> <fail> <ignored>".
-            if UNITY_RESULT_RE.search(decoded) or re.search(r"^\s*OK\s*$", decoded, re.MULTILINE) or re.search(r"TEST_RUN_COMPLETE:\s*\d+\s+\d+\s+\d+", decoded):
+            # If we detect the explicit TEST_RUN_COMPLETE marker, set both the
+            # summary_event and the stronger test_complete_event so the main
+            # loop can short-circuit the usual boot/wait logic and stop quickly.
+            if UNITY_RESULT_RE.search(decoded) or re.search(r"^\s*OK\s*$", decoded, re.MULTILINE):
+                print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
+                summary_event.set()
+            elif TEST_RUN_COMPLETE_RE.search(decoded):
+                print("[run_unity DEBUG] TEST_RUN_COMPLETE marker matched in monitor output", file=sys.stderr)
+                summary_event.set()
+                test_complete_event.set()
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
                 summary_event.set()
 
@@ -118,8 +131,9 @@ def run_flash_and_monitor(port, project_root, timeout):
         stop_event = threading.Event()
         summary_event = threading.Event()
         boot_event = threading.Event()
+        test_complete_event = threading.Event()
 
-        t = threading.Thread(target=tail_process_output, args=(proc, logfile, stop_event, summary_event, boot_event), daemon=True)
+        t = threading.Thread(target=tail_process_output, args=(proc, logfile, stop_event, summary_event, boot_event, test_complete_event), daemon=True)
         t.start()
 
         start = time.time()
@@ -129,16 +143,24 @@ def run_flash_and_monitor(port, project_root, timeout):
                     # We saw the Unity summary — now wait for an expected reboot/boot banner
                     # which commonly follows test-runner completion. If we see the boot banner
                     # within a short grace window, treat that as the run finishing and stop.
-                    grace_start = time.time()
-                    # Allow a longer grace window for trailing output and for slower devices
-                    grace_timeout = 60.0
-                    # small sleep to allow trailing output to be flushed
-                    time.sleep(0.5)
-                    # Wait for boot_event or until grace_timeout expires
-                    while not boot_event.is_set() and (time.time() - grace_start) < grace_timeout:
-                        if proc.poll() is not None:
-                            break
+                    # If the device emitted the explicit TEST_RUN_COMPLETE marker we
+                    # received above, short-circuit the boot/wait logic and shut down
+                    # the monitor immediately. Otherwise, wait a short grace window
+                    # for a boot banner which often follows test completion.
+                    if test_complete_event.is_set():
+                        # skip waiting for boot_event; allow a tiny flush window
                         time.sleep(0.2)
+                    else:
+                        grace_start = time.time()
+                        # Allow a longer grace window for trailing output and for slower devices
+                        grace_timeout = 60.0
+                        # small sleep to allow trailing output to be flushed
+                        time.sleep(0.5)
+                        # Wait for boot_event or until grace_timeout expires
+                        while not boot_event.is_set() and (time.time() - grace_start) < grace_timeout:
+                            if proc.poll() is not None:
+                                break
+                            time.sleep(0.2)
 
                     # Attempt a polite shutdown of the monitor process
                     try:
@@ -314,6 +336,32 @@ def main():
     args = ap.parse_args()
 
     rc, logfile = run_flash_and_monitor(args.port, args.project_root, args.timeout)
+
+    # Defensive post-check: in some environments the monitor subprocess or
+    # signal handling can cause the script to return an error even though the
+    # device printed a valid deterministic completion marker. If we failed but
+    # the canonical marker or an explicit numeric Unity result is present in
+    # the captured logfile, treat that as the authoritative outcome.
+    if rc != 0 and os.path.isfile(logfile):
+        try:
+            with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
+                txt = fh.read()
+            clean_text = ANSI_ESCAPE_RE.sub('', txt)
+            # Prefer the deterministic TEST_RUN_COMPLETE marker
+            m = TEST_RUN_COMPLETE_RE.search(clean_text)
+            if m:
+                failures = int(m.group(2))
+                rc = 1 if failures else 0
+            else:
+                # Fallback: numeric UNITY result pattern
+                result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
+                if result_matches:
+                    last_match = result_matches[-1]
+                    failures = int(last_match.group('fail'))
+                    rc = 1 if failures else 0
+        except Exception:
+            pass
+
     if rc == 0:
         print(f"Unity tests passed — logfile: {logfile}")
     elif rc == 1:

@@ -11,13 +11,14 @@ idf_component_register(
         "i2s_channel_test.c"
         "i2s_test.c"
         "pcm_format_test.c"
+        "i2s_test_stubs.c"
     "../../main/audio_processor.c"
     INCLUDE_DIRS
         "."
         "include"
     REQUIRES
         audio
-        driver
+        # driver component omitted for tests so we can provide test-only stubs
         nvs_storage
         esp_ringbuf
         esp_timer

@@ -496,6 +496,8 @@ Capturing logs
 
 ```bash
 idf.py -p PORT flash monitor |& tee esp32_unity_test.log
+
+Note: use the repository helper `tools/run_unity.py` instead when possible — it watches the serial output for a deterministic marker (`TEST_RUN_COMPLETE: <total> <fail> <ignored>`) and will exit automatically when the tests finish, saving the canonical capture to `build/one_run_unity.log`. If you have an older copy of the helper and it doesn't stop automatically, update `tools/run_unity.py` from the repository.
 ```
 
 Locked-down reproducible runner (recommended)
