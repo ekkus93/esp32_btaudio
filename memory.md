@@ -18,6 +18,8 @@
 - 2025-10-29: Flashed BLE-disabled main firmware via `idf.py -p /dev/ttyUSB0 flash`; ready for runtime validation.
 - 2025-10-29: Re-ran `test_app_audio` Unity suite post-BLE-disable → 26/0/0 pass (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`).
 - 2025-10-29: Re-ran `test_app2` Unity suite post-BLE-disable → 45/0/0 pass (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
+- 2025-10-29: Pushed commit `Disable BLE to reclaim flash space` to `origin/master`.
+ - 2025-10-29: Updated `esp_bt_audio_source/README.md` to reflect the latest regression results, remaining work, and prioritized next steps; prepared and staged `README.md` and this memory log for commit.
 
 ## Assumptions & Constraints
 - No sdkconfig, partition, or target changes without explicit approval per repo policy.
