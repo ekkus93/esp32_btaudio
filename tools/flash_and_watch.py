@@ -122,11 +122,10 @@ def main():
     unity_summary_re = re.compile(
         (
             r'('
-            r'----- UNITY TEST START -----|'
             r'--- SUMMARY ---|'
             r'----- UNITY TEST COMPLETE:|'
             r'Tests?\s+\d+\s+Failures?\s+\d+|'
-            r'\bOK\b|All tests completed'
+            r'All tests completed'
             r')'
         ),
         re.IGNORECASE,

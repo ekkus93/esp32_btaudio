@@ -2,8 +2,10 @@
 - Validate the shim-backed connection info path now that tests publish through it.
 - Keep `bt_source_stubs.c` aligned with asynchronous connect semantics from the mock component.
 - Maintain Unity runner output so downstream tooling captures pass/fail summaries.
+- Re-run Unity suites (`test_app`, `test_app_audio`, `test_app2`) on request once serial port access is confirmed.
 
 ## Key Findings
+- 2025-10-28: Added host-mode FreeRTOS/A2DP stubs plus `test_bt_connection_manager` Unity target to exercise real connection manager state transitions and auto-reconnect logic.
 - 2025-10-28: Injecting test connection info via `bt_connection_shim_publish_info()` unblocked `test_bt_connection_info`; the latest `test_app2` Unity run reports 45 tests / 45 pass / 0 fail (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
 - 2025-10-28: Relaxed `test_connection_failure_handling` to permit asynchronous `ESP_OK` returns while still asserting the device never reaches a connected state.
 - 2025-10-28: Reran `test_app2` Unity suite to double-check; 45 tests / 45 pass / 0 fail (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
@@ -27,11 +29,13 @@
 - **Unity runner reminder:** Either `cd esp_bt_audio_source/test_app` before running the helper or pass `--project-root` to avoid flashing the wrong image.
 
 ## Open Questions
-- None at the moment; monitor future Unity runs for regressions.
+- Auto-detect active ESP32 serial port (e.g., list `/dev/ttyUSB*`); `/dev/ttyUSB0` confirmed present as of 2025-10-29 11:21.
+- Unity `test_app` run 2025-10-29: 37 tests / 2 failures (`test_connection_failure_handling`, `test_connection_status_info`).
 
 ## Next Steps Snapshot
 - Re-run Unity suites on request and capture logs for traceability.
 - Keep an eye on future directives that may impact pairing or connection flows.
+- Host test target `test_bt_connection_manager` builds via `cmake --build esp_bt_audio_source/test/host_test/build_host_tests` and passes under `ctest`.
 
 ## Recent Changes
 - 2025-10-28: Added shim publish hook to `test_bt_connection_info` and relaxed `test_connection_failure_handling`; `test_app2` Unity suite now passes fully.
