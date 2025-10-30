@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include "../../main/include/audio_processor.h"
 #include "esp_err.h"
 
@@ -42,6 +43,13 @@ static audio_status_t s_status = {
     .channels = AUDIO_CHANNEL_STEREO
 };
 
+// Test buffer for host testing - simulates ring buffer behavior
+#define TEST_BUFFER_SIZE 4096
+static uint8_t s_test_buffer[TEST_BUFFER_SIZE];
+static size_t s_test_buffer_write_pos = 0;
+static size_t s_test_buffer_read_pos = 0;
+static size_t s_test_buffer_count = 0;
+
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
     if (!config) return ESP_ERR_INVALID_ARG;
@@ -51,6 +59,12 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     s_status.sample_rate = s_config.sample_rate;
     s_status.bit_depth = s_config.bit_depth;
     s_status.channels = s_config.channels;
+    
+    // Initialize test buffer for host testing
+    s_test_buffer_write_pos = 0;
+    s_test_buffer_read_pos = 0;
+    s_test_buffer_count = 0;
+    
     return ESP_OK;
 }
 
@@ -137,8 +151,44 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
-    (void)buffer; (void)size;
-    if (bytes_read) *bytes_read = 0;
+    if (!buffer || !bytes_read) return ESP_ERR_INVALID_ARG;
+    
+    size_t available = s_test_buffer_count;
+    size_t to_read = (size < available) ? size : available;
+    
+    if (to_read == 0) {
+        *bytes_read = 0;
+        return ESP_OK;
+    }
+    
+    // Read from circular buffer
+    for (size_t i = 0; i < to_read; i++) {
+        buffer[i] = s_test_buffer[s_test_buffer_read_pos];
+        s_test_buffer_read_pos = (s_test_buffer_read_pos + 1) % TEST_BUFFER_SIZE;
+    }
+    s_test_buffer_count -= to_read;
+    
+    // Apply volume scaling if not muted and not 100%
+    if (!s_config.mute && s_config.volume != 100) {
+        if (s_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+            int16_t* samples = (int16_t*)buffer;
+            size_t num_samples = to_read / 2; // 16-bit samples
+            
+            for (size_t i = 0; i < num_samples; i++) {
+                if (s_config.volume == 0) {
+                    samples[i] = 0; // Mute
+                } else {
+                    // Apply volume scaling: multiply by volume/100
+                    samples[i] = (int16_t)((int32_t)samples[i] * s_config.volume / 100);
+                }
+            }
+        }
+    } else if (s_config.mute) {
+        // Mute: zero out the buffer
+        memset(buffer, 0, to_read);
+    }
+    
+    *bytes_read = to_read;
     return ESP_OK;
 }
 
@@ -167,3 +217,26 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
     // No-op for host tests; report success so command layer can respond.
     return ESP_OK;
 }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+// Test helper function to inject audio data directly into the ring buffer
+// This bypasses the audio processing task for unit testing
+esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size)
+{
+    if (!data) return ESP_ERR_INVALID_ARG;
+    
+    // Check if there's enough space in the test buffer
+    if (size > TEST_BUFFER_SIZE - s_test_buffer_count) {
+        return ESP_ERR_NO_MEM; // Not enough space
+    }
+    
+    // Write to circular buffer
+    for (size_t i = 0; i < size; i++) {
+        s_test_buffer[s_test_buffer_write_pos] = data[i];
+        s_test_buffer_write_pos = (s_test_buffer_write_pos + 1) % TEST_BUFFER_SIZE;
+    }
+    s_test_buffer_count += size;
+    
+    return ESP_OK;
+}
+#endif

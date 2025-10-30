@@ -49,3 +49,4 @@
 - 2025-10-28: Added shim publish hook to `test_bt_connection_info` and relaxed `test_connection_failure_handling`; `test_app2` Unity suite now passes fully.
 - 2025-10-28: `idf.py build` for `test_app2` succeeded without new warnings; `tools/run_unity.py` confirmed green run.
 - 2025-10-27: Prior regressions isolated to connection workflow; asynchronous failure handling logic introduced in `bt_source_stubs.c`.
+- 2025-10-29: Fixed false-positive unit tests for bt_manager START/STOP audio streaming commands by implementing proper state validation and ESP-IDF API calls. Updated `bt_start_audio()` to check initialization/connection state and call `esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START)`, updated `bt_stop_audio()` to use `ESP_A2D_MEDIA_CTRL_SUSPEND` instead of deprecated `STOP`, and enhanced unit tests to verify error conditions and proper behavior. All 17 host tests now pass (100% success rate).

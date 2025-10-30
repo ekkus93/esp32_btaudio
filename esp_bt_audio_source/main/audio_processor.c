@@ -1409,3 +1409,43 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     ESP_LOGI(TAG, "Audio bit depth changed to %d bits", bit_depth);
     return ESP_OK;
 }
+
+/**
+ * @brief Check if a beep is currently active (for testing)
+ */
+bool audio_processor_is_beep_active(void) {
+    return s_beep_remaining_bytes > 0;
+}
+
+#ifdef CONFIG_BT_MOCK_TESTING
+/**
+ * @brief Inject audio data directly into the ring buffer (for testing only)
+ */
+esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size)
+{
+    if (!s_is_initialized) {
+        ESP_LOGE(TAG, "audio_processor_test_inject_audio_data: not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (data == NULL || size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Check available space in the buffer
+    size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+    if (free_size < size) {
+        ESP_LOGW(TAG, "audio_processor_test_inject_audio_data: not enough space (%zu < %zu)", free_size, size);
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Send data to ring buffer
+    BaseType_t sent = xRingbufferSend(s_audio_buffer, data, size, 0);
+    if (sent != pdTRUE) {
+        ESP_LOGE(TAG, "audio_processor_test_inject_audio_data: failed to send to ringbuffer");
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+#endif

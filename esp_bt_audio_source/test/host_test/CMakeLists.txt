@@ -71,6 +71,7 @@ target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_D
 ## (so it will compile against the real `audio_processor.c`). Put the
 ## production include path before mocks/includes for this target only.
 target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING)
 target_link_libraries(test_audio_processor unity m)
 add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
 

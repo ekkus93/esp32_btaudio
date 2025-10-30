@@ -5,12 +5,14 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "../../main/include/audio_processor.h"
 
 // Track mock connection state for host tests. bt_manager mock code will call
 // bt_manager_test_set_connection_state() to update this when it simulates
 // a connection/disconnection.
 static int s_mock_connected = 0;
+static bool s_beep_active = false;
 
 void bt_manager_test_set_connection_state(int v) {
     s_mock_connected = v ? 1 : 0;
@@ -25,5 +27,10 @@ int bt_get_connection_state(void) {
 // Keep this minimal for host tests where real audio isn't required.
 esp_err_t audio_processor_beep(uint32_t duration_ms) {
     (void)duration_ms;
+    s_beep_active = true;
     return ESP_OK;
+}
+
+bool audio_processor_is_beep_active(void) {
+    return s_beep_active;
 }

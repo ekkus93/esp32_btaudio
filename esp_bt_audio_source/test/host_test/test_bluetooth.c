@@ -178,6 +178,16 @@ void test_bt_audio_operations(void) {
     const char* test_mac = "AA:BB:CC:11:22:33";
     const char* test_name = "Test Speaker";
 
+    // Test starting audio without connection - should fail
+    int ret = bt_start_audio();
+    printf("TEST: bt_start_audio() without connection returned %d (expected failure)\n", ret);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, ret);
+    
+        // Test stopping audio when not playing - should succeed
+    ret = bt_stop_audio();
+    printf("TEST: bt_stop_audio() when not playing returned %d (expected success)\n", ret);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
     // Connect
     TEST_ASSERT_EQUAL(ESP_OK, bt_connect(test_mac));
     bt_manager_mock_connection_established(test_mac, test_name);
@@ -187,13 +197,18 @@ void test_bt_audio_operations(void) {
     bt_manager_debug_print();
 #endif
 
+    // Test starting audio with connection - should succeed
     printf("TEST: about to call bt_start_audio()\n");
-    int ret = bt_start_audio();
+    ret = bt_start_audio();
     printf("TEST: bt_start_audio() returned %d\n", ret);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Simulate audio started
     bt_manager_mock_audio_state_changed(2); // Use integer 2 for STARTED state
+    
+    // Test starting audio again - should succeed (already playing)
+    ret = bt_start_audio();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Set volume
     TEST_ASSERT_EQUAL(ESP_OK, bt_set_volume(75));
@@ -203,6 +218,10 @@ void test_bt_audio_operations(void) {
     
     // Simulate audio stopped
     bt_manager_mock_audio_state_changed(1); // Use integer 1 for STOPPED state
+    
+    // Test stopping audio again - should succeed (already stopped)
+    ret = bt_stop_audio();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // Disconnect
     TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());

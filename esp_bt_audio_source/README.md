@@ -26,12 +26,13 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — October 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`).
-- Full regression sweep completed on 2025-10-29 after the BLE change:
-   - Host `ctest` bundle: 16/16 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+- Full regression sweep completed on 2025-10-29 after bt_manager fixes:
+   - Host `ctest` bundle: 17/17 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
-   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
-- Earlier host-test additions (2025-10-19) added negative-path coverage for `bt_manager`, enhanced mocks, and routed UNIT_TEST command flows through the manager wrappers; those remain green under the current toolchain.
+   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
+- Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
+- Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
 - Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs to be captured and documented (see [Remaining work](#remaining-work-short-list)).
 - Known warning: ESP-IDF builds currently print duplicate-definition notices for `ESP_EVENT_ANY_ID` because our legacy Bluetooth shim header (`components/components/bt/include/esp32/include/esp_event_base.h`) still defines the macro; plan is to guard/remove that old definition in a future cleanup.
 
@@ -85,7 +86,7 @@ Notes on recent progress:
 
 Current test status (2025-10-29)
 --------------------------------
-- Host-based tests under `test/host_test` rebuilt on 2025-10-29 and executed via `ctest`; 16 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+- Host-based tests under `test/host_test` rebuilt on 2025-10-29 and executed via `ctest`; 17 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
 - On-device Unity suites were rerun on hardware on 2025-10-29 using `tools/flash_and_watch.py`:
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
    - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
@@ -93,6 +94,7 @@ Current test status (2025-10-29)
 
 Remaining work (short list)
 ---------------------------
+- Test coverage gaps: Address false-positive tests in audio_processor where unit tests pass on stubs but don't verify observable behavior, risking undetected regressions. Specific areas: beep functionality (tests check command response but not audio generation), volume control (tests may not verify actual volume application), read buffer filling (tests may not check if buffers are actually filled), and audio streaming (tests might not verify real streaming behavior).
 - On-device end-to-end verification: run real-device scenarios to validate pairing persistence across reboot and interoperability with common phones/speakers (**~2–3 days**).
 - Pairing event stream hardening: ensure `EVENT|PAIR|...` emissions remain ordered/noise-free under stress and that host-driven confirmation flows succeed on hardware (**~1–1.5 days**).
 - Mock fault-injection coverage: extend host mocks to simulate connection drops/timeouts and assert recovery logic (**~1–2 days**).

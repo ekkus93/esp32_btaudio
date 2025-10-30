@@ -189,4 +189,26 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
  */
 esp_err_t audio_processor_beep(uint32_t duration_ms);
 
+/**
+ * @brief Check if a beep is currently active (for testing)
+ *
+ * @return true if beep is active, false otherwise
+ */
+bool audio_processor_is_beep_active(void);
+
+/**
+ * @brief Inject audio data directly into the ring buffer (for testing only)
+ *
+ * This function is only available when CONFIG_BT_MOCK_TESTING is defined.
+ * It allows unit tests to inject audio data directly into the processing pipeline
+ * without requiring the audio processing task to be running.
+ *
+ * @param data Pointer to audio data to inject
+ * @param size Size of the data in bytes
+ * @return esp_err_t ESP_OK on success
+ */
+#ifdef CONFIG_BT_MOCK_TESTING
+esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size);
+#endif
+
 #endif /* _AUDIO_PROCESSOR_H_ */

@@ -4,6 +4,7 @@
 #include "command_interface.h"
 #include "mock_uart.h"
 #include "nvs_storage.h"
+#include "audio_processor.h"
 // Access mock gap helpers
 extern void mock_gap_reset(void);
 extern const char* mock_gap_get_last_mac(void);
@@ -410,4 +411,7 @@ void test_beep_command_connected(void) {
     TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
     // Accept either SENT/OK or a mock variant depending on harness
     TEST_ASSERT_TRUE(strstr(tx, "SENT") != NULL || strstr(tx, "OK") != NULL || strstr(tx, "MOCK") != NULL);
+
+    // Verify that beep was actually triggered
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
 }

@@ -532,12 +532,12 @@ bt_err_t bt_stop_audio(void) {
 
 #ifdef ESP_PLATFORM
     // Stop audio stream
-    if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to stop audio stream");
+    if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_SUSPEND) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to suspend audio stream");
         return ESP_FAIL;
     }
     
-    ESP_LOGI(TAG, "Stopped audio streaming");
+    ESP_LOGI(TAG, "Suspended audio streaming");
 #else
     // For testing without ESP-IDF
     bt_ctx.audio_playing = false;
@@ -548,11 +548,31 @@ bt_err_t bt_stop_audio(void) {
 
 // Start audio streaming
  bt_err_t bt_start_audio(void) {
-    printf("TRACE: entered bt_start_audio\n");
-    fflush(stdout);
+    if (!bt_ctx.initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!bt_ctx.connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (bt_ctx.audio_playing) {
+        return ESP_OK; // Already playing
+    }
+
+#ifdef ESP_PLATFORM
+    // Start audio stream
+    if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start audio stream");
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Started audio streaming");
+#else
+    // For testing without ESP-IDF
     bt_ctx.audio_playing = true;
-    printf("TRACE: returning %d from bt_start_audio\n", ESP_OK);
-    fflush(stdout);
+#endif
+    
     return ESP_OK;
 }
 
