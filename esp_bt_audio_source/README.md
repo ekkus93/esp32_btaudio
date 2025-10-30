@@ -65,17 +65,16 @@ I2S and UART: practical defaults and recommendations
 <a id="implementation-tasks"></a>
 ## Implementation Tasks
 
-- [x] Initial A2DP source implementation
-- [x] Add I2S driver configuration for receiving audio
-- [x] Implement serial command protocol
-- [~] Add pairing management functionality (in-progress)
+- [x] Initial A2DP source implementation — Done
+- [x] I2S driver configuration for receiving audio — Done
+- [x] Serial command protocol — Done
+- [~] Pairing management — In progress (host tests passing; on-device E2E pending)
    - Host-side: command handlers and event streaming for pairing (PIN request / SSP confirm) are implemented and covered by host unit tests (CONFIRM_PIN / ENTER_PIN and `nvs_storage` tests).
-   - On-device: the PAIR / CONFIRM_PIN / ENTER_PIN commands now call `bt_pairing_confirm()` and `bt_pairing_submit_pin()` via the Bluetooth manager, automatically deriving the pending MAC when omitted and reusing the persisted default PIN.
-   - Full end-to-end verification (pair → reboot → persisted list verification) remains manual/pending. Recent on-device instrumentation, BLE-disable footprint work, and defensive fixes were applied to aid debugging (see "Recent changes" below).
-   - Host mocks and headers were deduplicated and centralized in `test/host_test/mocks/include/` so host and device builds share consistent interfaces.
-- [x] Add volume/mute control
-- [~] Implement device scanning and connection management (partial)
-  - [x] Add persistent settings storage in NVS
+   - On-device: `PAIR` / `CONFIRM_PIN` / `ENTER_PIN` now route through `bt_pairing_confirm()` / `bt_pairing_submit_pin()`; persistent pairing across reboot requires manual verification.
+   - Acceptance criteria: pairing → reboot → paired list persists; host-driven confirmation flows succeed on-device.
+- [x] Volume/mute control — Done
+- [~] Device scanning and connection management — Partial (APIs present; event-streaming & robustness need on-device validation)
+   - [x] Persistent settings storage in NVS — Done
 
 Notes on progress:
 - I2S driver configuration (modern standard-mode API) and an audio processing task are implemented. The code exposes runtime setters to change I2S pins and sample rate.
