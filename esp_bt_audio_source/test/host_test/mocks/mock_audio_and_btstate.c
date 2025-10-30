@@ -34,3 +34,21 @@ esp_err_t audio_processor_beep(uint32_t duration_ms) {
 bool audio_processor_is_beep_active(void) {
     return s_beep_active;
 }
+
+// Mock implementation for audio_processor_get_status
+esp_err_t audio_processor_get_status(audio_status_t* status) {
+    if (status == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Fill with mock values
+    status->initialized = true;
+    status->running = false;
+    status->volume = 50;
+    status->mute = false;
+    status->sample_rate = AUDIO_SAMPLE_RATE_44K;
+    status->bit_depth = AUDIO_BIT_DEPTH_16;
+    status->channels = AUDIO_CHANNEL_STEREO;
+    
+    return ESP_OK;
+}

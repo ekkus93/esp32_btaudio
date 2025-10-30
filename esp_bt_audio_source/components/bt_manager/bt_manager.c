@@ -777,7 +777,6 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
     }
 
     esp_bd_addr_t target = {0};
-    const char* mac_to_use = mac;
 
     if (mac && mac[0] != '\0') {
         if (!bt_pairing_parse_mac_string(mac, target)) {
@@ -785,7 +784,6 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
         }
     } else if (s_pair_pending.ssp_pending) {
         memcpy(target, s_pair_pending.bda, sizeof(target));
-        mac_to_use = s_pair_pending.mac;
     } else {
         return ESP_ERR_INVALID_STATE;
     }
@@ -843,7 +841,6 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
     return mock_err;
 #else
     esp_bd_addr_t target = {0};
-    const char* mac_to_use = mac;
 
     if (mac && mac[0] != '\0') {
         if (!bt_pairing_parse_mac_string(mac, target)) {
@@ -851,7 +848,6 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
         }
     } else if (s_pair_pending.pin_pending) {
         memcpy(target, s_pair_pending.bda, sizeof(target));
-        mac_to_use = s_pair_pending.mac;
     } else {
         return ESP_ERR_INVALID_STATE;
     }

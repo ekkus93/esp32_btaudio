@@ -36,8 +36,12 @@ bool test_capture_event(char *out_buf, size_t out_len);
 // setUp/tearDown in `unity_config.c` and allows suites to register
 // their own setup/teardown callbacks using unity_set_setup_function().
 // Register a small wrapper that calls the test utils reset.
+// Test-only function to reset sequence counter
+extern void cmd_reset_event_sequence(void);
+
 static void pairing_tests_setup(void) {
     test_utils_reset_state();
+    cmd_reset_event_sequence();
 }
 
 __attribute__((constructor)) static void register_pairing_tests_setup(void) {

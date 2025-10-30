@@ -26,15 +26,19 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — October 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`).
-- Full regression sweep completed on 2025-10-29 after bt_manager fixes:
-   - Host `ctest` bundle: 17/17 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+- Full regression sweep completed on 2025-10-30 after fixing the failing host test:
+   - Host `ctest` bundle: 17/17 tests passing (`test/host_test/build/Testing/Temporary/LastTest.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
    - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
-- Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
+- All build warnings resolved: implicit fallthrough, unused variables/functions, missing function declarations.
+- BLE disabled to reclaim flash space (24% partition free).
+- Pairing event stream hardening implemented: Added sequence numbers to `EVENT|PAIR|...` messages for ordering safeguards and stress-handling logic. All test suites validated to ensure no regressions.
 - Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
 - Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs to be captured and documented (see [Remaining work](#remaining-work-short-list)).
 - Known warning: ESP-IDF builds currently print duplicate-definition notices for `ESP_EVENT_ANY_ID` because our legacy Bluetooth shim header (`components/components/bt/include/esp32/include/esp_event_base.h`) still defines the macro; plan is to guard/remove that old definition in a future cleanup.
+- **Build warnings present (2025-10-30)**: 
+  - **Crystal frequency**: Detected 41.01MHz crystal frequency differs from normalized 40MHz (unsupported crystal in use)
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
@@ -84,13 +88,13 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-10-29)
+Current test status (2025-10-30)
 --------------------------------
-- Host-based tests under `test/host_test` rebuilt on 2025-10-29 and executed via `ctest`; 17 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
-- On-device Unity suites were rerun on hardware on 2025-10-29 using `tools/flash_and_watch.py`:
+- Host-based tests under `test/host_test` rebuilt on 2025-10-30 and executed via `ctest`; 17 tests, 0 failures, 0 ignored (`test/host_test/build/Testing/Temporary/LastTest.log`).
+- On-device Unity suites were rerun on hardware on 2025-10-30 using `tools/flash_and_watch.py`:
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
-   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
+   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
 
 Remaining work (short list)
 ---------------------------
@@ -116,7 +120,7 @@ Prioritized next steps (actionable)
    - Task: Extend mocks to simulate connection drops/timeouts and assert recovery logic through unit tests.
    - Acceptance: New tests fail without the current safeguards and pass with them in place.
 
-4. Allocator timeline analysis (Medium, **~1 day**)
+4. Timeline analysis (Medium, **~1 day**)
    - Task: Parse `build/pairing_e2_logs/serial.log`, symbolise addresses with the latest ELF, and document suspected ownership issues.
    - Acceptance: A concise report outlining findings and proposed fixes is published alongside logs.
 

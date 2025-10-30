@@ -116,6 +116,16 @@ static bool s_cmd_mock_enabled = false;
 static char s_cmd_mock_pairing_addr[32] = {0};
 static char s_cmd_mock_passkey[16] = {0};
 
+// Sequence counter for pairing event ordering
+static uint32_t s_event_sequence = 0;
+
+// Test-only function to reset sequence counter
+#if defined(UNIT_TEST) || defined(ESP_PLATFORM)
+void cmd_reset_event_sequence(void) {
+    s_event_sequence = 0;
+}
+#endif
+
 // Main command executor. Keeps behavior identical across ESP and host
 // builds but uses #ifdef guards where device-specific APIs are required.
 cmd_status_t cmd_execute(const cmd_context_t* ctx)
@@ -169,6 +179,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #else
     cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
 #endif
+    break;
 
     case CMD_TYPE_BEEP: {
     /* Emit a short audible beep only when a BT device is connected. Use
@@ -629,15 +640,20 @@ cmd_status_t cmd_send_response(const char* status, const char* command, const ch
 // Convenience wrapper for pairing events
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data)
 {
+    /* Increment sequence for ordering */
+    s_event_sequence++;
+
     /* Build the same EVENT line we emit on the console so tests can
      * optionally capture it via a weakly-linked hook. The hook is
      * provided by the test adapter and is intentionally weak so
      * production builds are unaffected. */
     char buf[512];
     const char* d = data ? data : "";
-    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", d);
+    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|seq=%lu,%s", subtype ? subtype : "", (unsigned long)s_event_sequence, d);
     /* Emit on serial/console as usual */
-    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", data);
+    char data_with_seq[256];
+    snprintf(data_with_seq, sizeof(data_with_seq), "seq=%lu,%s", (unsigned long)s_event_sequence, d);
+    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", data_with_seq);
 
     /* Diagnostic: also print an explicit, easily-greppable line so
      * test runs and log collectors can detect emitted events even if
