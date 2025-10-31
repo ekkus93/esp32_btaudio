@@ -29,30 +29,22 @@ extern void app_test_main(void);
 
 #ifndef APP_MAIN_DEFINED
 #define APP_MAIN_DEFINED
-// Main entry point for all tests
-void app_main(void)
+// Internal test runner task: run the Unity harness in a separate task
+// with a larger stack to avoid overflowing `app_main`'s default stack.
+static void test_runner_task(void *pvParameters)
 {
-    // Initialize NVS for storage
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGI(TAG, "Erasing NVS flash");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    
-    ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite");
+    (void)pvParameters;
+
+    ESP_LOGI(TAG, "Starting Bluetooth Audio Source Test Suite (test runner task)");
 
     // Start a short scan on boot to make the device emit DEVICE_FOUND events
-    // This helps capture events during host stress runs when an interactive
-    // monitor isn't used. Keep the scan short to avoid altering test timing.
     esp_err_t scan_ret = bt_scan(10); // 10 second scan
     if (scan_ret == ESP_OK) {
         ESP_LOGI(TAG, "Started boot scan (10s)");
     } else {
         ESP_LOGW(TAG, "Boot scan call returned: %d", scan_ret);
     }
-    
+
     printf("\n\n----- UNITY TEST START -----\n");
     UNITY_BEGIN();
 
@@ -96,8 +88,33 @@ void app_main(void)
     ESP_LOGI(TAG, "All tests completed. Test application will now enter idle loop.");
     printf("\n\n*** ENTERING IDLE LOOP - TESTS COMPLETE ***\n\n");
 
+    // Enter idle loop; keep the task alive so logs remain available.
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+
+// Main entry point for all tests -- create a dedicated task to run them.
+void app_main(void)
+{
+    // Initialize NVS for storage
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGI(TAG, "Erasing NVS flash");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Create the test runner task with a larger stack to avoid overflow in heavy tests.
+    BaseType_t ok = xTaskCreatePinnedToCore(test_runner_task, "test_runner", 16 * 1024, NULL, tskIDLE_PRIORITY + 5, NULL, tskNO_AFFINITY);
+    if (ok != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create test runner task (xTaskCreatePinnedToCore returned %d)", (int)ok);
+        // If we can't create the task, run inline as fallback (risking stack overflow).
+        test_runner_task(NULL);
+    }
+
+    // Delete the current (app_main) task to free its smaller stack; test_runner_task will continue.
+    vTaskDelete(NULL);
 }
 #endif

@@ -1,0 +1,61 @@
+name: CI — device build (compile only)
+
+on:
+  push:
+    paths:
+      - 'esp_bt_audio_source/**'
+      - '.github/workflows/ci-device-build.yml'
+  pull_request:
+    paths:
+      - 'esp_bt_audio_source/**'
+  workflow_dispatch:
+
+jobs:
+  build-device:
+    name: Build esp_bt_audio_source (no flash)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install ESP-IDF v5.4.1
+        run: |
+          # Clone ESP-IDF at the pinned release used by local builds
+          git clone --depth 1 --branch v5.4.1 https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf
+          python3 -m pip install --user -r $HOME/esp/esp-idf/requirements.txt
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build cmake pkg-config git
+
+      - name: Build firmware (device compile only)
+        working-directory: esp_bt_audio_source
+        run: |
+          # Source the ESP-IDF environment installed above, then build
+          . $HOME/esp/esp-idf/export.sh
+          idf.py fullclean || true
+          idf.py build
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-build-artifacts
+          path: |
+            esp_bt_audio_source/build/**/*.bin
+            esp_bt_audio_source/build/**/*.elf
+            esp_bt_audio_source/build/**/*.map
+            esp_bt_audio_source/build/*.log
+
+      - name: Show brief build summary
+        if: always()
+        working-directory: esp_bt_audio_source/build
+        run: |
+          echo "Build dir: $(pwd)"
+          ls -la | sed -n '1,200p' || true

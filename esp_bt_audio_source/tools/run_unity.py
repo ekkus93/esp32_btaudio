@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """
-Run flash + monitor and extract Unity summary for esp_bt_audio_source.
+Consolidated runner for flashing and capturing Unity test output.
 
 Behavior:
-- Runs `idf.py -p <port> flash monitor` and captures monitor output to
-  `build/one_run_unity.log`.
-- Watches the monitor output for Unity summary markers and exits with code:
-  0 = all tests passed, 1 = one or more failures, 2 = timeout/no summary found,
-  3 = other error.
+- Builds the test image (using `idf.py build`),
+- Flashes and monitors the target (`idf.py -p <port> flash monitor`),
+- Captures monitor output to `build/one_run_unity.log`,
+- Watches for deterministic completion markers (numeric Unity summary,
+  `TEST_RUN_COMPLETE: ...`, or conservative `Auto-run of tests completed`) and
+  exits with an appropriate status code.
 
-Usage:
-  python tools/run_unity.py --port /dev/ttyUSB0 [--timeout 600]
-
-Notes:
-- This script requires Python 3.8+. It shells out to `idf.py` on the project
-  directory where it runs. Make sure you run it from `esp_bt_audio_source` or
-  pass --project-root.
+This script attempts to source the user's ESP-IDF `export.sh` when `idf.py` is
+not found on PATH (convenience for interactive shells).
 """
 
 import argparse
@@ -27,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import shutil
 
 # Track the start of Unity output so we only parse the latest block when computing
 # PASS/FAIL at the end of the run.
@@ -45,11 +42,40 @@ RUN_COMPLETE_RE = re.compile(
 # present we should treat this as a definitive signal to stop the monitor and
 # consider the run finished.
 TEST_RUN_COMPLETE_RE = re.compile(r"TEST_RUN_COMPLETE:\s*(\d+)\s+(\d+)\s+(\d+)", re.IGNORECASE)
+# Some test apps emit a human-friendly completion line when auto-running tests.
+# `test_app2` prints "Auto-run of tests completed" before (in some cases) crashing
+# or rebooting; treat that as a deterministic completion marker so the runner
+# doesn't wait for a numeric Unity summary that may never appear.
+AUTORUN_COMPLETE_RE = re.compile(r"Auto-run of tests completed", re.IGNORECASE)
 # Patterns that indicate the ESP32 has rebooted / booted. Monitor should stop after we
 # see a boot banner following test completion so CI/runners don't need to manually stop.
 # Include generic 'ets' (month varies), 'rst:', hard reset lines and the monitor header.
 BOOT_BANNER_RE = re.compile(r"(ESP-IDF|rst:|\bets\b|Chip is ESP32|Hard resetting via RTS|--- esp-idf-monitor)", re.IGNORECASE)
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
+
+
+def find_export_sh():
+    candidate = os.path.expanduser('~/esp/esp-idf/export.sh')
+    return candidate if os.path.isfile(candidate) else None
+
+
+def idf_available():
+    return shutil.which('idf.py') is not None
+
+
+def make_shell_cmd(args_list, export_sh=None):
+    """Return a command suitable for subprocess when `idf.py` may not be in PATH.
+
+    If `export_sh` is provided, wrap the command in `bash -lc " . export_sh && idf.py ..."`.
+    Otherwise return the raw list for direct execution.
+    """
+    if export_sh and not idf_available():
+        # join args correctly with quoting for bash -lc
+        cmd = ' '.join(shlex.quote(a) for a in args_list)
+        shell_cmd = ['bash', '-lc', f". {shlex.quote(export_sh)} && {cmd}"]
+        return shell_cmd
+    else:
+        return args_list
 
 
 def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_event, test_complete_event):
@@ -86,6 +112,10 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
             if UNITY_RESULT_RE.search(decoded) or re.search(r"^\s*OK\s*$", decoded, re.MULTILINE):
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
                 summary_event.set()
+            elif AUTORUN_COMPLETE_RE.search(decoded):
+                print("[run_unity DEBUG] AUTORUN_COMPLETE marker matched in monitor output", file=sys.stderr)
+                summary_event.set()
+                test_complete_event.set()
             elif TEST_RUN_COMPLETE_RE.search(decoded):
                 print("[run_unity DEBUG] TEST_RUN_COMPLETE marker matched in monitor output", file=sys.stderr)
                 summary_event.set()
@@ -93,15 +123,10 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
                 summary_event.set()
 
-            # Log broader Unity summary matches for debugging but do not treat
-            # them as a definitive run-complete trigger (they are noisy).
             elif UNITY_SUMMARY_RE.search(decoded):
                 print("[run_unity DEBUG] UNITY summary-ish line seen (not triggering completion)", file=sys.stderr)
 
             if BOOT_BANNER_RE.search(decoded):
-                # if we see a boot banner, signal boot_event — this usually means the
-                # device restarted (for example after tests completed and the test_app rebooted)
-                # Debug: log that we saw a boot banner
                 print("[run_unity DEBUG] BOOT_BANNER_RE matched in monitor output", file=sys.stderr)
                 boot_event.set()
             if stop_event.is_set():
@@ -111,254 +136,227 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
 def run_flash_and_monitor(port, project_root, timeout):
     logfile = os.path.join(project_root, "build", "one_run_unity.log")
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
-    # Ensure the test app is built before flashing. Capture build output
-    # into the same logfile so CI/triage has a complete trace.
-    build_cmd = ["idf.py", "build"]
     env = os.environ.copy()
+
+    export_sh = find_export_sh()
+
+    # Build the project first
+    build_args = ['idf.py', 'build']
+    build_cmd = make_shell_cmd(build_args, export_sh=export_sh)
     with open(logfile, "ab", buffering=0) as fh:
         fh.write(b"\n=== idf.py build output ===\n")
         # Run the build and stream output to logfile
-        ret = subprocess.run(build_cmd, cwd=project_root, env=env, stdout=fh, stderr=subprocess.STDOUT)
+        try:
+            ret = subprocess.run(build_cmd, cwd=project_root, env=env, stdout=fh, stderr=subprocess.STDOUT)
+        except FileNotFoundError:
+            return 3, logfile
         if ret.returncode != 0:
-            # Build failed; return an error code and the logfile path so caller can inspect
             return 3, logfile
 
-    # Command will run idf.py in the project root. Using -y to stop monitor
-    # from prompting to exit on Ctrl-C isn't available; we'll manage the process.
-    cmd = ["idf.py", "-p", port, "flash", "monitor"]
+    # Flash + monitor
+    flash_args = ['idf.py', '-p', port, 'flash', 'monitor']
+    flash_cmd = make_shell_cmd(flash_args, export_sh=export_sh)
 
-    with subprocess.Popen(cmd, cwd=project_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
-        stop_event = threading.Event()
-        summary_event = threading.Event()
-        boot_event = threading.Event()
-        test_complete_event = threading.Event()
+    try:
+        proc = subprocess.Popen(flash_cmd, cwd=project_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except FileNotFoundError:
+        return 3, logfile
 
-        t = threading.Thread(target=tail_process_output, args=(proc, logfile, stop_event, summary_event, boot_event, test_complete_event), daemon=True)
-        t.start()
+    stop_event = threading.Event()
+    summary_event = threading.Event()
+    boot_event = threading.Event()
+    test_complete_event = threading.Event()
 
-        start = time.time()
-        try:
-            while True:
-                if summary_event.is_set():
-                    # We saw the Unity summary — now wait for an expected reboot/boot banner
-                    # which commonly follows test-runner completion. If we see the boot banner
-                    # within a short grace window, treat that as the run finishing and stop.
-                    # If the device emitted the explicit TEST_RUN_COMPLETE marker we
-                    # received above, short-circuit the boot/wait logic and shut down
-                    # the monitor immediately. Otherwise, wait a short grace window
-                    # for a boot banner which often follows test completion.
-                    if test_complete_event.is_set():
-                        # skip waiting for boot_event; allow a tiny flush window
+    t = threading.Thread(target=tail_process_output, args=(proc, logfile, stop_event, summary_event, boot_event, test_complete_event), daemon=True)
+    t.start()
+
+    start = time.time()
+    try:
+        while True:
+            if summary_event.is_set():
+                if test_complete_event.is_set():
+                    time.sleep(0.2)
+                else:
+                    grace_start = time.time()
+                    grace_timeout = 60.0
+                    time.sleep(0.5)
+                    while not boot_event.is_set() and (time.time() - grace_start) < grace_timeout:
+                        if proc.poll() is not None:
+                            break
                         time.sleep(0.2)
+
+                try:
+                    proc.send_signal(signal.SIGINT)
+                    for _ in range(10):
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.1)
                     else:
-                        grace_start = time.time()
-                        # Allow a longer grace window for trailing output and for slower devices
-                        grace_timeout = 60.0
-                        # small sleep to allow trailing output to be flushed
-                        time.sleep(0.5)
-                        # Wait for boot_event or until grace_timeout expires
-                        while not boot_event.is_set() and (time.time() - grace_start) < grace_timeout:
-                            if proc.poll() is not None:
-                                break
-                            time.sleep(0.2)
-
-                    # Attempt a polite shutdown of the monitor process
-                    try:
-                        proc.send_signal(signal.SIGINT)
-                        # give it a moment to exit
-                        for _ in range(10):
-                            if proc.poll() is not None:
-                                break
-                            time.sleep(0.1)
-                        else:
-                            proc.terminate()
-                    except Exception:
-                        try:
-                            proc.terminate()
-                        except Exception:
-                            pass
-
-                    stop_event.set()
-                    break
-
-                if proc.poll() is not None:
-                    break
-
-                if timeout and (time.time() - start) > timeout:
-                    stop_event.set()
+                        proc.terminate()
+                except Exception:
                     try:
                         proc.terminate()
                     except Exception:
                         pass
-                    # Before giving up, inspect the captured logfile —
-                    # sometimes the device printed per-test PASS/FAIL
-                    # lines but the summary event wasn't seen in time.
-                    try:
-                        # wait for logfile quiescence: give the monitor a short
-                        # window to flush trailing output, but avoid racing
-                        # with writers. Wait until the logfile size is stable
-                        # for `stable_for` seconds or until `max_wait` elapses.
-                        # Use a slightly longer window for noisy audio tests.
-                        max_wait = 10.0
-                        stable_for = 1.0
-                        last_size = -1
-                        stable_start = None
-                        t_wait_start = time.time()
-                        while (time.time() - t_wait_start) < max_wait:
-                            try:
-                                size = os.path.getsize(logfile)
-                            except Exception:
-                                size = 0
-                            if size == last_size:
-                                if stable_start is None:
-                                    stable_start = time.time()
-                                elif (time.time() - stable_start) >= stable_for:
-                                    break
-                            else:
-                                last_size = size
-                                stable_start = None
-                            time.sleep(0.2)
 
-                        with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
-                            text = fh.read()
-                        clean_text = ANSI_ESCAPE_RE.sub("", text)
+                stop_event.set()
+                break
 
-                        # prefer explicit numeric result if present
-                        result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
-                        if result_matches:
-                            last_match = result_matches[-1]
-                            failures = int(last_match.group('fail'))
-                            print(f"[run_unity DEBUG] Timeout fallback: numeric UNITY result found -> failures={failures}", file=sys.stderr)
-                            return (1 if failures else 0), logfile
+            if proc.poll() is not None:
+                break
 
-                        # If the test binary emitted a deterministic marker (added by device-side patch)
-                        # parse that first: "TEST_RUN_COMPLETE: <total> <fail> <ignored>"
-                        m = re.search(r"TEST_RUN_COMPLETE:\s*(\d+)\s+(\d+)\s+(\d+)", clean_text)
-                        if m:
-                            total = int(m.group(1))
-                            failures = int(m.group(2))
-                            ignored = int(m.group(3))
-                            print(f"[run_unity DEBUG] Timeout fallback: TEST_RUN_COMPLETE marker found -> total={total} failures={failures} ignored={ignored}", file=sys.stderr)
-                            return (1 if failures else 0), logfile
+            if timeout and (time.time() - start) > timeout:
+                stop_event.set()
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                # Timeout fallback: inspect logfile for numeric results or deterministic markers
+                try:
+                    max_wait = 10.0
+                    stable_for = 1.0
+                    last_size = -1
+                    stable_start = None
+                    t_wait_start = time.time()
+                    while (time.time() - t_wait_start) < max_wait:
+                        try:
+                            size = os.path.getsize(logfile)
+                        except Exception:
+                            size = 0
+                        if size == last_size:
+                            if stable_start is None:
+                                stable_start = time.time()
+                            elif (time.time() - stable_start) >= stable_for:
+                                break
+                        else:
+                            last_size = size
+                            stable_start = None
+                        time.sleep(0.2)
 
-                        # fallback: count per-test PASS/FAIL occurrences across the whole logfile
-                        pass_count = len(re.findall(r":\s*PASS\b", clean_text, re.IGNORECASE))
+                    with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
+                        text = fh.read()
+                    clean_text = ANSI_ESCAPE_RE.sub("", text)
+
+                    result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
+                    if result_matches:
+                        last_match = result_matches[-1]
+                        failures = int(last_match.group('fail'))
+                        print(f"[run_unity DEBUG] Timeout fallback: numeric UNITY result found -> failures={failures}", file=sys.stderr)
+                        return (1 if failures else 0), logfile
+
+                    m = TEST_RUN_COMPLETE_RE.search(clean_text)
+                    if m:
+                        total = int(m.group(1))
+                        failures = int(m.group(2))
+                        ignored = int(m.group(3))
+                        print(f"[run_unity DEBUG] Timeout fallback: TEST_RUN_COMPLETE marker found -> total={total} failures={failures} ignored={ignored}", file=sys.stderr)
+                        return (1 if failures else 0), logfile
+
+                    if AUTORUN_COMPLETE_RE.search(clean_text):
                         fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
-                        print(f"[run_unity DEBUG] Timeout fallback: per-test counts -> pass_count={pass_count} fail_count={fail_count}", file=sys.stderr)
-                        if fail_count:
-                            return 1, logfile
-                        if pass_count:
-                            return 0, logfile
-                    except Exception:
-                        # fall through to timeout return
-                        pass
+                        print(f"[run_unity DEBUG] Timeout fallback: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
+                        return (1 if fail_count else 0), logfile
 
-                    return 2, logfile
+                    pass_count = len(re.findall(r":\s*PASS\b", clean_text, re.IGNORECASE))
+                    fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
+                    print(f"[run_unity DEBUG] Timeout fallback: per-test counts -> pass_count={pass_count} fail_count={fail_count}", file=sys.stderr)
+                    if fail_count:
+                        return 1, logfile
+                    if pass_count:
+                        return 0, logfile
+                except Exception:
+                    pass
 
-                time.sleep(0.2)
+                return 2, logfile
 
-            # Wait up to 5s for thread to finish writing
-            t.join(timeout=5)
+            time.sleep(0.2)
 
-            # Read back logfile and search for final Unity PASS/FAIL
-            with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
-                text = fh.read()
-            clean_text = ANSI_ESCAPE_RE.sub("", text)
+        t.join(timeout=5)
 
-            complete_matches = list(RUN_COMPLETE_RE.finditer(clean_text))
-            if complete_matches:
-                complete_idx = complete_matches[-1].start()
-            else:
-                complete_idx = len(clean_text)
+        with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+        clean_text = ANSI_ESCAPE_RE.sub("", text)
 
-            # Direct Unity summary line such as "22 Tests 7 Failures 0 Ignored"
-            result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text) if m.start() < complete_idx]
-            if result_matches:
-                last_match = result_matches[-1]
-                failures = int(last_match.group("fail"))
-                return (1 if failures else 0), logfile
+        complete_matches = list(RUN_COMPLETE_RE.finditer(clean_text))
+        if complete_matches:
+            complete_idx = complete_matches[-1].start()
+        else:
+            complete_idx = len(clean_text)
 
-            # Look for Unity summary only inside the most-recent Unity-related block
-            # (avoid matching unrelated 'FAILED' tokens from other subsystems).
-            last_pos = -1
-            for m in UNITY_START_RE.finditer(clean_text):
+        result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text) if m.start() < complete_idx]
+        if result_matches:
+            last_match = result_matches[-1]
+            failures = int(last_match.group("fail"))
+            return (1 if failures else 0), logfile
+
+        last_pos = -1
+        for m in UNITY_START_RE.finditer(clean_text):
+            last_pos = m.start()
+        for m in UNITY_SUMMARY_RE.finditer(clean_text):
+            if m.start() > last_pos and m.start() < complete_idx:
                 last_pos = m.start()
-            for m in UNITY_SUMMARY_RE.finditer(clean_text):
-                if m.start() > last_pos and m.start() < complete_idx:
-                    last_pos = m.start()
 
-            # If we saw a Unity block, only inspect a slice following that marker.
-            if last_pos != -1:
-                search_region = clean_text[last_pos:complete_idx]
-            else:
-                # fallback: inspect the tail of the logfile (last 10k chars)
-                search_region = clean_text[-10000:]
+        if last_pos != -1:
+            search_region = clean_text[last_pos:complete_idx]
+        else:
+            search_region = clean_text[-10000:]
 
-            # Prefer explicit Unity OK pattern like: "OK (3 tests)"
-            if re.search(r"^\s*OK\s*\(\s*\d+\s*(tests?|TESTS?)?\s*\)", search_region, re.MULTILINE):
-                return 0, logfile
+        if re.search(r"^\s*OK\s*\(\s*\d+\s*(tests?|TESTS?)?\s*\)", search_region, re.MULTILINE):
+            return 0, logfile
 
-            # Unity may print explicit failure indicators in the same block
-            if re.search(r"\bFAIL(?:ED)?\b|\bFAILURES?\b", search_region, re.IGNORECASE):
-                return 1, logfile
+        if re.search(r"\bFAIL(?:ED)?\b|\bFAILURES?\b", search_region, re.IGNORECASE):
+            return 1, logfile
 
-            # Some test harnesses (or older Unity configurations) print per-test PASS/FAIL
-            # lines but no final numeric summary. Count those as a summary substitute:
-            # - if any per-test FAIL lines are present, treat as failures
-            # - if at least one per-test PASS line is present and no FAILs, treat as pass
-            pass_count = len(re.findall(r":\s*PASS\b", search_region, re.IGNORECASE))
-            fail_count = len(re.findall(r":\s*FAIL\b", search_region, re.IGNORECASE))
-            if fail_count:
-                return 1, logfile
-            if pass_count:
-                return 0, logfile
+        pass_count = len(re.findall(r":\s*PASS\b", search_region, re.IGNORECASE))
+        fail_count = len(re.findall(r":\s*FAIL\b", search_region, re.IGNORECASE))
+        if fail_count:
+            return 1, logfile
+        if pass_count:
+            return 0, logfile
 
-            # If we see a Tests: N line and no failures in the region, treat as pass.
-            if re.search(r"Tests:\s*\d+", search_region) and not re.search(r"\bFAIL(?:ED)?\b", search_region, re.IGNORECASE):
-                return 0, logfile
+        if re.search(r"Tests:\s*\d+", search_region) and not re.search(r"\bFAIL(?:ED)?\b", search_region, re.IGNORECASE):
+            return 0, logfile
 
-            return 2, logfile
+        return 2, logfile
 
-        except KeyboardInterrupt:
-            stop_event.set()
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            return 3, logfile
+    except KeyboardInterrupt:
+        stop_event.set()
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        return 3, logfile
 
 
 def main():
     ap = argparse.ArgumentParser(description="Flash device and capture Unity results to a log file.")
     ap.add_argument('--port', '-p', required=True, help='Serial port, e.g. /dev/ttyUSB0')
-    ap.add_argument('--timeout', '-t', type=int, default=600, help='Timeout in seconds to wait for Unity summary (default 600s)')
-    ap.add_argument('--project-root', '-r', default='.', help='Project root (defaults to cwd, must contain idf.py)')
+    ap.add_argument('--timeout', '-t', type=int, default=300, help='Timeout in seconds to wait for Unity summary (default 300s)')
+    ap.add_argument('--project-root', '-r', default='.', help='Project root (defaults to cwd, must contain the test project and idf.py)')
     args = ap.parse_args()
 
     rc, logfile = run_flash_and_monitor(args.port, args.project_root, args.timeout)
 
-    # Defensive post-check: in some environments the monitor subprocess or
-    # signal handling can cause the script to return an error even though the
-    # device printed a valid deterministic completion marker. If we failed but
-    # the canonical marker or an explicit numeric Unity result is present in
-    # the captured logfile, treat that as the authoritative outcome.
     if rc != 0 and os.path.isfile(logfile):
         try:
             with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
                 txt = fh.read()
             clean_text = ANSI_ESCAPE_RE.sub('', txt)
-            # Prefer the deterministic TEST_RUN_COMPLETE marker
             m = TEST_RUN_COMPLETE_RE.search(clean_text)
             if m:
                 failures = int(m.group(2))
                 rc = 1 if failures else 0
             else:
-                # Fallback: numeric UNITY result pattern
-                result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
-                if result_matches:
-                    last_match = result_matches[-1]
-                    failures = int(last_match.group('fail'))
-                    rc = 1 if failures else 0
+                if AUTORUN_COMPLETE_RE.search(clean_text):
+                    fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
+                    print(f"[run_unity DEBUG] Post-check: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
+                    rc = 1 if fail_count else 0
+                else:
+                    result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
+                    if result_matches:
+                        last_match = result_matches[-1]
+                        failures = int(last_match.group('fail'))
+                        rc = 1 if failures else 0
         except Exception:
             pass
 

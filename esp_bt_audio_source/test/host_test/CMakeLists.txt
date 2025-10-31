@@ -182,6 +182,20 @@ target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
 
+# Pairing event sequence hardening stress test
+add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
+    ../../components/command_interface/commands.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c)
+target_link_libraries(test_pairing_seq_hardening unity)
+add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
+# Enable SEQ/TS emission in host-mode for this test target
+target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
+
 add_executable(test_bt_connection_manager
     test_bt_connection_manager.c
     ../../main/bt_connection_manager.c
