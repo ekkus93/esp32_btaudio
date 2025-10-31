@@ -3,6 +3,11 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+#if !defined(ESP_PLATFORM)
+#include <sys/time.h>
+#endif
 
 // Include platform headers and storage/bt mocks so host builds have prototypes
 #include "audio_processor.h"
@@ -56,6 +61,7 @@ int bt_get_connection_state(void);
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "driver/uart.h"
+#include "esp_timer.h"
 #define TAG "CMD_IF"
 /* Prefer the configured console UART if available so we don't call into an
  * uninstalled UART driver (which logs "uart driver error"). Fall back to
@@ -118,6 +124,28 @@ static char s_cmd_mock_passkey[16] = {0};
 
 // Sequence counter for pairing event ordering
 static uint32_t s_event_sequence = 0;
+
+static uint64_t cmd_get_timestamp_ms(void)
+{
+#ifdef ESP_PLATFORM
+    /* esp_timer_get_time returns microseconds since boot */
+    return (uint64_t)(esp_timer_get_time() / 1000ULL);
+#else
+#if defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000ULL);
+    }
+#endif
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) == 0) {
+        return (uint64_t)tv.tv_sec * 1000ULL + (uint64_t)(tv.tv_usec / 1000ULL);
+    }
+    /* Fallback monotonic counter in case time APIs are unavailable */
+    static uint64_t fallback_ms;
+    return ++fallback_ms;
+#endif
+}
 
 // Test-only function to reset sequence counter
 #if defined(UNIT_TEST) || defined(ESP_PLATFORM)
@@ -641,19 +669,25 @@ cmd_status_t cmd_send_response(const char* status, const char* command, const ch
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data)
 {
     /* Increment sequence for ordering */
-    s_event_sequence++;
+    uint32_t seq = ++s_event_sequence;
+    uint64_t ts_ms = cmd_get_timestamp_ms();
 
     /* Build the same EVENT line we emit on the console so tests can
      * optionally capture it via a weakly-linked hook. The hook is
      * provided by the test adapter and is intentionally weak so
      * production builds are unaffected. */
-    char buf[512];
     const char* d = data ? data : "";
-    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|seq=%lu,%s", subtype ? subtype : "", (unsigned long)s_event_sequence, d);
+    char payload[256];
+    if (d[0] != '\0') {
+        snprintf(payload, sizeof(payload), "%s,SEQ=%lu,TS=%llu", d, (unsigned long)seq, (unsigned long long)ts_ms);
+    } else {
+        snprintf(payload, sizeof(payload), "SEQ=%lu,TS=%llu", (unsigned long)seq, (unsigned long long)ts_ms);
+    }
+
+    char buf[512];
+    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", payload);
     /* Emit on serial/console as usual */
-    char data_with_seq[256];
-    snprintf(data_with_seq, sizeof(data_with_seq), "seq=%lu,%s", (unsigned long)s_event_sequence, d);
-    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", data_with_seq);
+    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", payload);
 
     /* Diagnostic: also print an explicit, easily-greppable line so
      * test runs and log collectors can detect emitted events even if

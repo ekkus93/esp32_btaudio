@@ -26,13 +26,13 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — October 31, 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`).
-- Full regression sweep completed on 2025-10-31 via `tools/run_all_tests.py` (host CTest + three Unity suites). Run artifacts:
-   - Host `ctest` bundle: 18/18 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
-   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
-   - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
-   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
-   - Summary JSON (durations, flash/test breakdown): `tmp/run_all_tests_summary.json`.
-- Timing snapshot from the same sweep (wall-clock ≈79 s total): `test_app` 31.9 s (flash 11.6 s, tests 20.3 s); `test_app2` 28.1 s (flash 8.3 s, tests 19.8 s); `test_app_audio` 16.7 s (flash 3.1 s, tests 13.6 s). These numbers now update automatically when the script parses Unity logs.
+- Full regression sweep completed on 2025-10-31 @ 13:02 PDT via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` (host CTest + three Unity suites). Run artifacts:
+   - Host `ctest` bundle: 18/18 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
+   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, raw runner stdout at `tmp/runner_test_app_stdout.log`).
+   - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
+   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
+   - Aggregate totals (131 tests / 0 failures / 0 ignored) plus per-suite timing: `tmp/run_all_tests_summary.json`.
+- Timing snapshot from the same sweep (wall-clock ≈112 s total): `test_app` 44.5 s (flash 11.6 s, tests 32.9 s); `test_app2` 38.4 s (flash 8.3 s, tests 30.1 s); `test_app_audio` 25.1 s (flash 3.1 s, tests 22.0 s). These numbers now emit directly from `run_all_tests.py` by parsing Unity logs.
 
 - Key recent completions:
    - Host-based unit tests: all host tests pass and the host-test harness updated to support sequence-number diagnostics.
@@ -97,11 +97,11 @@ Current test status (2025-10-31)
 --------------------------------
 - `tools/run_all_tests.py` (2025-10-31) executes the full sweep in one command. Output artifacts:
    - Host CTest: 18 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
-   - Device Unity suites (via `tools/run_unity.py`):
+   - Device Unity suites (via `tools/run_unity.py` through the orchestrator):
       - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
       - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
       - `test_app_audio`: 26/0/0 (`test_app_audio/build/one_run_unity.log`).
-   - Aggregate telemetry (start/end epochs, flash time, test time): `tmp/run_all_tests_summary.json`.
+   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json`.
 - Standalone re-runs are still supported with `tools/run_unity.py`, but the orchestrator now emits per-suite flash/test breakdowns for timing analysis.
 
 Remaining work (short list)

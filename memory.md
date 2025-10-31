@@ -63,6 +63,7 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 - Host test target `test_bt_connection_manager` builds via `cmake --build esp_bt_audio_source/test/host_test/build_host_tests` and passes under `ctest`.
 
 ## Recent Changes
+- 2025-10-31: Updated pairing event emission to append uppercase `SEQ` and `TS` metadata via a new `cmd_get_timestamp_ms()` helper. Strengthened host `test_pairing_seq_hardening` to enforce the annotated format and verified the binary locally.
 - 2025-10-29: Fixed implicit fallthrough warning: Removed unintended fallthrough from CMD_TYPE_SCAN to CMD_TYPE_BEEP by adding proper break statement after SCAN case in `components/command_interface/commands.c`. SCAN and BEEP are separate commands that should not be coupled.
 - 2025-10-29: Fixed unused variables warning: Removed unused `mac_to_use` variables from `bt_pairing_confirm()` and `bt_pairing_submit_pin()` functions in `components/bt_manager/bt_manager.c` since they were assigned but never used after assignment.
 - 2025-10-29: Fixed unused function warning: Removed `bt_classic_init` and related unused callback functions (`bt_app_a2d_cb`, `bt_app_rc_ct_cb`, `bt_app_av_sm_hdlr`) from `main/bt_source_component.c` since bt_manager component provides the actual Bluetooth functionality.
@@ -81,7 +82,8 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 - 2025-10-29: Fixed missing function declaration for audio_processor_beep in host tests: Corrected include path in mock header from "../../include/audio_processor.h" to "../../../../main/include/audio_processor.h", added mock implementations for audio_processor_get_status() and fixed enum value from AUDIO_SAMPLE_RATE_44100 to AUDIO_SAMPLE_RATE_44K. All 24 host tests pass (100% success rate).
 - 2025-10-30: Fixed failing host test `test_pairing_adapter_runner` by updating `normalize_event()` function in `test_app/main/test_pairing_commands.c` to remove everything from ",SEQ=" onwards, properly stripping both sequence numbers and timestamps from event strings for test assertions. All 17 host tests now pass (100% success rate).
 
-2025-10-31: All unit suites passed locally — host 18/0; test_app 37/0; test_app2 45/0; test_app_audio 26/0. Logs: esp_bt_audio_source/*/build/one_run_unity.log and esp_bt_audio_source/test/host_test/build_host_tests/ctest_full_output.log
+- 2025-10-31 13:02 PDT: `tools/run_all_tests.py --timeout 300 --port /dev/ttyUSB0` sweep completed cleanly (host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0). Fresh logs under each suite’s `build/one_run_unity.log`; summary JSON at `tmp/run_all_tests_summary.json`.
+- 2025-10-31: All unit suites passed locally — host 18/0; test_app 37/0; test_app2 45/0; test_app_audio 26/0. Logs: esp_bt_audio_source/*/build/one_run_unity.log and esp_bt_audio_source/test/host_test/build_host_tests/ctest_full_output.log
 2025-10-31: Updated tools/run_all_tests.py to record flash/test durations by selecting the largest esptool write; latest sweep shows flash ~11.6 s (test_app), 8.3 s (test_app2), 3.1 s (test_app_audio) with remaining time attributed to test execution.
 2025-10-31: Standalone `test_app2` Unity run took ~25.6 s total (flash 8.3 s, tests ~17.3 s); orchestrated sweep recorded 28.1 s total with identical flash duration and ~19.8 s of test runtime.
 2025-10-31: Standalone `test_app_audio` Unity run took ~14.7 s total (flash 3.1 s, tests ~11.6 s); orchestrated sweep recorded 16.7 s total with the same flash duration and ~13.6 s spent in tests.

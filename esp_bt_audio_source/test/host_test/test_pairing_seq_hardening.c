@@ -55,11 +55,10 @@ void test_pairing_event_sequence_hardening(void) {
 
         if (strstr(line, "EVENT|PAIR|") != NULL) {
             int seq = -1; long long ts = -1;
-            if (parse_seq_ts(line, &seq, &ts) == 0) {
-                if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
-                if (last_ts >= 0) TEST_ASSERT_TRUE(ts >= last_ts);
-                last_seq = seq; last_ts = ts;
-            }
+            TEST_ASSERT_EQUAL_MESSAGE(0, parse_seq_ts(line, &seq, &ts), "Pair event missing SEQ/TS annotation");
+            if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
+            if (last_ts >= 0) TEST_ASSERT_TRUE(ts >= last_ts);
+            last_seq = seq; last_ts = ts;
             found++;
         }
 
@@ -104,20 +103,20 @@ void test_pairing_event_sequence_hardening(void) {
 
         if (strstr(line, "EVENT|PAIR|CONFIRM|") != NULL) {
             int seq = -1; long long ts = -1;
-            if (parse_seq_ts(line, &seq, &ts) == 0) {
-                /* If a CONFIRM event is present, it must have a later sequence */
-                if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
-                last_seq = seq;
-            }
+            TEST_ASSERT_EQUAL_MESSAGE(0, parse_seq_ts(line, &seq, &ts), "CONFIRM event missing SEQ/TS annotation");
+            /* If a CONFIRM event is present, it must have a later sequence */
+            if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
+            if (last_ts >= 0) TEST_ASSERT_TRUE(ts >= last_ts);
+            last_seq = seq; last_ts = ts;
             seen_confirm = 1;
         }
         if (strstr(line, "EVENT|PAIR|SUCCESS|") != NULL) {
             int seq = -1; long long ts = -1;
-            if (parse_seq_ts(line, &seq, &ts) == 0) {
-                /* SUCCESS must always have a later sequence than previously observed */
-                if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
-                last_seq = seq;
-            }
+            TEST_ASSERT_EQUAL_MESSAGE(0, parse_seq_ts(line, &seq, &ts), "SUCCESS event missing SEQ/TS annotation");
+            /* SUCCESS must always have a later sequence than previously observed */
+            if (last_seq >= 0) TEST_ASSERT_TRUE(seq > last_seq);
+            if (last_ts >= 0) TEST_ASSERT_TRUE(ts >= last_ts);
+            last_seq = seq; last_ts = ts;
             seen_success = 1;
         }
 
