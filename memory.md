@@ -82,3 +82,7 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 - 2025-10-30: Fixed failing host test `test_pairing_adapter_runner` by updating `normalize_event()` function in `test_app/main/test_pairing_commands.c` to remove everything from ",SEQ=" onwards, properly stripping both sequence numbers and timestamps from event strings for test assertions. All 17 host tests now pass (100% success rate).
 
 2025-10-31: All unit suites passed locally — host 18/0; test_app 37/0; test_app2 45/0; test_app_audio 26/0. Logs: esp_bt_audio_source/*/build/one_run_unity.log and esp_bt_audio_source/test/host_test/build_host_tests/ctest_full_output.log
+2025-10-31: Updated tools/run_all_tests.py to record flash/test durations by selecting the largest esptool write; latest sweep shows flash ~11.6 s (test_app), 8.3 s (test_app2), 3.1 s (test_app_audio) with remaining time attributed to test execution.
+2025-10-31: Standalone `test_app2` Unity run took ~25.6 s total (flash 8.3 s, tests ~17.3 s); orchestrated sweep recorded 28.1 s total with identical flash duration and ~19.8 s of test runtime.
+2025-10-31: Standalone `test_app_audio` Unity run took ~14.7 s total (flash 3.1 s, tests ~11.6 s); orchestrated sweep recorded 16.7 s total with the same flash duration and ~13.6 s spent in tests.
+2025-10-31: Updated `esp_bt_audio_source/README.md` with combined run_all_tests.py summary (host 18/18, device suites 37/45/26 pass) and captured per-suite timing breakdown from `tmp/run_all_tests_summary.json`.

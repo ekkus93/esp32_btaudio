@@ -23,14 +23,16 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
 
 <a id="project-status--october-2025"></a>
-## Project status — October 30, 2025
+## Project status — October 31, 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`).
-- Full regression sweep completed on 2025-10-30 after fixing the failing host test:
-   - Host `ctest` bundle: 17/17 tests passing (`test/host_test/build/Testing/Temporary/LastTest.log`).
+- Full regression sweep completed on 2025-10-31 via `tools/run_all_tests.py` (host CTest + three Unity suites). Run artifacts:
+   - Host `ctest` bundle: 18/18 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
    - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
+   - Summary JSON (durations, flash/test breakdown): `tmp/run_all_tests_summary.json`.
+- Timing snapshot from the same sweep (wall-clock ≈79 s total): `test_app` 31.9 s (flash 11.6 s, tests 20.3 s); `test_app2` 28.1 s (flash 8.3 s, tests 19.8 s); `test_app_audio` 16.7 s (flash 3.1 s, tests 13.6 s). These numbers now update automatically when the script parses Unity logs.
 
 - Key recent completions:
    - Host-based unit tests: all host tests pass and the host-test harness updated to support sequence-number diagnostics.
@@ -91,13 +93,16 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-10-30)
+Current test status (2025-10-31)
 --------------------------------
-- Host-based tests under `test/host_test` rebuilt on 2025-10-30 and executed via `ctest`; 17 tests, 0 failures, 0 ignored (`test/host_test/build/Testing/Temporary/LastTest.log`).
-- On-device Unity suites were rerun on hardware on 2025-10-30 using `tools/flash_and_watch.py`:
-   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`).
-   - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`).
-   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`).
+- `tools/run_all_tests.py` (2025-10-31) executes the full sweep in one command. Output artifacts:
+   - Host CTest: 18 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+   - Device Unity suites (via `tools/run_unity.py`):
+      - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
+      - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
+      - `test_app_audio`: 26/0/0 (`test_app_audio/build/one_run_unity.log`).
+   - Aggregate telemetry (start/end epochs, flash time, test time): `tmp/run_all_tests_summary.json`.
+- Standalone re-runs are still supported with `tools/run_unity.py`, but the orchestrator now emits per-suite flash/test breakdowns for timing analysis.
 
 Remaining work (short list)
 ---------------------------

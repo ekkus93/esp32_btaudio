@@ -24,6 +24,22 @@ import sys
 import threading
 import time
 import shutil
+from pathlib import Path
+
+# Write a short invocation marker so callers can detect that this script started
+# even if their stdout/stderr capture swallowed output. Appends lines to
+# <repo>/tmp/run_unity_invocations.log with timestamp, pid and argv.
+try:
+    _inv_log = Path(__file__).resolve().parents[2] / "tmp" / "run_unity_invocations.log"
+    _inv_log.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(_inv_log, "a", encoding="utf-8") as _fh:
+            _fh.write(f"{time.time()} PID={os.getpid()} ARGV={shlex.join(sys.argv)}\n")
+    except Exception:
+        # best-effort only
+        pass
+except Exception:
+    pass
 
 # Track the start of Unity output so we only parse the latest block when computing
 # PASS/FAIL at the end of the run.
