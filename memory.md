@@ -10,12 +10,18 @@
 - TODO (UNPAIR completion)
 	- [x] Update command handler to call `bt_unpair()` on device builds and propagate ESP-IDF status codes.
 	- [x] Add host test hooks so unit tests can observe UNPAIR behavior and simulate failures.
-	- [ ] Extend host command tests to cover successful and failing UNPAIR flows.
+	- [x] Extend host command tests to cover successful and failing UNPAIR flows.
 	- [x] Ensure `UNPAIR` command removes controller bonds before pruning storage.
 	- [x] Run full `tools/run_all_tests.py` sweep to confirm clean status.
 	- 2025-11-01: Linked `mocks/nvs_storage_mock.c` into host targets using `bt_manager.c` (including `test_bluetooth` and `test_mock_connection_helpers`); rebuilt `test/host_test` suite successfully.
 	- 2025-11-01: Updated `bt_manager_mock_pairing_complete()` to sync the host NVS mock and re-ran `ctest` (18/18 pass).
 	- 2025-11-01: `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep succeeded (host 18/18, device suites 37/0/0, 45/0/0, 26/0/0); artifacts refreshed under `tmp/` and each Unity build directory.
+	- TODO (UNPAIR_ALL cleanup)
+		- [x] Refactor `bt_unpair_all()` to drop controller bonds and clear NVS consistently (2025-11-01).
+		- [x] Update command handler to route through `bt_unpair_all()` and report cleared-count status (2025-11-01).
+			- [x] Expand host and Unity coverage for the revised UNPAIR_ALL flow.
+				- 2025-11-01: Added UNIT_TEST hook and host command tests covering success + forced-failure responses; Unity coverage still pending.
+				- 2025-11-02: Captured device-side UNPAIR_ALL regression tests via new response harness and verified via full Unity sweep.
 
 ## Priority Note (user request)
 - HIGH PRIORITY: The user has requested that we keep attempting to run "all unit tests" (host CTest + the three on-device Unity suites) until they run cleanly without issues. This is marked as an operational high-priority item and should be retried (build, flash, capture logs) until all suites report zero failures. Last noted: 2025-10-30.
@@ -57,6 +63,7 @@
 - 2025-11-01: After clearing prior artifacts, re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300`; sweep succeeded (host 18/18, device suites 37/0/0 + 45/0/0 + 26/0/0). Fresh artifacts regenerated at `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, and `tmp/runner_test_app*_stdout.log`; per-suite Unity logs captured under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
 - 2025-11-01: Updated `tools/run_all_tests.py` to clear canonical tmp JSON/log artifacts and per-suite Unity logs before orchestrating new runs, so each invocation begins from a clean slate.
 - 2025-11-01: Verified cleanup logic by rerunning `tools/run_all_tests.py`; console shows artifact deletions up front, and the sweep again finished cleanly (host 18/18, Unity 37/45/26). New summaries/logs regenerated under `tmp/` and each test_app*/build.
+- 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
 
 ## Assumptions & Constraints
 - No sdkconfig, partition, or target changes without explicit approval per repo policy.

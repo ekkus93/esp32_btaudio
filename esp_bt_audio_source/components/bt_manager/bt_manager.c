@@ -134,6 +134,13 @@ __attribute__((weak)) void bt_manager_test_record_unpair(const char* mac) {
 }
 
 __attribute__((weak)) int bt_manager_test_should_force_unpair_failure(void) { return 0; }
+
+__attribute__((weak)) int bt_manager_test_should_force_unpair_all_failure(void) { return 0; }
+
+__attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
+    (void)cleared_before;
+    (void)removed;
+}
 #endif
 
 // Initialize Bluetooth Manager
@@ -736,16 +743,77 @@ exit:
     if (!bt_ctx.initialized) {
         return ESP_ERR_INVALID_STATE;
     }
-    
-    // Clear paired devices list
-    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
-    
-#ifdef ESP_PLATFORM
-    // No direct API for this in ESP-IDF, would need to iterate through paired devices
-    ESP_LOGI(TAG, "Removed all paired devices");
+
+    esp_err_t controller_status = ESP_OK;
+    int removed_count = 0;
+
+#ifdef UNIT_TEST
+    if (bt_manager_test_should_force_unpair_all_failure()) {
+        return ESP_FAIL;
+    }
 #endif
-    
-    return ESP_OK;
+
+#ifdef ESP_PLATFORM
+    int bonded_devices = esp_bt_gap_get_bond_device_num();
+    if (bonded_devices < 0) {
+        ESP_LOGW(TAG, "Unable to query bonded device count");
+        controller_status = ESP_FAIL;
+    } else if (bonded_devices > 0) {
+        int list_capacity = bonded_devices;
+        esp_bd_addr_t *bond_list = (esp_bd_addr_t *)calloc((size_t)list_capacity, sizeof(esp_bd_addr_t));
+        if (!bond_list) {
+            ESP_LOGE(TAG, "Insufficient memory to retrieve bonded device list");
+            return ESP_ERR_NO_MEM;
+        }
+
+        esp_err_t list_err = esp_bt_gap_get_bond_device_list(&list_capacity, bond_list);
+        if (list_err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to fetch bonded devices: %s", esp_err_to_name(list_err));
+            controller_status = list_err;
+        } else {
+            for (int i = 0; i < list_capacity; ++i) {
+                esp_err_t err = esp_bt_gap_remove_bond_device(bond_list[i]);
+                if (err == ESP_OK) {
+                    removed_count++;
+                } else {
+                    if (controller_status == ESP_OK) {
+                        controller_status = err;
+                    }
+                    char mac[18] = {0};
+                    bt_pairing_format_mac(bond_list[i], mac, sizeof(mac));
+                    ESP_LOGE(TAG, "Failed to remove bond for %s: %s", mac, esp_err_to_name(err));
+                }
+            }
+        }
+
+        free(bond_list);
+    }
+
+    if (controller_status == ESP_OK) {
+        ESP_LOGI(TAG, "Removed %d bonded device(s) from controller", removed_count);
+    }
+#endif
+
+    int cleared_before = 0;
+    (void)nvs_storage_get_paired_count(&cleared_before);
+
+    esp_err_t storage_err = nvs_storage_clear_paired_devices();
+    if (storage_err != ESP_OK && storage_err != ESP_ERR_NOT_FOUND) {
+        if (controller_status == ESP_OK) {
+            controller_status = storage_err;
+        }
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG, "Failed to clear paired devices from NVS: %s", esp_err_to_name(storage_err));
+#endif
+    }
+
+    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+
+#ifdef UNIT_TEST
+    bt_manager_test_record_unpair_all_call(cleared_before, removed_count);
+#endif
+
+    return controller_status;
 }
 
 // Set PIN code for pairing

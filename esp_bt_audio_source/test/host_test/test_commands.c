@@ -15,6 +15,9 @@ extern int mock_gap_get_last_confirm(void);
 extern void bt_manager_test_reset_forces(void);
 extern const char* bt_manager_test_get_last_unpair_mac(void);
 extern void bt_manager_test_set_force_unpair_failure(int v);
+extern void bt_manager_test_set_force_unpair_all_failure(int v);
+extern int bt_manager_test_get_unpair_all_removed(void);
+extern int bt_manager_test_get_unpair_all_cleared_before(void);
 
 // Test fixture
 void setUp(void) {
@@ -28,6 +31,7 @@ void setUp(void) {
     };
     bt_manager_init(&cfg);
     bt_manager_test_reset_forces();
+    bt_manager_test_set_force_unpair_all_failure(0);
     nvs_storage_clear_paired_devices();
 }
 
@@ -188,6 +192,7 @@ int main(void) {
     extern void test_unpair_command_failure(void);
     extern void test_unpair_command_not_found(void);
     extern void test_unpair_all_command(void);
+    extern void test_unpair_all_command_failure(void);
     extern void test_status_command(void);
     extern void test_reset_command(void);
 
@@ -197,6 +202,7 @@ int main(void) {
     RUN_TEST(test_unpair_command_failure);
     RUN_TEST(test_unpair_command_not_found);
     RUN_TEST(test_unpair_all_command);
+    RUN_TEST(test_unpair_all_command_failure);
     
     // New tests for PAIRED and SAMPLE_RATE
     extern void test_paired_command(void);
@@ -329,6 +335,7 @@ void test_unpair_command_not_found(void) {
 
 // Test UNPAIR_ALL clears stored paired devices
 void test_unpair_all_command(void) {
+    nvs_storage_clear_paired_devices();
     // Seed mock NVS with paired devices
     TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("aa:bb:cc:11:22:33", "Speaker"));
     TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("11:22:33:44:55:66", "Phone"));
@@ -343,11 +350,37 @@ void test_unpair_all_command(void) {
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "UNPAIR_ALL") != NULL);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|UNPAIR_ALL|SUCCESS|2"));
+
+    TEST_ASSERT_EQUAL(2, bt_manager_test_get_unpair_all_cleared_before());
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_unpair_all_removed());
 
     int after = 0;
     TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&after));
     TEST_ASSERT_EQUAL(0, after);
+}
+
+void test_unpair_all_command_failure(void) {
+    nvs_storage_clear_paired_devices();
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:01", "One"));
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:02", "Two"));
+
+    bt_manager_test_set_force_unpair_all_failure(1);
+
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR_ALL", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|UNPAIR_ALL|FAILED"));
+
+    int remaining = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&remaining));
+    TEST_ASSERT_EQUAL(2, remaining);
+
+    bt_manager_test_set_force_unpair_all_failure(0);
 }
 
 // Test listing paired devices

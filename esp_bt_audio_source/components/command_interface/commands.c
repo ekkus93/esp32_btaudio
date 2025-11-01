@@ -679,12 +679,25 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     }
     break;
 
-    case CMD_TYPE_UNPAIR_ALL:
+    case CMD_TYPE_UNPAIR_ALL: {
+    int cleared = 0;
+    if (nvs_storage_get_paired_count(&cleared) != ESP_OK) {
+        cleared = 0;
+    }
+
+    esp_err_t err = bt_unpair_all();
+    if (err == ESP_OK) {
+        char count_buf[16];
+        snprintf(count_buf, sizeof(count_buf), "%d", cleared);
+        cmd_send_response("OK", "UNPAIR_ALL", "SUCCESS", count_buf);
+    } else {
 #ifdef ESP_PLATFORM
-    if (nvs_storage_clear_paired_devices() == ESP_OK) cmd_send_response("OK", "UNPAIR_ALL", "CLEARED", NULL); else cmd_send_response("ERR", "UNPAIR_ALL", "FAILED", NULL);
+        cmd_send_response("ERR", "UNPAIR_ALL", esp_err_to_name(err), NULL);
 #else
-    nvs_storage_clear_paired_devices(); cmd_send_response("OK", "UNPAIR_ALL", "MOCK_CLEARED", NULL);
+        cmd_send_response("ERR", "UNPAIR_ALL", "FAILED", NULL);
 #endif
+    }
+    }
     break;
 
     case CMD_TYPE_HELP:
