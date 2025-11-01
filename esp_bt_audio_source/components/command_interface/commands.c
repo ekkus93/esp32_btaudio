@@ -39,6 +39,8 @@ int bt_manager_stop_audio(void);
 int bt_get_connection_state(void);
 /* start/scan wrapper used by tests/compatibility layer */
 int bt_manager_start_scan(void);
+/* pairing start wrapper used by tests/compatibility layer */
+int bt_manager_start_pair(const char* mac);
 #endif
 
 #if defined(ESP_PLATFORM)
@@ -598,7 +600,13 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     bool looks_like_mac = (strchr(first, ':') != NULL);
     if (looks_like_mac) {
 #ifdef ESP_PLATFORM
-        if (bt_manager_pair(first) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED", first);
+        if (bt_manager_start_pair(first) == ESP_OK) cmd_send_response("OK", "PAIR", "INITIATED", first);
+        else cmd_send_response("ERR", "PAIR", "FAILED", first);
+#elif defined(UNIT_TEST)
+        /* In unit tests call into the manager wrapper so tests can observe
+         * the interaction via the weak hooks/mocks. The wrapper returns
+         * ESP_OK (0) on success for compatibility with the device path. */
+        if (bt_manager_start_pair(first) == ESP_OK) cmd_send_response("OK", "PAIR", "MOCK_INITIATED", first);
         else cmd_send_response("ERR", "PAIR", "FAILED", first);
 #else
         cmd_send_response("OK", "PAIR", "MOCK_INITIATED", first);

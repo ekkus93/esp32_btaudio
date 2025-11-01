@@ -160,6 +160,12 @@ bt_err_t bt_pair(const char* mac);
 bt_err_t bt_unpair(const char* mac);
 
 /**
+ * Wrapper used by the command interface and unit tests to start a pairing
+ * operation in a test-observable way. Returns ESP_OK on success.
+ */
+bt_err_t bt_manager_start_pair(const char* mac);
+
+/**
  * Unpair all devices
  *
  * @return ESP_OK (bt_err_t) if successful

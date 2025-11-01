@@ -270,7 +270,20 @@ static void filter_inquiry_scan_result(esp_bt_gap_cb_param_t *param)
         get_name_from_eir(eir, s_peer_bdname, NULL);
         
         // Check if device name matches remote_device_name or if we should connect to any audio rendering device
-        if (strcmp((char *)s_peer_bdname, remote_device_name) == 0 || strlen(remote_device_name) == 0) {
+        // Also accept the device if there is a pending manual pairing request for this MAC so a
+        // `PAIR <MAC>` command isn't ignored due to the configured target name.
+        bool accept_by_name = (strcmp((char *)s_peer_bdname, remote_device_name) == 0) || (strlen(remote_device_name) == 0);
+        bool accept_by_pending_pair = false;
+        {
+            bt_pairing_request_info_t pending = {0};
+            if (bt_pairing_get_pending_request(&pending)) {
+                if (pending.mac[0] != '\0' && strcmp(pending.mac, bda_str) == 0) {
+                    accept_by_pending_pair = true;
+                }
+            }
+        }
+
+        if (accept_by_name || accept_by_pending_pair) {
             ESP_LOGI(BT_AV_TAG, "Found suitable audio device: %s, name: %s", bda_str, s_peer_bdname);
             s_a2d_state = APP_AV_STATE_DISCOVERED;
             memcpy(s_peer_bda, param->disc_res.bda, ESP_BD_ADDR_LEN);

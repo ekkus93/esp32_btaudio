@@ -21,6 +21,7 @@
 	- [x] Drop unused `last_read_request`/`last_frame_bytes` bookkeeping in `audio_processor.c` so `test_app_audio` builds without warning spam (2025-11-01).
 - 2025-11-01: `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep (host 19/19, Unity 37/45/26; 141 total) after warning cleanup.
 - 2025-11-01: Added README trackers for command implementation gaps (UNPAIR/UNPAIR_ALL controller cleanup, PAIR authentication path, VERSION string source).
+- TODO: Track integration of the real I2S capture path into `main/bt_streaming_manager.c` (replace sine-wave stub). Keep README “Open Work” item in sync until implementation lands.
 - TODO (PAIR bonding overhaul)
 	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.
 	- [x] Detect already-paired devices via GAP/NVS and short-circuit accordingly.
@@ -148,6 +149,9 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 - 2025-10-29: Fixed false-positive unit tests for bt_manager START/STOP audio streaming commands by implementing proper state validation and ESP-IDF API calls. Updated `bt_start_audio()` to check initialization/connection state and call `esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START)`, updated `bt_stop_audio()` to use `ESP_A2D_MEDIA_CTRL_SUSPEND` instead of deprecated `STOP`, and enhanced unit tests to verify error conditions and proper behavior. All 17 host tests now pass (100% success rate).
 - 2025-10-29: Fixed missing function declaration for audio_processor_beep in host tests: Corrected include path in mock header from "../../include/audio_processor.h" to "../../../../main/include/audio_processor.h", added mock implementations for audio_processor_get_status() and fixed enum value from AUDIO_SAMPLE_RATE_44100 to AUDIO_SAMPLE_RATE_44K. All 24 host tests pass (100% success rate).
 - 2025-10-30: Fixed failing host test `test_pairing_adapter_runner` by updating `normalize_event()` function in `test_app/main/test_pairing_commands.c` to remove everything from ",SEQ=" onwards, properly stripping both sequence numbers and timestamps from event strings for test assertions. All 17 host tests now pass (100% success rate).
+- 2025-11-01: Updated `README.md` Project Status bullets to highlight boot-time audio auto-start, the I2S reader → worker → ring-buffer flow, and underrun zero-fill safeguards in the A2DP callback.
+
+- 2025-11-01: Implemented robust test-hook invocation in `components/bt_manager/bt_manager.c` — `bt_manager_start_scan()` now calls the weak test hook on success in UNIT_TEST builds so host tests reliably observe scan starts. Re-ran host-only tests and confirmed host 19/19 passed (see `tmp/run_all_tests_summary.json`).
 
 - 2025-10-31 13:02 PDT: `tools/run_all_tests.py --timeout 300 --port /dev/ttyUSB0` sweep completed cleanly (host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0). Fresh logs under each suite’s `build/one_run_unity.log`; summary JSON at `tmp/run_all_tests_summary.json`.
 - 2025-10-31: All unit suites passed locally — host 18/0; test_app 37/0; test_app2 45/0; test_app_audio 26/0. Logs: esp_bt_audio_source/*/build/one_run_unity.log and esp_bt_audio_source/test/host_test/build_host_tests/ctest_full_output.log
@@ -155,3 +159,18 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 2025-10-31: Standalone `test_app2` Unity run took ~25.6 s total (flash 8.3 s, tests ~17.3 s); orchestrated sweep recorded 28.1 s total with identical flash duration and ~19.8 s of test runtime.
 2025-10-31: Standalone `test_app_audio` Unity run took ~14.7 s total (flash 3.1 s, tests ~11.6 s); orchestrated sweep recorded 16.7 s total with the same flash duration and ~13.6 s spent in tests.
 2025-10-31: Updated `esp_bt_audio_source/README.md` with combined run_all_tests.py summary (host 18/18, device suites 37/45/26 pass) and captured per-suite timing breakdown from `tmp/run_all_tests_summary.json`.
+
+### Test run reporting requirement (user directive)
+
+- When the user asks to "run all of the unit tests" (host CTest + the three on-device Unity suites), always provide an explicit, numeric summary for both host and Unity tests. Do NOT reply with only host results or vague phrases such as "they all passed." Use the authoritative artifacts when available.
+
+	Required summary elements (compute these numbers from artifact files when possible):
+	- Host tests: <passed>/<failed> (total)
+	- Unity suites (per-suite):
+		- `test_app`: <passed>/<failed> (total)
+		- `test_app2`: <passed>/<failed> (total)
+		- `test_app_audio`: <passed>/<failed> (total)
+	- Aggregated totals: tests run, passed, failed across host + all Unity suites
+	- Artifact paths used as sources-of-truth: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and each suite's `*/build/one_run_unity.log`. If these artifacts are missing, explicitly report which files are missing and provide partial counts from whatever logs are available.
+
+- Reminder to the agent: the user has documented prior inaccuracies and low trust regarding unit-test summaries. Treat this as a hard requirement: always compute and return numeric counts sourced from logs/JSON and include the artifact file paths used to derive the numbers. Record this in memory so future runs follow the rule.

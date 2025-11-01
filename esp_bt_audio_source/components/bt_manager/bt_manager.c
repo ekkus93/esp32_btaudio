@@ -180,6 +180,9 @@ __attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_be
 
 // Unit-test hook: record when a scan is started. Provided by host mocks.
 __attribute__((weak)) void bt_manager_test_record_scan_start(void) { }
+#
+// Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
+__attribute__((weak)) void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
 #endif
 
 #ifdef UNIT_TEST
@@ -1181,6 +1184,49 @@ int bt_manager_start_scan(void) {
     return ret;
 }
 
+// Wrapper so command layer and host tests can call a consistent bt_manager_
+// prefixed API for starting a pairing operation. Returns 0 on success, -1 on
+// failure. In unit-test builds this will also invoke a weak test hook so the
+// host-side test harness can deterministically observe that pairing was
+// initiated.
+int bt_manager_start_pair(const char* mac) {
+#ifdef UNIT_TEST
+    extern int bt_manager_forced_pair_failure(void);
+    if (bt_manager_forced_pair_failure()) return -1;
+#endif
+    /* Call the underlying bt_pair() so we can capture the esp_err_t and
+     * emit a diagnostic when pairing fails. bt_manager_pair() hides the
+     * exact error code which makes on-target triage harder; using the
+     * lower-level API preserves behaviour while improving visibility. */
+    bt_err_t perr = bt_pair(mac);
+    int ret = (perr == ESP_OK) ? 0 : -1;
+
+#if defined(ESP_PLATFORM)
+    if (ret != 0) {
+        ESP_LOGE(TAG, "bt_manager_start_pair: failed to start pairing for %s: %s (%d)",
+                 mac ? mac : "<null>", esp_err_to_name(perr), (int)perr);
+    }
+#else
+    if (ret != 0) {
+        printf("DIAG: bt_manager_start_pair failed for %s: err=%d\n", mac ? mac : "<null>", (int)perr);
+        fflush(stdout);
+    }
+#endif
+
+#if defined(UNIT_TEST)
+    if (ret == 0) {
+        extern void bt_manager_test_record_pair_start(const char* mac);
+        /* Call the weak test hook directly; production builds provide a
+         * no-op weak definition and host tests provide an overriding
+         * implementation. Avoid taking the function pointer address to
+         * prevent -Werror=address warnings on some toolchains. */
+        bt_manager_test_record_pair_start(mac);
+    }
+#endif
+
+    return ret;
+}
+
 int bt_manager_stop_audio(void) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_stop_failure(void);
@@ -1513,6 +1559,11 @@ void bt_manager_debug_print(void) {
     printf("DEBUG: bt_ctx.initialized=%d, connected=%d, audio_playing=%d\n",
         bt_ctx.initialized, bt_ctx.connected, bt_ctx.audio_playing);
 }
+/* Provide a weak default for the optional forced-pair failure hook so
+ * unit-test builds that don't need this behavior don't have to provide
+ * their own definition. Tests which want to simulate a forced failure
+ * may provide a strong symbol overriding this. */
+__attribute__((weak)) int bt_manager_forced_pair_failure(void) { return 0; }
 #endif
 
 #ifdef ESP_PLATFORM
