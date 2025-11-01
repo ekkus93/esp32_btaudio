@@ -125,6 +125,61 @@ static char s_cmd_mock_passkey[16] = {0};
 // Sequence counter for pairing event ordering
 static uint32_t s_event_sequence = 0;
 
+typedef struct {
+    const char* command;
+    const char* params;
+    const char* description;
+} cmd_help_entry_t;
+
+static const cmd_help_entry_t s_cmd_help_entries[] = {
+    { "HELP", NULL, "Show this list" },
+    { "STATUS", NULL, "Report system state" },
+    { "VERSION", NULL, "Show firmware version" },
+    { "SCAN", NULL, "Start Bluetooth device scan" },
+    { "CONNECT", "<MAC>", "Connect by MAC address" },
+    { "CONNECT_NAME", "<NAME...>", "Connect by device name" },
+    { "DISCONNECT", NULL, "Disconnect the active link" },
+    { "PAIR", "<MAC|NAME...>", "Initiate pairing" },
+    { "CONFIRM_PIN", "[MAC] <ACCEPT|REJECT>", "Respond to SSP confirm" },
+    { "ENTER_PIN", "[MAC] <PIN>", "Submit legacy PIN code" },
+    { "SET_DEFAULT_PIN", "<PIN>", "Persist default PIN for pairing" },
+    { "PAIRED", NULL, "List stored paired devices" },
+    { "UNPAIR", "<MAC>", "Remove a paired device" },
+    { "UNPAIR_ALL", NULL, "Erase all paired devices" },
+    { "SET_NAME", "<NAME>", "Persist the local Bluetooth name" },
+    { "START", NULL, "Start A2DP audio streaming" },
+    { "STOP", NULL, "Stop A2DP audio streaming" },
+    { "VOLUME", "<0-100>", "Set playback volume" },
+    { "MUTE", NULL, "Mute audio output" },
+    { "UNMUTE", NULL, "Unmute audio output" },
+    { "SAMPLE_RATE", "<Hz>", "Apply I2S sample rate" },
+    { "I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins" },
+    { "BEEP", NULL, "Emit short notification tone" },
+    { "RESET", NULL, "Reboot the device" },
+    { "DEBUG", "<SUBCMD>", "Developer diagnostics" },
+};
+
+static void cmd_help_emit_all(void)
+{
+    const size_t count = sizeof(s_cmd_help_entries) / sizeof(s_cmd_help_entries[0]);
+    char data[128];
+    snprintf(data, sizeof(data), "%u commands available", (unsigned)count);
+    cmd_send_response("INFO", "HELP", "SUMMARY", data);
+    cmd_send_response("INFO", "HELP", "FORMAT", "COMMAND [ARGS] - DESCRIPTION");
+    for (size_t i = 0; i < count; ++i) {
+        const cmd_help_entry_t* entry = &s_cmd_help_entries[i];
+        const char* params = entry->params ? entry->params : "";
+        char line[256];
+        if (params[0] != '\0') {
+            snprintf(line, sizeof(line), "%s %s - %s", entry->command, params, entry->description);
+        } else {
+            snprintf(line, sizeof(line), "%s - %s", entry->command, entry->description);
+        }
+        cmd_send_response("INFO", "HELP", "ENTRY", line);
+    }
+    cmd_send_response("OK", "HELP", "DONE", NULL);
+}
+
 static uint64_t cmd_get_timestamp_ms(void)
 {
 #ifdef ESP_PLATFORM
@@ -619,9 +674,9 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     break;
 
-    case CMD_TYPE_HELP: {
-    cmd_send_response("INFO", "HELP", "ALL", "See detailed help in device docs");
-    } break;
+    case CMD_TYPE_HELP:
+    cmd_help_emit_all();
+    break;
 
     default:
     cmd_send_response("INFO", "COMMAND", "RECEIVED", "Not implemented yet");

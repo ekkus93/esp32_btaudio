@@ -38,6 +38,46 @@ TMP_DIR = ROOT / "tmp"
 TMP_DIR.mkdir(exist_ok=True)
 
 
+def _unlink_artifact(path: Path) -> bool:
+    try:
+        path.unlink()
+        print(f"Removed artifact: {path}")
+        return True
+    except FileNotFoundError:
+        return False
+    except IsADirectoryError:
+        return False
+    except Exception as exc:
+        print(f"WARNING: failed to remove {path}: {exc}")
+        return False
+
+
+def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: bool) -> None:
+    """Remove canonical logs/json outputs from prior runs so fresh artifacts are produced."""
+    print("\n== Cleaning previous run artifacts ==")
+
+    # Always clear summary JSON outputs and runner captures in tmp/.
+    for candidate in TMP_DIR.glob("run_all_tests_summary*.json"):
+        _unlink_artifact(candidate)
+    for candidate in TMP_DIR.glob("canonical_unity_summary*.json"):
+        _unlink_artifact(candidate)
+    for candidate in TMP_DIR.glob("runner_*_stdout.log"):
+        _unlink_artifact(candidate)
+
+    if remove_host:
+        for candidate in TMP_DIR.glob("host_ctest_output*.log"):
+            _unlink_artifact(candidate)
+
+    if remove_device:
+        unity_projects = [
+            root / "esp_bt_audio_source" / "test_app",
+            root / "esp_bt_audio_source" / "test_app2",
+            root / "esp_bt_audio_source" / "test_app_audio",
+        ]
+        for proj in unity_projects:
+            _unlink_artifact(proj / "build" / "one_run_unity.log")
+
+
 def run_cmd(cmd, cwd=None, env=None, shell=False, timeout=None):
     print(f"RUN: {' '.join(cmd) if isinstance(cmd, (list,tuple)) else cmd}")
     try:
@@ -287,6 +327,8 @@ def main(argv: list[str] | None = None):
     args = p.parse_args(argv)
 
     report = {"host": None, "devices": {}, "aggregate": None}
+
+    cleanup_previous_artifacts(ROOT, remove_host=not args.no_host, remove_device=not args.no_device)
 
     # record overall orchestration start (use float for higher resolution)
     report["start_epoch"] = time.time()

@@ -94,6 +94,36 @@ void test_command_processing(void) {
     TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
 }
 
+static int count_substring(const char* haystack, const char* needle)
+{
+    int count = 0;
+    const char* pos = haystack;
+    size_t step = strlen(needle);
+    while (pos && (pos = strstr(pos, needle)) != NULL) {
+        ++count;
+        pos += step;
+    }
+    return count;
+}
+
+void test_help_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("HELP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|SUMMARY|25 commands available"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|FORMAT|COMMAND [ARGS] - DESCRIPTION"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|HELP - Show this list"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|CONNECT <MAC> - Connect by MAC address"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HELP|DONE|"));
+
+    int entry_count = count_substring(tx, "INFO|HELP|ENTRY|");
+    TEST_ASSERT_EQUAL(25, entry_count);
+}
+
 // New tests for pairing command handlers
 void test_confirm_pin_command(void) {
     mock_gap_reset();
@@ -134,6 +164,7 @@ int main(void) {
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
+    RUN_TEST(test_help_command);
 
     // Pairing related tests
     RUN_TEST(test_confirm_pin_command);

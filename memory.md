@@ -3,6 +3,7 @@
 - Keep `bt_source_stubs.c` aligned with asynchronous connect semantics from the mock component.
 - Maintain Unity runner output so downstream tooling captures pass/fail summaries.
 - [x] Re-run `test_app` Unity suite
+- Re-run pairing diagnostics now that controller is dual-mode; capture allocator timeline once runtime confirms controller enable succeeds.
 - [x] Re-run `test_app_audio` Unity suite
 - [x] Re-run `test_app2` Unity suite
 
@@ -33,6 +34,17 @@
 - 2025-10-29: Re-ran `test_app2` Unity suite post-BLE-disable → 45/0/0 pass (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
 - 2025-10-29: Pushed commit `Disable BLE to reclaim flash space` to `origin/master`.
  - 2025-10-29: Updated `esp_bt_audio_source/README.md` to reflect the latest regression results, remaining work, and prioritized next steps; prepared and staged `README.md` and this memory log for commit.
+- 2025-10-31: Captured fresh pairing E2E log (`build/pairing_e2e_logs/pairing_e2e_20251031-134336.log`), populated canonical `build/pairing_e2_logs/serial.log`, and generated `serial.symbolized.log` via `tools/symbolize_pairing/symbolize_pairing.py`.
+- 2025-10-31: Symbolized log contains only boot diagnostics and an `Enable controller failed` error before Bluetooth brings up scanning tasks; allocator timeline/`recent-free-history` dumps absent, so pairing analysis remains blocked pending controller init fix.
+- 2025-10-31: Investigation shows `sdkconfig` sets `CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y`; this compile-time choice disallows Classic BT. Attempting `esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)` returns `ESP_ERR_INVALID_ARG`, causing the observed failure.
+- 2025-10-31: Switched main `sdkconfig` to `CONFIG_BTDM_CTRL_MODE_BTDM=y`, mirroring test apps’ controller profile; rebuilt `idf.py build` successfully and re-ran `tools/run_all_tests.py` sweep (host 18/18, Unity suites 37/0/0, 45/0/0, 26/0/0) — all green with dual-mode controller.
+- 2025-10-31: Implemented structured HELP command output (`cmd_help_emit_all`) with per-command summaries and added host test coverage in `test_help_command`.
+- 2025-10-31: Pairing symbolization blocked — `build/pairing_e2_logs/serial.log` missing; need on-device run (`tools/pairing_e2e.sh`) to regenerate before analysis.
+- 2025-11-01: Full `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep successful (host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0); summary at `tmp/run_all_tests_summary.json`.
+- 2025-11-01: Prepping rerun per user request; existing artifacts to delete include `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, `tmp/runner_test_app*_stdout.log`, and each suite's `build/one_run_unity.log` under both `esp_bt_audio_source/...` and legacy top-level test_app*/build.
+- 2025-11-01: After clearing prior artifacts, re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300`; sweep succeeded (host 18/18, device suites 37/0/0 + 45/0/0 + 26/0/0). Fresh artifacts regenerated at `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, and `tmp/runner_test_app*_stdout.log`; per-suite Unity logs captured under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+- 2025-11-01: Updated `tools/run_all_tests.py` to clear canonical tmp JSON/log artifacts and per-suite Unity logs before orchestrating new runs, so each invocation begins from a clean slate.
+- 2025-11-01: Verified cleanup logic by rerunning `tools/run_all_tests.py`; console shows artifact deletions up front, and the sweep again finished cleanly (host 18/18, Unity 37/45/26). New summaries/logs regenerated under `tmp/` and each test_app*/build.
 
 ## Assumptions & Constraints
 - No sdkconfig, partition, or target changes without explicit approval per repo policy.
