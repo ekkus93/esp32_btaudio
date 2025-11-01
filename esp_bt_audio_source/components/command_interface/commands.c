@@ -37,6 +37,8 @@ int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
 int bt_manager_stop_audio(void);
 int bt_get_connection_state(void);
+/* start/scan wrapper used by tests/compatibility layer */
+int bt_manager_start_scan(void);
 #endif
 
 #if defined(ESP_PLATFORM)
@@ -339,6 +341,14 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #ifdef ESP_PLATFORM
     if (bt_manager_start_scan() == ESP_OK)
         cmd_send_response("OK", "SCAN", "STARTED", NULL);
+    else
+        cmd_send_response("ERR", "SCAN", "FAILED", NULL);
+#elif defined(UNIT_TEST)
+    /* In unit tests call into the manager so tests can observe the
+     * interaction via test hooks/mocks. bt_manager_start_scan() returns
+     * an esp_err_t-like value (ESP_OK==0) in our host-mode build. */
+    if (bt_manager_start_scan() == ESP_OK)
+        cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
     else
         cmd_send_response("ERR", "SCAN", "FAILED", NULL);
 #else

@@ -10,6 +10,7 @@ static int g_force_unpair_failure = 0;
 static int g_force_unpair_all_failure = 0;
 static int g_unpair_all_removed = 0;
 static int g_unpair_all_cleared_before = 0;
+static int g_scan_start_count = 0;
 
 int bt_manager_forced_disconnect_failure(void) {
     return g_force_disconnect_failure;
@@ -47,6 +48,7 @@ void bt_manager_test_reset_forces(void) {
     g_last_unpair_mac[0] = '\0';
     g_unpair_all_removed = 0;
     g_unpair_all_cleared_before = 0;
+    g_scan_start_count = 0;
 }
 
 void bt_manager_test_record_unpair(const char* mac) {
@@ -65,6 +67,15 @@ const char* bt_manager_test_get_last_unpair_mac(void) {
 void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
     g_unpair_all_cleared_before = cleared_before;
     g_unpair_all_removed = removed;
+}
+
+// Record that a scan was started (called from bt_manager in unit tests)
+void bt_manager_test_record_scan_start(void) {
+    g_scan_start_count++;
+}
+
+int bt_manager_test_get_scan_start_count(void) {
+    return g_scan_start_count;
 }
 
 int bt_manager_test_get_unpair_all_removed(void) {

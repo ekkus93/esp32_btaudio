@@ -37,6 +37,7 @@
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "nvs_storage.h"
+#include "bt_manager.h"
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
@@ -973,8 +974,19 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
     
-    // Initialize and start Bluetooth
-    bt_init();
+    // Initialize and start Bluetooth via bt_manager so the command interface
+    // and other components using the manager APIs are ready for SCAN/PAIR.
+    bt_manager_init_t bt_cfg = {
+        .device_name = LOCAL_DEVICE_NAME,
+        .connected_cb = NULL,
+        .disconnected_cb = NULL,
+    };
+
+    if (bt_manager_init(&bt_cfg) != ESP_OK) {
+        ESP_LOGE(BT_AV_TAG, "bt_manager_init failed");
+    } else {
+        ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized");
+    }
 
     // Initialize command interface for serial commands and events
     // This will create the UART driver and prepare the command parser.

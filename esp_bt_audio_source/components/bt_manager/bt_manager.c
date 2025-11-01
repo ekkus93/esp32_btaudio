@@ -177,6 +177,9 @@ __attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_be
     (void)cleared_before;
     (void)removed;
 }
+
+// Unit-test hook: record when a scan is started. Provided by host mocks.
+__attribute__((weak)) void bt_manager_test_record_scan_start(void) { }
 #endif
 
 #ifdef UNIT_TEST
@@ -401,6 +404,19 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 #endif
     
     bt_ctx.scanning = true;
+    /* Unit-test hook: notify test shim that a scan started so host tests can
+     * assert the command layer invoked the manager. The test shim provides
+     * bt_manager_test_record_scan_start() in the mocks; declare as weak
+     * and call it here so only unit-test builds attempt the symbol. */
+#ifdef UNIT_TEST
+    /* The weak symbol is declared at file scope (above); call it here so
+     * host-mode tests can observe that a scan was initiated. Using an
+     * extern declaration avoids redeclaring the weak attribute inside the
+     * function (which some toolchains reject). */
+    extern void bt_manager_test_record_scan_start(void);
+    bt_manager_test_record_scan_start();
+#endif
+
     return ESP_OK;
 }
 
@@ -427,6 +443,7 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     bt_ctx.scanning = false;
     return ESP_OK;
 }
+    /* (scan test hook moved into bt_start_scan()) */
 
 // Connect to a device
  bt_err_t bt_connect(const char* mac) {
@@ -1128,6 +1145,40 @@ int bt_manager_start_audio(void) {
     if (bt_manager_forced_start_failure()) return -1;
 #endif
     return (bt_start_audio() == ESP_OK) ? 0 : -1;
+}
+
+// Wrapper so command layer and host tests can call a consistent bt_manager_
+// prefixed API for starting scans. Returns 0 on success, -1 on failure.
+int bt_manager_start_scan(void) {
+#ifdef UNIT_TEST
+    /* Allow tests to force a failure path if they need to exercise error
+     * handling. Tests may provide a weak symbol to indicate a forced
+     * failure; absent that symbol the normal path is taken. */
+    extern int bt_manager_forced_start_failure(void);
+    if (bt_manager_forced_start_failure()) return -1;
+#endif
+    int ret = (bt_start_scan() == ESP_OK) ? 0 : -1;
+
+#if defined(UNIT_TEST)
+    /* In unit-test/host builds, ensure the test hook is invoked when a
+     * scan is started. Some host build configs may not execute the
+     * internal bt_start_scan() hook due to differing compilation flags;
+     * calling the test hook here guarantees the host-mode mock observes
+     * the scan-start regardless. The hook is weakly linked in the test
+     * harness (`mocks/bt_manager_test_hooks.c`) so this call is a no-op
+     * in production builds. */
+    if (ret == 0) {
+        extern void bt_manager_test_record_scan_start(void);
+        /* Call the weak test hook unconditionally — production builds
+         * provide a no-op weak definition at file scope, and host tests
+         * provide an overriding implementation. Checking the function
+         * pointer value triggers -Werror=address on newer GCCs, so
+         * avoid that pattern and call directly. */
+        bt_manager_test_record_scan_start();
+    }
+#endif
+
+    return ret;
 }
 
 int bt_manager_stop_audio(void) {

@@ -18,6 +18,7 @@ extern int mock_gap_get_last_pin_len(void);
 extern const char* mock_gap_get_last_pin(void);
 extern int mock_gap_get_last_confirm(void);
 extern void bt_manager_test_reset_forces(void);
+extern int bt_manager_test_get_scan_start_count(void);
 extern const char* bt_manager_test_get_last_unpair_mac(void);
 extern void bt_manager_test_set_force_unpair_failure(int v);
 extern void bt_manager_test_set_force_unpair_all_failure(int v);
@@ -156,6 +157,30 @@ void test_version_command(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|TEST-HOST-VERSION|"));
 }
 
+// Verify issuing SCAN triggers the manager start-scan path (unit-test builds)
+void test_scan_invokes_manager(void) {
+    mock_uart_reset_tx();
+
+    // Ensure forces/hooks reset
+    bt_manager_test_reset_forces();
+
+    // Initial count should be zero
+    int before = bt_manager_test_get_scan_start_count();
+
+    // Inject command into mock UART and process
+    mock_uart_inject_rx_data("SCAN\r\n", 6);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+
+    // Manager test hook should have been called at least once
+    int after = bt_manager_test_get_scan_start_count();
+    TEST_ASSERT_TRUE(after > before);
+
+    // Also validate we emitted a response mentioning SCAN
+    const char* tx_data = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx_data);
+    TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
+}
+
 // New tests for pairing command handlers
 void test_confirm_pin_command(void) {
     mock_gap_reset();
@@ -198,6 +223,7 @@ int main(void) {
     RUN_TEST(test_command_processing);
     RUN_TEST(test_help_command);
     RUN_TEST(test_version_command);
+    RUN_TEST(test_scan_invokes_manager);
 
     // Pairing related tests
     RUN_TEST(test_confirm_pin_command);
