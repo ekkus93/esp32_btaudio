@@ -12,4 +12,14 @@ menu "A2DP Example Configuration"
         default "ESP_SPEAKER"
         help
             Use this option to set target device name to connect.
+
+    config AUDIO_USE_SYNTH_SOURCE
+        bool "Use synthetic audio source (no I2S)"
+        default n
+        help
+            When enabled the audio processor will generate a synthetic
+            audio waveform (sine) for development and testing instead of
+            attempting to read from an I2S peripheral. This is useful
+            when no physical I2S source is attached. Note: enabling this
+            disables the normal I2S read path at build-time.
 endmenu

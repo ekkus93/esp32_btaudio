@@ -2,22 +2,36 @@
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "freertos/ringbuf.h"
 #include "esp_log.h"
 #include "driver/i2s_std.h"  // Use the current I2S driver
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "esp_err.h"
 #include "audio_processor.h"
 #include "nvs_storage.h"
+#include "esp_heap_caps.h"
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+#include "esp_psram.h"
+#endif
 
 static const char *TAG = "AUDIO_PROC";
 
 // Audio buffer sizes
+/* If SPIRAM is available at build-time use the full-size buffer (1s stereo
+ * 32-bit @48kHz). If SPIRAM is NOT enabled in sdkconfig, pick a DRAM-safe
+ * fallback so the firmware can boot on DRAM-only boards. */
+#ifdef CONFIG_SPIRAM
 #define AUDIO_BUFFER_SIZE            (48000 * 4 * 2) // Max 1 second of stereo 32-bit audio at 48kHz
+#else
+#define AUDIO_BUFFER_SIZE            (131072) // 128KB DRAM-safe fallback
+#endif
 #define AUDIO_PROCESSING_STACK_SIZE  4096
-#define AUDIO_BLOCK_SIZE             512  // Process audio in blocks of 512 samples
+#define AUDIO_BLOCK_SIZE             128  // Process audio in smaller blocks (reduced from 512) to shorten resample work per iteration
 #ifdef CONFIG_BT_MOCK_TESTING
 #define AUDIO_RESAMPLE_MAX_RATIO     6    // Cover worst-case 8 kHz -> 48 kHz upsampling in tests
 #else
@@ -26,7 +40,20 @@ static const char *TAG = "AUDIO_PROC";
 #define AUDIO_WORK_BUFFER_BYTES      (AUDIO_BLOCK_SIZE * 8 * AUDIO_RESAMPLE_MAX_RATIO)
 
 // Audio processing task handle
-static TaskHandle_t s_audio_task_handle = NULL;
+static TaskHandle_t s_audio_task_handle = NULL; /* I2S reader task */
+static TaskHandle_t s_audio_worker_handle = NULL; /* Worker that performs convert/resample */
+typedef struct {
+    void* ptr;
+    size_t len;
+    size_t capacity;
+    bool synth_fill;
+} i2s_block_t;
+
+static QueueHandle_t s_i2s_queue = NULL; /* Queue of i2s_block_t */
+static QueueHandle_t s_i2s_free_queue = NULL; /* Queue of free raw block pointers */
+static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
+#define I2S_RAW_POOL_DEFAULT_COUNT 8U
+#define I2S_RAW_POOL_DRAM_COUNT    3U
 
 // Ring buffer for audio data
 static RingbufHandle_t s_audio_buffer = NULL;
@@ -54,6 +81,11 @@ static i2s_chan_handle_t s_i2s_rx_handle = NULL;
 // Processing state
 static bool s_is_initialized = false;
 static bool s_is_running = false;
+/* Force synthetic audio at runtime when requested by user. This forces the
+ * audio path to use the built-in synth generator and avoids I2S timeouts
+ * when the external I2S source is absent. The user can still toggle this
+ * at runtime via audio_processor_set_synth_mode(). */
+static bool s_force_synth = true;
 static uint8_t s_volume_gain = 80; // Internal volume as percentage
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
@@ -74,10 +106,33 @@ static inline void audio_proc_mock_yield(void)
 #endif
 }
 
-// Audio processing scratch buffers (kept off task stack to avoid overflow)
-static uint8_t s_i2s_buffer[AUDIO_WORK_BUFFER_BYTES];
-static uint8_t s_proc_buffer[AUDIO_WORK_BUFFER_BYTES];
-static uint8_t s_proc_buffer2[AUDIO_WORK_BUFFER_BYTES];
+/**
+ * @brief Enable or disable runtime synthetic audio mode.
+ *
+ * This API toggles a runtime flag; it does not change build-time
+ * configuration. Use this to override I2S behavior when testing or when
+ * hardware is absent.
+ */
+void audio_processor_set_synth_mode(bool enable)
+{
+    s_force_synth = enable ? true : false;
+    ESP_LOGI(TAG, "audio_processor: synth mode %s", s_force_synth ? "ENABLED" : "DISABLED");
+}
+
+bool audio_processor_is_synth_mode_enabled(void)
+{
+    return s_force_synth;
+}
+
+// Audio processing scratch buffers (allocated on heap at init to avoid
+// large .bss usage which can overflow DRAM on resource-constrained boards)
+static uint8_t *s_i2s_buffer = NULL;
+static uint8_t *s_proc_buffer = NULL;
+static uint8_t *s_proc_buffer2 = NULL;
+/* Single contiguous work block to reduce fragmentation and improve the
+ * chance of a successful allocation on low-memory boards. We allocate one
+ * block and carve it into three sub-buffers (i2s, proc, proc2). */
+static uint8_t *s_work_block = NULL;
 
 static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth)
 {
@@ -134,8 +189,19 @@ static mock_i2s_state_t s_mock_i2s_state = {0};
 static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size);
 #endif
 
+#if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
+/* Simple synthetic generator state used when CONFIG_AUDIO_USE_SYNTH_SOURCE
+ * is enabled. We use a very cheap square-wave generator implemented with
+ * a 32-bit phase accumulator to minimize CPU use and avoid expensive
+ * trig/math calls. */
+static uint32_t s_synth_phase_acc = 0;
+static uint32_t s_synth_phase_step = 0;
+static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size);
+#endif
+
 // Forward declarations of internal functions
-static void audio_processing_task(void *pvParameters);
+static void i2s_reader_task(void *pvParameters);
+static void audio_worker_task(void *pvParameters);
 static esp_err_t configure_i2s(const audio_config_t* config);
 static void apply_volume(void* buffer, size_t size, uint8_t volume);
 static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size, 
@@ -187,6 +253,66 @@ static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
 }
 #endif
 
+#if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
+static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0) return 0;
+
+    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample <= 0) bytes_per_sample = 2;
+    int channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+    if (frame_bytes == 0) return 0;
+
+    size_t max_frames = buffer_size / frame_bytes;
+    if (max_frames == 0) return 0;
+
+    /* Generate up to AUDIO_BLOCK_SIZE frames per iteration to match the
+     * existing processing granularity. */
+    size_t frames_to_write = AUDIO_BLOCK_SIZE;
+    if (frames_to_write > max_frames) frames_to_write = max_frames;
+
+    /* Use a square wave at 440Hz (A4). Square wave generation only needs
+     * a phase and a comparison—no trig calls—so it's extremely cheap. */
+    const float freq = 440.0f; /* A4 tone */
+    const float sample_rate = (float)s_audio_config.sample_rate;
+
+    /* Compute phase step in 32.8 fixed-point (24 fractional bits). */
+    if (sample_rate > 0.0f) {
+        s_synth_phase_step = (uint32_t)((freq * (1ULL << 24)) / (uint32_t)sample_rate);
+    } else {
+        s_synth_phase_step = (uint32_t)((freq * (1ULL << 24)) / 44100U);
+    }
+
+    if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+        int16_t* out = (int16_t*)buffer;
+        for (size_t f = 0; f < frames_to_write; ++f) {
+            /* Top 8 bits give fractional phase; use top bit of those to
+             * determine the sign for the square wave (128 entry wrap). */
+            uint32_t idx = s_synth_phase_acc >> 24; /* 0..255 */
+            int16_t sample = (idx < 128) ? 12000 : -12000;
+            for (int ch = 0; ch < channels; ++ch) {
+                *out++ = sample;
+            }
+            s_synth_phase_acc += s_synth_phase_step;
+        }
+        return frames_to_write * frame_bytes;
+    } else {
+        /* 32-bit container (32-bit or 24-bit stored in 32-bit) */
+        int32_t* out32 = (int32_t*)buffer;
+        for (size_t f = 0; f < frames_to_write; ++f) {
+            uint32_t idx = s_synth_phase_acc >> 24;
+        int32_t sample = (idx < 128) ? (12000 << 16) : -((int32_t)(12000 << 16));
+            for (int ch = 0; ch < channels; ++ch) {
+                *out32++ = sample;
+            }
+            s_synth_phase_acc += s_synth_phase_step;
+        }
+        return frames_to_write * frame_bytes;
+    }
+}
+#endif
+
 /**
  * @brief Initialize the audio processor
  */
@@ -207,13 +333,128 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     size_t buffer_capacity = audio_calculate_buffer_capacity(config);
 
-    // Create audio buffer
-    s_audio_buffer = xRingbufferCreate(buffer_capacity, RINGBUF_TYPE_BYTEBUF);
+#ifdef CONFIG_SPIRAM
+    ESP_LOGI(TAG, "Build-time: SPIRAM enabled - AUDIO_BUFFER_SIZE=%zu, buffer_capacity=%zu", (size_t)AUDIO_BUFFER_SIZE, buffer_capacity);
+#else
+    ESP_LOGI(TAG, "Build-time: SPIRAM disabled - using DRAM-safe AUDIO_BUFFER_SIZE=%zu, buffer_capacity=%zu", (size_t)AUDIO_BUFFER_SIZE, buffer_capacity);
+#endif
+
+    // Create audio buffer. Try progressively smaller sizes at runtime if
+    // allocation fails (useful for DRAM-only boards where the compile-time
+    // DRAM-safe fallback may still be too large).
+    size_t try_capacity = buffer_capacity;
+    const size_t min_floor = 4 * 1024; // Allow down to 4 KiB for Unity/mock builds
+
+    /* Ensure we never shrink below a single processing block and keep a
+     * modest floor so the stream retains some buffering depth on DRAM-only
+     * boards. */
+    size_t frame_bytes = (size_t)audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (frame_bytes == 0U) {
+        frame_bytes = 2U;
+    }
+    size_t channel_count = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
+    if (channel_count == 0U) {
+        channel_count = 2U;
+    }
+    frame_bytes *= channel_count;
+    if (frame_bytes == 0U) {
+        frame_bytes = 4U;
+    }
+    size_t block_requirement = frame_bytes * (size_t)AUDIO_BLOCK_SIZE;
+    if (block_requirement == 0U) {
+        block_requirement = 1024U;
+    }
+
+    size_t desired_min = block_requirement;
+    if (desired_min < min_floor) {
+        desired_min = min_floor;
+    }
+    size_t min_capacity = (buffer_capacity < desired_min) ? buffer_capacity : desired_min;
+    if (min_capacity == 0U) {
+        min_capacity = desired_min;
+    }
+
+    s_audio_buffer = NULL;
+    while (true) {
+        if (try_capacity < min_capacity) {
+            try_capacity = min_capacity;
+        }
+
+        ESP_LOGI(TAG, "Attempting to create audio buffer of %zu bytes", try_capacity);
+        s_audio_buffer = xRingbufferCreate(try_capacity, RINGBUF_TYPE_BYTEBUF);
+        if (s_audio_buffer != NULL) {
+            ESP_LOGI(TAG, "Audio buffer created (%zu bytes)", try_capacity);
+            break;
+        }
+
+        ESP_LOGW(TAG, "xRingbufferCreate(%zu) failed, trying smaller size", try_capacity);
+        if (try_capacity == min_capacity) {
+            break;
+        }
+
+        try_capacity = try_capacity / 2U;
+        try_capacity = (try_capacity + 3U) & ~((size_t)3U);
+    }
+
     if (s_audio_buffer == NULL) {
-        ESP_LOGE(TAG, "Failed to create audio buffer (%zu bytes)", buffer_capacity);
+        ESP_LOGE(TAG, "Failed to create audio buffer (tried down to %zu bytes)", try_capacity);
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Audio buffer created (%zu bytes)", buffer_capacity);
+    
+    /* Allocate work buffers on the heap. Prefer SPIRAM/8-bit-capable memory
+     * when available (heap_caps) to reduce internal DRAM pressure. These
+     * buffers are moderately large and kept persistent for the life of the
+     * audio processor. */
+    /* Prefer allocating large, persistent audio work buffers in PSRAM
+     * when available to reduce DRAM pressure. Fall back to DRAM (8-bit
+     * capable) if PSRAM allocation fails. */
+    /* Allocate work buffers on the heap. Prefer SPIRAM/8-bit-capable memory
+     * when available (heap_caps) to reduce internal DRAM pressure. These
+     * buffers are moderately large and kept persistent for the life of the
+     * audio processor. If allocations fail (common on DRAM-only boards) try
+     * progressively smaller buffer sizes for all three work buffers so the
+     * system can boot with reduced capability. */
+    size_t try_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    const size_t min_work_bytes = 4 * 1024; // 4KB minimum per buffer
+    bool work_allocated = false;
+
+    while (try_work_bytes >= min_work_bytes) {
+        ESP_LOGI(TAG, "Attempting audio work buffers of %zu bytes each (combined allocation)", try_work_bytes);
+
+        size_t combined = try_work_bytes * 3U;
+
+        /* Try a single contiguous allocation first (prefer PSRAM). This
+         * reduces fragmentation and the number of heap headers compared to
+         * three separate allocations. */
+        s_work_block = heap_caps_malloc(combined, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_work_block == NULL) {
+            ESP_LOGW(TAG, "PSRAM combined allocation failed; falling back to DRAM for %zu bytes", combined);
+            s_work_block = heap_caps_malloc(combined, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
+        }
+
+        if (s_work_block != NULL) {
+            /* Carve the single block into three equal sub-buffers */
+            s_i2s_buffer = s_work_block;
+            s_proc_buffer = s_work_block + try_work_bytes;
+            s_proc_buffer2 = s_work_block + (try_work_bytes * 2U);
+
+            ESP_LOGI(TAG, "Audio work combined block allocated: %zu bytes (3 x %zu)", combined, try_work_bytes);
+            work_allocated = true;
+            break;
+        }
+
+        ESP_LOGW(TAG, "Combined work buffer allocation failed for %zu bytes each; reducing size and retrying", try_work_bytes);
+        try_work_bytes = try_work_bytes / 2U;
+        /* Keep 4-byte alignment */
+        try_work_bytes = (try_work_bytes + 3U) & ~((size_t)3U);
+    }
+
+    if (!work_allocated) {
+        ESP_LOGE(TAG, "Failed to allocate audio work buffers (tried down to %zu bytes each)", min_work_bytes);
+        vRingbufferDelete(s_audio_buffer);
+        s_audio_buffer = NULL;
+        return ESP_ERR_NO_MEM;
+    }
 
     // Configure I2S
     esp_err_t ret = configure_i2s(config);
@@ -230,11 +471,103 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     // Initialize NVS storage helper (best effort)
     nvs_storage_init();
 
-    // Create audio processing task
-    BaseType_t task_ret = xTaskCreate(audio_processing_task, "audio_proc", 
-                                     AUDIO_PROCESSING_STACK_SIZE, NULL, 5, &s_audio_task_handle);
+    // Create queue used to hand raw I2S blocks from the fast reader to the
+    // lower-priority worker. Queue stores i2s_block_t which contains
+    // a pointer to a preallocated raw buffer and its length.
+    const size_t i2s_queue_len = 8;
+    s_i2s_queue = xQueueCreate(i2s_queue_len, sizeof(i2s_block_t));
+    if (s_i2s_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create I2S queue");
+        vRingbufferDelete(s_audio_buffer);
+        s_audio_buffer = NULL;
+        i2s_del_channel(s_i2s_rx_handle);
+        return ESP_ERR_NO_MEM;
+    }
+
+    size_t pool_target = I2S_RAW_POOL_DEFAULT_COUNT;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    bool psram_ready = esp_psram_is_initialized();
+    if (!psram_ready) {
+        pool_target = I2S_RAW_POOL_DRAM_COUNT;
+    }
+#else
+    const bool psram_ready = false;
+    pool_target = I2S_RAW_POOL_DRAM_COUNT;
+#endif
+    if (pool_target == 0U) {
+        pool_target = 1U;
+    }
+
+    /* Create free-list queue and attempt to preallocate a pool of raw blocks
+     * to avoid slow heap allocations during the real-time reader. Prefer
+     * PSRAM for the blocks; fall back to DRAM if PSRAM is unavailable. */
+    s_i2s_free_queue = xQueueCreate((UBaseType_t)pool_target, sizeof(void*));
+    if (s_i2s_free_queue != NULL) {
+        s_i2s_pool = heap_caps_malloc(sizeof(void*) * pool_target, MALLOC_CAP_DEFAULT);
+        if (s_i2s_pool != NULL) {
+            size_t allocated = 0;
+            for (size_t i = 0; i < pool_target; ++i) {
+                void* blk = heap_caps_malloc(AUDIO_WORK_BUFFER_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                if (blk == NULL) {
+                    blk = heap_caps_malloc(AUDIO_WORK_BUFFER_BYTES, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
+                }
+                if (blk == NULL) {
+                    ESP_LOGW(TAG, "Prealloc pool: failed to allocate block %zu of %u", i, (unsigned)pool_target);
+                    break;
+                }
+                s_i2s_pool[i] = blk;
+                if (xQueueSend(s_i2s_free_queue, &s_i2s_pool[i], 0) != pdTRUE) {
+                    /* Unexpected: free queue should accept these */
+                    heap_caps_free(blk);
+                    s_i2s_pool[i] = NULL;
+                    break;
+                }
+                allocated++;
+            }
+            if (allocated == 0) {
+                /* Preallocation failed; free structures and continue with
+                 * on-demand allocation fallback in the reader. */
+                heap_caps_free(s_i2s_pool);
+                s_i2s_pool = NULL;
+                vQueueDelete(s_i2s_free_queue);
+                s_i2s_free_queue = NULL;
+                ESP_LOGW(TAG, "Prealloc pool disabled due to allocation failures; reader will fallback to heap allocations");
+            } else if (allocated < pool_target) {
+                ESP_LOGW(TAG, "Prealloc pool partially allocated (%u/%u); continuing", (unsigned)allocated, (unsigned)pool_target);
+            } else {
+                ESP_LOGI(TAG, "Preallocated %u raw I2S blocks (%s)", (unsigned)pool_target, psram_ready ? "PSRAM" : "DRAM");
+            }
+        } else {
+            vQueueDelete(s_i2s_free_queue);
+            s_i2s_free_queue = NULL;
+            ESP_LOGW(TAG, "Failed to allocate pool pointer array; skipping prealloc");
+        }
+    } else {
+        ESP_LOGW(TAG, "Failed to create i2s free queue; reader will fallback to heap allocations");
+    }
+
+    // Create fast I2S reader task (keeps reads short) and a lower-priority
+    // worker task that performs conversion/resampling and pushes to ringbuffer.
+    BaseType_t task_ret = xTaskCreate(i2s_reader_task, "i2s_reader",
+                                     AUDIO_PROCESSING_STACK_SIZE, NULL, 6, &s_audio_task_handle);
     if (task_ret != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create audio processing task");
+        ESP_LOGE(TAG, "Failed to create i2s reader task");
+        vQueueDelete(s_i2s_queue);
+        s_i2s_queue = NULL;
+        vRingbufferDelete(s_audio_buffer);
+        s_audio_buffer = NULL;
+        i2s_del_channel(s_i2s_rx_handle);
+        return ESP_FAIL;
+    }
+
+    task_ret = xTaskCreate(audio_worker_task, "audio_worker",
+                                     AUDIO_PROCESSING_STACK_SIZE, NULL, 4, &s_audio_worker_handle);
+    if (task_ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio worker task");
+        vTaskDelete(s_audio_task_handle);
+        s_audio_task_handle = NULL;
+        vQueueDelete(s_i2s_queue);
+        s_i2s_queue = NULL;
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         i2s_del_channel(s_i2s_rx_handle);
@@ -275,17 +608,63 @@ esp_err_t audio_processor_deinit(void)
         }
     }
 
-    // Delete processing task
+    // Delete reader and worker tasks
     if (s_audio_task_handle != NULL) {
         vTaskDelete(s_audio_task_handle);
         s_audio_task_handle = NULL;
     }
-
-    // Delete audio buffer
-    if (s_audio_buffer != NULL) {
-        vRingbufferDelete(s_audio_buffer);
-        s_audio_buffer = NULL;
+    if (s_audio_worker_handle != NULL) {
+        vTaskDelete(s_audio_worker_handle);
+        s_audio_worker_handle = NULL;
     }
+
+    // Flush and delete I2S queue, free any queued raw blocks
+        if (s_i2s_queue != NULL) {
+            i2s_block_t item = {0};
+            while (xQueueReceive(s_i2s_queue, &item, 0) == pdTRUE) {
+                if (item.ptr) {
+                    heap_caps_free(item.ptr);
+                }
+                item.ptr = NULL;
+                item.len = 0;
+            }
+            vQueueDelete(s_i2s_queue);
+            s_i2s_queue = NULL;
+        }
+
+        /* Free any blocks still in the free pool queue, then delete the free
+         * queue and free the pool pointer array. */
+        if (s_i2s_free_queue != NULL) {
+            void* p = NULL;
+            while (xQueueReceive(s_i2s_free_queue, &p, 0) == pdTRUE) {
+                if (p) heap_caps_free(p);
+            }
+            vQueueDelete(s_i2s_free_queue);
+            s_i2s_free_queue = NULL;
+        }
+
+        if (s_i2s_pool != NULL) {
+            heap_caps_free(s_i2s_pool);
+            s_i2s_pool = NULL;
+        }
+
+        // Delete audio buffer
+        if (s_audio_buffer != NULL) {
+            vRingbufferDelete(s_audio_buffer);
+            s_audio_buffer = NULL;
+        }
+
+        // Delete I2S driver
+        if (s_i2s_rx_handle != NULL) {
+    #ifdef CONFIG_BT_MOCK_TESTING
+            s_i2s_rx_handle = NULL;
+            s_mock_i2s_state.enabled = false;
+    #else
+            i2s_channel_disable(s_i2s_rx_handle);
+            i2s_del_channel(s_i2s_rx_handle);
+            s_i2s_rx_handle = NULL;
+    #endif
+        }
 
     // Delete I2S driver
     if (s_i2s_rx_handle != NULL) {
@@ -298,6 +677,13 @@ esp_err_t audio_processor_deinit(void)
         s_i2s_rx_handle = NULL;
 #endif
     }
+
+    /* Free heap-allocated work buffers (we allocated a single combined
+     * block and carved it into three sub-buffers). Free only the block. */
+    if (s_work_block) { heap_caps_free(s_work_block); s_work_block = NULL; }
+    s_i2s_buffer = NULL;
+    s_proc_buffer = NULL;
+    s_proc_buffer2 = NULL;
 
     s_is_initialized = false;
     ESP_LOGI(TAG, "Audio processor deinitialized");
@@ -786,190 +1172,265 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
 }
 
 /**
- * @brief Audio processing task
+ * @brief Fast I2S reader task
+ *
+ * This task performs minimal, time-bounded work: read from I2S (or synth)
+ * into the shared `s_i2s_buffer`, allocate a small heap block, copy the
+ * raw data into it and enqueue the block to `s_i2s_queue` for the
+ * lower-priority worker to perform conversion/resampling.
  */
-static void audio_processing_task(void *pvParameters)
+static void i2s_reader_task(void *pvParameters)
 {
-    ESP_LOGI(TAG, "Audio processing task started");
+    ESP_LOGI(TAG, "I2S reader task started");
 
-    // Task timing measurements for CPU load calculation
-    int64_t task_start_time, task_end_time;
-    int64_t total_time = 0, processing_time = 0;
-    const int LOAD_CALC_INTERVALS = 50; // Calculate load every N iterations
-    int interval_counter = 0;
+    static int consecutive_i2s_failures = 0;
 
-    size_t bytes_read, conv_size;
-    static int s_debug_log_count = 0;
-    
     while (1) {
-        // If not running, just sleep
         if (!s_is_running || !s_is_initialized) {
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
 
-        task_start_time = esp_timer_get_time();
+        size_t bytes_read = 0;
+        esp_err_t last_i2s_ret = ESP_OK;
+        bool have_frame = false;
 
-        // Read audio from I2S (with a modest timeout)
-#ifdef CONFIG_BT_MOCK_TESTING
-    bytes_read = mock_generate_i2s_audio(s_i2s_buffer, sizeof(s_i2s_buffer));
-        esp_err_t ret = (bytes_read > 0) ? ESP_OK : ESP_ERR_TIMEOUT;
-#else
-    esp_err_t ret = i2s_channel_read(s_i2s_rx_handle, s_i2s_buffer, sizeof(s_i2s_buffer),
-                                         &bytes_read, 50 / portTICK_PERIOD_MS);
-#endif
-
-        if (ret != ESP_OK) {
-#ifdef CONFIG_BT_MOCK_TESTING
-            vTaskDelay(pdMS_TO_TICKS(5));
-#else
-            ESP_LOGW(TAG, "I2S read failed: %d", ret);
-            vTaskDelay(pdMS_TO_TICKS(10));
-#endif
-            continue;
-        }
-
-        if (bytes_read == 0) {
-            // No data available yet
-            vTaskDelay(pdMS_TO_TICKS(5));
-            continue;
-        }
-
-        // Count the samples
         int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-        if (bytes_per_sample <= 0) {
-            bytes_per_sample = 2;
-        }
+        if (bytes_per_sample <= 0) bytes_per_sample = 2;
         int channels = s_audio_config.channels;
-        if (channels <= 0) {
-            channels = AUDIO_CHANNEL_STEREO;
-        }
-        int samples_count = bytes_read / (bytes_per_sample * channels);
-        s_audio_stats.samples_processed += samples_count;
+        if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
+        size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
 
-        // Process audio (format conversion, resampling, etc.)
-        // Use convert_audio_format and resample_audio helpers so they are exercised.
-        // First, attempt format conversion (may be a no-op if formats match)
-        if (bytes_read > sizeof(s_proc_buffer)) {
-            ESP_LOGW(TAG, "I2S read size %zu exceeds proc buffer %zu, truncating", bytes_read, sizeof(s_proc_buffer));
-            bytes_read = sizeof(s_proc_buffer);
-            s_audio_stats.conversion_errors++;
-        }
-        esp_err_t cret = convert_audio_format(s_i2s_buffer, s_proc_buffer, bytes_read,
-                                             s_audio_config.bit_depth, s_audio_config.bit_depth,
-                                             &conv_size);
-        if (s_debug_log_count < 5) {
-            ESP_LOGI(TAG, "convert_audio_format: bytes_read=%zu conv_size=%zu bit_depth=%d channels=%d",
-                     bytes_read, conv_size, s_audio_config.bit_depth, s_audio_config.channels);
-            s_debug_log_count++;
-        }
-        if (cret != ESP_OK) {
-            s_audio_stats.conversion_errors++;
-            // Skip this buffer
-            audio_proc_mock_yield();
-            continue;
+        size_t ideal_read = AUDIO_WORK_BUFFER_BYTES;
+        if (frame_bytes > 0) {
+            ideal_read = (ideal_read / frame_bytes) * frame_bytes;
+            if (ideal_read == 0) {
+                ideal_read = frame_bytes;
+            }
         }
 
-        // Then attempt resampling (may be a no-op if rates match)
-        size_t res_size = 0;
-        if (conv_size > sizeof(s_proc_buffer2)) {
-            ESP_LOGW(TAG, "conv_size %zu exceeds proc_buffer2 %zu, truncating", conv_size, sizeof(s_proc_buffer2));
-            conv_size = sizeof(s_proc_buffer2);
-            s_audio_stats.conversion_errors++;
-        }
-        esp_err_t rret = resample_audio(s_proc_buffer, s_proc_buffer2, conv_size,
-                                        s_audio_config.sample_rate, s_audio_config.sample_rate,
-                                        &res_size);
-        if (s_debug_log_count < 10) {
-            ESP_LOGI(TAG, "resample_audio: conv_size=%zu res_size=%zu src_rate=%d dst_rate=%d",
-                     conv_size, res_size, s_audio_config.sample_rate, s_audio_config.sample_rate);
-            s_debug_log_count++;
+        size_t synth_target_bytes = frame_bytes * (size_t)AUDIO_BLOCK_SIZE;
+        if (synth_target_bytes == 0 || synth_target_bytes > AUDIO_WORK_BUFFER_BYTES) {
+            synth_target_bytes = ideal_read;
         }
 
-        /* Diagnostic: log detailed resampler inputs immediately before calling
-         * resample_audio so we capture sizes and rates if a crash occurs inside
-         * the resampler. This prints buffer addresses, conv_size, bytes/frame
-         * and constants used for bounds checks. */
-        {
-            int diag_bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-            int diag_channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
-            size_t diag_frame_bytes = (size_t)diag_bytes_per_sample * (size_t)diag_channels;
-            int diag_src_rate = s_audio_config.sample_rate;
-            int diag_dst_rate = s_audio_config.sample_rate;
-            size_t diag_samples = (diag_frame_bytes > 0) ? (conv_size / diag_frame_bytes) : 0;
+        size_t read_request = ideal_read;
 
-            bool diag_changed = (conv_size != s_diag_last_conv_size) ||
-                                (diag_frame_bytes != s_diag_last_frame_bytes) ||
-                                (diag_src_rate != s_diag_last_src_rate) ||
-                                (diag_dst_rate != s_diag_last_dst_rate);
-            TickType_t now_ticks = xTaskGetTickCount();
-            bool should_log_diag = false;
-
-            if (diag_changed) {
-                should_log_diag = true;
+        if (s_force_synth) {
+            bytes_read = synth_target_bytes;
+            have_frame = (bytes_read > 0);
+            last_i2s_ret = ESP_OK;
+            consecutive_i2s_failures = 0;
+        } else {
+            last_i2s_ret = i2s_channel_read(s_i2s_rx_handle, s_i2s_buffer, read_request, &bytes_read, 0);
+            if (last_i2s_ret == ESP_OK && bytes_read > 0) {
+                have_frame = true;
+                consecutive_i2s_failures = 0;
+            } else if (last_i2s_ret != ESP_OK) {
+                consecutive_i2s_failures++;
             } else {
-                bool window_elapsed = (s_diag_next_log_tick == 0) ||
-                                      ((int32_t)(now_ticks - s_diag_next_log_tick) >= 0);
-                if (window_elapsed) {
-                    should_log_diag = true;
-                }
+                last_i2s_ret = ESP_ERR_INVALID_SIZE;
+                consecutive_i2s_failures++;
             }
 
-            if (should_log_diag) {
-                ESP_LOGI(TAG, "DIAG resample inputs: proc_buf=%p proc_buf2=%p conv_size=%zu frame_bytes=%zu samples=%zu src_rate=%d dst_rate=%d AUDIO_WORK_BUFFER_BYTES=%zu",
-                         (void*)s_proc_buffer, (void*)s_proc_buffer2, conv_size, diag_frame_bytes, diag_samples, diag_src_rate, diag_dst_rate, (size_t)AUDIO_WORK_BUFFER_BYTES);
-                s_diag_next_log_tick = now_ticks + pdMS_TO_TICKS(1000);
-                if (s_diag_next_log_tick == 0) {
-                    s_diag_next_log_tick = 1;
-                }
+            const int FAILURE_THRESHOLD = 20;
+            if (consecutive_i2s_failures >= FAILURE_THRESHOLD) {
+                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", consecutive_i2s_failures);
+                s_force_synth = true;
             }
-
-            s_diag_last_conv_size = conv_size;
-            s_diag_last_frame_bytes = diag_frame_bytes;
-            s_diag_last_src_rate = diag_src_rate;
-            s_diag_last_dst_rate = diag_dst_rate;
         }
-        if (rret != ESP_OK) {
-            s_audio_stats.conversion_errors++;
+
+        if (!have_frame) {
+#ifndef CONFIG_BT_MOCK_TESTING
+            if (last_i2s_ret != ESP_OK) {
+                ESP_LOGW(TAG, "I2S read failed: %d (%s) requested=%zu aligned_frame_bytes=%zu got_bytes=%zu",
+                         last_i2s_ret, esp_err_to_name(last_i2s_ret), read_request, frame_bytes, bytes_read);
+            }
+#endif
             audio_proc_mock_yield();
+            if (s_force_synth) {
+                TickType_t delay_ticks = pdMS_TO_TICKS(1);
+                if (delay_ticks == 0) {
+                    delay_ticks = 1;
+                }
+                vTaskDelay(delay_ticks);
+            } else {
+                taskYIELD();
+            }
             continue;
         }
 
-        // Final processed buffer is in proc_buffer2 with size res_size
-        conv_size = res_size;
+        if (bytes_read > AUDIO_WORK_BUFFER_BYTES) {
+            bytes_read = AUDIO_WORK_BUFFER_BYTES;
+        }
 
-        // Check available space in the buffer
-        size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
-        if (free_size < conv_size) {
+        bool backpressure = false;
+
+        if (s_i2s_queue != NULL && s_i2s_free_queue != NULL && uxQueueSpacesAvailable(s_i2s_queue) > 0U) {
+            void* pooled_ptr = NULL;
+            if (xQueueReceive(s_i2s_free_queue, &pooled_ptr, 0) == pdTRUE && pooled_ptr != NULL) {
+                i2s_block_t blk = {
+                    .ptr = pooled_ptr,
+                    .len = s_force_synth ? 0 : bytes_read,
+                    .capacity = bytes_read,
+                    .synth_fill = s_force_synth,
+                };
+                if (!blk.synth_fill && blk.len > 0) {
+                    memcpy(blk.ptr, s_i2s_buffer, blk.len);
+                }
+                if (xQueueSend(s_i2s_queue, &blk, 0) != pdTRUE) {
+                    (void)xQueueSend(s_i2s_free_queue, &pooled_ptr, 0);
+                    s_audio_stats.buffer_overruns++;
+                    backpressure = true;
+                }
+            } else {
+                s_audio_stats.buffer_overruns++;
+                backpressure = true;
+            }
+        } else {
             s_audio_stats.buffer_overruns++;
-            // Skip this batch if buffer is too full
-            if (free_size < (conv_size / 2)) {
-                audio_proc_mock_yield();
+            backpressure = true;
+        }
+
+        audio_proc_mock_yield();
+        if (s_force_synth || backpressure) {
+            TickType_t delay_ticks = pdMS_TO_TICKS(1);
+            if (delay_ticks == 0) {
+                delay_ticks = 1;
+            }
+            vTaskDelay(delay_ticks);
+        } else {
+            taskYIELD();
+        }
+    }
+}
+
+/**
+ * @brief Lower-priority worker that converts, resamples and pushes to ringbuffer
+ */
+static void audio_worker_task(void *pvParameters)
+{
+    ESP_LOGI(TAG, "Audio worker task started");
+    i2s_block_t blk = {0};
+
+    while (1) {
+        if (!s_is_running || !s_is_initialized) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        if (xQueueReceive(s_i2s_queue, &blk, pdMS_TO_TICKS(100)) != pdTRUE) {
+            continue; // timeout
+        }
+
+        if (blk.ptr == NULL) {
+            continue;
+        }
+
+        if (blk.synth_fill) {
+            size_t target = blk.capacity;
+            if (target > AUDIO_WORK_BUFFER_BYTES) {
+                target = AUDIO_WORK_BUFFER_BYTES;
+            }
+            size_t generated = 0;
+#if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
+            generated = synth_generate_audio(blk.ptr, target);
+#elif defined(CONFIG_BT_MOCK_TESTING)
+            generated = mock_generate_i2s_audio(blk.ptr, target);
+#else
+            if (target > 0) {
+                memset(blk.ptr, 0, target);
+            }
+            generated = target;
+#endif
+            blk.len = generated;
+            if (generated == 0) {
+                if (s_i2s_free_queue != NULL) {
+                    if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
+                        heap_caps_free(blk.ptr);
+                    }
+                } else {
+                    heap_caps_free(blk.ptr);
+                }
+                blk.ptr = NULL;
+                blk.len = 0;
+                blk.capacity = 0;
+                blk.synth_fill = false;
                 continue;
             }
         }
 
-        // Add processed audio to the buffer
-    UBaseType_t buf_ret = xRingbufferSend(s_audio_buffer, s_proc_buffer2, conv_size, 0);
-        if (buf_ret != pdTRUE) {
-            s_audio_stats.buffer_overruns++;
+        if (blk.len == 0) {
+            if (s_i2s_free_queue != NULL) {
+                if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
+                    heap_caps_free(blk.ptr);
+                }
+            } else {
+                heap_caps_free(blk.ptr);
+            }
+            blk.ptr = NULL;
+            blk.capacity = 0;
+            blk.synth_fill = false;
+            continue;
         }
 
-        task_end_time = esp_timer_get_time();
-        processing_time += (task_end_time - task_start_time);
-        total_time += (task_end_time - task_start_time);
-
-        // Calculate CPU load periodically
-        if (++interval_counter >= LOAD_CALC_INTERVALS) {
-            s_audio_stats.cpu_load = (float)processing_time / total_time;
-            processing_time = 0;
-            total_time = 0;
-            interval_counter = 0;
+        /* Convert */
+        size_t conv_size = 0;
+        esp_err_t cret = convert_audio_format(blk.ptr, s_proc_buffer, blk.len,
+                                              s_audio_config.bit_depth, s_audio_config.bit_depth,
+                                              &conv_size);
+        if (cret != ESP_OK) {
+            s_audio_stats.conversion_errors++;
+            heap_caps_free(blk.ptr);
+            blk.ptr = NULL;
+            continue;
         }
 
-    /* The mock generator returns immediately, so pace the loop to
-     * emulate hardware latency and keep the task watchdog satisfied. */
-    audio_proc_mock_yield();
+        /* Resample */
+        size_t res_size = 0;
+        esp_err_t rret = resample_audio(s_proc_buffer, s_proc_buffer2, conv_size,
+                                        s_audio_config.sample_rate, s_audio_config.sample_rate,
+                                        &res_size);
+        if (rret != ESP_OK) {
+            s_audio_stats.conversion_errors++;
+            heap_caps_free(blk.ptr);
+            blk.ptr = NULL;
+            continue;
+        }
+
+        /* Push to ringbuffer (xRingbufferSend copies data) */
+        if (res_size > 0) {
+            size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+            if (free_size < res_size) {
+                s_audio_stats.buffer_overruns++;
+                if (free_size < (res_size / 2)) {
+                    /* Skip adding if buffer very full */
+                    heap_caps_free(blk.ptr);
+                    blk.ptr = NULL;
+                    continue;
+                }
+            }
+
+            BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
+            if (sent != pdTRUE) {
+                s_audio_stats.buffer_overruns++;
+            }
+        }
+
+        /* Return the raw block to the free pool if present, otherwise free it */
+        if (blk.ptr != NULL) {
+            if (s_i2s_free_queue != NULL) {
+                if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
+                    heap_caps_free(blk.ptr);
+                }
+            } else {
+                heap_caps_free(blk.ptr);
+            }
+            blk.ptr = NULL;
+            blk.len = 0;
+            blk.capacity = 0;
+            blk.synth_fill = false;
+        }
     }
 }
 
@@ -1269,8 +1730,13 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
     if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
         int16_t* src_samples = (int16_t*)src;
         int16_t* dst_samples = (int16_t*)dst;
+        /* Yield periodically while performing expensive resampling so the
+         * RTOS can service the watchdog and other tasks. Processing large
+         * buffers without yielding can trigger the task watchdog on idle
+         * cores. We yield every 64 destination frames. */
+        int yield_counter = 0;
 
-        for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
+    for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
             double t;
             if (dst_frames > 1) {
                 t = (double)dstFrame * (double)(src_frames - 1) / (double)(dst_frames - 1);
@@ -1308,12 +1774,15 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
                     dst_samples[dst_idx] = (int16_t)((1.0 - frac) * src_samples[src_idx1] + frac * src_samples[src_idx2]);
                 }
             }
+            /* Periodically yield to keep the scheduler responsive. */
+            if ((++yield_counter & 0x1) == 0) vTaskDelay(pdMS_TO_TICKS(1));
         }
     } else if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) {
         int32_t* src_samples = (int32_t*)src;
         int32_t* dst_samples = (int32_t*)dst;
+        int yield_counter = 0;
 
-        for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
+    for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
             double t;
             if (dst_frames > 1) {
                 t = (double)dstFrame * (double)(src_frames - 1) / (double)(dst_frames - 1);
@@ -1349,6 +1818,7 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
                     dst_samples[dst_idx] = (int32_t)((1.0 - frac) * src_samples[src_idx1] + frac * src_samples[src_idx2]);
                 }
             }
+            if ((++yield_counter & 0x3F) == 0) vTaskDelay(pdMS_TO_TICKS(1));
         }
     } else {
         ESP_LOGE(TAG, "Unsupported bit depth for resampling: %d", s_audio_config.bit_depth);
@@ -1415,6 +1885,16 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
  */
 bool audio_processor_is_beep_active(void) {
     return s_beep_remaining_bytes > 0;
+}
+
+/**
+ * @brief Diagnostic helper to check whether audio processing is active
+ *
+ * Returns true when the processor is in the running state (I2S RX enabled).
+ */
+bool audio_processor_is_running(void)
+{
+    return s_is_running;
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING

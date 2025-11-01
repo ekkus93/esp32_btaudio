@@ -32,6 +32,11 @@
 #include "esp_avrc_api.h"
 #include "command_interface.h"
 #include "driver/uart.h"
+#include "audio_processor.h"
+/* Needed for pin fallbacks and i2s port constants when auto-initializing audio */
+#include "driver/gpio.h"
+#include "driver/i2s_std.h"
+#include "nvs_storage.h"
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
@@ -847,18 +852,23 @@ static void bt_init(void)
     // Configure Bluetooth controller
     ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Configuring controller...");
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
     
-    if (esp_bt_controller_init(&bt_cfg) != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Initialize controller failed");
+    esp_err_t bt_err = esp_bt_controller_init(&bt_cfg);
+    if (bt_err != ESP_OK) {
+        ESP_LOGE(BT_AV_TAG, "Initialize controller failed: %s (%d)", esp_err_to_name(bt_err), (int)bt_err);
         return;
     }
+    ESP_LOGI(BT_AV_TAG, "Controller initialized: mode=%d target_mode=0x%x", bt_cfg.mode, ESP_BT_MODE_CLASSIC_BT);
 
     // Enable Bluetooth controller
     ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Enabling controller...");
-    if (esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT) != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Enable controller failed");
+    bt_err = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
+    if (bt_err != ESP_OK) {
+        ESP_LOGE(BT_AV_TAG, "Enable controller failed: %s (%d)", esp_err_to_name(bt_err), (int)bt_err);
         return;
     }
+    ESP_LOGI(BT_AV_TAG, "Controller enabled in mode CLASSIC_BT");
 
     // Initialize Bluedroid
     ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Initializing Bluedroid...");
@@ -1002,6 +1012,59 @@ void app_main(void)
     /* Runtime diagnostic: print whether the UART driver is installed for the command UART */
     int uart_installed = uart_is_driver_installed(CONFIG_ESP_CONSOLE_UART_NUM);
     printf("DIAG|CMD_IF|UART_DRIVER_INSTALLED|uart=%d|installed=%d\r\n", CONFIG_ESP_CONSOLE_UART_NUM, uart_installed);
+#ifdef ESP_PLATFORM
+    /* Auto-initialize and start audio/I2S at boot.
+     * Behavior: attempt to read persisted I2S pin overrides from NVS and
+     * fall back to the component defaults. On success the audio pipeline
+     * will be initialized and the I2S RX channel enabled so downstream
+     * consumers (A2DP source) can immediately stream live audio.
+     *
+     * Note: this intentionally changes the previous deferred-init behavior
+     * to enable I2S at boot. If you prefer deferred init revert this block
+     * to the prior diagnostic-only query.
+     */
+    {
+        audio_config_t aconf = {
+            .sample_rate = AUDIO_SAMPLE_RATE_44K,
+            .bit_depth = AUDIO_BIT_DEPTH_16,
+            .channels = AUDIO_CHANNEL_STEREO,
+            .volume = 80,
+            .mute = false,
+            .i2s_port = I2S_NUM_0,
+            /* fallbacks chosen to match internal defaults in audio_processor.c */
+            .i2s_bclk_pin = GPIO_NUM_26,
+            .i2s_ws_pin = GPIO_NUM_25,
+            .i2s_din_pin = GPIO_NUM_22,
+            .i2s_dout_pin = GPIO_NUM_NC,
+        };
+
+        int bclk = -1, ws = -1, din = -1, dout = -1;
+        /* Best-effort: if NVS has stored pins use them */
+        if (nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout) == ESP_OK) {
+            if (bclk >= 0) aconf.i2s_bclk_pin = bclk;
+            if (ws >= 0) aconf.i2s_ws_pin = ws;
+            if (din >= 0) aconf.i2s_din_pin = din;
+            if (dout >= 0) aconf.i2s_dout_pin = dout;
+        }
+
+        esp_err_t aerr = audio_processor_init(&aconf);
+        if (aerr != ESP_OK) {
+            printf("DIAG|AUDIO|STATUS|init_failed|err=%s\r\n", esp_err_to_name(aerr));
+        } else {
+            aerr = audio_processor_start();
+            if (aerr != ESP_OK) {
+                printf("DIAG|AUDIO|STATUS|start_failed|err=%s\r\n", esp_err_to_name(aerr));
+            } else {
+                printf("DIAG|AUDIO|STATUS|initialized=1|running=1|volume=%u|mute=%d|rate=%d|bits=%d|ch=%d\r\n",
+                       (unsigned)aconf.volume,
+                       aconf.mute ? 1 : 0,
+                       (int)aconf.sample_rate,
+                       (int)aconf.bit_depth,
+                       (int)aconf.channels);
+            }
+        }
+    }
+#endif
 #endif
     
     ESP_LOGI(BT_AV_TAG, "====================================================");

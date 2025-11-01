@@ -20,6 +20,11 @@ CONFIG_BT_NIMBLE_ENABLED=n
 
 CONFIG_APP_NO_BLOBS=n
 
+# Build-time toggle: when enabled, the audio processor will generate
+# synthetic audio instead of reading from an I2S peripheral. Useful for
+# development and CI when no hardware source is attached.
+CONFIG_AUDIO_USE_SYNTH_SOURCE=y
+
 
 
 

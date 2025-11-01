@@ -197,6 +197,30 @@ esp_err_t audio_processor_beep(uint32_t duration_ms);
 bool audio_processor_is_beep_active(void);
 
 /**
+ * @brief Convenience query for whether the audio processor is currently running
+ *
+ * This is a small, non-invasive runtime check intended for diagnostics and
+ * telemetry consumers. It does not change processor state.
+ *
+ * @return true if the audio processor is running (I2S enabled), false otherwise
+ */
+bool audio_processor_is_running(void);
+
+/**
+ * @brief Force the audio processor to use the synthetic source at runtime.
+ *
+ * This allows the system to switch to the synthetic generator when I2S
+ * hardware is absent or misbehaving. The setting is not persisted across
+ * reboots.
+ */
+void audio_processor_set_synth_mode(bool enable);
+
+/**
+ * @brief Query whether synthetic source mode is currently enabled.
+ */
+bool audio_processor_is_synth_mode_enabled(void);
+
+/**
  * @brief Inject audio data directly into the ring buffer (for testing only)
  *
  * This function is only available when CONFIG_BT_MOCK_TESTING is defined.

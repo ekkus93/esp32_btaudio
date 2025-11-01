@@ -1,4 +1,12 @@
 ## Current Focus
+- TODO
+	- [x] Instrument controller init path to log esp_err_t results for init/enable calls
+	- [x] Rebuild/flash and capture monitor output to confirm logged codes
+	- [x] Analyze reported codes and decide next fix for controller enable failure
+		- Monitor captured `ESP_ERR_INVALID_ARG (258)` from `esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)` and resolved by forcing `bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT` before controller init (both `main` and `bt_manager`).
+- TODO (I2S pool tuning)
+	- [x] Detect PSRAM availability and choose a reduced raw-block pool size when only DRAM is present
+	- [x] Rebuild, flash, and monitor to verify the prealloc pool warning disappears on DRAM-only boards
 - Validate the shim-backed connection info path now that tests publish through it.
 - Keep `bt_source_stubs.c` aligned with asynchronous connect semantics from the mock component.
 - Maintain Unity runner output so downstream tooling captures pass/fail summaries.
@@ -6,6 +14,12 @@
 - Re-run pairing diagnostics now that controller is dual-mode; capture allocator timeline once runtime confirms controller enable succeeds.
 - [x] Re-run `test_app_audio` Unity suite
 - [x] Re-run `test_app2` Unity suite
+- TODO (Audio buffer fallback fix)
+	- [x] Allow the audio ringbuffer allocator to shrink down to 4 KiB so Unity builds succeed with DRAM-only targets (2025-11-01).
+	- [x] Run `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` → host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0 (141 total).
+- TODO (Audio warnings cleanup)
+	- [x] Drop unused `last_read_request`/`last_frame_bytes` bookkeeping in `audio_processor.c` so `test_app_audio` builds without warning spam (2025-11-01).
+- 2025-11-01: `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep (host 19/19, Unity 37/45/26; 141 total) after warning cleanup.
 - 2025-11-01: Added README trackers for command implementation gaps (UNPAIR/UNPAIR_ALL controller cleanup, PAIR authentication path, VERSION string source).
 - TODO (PAIR bonding overhaul)
 	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.
@@ -32,9 +46,15 @@
 			- [x] Provide host-test fallback via weak hook or injected descriptor so unit tests can assert version output without ESP-IDF symbols.
 			- [x] Update command tests to cover both device and host paths once implementation lands.
 			- 2025-11-01: Documented version-setting workflow in README (edit `CMakeLists.txt` `PROJECT_VER` and rebuild).
+	- Open follow-ups (2025-11-01 review)
+		- Integrate real I2S capture path into `bt_streaming_manager` (currently sine-wave stub at `main/bt_streaming_manager.c:109`).
+		- Complete on-device pairing soak (persistence across reboot) and stabilize `EVENT|PAIR|...` ordering per README remaining work.
+		- Extend host mocks/tests for connection drop/timeouts and finish allocator timeline analysis (`build/pairing_e2_logs/serial.log`).
+		- Add CI job for host tests + publish Unity logs; document pairing log triage guide once hardware validation concludes.
 
 ## Priority Note (user request)
 - HIGH PRIORITY: The user has requested that we keep attempting to run "all unit tests" (host CTest + the three on-device Unity suites) until they run cleanly without issues. This is marked as an operational high-priority item and should be retried (build, flash, capture logs) until all suites report zero failures. Last noted: 2025-10-30.
+- 2025-11-02: Clearing old summary/log artifacts before the next `run_all_tests.py` invocation.
 
 ## Why fast, repeatable "run all unit tests" matters
 - Fast feedback keeps the developer in the TDD loop: implement → test → fix → repeat. Slow or error-prone test runs break that loop and waste time.
@@ -70,10 +90,14 @@
 - 2025-11-01: Full `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep successful (host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0); summary at `tmp/run_all_tests_summary.json`.
 - 2025-11-01: Post-UNPAIR refactor sweep validates controller bond removal flow (host 18/18, Unity 37/45/26 pass) with latest summary captured in `tmp/run_all_tests_summary.json`.
 - 2025-11-01: Prepping rerun per user request; existing artifacts to delete include `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, `tmp/runner_test_app*_stdout.log`, and each suite's `build/one_run_unity.log` under both `esp_bt_audio_source/...` and legacy top-level test_app*/build.
+- 2025-11-01: Reworked `audio_processor` reader for non-blocking queue/I2S paths and removed synth `vTaskDelay`; device run still hits task watchdog with synthetic source active, indicating the reader must periodically block or move synth generation off the high-priority loop.
 - 2025-11-01: After clearing prior artifacts, re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300`; sweep succeeded (host 18/18, device suites 37/0/0 + 45/0/0 + 26/0/0). Fresh artifacts regenerated at `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, and `tmp/runner_test_app*_stdout.log`; per-suite Unity logs captured under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
 - 2025-11-01: Updated `tools/run_all_tests.py` to clear canonical tmp JSON/log artifacts and per-suite Unity logs before orchestrating new runs, so each invocation begins from a clean slate.
 - 2025-11-01: Verified cleanup logic by rerunning `tools/run_all_tests.py`; console shows artifact deletions up front, and the sweep again finished cleanly (host 18/18, Unity 37/45/26). New summaries/logs regenerated under `tmp/` and each test_app*/build.
 - 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
+- 2025-11-01: Updated `esp_bt_audio_source/README.md` to document the relocated synthetic generation, DRAM ring-buffer fallback, and refreshed 19/19 + 141-test sweep counts.
+- 2025-11-02: Added 1 ms pacing delay in synth/backpressure paths and re-flashed; 45 s monitor run (`build/synth_watchdog.log`) shows no watchdog trips while forced synth is active.
+- 2025-11-02: Moved synthetic generation out of the high-priority I2S reader task into the worker path; reader now enqueues empty blocks tagged for synth fill so it can yield immediately. Device runtime still trips the watchdog (i2s_reader tagged) even after relocation, so further investigation is required.
 - 2025-11-01: Added `esp_app_format` to `command_interface` `PRIV_REQUIRES` so `esp_app_desc.h` resolves during device builds; reran full sweep successfully (host 19/19, Unity 37/45/26) and captured fresh summary at `tmp/run_all_tests_summary.json`.
 - 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
 

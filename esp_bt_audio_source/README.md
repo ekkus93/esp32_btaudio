@@ -26,6 +26,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — November 1, 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`). The current working tree also adds weak default UNIT_TEST hook implementations in `bt_manager` so production/device builds link cleanly while host tests continue to override them.
+- Audio processor updates (2025-11-01): synthetic sample generation now runs in the worker task so the high-priority I2S reader can re-enter the scheduler immediately after each DMA callback, and the ring buffer allocator shrinks down to 4 KiB when PSRAM is absent. This keeps watchdogs quiet on DRAM-only boards and removes the "3/8 blocks" allocation warnings while we continue to stub real capture.
 - Full regression sweep completed on 2025-11-01 @ 12:17 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300 --source-idf "$HOME/esp/esp-idf/export.sh"` (host CTest + three Unity suites). Run artifacts:
    - Host `ctest` bundle: 19/19 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, raw runner stdout at `tmp/runner_test_app_stdout.log`).
@@ -36,6 +37,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 
 - Key recent completions:
    - Host-based unit tests: all host tests pass and the host-test harness updated to support sequence-number diagnostics.
+   - Audio processor cleanup: synthetic generation moved into the worker path, the I2S reader yields immediately after queuing buffers, and DRAM fallback sizing now avoids ring-buffer allocation warnings on devices without PSRAM.
    - Pairing event stream hardening: sequence numbers added to `EVENT|PAIR|...` and tests updated to validate ordering/monotonicity.
    - Device-side pairing test added: `test_app/main/test_pairing_seq_hardening_device.c` (device-only Unity test that checks CONFIRM+SUCCESS sequencing on-device).
    - CI: Added a compile-only device build workflow (`.github/workflows/ci-device-build.yml`) that runs `idf.py build` on `ubuntu-latest` to detect device compile regressions. This ensures the main app continues to compile on PRs/pushes even without hardware.
@@ -96,12 +98,12 @@ Notes on recent progress:
 Current test status (2025-11-01)
 --------------------------------
 - `tools/run_all_tests.py` (2025-11-01) executes the full sweep in one command. Output artifacts:
-   - Host CTest: 18 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+   - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
    - Device Unity suites (via `tools/run_unity.py` through the orchestrator):
       - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
       - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
       - `test_app_audio`: 26/0/0 (`test_app_audio/build/one_run_unity.log`).
-   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` (135 tests / 0 failures / 0 ignored).
+   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` (141 tests / 0 failures / 0 ignored).
 - Standalone re-runs are still supported with `tools/run_unity.py`, but the orchestrator now emits per-suite flash/test breakdowns for timing analysis.
 
 Remaining work (short list)
@@ -1134,6 +1136,13 @@ See the [main project README](/home/phil/work/esp32/esp32_btaudio/README.md) for
 - Detailed command protocol specification
 - Connection diagram for both ESP32s
 - Audio format requirements
+
+Open Work
+---------
+- Integrate the real I2S capture path into `main/bt_streaming_manager.c` (replace the sine-wave stub guarded by the TODO at line 109). The synthetic generator now runs on the worker queue, but the Bluetooth task still needs real capture data.
+- Finish on-device pairing soak tests to confirm persistence across reboot and solidify `EVENT|PAIR|...` ordering; promote pairing management from “in progress” once those hardware runs succeed.
+- Extend host mocks/tests to cover connection drops and timeout cases, and complete allocator timeline analysis using `build/pairing_e2_logs/serial.log` to close out the diagnostics backlog.
+- Add CI coverage that runs host tests and publishes Unity logs, then document a pairing-log triage guide after the hardware validation is wrapped.
 
 ## CI improvements (future work)
 

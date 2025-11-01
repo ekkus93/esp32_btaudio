@@ -253,15 +253,20 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 
     // Initialize Bluetooth controller
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    if ((ret = esp_bt_controller_init(&bt_cfg)) != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize controller failed: %s", esp_err_to_name(ret));
+    bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
+    ret = esp_bt_controller_init(&bt_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize controller failed: %s (%d)", esp_err_to_name(ret), (int)ret);
         return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "Controller initialized via bt_manager: mode=%d target_mode=0x%x", bt_cfg.mode, ESP_BT_MODE_CLASSIC_BT);
 
-    if ((ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT)) != ESP_OK) {
-        ESP_LOGE(TAG, "Enable controller failed: %s", esp_err_to_name(ret));
-    return ESP_FAIL;
+    ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Enable controller failed: %s (%d)", esp_err_to_name(ret), (int)ret);
+        return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "Controller enabled via bt_manager: mode=CLASSIC_BT");
 
     // Initialize Bluedroid
     if ((ret = esp_bluedroid_init()) != ESP_OK) {

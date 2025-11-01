@@ -11,6 +11,8 @@
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
 #include "bt_source.h"
+#include "driver/i2s.h"
+#include "audio_processor.h"
 
 static const char *TAG = "BT_STREAM_MGR";
 
@@ -24,10 +26,11 @@ static const char *TAG = "BT_STREAM_MGR";
 /* State tracking */
 static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
 static bt_streaming_info_t s_streaming_info = {0};
-static TaskHandle_t s_audio_task_handle = NULL;
 
 /* Audio buffer for streaming data */
-static RingbufHandle_t s_audio_buffer = NULL;
+/* Use the shared audio processor for I2S capture and buffering.
+ * bt_streaming_manager consumes audio via audio_processor_read() so
+ * it does not maintain its own ringbuffer. */
 static uint32_t s_stream_start_time = 0;
 
 /* Callback function */
@@ -36,7 +39,7 @@ static void* s_stream_callback_data = NULL;
 
 /* Function declarations */
 static int32_t bt_audio_data_callback(uint8_t *data, int32_t len);
-static void bt_audio_task(void *pvParameters);
+/* audio task removed: audio_processor performs capture; bt_streaming_manager consumes via audio_processor_read() */
 static void update_streaming_state(bt_streaming_state_t new_state);
 static uint32_t get_current_time_ms(void);
 
@@ -46,39 +49,30 @@ static uint32_t get_current_time_ms(void);
  */
 static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
 {
-    if (s_streaming_state != BT_STREAMING_STATE_STREAMING && 
+    /* If not streaming, return silence immediately */
+    if (s_streaming_state != BT_STREAMING_STATE_STREAMING &&
         s_streaming_state != BT_STREAMING_STATE_PAUSED) {
-        /* Not streaming or paused - clear buffer */
         memset(data, 0, len);
         return len;
     }
 
     if (s_streaming_state == BT_STREAMING_STATE_PAUSED) {
-        /* Paused - send silent audio */
         memset(data, 0, len);
         return len;
     }
 
-    /* Read data from the audio buffer */
+    /* Read from shared audio_processor. audio_processor_read() will
+     * return available bytes up to 'len' from its internal ringbuffer. */
     size_t bytes_read = 0;
-    void *item = xRingbufferReceiveUpTo(s_audio_buffer, &bytes_read, len, 0);
-    
-    if (item == NULL || bytes_read < len) {
-        /* Buffer underrun - fill remaining with silence */
-        if (item != NULL) {
-            memcpy(data, item, bytes_read);
-            memset(data + bytes_read, 0, len - bytes_read);
-            vRingbufferReturnItem(s_audio_buffer, item);
-        } else {
-            memset(data, 0, len);
-            bytes_read = 0;
-        }
-        ESP_LOGW(TAG, "Audio buffer underrun (%u/%u bytes)", 
-                (unsigned int)bytes_read, (unsigned int)len);
-    } else {
-        /* We got all the data we needed */
-        memcpy(data, item, len);
-        vRingbufferReturnItem(s_audio_buffer, item);
+    esp_err_t r = audio_processor_read(data, (size_t)len, &bytes_read);
+    if (r != ESP_OK) {
+        ESP_LOGW(TAG, "audio_processor_read error: %d", r);
+        memset(data, 0, len);
+        bytes_read = 0;
+    } else if (bytes_read < (size_t)len) {
+        /* Underflow — zero-fill remainder */
+        memset(data + bytes_read, 0, len - bytes_read);
+        ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);
     }
 
     /* Update streaming statistics */
@@ -97,41 +91,10 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
 /*
  * Audio task for processing audio input
  */
-static void bt_audio_task(void *pvParameters)
-{
-    ESP_LOGI(TAG, "Audio task started");
-
-    /* Buffer for audio processing */
-    uint8_t audio_frame[BT_AUDIO_FRAME_SIZE * BT_AUDIO_CHANNELS * (BT_AUDIO_BITS_PER_SAMPLE/8)];
-
-    while (1) {
-        if (s_streaming_state == BT_STREAMING_STATE_STREAMING) {
-            /* TODO: Get audio data from I2S or other source */
-            /* This is where real audio acquisition would happen */
-            /* For now, we generate a simple sine wave for testing */
-            
-            static uint32_t phase = 0;
-            int16_t *samples = (int16_t *)audio_frame;
-            
-            for (int i = 0; i < BT_AUDIO_FRAME_SIZE; i++) {
-                /* Generate simple sine wave for left and right channels */
-                int16_t sample = (sin(phase * 2 * M_PI / 128) * 10000);
-                samples[i*2] = sample;        // Left channel
-                samples[i*2+1] = sample;      // Right channel
-                phase = (phase + 1) % 128;    // Update phase
-            }
-
-            /* Send audio data to the buffer */
-            UBaseType_t res = xRingbufferSend(s_audio_buffer, audio_frame, sizeof(audio_frame), pdMS_TO_TICKS(10));
-            if (res != pdTRUE) {
-                ESP_LOGW(TAG, "Failed to send audio data to buffer");
-            }
-        }
-        
-        /* Sleep to maintain frame rate */
-        vTaskDelay(pdMS_TO_TICKS(10)); // ~100Hz frame rate
-    }
-}
+/* bt_streaming_manager no longer runs its own I2S capture task. The
+ * audio capture and buffering are performed by the audio_processor
+ * component; bt_streaming_manager consumes audio via
+ * audio_processor_read() in the A2DP data callback above. */
 
 /*
  * Update streaming state and streaming info
@@ -307,20 +270,10 @@ void bt_streaming_manager_init(void)
     s_streaming_state = BT_STREAMING_STATE_STOPPED;
     memset(&s_streaming_info, 0, sizeof(bt_streaming_info_t));
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
-    
-    /* Create audio buffer */
-    s_audio_buffer = xRingbufferCreate(BT_AUDIO_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF);
-    if (s_audio_buffer == NULL) {
-        ESP_LOGE(TAG, "Failed to create audio buffer");
-        return;
-    }
-    
-    /* Create audio processing task */
-    BaseType_t ret = xTaskCreate(bt_audio_task, "bt_audio_task", 4096, NULL, 5, &s_audio_task_handle);
-    if (ret != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create audio task: %d", ret);
-        return;
-    }
+    /* The audio_processor is responsible for I2S capture and buffering.
+     * Ensure it is initialized elsewhere (for example: `main.c` auto-starts
+     * the audio processor at boot). We do not recreate buffers or capture
+     * tasks here to avoid duplicate I2S access. */
     
     /* Register data callback */
     esp_a2d_source_register_data_callback(bt_audio_data_callback);
