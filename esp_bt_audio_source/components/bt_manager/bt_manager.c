@@ -1,6 +1,7 @@
 #include "bt_manager.h"
 #include "bt_api.h"
 #include "nvs_storage.h"
+#include "esp_bt.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,18 +43,6 @@ static struct {
     .audio_playing = false,
     .volume = 75
 };
-
-#ifdef ESP_PLATFORM
-#include <inttypes.h>
-#include "nvs_flash.h"
-// Callback declarations
-static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
-static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
-// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
-static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
-#include "command_interface.h"
-// Audio processor API - used by A2DP data callback to pull PCM
-#include "audio_processor.h"
 
 typedef struct {
     bool pin_pending;
@@ -126,6 +115,53 @@ static bool bt_pairing_parse_mac_string(const char* mac, esp_bd_addr_t out)
     out[5] = (uint8_t)b5;
     return true;
 }
+
+static bool bt_pairing_addr_is_zero(const esp_bd_addr_t addr)
+{
+    if (!addr) {
+        return true;
+    }
+    for (size_t i = 0; i < sizeof(esp_bd_addr_t); ++i) {
+        if (addr[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void bt_pairing_prepare_pending_for_event(const esp_bd_addr_t addr)
+{
+    if (!addr) {
+        return;
+    }
+
+    if (!bt_pairing_addr_is_zero(s_pair_pending.bda) &&
+        memcmp(s_pair_pending.bda, addr, sizeof(esp_bd_addr_t)) != 0) {
+        char prev_mac[18] = {0};
+        char new_mac[18] = {0};
+        bt_pairing_format_mac(s_pair_pending.bda, prev_mac, sizeof(prev_mac));
+        bt_pairing_format_mac(addr, new_mac, sizeof(new_mac));
+#ifdef ESP_PLATFORM
+        ESP_LOGW(TAG, "Pairing target changed from %s to %s due to GAP event", prev_mac, new_mac);
+#endif
+        bt_pairing_clear_pending_flags(true, true);
+    }
+
+    bt_pairing_set_pending_addr(addr);
+    s_pair_pending.passkey = 0;
+}
+
+#ifdef ESP_PLATFORM
+#include <inttypes.h>
+#include "nvs_flash.h"
+// Callback declarations
+static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
+static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
+static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
+#include "command_interface.h"
+// Audio processor API - used by A2DP data callback to pull PCM
+#include "audio_processor.h"
 #endif
 
 #ifdef UNIT_TEST
@@ -140,6 +176,50 @@ __attribute__((weak)) int bt_manager_test_should_force_unpair_all_failure(void) 
 __attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
     (void)cleared_before;
     (void)removed;
+}
+#endif
+
+#ifdef UNIT_TEST
+void bt_manager_test_reset_pending(void)
+{
+    bt_pairing_clear_pending_flags(true, true);
+}
+
+bool bt_manager_test_gap_pin_request(const char* mac)
+{
+    esp_bd_addr_t addr = {0};
+    if (!bt_pairing_parse_mac_string(mac, addr)) {
+        return false;
+    }
+    bt_pairing_prepare_pending_for_event(addr);
+    s_pair_pending.pin_pending = true;
+    s_pair_pending.ssp_pending = false;
+    s_pair_pending.passkey = 0;
+    return true;
+}
+
+bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey)
+{
+    esp_bd_addr_t addr = {0};
+    if (!bt_pairing_parse_mac_string(mac, addr)) {
+        return false;
+    }
+    bt_pairing_prepare_pending_for_event(addr);
+    s_pair_pending.pin_pending = false;
+    s_pair_pending.ssp_pending = true;
+    s_pair_pending.passkey = passkey;
+    return true;
+}
+
+void bt_manager_test_gap_auth_complete(const char* mac, bool success)
+{
+    (void)success;
+    esp_bd_addr_t addr = {0};
+    if (!bt_pairing_parse_mac_string(mac, addr)) {
+        return;
+    }
+    bt_pairing_prepare_pending_for_event(addr);
+    bt_pairing_clear_pending_flags(true, true);
 }
 #endif
 
@@ -625,12 +705,11 @@ bt_err_t bt_stop_audio(void) {
 #ifdef ESP_PLATFORM
     // Convert MAC string to address
     esp_bd_addr_t bda;
-    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
-               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+    if (!bt_pairing_parse_mac_string(mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
         return ESP_ERR_INVALID_ARG;
     }
-    
+
 #if CONFIG_BT_MOCK_TESTING
     /* Under the mock-testing configuration use the higher-level pairing helper
      * so tests exercise the mock's deterministic flow instead of attempting to
@@ -659,28 +738,66 @@ bt_err_t bt_stop_audio(void) {
     return mock_err;
 #endif
 
-    // Start pairing. Some IDF versions don't expose esp_bt_gap_start_authentication;
-    // attempt a best-effort fallback that will trigger the system pairing flow.
-    // Prefer a direct authentication API when available, otherwise try initiating
-    // an A2DP connect which will usually start the pairing flow on the remote.
-#if 0
-    // Preferred API (unavailable in some IDF versions):
-    if (esp_bt_gap_start_authentication(bda) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start authentication with device: %s", mac);
-        return ESP_FAIL;
+    // Stop an active discovery session; some controllers reject bonding requests
+    // while inquiry is running.
+    if (bt_ctx.scanning) {
+        if (esp_bt_gap_cancel_discovery() == ESP_OK) {
+            bt_ctx.scanning = false;
+        }
     }
-    ESP_LOGI(TAG, "Started pairing with device: %s", mac);
+
+    // Short-circuit if the controller already holds a bond for this device.
+    int bonded = esp_bt_gap_get_bond_device_num();
+    if (bonded > 0) {
+        esp_bd_addr_t bonded_list[20] = {0};
+        int list_capacity = bonded;
+        if (list_capacity > (int)(sizeof(bonded_list) / sizeof(bonded_list[0]))) {
+            list_capacity = sizeof(bonded_list) / sizeof(bonded_list[0]);
+        }
+        if (esp_bt_gap_get_bond_device_list(&list_capacity, bonded_list) == ESP_OK) {
+            for (int i = 0; i < list_capacity; ++i) {
+                if (memcmp(bonded_list[i], bda, sizeof(esp_bd_addr_t)) == 0) {
+                    ESP_LOGI(TAG, "Device %s already bonded; skipping pairing", mac);
+                    return ESP_OK;
+                }
+            }
+        }
+    }
+
+    bt_pairing_clear_pending_flags(true, true);
+    bt_pairing_set_pending_addr(bda);
+    s_pair_pending.passkey = 0;
+
+    // Initiate GAP-level bonding by requesting the remote service list. The
+    // controller will establish an ACL link and drive the authentication flow,
+    // delivering PIN/SSP callbacks via bt_app_gap_callback.
+    esp_err_t gap_err = esp_bt_gap_get_remote_services(bda);
+    if (gap_err == ESP_OK) {
+        ESP_LOGI(TAG, "Initiated GAP service discovery to pair with %s", mac);
+        return ESP_OK;
+    }
+
+    // Fall back to reading the remote name which also triggers an ACL link and
+    // will still surface the required authentication callbacks.
+    gap_err = esp_bt_gap_read_remote_name(bda);
+    if (gap_err == ESP_OK) {
+        ESP_LOGI(TAG, "Requested remote name to pair with %s", mac);
+        return ESP_OK;
+    }
+
+    ESP_LOGE(TAG, "Failed to initiate GAP bonding for %s: %s", mac, esp_err_to_name(gap_err));
+    bt_pairing_clear_pending_flags(true, true);
+    return gap_err;
 #else
-    ESP_LOGW(TAG, "esp_bt_gap_start_authentication unavailable on this IDF - attempting connect to start pairing");
-    if (esp_a2d_source_connect(bda) != ESP_OK) {
-        ESP_LOGE(TAG, "Fallback connect to initiate pairing failed for device: %s", mac);
-        return ESP_FAIL;
+    esp_bd_addr_t bda = {0};
+    if (!bt_pairing_parse_mac_string(mac, bda)) {
+        return ESP_ERR_INVALID_ARG;
     }
-    ESP_LOGI(TAG, "Attempted connect to start pairing with device: %s", mac);
-#endif
-#endif
-    
+    bt_pairing_clear_pending_flags(true, true);
+    bt_pairing_set_pending_addr(bda);
+    s_pair_pending.passkey = 0;
     return ESP_OK;
+#endif
 }
 
 // Unpair a device
@@ -848,7 +965,6 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
     if (!info) {
         return false;
     }
-#ifdef ESP_PLATFORM
     if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
         memset(info, 0, sizeof(*info));
         return false;
@@ -859,10 +975,6 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
     info->mac[sizeof(info->mac) - 1] = '\0';
     info->passkey = s_pair_pending.passkey;
     return true;
-#else
-    memset(info, 0, sizeof(*info));
-    return false;
-#endif
 }
 
 bt_err_t bt_pairing_confirm(const char* mac, bool accept)
@@ -1084,7 +1196,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                    param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
 
             ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
-            bt_pairing_set_pending_addr(param->pin_req.bda);
+            bt_pairing_prepare_pending_for_event(param->pin_req.bda);
             s_pair_pending.pin_pending = true;
             s_pair_pending.passkey = 0;
             // Notify command interface: EVENT|PAIR|PIN_REQUEST|<MAC>
@@ -1103,7 +1215,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             char data[64];
             snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
             ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
-            bt_pairing_set_pending_addr(param->cfm_req.bda);
+            bt_pairing_prepare_pending_for_event(param->cfm_req.bda);
             s_pair_pending.ssp_pending = true;
             s_pair_pending.passkey = param->cfm_req.num_val;
             // Notify command interface: EVENT|PAIR|CONFIRM|<MAC>,<NUM>
@@ -1118,6 +1230,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
                    param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
                    param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
+            bt_pairing_prepare_pending_for_event(param->auth_cmpl.bda);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
                 cmd_send_event_pair("SUCCESS", bda_str);

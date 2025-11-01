@@ -7,6 +7,11 @@
 - [x] Re-run `test_app_audio` Unity suite
 - [x] Re-run `test_app2` Unity suite
 - 2025-11-01: Added README trackers for command implementation gaps (UNPAIR/UNPAIR_ALL controller cleanup, PAIR authentication path, VERSION string source).
+- TODO (PAIR bonding overhaul)
+	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.
+	- [x] Detect already-paired devices via GAP/NVS and short-circuit accordingly.
+	- [x] Update pending request bookkeeping so pairing replies target the correct address without waiting for command events.
+	- [x] Extend host tests to cover PAIR success/error flows once implementation stabilizes (2025-11-02 `test_pairing_pending` added; host ctest 19/19 pass).
 - TODO (UNPAIR completion)
 	- [x] Update command handler to call `bt_unpair()` on device builds and propagate ESP-IDF status codes.
 	- [x] Add host test hooks so unit tests can observe UNPAIR behavior and simulate failures.
@@ -63,7 +68,7 @@
 - 2025-11-01: After clearing prior artifacts, re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300`; sweep succeeded (host 18/18, device suites 37/0/0 + 45/0/0 + 26/0/0). Fresh artifacts regenerated at `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, and `tmp/runner_test_app*_stdout.log`; per-suite Unity logs captured under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
 - 2025-11-01: Updated `tools/run_all_tests.py` to clear canonical tmp JSON/log artifacts and per-suite Unity logs before orchestrating new runs, so each invocation begins from a clean slate.
 - 2025-11-01: Verified cleanup logic by rerunning `tools/run_all_tests.py`; console shows artifact deletions up front, and the sweep again finished cleanly (host 18/18, Unity 37/45/26). New summaries/logs regenerated under `tmp/` and each test_app*/build.
-- 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 18/18, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
+- 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
 
 ## Assumptions & Constraints
 - No sdkconfig, partition, or target changes without explicit approval per repo policy.

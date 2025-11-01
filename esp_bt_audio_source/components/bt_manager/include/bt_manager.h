@@ -208,6 +208,10 @@ void bt_manager_mock_connection_established(const char* mac, const char* name);
 void bt_manager_mock_connection_closed(const char* mac);
 void bt_manager_mock_audio_state_changed(int state);
 void bt_manager_mock_pairing_complete(const char* mac, bool success);
+void bt_manager_test_reset_pending(void);
+bool bt_manager_test_gap_pin_request(const char* mac);
+bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey);
+void bt_manager_test_gap_auth_complete(const char* mac, bool success);
 #endif
 
 #endif // BT_MANAGER_H

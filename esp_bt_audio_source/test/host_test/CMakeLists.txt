@@ -168,6 +168,15 @@ target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
+# Pending-state tracking tests for pairing flows
+add_executable(test_pairing_pending test_pairing_pending.c
+    ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_pending PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
+target_link_libraries(test_pairing_pending unity)
+add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
+
 # Event stress test: validates ordering and basic rate-limiting instrumentation
 add_executable(test_event_stress test_event_stress.c
     ../../components/command_interface/commands.c

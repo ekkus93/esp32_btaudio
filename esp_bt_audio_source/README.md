@@ -116,7 +116,7 @@ Remaining work (short list)
 - Command implementation gaps (trackers):
    - `UNPAIR`: ✅ Completed 2025-11-01 — command now removes the controller bond via `esp_bt_gap_remove_bond_device()` before deleting the NVS record; host tests cover both success and simulated failure paths.
       - `UNPAIR_ALL`: ✅ Completed 2025-11-02 — manager now walks controller bonds before clearing NVS so responses report the number of devices removed; host (`test_commands`) and Unity (`test_pairing_commands.c`) suites exercise success and failure paths.
-   - `PAIR`: Still relies on an A2DP connect fallback because the preferred authentication helper is compiled out; sinks that reject pre-pair connects see silent failures. Plumb an explicit pairing trigger (or surface a clear error) so the command completes reliably.
+   - `PAIR`: ✅ Completed 2025-11-02 — command now initiates GAP-level bonding (service discovery fallback to remote-name), maintains pending state for PIN/SSP flows, and passes host + Unity coverage; plan real-world soak tests to confirm persistence across reboots.
    - `VERSION`: Returns the hard-coded string `1.0.0`; wire it to the application descriptor (e.g., `esp_app_get_description()`) so the reported version matches the built firmware.
 
 Prioritized next steps (actionable)
@@ -180,6 +180,7 @@ python3 tools/symbolize_pairing/symbolize_pairing.py \
 ```
 
 - If your toolchain's `addr2line` is not on PATH, set `ADDR2LINE` to the full path of the toolchain binary (for example `xtensa-esp32-elf-addr2line`) before running the symbolizer.
+- Python tooling: reuse the existing `python310` conda environment by running `conda activate python310`; do not create new virtual environments for project scripts or package installs.
 
 ## Unity runner behavior and timeout
 
