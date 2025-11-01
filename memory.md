@@ -27,6 +27,11 @@
 			- [x] Expand host and Unity coverage for the revised UNPAIR_ALL flow.
 				- 2025-11-01: Added UNIT_TEST hook and host command tests covering success + forced-failure responses; Unity coverage still pending.
 				- 2025-11-02: Captured device-side UNPAIR_ALL regression tests via new response harness and verified via full Unity sweep.
+	- TODO (VERSION command)
+			- [x] Replace hard-coded string with `esp_app_get_description()->version` when `ESP_PLATFORM` is defined, guarding with null checks.
+			- [x] Provide host-test fallback via weak hook or injected descriptor so unit tests can assert version output without ESP-IDF symbols.
+			- [x] Update command tests to cover both device and host paths once implementation lands.
+			- 2025-11-01: Documented version-setting workflow in README (edit `CMakeLists.txt` `PROJECT_VER` and rebuild).
 
 ## Priority Note (user request)
 - HIGH PRIORITY: The user has requested that we keep attempting to run "all unit tests" (host CTest + the three on-device Unity suites) until they run cleanly without issues. This is marked as an operational high-priority item and should be retried (build, flash, capture logs) until all suites report zero failures. Last noted: 2025-10-30.
@@ -68,6 +73,8 @@
 - 2025-11-01: After clearing prior artifacts, re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300`; sweep succeeded (host 18/18, device suites 37/0/0 + 45/0/0 + 26/0/0). Fresh artifacts regenerated at `tmp/run_all_tests_summary.json`, `tmp/host_ctest_output.log`, `tmp/canonical_unity_summary.json`, and `tmp/runner_test_app*_stdout.log`; per-suite Unity logs captured under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
 - 2025-11-01: Updated `tools/run_all_tests.py` to clear canonical tmp JSON/log artifacts and per-suite Unity logs before orchestrating new runs, so each invocation begins from a clean slate.
 - 2025-11-01: Verified cleanup logic by rerunning `tools/run_all_tests.py`; console shows artifact deletions up front, and the sweep again finished cleanly (host 18/18, Unity 37/45/26). New summaries/logs regenerated under `tmp/` and each test_app*/build.
+- 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
+- 2025-11-01: Added `esp_app_format` to `command_interface` `PRIV_REQUIRES` so `esp_app_desc.h` resolves during device builds; reran full sweep successfully (host 19/19, Unity 37/45/26) and captured fresh summary at `tmp/run_all_tests_summary.json`.
 - 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
 
 ## Assumptions & Constraints

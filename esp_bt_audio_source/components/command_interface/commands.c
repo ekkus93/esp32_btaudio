@@ -62,6 +62,7 @@ int bt_get_connection_state(void);
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
+#include "esp_app_desc.h"
 #define TAG "CMD_IF"
 /* Prefer the configured console UART if available so we don't call into an
  * uninstalled UART driver (which logs "uart driver error"). Fall back to
@@ -85,6 +86,14 @@ int bt_get_connection_state(void);
 // Minimal BT-success macro for compatibility
 // Use esp_err_t / ESP_OK for result semantics instead of legacy BT_SUCCESS macro
 #include "esp_err.h"
+
+#if !defined(ESP_PLATFORM)
+#if defined(__GNUC__)
+extern const char* cmd_version_host_override(void) __attribute__((weak));
+#else
+extern const char* cmd_version_host_override(void);
+#endif
+#endif
 
 // Compatibility mappings: older code used bt_manager_* names; map them
 // to the currently exported bt_* functions in `bt_manager.h` when
@@ -202,6 +211,79 @@ static uint64_t cmd_get_timestamp_ms(void)
 #endif
 }
 
+static void cmd_append_metadata(char* buf, size_t buf_len, const char* key, const char* value)
+{
+    if (!buf || buf_len == 0 || !key || !value || value[0] == '\0') {
+        return;
+    }
+
+    size_t used = strlen(buf);
+    if (used >= buf_len - 1) {
+        return;
+    }
+
+    int written = snprintf(buf + used, buf_len - used, "%s%s=%s",
+                           (used > 0) ? "," : "", key, value);
+    if (written < 0) {
+        buf[0] = '\0';
+    }
+}
+
+static void cmd_handle_version(void)
+{
+    char version[64] = {0};
+    char metadata[128] = {0};
+
+#ifdef ESP_PLATFORM
+    const esp_app_desc_t* desc = esp_app_get_description();
+    if (desc != NULL) {
+        if (desc->version[0] != '\0') {
+            snprintf(version, sizeof(version), "%s", desc->version);
+        }
+        if (desc->project_name[0] != '\0') {
+            cmd_append_metadata(metadata, sizeof(metadata), "PROJECT", desc->project_name);
+        }
+        if (desc->date[0] != '\0' || desc->time[0] != '\0') {
+            char build_info[64] = {0};
+            if (desc->date[0] != '\0' && desc->time[0] != '\0') {
+                snprintf(build_info, sizeof(build_info), "%s %s", desc->date, desc->time);
+            } else if (desc->date[0] != '\0') {
+                snprintf(build_info, sizeof(build_info), "%s", desc->date);
+            } else if (desc->time[0] != '\0') {
+                snprintf(build_info, sizeof(build_info), "%s", desc->time);
+            }
+            if (build_info[0] != '\0') {
+                cmd_append_metadata(metadata, sizeof(metadata), "BUILD", build_info);
+            }
+        }
+    }
+#ifdef CONFIG_APP_PROJECT_VER
+    if (version[0] == '\0' && strlen(CONFIG_APP_PROJECT_VER) > 0) {
+        snprintf(version, sizeof(version), "%s", CONFIG_APP_PROJECT_VER);
+    }
+#endif
+    if (version[0] == '\0') {
+        snprintf(version, sizeof(version), "UNKNOWN");
+    }
+#else
+    const char* override = NULL;
+#if defined(__GNUC__)
+    if (cmd_version_host_override) {
+        override = cmd_version_host_override();
+    }
+#else
+    override = cmd_version_host_override();
+#endif
+    if (override != NULL && override[0] != '\0') {
+        snprintf(version, sizeof(version), "%s", override);
+    } else {
+        snprintf(version, sizeof(version), "HOST-MOCK");
+    }
+#endif
+
+    cmd_send_response("OK", "VERSION", version, metadata[0] != '\0' ? metadata : NULL);
+}
+
 // Test-only function to reset sequence counter
 #if defined(UNIT_TEST) || defined(ESP_PLATFORM)
 void cmd_reset_event_sequence(void) {
@@ -241,7 +323,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     } break;
 
     case CMD_TYPE_VERSION:
-    cmd_send_response("OK", "VERSION", "1.0.0", NULL);
+    cmd_handle_version();
     break;
 
     case CMD_TYPE_RESET:

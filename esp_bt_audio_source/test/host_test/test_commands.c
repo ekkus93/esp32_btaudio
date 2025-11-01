@@ -6,6 +6,11 @@
 #include "mock_uart.h"
 #include "nvs_storage.h"
 #include "audio_processor.h"
+
+const char* cmd_version_host_override(void)
+{
+    return "TEST-HOST-VERSION";
+}
 // Access mock gap helpers
 extern void mock_gap_reset(void);
 extern const char* mock_gap_get_last_mac(void);
@@ -140,6 +145,17 @@ void test_help_command(void) {
     TEST_ASSERT_EQUAL(25, entry_count);
 }
 
+void test_version_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VERSION", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|TEST-HOST-VERSION|"));
+}
+
 // New tests for pairing command handlers
 void test_confirm_pin_command(void) {
     mock_gap_reset();
@@ -181,6 +197,7 @@ int main(void) {
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
     RUN_TEST(test_help_command);
+    RUN_TEST(test_version_command);
 
     // Pairing related tests
     RUN_TEST(test_confirm_pin_command);

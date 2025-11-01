@@ -26,12 +26,12 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Project status — November 1, 2025
 
 - Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`). The current working tree also adds weak default UNIT_TEST hook implementations in `bt_manager` so production/device builds link cleanly while host tests continue to override them.
-- Full regression sweep completed on 2025-11-01 @ 09:05 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300 --source-idf "$HOME/esp/esp-idf/export.sh"` (host CTest + three Unity suites). Run artifacts:
-   - Host `ctest` bundle: 18/18 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
+- Full regression sweep completed on 2025-11-01 @ 12:17 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300 --source-idf "$HOME/esp/esp-idf/export.sh"` (host CTest + three Unity suites). Run artifacts:
+   - Host `ctest` bundle: 19/19 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, raw runner stdout at `tmp/runner_test_app_stdout.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
    - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
-   - Aggregate totals (135 tests / 0 failures / 0 ignored) with per-suite timing and metadata: `tmp/run_all_tests_summary.json`.
+   - Aggregate totals (141 tests / 0 failures / 0 ignored) with per-suite timing and metadata: `tmp/run_all_tests_summary.json`.
 - Timing snapshot from the same sweep (wall-clock ≈96 s total): `test_app` 40.3 s (flash 11.6 s, tests 28.7 s); `test_app2` 35.5 s (flash 8.3 s, tests 27.2 s); `test_app_audio` 17.1 s (flash 3.1 s, tests 14.0 s). These measurements come directly from the orchestrator by parsing Unity logs and esptool output.
 
 - Key recent completions:
@@ -117,7 +117,7 @@ Remaining work (short list)
    - `UNPAIR`: ✅ Completed 2025-11-01 — command now removes the controller bond via `esp_bt_gap_remove_bond_device()` before deleting the NVS record; host tests cover both success and simulated failure paths.
       - `UNPAIR_ALL`: ✅ Completed 2025-11-02 — manager now walks controller bonds before clearing NVS so responses report the number of devices removed; host (`test_commands`) and Unity (`test_pairing_commands.c`) suites exercise success and failure paths.
    - `PAIR`: ✅ Completed 2025-11-02 — command now initiates GAP-level bonding (service discovery fallback to remote-name), maintains pending state for PIN/SSP flows, and passes host + Unity coverage; plan real-world soak tests to confirm persistence across reboots.
-   - `VERSION`: Returns the hard-coded string `1.0.0`; wire it to the application descriptor (e.g., `esp_app_get_description()`) so the reported version matches the built firmware.
+   - `VERSION`: ✅ Completed 2025-11-01 — command now reports `esp_app_get_description()->version` on device builds (with a host override for tests) so the response always matches the flashed firmware.
 
 Prioritized next steps (actionable)
 ----------------------------------
@@ -416,6 +416,17 @@ Testing suggestions
    ```bash
    idf.py build
    ```
+
+#### Setting the firmware version
+
+The VERSION command reports whatever ESP-IDF bakes into the application descriptor. Update it by editing `esp_bt_audio_source/CMakeLists.txt` before the `project(esp_bt_audio_source)` line. For example:
+
+```cmake
+set(PROJECT_VER "2.1.0")
+project(esp_bt_audio_source)
+```
+
+Re-run `idf.py build` after changing the version so `esp_app_get_description()` (and therefore the VERSION command) picks up the new value. The same string also appears in `build/project_description.json` under `project_version` if you need to confirm the setting.
 
 2. Flash the firmware to the ESP32:
    ```bash
