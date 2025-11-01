@@ -656,14 +656,27 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     break;
 
-    case CMD_TYPE_UNPAIR:
+    case CMD_TYPE_UNPAIR: {
+    if (ctx->param_count < 1) { cmd_send_response("ERR", "UNPAIR", "MISSING_PARAM", NULL); break; }
+
+    const char* target_mac = ctx->params[0];
+    esp_err_t uerr = bt_unpair(target_mac);
 #ifdef ESP_PLATFORM
-    if (ctx->param_count < 1) { cmd_send_response("ERR", "UNPAIR", "MISSING_PARAM", NULL); break; }
-    if (nvs_storage_remove_paired_device(ctx->params[0]) == ESP_OK) cmd_send_response("OK", "UNPAIR", "REMOVED", ctx->params[0]); else cmd_send_response("ERR", "UNPAIR", "FAILED", NULL);
+    if (uerr == ESP_OK) {
+        cmd_send_response("OK", "UNPAIR", "REMOVED", target_mac);
+    } else {
+        cmd_send_response("ERR", "UNPAIR", esp_err_to_name(uerr), target_mac);
+    }
 #else
-    if (ctx->param_count < 1) { cmd_send_response("ERR", "UNPAIR", "MISSING_PARAM", NULL); break; }
-    if (nvs_storage_remove_paired_device(ctx->params[0]) == ESP_OK) cmd_send_response("OK", "UNPAIR", "MOCK_REMOVED", ctx->params[0]); else cmd_send_response("ERR", "UNPAIR", "FAILED", NULL);
+    if (uerr == ESP_OK) {
+        cmd_send_response("OK", "UNPAIR", "REMOVED", target_mac);
+    } else if (uerr == ESP_ERR_NOT_FOUND) {
+        cmd_send_response("ERR", "UNPAIR", "NOT_FOUND", target_mac);
+    } else {
+        cmd_send_response("ERR", "UNPAIR", "FAILED", target_mac);
+    }
 #endif
+    }
     break;
 
     case CMD_TYPE_UNPAIR_ALL:

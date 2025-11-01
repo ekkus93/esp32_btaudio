@@ -56,6 +56,7 @@ target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m)
 target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 # Audio processor unit tests (host)
@@ -216,6 +217,7 @@ add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
     mocks/mock_audio_and_btstate.c)
 # Provide test hooks used by bt_manager wrappers (forced-failure hooks)
 target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_mock_connection_helpers PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_mock_connection_helpers unity)
 add_test(NAME test_mock_connection_helpers COMMAND $<TARGET_FILE:test_mock_connection_helpers>)
 

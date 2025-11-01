@@ -1,5 +1,6 @@
 #include "bt_manager.h"
 #include "bt_api.h"
+#include "nvs_storage.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,7 +52,6 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
 // esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #include "command_interface.h"
-#include "nvs_storage.h"
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
 
@@ -126,6 +126,14 @@ static bool bt_pairing_parse_mac_string(const char* mac, esp_bd_addr_t out)
     out[5] = (uint8_t)b5;
     return true;
 }
+#endif
+
+#ifdef UNIT_TEST
+__attribute__((weak)) void bt_manager_test_record_unpair(const char* mac) {
+    (void)mac;
+}
+
+__attribute__((weak)) int bt_manager_test_should_force_unpair_failure(void) { return 0; }
 #endif
 
 // Initialize Bluetooth Manager
@@ -678,27 +686,49 @@ bt_err_t bt_stop_audio(void) {
         return ESP_ERR_INVALID_ARG;
     }
     
+#ifdef UNIT_TEST
+    if (bt_manager_test_should_force_unpair_failure()) {
+        return ESP_FAIL;
+    }
+#endif
+
 #ifdef ESP_PLATFORM
-    // Convert MAC string to address
-    esp_bd_addr_t bda;
-    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
-               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+    esp_bd_addr_t bda = {0};
+    if (!bt_pairing_parse_mac_string(mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
         return ESP_ERR_INVALID_ARG;
     }
-    
-    // Remove device from paired list
-    if (esp_bt_gap_remove_bond_device(bda) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to unpair device: %s", mac);
-        return ESP_FAIL;
+
+    esp_err_t result = esp_bt_gap_remove_bond_device(bda);
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to remove controller bond for %s: %s", mac, esp_err_to_name(result));
+        goto exit;
     }
-    // Remove from persisted storage as well
-    nvs_storage_remove_paired_device(mac);
-    
-    ESP_LOGI(TAG, "Unpaired device: %s", mac);
+
+    esp_err_t storage_err = nvs_storage_remove_paired_device(mac);
+    if (storage_err == ESP_OK) {
+        ESP_LOGI(TAG, "Unpaired device: %s", mac);
+        result = ESP_OK;
+    } else {
+        const char* err_name = esp_err_to_name(storage_err);
+        if (storage_err == ESP_ERR_NOT_FOUND) {
+            ESP_LOGW(TAG, "Controller bond for %s removed, but NVS entry missing (%s)", mac, err_name);
+        } else {
+            ESP_LOGE(TAG, "Failed to purge NVS entry for %s: %s", mac, err_name);
+        }
+        result = storage_err;
+        goto exit;
+    }
+#else
+    esp_err_t result = nvs_storage_remove_paired_device(mac);
 #endif
-    
-    return ESP_OK;
+
+exit:
+#ifdef UNIT_TEST
+    bt_manager_test_record_unpair(mac);
+#endif
+
+    return result;
 }
 
 // Unpair all devices
@@ -1227,6 +1257,10 @@ void bt_manager_mock_pairing_complete(const char* mac, bool success) {
             
             bt_ctx.paired_devices.count++;
         }
+
+        /* Keep the mock NVS storage in sync with the in-memory paired list on
+         * host builds so subsequent bt_unpair() calls find the entry. */
+        nvs_storage_add_paired_device(mac, NULL);
     }
 }
 #endif
