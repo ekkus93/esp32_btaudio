@@ -103,12 +103,8 @@
 - 2025-11-02: Latest `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` run (post response-capture hooks) succeeded with host 19/19, test_app 37/0/0, test_app2 45/0/0, test_app_audio 26/0/0; logs stored in `tmp/runner_test_app*_stdout.log` and per-suite `build/one_run_unity.log`.
 
 ## Assumptions & Constraints
-- No sdkconfig, partition, or target changes without explicit approval per repo policy.
-- Preserve existing log markers (Unity summary lines) for downstream tooling.
-- ESP32 DUT remains on `/dev/ttyUSB0` at 115200 baud, 8N1; avoid changing port or baud unless directed.
-- When reporting unit test results, always include counts for tests passed and tests failed by default.
+- User reiterated on 2025-11-02 that production pairing targets Bluetooth Classic only (no BLE path required).
 
-Definition: "all unit tests"
 - When we refer to "all unit tests" in notes or in conversation, this means the complete set of:
 	- Host-side tests registered with CTest under `test/host_test` (the CTest bundle / host_tests), and
 	- On-device Unity suites: `test_app`, `test_app2`, and `test_app_audio` (these require flashing an ESP32 and capturing the Unity logs with the runner scripts).

@@ -1,3 +1,15 @@
+// Minimal audio_processor stub for test_app2 to satisfy linker
+#include "esp_err.h"
+#include <stddef.h>
+#include <stdint.h>
+
+esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
+{
+    (void)buffer;
+    (void)size;
+    if (bytes_read) *bytes_read = 0;
+    return ESP_OK;
+}
 #include "audio_processor.h"
 #include "esp_err.h"
 #include <string.h>

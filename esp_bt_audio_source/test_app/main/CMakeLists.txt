@@ -8,6 +8,7 @@ idf_component_register(
         "bt_pairing_test.c"
         "bt_a2dp_test.c"
         "bt_mock_setup.c"
+    "test_helpers.c"
         "bt_pairing_persistence_test.c"
     "audio_processor_stub.c"
     "audio_processor_beep_stub.c"
@@ -29,6 +30,7 @@ idf_component_register(
         bt_mock
         bluetooth
         bt_manager
+        test_common
         command_interface
         nvs_storage
         unity

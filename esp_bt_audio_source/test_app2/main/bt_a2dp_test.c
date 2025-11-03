@@ -18,6 +18,12 @@
 #include "bt_mock.h"
 #include "bt_mock_setup.h"  // Update this include
 #include "bt_test_setup.h"
+#include "test_helpers.h"
+/* Redirect legacy bt_init() calls to the new test helper so we can migrate
+ * tests without changing every call-site. */
+#ifndef bt_init
+#define bt_init() test_bt_manager_init()
+#endif
 
 /* Forward declarations for pairing tests added in test_pairing_commands.c
  * These functions live in a separate translation unit; provide prototypes
@@ -65,7 +71,7 @@ void test_bluetooth_stack_init(void) {
     ESP_LOGI(TAG, "Testing Bluetooth stack initialization");
     
     // Initialize Bluetooth stack
-    esp_err_t ret = bt_init();
+    esp_err_t ret = test_bt_manager_init();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     ESP_LOGI(TAG, "Bluetooth stack initialization test completed");

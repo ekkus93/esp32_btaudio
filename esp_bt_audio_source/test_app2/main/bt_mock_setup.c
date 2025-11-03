@@ -2,6 +2,12 @@
 #include "test_config.h"
 #include "bt_source_mock.h"
 #include "esp_log.h"
+#include "test_helpers.h"
+/* Redirect legacy bt_init() calls to the new test helper so we can migrate
+ * tests without changing every call-site. */
+#ifndef bt_init
+#define bt_init() test_bt_manager_init()
+#endif
 #include <string.h>  // Add this for strcpy
 
 static const char *TAG = "BT_MOCK_SETUP";

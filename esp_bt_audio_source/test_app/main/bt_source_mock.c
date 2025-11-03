@@ -48,6 +48,10 @@ bool bt_mock_is_device_paired(const char* addr);
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 /* Uncomment to use real implementation directly
@@ -109,6 +113,15 @@ static TimerHandle_t s_scan_timer = NULL;
 static bool s_connected = false;
 static bool s_defer_disconnect_visibility = false;
 static bool s_initialized = false;
+/*
+ * Test-only: set the mock's initialized flag.
+ * Keeps test-only behavior local to the mock so higher-level shims do not
+ * need to call the legacy bt_init() symbol.
+ */
+void bt_source_mock_set_initialized(bool initialized)
+{
+    s_initialized = initialized ? true : false;
+}
 static bt_connection_info_t s_current_connection;
 static bt_profile_t s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
 static bool s_streaming = false;
@@ -220,7 +233,12 @@ void bt_source_mock_reset_impl(void)
     s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
     s_streaming = false;
     s_streaming_paused = false;
-    s_initialized = false;
+    /* Preserve or restore the initialized flag based on the configured
+     * mock_control.init_return. Tests commonly call bt_init() followed by
+     * bt_mock_reset(); resetting s_initialized to false here causes valid
+     * subsequent scan/connect calls to surface ESP_ERR_INVALID_STATE (259).
+     * Keep s_initialized true when the mock is configured to initialize OK. */
+    s_initialized = (mock_control.init_return == ESP_OK) ? true : false;
     
     // Reset scan state
     cancel_scan_timer();

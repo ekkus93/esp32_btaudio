@@ -18,6 +18,7 @@
 #include "bt_mock.h"
 #include "bt_mock_setup.h"  // Update this include
 #include "bt_test_setup.h"
+#include "test_helpers.h"
 
 /* Test-only stub helper that clears the deferred disconnect visibility flag. */
 void bt_source_stub_release_disconnect_visibility(void);
@@ -89,7 +90,7 @@ void test_bluetooth_stack_init(void) {
     ESP_LOGI(TAG, "Testing Bluetooth stack initialization");
     
     // Initialize Bluetooth stack
-    esp_err_t ret = bt_init();
+    esp_err_t ret = test_bt_manager_init();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     ESP_LOGI(TAG, "Bluetooth stack initialization test completed");
@@ -100,7 +101,7 @@ void test_bluetooth_scan_start(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan start");
     
     // Initialize Bluetooth and reset mock
-    bt_init();
+    test_bt_manager_init();
     bt_mock_reset();
     
     // Start scan
@@ -122,7 +123,7 @@ void test_bluetooth_scan_discovered_devices(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan discovered devices");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common(); // Use our common test setup (renamed from bt_test_setup_common)
     
     // Start scan
@@ -152,7 +153,7 @@ void test_bluetooth_scan_filter_by_type(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan filters by device type");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common(); // Use our common test setup
     
     // Start filtered scan for audio devices
@@ -171,7 +172,7 @@ void test_bluetooth_scanning_basic(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scanning basic functionality");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     
     // Test starting scan
     esp_err_t ret = bt_scan_start();
@@ -191,7 +192,7 @@ void test_bluetooth_scan_device_details(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan device details");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common(); // Use our common test setup
     
     // Start scan
@@ -221,7 +222,7 @@ void test_bluetooth_scan_timeout(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan timeout");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     
     // Start scan with timeout from the constant
     esp_err_t ret = bt_scan(TEST_SCAN_TIMEOUT);
@@ -242,7 +243,7 @@ void test_bluetooth_scan_stop_early(void) {
     ESP_LOGI(TAG, "Testing Bluetooth scan can be stopped early");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     
     // Start scan with long timeout
     esp_err_t ret = bt_scan(10); // 10 seconds
@@ -263,7 +264,7 @@ void test_bluetooth_connection(void) {
     ESP_LOGI(TAG, "Testing connecting to device by address");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     setup_mock_devices();
     
     // Connect to device
@@ -290,7 +291,7 @@ void test_connect_by_name(void) {
     ESP_LOGI(TAG, "Testing connecting to device by name");
     
     // Initialize Bluetooth and add mock devices with connect-by-name hook
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common(); // Use our common test setup
     
     // Connect by name
@@ -313,7 +314,7 @@ void test_connection_failure_handling(void) {
     ESP_LOGI(TAG, "Testing connection failure handling");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     
     // Try to connect to a non-existent device
     const char* nonexistent_addr = "99:88:77:66:55:44";
@@ -350,7 +351,7 @@ void test_connection_status_info(void) {
     ESP_LOGI(TAG, "Testing connection status info");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+        test_bt_manager_init();
     bt_mock_setup_common();
     
     // Initial state should be disconnected
@@ -397,7 +398,7 @@ void test_connect_to_a2dp_sink(void) {
     ESP_LOGI(TAG, "Testing connecting to A2DP sink");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Connect to audio device
@@ -423,7 +424,7 @@ void test_a2dp_streaming(void) {
     ESP_LOGI(TAG, "Testing A2DP streaming start/stop");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Connect to audio device
@@ -456,7 +457,7 @@ void test_a2dp_paired_devices(void) {
     ESP_LOGI(TAG, "Testing A2DP paired devices memory");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_paired_devices(); // Use our paired device setup (renamed from bt_test_setup_paired_devices)
     
     // Check if device is paired
@@ -468,7 +469,7 @@ void test_audio_streaming_start_success(void) {
     ESP_LOGI(TAG, "Testing audio streaming start success");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Connect to audio device
@@ -492,7 +493,7 @@ void test_audio_streaming_stop_success(void) {
     ESP_LOGI(TAG, "Testing audio streaming stop success");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Connect to audio device
@@ -519,7 +520,7 @@ void test_streaming_requires_connection(void) {
     ESP_LOGI(TAG, "Testing streaming requires connection");
     
     // Initialize Bluetooth
-    bt_init();
+    test_bt_manager_init();
     
     // Ensure not connected
     if (bt_is_connected()) {
@@ -541,7 +542,7 @@ void test_streaming_pause_resume(void) {
     ESP_LOGI(TAG, "Testing streaming pause and resume");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Connect to audio device
@@ -573,7 +574,7 @@ void test_streaming_state_reporting(void) {
     ESP_LOGI(TAG, "Testing streaming state reporting");
     
     // Initialize Bluetooth and add mock devices
-    bt_init();
+    test_bt_manager_init();
     bt_mock_setup_common();
     
     // Initial state should be not streaming

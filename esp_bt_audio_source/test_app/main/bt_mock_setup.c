@@ -3,6 +3,7 @@
 #include "bt_source_mock.h"
 #include "esp_log.h"
 #include <string.h>  // Add this for strcpy
+#include "test_helpers.h"
 
 static const char *TAG = "BT_MOCK_SETUP";
 
@@ -11,7 +12,7 @@ void bt_mock_setup_common(void)
     ESP_LOGI(TAG, "Setting up common BT test environment");
     
     // Make sure BT is initialized
-    esp_err_t ret = bt_init();
+    esp_err_t ret = test_bt_manager_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize BT: %d", ret);
     }
@@ -63,7 +64,7 @@ void bt_mock_setup_paired_devices(void)
     ESP_LOGI(TAG, "Setting up paired devices");
     
     // Initialize BT and reset mock
-    bt_init();
+    test_bt_manager_init();
     #if defined(BT_MOCK_PROVIDES_PROTOTYPES)
     bt_mock_init();
     #endif

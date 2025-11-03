@@ -13,11 +13,13 @@ idf_component_register(
     # Bring over common test setup and pairing helpers used by several tests
     "bt_mock_setup.c"
     "bt_test_setup.c"
+    "test_helpers.c"
     "test_pairing_commands.c"
     "auto_run_tests.c"
     "test_bt_connection.c"
     "command_parser_test.c"
     "bt_source_stubs.c"
+    "bt_source_mock.c"
     "bt_connection_shim.c"
         "bt_streaming_mock.c"
         "audio_processor_stub.c"
@@ -35,6 +37,7 @@ idf_component_register(
         bt_mock
         bluetooth
         bt_manager
+        test_common
         command_interface
         nvs_storage
         unity

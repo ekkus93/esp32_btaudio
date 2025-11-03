@@ -18,6 +18,7 @@
 #include "bt_mock.h"
 #include "bt_mock_devices.h"
 #include "bt_mock_setup.h" // Update this include
+#include "test_helpers.h"
 
 // Additional Unity tests covering the command interface pairing commands
 extern void test_pairing_commands_happy_path(void);
@@ -37,7 +38,7 @@ static const char *TAG = "BT_PAIRING_ESP32_TEST";
  */
 static void setup_mock_bt_implementation(void)
 {
-    esp_err_t ret = bt_init();
+    esp_err_t ret = test_bt_manager_init();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     bt_mock_reset(); // authoritative component reset
     /* Ensure a known default PIN for tests */

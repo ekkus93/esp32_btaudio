@@ -18,6 +18,12 @@
 #include "bt_mock.h"
 #include "bt_mock_devices.h"
 #include "bt_mock_setup.h" // Update this include
+#include "test_helpers.h"
+/* Redirect legacy bt_init() calls to the new test helper so we can migrate
+ * tests without changing every call-site. */
+#ifndef bt_init
+#define bt_init() test_bt_manager_init()
+#endif
 
 // Additional Unity tests covering the command interface pairing commands
 extern void test_pairing_commands_happy_path(void);

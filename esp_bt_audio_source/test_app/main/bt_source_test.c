@@ -3,6 +3,7 @@
 #include "bt_source.h"
 #include "esp_log.h"
 #include "bt_mock.h"
+#include "test_helpers.h"
 
 void bt_deinit(void);
 const char* bt_get_address_from_info(const bt_connection_info_t* info);
@@ -18,7 +19,7 @@ static const char *TAG = "BT_TEST";
  */
 void test_bluetooth_scan_filters_by_device_type(void) {
     // 1. Initialize the Bluetooth stack
-    esp_err_t ret = bt_init();
+    esp_err_t ret = test_bt_manager_init();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     
     // 2. Start a scan with filter type 5
