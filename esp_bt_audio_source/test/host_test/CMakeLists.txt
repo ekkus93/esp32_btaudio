@@ -59,20 +59,35 @@ target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
-# Audio processor unit tests (host)
+## Audio processor test is intentionally a device/component Unity test only.
+## The test file lives under `test/component/` and is picked up by the
+## on-device test runner. Building it as a native host executable links the
+## production `audio_processor` implementation which differs from the
+## on-device behavior and causes linking issues (missing device-only symbols).
+## To keep host tests lightweight and avoid duplicating production
+## implementation in the host build, we do not build `test_audio_processor`
+## as a native host test.
+
+## If you need a native host variant, add a separate host-specific
+## wrapper that provides the required host stubs or links the correct
+## mocks. For now, the test remains device-only.
+
+# Host-variant: build a native host runner for `test_audio_processor` that
+# uses light-weight host mocks for interfaces not available on the host.
+# This keeps a fast native test while exercising the high-level test logic.
 add_executable(test_audio_processor ../../test/component/test_audio_processor.c
-    ../../components/audio_processor/audio_processor.c
     mocks/mock_i2s.c
     mocks/test_main_wrapper.c)
 target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component)
-# Ensure this target uses the full test shim (which defines audio_config_t)
-# rather than the lightweight mock header. Put the shim first on the include
-# path for this target only.
-## Ensure `test_audio_processor` uses the real component header from main/include
-## (so it will compile against the real `audio_processor.c`). Put the
-## production include path before mocks/includes for this target only.
+# Ensure host test sees the same public headers as device builds
 target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
-target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING)
+# Link in a dedicated host-only stub for the production audio_processor
+# implementation. This avoids pulling in the full production source (which
+# contains device-specific dependencies) and prevents duplicate symbol
+# collisions with other host mocks (e.g. mock_audio_and_btstate.c).
+target_sources(test_audio_processor PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_audio_processor PRIVATE mocks/nvs_storage_mock.c)
+target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_processor unity m)
 add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
 

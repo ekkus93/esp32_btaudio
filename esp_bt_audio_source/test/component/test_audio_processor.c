@@ -226,6 +226,46 @@ void test_audio_processor_read_buffer_fill(void)
     TEST_ASSERT_EQUAL(0, bytes_read_empty);  // No data available
 }
 
+// Test that a beep enqueued while muted still produces audible data in the
+// ring buffer and that the beep-active flag is set. This verifies the
+// beep-bypass-mute behavior implemented by audio_processor_beep().
+void test_audio_processor_beep_bypasses_mute(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    // Mute the output and request a short beep
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_mute(true));
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    // Enqueue a 200ms beep
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(200));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    // Read available audio - should return beep data even though muted
+    uint8_t outbuf[1024];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(outbuf, sizeof(outbuf), &bytes_read));
+    TEST_ASSERT_GREATER_THAN(0, (int)bytes_read);
+
+    // Ensure the returned data is not all zeros (i.e., not silence)
+    bool any_nonzero = false;
+    for (size_t i = 0; i < bytes_read; ++i) {
+        if (outbuf[i] != 0) { any_nonzero = true; break; }
+    }
+    TEST_ASSERT_TRUE(any_nonzero);
+}
+
 // Add more tests for other functions...
 
 int app_main(void)
@@ -235,6 +275,7 @@ int app_main(void)
     RUN_TEST(test_audio_processor_set_volume);
     RUN_TEST(test_audio_processor_volume_application);
     RUN_TEST(test_audio_processor_read_buffer_fill);
+    RUN_TEST(test_audio_processor_beep_bypasses_mute);
     // Run other tests...
     return UNITY_END();
 }
