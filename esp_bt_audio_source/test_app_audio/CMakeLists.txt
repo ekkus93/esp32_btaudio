@@ -18,3 +18,10 @@ project(esp_bt_audio_source_audio_test)
 # The audio tests still rely on the mock-enabled build configuration so they can
 # run against the fake Bluetooth stack when necessary.
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
+
+# Expose bt_manager headers so the audio-focused test build can find the
+# canonical prototypes (this keeps the test image small but allows the
+# real audio component headers to be used during compilation).
+target_include_directories(${PROJECT_NAME}.elf PUBLIC
+    "${CMAKE_SOURCE_DIR}/../components/bt_manager/include"
+)

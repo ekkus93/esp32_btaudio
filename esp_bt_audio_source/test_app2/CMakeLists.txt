@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Set extra components directory
-set(EXTRA_COMPONENT_DIRS "../components" "${CMAKE_SOURCE_DIR}/components")
+set(EXTRA_COMPONENT_DIRS "../components" "${CMAKE_SOURCE_DIR}/components" "${CMAKE_SOURCE_DIR}/../test_app/components")
 
 # Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
@@ -38,6 +38,10 @@ idf_component_get_property(bt_mock_lib bt_mock COMPONENT_LIB)
 idf_component_get_property(command_interface_lib command_interface COMPONENT_LIB)
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_mock_lib} ${command_interface_lib})
 
+# Ensure the test-only stubs are linked so weak symbols are available for
+# on-device test images that don't include the full main application.
+idf_component_get_property(bt_test_stubs_lib bt_test_stubs COMPONENT_LIB)
+target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_test_stubs_lib})
 # Add device-side Unity test that exercises the real command parser.
 # The component's own CMakeLists already registers the `main/` sources. Do
 # not add them again here or the linker will see duplicate symbols.

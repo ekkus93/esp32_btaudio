@@ -191,7 +191,16 @@ int uart_write_bytes(uart_port_t uart_num, const char* src, size_t size) {
         memcpy(uart_mock_state[uart_num].tx_buffer + uart_mock_state[uart_num].tx_pos, src, size);
         uart_mock_state[uart_num].tx_pos += size;
     }
-    
+
+    /* Always keep the TX buffer null-terminated so callers that treat
+     * it as a C-string (strstr, printf, etc.) see defined behavior. If
+     * we've filled the buffer exactly, ensure the last byte is '\0'. */
+    if (uart_mock_state[uart_num].tx_pos < MOCK_UART_BUFFER_SIZE) {
+        uart_mock_state[uart_num].tx_buffer[uart_mock_state[uart_num].tx_pos] = '\0';
+    } else if (MOCK_UART_BUFFER_SIZE > 0) {
+        uart_mock_state[uart_num].tx_buffer[MOCK_UART_BUFFER_SIZE - 1] = '\0';
+    }
+
     return size;
 }
 

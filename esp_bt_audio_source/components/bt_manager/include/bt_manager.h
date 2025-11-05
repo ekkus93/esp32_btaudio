@@ -160,6 +160,13 @@ bt_err_t bt_pair(const char* mac);
 bt_err_t bt_unpair(const char* mac);
 
 /**
+ * @brief Check whether the manager reports an active connection
+ *
+ * @return 1 if connected, 0 otherwise
+ */
+int bt_manager_is_connected(void);
+
+/**
  * Wrapper used by the command interface and unit tests to start a pairing
  * operation in a test-observable way. Returns ESP_OK on success.
  */

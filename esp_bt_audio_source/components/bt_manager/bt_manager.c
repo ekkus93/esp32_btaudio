@@ -162,6 +162,17 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 #include "command_interface.h"
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
+#if defined(__GNUC__)
+/* Forward-declare the connection manager callbacks so the manager can
+ * forward A2DP events it receives. This keeps the connection manager's
+ * internal state in sync even when the manager registers the A2DP
+ * callback (some platforms only allow a single A2DP callback). */
+extern void bt_connection_state_cb(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr);
+extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr);
+#else
+extern void bt_connection_state_cb(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr);
+extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr);
+#endif
 #endif
 
 #ifdef UNIT_TEST
@@ -381,6 +392,13 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     // Optionally reset other fields if needed
 
     return ESP_OK;
+}
+
+// Expose a simple integer getter so other subsystems (command interface)
+// can query the manager's connected flag without depending on internal
+// structures. Return 1 when connected, 0 otherwise.
+int bt_manager_is_connected(void) {
+    return bt_ctx.connected ? 1 : 0;
 }
 
 // Start device scanning
@@ -1380,6 +1398,11 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
                 if (bt_ctx.connected_callback != NULL) {
                     bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
                 }
+                /* Forward event to the connection manager so its internal
+                 * state is updated even when bt_manager registered the
+                 * single A2DP callback. This keeps bt_get_connection_state()
+                 * aligned with the manager's connected flag. */
+                bt_connection_state_cb(param->conn_stat.state, param->conn_stat.remote_bda);
             } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);
                 
@@ -1389,6 +1412,7 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
                 
                 bt_ctx.connected = false;
                 bt_ctx.audio_playing = false;
+                bt_connection_state_cb(param->conn_stat.state, param->conn_stat.remote_bda);
             }
             break;
             
@@ -1397,9 +1421,12 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
             if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
                 ESP_LOGI(TAG, "Audio streaming started");
                 bt_ctx.audio_playing = true;
+                /* forward to connection manager so streaming state is updated */
+                bt_audio_state_cb(param->audio_stat.state, param->audio_stat.remote_bda);
             } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
                 ESP_LOGI(TAG, "Audio streaming stopped");
                 bt_ctx.audio_playing = false;
+                bt_audio_state_cb(param->audio_stat.state, param->audio_stat.remote_bda);
             }
             break;
             

@@ -266,7 +266,14 @@ def aggregate_summary(root: Path) -> dict:
                 pass
     # fallback: scan canonical locations in repo for numeric summary lines
     import re
-    pat = re.compile(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored")
+    # Preferred canonical Unity summary (some projects print: "<N> Tests <F> Failures <I> Ignored")
+    canonical_pat = re.compile(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored")
+    # Alternate human-friendly footer used by some test mains (e.g. test_app2/main.c):
+    # "Tests run    : <N>", "Tests passed : <P>", "Tests failed : <F>"
+    alt_run_pat = re.compile(r"Tests\s*run\s*:\s*(\d+)", re.IGNORECASE)
+    alt_failed_pat = re.compile(r"Tests\s*failed\s*:\s*(\d+)", re.IGNORECASE)
+    alt_passed_pat = re.compile(r"Tests\s*passed\s*:\s*(\d+)", re.IGNORECASE)
+
     files = [root / "esp_bt_audio_source" / "test_app" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test_app2" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test_app_audio" / "build" / "one_run_unity.log"]
@@ -274,9 +281,29 @@ def aggregate_summary(root: Path) -> dict:
     for f in files:
         if f.exists():
             txt = f.read_text()
-            m = pat.search(txt)
+            # try canonical pattern first
+            m = canonical_pat.search(txt)
             if m:
                 by_file[str(f)] = {"tests": int(m.group(1)), "failures": int(m.group(2)), "ignored": int(m.group(3))}
+                continue
+
+            # try alternate footer (Tests run / Tests failed / Tests passed)
+            m_run = alt_run_pat.search(txt)
+            m_failed = alt_failed_pat.search(txt)
+            m_passed = alt_passed_pat.search(txt)
+            if m_run:
+                total = int(m_run.group(1))
+                failed = int(m_failed.group(1)) if m_failed else None
+                passed = int(m_passed.group(1)) if m_passed else None
+                # If we only have total+passed, infer failed. If only total+failed, infer passed.
+                if failed is None and passed is not None:
+                    failed = total - passed
+                if passed is None and failed is not None:
+                    passed = total - failed
+                ignored = total - (passed if passed is not None else 0) - (failed if failed is not None else 0)
+                if ignored < 0:
+                    ignored = 0
+                by_file[str(f)] = {"tests": total, "failures": (failed if failed is not None else 0), "ignored": ignored}
     agg = {"generated_at": time.asctime(), "by_file": by_file}
     outpath.write_text(json.dumps(agg, indent=2))
     return agg

@@ -59,11 +59,56 @@ def parse_file(path):
                 try:
                     f.seek(0)
                     text = f.read()
-                    pass_count = len(re.findall(r":\s*PASS\b", text, re.IGNORECASE))
-                    fail_count = len(re.findall(r":\s*FAIL\b", text, re.IGNORECASE))
-                    total = pass_count + fail_count
-                    if total > 0:
-                        results.append({'tests': total, 'failures': fail_count, 'ignored': 0, 'line': 'derived from per-test PASS/FAIL lines'})
+
+                    # First try to detect an alternate multi-line numeric footer that some test
+                    # harnesses print, e.g.:
+                    #   Tests run : 45
+                    #   Tests passed : 45
+                    #   Tests failed : 0
+                    # Optionally a "Tests ignored" or "Tests skipped" line may be present.
+                    run_m = re.search(r"Tests\s+run\s*[:=]\s*(\d+)", text, re.IGNORECASE)
+                    passed_m = re.search(r"Tests\s+passed\s*[:=]\s*(\d+)", text, re.IGNORECASE)
+                    failed_m = re.search(r"Tests\s+failed\s*[:=]\s*(\d+)", text, re.IGNORECASE)
+                    ignored_m = re.search(r"Tests\s+(?:ignored|skipped)\s*[:=]\s*(\d+)", text, re.IGNORECASE)
+
+                    if run_m or passed_m or failed_m:
+                        # synthesize counts when at least some components are present
+                        total = int(run_m.group(1)) if run_m else None
+                        passed = int(passed_m.group(1)) if passed_m else None
+                        failed = int(failed_m.group(1)) if failed_m else None
+                        ignored = int(ignored_m.group(1)) if ignored_m else 0
+
+                        # If run not provided, try to compute from passed+failed
+                        if total is None:
+                            if passed is not None and failed is not None:
+                                total = passed + failed + ignored
+                            elif passed is not None:
+                                total = passed + ignored
+                            elif failed is not None:
+                                total = failed + ignored
+                            else:
+                                total = 0
+
+                        # If passed is missing, compute as total - failed - ignored when possible
+                        if passed is None:
+                            if failed is not None:
+                                passed = max(0, total - failed - ignored)
+                            else:
+                                passed = max(0, total - ignored)
+
+                        if failed is None:
+                            # compute failures if possible
+                            failed = max(0, total - passed - ignored)
+
+                        # Append synthesized numeric entry
+                        results.append({'tests': total, 'failures': failed, 'ignored': ignored, 'line': 'derived from multi-line numeric footer'})
+                    else:
+                        # Fallback: count per-test PASS/FAIL lines and synthesize
+                        pass_count = len(re.findall(r":\s*PASS\b", text, re.IGNORECASE))
+                        fail_count = len(re.findall(r":\s*FAIL\b", text, re.IGNORECASE))
+                        total = pass_count + fail_count
+                        if total > 0:
+                            results.append({'tests': total, 'failures': fail_count, 'ignored': 0, 'line': 'derived from per-test PASS/FAIL lines'})
                 except Exception:
                     # ignore fallback errors; return empty entries below
                     pass

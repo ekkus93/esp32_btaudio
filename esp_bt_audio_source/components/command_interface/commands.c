@@ -20,6 +20,11 @@
 // and keep the production behavior unchanged.
 #if defined(ESP_PLATFORM) && !defined(UNIT_TEST)
 extern int bt_get_connection_state(void);
+/* Also allow checking whether streaming is active; some connection paths
+ * set a streaming-active flag even if the simple connected getter isn't
+ * updated yet. Declare the integer helper used elsewhere in the code so
+ * we can make a permissive check in the BEEP command handler. */
+extern int bt_get_streaming_state_int(void);
 #endif
 
 /*
@@ -166,10 +171,13 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     { "MUTE", NULL, "Mute audio output" },
     { "UNMUTE", NULL, "Unmute audio output" },
     { "SAMPLE_RATE", "<Hz>", "Apply I2S sample rate" },
+    { "SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)" },
     { "I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins" },
     { "BEEP", NULL, "Emit short notification tone" },
     { "RESET", NULL, "Reboot the device" },
+#ifdef ESP_PLATFORM
     { "DEBUG", "<SUBCMD>", "Developer diagnostics" },
+#endif
 };
 
 static void cmd_help_emit_all(void)
@@ -358,17 +366,73 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 #endif
     break;
 
+    case CMD_TYPE_SYNTH: {
+    /* Toggle synthetic audio generation used for diagnostics and to
+     * isolate pipeline issues. Usage: SYNTH ON|OFF */
+    if (ctx->param_count < 1) { cmd_send_response("ERR", "SYNTH", "MISSING_PARAM", NULL); break; }
+    const char* p = ctx->params[0];
+    if (strcasecmp(p, "ON") == 0 || strcmp(p, "1") == 0 || strcasecmp(p, "TRUE") == 0) {
+#ifdef ESP_PLATFORM
+        audio_processor_set_synth_mode(true);
+#endif
+        cmd_send_response("OK", "SYNTH", "ENABLED", NULL);
+    } else if (strcasecmp(p, "OFF") == 0 || strcmp(p, "0") == 0 || strcasecmp(p, "FALSE") == 0) {
+#ifdef ESP_PLATFORM
+        audio_processor_set_synth_mode(false);
+#endif
+        cmd_send_response("OK", "SYNTH", "DISABLED", NULL);
+    } else {
+        cmd_send_response("ERR", "SYNTH", "BAD_PARAM", p);
+    }
+    } break;
+
     case CMD_TYPE_BEEP: {
-    /* Emit a short audible beep only when a BT device is connected. Use
-     * bt_get_connection_state() (returns 1 when connected) for host tests
-     * and the audio_processor_beep() API to request the tone. */
+    /* Emit a short audible beep when a BT device is connected or when
+     * audio streaming is active. Some connection sequences (or race
+     * conditions) update the streaming flag before the simple connected
+     * getter; accept either path. */
+#if 1
+    int conn = 0;
+#ifdef ESP_PLATFORM
+    conn = bt_get_connection_state();
+    int streaming = bt_get_streaming_state_int();
+    /* Also check the bt_manager component's view of connection state.
+     * In some builds the connection manager used by `bt_get_connection_state`
+     * isn't registered for A2DP callbacks while `bt_manager` is the active
+     * implementation. Consult the manager as a fallback so the BEEP
+     * command isn't rejected when the global manager reports a connection. */
+    int mgr_conn = 0;
+#ifdef ESP_PLATFORM
+    /* bt_manager.h exposes bt_manager_is_connected() implemented in
+     * the bt_manager component. Call it when available. */
+    extern int bt_manager_is_connected(void);
+    mgr_conn = bt_manager_is_connected();
+#endif
+    /* Diagnostic logging: print both getters so on-device serial logs
+     * show the exact runtime values when BEEP is attempted. This helps
+     * determine whether the permissive check is being evaluated as false
+     * even though other logs indicate a connection. */
+    ESP_LOGI(TAG, "DIAG-BEEP: bt_get_connection_state=%d bt_get_streaming_state_int=%d bt_manager_conn=%d", conn, streaming, mgr_conn);
+    /* Also emit an unconditionally printed line so consoles that don't
+     * capture ESP_LOG output still show the diagnostic marker. Include
+     * the manager-level value here as well so all three runtime fields
+     * are visible in plain stdout logs. */
+    printf("DIAG-BEEP: bt_get_connection_state=%d bt_get_streaming_state_int=%d bt_manager_conn=%d\n", conn, streaming, mgr_conn);
+    if (!((conn == 1) || (streaming == 1) || (mgr_conn == 1))) {
+        cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL);
+        break;
+    }
+#else
+    /* Host/unit tests mock bt_get_connection_state(), so call it there.
+     * For non-ESP host builds fall back to the simple connected check. */
     if (bt_get_connection_state() != 1) { cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL); break; }
+#endif
+#endif
     /* Use a 200ms default beep duration; production implementation may
      * ignore or implement frequency/duration semantics. */
     if (audio_processor_beep(200) == ESP_OK) cmd_send_response("OK", "BEEP", "SENT", NULL);
     else cmd_send_response("ERR", "BEEP", "FAILED", NULL);
     } break;
-    break;
 
     case CMD_TYPE_CONNECT:
     if (ctx->param_count < 1) { cmd_send_response("ERR", "CONNECT", "MISSING_PARAM", NULL); break; }
@@ -948,6 +1012,7 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     else if (strcasecmp(token, "RESET") == 0) ctx->type = CMD_TYPE_RESET;
     else if (strcasecmp(token, "DEBUG") == 0) ctx->type = CMD_TYPE_DEBUG;
     else if (strcasecmp(token, "SAMPLE_RATE") == 0) ctx->type = CMD_TYPE_SAMPLE_RATE;
+    else if (strcasecmp(token, "SYNTH") == 0) ctx->type = CMD_TYPE_SYNTH;
     else if (strcasecmp(token, "I2S_CONFIG") == 0) ctx->type = CMD_TYPE_I2S_CONFIG;
     else if (strcasecmp(token, "BEEP") == 0) ctx->type = CMD_TYPE_BEEP;
     else if (strcasecmp(token, "PAIR") == 0) ctx->type = CMD_TYPE_PAIR;

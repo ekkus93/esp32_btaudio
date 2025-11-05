@@ -76,6 +76,25 @@ static void test_runner_task(void *pvParameters)
            ((Unity.NumberOfTests - Unity.TestFailures) * 100.0f / Unity.NumberOfTests) : 0.0f);
     printf("=====================================\n");
 
+    /* Canonical single-line summary used by aggregation tools. */
+    /* Format: "<N> Tests <F> Failures <I> Ignored" */
+    /* Use Unity.TestIgnores when available; fall back to 0 otherwise. */
+    do {
+    int _total = Unity.NumberOfTests;
+    int _fail = Unity.TestFailures;
+    int _ignored = 0;
+#ifdef UNITY_TEST_IGNORED
+    _ignored = Unity.TestIgnores;
+#else
+    /* Try to reference Unity.TestIgnores if the symbol exists at link time. */
+    /* Many Unity versions expose Unity.TestIgnores; if not present, ignored remains 0. */
+#ifdef __cplusplus
+    (void)0;
+#endif
+#endif
+    printf("%d Tests %d Failures %d Ignored\n", _total, _fail, _ignored);
+    } while (0);
+
     ESP_LOGI(TAG, "======== OVERALL TEST SUMMARY ========");
     ESP_LOGI(TAG, "Tests run     : %d", Unity.NumberOfTests);
     ESP_LOGI(TAG, "Tests passed  : %d", Unity.NumberOfTests - Unity.TestFailures);

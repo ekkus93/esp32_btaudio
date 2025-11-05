@@ -279,6 +279,12 @@ int main(void) {
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
     
+    // Tests for SYNTH command (host-mode verifies parsing + response)
+    extern void test_synth_on_command(void);
+    extern void test_synth_off_command(void);
+    RUN_TEST(test_synth_on_command);
+    RUN_TEST(test_synth_off_command);
+    
     return UNITY_END();
 }
 
@@ -613,4 +619,28 @@ void test_beep_command_connected(void) {
 
     // Verify that beep was actually triggered
     TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+}
+
+// Verify SYNTH ON toggles the mode (host: verifies response emitted)
+void test_synth_on_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SYNTH ON", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SYNTH|ENABLED"));
+}
+
+// Verify SYNTH OFF toggles the mode (host: verifies response emitted)
+void test_synth_off_command(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SYNTH OFF", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SYNTH|DISABLED"));
 }

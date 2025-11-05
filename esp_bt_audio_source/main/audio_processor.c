@@ -15,6 +15,10 @@
 #include "audio_processor.h"
 #include "nvs_storage.h"
 #include "esp_heap_caps.h"
+#include "bt_manager.h"
+
+/* Connection manager helper exposed from bt_connection_manager.c */
+extern int bt_get_streaming_state_int(void);
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
@@ -39,6 +43,12 @@ static const char *TAG = "AUDIO_PROC";
 #endif
 #define AUDIO_WORK_BUFFER_BYTES      (AUDIO_BLOCK_SIZE * 8 * AUDIO_RESAMPLE_MAX_RATIO)
 
+/* Dedicated small buffer for urgent beep audio so short tones can be
+ * delivered even when the main pipeline is congested. Keep modest to
+ * limit DRAM pressure. Reduce to 8 KiB by default to avoid DRAM
+ * allocation failures in the Bluetooth stack (see runtime logs). */
+#define BEEP_BUFFER_SIZE (8 * 1024)
+
 // Audio processing task handle
 static TaskHandle_t s_audio_task_handle = NULL; /* I2S reader task */
 static TaskHandle_t s_audio_worker_handle = NULL; /* Worker that performs convert/resample */
@@ -54,9 +64,18 @@ static QueueHandle_t s_i2s_free_queue = NULL; /* Queue of free raw block pointer
 static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
 #define I2S_RAW_POOL_DEFAULT_COUNT 8U
 #define I2S_RAW_POOL_DRAM_COUNT    3U
+/* Tunable I2S parameters to trade latency vs RAM. Lower per-read sizes
+ * reduce blocking time in the reader; more descriptors give the DMA more
+ * headroom without needing very large per-descriptor frames. Adjust if
+ * you have PSRAM or different timing requirements. */
+#define I2S_DEFAULT_DMA_DESC_NUM 6U
+#define I2S_DEFAULT_DMA_FRAME_NUM 32U
+#define I2S_MAX_READ_BYTES (4 * 1024)
 
 // Ring buffer for audio data
 static RingbufHandle_t s_audio_buffer = NULL;
+// Small low-latency buffer for urgent beeps
+static RingbufHandle_t s_beep_buffer = NULL;
 
 // Audio configuration
 static audio_config_t s_audio_config = {
@@ -90,6 +109,17 @@ static uint8_t s_volume_gain = 80; // Internal volume as percentage
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
 
+/* Fallback on-the-fly beep generator state
+ * Used when the main ringbuffer is full and we still want to play a
+ * short beep. The reader will synthesize samples directly from this
+ * state prior to pulling from the ringbuffer. Protected by a
+ * simple portMUX critical section. */
+static bool s_beep_fallback_active = false;
+static size_t s_beep_fallback_frames_remaining = 0;
+static uint32_t s_beep_fallback_phase_acc = 0;
+static uint32_t s_beep_fallback_phase_step = 0;
+static portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
+
 // Diagnostics throttling state for high-frequency logging inside the
 // audio processing task. We emit the first log immediately and then
 // rate-limit updates to avoid starving the idle task and tripping the watchdog.
@@ -103,6 +133,21 @@ static inline void audio_proc_mock_yield(void)
 {
 #ifdef CONFIG_BT_MOCK_TESTING
     vTaskDelay(1);
+#endif
+}
+
+/* Helper to log heap free sizes for DRAM and PSRAM (when available).
+ * Call this at diagnostic points to observe allocator pressure during
+ * operations that previously triggered BT malloc failures. */
+static void log_heap_stats(const char *ctx)
+{
+    size_t free_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    ESP_LOGI(TAG, "%s: heap free DRAM=%zu 8BIT=%zu PSRAM=%zu", ctx, free_dram, free_8bit, free_psram);
+#else
+    ESP_LOGI(TAG, "%s: heap free DRAM=%zu 8BIT=%zu", ctx, free_dram, free_8bit);
 #endif
 }
 
@@ -210,6 +255,74 @@ static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
 static esp_err_t resample_audio(void* src, void* dst, size_t src_size, 
                                audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
                                size_t* dst_size);
+
+/*
+ * Helper: attempt to enqueue `total_bytes` from `data` into the small
+ * low-latency `s_beep_buffer` in aligned sub-chunks. This avoids trying
+ * to push large contiguous blocks that are bigger than the beep buffer
+ * capacity and reduces the chance we'll fall back to the on-the-fly
+ * synth generator.
+ *
+ * Returns number of bytes successfully enqueued.
+ */
+static size_t beep_buffer_send_chunked(const uint8_t* data, size_t total_bytes, size_t frame_bytes)
+{
+    if (s_beep_buffer == NULL || data == NULL || total_bytes == 0 || frame_bytes == 0) return 0;
+
+    /* Choose a small chunk size friendly to the beep buffer and DMA. Use
+     * 4 KiB as a reasonable default and align down to frame size. */
+    size_t chunk_bytes = 4 * 1024;
+    if (chunk_bytes > (size_t)BEEP_BUFFER_SIZE) chunk_bytes = (size_t)BEEP_BUFFER_SIZE;
+    /* Align chunk to frame size */
+    chunk_bytes = (chunk_bytes / frame_bytes) * frame_bytes;
+    if (chunk_bytes == 0) chunk_bytes = frame_bytes;
+
+    size_t sent_total = 0;
+
+    /* Short per-chunk wait to let the consumer free space */
+    const TickType_t chunk_wait = pdMS_TO_TICKS(10);
+
+    while (sent_total < total_bytes) {
+        size_t remaining = total_bytes - sent_total;
+        size_t this_chunk = remaining > chunk_bytes ? chunk_bytes : remaining;
+
+        BaseType_t ok = xRingbufferSend(s_beep_buffer, data + sent_total, this_chunk, chunk_wait);
+        if (ok == pdTRUE) {
+            sent_total += this_chunk;
+            continue;
+        }
+
+        /* If direct send failed, try freeing a little space by dropping
+         * oldest items from the beep buffer (bounded attempts). */
+        size_t dropped = 0;
+        int drop_attempts = 0;
+        const int max_drop_attempts = 4;
+        while (xRingbufferGetCurFreeSize(s_beep_buffer) < this_chunk && drop_attempts < max_drop_attempts) {
+            size_t rsz = 0;
+            void* it = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, this_chunk, 0);
+            if (it == NULL || rsz == 0) break;
+            vRingbufferReturnItem(s_beep_buffer, it);
+            dropped += rsz;
+            drop_attempts++;
+        }
+
+        if (dropped > 0) {
+            log_heap_stats("beep-after-drop-beepbuf");
+            ok = xRingbufferSend(s_beep_buffer, data + sent_total, this_chunk, 0);
+            if (ok == pdTRUE) {
+                sent_total += this_chunk;
+                continue;
+            }
+        }
+
+        /* Couldn't send this chunk promptly; give up to avoid blocking
+         * the caller for long periods. Higher-level code will enable the
+         * fallback synth for any remaining bytes. */
+        break;
+    }
+
+    return sent_total;
+}
 
 #ifdef CONFIG_BT_MOCK_TESTING
 static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
@@ -333,6 +446,18 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     size_t buffer_capacity = audio_calculate_buffer_capacity(config);
 
+    /* Detect runtime PSRAM availability once so we can adjust DRAM-heavy
+     * allocations on DRAM-only boards. If PSRAM is absent, reduce our
+     * initial sizing targets to relieve allocator pressure (helps avoid
+     * BT stack malloc failures seen when starting streaming). */
+    bool runtime_psram_ready = false;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    runtime_psram_ready = esp_psram_is_initialized();
+#endif
+    if (!runtime_psram_ready) {
+        ESP_LOGW(TAG, "Runtime: PSRAM not available — reducing DRAM allocation targets to relieve pressure");
+    }
+
 #ifdef CONFIG_SPIRAM
     ESP_LOGI(TAG, "Build-time: SPIRAM enabled - AUDIO_BUFFER_SIZE=%zu, buffer_capacity=%zu", (size_t)AUDIO_BUFFER_SIZE, buffer_capacity);
 #else
@@ -343,6 +468,11 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     // allocation fails (useful for DRAM-only boards where the compile-time
     // DRAM-safe fallback may still be too large).
     size_t try_capacity = buffer_capacity;
+    /* Reduce initial desired capacity on DRAM-only boards to limit one-time
+     * large allocations that can fragment DRAM and starve the BT stack. */
+    if (!runtime_psram_ready && try_capacity > (32 * 1024)) {
+        try_capacity = 32 * 1024; /* start at 32 KiB on DRAM-only boards */
+    }
     const size_t min_floor = 4 * 1024; // Allow down to 4 KiB for Unity/mock builds
 
     /* Ensure we never shrink below a single processing block and keep a
@@ -380,7 +510,33 @@ esp_err_t audio_processor_init(const audio_config_t* config)
             try_capacity = min_capacity;
         }
 
-        ESP_LOGI(TAG, "Attempting to create audio buffer of %zu bytes", try_capacity);
+        /* Emit heap free diagnostics so we can see DRAM/PSRAM pressure in
+         * the logs. This helps triage malloc failures observed in the
+         * Bluetooth stack when large allocations occur. */
+        size_t free_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        size_t free_psram = 0;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+        free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#endif
+        ESP_LOGI(TAG, "Attempting to create audio buffer of %zu bytes (heap free DRAM=%zu PSRAM=%zu)", try_capacity, free_dram, free_psram);
+
+        /* Prefer creating the large audio buffer in PSRAM when available to
+         * reduce DRAM pressure. Fall back to the default allocator if PSRAM
+         * creation fails or isn't present. */
+        bool psram_ready_local = false;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+        psram_ready_local = esp_psram_is_initialized();
+#endif
+        if (psram_ready_local) {
+            s_audio_buffer = xRingbufferCreateWithCaps(try_capacity, RINGBUF_TYPE_BYTEBUF,
+                                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (s_audio_buffer != NULL) {
+                ESP_LOGI(TAG, "Audio buffer created in PSRAM (%zu bytes)", try_capacity);
+                break;
+            }
+            ESP_LOGW(TAG, "xRingbufferCreateWithCaps(PSRAM) failed for %zu, falling back to default allocator", try_capacity);
+        }
+
         s_audio_buffer = xRingbufferCreate(try_capacity, RINGBUF_TYPE_BYTEBUF);
         if (s_audio_buffer != NULL) {
             ESP_LOGI(TAG, "Audio buffer created (%zu bytes)", try_capacity);
@@ -394,6 +550,37 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
         try_capacity = try_capacity / 2U;
         try_capacity = (try_capacity + 3U) & ~((size_t)3U);
+    }
+
+    /* Create small beep buffer for urgent tones. Prefer allocating the
+     * ring buffer storage in PSRAM (if available) to reduce DRAM pressure
+     * that can lead to bluetooth stack malloc failures. Fall back to the
+     * default allocator if PSRAM is not present or allocation fails. This
+     * buffer is non-fatal - if creation fails we will still use the
+     * on-the-fly synth fallback. */
+    s_beep_buffer = NULL;
+    bool psram_ready_local = false;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    psram_ready_local = esp_psram_is_initialized();
+#endif
+    if (psram_ready_local) {
+        /* Try to place beep buffer storage in PSRAM to avoid DRAM pressure */
+        s_beep_buffer = xRingbufferCreateWithCaps((size_t)BEEP_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF,
+                                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_beep_buffer != NULL) {
+            ESP_LOGI(TAG, "Beep buffer created in PSRAM (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
+        } else {
+            ESP_LOGW(TAG, "audio_processor_init: failed to create beep buffer in PSRAM, falling back to default allocator");
+        }
+    }
+
+    if (s_beep_buffer == NULL) {
+        s_beep_buffer = xRingbufferCreate((size_t)BEEP_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF);
+        if (s_beep_buffer == NULL) {
+            ESP_LOGW(TAG, "audio_processor_init: failed to create beep buffer (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
+        } else {
+            ESP_LOGI(TAG, "Beep buffer created (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
+        }
     }
 
     if (s_audio_buffer == NULL) {
@@ -415,7 +602,19 @@ esp_err_t audio_processor_init(const audio_config_t* config)
      * progressively smaller buffer sizes for all three work buffers so the
      * system can boot with reduced capability. */
     size_t try_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    /* Lower work buffer sizing on DRAM-only systems to reduce resident
+     * DRAM usage (we'll still try progressively smaller sizes). */
+    if (!runtime_psram_ready && try_work_bytes > 4096) {
+        try_work_bytes = try_work_bytes / 2U;
+    }
+    /* Minimum per-work-buffer size. Lower this in the mock/unit-test build
+     * to accommodate DRAM-only test images which have a much smaller heap
+     * budget. Production builds keep the 4 KiB floor. */
+#ifdef CONFIG_BT_MOCK_TESTING
+    const size_t min_work_bytes = 1 * 1024; // 1KB minimum per buffer for unit tests
+#else
     const size_t min_work_bytes = 4 * 1024; // 4KB minimum per buffer
+#endif
     bool work_allocated = false;
 
     while (try_work_bytes >= min_work_bytes) {
@@ -488,7 +687,10 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
     bool psram_ready = esp_psram_is_initialized();
     if (!psram_ready) {
-        pool_target = I2S_RAW_POOL_DRAM_COUNT;
+        /* On DRAM-only devices reduce the prealloc pool to a single block to
+         * avoid large upfront DRAM consumption. The reader will fall back to
+         * on-demand heap allocations if needed. */
+        pool_target = 1U;
     }
 #else
     const bool psram_ready = false;
@@ -549,7 +751,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     // Create fast I2S reader task (keeps reads short) and a lower-priority
     // worker task that performs conversion/resampling and pushes to ringbuffer.
     BaseType_t task_ret = xTaskCreate(i2s_reader_task, "i2s_reader",
-                                     AUDIO_PROCESSING_STACK_SIZE, NULL, 6, &s_audio_task_handle);
+                                     AUDIO_PROCESSING_STACK_SIZE, NULL, 7, &s_audio_task_handle);
     if (task_ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create i2s reader task");
         vQueueDelete(s_i2s_queue);
@@ -684,6 +886,12 @@ esp_err_t audio_processor_deinit(void)
     s_i2s_buffer = NULL;
     s_proc_buffer = NULL;
     s_proc_buffer2 = NULL;
+
+    /* Delete beep buffer if present */
+    if (s_beep_buffer != NULL) {
+        vRingbufferDelete(s_beep_buffer);
+        s_beep_buffer = NULL;
+    }
 
     s_is_initialized = false;
     ESP_LOGI(TAG, "Audio processor deinitialized");
@@ -898,42 +1106,135 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
-    // If muted and no beep override is pending, just fill with zeros
-    extern size_t s_beep_remaining_bytes; /* declared below */
-    if (s_audio_config.mute && s_beep_remaining_bytes == 0) {
-        memset(buffer, 0, size);
-        *bytes_read = size;
+    // If muted and no beep override/fallback is pending, just fill with zeros
+    if (s_audio_config.mute && s_beep_remaining_bytes == 0 && !s_beep_fallback_active) {
+        /* If the dedicated beep buffer is empty (or unavailable) then
+         * there's nothing to play — return silence. If the beep buffer
+         * contains data we should continue so the urgent tone can play. */
+        if (s_beep_buffer == NULL || xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE) {
+            memset(buffer, 0, size);
+            *bytes_read = size;
+            return ESP_OK;
+        }
+    }
+
+    // Prepare to fill output buffer. First, synthesize any on-the-fly
+    // fallback beep samples (these are generated when ringbuffer was full
+    // at enqueue time). This path is protected by s_beep_lock.
+    size_t bytes_written = 0;
+    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample <= 0) bytes_per_sample = 2;
+    int channels = s_audio_config.channels;
+    if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
+    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+
+    /* Drain any urgent beep data from the small beep buffer first so queued
+     * tones are emitted with lower latency than the main ringbuffer. */
+    if (s_beep_buffer != NULL) {
+        while (bytes_written < size) {
+            size_t want = size - bytes_written;
+            size_t read_sz = 0;
+            void* itm = xRingbufferReceiveUpTo(s_beep_buffer, &read_sz, want, 0);
+            if (itm == NULL || read_sz == 0) break;
+            memcpy(buffer + bytes_written, itm, read_sz);
+            vRingbufferReturnItem(s_beep_buffer, itm);
+            /* Decrement bypass counter for beep bytes consumed */
+            if (s_beep_remaining_bytes > 0) {
+                if (read_sz >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
+                else s_beep_remaining_bytes -= read_sz;
+            }
+            bytes_written += read_sz;
+        }
+    }
+
+    if (s_beep_fallback_active) {
+        portENTER_CRITICAL(&s_beep_lock);
+        if (s_beep_fallback_active && s_beep_fallback_frames_remaining > 0) {
+            size_t max_frames = size / frame_bytes;
+            size_t emit_frames = s_beep_fallback_frames_remaining < max_frames ? s_beep_fallback_frames_remaining : max_frames;
+            if (emit_frames > 0) {
+                if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+                    int16_t* out = (int16_t*)buffer;
+                    for (size_t f = 0; f < emit_frames; ++f) {
+                        uint32_t idx = s_beep_fallback_phase_acc >> 24; /* 0..255 */
+                        int16_t sample = (idx < 128) ? 30000 : -30000;
+                        for (int ch = 0; ch < channels; ++ch) {
+                            *out++ = sample;
+                        }
+                        s_beep_fallback_phase_acc += s_beep_fallback_phase_step;
+                    }
+                } else {
+                    int32_t* out32 = (int32_t*)buffer;
+                    for (size_t f = 0; f < emit_frames; ++f) {
+                        uint32_t idx = s_beep_fallback_phase_acc >> 24;
+                        int32_t sample = (idx < 128) ? 0x3FFFFFFF : -0x3FFFFFFF;
+                        for (int ch = 0; ch < channels; ++ch) {
+                            *out32++ = sample;
+                        }
+                        s_beep_fallback_phase_acc += s_beep_fallback_phase_step;
+                    }
+                }
+
+                size_t emitted_bytes = emit_frames * frame_bytes;
+                s_beep_fallback_frames_remaining -= emit_frames;
+                if (s_beep_fallback_frames_remaining == 0) {
+                    s_beep_fallback_active = false;
+                }
+                /* Decrement the global remaining bytes used to bypass mute */
+                if (s_beep_remaining_bytes > emitted_bytes) s_beep_remaining_bytes -= emitted_bytes;
+                else s_beep_remaining_bytes = 0;
+
+                bytes_written += emitted_bytes;
+            }
+        }
+        portEXIT_CRITICAL(&s_beep_lock);
+    }
+
+    /* If we filled the requested size entirely from the fallback generator,
+     * apply volume and return immediately. */
+    if (bytes_written == size) {
+        if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
+        *bytes_read = bytes_written;
         return ESP_OK;
     }
 
-    // Read from ring buffer
+    /* Otherwise, try to pull the remainder from the ringbuffer. */
+    size_t want = size - bytes_written;
     size_t read_size = 0;
-    void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, size, 0);
-    
-    if (item == NULL) {
-        // Buffer is empty
-        *bytes_read = 0;
-        s_audio_stats.buffer_underruns++;
-        return ESP_OK;
-    }
+    void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, want, 0);
+    if (item != NULL && read_size > 0) {
+        memcpy(buffer + bytes_written, item, read_size);
+        vRingbufferReturnItem(s_audio_buffer, item);
 
-    // Copy data to output buffer
-    memcpy(buffer, item, read_size);
-    vRingbufferReturnItem(s_audio_buffer, item);
+        /* If part of this data was scheduled as a beep (queued earlier),
+         * decrement remaining counter so subsequent reads know when to
+         * re-enable mute behavior. */
+        if (s_beep_remaining_bytes > 0) {
+            if (read_size >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
+            else s_beep_remaining_bytes -= read_size;
+        }
 
-    /* If part of this data was scheduled as a beep, decrement remaining
-     * counter so subsequent reads know when to re-enable mute behavior. */
-    if (s_beep_remaining_bytes > 0) {
-        if (read_size >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
-        else s_beep_remaining_bytes -= read_size;
+        bytes_written += read_size;
+    } else {
+        /* No ringbuffer data available for the remainder; if we have already
+         * generated some fallback samples return them (silence-fill the
+         * rest for caller expectations). If nothing generated, report underrun. */
+        if (bytes_written == 0) {
+            *bytes_read = 0;
+            s_audio_stats.buffer_underruns++;
+            return ESP_OK;
+        }
+        /* Zero-fill remaining tail so output buffer is deterministic */
+        memset(buffer + bytes_written, 0, want);
+        bytes_written += want;
     }
 
     // Apply volume if not at maximum
     if (s_volume_gain < 100) {
-        apply_volume(buffer, read_size, s_volume_gain);
+        apply_volume(buffer, bytes_written, s_volume_gain);
     }
 
-    *bytes_read = read_size;
+    *bytes_read = bytes_written;
 
     // Update statistics
     s_audio_stats.current_buffer_level = xRingbufferGetCurFreeSize(s_audio_buffer);
@@ -977,8 +1278,8 @@ static esp_err_t configure_i2s(const audio_config_t* config)
         /* Keep DMA descriptor counts modest to reduce RAM usage while
          * avoiding underruns. These values are reasonable defaults for
          * A2DP use-cases; tweak if you see buffer underruns/overruns. */
-        .dma_desc_num = 4,
-        .dma_frame_num = 64,
+        .dma_desc_num = I2S_DEFAULT_DMA_DESC_NUM,
+        .dma_frame_num = I2S_DEFAULT_DMA_FRAME_NUM,
         .auto_clear = true,
     };
     
@@ -1124,6 +1425,12 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
     size_t samples_per_period = (size_t)sample_rate / (size_t)tone_hz;
     if (samples_per_period == 0) samples_per_period = 1;
 
+    /* Diagnostic: snapshot free space and heap before starting attempts */
+    size_t free_before_all = xRingbufferGetCurFreeSize(s_audio_buffer);
+    ESP_LOGI(TAG, "audio_processor_beep: attempting to queue %zu bytes (%u ms), free_space=%zu",
+             total_bytes, (unsigned)duration_ms, free_before_all);
+    log_heap_stats("beep-start");
+
     while (bytes_remaining > 0) {
         size_t chunk = bytes_remaining > max_chunk ? max_chunk : bytes_remaining;
         size_t frames = chunk / frame_bytes;
@@ -1150,11 +1457,122 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
             }
         }
 
-        /* Try to push into the ring buffer; if it fails we bail but still
-         * mark the remaining bytes so reads behave consistently. */
-        BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, 0);
+        /* Try to push into the ring buffer. Under load the worker may not
+         * have freed space yet; instead of failing immediately, perform a
+         * small number of short waits to allow the worker to make room. If
+         * still unsuccessful, bail and report what was queued. */
+        BaseType_t sent = pdFALSE;
+        const TickType_t wait_ticks = pdMS_TO_TICKS(50);
+        const int max_attempts = 3;
+        int attempt = 0;
+            while (attempt < max_attempts) {
+            size_t free_before_attempt = xRingbufferGetCurFreeSize(s_audio_buffer);
+            ESP_LOGD(TAG, "audio_processor_beep: attempt %d/%d frames=%zu bytes=%zu free_before_attempt=%zu",
+                     attempt + 1, max_attempts, frames, (size_t)frames * frame_bytes, free_before_attempt);
+
+            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, wait_ticks);
+
+            size_t free_after_attempt = xRingbufferGetCurFreeSize(s_audio_buffer);
+            if (sent == pdTRUE) {
+                ESP_LOGD(TAG, "audio_processor_beep: send succeeded on attempt %d, free_after=%zu",
+                         attempt + 1, free_after_attempt);
+                break;
+            }
+
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer send attempt %d/%d failed (free_before=%zu free_after=%zu), retrying",
+                     attempt + 1, max_attempts, free_before_attempt, free_after_attempt);
+            attempt++;
+        }
         if (sent != pdTRUE) {
-            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, queued %zu/%zu bytes", total_bytes - bytes_remaining, total_bytes);
+            size_t free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer send failed after %d attempts, free_now=%zu; attempting to free space by dropping oldest items",
+                     attempt, free_now);
+            log_heap_stats("beep-send-failed");
+
+            /* Attempt to free space by discarding oldest ringbuffer items.
+             * This is a last-resort short-path so short beeps can be injected
+             * even when the main buffer is saturated (for example when
+             * connected but the remote is not actively pulling audio). */
+            size_t needed = (size_t)frames * frame_bytes;
+            size_t dropped = 0;
+            int drop_attempts = 0;
+            const int max_drop_attempts = 32; /* avoid unbounded loops */
+            while (xRingbufferGetCurFreeSize(s_audio_buffer) < needed && drop_attempts < max_drop_attempts) {
+                size_t rsz = 0;
+                void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, needed, 0);
+                if (it == NULL || rsz == 0) break;
+                /* Return the item to free the space (we're intentionally dropping it) */
+                vRingbufferReturnItem(s_audio_buffer, it);
+                dropped += rsz;
+                drop_attempts++;
+            }
+
+            if (dropped > 0) {
+                size_t free_after_drop = xRingbufferGetCurFreeSize(s_audio_buffer);
+                ESP_LOGW(TAG, "audio_processor_beep: dropped %zu bytes to free space, free_after_drop=%zu; retrying send once",
+                         dropped, free_after_drop);
+                    log_heap_stats("beep-after-drop");
+                /* Try one immediate send (no wait) after dropping */
+                sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, 0);
+                if (sent == pdTRUE) {
+                    /* success: continue with next chunk */
+                    bytes_remaining -= (size_t)frames * frame_bytes;
+                    continue;
+                }
+            }
+
+            /* If still not sent, attempt to coax the remote into pulling audio
+             * by starting A2DP streaming if we're connected but not currently
+             * streaming. This is a single-shot attempt: request start, wait a
+             * short period for the stack/remote to react, then retry the send
+             * one more time with a slightly larger timeout. */
+            {
+                int mgr_conn = bt_manager_is_connected();
+                int streaming = bt_get_streaming_state_int();
+                if (mgr_conn && !streaming) {
+                    ESP_LOGW(TAG, "audio_processor_beep: connected but not streaming — requesting start to allow consumer to pull");
+                    esp_err_t start_err = bt_start_audio();
+                    if (start_err == ESP_OK) {
+                        /* Allow some time for the A2DP stack and remote to start
+                         * pulling data. Tuned to be short but sufficient for many
+                         * receivers. */
+                        vTaskDelay(pdMS_TO_TICKS(150));
+                        size_t free_before_retry = xRingbufferGetCurFreeSize(s_audio_buffer);
+                        ESP_LOGD(TAG, "audio_processor_beep: post-start retry free_before=%zu", free_before_retry);
+                        sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, pdMS_TO_TICKS(200));
+                        if (sent == pdTRUE) {
+                            bytes_remaining -= (size_t)frames * frame_bytes;
+                            ESP_LOGI(TAG, "audio_processor_beep: send succeeded after starting audio");
+                            continue;
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "audio_processor_beep: bt_start_audio() failed: %s", esp_err_to_name(start_err));
+                    }
+                }
+            }
+
+            /* If the main buffer still can't accept this chunk, try the
+             * dedicated low-latency beep buffer. Use chunked writes so a
+             * modest-size beep buffer can accept large beeps piecewise.
+             */
+            if (s_beep_buffer != NULL) {
+                size_t needed_b = (size_t)frames * frame_bytes;
+                size_t enqueued = beep_buffer_send_chunked((const uint8_t*)s_proc_buffer, needed_b, frame_bytes);
+                if (enqueued > 0) {
+                    bytes_remaining -= enqueued;
+                    ESP_LOGW(TAG, "audio_processor_beep: enqueued %zu bytes into beep buffer (low-latency)", enqueued);
+                    log_heap_stats("beep-enqueued-beepbuf");
+                    /* If we didn't enqueue the full chunk, we'll fall through
+                     * and enable fallback for the remainder after the loop.
+                     */
+                    if (enqueued == needed_b) {
+                        continue;
+                    }
+                }
+            }
+
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, queued %zu/%zu bytes after %d attempts, free_now=%zu",
+                     total_bytes - bytes_remaining, total_bytes, attempt, xRingbufferGetCurFreeSize(s_audio_buffer));
             break;
         }
 
@@ -1162,12 +1580,36 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
     }
 
     /* Mark remaining bytes so reads will bypass mute until beep data is
-     * consumed. Note that if the ringbuffer didn't accept the whole beep
-     * we still set the counter for the portion that was queued. */
+     * consumed. If the ringbuffer didn't accept the whole beep, enable
+     * the fallback generator for the remainder so the tone is audible
+     * even when the main buffer is saturated. */
     size_t queued = total_bytes - bytes_remaining;
-    s_beep_remaining_bytes += queued;
+    /* Increase the bypass counter by the total beep length (queued + fallback)
+     * so reads will bypass mute for the whole duration; the reader will
+     * decrement this counter as bytes are consumed from either source. */
+    s_beep_remaining_bytes += total_bytes;
 
-    ESP_LOGI(TAG, "audio_processor_beep: queued %zu bytes (%u ms)", queued, (unsigned)duration_ms);
+    /* If there are leftover bytes that weren't queued, enable the on-the-fly
+     * fallback generator for the remaining frames. */
+    if (bytes_remaining > 0) {
+        size_t remaining_frames = bytes_remaining / frame_bytes;
+        if (remaining_frames > 0) {
+            portENTER_CRITICAL(&s_beep_lock);
+            s_beep_fallback_active = true;
+            s_beep_fallback_frames_remaining += remaining_frames; /* accumulate if multiple beeps */
+            s_beep_fallback_phase_acc = 0;
+            /* Compute phase step in 32.8 fixed point consistent with synth code */
+            if (sample_rate > 0) {
+                s_beep_fallback_phase_step = (uint32_t)((((uint64_t)tone_hz) * (1ULL << 24)) / (uint32_t)sample_rate);
+            } else {
+                s_beep_fallback_phase_step = (uint32_t)((((uint64_t)tone_hz) * (1ULL << 24)) / 44100U);
+            }
+            portEXIT_CRITICAL(&s_beep_lock);
+            ESP_LOGW(TAG, "audio_processor_beep: fallback enabled for %zu frames (%zu bytes)", remaining_frames, bytes_remaining);
+        }
+    }
+
+    ESP_LOGI(TAG, "audio_processor_beep: queued %zu bytes (%u ms); fallback_remaining=%zu bytes", queued, (unsigned)duration_ms, bytes_remaining);
     return ESP_OK;
 }
 
@@ -1222,18 +1664,68 @@ static void i2s_reader_task(void *pvParameters)
             last_i2s_ret = ESP_OK;
             consecutive_i2s_failures = 0;
         } else {
-            last_i2s_ret = i2s_channel_read(s_i2s_rx_handle, s_i2s_buffer, read_request, &bytes_read, 0);
-            if (last_i2s_ret == ESP_OK && bytes_read > 0) {
-                have_frame = true;
-                consecutive_i2s_failures = 0;
-            } else if (last_i2s_ret != ESP_OK) {
-                consecutive_i2s_failures++;
-            } else {
-                last_i2s_ret = ESP_ERR_INVALID_SIZE;
-                consecutive_i2s_failures++;
+            /* Perform smaller, frame-aligned reads to avoid long blocking
+             * inside the I2S driver. Large single reads can block the
+             * reader task and increase chance of timeouts; cap each read to
+             * I2S_MAX_READ_BYTES and loop until we've attempted the
+             * ideal_read amount or hit an error. */
+            size_t remaining = read_request;
+            size_t total_read = 0;
+            int local_failures = 0;
+            int64_t t_start = esp_timer_get_time();
+
+            while (remaining > 0) {
+                size_t this_read = remaining;
+                if (this_read > I2S_MAX_READ_BYTES) this_read = I2S_MAX_READ_BYTES;
+                /* Align to frame_bytes */
+                if (frame_bytes > 0) {
+                    this_read = (this_read / frame_bytes) * frame_bytes;
+                    if (this_read == 0) this_read = frame_bytes;
+                }
+
+                size_t part_read = 0;
+                esp_err_t part_ret = i2s_channel_read(s_i2s_rx_handle,
+                                                      (uint8_t*)s_i2s_buffer + total_read,
+                                                      this_read,
+                                                      &part_read,
+                                                      0);
+
+                if (part_ret == ESP_OK && part_read > 0) {
+                    total_read += part_read;
+                    remaining = (remaining > part_read) ? (remaining - part_read) : 0;
+                    have_frame = true;
+                    consecutive_i2s_failures = 0;
+                } else {
+                    /* Treat both errors and zero reads as a failure for the
+                     * consecutive failure counter. Bail out of the chunked
+                     * loop to avoid spinning on a non-responsive I2S device. */
+                    local_failures++;
+                    consecutive_i2s_failures++;
+                    if (part_ret != ESP_OK) {
+                        last_i2s_ret = part_ret;
+                    } else {
+                        last_i2s_ret = ESP_ERR_INVALID_SIZE;
+                    }
+                    break;
+                }
+
+                /* If we've filled our work buffer, stop to let the worker run */
+                if (total_read >= AUDIO_WORK_BUFFER_BYTES) {
+                    break;
+                }
             }
 
-            const int FAILURE_THRESHOLD = 20;
+            bytes_read = total_read;
+            if (!have_frame && local_failures > 0) {
+                /* nothing read and at least one failure */
+            }
+
+            if (total_read > I2S_MAX_READ_BYTES) {
+                int64_t t_end = esp_timer_get_time();
+                ESP_LOGD(TAG, "i2s_reader_task: multi-chunk read total=%zu took=%lld us", total_read, (long long)(t_end - t_start));
+            }
+
+        const int FAILURE_THRESHOLD = 20;
             if (consecutive_i2s_failures >= FAILURE_THRESHOLD) {
                 ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", consecutive_i2s_failures);
                 s_force_synth = true;
@@ -1282,6 +1774,8 @@ static void i2s_reader_task(void *pvParameters)
                     (void)xQueueSend(s_i2s_free_queue, &pooled_ptr, 0);
                     s_audio_stats.buffer_overruns++;
                     backpressure = true;
+                    ESP_LOGW(TAG, "i2s_reader_task: backpressure while enqueueing i2s block len=%zu", blk.len);
+                    log_heap_stats("i2s-backpressure");
                 }
             } else {
                 s_audio_stats.buffer_overruns++;
@@ -1290,6 +1784,8 @@ static void i2s_reader_task(void *pvParameters)
         } else {
             s_audio_stats.buffer_overruns++;
             backpressure = true;
+            ESP_LOGW(TAG, "i2s_reader_task: backpressure (no free queue) for len=%zu", bytes_read);
+            log_heap_stats("i2s-backpressure-no-free-queue");
         }
 
         audio_proc_mock_yield();
@@ -1412,9 +1908,11 @@ static void audio_worker_task(void *pvParameters)
             }
 
             BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
-            if (sent != pdTRUE) {
-                s_audio_stats.buffer_overruns++;
-            }
+                if (sent != pdTRUE) {
+                    s_audio_stats.buffer_overruns++;
+                    ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
+                    log_heap_stats("worker-send-failed");
+                }
         }
 
         /* Return the raw block to the free pool if present, otherwise free it */
