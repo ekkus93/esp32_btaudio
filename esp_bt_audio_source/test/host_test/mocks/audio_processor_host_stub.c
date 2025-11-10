@@ -1,3 +1,13 @@
+/* Host-only lightweight stubs for audio_processor symbols.
+ * These implementations are intentionally minimal — they exist only to
+ * satisfy linker references for native host tests and should not
+ * attempt to exercise device-only functionality.
+ */
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "../../main/include/audio_processor.h"
+
 /* Host-only stub for audio_processor used by native unit tests.
  * Provides a minimal, self-contained implementation of the public
  * audio_processor API so host tests can run without linking the
@@ -227,6 +237,46 @@ void audio_processor_set_synth_mode(bool enable)
 bool audio_processor_is_synth_mode_enabled(void)
 {
     return s_synth_mode;
+}
+
+/* Play a WAV file from the filesystem (host stub).
+ * For host tests we don't perform real decoding; instead append a
+ * deterministic non-zero pattern to the ring buffer so callers that
+ * expect audio data receive something. Return ESP_OK even if the path
+ * is NULL to keep tests simple.
+ */
+esp_err_t audio_processor_play_wav(const char* path)
+{
+    (void)path;
+    const size_t chunk = 512;
+    uint8_t buf[chunk];
+    for (size_t i = 0; i < chunk; ++i) buf[i] = (uint8_t)((i * 17) & 0xFF);
+    ring_append(buf, chunk);
+    /* ensure beep flag is not confused with wav playback */
+    s_beep_active = false;
+    return ESP_OK;
+}
+
+void audio_processor_enable_next_beep_diag(void)
+{
+    /* No-op for host stub */
+}
+
+esp_err_t audio_processor_emit_sync_worker_diag(void)
+{
+    /* No-op for host stub; return success so tests can proceed */
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_drain_ringbuffer(void)
+{
+    s_ring_len = 0;
+    return ESP_OK;
+}
+
+void audio_processor_set_dram_only(bool enable)
+{
+    (void)enable; /* no-op in host tests */
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING

@@ -1,6 +1,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
@@ -22,6 +23,13 @@ extern int bt_get_streaming_state_int(void);
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
+
+/* One-shot diagnostic: when set, the next beep/fallback generation
+ * will emit small PCM snapshots to the serial log for diagnosis and
+ * then clear the flag. This is intentionally low-impact and only
+ * intended for short debug sessions. */
+static volatile bool s_dump_next_beep_diag = false;
+static const size_t DIAG_DUMP_BYTES = 64; /* bytes to dump for snapshots */
 
 static const char *TAG = "AUDIO_PROC";
 
@@ -48,6 +56,9 @@ static const char *TAG = "AUDIO_PROC";
  * limit DRAM pressure. Reduce to 8 KiB by default to avoid DRAM
  * allocation failures in the Bluetooth stack (see runtime logs). */
 #define BEEP_BUFFER_SIZE (8 * 1024)
+/* Fade duration (ms) applied to the start and end of queued/fallback beeps
+ * Option A: small crossfade to reduce clicks. Reasonable default: 8 ms. */
+#define BEEP_FADE_MS 8
 
 // Audio processing task handle
 static TaskHandle_t s_audio_task_handle = NULL; /* I2S reader task */
@@ -108,6 +119,16 @@ static bool s_force_synth = true;
 static uint8_t s_volume_gain = 80; // Internal volume as percentage
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
+/* Remember previous synth mode when we temporarily enable synth for
+ * fallback beep playback. This allows the reader to generate samples
+ * locally while the fallback tone is active (useful on DRAM-only
+ * boards or when I2S reads time out). */
+static bool s_beep_prev_force_synth = false;
+/* Track consecutive I2S read failures across the reader task so other
+ * code (like the fallback restore logic) can detect whether the I2S
+ * path is healthy. This prevents restoring synth mode when I2S is
+ * currently failing, which caused choppy audio. */
+static int s_i2s_consecutive_failures = 0;
 
 /* Fallback on-the-fly beep generator state
  * Used when the main ringbuffer is full and we still want to play a
@@ -118,6 +139,14 @@ static bool s_beep_fallback_active = false;
 static size_t s_beep_fallback_frames_remaining = 0;
 static uint32_t s_beep_fallback_phase_acc = 0;
 static uint32_t s_beep_fallback_phase_step = 0;
+/* Floating-point phase helpers for sine generation (used for nicer beep) */
+static double s_synth_phase = 0.0;
+static double s_beep_fallback_phase = 0.0;
+static double s_beep_fallback_phase_inc = 0.0;
+/* Track total frames scheduled for the fallback so we can compute
+ * envelope progress for fade-in/out. This accumulates when multiple
+ * beeps are enabled while a previous fallback is active. */
+static size_t s_beep_fallback_total_frames = 0;
 static portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
 
 // Diagnostics throttling state for high-frequency logging inside the
@@ -256,6 +285,25 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
                                audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
                                size_t* dst_size);
 
+/* Diagnostic helper forward-declaration (defined later) */
+static void diag_dump_bytes(const void* data, size_t len, const char* tag);
+
+/* Runtime control: allow forcing DRAM-only allocations for debugging/static avoidance */
+/* Temporarily default to true for Option 2: boot with DRAM-only allocations
+ * (this avoids PSRAM placement for audio buffers so we can A/B the beep).
+ * Revert this change after debugging or make persistent via Kconfig/NVS as needed. */
+static bool s_dram_only_alloc = true;
+
+void audio_processor_set_dram_only(bool enable)
+{
+    s_dram_only_alloc = enable ? true : false;
+    ESP_LOGI(TAG, "audio_processor: DRAM-only allocations %s", s_dram_only_alloc ? "ENABLED" : "DISABLED");
+}
+
+/* Public helper to arm a one-shot diagnostic dump for the next beep
+ * invocation. Call this before you issue `BEEP` to capture snapshots. */
+void audio_processor_enable_next_beep_diag(void);
+
 /*
  * Helper: attempt to enqueue `total_bytes` from `data` into the small
  * low-latency `s_beep_buffer` in aligned sub-chunks. This avoids trying
@@ -390,36 +438,36 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
     const float freq = 440.0f; /* A4 tone */
     const float sample_rate = (float)s_audio_config.sample_rate;
 
-    /* Compute phase step in 32.8 fixed-point (24 fractional bits). */
-    if (sample_rate > 0.0f) {
-        s_synth_phase_step = (uint32_t)((freq * (1ULL << 24)) / (uint32_t)sample_rate);
-    } else {
-        s_synth_phase_step = (uint32_t)((freq * (1ULL << 24)) / 44100U);
-    }
+    /* Use a sine wave for a smoother tone. Compute phase increment in
+     * radians and maintain a persistent floating-point phase accumulator
+     * to avoid quantization artifacts. Amplitude chosen to fit in 16-bit
+     * while leaving headroom for downstream processing. */
+    const double two_pi = 2.0 * M_PI;
+    double phase_inc = (sample_rate > 0.0f) ? ((two_pi * freq) / (double)sample_rate) : ((two_pi * freq) / 44100.0);
 
     if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
         int16_t* out = (int16_t*)buffer;
+        const double amp = 12000.0; /* amplitude for 16-bit */
         for (size_t f = 0; f < frames_to_write; ++f) {
-            /* Top 8 bits give fractional phase; use top bit of those to
-             * determine the sign for the square wave (128 entry wrap). */
-            uint32_t idx = s_synth_phase_acc >> 24; /* 0..255 */
-            int16_t sample = (idx < 128) ? 12000 : -12000;
+            int16_t sample = (int16_t)(sinf(s_synth_phase) * amp);
             for (int ch = 0; ch < channels; ++ch) {
                 *out++ = sample;
             }
-            s_synth_phase_acc += s_synth_phase_step;
+            s_synth_phase += phase_inc;
+            if (s_synth_phase >= two_pi) s_synth_phase -= two_pi;
         }
         return frames_to_write * frame_bytes;
     } else {
         /* 32-bit container (32-bit or 24-bit stored in 32-bit) */
         int32_t* out32 = (int32_t*)buffer;
+        const double amp32 = 12000.0 * (1 << 16);
         for (size_t f = 0; f < frames_to_write; ++f) {
-            uint32_t idx = s_synth_phase_acc >> 24;
-        int32_t sample = (idx < 128) ? (12000 << 16) : -((int32_t)(12000 << 16));
+            int32_t sample = (int32_t)(sinf(s_synth_phase) * amp32);
             for (int ch = 0; ch < channels; ++ch) {
                 *out32++ = sample;
             }
-            s_synth_phase_acc += s_synth_phase_step;
+            s_synth_phase += phase_inc;
+            if (s_synth_phase >= two_pi) s_synth_phase -= two_pi;
         }
         return frames_to_write * frame_bytes;
     }
@@ -454,6 +502,11 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
     runtime_psram_ready = esp_psram_is_initialized();
 #endif
+    /* Honor runtime override to force DRAM-only allocations for debugging */
+    if (s_dram_only_alloc) {
+        runtime_psram_ready = false;
+        ESP_LOGI(TAG, "audio_processor: runtime DRAM-only override active; PSRAM will not be used");
+    }
     if (!runtime_psram_ready) {
         ESP_LOGW(TAG, "Runtime: PSRAM not available — reducing DRAM allocation targets to relieve pressure");
     }
@@ -523,10 +576,11 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         /* Prefer creating the large audio buffer in PSRAM when available to
          * reduce DRAM pressure. Fall back to the default allocator if PSRAM
          * creation fails or isn't present. */
-        bool psram_ready_local = false;
+    bool psram_ready_local = false;
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
-        psram_ready_local = esp_psram_is_initialized();
+    psram_ready_local = esp_psram_is_initialized();
 #endif
+    if (s_dram_only_alloc) psram_ready_local = false;
         if (psram_ready_local) {
             s_audio_buffer = xRingbufferCreateWithCaps(try_capacity, RINGBUF_TYPE_BYTEBUF,
                                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -563,6 +617,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
     psram_ready_local = esp_psram_is_initialized();
 #endif
+    if (s_dram_only_alloc) psram_ready_local = false;
     if (psram_ready_local) {
         /* Try to place beep buffer storage in PSRAM to avoid DRAM pressure */
         s_beep_buffer = xRingbufferCreateWithCaps((size_t)BEEP_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF,
@@ -622,12 +677,17 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
         size_t combined = try_work_bytes * 3U;
 
-        /* Try a single contiguous allocation first (prefer PSRAM). This
-         * reduces fragmentation and the number of heap headers compared to
-         * three separate allocations. */
-        s_work_block = heap_caps_malloc(combined, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (s_work_block == NULL) {
-            ESP_LOGW(TAG, "PSRAM combined allocation failed; falling back to DRAM for %zu bytes", combined);
+        /* Try a single contiguous allocation first (prefer PSRAM unless
+         * the runtime DRAM-only override is set). This reduces fragmentation
+         * and the number of heap headers compared to three separate allocations. */
+        if (!s_dram_only_alloc) {
+            s_work_block = heap_caps_malloc(combined, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (s_work_block == NULL) {
+                ESP_LOGW(TAG, "PSRAM combined allocation failed; falling back to DRAM for %zu bytes", combined);
+                s_work_block = heap_caps_malloc(combined, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
+            }
+        } else {
+            /* Forced DRAM-only path */
             s_work_block = heap_caps_malloc(combined, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
         }
 
@@ -683,18 +743,19 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         return ESP_ERR_NO_MEM;
     }
 
-    size_t pool_target = I2S_RAW_POOL_DEFAULT_COUNT;
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
     bool psram_ready = esp_psram_is_initialized();
+    if (s_dram_only_alloc) psram_ready = false;
+    size_t pool_target = I2S_RAW_POOL_DEFAULT_COUNT;
     if (!psram_ready) {
         /* On DRAM-only devices reduce the prealloc pool to a single block to
          * avoid large upfront DRAM consumption. The reader will fall back to
          * on-demand heap allocations if needed. */
-        pool_target = 1U;
+        pool_target = 3U;
     }
 #else
     const bool psram_ready = false;
-    pool_target = I2S_RAW_POOL_DRAM_COUNT;
+    size_t pool_target = I2S_RAW_POOL_DRAM_COUNT;
 #endif
     if (pool_target == 0U) {
         pool_target = 1U;
@@ -709,7 +770,10 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         if (s_i2s_pool != NULL) {
             size_t allocated = 0;
             for (size_t i = 0; i < pool_target; ++i) {
-                void* blk = heap_caps_malloc(AUDIO_WORK_BUFFER_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                void* blk = NULL;
+                if (!s_dram_only_alloc) {
+                    blk = heap_caps_malloc(AUDIO_WORK_BUFFER_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                }
                 if (blk == NULL) {
                     blk = heap_caps_malloc(AUDIO_WORK_BUFFER_BYTES, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
                 }
@@ -1124,6 +1188,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     size_t bytes_written = 0;
     int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
     if (bytes_per_sample <= 0) bytes_per_sample = 2;
+    int sample_rate = s_audio_config.sample_rate;
     int channels = s_audio_config.channels;
     if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
@@ -1148,30 +1213,64 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     }
 
     if (s_beep_fallback_active) {
+        bool _beep_need_restore_synth = false;
         portENTER_CRITICAL(&s_beep_lock);
         if (s_beep_fallback_active && s_beep_fallback_frames_remaining > 0) {
             size_t max_frames = size / frame_bytes;
             size_t emit_frames = s_beep_fallback_frames_remaining < max_frames ? s_beep_fallback_frames_remaining : max_frames;
             if (emit_frames > 0) {
+                /* Compute how many frames have already been played from
+                 * the fallback so we can apply the same fade envelope.
+                 * Guard against accidental underflow if totals were not
+                 * initialized properly. */
+                size_t frames_played = 0;
+                if (s_beep_fallback_total_frames > s_beep_fallback_frames_remaining) {
+                    frames_played = s_beep_fallback_total_frames - s_beep_fallback_frames_remaining;
+                }
+                size_t fade_frames = (size_t)(((double)sample_rate * (double)BEEP_FADE_MS) / 1000.0);
+                if (fade_frames < 1) fade_frames = 1;
+
                 if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
                     int16_t* out = (int16_t*)buffer;
+                    const double amp = 30000.0;
+                    const double two_pi = 2.0 * M_PI;
                     for (size_t f = 0; f < emit_frames; ++f) {
-                        uint32_t idx = s_beep_fallback_phase_acc >> 24; /* 0..255 */
-                        int16_t sample = (idx < 128) ? 30000 : -30000;
+                        size_t gidx = frames_played + f; /* global index into total frames */
+                        double env = 1.0;
+                        if (gidx < fade_frames) {
+                            env = (double)gidx / (double)fade_frames;
+                        } else if (gidx + fade_frames > s_beep_fallback_total_frames) {
+                            size_t tail_idx = s_beep_fallback_total_frames > gidx ? (s_beep_fallback_total_frames - gidx) : 0;
+                            if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                        }
+                        double v = sin(s_beep_fallback_phase) * amp * env;
+                        int16_t sample = (int16_t)v;
                         for (int ch = 0; ch < channels; ++ch) {
                             *out++ = sample;
                         }
-                        s_beep_fallback_phase_acc += s_beep_fallback_phase_step;
+                        s_beep_fallback_phase += s_beep_fallback_phase_inc;
+                        if (s_beep_fallback_phase >= two_pi) s_beep_fallback_phase -= two_pi;
                     }
                 } else {
                     int32_t* out32 = (int32_t*)buffer;
+                    const double amp32 = 30000.0 * (1 << 16);
+                    const double two_pi = 2.0 * M_PI;
                     for (size_t f = 0; f < emit_frames; ++f) {
-                        uint32_t idx = s_beep_fallback_phase_acc >> 24;
-                        int32_t sample = (idx < 128) ? 0x3FFFFFFF : -0x3FFFFFFF;
+                        size_t gidx = frames_played + f;
+                        double env = 1.0;
+                        if (gidx < fade_frames) {
+                            env = (double)gidx / (double)fade_frames;
+                        } else if (gidx + fade_frames > s_beep_fallback_total_frames) {
+                            size_t tail_idx = s_beep_fallback_total_frames > gidx ? (s_beep_fallback_total_frames - gidx) : 0;
+                            if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                        }
+                        double v = sin(s_beep_fallback_phase) * amp32 * env;
+                        int32_t sample = (int32_t)v;
                         for (int ch = 0; ch < channels; ++ch) {
                             *out32++ = sample;
                         }
-                        s_beep_fallback_phase_acc += s_beep_fallback_phase_step;
+                        s_beep_fallback_phase += s_beep_fallback_phase_inc;
+                        if (s_beep_fallback_phase >= two_pi) s_beep_fallback_phase -= two_pi;
                     }
                 }
 
@@ -1179,15 +1278,40 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                 s_beep_fallback_frames_remaining -= emit_frames;
                 if (s_beep_fallback_frames_remaining == 0) {
                     s_beep_fallback_active = false;
+                    s_beep_fallback_total_frames = 0; /* reset totals when done */
+                    /* Restore previous synth mode when the fallback has fully
+                     * completed. We set a flag here while still in the
+                     * critical section and perform the actual restore after
+                     * leaving the critical region to avoid holding the lock
+                     * while performing non-trivial operations. */
+                    _beep_need_restore_synth = true;
                 }
                 /* Decrement the global remaining bytes used to bypass mute */
                 if (s_beep_remaining_bytes > emitted_bytes) s_beep_remaining_bytes -= emitted_bytes;
                 else s_beep_remaining_bytes = 0;
 
+                /* If diagnostics are enabled for the next beep, emit a
+                 * compact hex snapshot of the generated fallback samples
+                 * for offline inspection. Consume the one-shot flag so
+                 * it only affects a single beep. */
+                if (s_dump_next_beep_diag) {
+                    size_t dump = emitted_bytes < DIAG_DUMP_BYTES ? emitted_bytes : DIAG_DUMP_BYTES;
+                    /* Dump the newly-generated portion starting at the
+                     * current write offset. */
+                    diag_dump_bytes(buffer + bytes_written, dump, "DIAG:fallback-out");
+                    s_dump_next_beep_diag = false;
+                }
+
                 bytes_written += emitted_bytes;
             }
         }
         portEXIT_CRITICAL(&s_beep_lock);
+        if (_beep_need_restore_synth) {
+            /* Restore the synth mode that was active before we forced
+             * synth for fallback playback. */
+            s_force_synth = s_beep_prev_force_synth;
+            ESP_LOGI(TAG, "audio_processor_beep: fallback finished, restored synth mode=%s", s_force_synth ? "ENABLED" : "DISABLED");
+        }
     }
 
     /* If we filled the requested size entirely from the fallback generator,
@@ -1385,6 +1509,141 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     return ret;
 }
 
+esp_err_t audio_processor_drain_ringbuffer(void)
+{
+    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
+    if (s_audio_buffer == NULL) return ESP_ERR_INVALID_STATE;
+
+    size_t rsz = 0;
+    void* it = NULL;
+    /* Non-blocking drain: repeatedly receive any available items and
+     * return them so the ringbuffer frees its memory. Limit loop to a
+     * reasonable number of iterations to avoid starving other tasks. */
+    int drained = 0;
+    const int max_drains = 256;
+    while (drained < max_drains) {
+        it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, 0);
+        if (it == NULL || rsz == 0) break;
+        vRingbufferReturnItem(s_audio_buffer, it);
+        drained++;
+    }
+    ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
+    return ESP_OK;
+}
+
+/**
+ * @brief Emit a synchronous worker-like diagnostic snapshot.
+ *
+ * This function generates a short block of audio using the same synth or
+ * mock generator used by the reader/worker, runs the conversion/resample
+ * helpers inline, and emits a DIAG:worker-out hex dump of the resulting
+ * samples. It is intentionally bounded to avoid long blocking calls.
+ */
+esp_err_t audio_processor_emit_sync_worker_diag(void)
+{
+    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
+
+    size_t target = AUDIO_WORK_BUFFER_BYTES;
+    if (target == 0) return ESP_ERR_INVALID_ARG;
+
+    size_t generated = 0;
+
+    /* Prefer using the same generator the worker uses: synth if enabled,
+     * or the mock generator for unit tests. If neither is available,
+     * synthesize the same fallback/beep tone so the snapshot is
+     * representative of an actual audio tone rather than a memset test
+     * pattern. */
+#if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
+    generated = synth_generate_audio(s_proc_buffer, target);
+#elif defined(CONFIG_BT_MOCK_TESTING)
+    generated = mock_generate_i2s_audio(s_proc_buffer, target);
+#else
+    /* Generate a sine-wave tone (1kHz) so the diagnostic snapshot is
+     * musically pleasant and representative of real audio output. Fill
+     * s_proc_buffer according to bit depth and channel count. */
+    int sample_rate = s_audio_config.sample_rate > 0 ? s_audio_config.sample_rate : 44100;
+    const int tone_hz = 1000;
+    size_t bytes_per_sample = (size_t)audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample == 0) bytes_per_sample = 2;
+    int channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    size_t frame_bytes = bytes_per_sample * (size_t)channels;
+    size_t max_frames = target / frame_bytes;
+    if (max_frames == 0) max_frames = 1;
+    /* Use sine wave generation for nicer tone */
+    const double two_pi = 2.0 * M_PI;
+    double phase = 0.0;
+    double phase_inc = (sample_rate > 0) ? ((two_pi * (double)tone_hz) / (double)sample_rate) : ((two_pi * (double)tone_hz) / 44100.0);
+    /* Apply a short fade-in/out envelope to reduce transient clicks. Use
+     * the same fade duration as the runtime beep/fallback so diagnostics
+     * and live playback match. */
+    size_t fade_frames = (size_t)(((double)sample_rate * (double)BEEP_FADE_MS) / 1000.0);
+    if (fade_frames < 1) fade_frames = 1;
+
+    if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+        int16_t* out = (int16_t*)s_proc_buffer;
+        const double amp = 30000.0;
+        for (size_t f = 0; f < max_frames; ++f) {
+            double env = 1.0;
+            if (f < fade_frames) {
+                env = (double)f / (double)fade_frames;
+            } else if (f + fade_frames > max_frames) {
+                /* trailing fade */
+                size_t tail_idx = max_frames - f;
+                if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+            }
+            double v = sin(phase) * amp * env;
+            int16_t sample = (int16_t)v;
+            for (int ch = 0; ch < channels; ++ch) {
+                *out++ = sample;
+            }
+            phase += phase_inc;
+            if (phase >= two_pi) phase -= two_pi;
+        }
+        generated = max_frames * frame_bytes;
+    } else {
+        int32_t* out32 = (int32_t*)s_proc_buffer;
+        const double amp32 = 30000.0 * (1 << 16);
+        for (size_t f = 0; f < max_frames; ++f) {
+            double env = 1.0;
+            if (f < fade_frames) {
+                env = (double)f / (double)fade_frames;
+            } else if (f + fade_frames > max_frames) {
+                size_t tail_idx = max_frames - f;
+                if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+            }
+            double v = sin(phase) * amp32 * env;
+            int32_t sample = (int32_t)v;
+            for (int ch = 0; ch < channels; ++ch) {
+                *out32++ = sample;
+            }
+            phase += phase_inc;
+            if (phase >= two_pi) phase -= two_pi;
+        }
+        generated = max_frames * frame_bytes;
+    }
+#endif
+
+    if (generated == 0) return ESP_ERR_INVALID_SIZE;
+
+    size_t conv_size = 0;
+    size_t res_size = 0;
+
+    /* Convert/resample to the worker output format (no-op if identical) */
+    if (convert_audio_format(s_proc_buffer, s_proc_buffer, generated, s_audio_config.bit_depth, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (conv_size == 0) return ESP_ERR_INVALID_SIZE;
+
+    if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, s_audio_config.sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (res_size == 0) return ESP_ERR_INVALID_SIZE;
+
+    size_t dump = res_size < DIAG_DUMP_BYTES ? res_size : DIAG_DUMP_BYTES;
+    diag_dump_bytes(s_proc_buffer2, dump, "DIAG:worker-out");
+    return ESP_OK;
+}
+
 /**
  * @brief Enqueue a short beep tone into the audio pipeline.
  *
@@ -1431,6 +1690,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
              total_bytes, (unsigned)duration_ms, free_before_all);
     log_heap_stats("beep-start");
 
+    size_t frames_generated = 0;
     while (bytes_remaining > 0) {
         size_t chunk = bytes_remaining > max_chunk ? max_chunk : bytes_remaining;
         size_t frames = chunk / frame_bytes;
@@ -1438,22 +1698,59 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
         /* Fill the proc buffer with the tone samples. Support 16-bit and
          * 32-bit containers (24-bit stored in 32-bit). Other depths fall
          * back to a 16-bit-like representation. */
+    /* Apply envelope across the whole beep duration to avoid clicks.
+     * Compute fade frames from BEEP_FADE_MS and apply according to the
+     * global frame index (frames_generated + f). Use the already-computed
+     * `total_frames` above. */
+    size_t fade_frames = (size_t)(((double)sample_rate * (double)BEEP_FADE_MS) / 1000.0);
+        if (fade_frames < 1) fade_frames = 1;
+
         if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
             int16_t* out = (int16_t*)s_proc_buffer;
+            const double two_pi = 2.0 * M_PI;
+            double phase = 0.0;
+            double phase_inc = (sample_rate > 0) ? ((two_pi * (double)tone_hz) / (double)sample_rate) : ((two_pi * (double)tone_hz) / 44100.0);
+            const double amp = 30000.0;
             for (size_t f = 0; f < frames; ++f) {
-                int16_t sample = ((f % samples_per_period) < (samples_per_period/2)) ? 30000 : -30000;
+                size_t gidx = frames_generated + f; /* global frame index */
+                double env = 1.0;
+                if (gidx < fade_frames) {
+                    env = (double)gidx / (double)fade_frames;
+                } else if (gidx + fade_frames > total_frames) {
+                    size_t tail_idx = total_frames > gidx ? (total_frames - gidx) : 0;
+                    if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                }
+                double v = sin(phase) * amp * env;
+                int16_t sample = (int16_t)v;
                 for (int ch = 0; ch < channels; ++ch) {
                     *out++ = sample;
                 }
+                phase += phase_inc;
+                if (phase >= two_pi) phase -= two_pi;
             }
         } else {
             /* 32-bit container (32- or 24-bit) */
             int32_t* out32 = (int32_t*)s_proc_buffer;
+            const double two_pi = 2.0 * M_PI;
+            double phase = 0.0;
+            double phase_inc = (sample_rate > 0) ? ((two_pi * (double)tone_hz) / (double)sample_rate) : ((two_pi * (double)tone_hz) / 44100.0);
+            const double amp32 = 30000.0 * (1 << 16);
             for (size_t f = 0; f < frames; ++f) {
-                int32_t sample = ((f % samples_per_period) < (samples_per_period/2)) ? 0x3FFFFFFF : -0x3FFFFFFF;
+                size_t gidx = frames_generated + f;
+                double env = 1.0;
+                if (gidx < fade_frames) {
+                    env = (double)gidx / (double)fade_frames;
+                } else if (gidx + fade_frames > total_frames) {
+                    size_t tail_idx = total_frames > gidx ? (total_frames - gidx) : 0;
+                    if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                }
+                double v = sin(phase) * amp32 * env;
+                int32_t sample = (int32_t)v;
                 for (int ch = 0; ch < channels; ++ch) {
                     *out32++ = sample;
                 }
+                phase += phase_inc;
+                if (phase >= two_pi) phase -= two_pi;
             }
         }
 
@@ -1476,6 +1773,25 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
             if (sent == pdTRUE) {
                 ESP_LOGD(TAG, "audio_processor_beep: send succeeded on attempt %d, free_after=%zu",
                          attempt + 1, free_after_attempt);
+                /* If diagnostics were armed, synthesize the worker's
+                 * post-conversion/resample output for this chunk and
+                 * emit a DIAG snapshot. This mirrors the work the
+                 * lower-priority worker would do but runs inline for
+                 * the first chunk so captures are available even when
+                 * the worker path is delayed. Keep the work bounded by
+                 * operating on at most AUDIO_WORK_BUFFER_BYTES. */
+                if (s_dump_next_beep_diag) {
+                    size_t conv_size = 0;
+                    size_t res_size = 0;
+                    /* Convert proc buffer to work buffer (uses same helper) */
+                    if (convert_audio_format(s_proc_buffer, s_proc_buffer, chunk, s_audio_config.bit_depth, s_audio_config.bit_depth, &conv_size) == ESP_OK && conv_size > 0) {
+                        if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, s_audio_config.sample_rate, s_audio_config.sample_rate, &res_size) == ESP_OK && res_size > 0) {
+                            size_t dump = res_size < DIAG_DUMP_BYTES ? res_size : DIAG_DUMP_BYTES;
+                            diag_dump_bytes(s_proc_buffer2, dump, "DIAG:worker-out");
+                        }
+                    }
+                    s_dump_next_beep_diag = false;
+                }
                 break;
             }
 
@@ -1521,35 +1837,20 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
                 }
             }
 
-            /* If still not sent, attempt to coax the remote into pulling audio
-             * by starting A2DP streaming if we're connected but not currently
-             * streaming. This is a single-shot attempt: request start, wait a
-             * short period for the stack/remote to react, then retry the send
-             * one more time with a slightly larger timeout. */
-            {
-                int mgr_conn = bt_manager_is_connected();
-                int streaming = bt_get_streaming_state_int();
-                if (mgr_conn && !streaming) {
-                    ESP_LOGW(TAG, "audio_processor_beep: connected but not streaming — requesting start to allow consumer to pull");
-                    esp_err_t start_err = bt_start_audio();
-                    if (start_err == ESP_OK) {
-                        /* Allow some time for the A2DP stack and remote to start
-                         * pulling data. Tuned to be short but sufficient for many
-                         * receivers. */
-                        vTaskDelay(pdMS_TO_TICKS(150));
-                        size_t free_before_retry = xRingbufferGetCurFreeSize(s_audio_buffer);
-                        ESP_LOGD(TAG, "audio_processor_beep: post-start retry free_before=%zu", free_before_retry);
-                        sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, pdMS_TO_TICKS(200));
-                        if (sent == pdTRUE) {
-                            bytes_remaining -= (size_t)frames * frame_bytes;
-                            ESP_LOGI(TAG, "audio_processor_beep: send succeeded after starting audio");
-                            continue;
-                        }
-                    } else {
-                        ESP_LOGW(TAG, "audio_processor_beep: bt_start_audio() failed: %s", esp_err_to_name(start_err));
-                    }
-                }
-            }
+            /* Historically this code attempted to start A2DP streaming when
+             * the ringbuffer was full to "coax" a remote into pulling audio.
+             * In practice this frequently provoked late allocations inside
+             * the Bluetooth stack which failed (observed as repeated
+             * "BT_OSI: malloc failed" messages). To avoid triggering the
+             * BT stack under transient pressure we no longer attempt to
+             * start A2DP from the beep path. Instead rely on the dedicated
+             * beep buffer and the on-the-fly fallback generator so tones
+             * remain audible without risking BT allocator failures. If a
+             * future policy is desired for remote-start-on-beep it should
+             * be implemented as an explicit, configurable behavior outside
+             * of this hot-path.
+             */
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full and connected but not streaming — automatic bt_start_audio() disabled; using beep buffer/fallback instead");
 
             /* If the main buffer still can't accept this chunk, try the
              * dedicated low-latency beep buffer. Use chunked writes so a
@@ -1576,6 +1877,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
             break;
         }
 
+        frames_generated += frames;
         bytes_remaining -= (size_t)frames * frame_bytes;
     }
 
@@ -1593,23 +1895,206 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
      * fallback generator for the remaining frames. */
     if (bytes_remaining > 0) {
         size_t remaining_frames = bytes_remaining / frame_bytes;
-        if (remaining_frames > 0) {
-            portENTER_CRITICAL(&s_beep_lock);
-            s_beep_fallback_active = true;
-            s_beep_fallback_frames_remaining += remaining_frames; /* accumulate if multiple beeps */
-            s_beep_fallback_phase_acc = 0;
-            /* Compute phase step in 32.8 fixed point consistent with synth code */
-            if (sample_rate > 0) {
-                s_beep_fallback_phase_step = (uint32_t)((((uint64_t)tone_hz) * (1ULL << 24)) / (uint32_t)sample_rate);
-            } else {
-                s_beep_fallback_phase_step = (uint32_t)((((uint64_t)tone_hz) * (1ULL << 24)) / 44100U);
+            if (remaining_frames > 0) {
+                portENTER_CRITICAL(&s_beep_lock);
+                /* If this is the first time we're enabling the fallback,
+                 * remember the current synth mode and force synth on so
+                 * the reader generates samples locally. This prevents
+                 * I2S timeouts or missing audio when no external source
+                 * is present and ensures the fallback tone is audible. */
+                if (!s_beep_fallback_active) {
+                    s_beep_prev_force_synth = s_force_synth;
+                    s_force_synth = true;
+                }
+                s_beep_fallback_active = true;
+                s_beep_fallback_frames_remaining += remaining_frames; /* accumulate if multiple beeps */
+                s_beep_fallback_total_frames += remaining_frames; /* remember total frames for envelope progress */
+                /* Initialize floating-point phase accumulator for sine generator */
+                s_beep_fallback_phase = 0.0;
+                const double two_pi = 2.0 * M_PI;
+                if (sample_rate > 0) {
+                    s_beep_fallback_phase_inc = (two_pi * (double)tone_hz) / (double)sample_rate;
+                } else {
+                    s_beep_fallback_phase_inc = (two_pi * (double)tone_hz) / 44100.0;
+                }
+                portEXIT_CRITICAL(&s_beep_lock);
+                ESP_LOGW(TAG, "audio_processor_beep: fallback enabled for %zu frames (%zu bytes)", remaining_frames, bytes_remaining);
+                /* If diagnostics were armed for the next beep, emit an
+                 * immediate snapshot of the tone we generated above so
+                 * callers can observe fallback data even if the actual
+                 * on-the-fly generator hasn't yet been pulled by the
+                 * reader. This helps capture a representative sample
+                 * for offline comparison between worker and fallback
+                 * outputs. Consume the one-shot flag. */
+                if (s_dump_next_beep_diag) {
+                    size_t dump = AUDIO_WORK_BUFFER_BYTES < DIAG_DUMP_BYTES ? AUDIO_WORK_BUFFER_BYTES : DIAG_DUMP_BYTES;
+                    /* s_proc_buffer contains the last-generated tone chunk */
+                    diag_dump_bytes(s_proc_buffer, dump, "DIAG:fallback-out");
+                    s_dump_next_beep_diag = false;
+                }
             }
-            portEXIT_CRITICAL(&s_beep_lock);
-            ESP_LOGW(TAG, "audio_processor_beep: fallback enabled for %zu frames (%zu bytes)", remaining_frames, bytes_remaining);
-        }
     }
 
     ESP_LOGI(TAG, "audio_processor_beep: queued %zu bytes (%u ms); fallback_remaining=%zu bytes", queued, (unsigned)duration_ms, bytes_remaining);
+    return ESP_OK;
+}
+
+/**
+ * @brief Play a WAV file by reading PCM frames, converting/resampling as needed
+ * and enqueueing into the audio ringbuffer.
+ */
+esp_err_t audio_processor_play_wav(const char* path)
+{
+    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
+    if (!path) return ESP_ERR_INVALID_ARG;
+
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "audio_processor_play_wav: failed to open %s", path);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    /* Basic WAV header parsing (RIFF/WAVE, fmt chunk, data chunk) */
+    char riff[4];
+    if (fread(riff, 1, 4, f) != 4) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    if (memcmp(riff, "RIFF", 4) != 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    /* skip file size */
+    uint32_t tmp32 = 0;
+    fread(&tmp32, 4, 1, f);
+    char wave[4];
+    if (fread(wave, 1, 4, f) != 4) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    if (memcmp(wave, "WAVE", 4) != 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+
+    uint16_t audio_format = 0;
+    uint16_t num_channels = 0;
+    uint32_t sample_rate = 0;
+    uint16_t bits_per_sample = 0;
+    uint32_t data_bytes = 0;
+    bool have_fmt = false;
+
+    /* Walk chunks until we find 'fmt ' and 'data' */
+    while (!feof(f)) {
+        char chunk_id[4];
+        uint32_t chunk_size = 0;
+        if (fread(chunk_id, 1, 4, f) != 4) break;
+        if (fread(&chunk_size, 4, 1, f) != 1) break;
+        /* chunk_size is little-endian in WAV (host is little-endian on ESP32/Linux)
+         * but keep it as-is for portability assumptions used here. */
+
+        if (memcmp(chunk_id, "fmt ", 4) == 0) {
+            /* Read minimal fmt chunk (PCM header is 16 bytes) */
+            if (chunk_size < 16) { fclose(f); return ESP_ERR_INVALID_STATE; }
+            uint16_t fmt16_1 = 0;
+            fread(&fmt16_1, 2, 1, f); audio_format = fmt16_1;
+            fread(&num_channels, 2, 1, f);
+            fread(&sample_rate, 4, 1, f);
+            /* skip byte rate */
+            fread(&tmp32, 4, 1, f);
+            /* skip block align */
+            uint16_t tmp16 = 0; fread(&tmp16, 2, 1, f);
+            fread(&bits_per_sample, 2, 1, f);
+            /* If fmt chunk larger than 16 bytes, skip remaining */
+            if (chunk_size > 16) fseek(f, (long)(chunk_size - 16), SEEK_CUR);
+            have_fmt = true;
+        } else if (memcmp(chunk_id, "data", 4) == 0) {
+            data_bytes = chunk_size;
+            /* file pointer now at start of data */
+            break;
+        } else {
+            /* skip other chunks */
+            fseek(f, (long)chunk_size, SEEK_CUR);
+        }
+    }
+
+    if (!have_fmt || data_bytes == 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+
+    /* Only support PCM (audio_format == 1) for now */
+    if (audio_format != 1) {
+        ESP_LOGE(TAG, "audio_processor_play_wav: unsupported WAV format=%u", (unsigned)audio_format);
+        fclose(f);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    /* Map bits_per_sample to audio_bit_depth_t */
+    audio_bit_depth_t src_bit = AUDIO_BIT_DEPTH_16;
+    if (bits_per_sample == 16) src_bit = AUDIO_BIT_DEPTH_16;
+    else if (bits_per_sample == 24) src_bit = AUDIO_BIT_DEPTH_24;
+    else if (bits_per_sample == 32) src_bit = AUDIO_BIT_DEPTH_32;
+    else {
+        ESP_LOGE(TAG, "audio_processor_play_wav: unsupported bits_per_sample=%u", (unsigned)bits_per_sample);
+        fclose(f);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    size_t frame_bytes_src = (bits_per_sample / 8) * (size_t)num_channels;
+    if (frame_bytes_src == 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+
+    /* Read data in chunks, convert/resample and enqueue */
+    size_t remaining = data_bytes;
+    const TickType_t wait_ticks = pdMS_TO_TICKS(100);
+
+    while (remaining > 0) {
+        size_t to_read = AUDIO_WORK_BUFFER_BYTES;
+        /* align to frame */
+        to_read = (to_read / frame_bytes_src) * frame_bytes_src;
+        if (to_read == 0) to_read = frame_bytes_src;
+        if (to_read > remaining) to_read = remaining;
+
+        size_t actually = fread(s_proc_buffer, 1, to_read, f);
+        if (actually == 0) break; /* unexpected EOF */
+
+        /* Convert to internal bit depth */
+        size_t conv_size = 0;
+        if (convert_audio_format(s_proc_buffer, s_proc_buffer, actually, src_bit, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_play_wav: convert_audio_format failed");
+            fclose(f);
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        /* Resample if needed */
+        size_t res_size = 0;
+        if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, (audio_sample_rate_t)sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_play_wav: resample_audio failed");
+            fclose(f);
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        /* Enqueue to ringbuffer with same retry/drop logic used by beep */
+        BaseType_t sent = pdFALSE;
+        const int max_attempts = 3;
+        int attempt = 0;
+        while (attempt < max_attempts) {
+            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, wait_ticks);
+            if (sent == pdTRUE) break;
+            attempt++;
+        }
+        if (sent != pdTRUE) {
+            /* Try to free some space by dropping oldest items (bounded) */
+            size_t needed = res_size;
+            int drop_attempts = 0;
+            const int max_drop_attempts = 16;
+            while (xRingbufferGetCurFreeSize(s_audio_buffer) < needed && drop_attempts < max_drop_attempts) {
+                size_t rsz = 0;
+                void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, needed, 0);
+                if (it == NULL || rsz == 0) break;
+                vRingbufferReturnItem(s_audio_buffer, it);
+                drop_attempts++;
+            }
+            /* Try once more without waiting */
+            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
+            if (sent != pdTRUE) {
+                /* Match format specifiers to argument types to satisfy -Wformat */
+                ESP_LOGW(TAG, "audio_processor_play_wav: ringbuffer full, aborting playback (enqueued %u/%u bytes)", (unsigned)(data_bytes - remaining), (unsigned)data_bytes);
+                fclose(f);
+                return ESP_ERR_NO_MEM;
+            }
+        }
+
+        remaining -= actually;
+    }
+
+    fclose(f);
+    ESP_LOGI(TAG, "audio_processor_play_wav: playback enqueued for %s", path);
     return ESP_OK;
 }
 
@@ -1625,7 +2110,9 @@ static void i2s_reader_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "I2S reader task started");
 
-    static int consecutive_i2s_failures = 0;
+    /* Use the file-scoped failure counter so other code can observe I2S
+     * health. Initialize it to zero at first-run. */
+    /* NOTE: the variable is declared at file scope as `s_i2s_consecutive_failures`. */
 
     while (1) {
         if (!s_is_running || !s_is_initialized) {
@@ -1662,7 +2149,7 @@ static void i2s_reader_task(void *pvParameters)
             bytes_read = synth_target_bytes;
             have_frame = (bytes_read > 0);
             last_i2s_ret = ESP_OK;
-            consecutive_i2s_failures = 0;
+                s_i2s_consecutive_failures = 0;
         } else {
             /* Perform smaller, frame-aligned reads to avoid long blocking
              * inside the I2S driver. Large single reads can block the
@@ -1694,13 +2181,13 @@ static void i2s_reader_task(void *pvParameters)
                     total_read += part_read;
                     remaining = (remaining > part_read) ? (remaining - part_read) : 0;
                     have_frame = true;
-                    consecutive_i2s_failures = 0;
+                    s_i2s_consecutive_failures = 0;
                 } else {
                     /* Treat both errors and zero reads as a failure for the
                      * consecutive failure counter. Bail out of the chunked
                      * loop to avoid spinning on a non-responsive I2S device. */
                     local_failures++;
-                    consecutive_i2s_failures++;
+                    s_i2s_consecutive_failures++;
                     if (part_ret != ESP_OK) {
                         last_i2s_ret = part_ret;
                     } else {
@@ -1726,8 +2213,8 @@ static void i2s_reader_task(void *pvParameters)
             }
 
         const int FAILURE_THRESHOLD = 20;
-            if (consecutive_i2s_failures >= FAILURE_THRESHOLD) {
-                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", consecutive_i2s_failures);
+            if (s_i2s_consecutive_failures >= FAILURE_THRESHOLD) {
+                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", s_i2s_consecutive_failures);
                 s_force_synth = true;
             }
         }
@@ -1894,6 +2381,16 @@ static void audio_worker_task(void *pvParameters)
             continue;
         }
 
+        /* If diagnostics were armed for the next beep and this block was
+         * filled by the synth path, emit a small snapshot of the worker's
+         * post-resample output so we can compare against the fallback
+         * generator output. */
+        if (blk.synth_fill && s_dump_next_beep_diag && res_size > 0) {
+            size_t dump = res_size < DIAG_DUMP_BYTES ? res_size : DIAG_DUMP_BYTES;
+            diag_dump_bytes(s_proc_buffer2, dump, "DIAG:worker-out");
+            s_dump_next_beep_diag = false;
+        }
+
         /* Push to ringbuffer (xRingbufferSend copies data) */
         if (res_size > 0) {
             size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
@@ -1907,7 +2404,7 @@ static void audio_worker_task(void *pvParameters)
                 }
             }
 
-            BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
+            BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, pdMS_TO_TICKS(5));
                 if (sent != pdTRUE) {
                     s_audio_stats.buffer_overruns++;
                     ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
@@ -1929,6 +2426,28 @@ static void audio_worker_task(void *pvParameters)
             blk.capacity = 0;
             blk.synth_fill = false;
         }
+    }
+}
+
+/**
+ * @brief Diagnostic byte-dump helper
+ * Prints up to `len` bytes from data in compact hex groups to the log.
+ */
+static void diag_dump_bytes(const void* data, size_t len, const char* tag)
+{
+    if (data == NULL || len == 0 || tag == NULL) return;
+    const uint8_t* b = (const uint8_t*)data;
+    /* Print in 16-byte rows to keep logs readable */
+    size_t off = 0;
+    while (off < len) {
+        char line[128];
+        size_t row = (len - off) < 16 ? (len - off) : 16;
+        int pos = snprintf(line, sizeof(line), "%s: ", tag);
+        for (size_t i = 0; i < row && pos < (int)sizeof(line) - 3; ++i) {
+            pos += snprintf(line + pos, sizeof(line) - pos, "%02X ", b[off + i]);
+        }
+        ESP_LOGI(TAG, "%s", line);
+        off += row;
     }
 }
 
@@ -2383,6 +2902,16 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
  */
 bool audio_processor_is_beep_active(void) {
     return s_beep_remaining_bytes > 0;
+}
+
+/**
+ * @brief Arm a one-shot diagnostic dump for the next beep invocation.
+ * Call this before issuing `BEEP` to capture fallback and worker snapshots.
+ */
+void audio_processor_enable_next_beep_diag(void)
+{
+    s_dump_next_beep_diag = true;
+    ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");
 }
 
 /**

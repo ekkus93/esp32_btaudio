@@ -32,6 +32,7 @@ typedef enum {
     CMD_TYPE_MUTE,
     CMD_TYPE_UNMUTE,
     CMD_TYPE_STATUS,
+    CMD_TYPE_MEM,
     CMD_TYPE_VERSION,
     CMD_TYPE_RESET,
     CMD_TYPE_DEBUG,
@@ -47,6 +48,7 @@ typedef enum {
     CMD_TYPE_UNPAIR_ALL,
     CMD_TYPE_HELP,
     // Add new command types here
+    CMD_TYPE_PLAY,
     CMD_TYPE_UNKNOWN
 } cmd_type_t;
 

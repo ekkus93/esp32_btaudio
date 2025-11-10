@@ -19,6 +19,7 @@
 #include "esp_avrc_api.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
 #define TAG "BT_MGR"
 #endif
 
@@ -699,12 +700,33 @@ bt_err_t bt_stop_audio(void) {
     }
 
 #ifdef ESP_PLATFORM
+    /* Stronger safety checks: ensure not only that total free DRAM looks
+     * reasonable but also that a sufficiently large contiguous block is
+     * available and that some internal (MALLOC_CAP_INTERNAL) memory exists.
+     * This reduces false positives where total free bytes are sufficient
+     * but fragmentation or internal-heap scarcity causes later allocations
+     * (inside the BT stack/codec) to fail. */
+    {
+        const size_t DRAM_THRESHOLD = 64 * 1024; /* require >=64KiB total free */
+        const size_t LARGEST_REQUIRED = 32 * 1024; /* require a 32KiB contiguous block */
+        const size_t INTERNAL_REQUIRED = 8 * 1024; /* prefer >=8KiB internal-capable */
+
+        size_t free_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+
+        if (free_dram <= DRAM_THRESHOLD || largest < LARGEST_REQUIRED || internal_free < INTERNAL_REQUIRED) {
+            ESP_LOGW(TAG, "bt_start_audio: skipping start due to low memory: free_dram=%zu largest=%zu internal_free=%zu; not starting A2DP", free_dram, largest, internal_free);
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     // Start audio stream
     if (esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start audio stream");
         return ESP_FAIL;
     }
-    
+
     ESP_LOGI(TAG, "Started audio streaming");
 #else
     // For testing without ESP-IDF

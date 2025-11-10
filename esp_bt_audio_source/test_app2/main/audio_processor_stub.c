@@ -90,3 +90,39 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     s_audio_stub.status.sample_rate = sample_rate;
     return ESP_OK;
 }
+
+// Additional lightweight stubs to satisfy linker when command_interface
+// invokes higher-level audio_processor helpers that are not needed in
+// the unit-test firmware.
+
+esp_err_t audio_processor_play_wav(const char *path)
+{
+    (void)path;
+    /* No-op in tests */
+    return ESP_OK;
+}
+
+/* The public header declares this as `void audio_processor_enable_next_beep_diag(void)`
+ * so provide the exact signature expected by production code. The test harness
+ * doesn't need a return code here.
+ */
+void audio_processor_enable_next_beep_diag(void)
+{
+    /* intentionally empty for tests */
+}
+
+esp_err_t audio_processor_emit_sync_worker_diag(void)
+{
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_drain_ringbuffer(void)
+{
+    return ESP_OK;
+}
+
+/* Public header: `void audio_processor_set_dram_only(bool enable)` */
+void audio_processor_set_dram_only(bool dram_only)
+{
+    (void)dram_only;
+}

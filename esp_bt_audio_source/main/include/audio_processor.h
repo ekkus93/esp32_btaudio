@@ -197,6 +197,21 @@ esp_err_t audio_processor_beep(uint32_t duration_ms);
 bool audio_processor_is_beep_active(void);
 
 /**
+ * @brief Arm a one-shot diagnostic dump for the next beep invocation.
+ */
+void audio_processor_enable_next_beep_diag(void);
+
+/**
+ * @brief Emit a synchronous worker-like diagnostic snapshot.
+ *
+ * This helper performs a small, bounded synchronous conversion/resample of
+ * a generated audio block (using the same synth/mock path the worker
+ * would use) and emits a `DIAG:worker-out` hex dump for offline
+ * inspection. Intended for deterministic captures from the serial console.
+ */
+esp_err_t audio_processor_emit_sync_worker_diag(void);
+
+/**
  * @brief Convenience query for whether the audio processor is currently running
  *
  * This is a small, non-invasive runtime check intended for diagnostics and
@@ -221,6 +236,29 @@ void audio_processor_set_synth_mode(bool enable);
 bool audio_processor_is_synth_mode_enabled(void);
 
 /**
+ * @brief Drain (clear) the internal audio ring buffer of any queued items.
+ *
+ * This is a debug/test helper to free any queued audio blocks so that
+ * subsequent beeps will be enqueued into the ringbuffer instead of
+ * triggering fallback due to saturation. Use sparingly and only from
+ * diagnostic command paths.
+ */
+esp_err_t audio_processor_drain_ringbuffer(void);
+
+/**
+ * @brief Force audio allocations to use DRAM only (disable PSRAM usage)
+ *
+ * When enabled the audio processor will avoid placing large, persistent
+ * buffers in PSRAM and will instead allocate them from the default
+ * allocator (DRAM). This is intended as a runtime diagnostic/workaround
+ * for boards where PSRAM artifacts (noise/static) are observed. The
+ * setting is not persisted across reboots and should be called before
+ * `audio_processor_init()` to take effect for the initial allocations.
+ */
+void audio_processor_set_dram_only(bool enable);
+
+
+/**
  * @brief Inject audio data directly into the ring buffer (for testing only)
  *
  * This function is only available when CONFIG_BT_MOCK_TESTING is defined.
@@ -234,5 +272,16 @@ bool audio_processor_is_synth_mode_enabled(void);
 #ifdef CONFIG_BT_MOCK_TESTING
 esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size);
 #endif
+
+/**
+ * @brief Play a WAV file from the filesystem and inject it into the audio pipeline
+ *
+ * The path may be absolute (for example "/spiffs/worker_long_norm.wav") or
+ * relative (in which case callers should prefix with "/spiffs/" when invoking
+ * from the command layer). The implementation supports PCM WAV files and
+ * performs conversion/resampling to the configured output format when
+ * necessary.
+ */
+esp_err_t audio_processor_play_wav(const char* path);
 
 #endif /* _AUDIO_PROCESSOR_H_ */

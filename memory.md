@@ -21,6 +21,13 @@
 	- [x] Drop unused `last_read_request`/`last_frame_bytes` bookkeeping in `audio_processor.c` so `test_app_audio` builds without warning spam (2025-11-01).
 - 2025-11-01: `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweep (host 19/19, Unity 37/45/26; 141 total) after warning cleanup.
 - 2025-11-01: Added README trackers for command implementation gaps (UNPAIR/UNPAIR_ALL controller cleanup, PAIR authentication path, VERSION string source).
+- TODO (2025-11-05 run_all_tests)
+	- [ ] Run `tools/run_all_tests.py` with python310 environment per user request.
+	- [ ] Summarize per-suite pass/fail counts for the user response.
+- TODO (Beep diagnostics CLI)
+	- [ ] Add command handler path to arm `audio_processor_enable_next_beep_diag()` before BEEP.
+	- [ ] Rebuild firmware after CLI addition.
+	- [ ] Flash device and run SYNTH/START/BEEP sequence to capture diagnostic logs.
 - TODO: Track integration of the real I2S capture path into `main/bt_streaming_manager.c` (replace sine-wave stub). Keep README “Open Work” item in sync until implementation lands.
 - TODO (PAIR bonding overhaul)
 	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.

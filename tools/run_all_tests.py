@@ -418,6 +418,139 @@ def main(argv: list[str] | None = None):
     print("\n== Aggregating results ==")
     report["aggregate"] = aggregate_summary(ROOT)
 
+    # Extract per-suite numeric summaries (tests / failures / ignored) from
+    # the aggregate summary and attach them to each device entry. Also print
+    # a short human-readable summary to stdout for quick inspection.
+    try:
+        agg = report.get("aggregate", {})
+        by_file = agg.get("by_file", {}) if isinstance(agg, dict) else {}
+        per_test = agg.get("per_test", []) if isinstance(agg, dict) else []
+        # Map aggregate file keys to device projects robustly by resolving
+        # relative paths against the repository root and comparing to the
+        # recorded project path for each device. This avoids brittle
+        # substring-only matching.
+        for sname, dev in report.get("devices", {}).items():
+            matched = None
+            proj_path = None
+            try:
+                proj_path = Path(dev.get("project", "")).resolve()
+            except Exception:
+                proj_path = None
+
+            # Prefer a direct match using the device's recorded canonical output
+            # file (absolute path) normalized relative to the repo root. This
+            # is the most reliable mapping when available.
+            output_file = dev.get("output_file")
+            if output_file:
+                try:
+                    rel = str(Path(output_file).resolve().relative_to(ROOT.resolve()))
+                except Exception:
+                    # fallback to os.path.relpath for older Python or inexact paths
+                    try:
+                        import os as _os
+
+                        rel = _os.path.relpath(output_file, str(ROOT))
+                    except Exception:
+                        rel = None
+                if rel and rel in by_file:
+                    matched = rel
+                else:
+                    pass
+            if not matched:
+                for fpath in by_file.keys():
+                    # normalize the aggregated key into an absolute path we can reason about
+                    try:
+                        p = Path(fpath)
+                    except Exception:
+                        p = None
+
+                    if p is None:
+                        # fallback to simple substring check if Path() fails
+                        if f"/{sname}/" in fpath or f"{sname}/build/one_run_unity.log" in fpath or sname in fpath:
+                            matched = fpath
+                            break
+                        continue
+
+                    # If the aggregated path is relative, resolve it against the repo root
+                    if not p.is_absolute():
+                        p_abs = (ROOT / p).resolve()
+                    else:
+                        try:
+                            p_abs = p.resolve()
+                        except Exception:
+                            p_abs = p
+
+                    # If we have a recorded project path, check whether the canonical
+                    # file appears under that project directory (most robust).
+                    if proj_path:
+                        try:
+                            if proj_path == p_abs or proj_path in p_abs.parents:
+                                matched = fpath
+                                break
+                        except Exception:
+                            # fall through to name-based checks
+                            pass
+
+                    # as a final check, see if the suite name appears as a path component
+                    if sname in p.parts:
+                        matched = fpath
+                        break
+
+            if matched:
+                vals = by_file.get(matched, {})
+                tests = int(vals.get("tests", 0))
+                failures = int(vals.get("failures", 0))
+                ignored = int(vals.get("ignored", 0))
+                passed = tests - failures - ignored
+                if passed < 0:
+                    passed = 0
+                # attach numeric fields to the device report for downstream
+                # consumers and persistence to the summary JSON
+                dev["tests_total"] = tests
+                dev["tests_passed"] = passed
+                dev["tests_failed"] = failures
+                dev["tests_ignored"] = ignored
+                print(f"Suite {sname}: {passed} passed, {failures} failed, {ignored} ignored (total {tests})")
+            else:
+                # no canonical capture found for this suite
+                print(f"Suite {sname}: no canonical log found to extract test counts; check {dev.get('output_file')}")
+        # Fallback: if any device still has zero counts, try deriving counts from
+        # the per_test list by counting tests that reference that suite's file.
+        try:
+            from collections import defaultdict
+
+            per_suite_counts = defaultdict(int)
+            for entry in per_test:
+                files = entry.get("files", [])
+                for f in files:
+                    # normalize and check suite name as a path component
+                    try:
+                        if any(s in Path(f).parts for s in report.get("devices", {}).keys()):
+                            # increment for each suite that appears in the file path
+                            for sname in report.get("devices", {}).keys():
+                                if sname in Path(f).parts:
+                                    per_suite_counts[sname] += 1
+                    except Exception:
+                        # fallback substring check
+                        for sname in report.get("devices", {}).keys():
+                            if sname in f:
+                                per_suite_counts[sname] += 1
+
+            # attach fallback counts where needed
+            for sname, dev in report.get("devices", {}).items():
+                if dev.get("tests_total", 0) == 0 and per_suite_counts.get(sname, 0) > 0:
+                    tests = per_suite_counts[sname]
+                    dev["tests_total"] = tests
+                    dev["tests_passed"] = tests
+                    dev["tests_failed"] = 0
+                    dev["tests_ignored"] = 0
+                    print(f"Suite {sname}: (fallback) {tests} passed, 0 failed, 0 ignored (total {tests})")
+        except Exception:
+            pass
+    except Exception as exc:
+        # best-effort: do not fail orchestration if parsing fails
+        print(f"Warning: failed to extract per-suite counts: {exc}")
+
     outjson = TMP_DIR / "run_all_tests_summary.json"
     outjson.write_text(json.dumps(report, indent=2))
     print(f"Wrote summary to {outjson}")

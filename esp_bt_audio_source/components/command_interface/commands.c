@@ -72,6 +72,7 @@ int bt_manager_start_pair(const char* mac);
 #include "driver/uart.h"
 #include "esp_timer.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #define TAG "CMD_IF"
 /* Prefer the configured console UART if available so we don't call into an
  * uninstalled UART driver (which logs "uart driver error"). Fall back to
@@ -174,6 +175,7 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     { "SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)" },
     { "I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins" },
     { "BEEP", NULL, "Emit short notification tone" },
+    { "MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)" },
     { "RESET", NULL, "Reboot the device" },
 #ifdef ESP_PLATFORM
     { "DEBUG", "<SUBCMD>", "Developer diagnostics" },
@@ -334,6 +336,24 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     cmd_send_response("OK", "STATUS", "CURRENT", data);
     } break;
 
+    case CMD_TYPE_MEM: {
+#ifdef ESP_PLATFORM
+    size_t free_default = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#else
+    size_t free_psram = 0;
+#endif
+    char data[128];
+    snprintf(data, sizeof(data), "DRAM=%zu,INTERNAL=%zu,8BIT=%zu,PSRAM=%zu", free_default, free_internal, free_8bit, free_psram);
+    cmd_send_response("OK", "MEM", "STATS", data);
+#else
+    cmd_send_response("OK", "MEM", "MOCK", "DRAM=0,INTERNAL=0,8BIT=0,PSRAM=0");
+#endif
+    } break;
+
     case CMD_TYPE_VERSION:
     cmd_handle_version();
     break;
@@ -428,6 +448,17 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     if (bt_get_connection_state() != 1) { cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL); break; }
 #endif
 #endif
+    #ifdef ESP_PLATFORM
+    #ifdef CONFIG_BEEP_AUTOSTART_STREAMING
+        /* If connected but not yet streaming, opportunistically kick off
+         * A2DP so the sink pulls audio and the beep is audible. */
+        if (streaming != 1) {
+            (void) bt_manager_start_audio();
+            /* Consider adding a simple throttle if allocator pressure appears. */
+        }
+    #endif
+    #endif
+
     /* Use a 200ms default beep duration; production implementation may
      * ignore or implement frequency/duration semantics. */
     if (audio_processor_beep(200) == ESP_OK) cmd_send_response("OK", "BEEP", "SENT", NULL);
@@ -470,6 +501,37 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
 #endif
     break;
+
+    case CMD_TYPE_PLAY: {
+    if (ctx->param_count < 1) { cmd_send_response("ERR", "PLAY", "MISSING_PARAM", NULL); break; }
+    /* Build file path: if caller provided an absolute path use it, otherwise
+     * assume files live under /spiffs/ as a convenience for test flows. */
+    char path[256];
+    const char* p = ctx->params[0];
+    if (p[0] == '/' ) {
+        strncpy(path, p, sizeof(path)-1); path[sizeof(path)-1] = '\0';
+    } else {
+        snprintf(path, sizeof(path), "/spiffs/%s", p);
+    }
+
+#ifdef ESP_PLATFORM
+    /* If connected but not streaming, try to start A2DP so the sink will
+     * pull the queued audio. This is best-effort; failure to start
+     * streaming will be reported but we still attempt to queue audio. */
+    int conn = bt_get_connection_state();
+    int streaming = bt_get_streaming_state_int();
+    if (conn == 1 && streaming != 1) {
+        (void) bt_manager_start_audio();
+    }
+    esp_err_t r = audio_processor_play_wav(path);
+    if (r == ESP_OK) cmd_send_response("OK", "PLAY", "ENQUEUED", path);
+    else cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
+#else
+    (void)path;
+    if (audio_processor_play_wav(path) == ESP_OK) cmd_send_response("OK", "PLAY", "MOCK_ENQUEUED", ctx->params[0]);
+    else cmd_send_response("ERR", "PLAY", "MOCK_FAILED", ctx->params[0]);
+#endif
+    } break;
 
     case CMD_TYPE_STOP:
 #ifdef ESP_PLATFORM
@@ -808,6 +870,66 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
             cmd_send_response("OK", "DEBUG", "MOCK_PAIR_MOCKED", ctx->params[1]);
 #endif
             } }
+    else if (strcasecmp(ctx->params[0], "BEEP_DIAG") == 0) {
+#ifdef ESP_PLATFORM
+    audio_processor_enable_next_beep_diag();
+    cmd_send_response("OK", "DEBUG", "BEEP_DIAG_ARMED", NULL);
+#else
+    cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+    }
+    else if (strcasecmp(ctx->params[0], "WORKER_DIAG") == 0) {
+#ifdef ESP_PLATFORM
+        if (audio_processor_emit_sync_worker_diag() == ESP_OK) cmd_send_response("OK", "DEBUG", "WORKER_DIAG_EMITTED", NULL);
+        else cmd_send_response("ERR", "DEBUG", "WORKER_DIAG_FAILED", NULL);
+#else
+        cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+    }
+    /* Developer helper: force a beep regardless of BT connection state
+     * Useful for on-device diagnostics when no sink is available. This
+     * bypasses the BEEP command's permissive connection checks and calls
+     * the audio_processor directly. Use cautiously in production. */
+    else if (strcasecmp(ctx->params[0], "FORCE_BEEP") == 0) {
+#ifdef ESP_PLATFORM
+        if (audio_processor_beep(200) == ESP_OK) cmd_send_response("OK", "DEBUG", "FORCE_BEEP_SENT", NULL);
+        else cmd_send_response("ERR", "DEBUG", "FORCE_BEEP_FAILED", NULL);
+#else
+        cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+    }
+    else if (strcasecmp(ctx->params[0], "DRAIN_RING") == 0) {
+#ifdef ESP_PLATFORM
+    if (audio_processor_drain_ringbuffer() == ESP_OK) cmd_send_response("OK", "DEBUG", "DRAIN_RING_DONE", NULL);
+    else cmd_send_response("ERR", "DEBUG", "DRAIN_RING_FAILED", NULL);
+#else
+    cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+    }
+    else if (strcasecmp(ctx->params[0], "DRAM") == 0) {
+        /* DEBUG DRAM ON|OFF - force DRAM-only allocations for audio */
+        if (ctx->param_count < 2) { cmd_send_response("ERR", "DEBUG", "DRAM_MISSING_PARAM", NULL); }
+        else {
+            const char* p = ctx->params[1];
+            if (strcasecmp(p, "ON") == 0 || strcmp(p, "1") == 0) {
+#ifdef ESP_PLATFORM
+                audio_processor_set_dram_only(true);
+                cmd_send_response("OK", "DEBUG", "DRAM_ON", NULL);
+#else
+                cmd_send_response("OK", "DEBUG", "DRAM_ON_MOCK", NULL);
+#endif
+            } else if (strcasecmp(p, "OFF") == 0 || strcmp(p, "0") == 0) {
+#ifdef ESP_PLATFORM
+                audio_processor_set_dram_only(false);
+                cmd_send_response("OK", "DEBUG", "DRAM_OFF", NULL);
+#else
+                cmd_send_response("OK", "DEBUG", "DRAM_OFF_MOCK", NULL);
+#endif
+            } else {
+                cmd_send_response("ERR", "DEBUG", "DRAM_BAD_PARAM", p);
+            }
+        }
+    }
     else cmd_send_response("ERR", "DEBUG", "UNKNOWN_SUBCMD", ctx->params[0]);
     } break;
 
@@ -1012,6 +1134,7 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     else if (strcasecmp(token, "RESET") == 0) ctx->type = CMD_TYPE_RESET;
     else if (strcasecmp(token, "DEBUG") == 0) ctx->type = CMD_TYPE_DEBUG;
     else if (strcasecmp(token, "SAMPLE_RATE") == 0) ctx->type = CMD_TYPE_SAMPLE_RATE;
+    else if (strcasecmp(token, "MEM") == 0) ctx->type = CMD_TYPE_MEM;
     else if (strcasecmp(token, "SYNTH") == 0) ctx->type = CMD_TYPE_SYNTH;
     else if (strcasecmp(token, "I2S_CONFIG") == 0) ctx->type = CMD_TYPE_I2S_CONFIG;
     else if (strcasecmp(token, "BEEP") == 0) ctx->type = CMD_TYPE_BEEP;

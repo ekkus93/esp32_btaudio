@@ -177,3 +177,41 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     s_audio_stub.config.i2s_dout_pin = dout_pin;
     return ESP_OK;
 }
+
+/*
+ * Additional lightweight stubs to satisfy symbols referenced by
+ * `components/command_interface/commands.c` and other test-only code.
+ * These intentionally perform no real audio work; they return success so
+ * command handlers can exercise flow-control and responses.
+ */
+
+esp_err_t audio_processor_play_wav(const char *path)
+{
+    (void)path;
+    /* Treat WAV play requests as accepted in the test stub */
+    return ESP_OK;
+}
+
+void audio_processor_enable_next_beep_diag(void)
+{
+    /* No-op in test stub */
+}
+
+esp_err_t audio_processor_emit_sync_worker_diag(void)
+{
+    /* Indicate diagnostic emitted successfully */
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_drain_ringbuffer(void)
+{
+    /* No-op drain; report success */
+    return ESP_OK;
+}
+
+void audio_processor_set_dram_only(bool enable)
+{
+    (void)enable;
+    /* Test stub doesn't allocate differently; no-op */
+}
+

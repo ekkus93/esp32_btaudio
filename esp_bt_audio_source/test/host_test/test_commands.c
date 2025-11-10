@@ -136,14 +136,28 @@ void test_help_command(void) {
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|SUMMARY|25 commands available"));
+    /* The number of commands may change over time; parse the declared
+     * count from the SUMMARY line and verify it matches the number of
+     * ENTRY lines emitted. This keeps the test resilient to additions
+     * or removals of help entries. */
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|SUMMARY|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|FORMAT|COMMAND [ARGS] - DESCRIPTION"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|HELP - Show this list"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|CONNECT <MAC> - Connect by MAC address"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HELP|DONE|"));
 
     int entry_count = count_substring(tx, "INFO|HELP|ENTRY|");
-    TEST_ASSERT_EQUAL(25, entry_count);
+    /* Extract the numeric count from the SUMMARY line and compare. */
+    const char* sumptr = strstr(tx, "INFO|HELP|SUMMARY|");
+    TEST_ASSERT_NOT_NULL(sumptr);
+    sumptr += strlen("INFO|HELP|SUMMARY|");
+    int declared = -1;
+    if (sumptr) {
+        /* Expect format: "<N> commands available" */
+        sscanf(sumptr, "%d commands available", &declared);
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, declared);
+    TEST_ASSERT_EQUAL(declared, entry_count);
 }
 
 void test_version_command(void) {

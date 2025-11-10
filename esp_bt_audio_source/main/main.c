@@ -88,7 +88,7 @@ enum {
  ********************************/
 
 /* handler for bluetooth stack enabled events */
-static void bt_av_hdl_stack_evt(uint16_t event, void *p_param);
+static void __attribute__((unused)) bt_av_hdl_stack_evt(uint16_t event, void *p_param);
 
 /* avrc controller event handler */
 static void bt_av_hdl_avrc_ct_evt(uint16_t event, void *p_param);
@@ -397,7 +397,7 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
     return;
 }
 
-static void bt_av_hdl_stack_evt(uint16_t event, void *p_param)
+static void __attribute__((unused)) bt_av_hdl_stack_evt(uint16_t event, void *p_param)
 {
     ESP_LOGD(BT_AV_TAG, "%s event: %d", __func__, event);
 
@@ -852,83 +852,11 @@ static void __attribute__((unused)) bt_av_hdl_avrc_ct_evt(uint16_t event, void *
     }
 }
 
-/* Initialize Bluetooth functionality */
-static void bt_init(void)
-{
-    ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Initializing Bluetooth...");
-    
-    /*
-     * This example only uses the functions of Classical Bluetooth.
-     * So release the controller memory for Bluetooth Low Energy.
-     */
-    ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_BLE));
-
-    // Configure Bluetooth controller
-    ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Configuring controller...");
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
-    
-    esp_err_t bt_err = esp_bt_controller_init(&bt_cfg);
-    if (bt_err != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Initialize controller failed: %s (%d)", esp_err_to_name(bt_err), (int)bt_err);
-        return;
-    }
-    ESP_LOGI(BT_AV_TAG, "Controller initialized: mode=%d target_mode=0x%x", bt_cfg.mode, ESP_BT_MODE_CLASSIC_BT);
-
-    // Enable Bluetooth controller
-    ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Enabling controller...");
-    bt_err = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
-    if (bt_err != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Enable controller failed: %s (%d)", esp_err_to_name(bt_err), (int)bt_err);
-        return;
-    }
-    ESP_LOGI(BT_AV_TAG, "Controller enabled in mode CLASSIC_BT");
-
-    // Initialize Bluedroid
-    ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Initializing Bluedroid...");
-    esp_bluedroid_config_t bluedroid_cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
-#if (CONFIG_EXAMPLE_SSP_ENABLED == false)
-    bluedroid_cfg.ssp_en = false;
-#endif
-    esp_err_t ret = esp_bluedroid_init_with_cfg(&bluedroid_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Initialize bluedroid failed: %s", esp_err_to_name(ret));
-        return;
-    }
-
-    // Enable Bluedroid
-    ESP_LOGI(BT_AV_TAG, "[BT DEBUG] Enabling Bluedroid...");
-    if (esp_bluedroid_enable() != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "Enable bluedroid failed");
-        return;
-    }
-
-#if (CONFIG_EXAMPLE_SSP_ENABLED == true)
-    /* set default parameters for Secure Simple Pairing */
-    esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
-    esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
-    esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t));
-#endif
-
-    /*
-     * Set default parameters for Legacy Pairing
-     * Use variable pin, input pin code when pairing
-     */
-    esp_bt_pin_type_t pin_type = ESP_BT_PIN_TYPE_VARIABLE;
-    esp_bt_pin_code_t pin_code;
-    esp_bt_gap_set_pin(pin_type, 0, pin_code);
-
-    char bda_str[18] = {0};
-    ESP_LOGI(BT_AV_TAG, "Own Bluetooth address: [%s]", bda2str((uint8_t *)esp_bt_dev_get_address(), bda_str, sizeof(bda_str)));
-    
-    // Initialize task with large stack size for better stability
-    bt_app_task_start_up();
-    
-    // Bluetooth device name, connection mode and profile set up
-    bt_app_work_dispatch(bt_av_hdl_stack_evt, BT_APP_STACK_UP_EVT, NULL, 0, NULL);
-    
-    ESP_LOGI(BT_AV_TAG, "Bluetooth initialized successfully");
-}
+/* The legacy static `bt_init()` implementation was removed in favor of the
+ * centralized `bt_manager` startup sequence. Initialization is now handled
+ * by `bt_manager_init()` called from `app_main()` so the legacy, file-scoped
+ * helper is no longer necessary.
+ */
 
 /*********************************
  * MAIN ENTRY POINT
@@ -936,6 +864,9 @@ static void bt_init(void)
 
 void app_main(void)
 {
+    // Free BLE controller memory to give Classic BT more DRAM
+    ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_BLE));    
+
     /* Very early unbuffered boot marker for programmatic captures. This
      * appears before most initialization and helps external injectors
      * avoid racing the device boot sequence. Use both printf and the
