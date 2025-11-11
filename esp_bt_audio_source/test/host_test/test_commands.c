@@ -1,11 +1,71 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <limits.h>
 #include "unity.h"
 #include "command_interface.h"
 #include "bt_manager.h"
 #include "mock_uart.h"
 #include "nvs_storage.h"
 #include "audio_processor.h"
+
+static char s_test_spiffs_root[PATH_MAX];
+static int s_test_spiffs_root_ready = 0;
+static const char* k_file_alpha_name = "alpha.txt";
+static const char k_file_alpha_data[] = "alpha-data";
+static const size_t k_file_alpha_size = sizeof(k_file_alpha_data) - 1;
+static const char* k_file_beta_name = "beta.bin";
+static const unsigned char k_file_beta_data[] = {0x01, 0x02, 0x7F, 0xA0, 0x00, 0x55};
+static const size_t k_file_beta_size = sizeof(k_file_beta_data);
+static const char* k_logs_dir_name = "logs";
+
+static void test_cleanup_spiffs_root(void)
+{
+    if (!s_test_spiffs_root_ready) {
+        return;
+    }
+    char path[PATH_MAX + 32];
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_alpha_name);
+    unlink(path);
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_beta_name);
+    unlink(path);
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_logs_dir_name);
+    rmdir(path);
+    rmdir(s_test_spiffs_root);
+    s_test_spiffs_root_ready = 0;
+    s_test_spiffs_root[0] = '\0';
+}
+
+const char* cmd_files_host_mount_override(void)
+{
+    return s_test_spiffs_root_ready ? s_test_spiffs_root : NULL;
+}
+
+static void test_create_sample_spiffs(void)
+{
+    TEST_ASSERT_TRUE(s_test_spiffs_root_ready);
+
+    char path[PATH_MAX + 32];
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_alpha_name);
+    FILE* fa = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(fa);
+    size_t written = fwrite(k_file_alpha_data, 1, k_file_alpha_size, fa);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)k_file_alpha_size, (uint32_t)written);
+    fclose(fa);
+
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_beta_name);
+    FILE* fb = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(fb);
+    written = fwrite(k_file_beta_data, 1, k_file_beta_size, fb);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)k_file_beta_size, (uint32_t)written);
+    fclose(fb);
+
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_logs_dir_name);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+}
 
 const char* cmd_version_host_override(void)
 {
@@ -28,6 +88,7 @@ extern int bt_manager_test_get_unpair_all_cleared_before(void);
 // Test fixture
 void setUp(void) {
     // Initialize before each test
+    test_cleanup_spiffs_root();
     mock_uart_init(115200);
     cmd_init();
     bt_manager_init_t cfg = {
@@ -39,11 +100,20 @@ void setUp(void) {
     bt_manager_test_reset_forces();
     bt_manager_test_set_force_unpair_all_failure(0);
     nvs_storage_clear_paired_devices();
+
+    char template[] = "/tmp/esp_cmd_spiffsXXXXXX";
+    char* root = mkdtemp(template);
+    TEST_ASSERT_NOT_NULL(root);
+    strncpy(s_test_spiffs_root, root, sizeof(s_test_spiffs_root) - 1);
+    s_test_spiffs_root[sizeof(s_test_spiffs_root) - 1] = '\0';
+    s_test_spiffs_root_ready = 1;
+    test_create_sample_spiffs();
 }
 
 void tearDown(void) {
     // Clean up after each test
     cmd_deinit();
+    test_cleanup_spiffs_root();
 }
 
 // Test basic command parsing
@@ -70,6 +140,14 @@ void test_parse_i2s_config_command(void) {
     TEST_ASSERT_EQUAL(CMD_TYPE_I2S_CONFIG, ctx.type);
     TEST_ASSERT_EQUAL(1, ctx.param_count);
     TEST_ASSERT_EQUAL_STRING("26,25,22,21", ctx.params[0]);
+}
+
+void test_parse_file_command(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILE alpha.txt", &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_FILE, ctx.type);
+    TEST_ASSERT_EQUAL(1, ctx.param_count);
+    TEST_ASSERT_EQUAL_STRING(k_file_alpha_name, ctx.params[0]);
 }
 
 // Test invalid command
@@ -231,6 +309,7 @@ int main(void) {
     RUN_TEST(test_parse_scan_command);
     RUN_TEST(test_parse_connect_command);
     RUN_TEST(test_parse_i2s_config_command);
+    RUN_TEST(test_parse_file_command);
     RUN_TEST(test_parse_invalid_command);
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_send_response);
@@ -294,7 +373,13 @@ int main(void) {
     RUN_TEST(test_beep_command_connected);
     // Test PLAY command enqueues audio via host stub and makes data available
     extern void test_play_command(void);
+    extern void test_file_command_found(void);
+    extern void test_file_command_not_found(void);
+    extern void test_file_command_not_file(void);
     RUN_TEST(test_play_command);
+    RUN_TEST(test_file_command_found);
+    RUN_TEST(test_file_command_not_found);
+    RUN_TEST(test_file_command_not_file);
     
     // Tests for SYNTH command (host-mode verifies parsing + response)
     extern void test_synth_on_command(void);
@@ -685,6 +770,44 @@ void test_play_command(void) {
     TEST_ASSERT_EQUAL_INT(1, found_nonzero);
     // Ensure beep flag wasn't accidentally set by play
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+}
+
+void test_file_command_found(void) {
+    mock_uart_reset_tx();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILE alpha.txt", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    char expected[128];
+    snprintf(expected, sizeof(expected), "OK|FILE|FOUND|%s,%llu\r\n", k_file_alpha_name, (unsigned long long)k_file_alpha_size);
+    TEST_ASSERT_EQUAL_STRING(expected, tx);
+}
+
+void test_file_command_not_found(void) {
+    mock_uart_reset_tx();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILE missing.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_EQUAL_STRING("ERR|FILE|NOT_FOUND|missing.wav\r\n", tx);
+}
+
+void test_file_command_not_file(void) {
+    mock_uart_reset_tx();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILE logs", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_EQUAL_STRING("ERR|FILE|NOT_FILE|logs\r\n", tx);
 }
 
 // Verify SYNTH ON toggles the mode (host: verifies response emitted)

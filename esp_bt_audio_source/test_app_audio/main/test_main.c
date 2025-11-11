@@ -38,6 +38,7 @@ static void run_audio_tests(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting audio-focused Unity test suite");
+    esp_log_level_set("AUDIO_PROC", ESP_LOG_DEBUG);
     /* Attempt to mount the repository-provided SPIFFS partition so tests that
      * open /spiffs/ files (for example worker_long_norm.wav) can access them.
      * This is intentionally a best-effort mount; if it fails we continue so

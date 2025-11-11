@@ -46,6 +46,8 @@ typedef enum {
     CMD_TYPE_SET_DEFAULT_PIN,
     CMD_TYPE_UNPAIR,
     CMD_TYPE_UNPAIR_ALL,
+    CMD_TYPE_FILE,
+    CMD_TYPE_FILES,
     CMD_TYPE_HELP,
     // Add new command types here
     CMD_TYPE_PLAY,

@@ -5,9 +5,54 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <errno.h>
 #if !defined(ESP_PLATFORM)
 #include <sys/time.h>
+#if defined(__GNUC__)
+extern const char* cmd_files_host_mount_override(void) __attribute__((weak));
+#else
+extern const char* cmd_files_host_mount_override(void);
+#pragma weak cmd_files_host_mount_override
 #endif
+#endif
+
+#define CMD_FILES_WARN_NAME_MAX 80
+#define CMD_FILES_ITEM_NAME_MAX 128
+#define CMD_FILES_SUMMARY_ROOT_MAX 120
+
+static void copy_truncated_identifier(const char* src, char* dst, size_t dst_size)
+{
+    if (dst_size == 0) {
+        return;
+    }
+    if (src == NULL || src[0] == '\0') {
+        dst[0] = '\0';
+        return;
+    }
+
+    size_t max_copy = dst_size - 1;
+    size_t i = 0;
+    while (i < max_copy && src[i] != '\0') {
+        dst[i] = src[i];
+        ++i;
+    }
+
+    if (src[i] != '\0' && dst_size > 4) {
+        size_t ellipsis_start = dst_size - 4;
+        if (ellipsis_start > i) {
+            ellipsis_start = i;
+        }
+        dst[ellipsis_start] = '.';
+        dst[ellipsis_start + 1] = '.';
+        dst[ellipsis_start + 2] = '.';
+        dst[ellipsis_start + 3] = '\0';
+    } else {
+        dst[i] = '\0';
+    }
+}
+
 
 // Include platform headers and storage/bt mocks so host builds have prototypes
 #include "audio_processor.h"
@@ -165,6 +210,8 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     { "PAIRED", NULL, "List stored paired devices" },
     { "UNPAIR", "<MAC>", "Remove a paired device" },
     { "UNPAIR_ALL", NULL, "Erase all paired devices" },
+    { "FILE", "<NAME>", "Report file size if present" },
+    { "FILES", NULL, "List files stored on /spiffs" },
     { "SET_NAME", "<NAME>", "Persist the local Bluetooth name" },
     { "START", NULL, "Start A2DP audio streaming" },
     { "STOP", NULL, "Stop A2DP audio streaming" },
@@ -296,6 +343,22 @@ static void cmd_handle_version(void)
 #endif
 
     cmd_send_response("OK", "VERSION", version, metadata[0] != '\0' ? metadata : NULL);
+}
+
+static const char* cmd_files_get_root(void)
+{
+#ifdef ESP_PLATFORM
+    return "/spiffs";
+#else
+    const char* (*override_fn)(void) = cmd_files_host_mount_override;
+    if (override_fn != NULL) {
+        const char* override = override_fn();
+        if (override != NULL && override[0] != '\0') {
+            return override;
+        }
+    }
+    return "/spiffs";
+#endif
 }
 
 // Test-only function to reset sequence counter
@@ -544,6 +607,182 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
     cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
 #endif
     break;
+
+    case CMD_TYPE_FILE: {
+    if (ctx->param_count < 1) {
+        cmd_send_response("ERR", "FILE", "MISSING_PARAM", NULL);
+        break;
+    }
+
+    const char* root = cmd_files_get_root();
+    const char* requested = ctx->params[0];
+    if ((requested == NULL || requested[0] == '\0')) {
+        cmd_send_response("ERR", "FILE", "MISSING_PARAM", NULL);
+        break;
+    }
+
+    char fullpath[256];
+    if (requested[0] == '/') {
+        strncpy(fullpath, requested, sizeof(fullpath) - 1);
+        fullpath[sizeof(fullpath) - 1] = '\0';
+    } else {
+        if (root == NULL || root[0] == '\0') {
+            cmd_send_response("ERR", "FILE", "NO_ROOT", NULL);
+            break;
+        }
+        size_t root_len = strlen(root);
+        const char* sep = (root_len > 0 && root[root_len - 1] == '/') ? "" : "/";
+        int written = snprintf(fullpath, sizeof(fullpath), "%s%s%s", root, sep, requested);
+        if (written < 0 || (size_t)written >= sizeof(fullpath)) {
+            cmd_send_response("ERR", "FILE", "PATH_TOO_LONG", requested);
+            break;
+        }
+    }
+
+    struct stat st = {0};
+    if (stat(fullpath, &st) != 0) {
+        int stat_err = errno;
+#ifdef ESP_PLATFORM
+        (void)stat_err;
+#else
+        (void)stat_err;
+#endif
+        cmd_send_response("ERR", "FILE", "NOT_FOUND", requested);
+        break;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        cmd_send_response("ERR", "FILE", "NOT_FILE", requested);
+        break;
+    }
+
+    const char* display_name = requested;
+    if (requested[0] == '/') {
+        const char* slash = strrchr(requested, '/');
+        if (slash && *(slash + 1) != '\0') {
+            display_name = slash + 1;
+        }
+    }
+
+    char data[160];
+    snprintf(data, sizeof(data), "%s,%llu", display_name, (unsigned long long)st.st_size);
+    cmd_send_response("OK", "FILE", "FOUND", data);
+    } break;
+
+    case CMD_TYPE_FILES: {
+    if (ctx->param_count > 0) {
+        cmd_send_response("ERR", "FILES", "UNEXPECTED_PARAM", ctx->params[0]);
+        break;
+    }
+    const char* root = cmd_files_get_root();
+    if (root == NULL || root[0] == '\0') {
+        cmd_send_response("ERR", "FILES", "NO_ROOT", NULL);
+        break;
+    }
+
+    cmd_send_response("INFO", "FILES", "ROOT", root);
+
+    DIR* dir = opendir(root);
+    if (dir == NULL) {
+        char errbuf[96];
+        int open_err = errno;
+#ifdef ESP_PLATFORM
+        snprintf(errbuf, sizeof(errbuf), "errno=%d", open_err);
+#else
+        const char* reason = strerror(open_err);
+        snprintf(errbuf, sizeof(errbuf), "%d:%s", open_err, (reason != NULL) ? reason : "UNKNOWN");
+#endif
+        cmd_send_response("ERR", "FILES", "OPEN_FAILED", errbuf);
+        break;
+    }
+
+    int file_count = 0;
+    unsigned long long total_size = 0ULL;
+    struct dirent* entry = NULL;
+    while ((entry = readdir(dir)) != NULL) {
+        const char* name = entry->d_name;
+        if (name == NULL || name[0] == '\0') {
+            continue;
+        }
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+            continue;
+        }
+
+        char fullpath[256];
+        size_t root_len = strlen(root);
+        const char* sep = (root_len > 0 && root[root_len - 1] == '/') ? "" : "/";
+        int written = snprintf(fullpath, sizeof(fullpath), "%s%s%s", root, sep, name);
+        if (written < 0 || (size_t)written >= sizeof(fullpath)) {
+            char warn_name[CMD_FILES_WARN_NAME_MAX];
+            copy_truncated_identifier(name, warn_name, sizeof(warn_name));
+            char warn[128];
+            int warn_written = snprintf(warn, sizeof(warn), "SKIP_LONG_PATH,%s", warn_name);
+            if (warn_written < 0 || warn_written >= (int)sizeof(warn)) {
+                strncpy(warn, "SKIP_LONG_PATH,???", sizeof(warn));
+                warn[sizeof(warn) - 1] = '\0';
+            }
+            cmd_send_response("INFO", "FILES", "SKIP", warn);
+            continue;
+        }
+
+        struct stat st = {0};
+        if (stat(fullpath, &st) != 0) {
+            char warn_name[CMD_FILES_WARN_NAME_MAX];
+            copy_truncated_identifier(name, warn_name, sizeof(warn_name));
+            char warn[160];
+            int stat_err = errno;
+#ifdef ESP_PLATFORM
+            int warn_written = snprintf(warn, sizeof(warn), "STAT_FAILED,%s,errno=%d", warn_name, stat_err);
+#else
+            const char* reason = strerror(stat_err);
+            int warn_written = snprintf(warn, sizeof(warn), "STAT_FAILED,%s,%d:%s", warn_name, stat_err, (reason != NULL) ? reason : "UNKNOWN");
+#endif
+            if (warn_written < 0 || warn_written >= (int)sizeof(warn)) {
+                strncpy(warn, "STAT_FAILED,???,errno=?", sizeof(warn));
+                warn[sizeof(warn) - 1] = '\0';
+            }
+            cmd_send_response("INFO", "FILES", "SKIP", warn);
+            continue;
+        }
+
+        if (!S_ISREG(st.st_mode)) {
+            char warn_name[CMD_FILES_WARN_NAME_MAX];
+            copy_truncated_identifier(name, warn_name, sizeof(warn_name));
+            char warn[128];
+            int warn_written = snprintf(warn, sizeof(warn), "NON_FILE,%s", warn_name);
+            if (warn_written < 0 || warn_written >= (int)sizeof(warn)) {
+                strncpy(warn, "NON_FILE,???", sizeof(warn));
+                warn[sizeof(warn) - 1] = '\0';
+            }
+            cmd_send_response("INFO", "FILES", "SKIP", warn);
+            continue;
+        }
+
+        char item_name[CMD_FILES_ITEM_NAME_MAX];
+        copy_truncated_identifier(name, item_name, sizeof(item_name));
+        char line[192];
+        int line_written = snprintf(line, sizeof(line), "%s,%llu", item_name, (unsigned long long)st.st_size);
+        if (line_written < 0 || line_written >= (int)sizeof(line)) {
+            strncpy(line, "???,0", sizeof(line));
+            line[sizeof(line) - 1] = '\0';
+        }
+        cmd_send_response("INFO", "FILES", "ITEM", line);
+        file_count++;
+        total_size += (unsigned long long)st.st_size;
+    }
+
+    closedir(dir);
+
+    char root_label[CMD_FILES_SUMMARY_ROOT_MAX];
+    copy_truncated_identifier(root, root_label, sizeof(root_label));
+    char summary[192];
+    int summary_written = snprintf(summary, sizeof(summary), "ROOT=%s,COUNT=%d,TOTAL=%llu", root_label, file_count, total_size);
+    if (summary_written < 0 || summary_written >= (int)sizeof(summary)) {
+        strncpy(summary, "ROOT=?,COUNT=?,TOTAL=?", sizeof(summary));
+        summary[sizeof(summary) - 1] = '\0';
+    }
+    cmd_send_response("OK", "FILES", "SUMMARY", summary);
+    } break;
 
     case CMD_TYPE_CONNECT_NAME: {
     if (ctx->param_count < 1) { cmd_send_response("ERR", "CONNECT_NAME", "MISSING_PARAM", NULL); break; }
@@ -1145,6 +1384,8 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     else if (strcasecmp(token, "SET_DEFAULT_PIN") == 0) ctx->type = CMD_TYPE_SET_DEFAULT_PIN;
     else if (strcasecmp(token, "UNPAIR") == 0) ctx->type = CMD_TYPE_UNPAIR;
     else if (strcasecmp(token, "UNPAIR_ALL") == 0) ctx->type = CMD_TYPE_UNPAIR_ALL;
+    else if (strcasecmp(token, "FILE") == 0) ctx->type = CMD_TYPE_FILE;
+    else if (strcasecmp(token, "FILES") == 0) ctx->type = CMD_TYPE_FILES;
     else if (strcasecmp(token, "HELP") == 0) ctx->type = CMD_TYPE_HELP;
     else ctx->type = CMD_TYPE_UNKNOWN;
 

@@ -68,6 +68,7 @@ typedef struct {
     size_t len;
     size_t capacity;
     bool synth_fill;
+    bool pooled_ptr;
 } i2s_block_t;
 
 static QueueHandle_t s_i2s_queue = NULL; /* Queue of i2s_block_t */
@@ -284,6 +285,7 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
 
 /* Diagnostic helper forward-declaration (defined later) */
 static void diag_dump_bytes(const void* data, size_t len, const char* tag);
+static void drain_beep_buffer(void);
 
 /* Runtime control: allow forcing DRAM-only allocations for debugging/static avoidance */
 /* Temporarily default to true for Option 2: boot with DRAM-only allocations
@@ -1527,6 +1529,26 @@ esp_err_t audio_processor_drain_ringbuffer(void)
     return ESP_OK;
 }
 
+static void drain_beep_buffer(void)
+{
+    if (s_beep_buffer == NULL) {
+        return;
+    }
+
+    size_t rsz = 0;
+    void* item = NULL;
+    int drained = 0;
+
+    while ((item = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, 0, 0)) != NULL && rsz > 0) {
+        vRingbufferReturnItem(s_beep_buffer, item);
+        drained++;
+    }
+
+    if (drained > 0) {
+        ESP_LOGD(TAG, "drain_beep_buffer: released %d items", drained);
+    }
+}
+
 /**
  * @brief Emit a synchronous worker-like diagnostic snapshot.
  *
@@ -1952,37 +1974,65 @@ esp_err_t audio_processor_play_wav(const char* path)
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
 
+    esp_err_t status = ESP_OK;
     FILE* f = fopen(path, "rb");
+    bool resume_pipeline = false;
+
     if (!f) {
         ESP_LOGE(TAG, "audio_processor_play_wav: failed to open %s", path);
         return ESP_ERR_NOT_FOUND;
     }
 
+    if (s_is_running) {
+        status = audio_processor_stop();
+        if (status != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_play_wav: stop failed (%d %s)", (int)status, esp_err_to_name(status));
+            printf("DIAG-APLAY-FAIL: stop-failed %d\n", (int)status);
+            goto cleanup;
+        }
+        resume_pipeline = true;
+    }
+
+    if (s_audio_buffer != NULL) {
+        (void)audio_processor_drain_ringbuffer();
+    }
+    drain_beep_buffer();
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = 0;
+    s_beep_fallback_active = false;
+    s_beep_fallback_frames_remaining = 0;
+    s_beep_fallback_total_frames = 0;
+    portEXIT_CRITICAL(&s_beep_lock);
+
     /* Basic WAV header parsing (RIFF/WAVE, fmt chunk, data chunk) */
+    uint32_t tmp32 = 0;
     char riff[4];
-    if (fread(riff, 1, 4, f) != 4) { 
+    if (fread(riff, 1, 4, f) != 4) {
         ESP_LOGW(TAG, "audio_processor_play_wav: missing RIFF header (fread failed)");
         printf("DIAG-APLAY-FAIL: missing-riff\n");
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
-    if (memcmp(riff, "RIFF", 4) != 0) { 
+    if (memcmp(riff, "RIFF", 4) != 0) {
         ESP_LOGW(TAG, "audio_processor_play_wav: RIFF header mismatch");
         printf("DIAG-APLAY-FAIL: riff-mismatch\n");
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
     /* skip file size */
-    uint32_t tmp32 = 0;
     fread(&tmp32, 4, 1, f);
     char wave[4];
-    if (fread(wave, 1, 4, f) != 4) { 
+    if (fread(wave, 1, 4, f) != 4) {
         ESP_LOGW(TAG, "audio_processor_play_wav: missing WAVE header (fread failed)");
         printf("DIAG-APLAY-FAIL: missing-wave\n");
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
-    if (memcmp(wave, "WAVE", 4) != 0) { 
+    if (memcmp(wave, "WAVE", 4) != 0) {
         ESP_LOGW(TAG, "audio_processor_play_wav: WAVE header mismatch");
         printf("DIAG-APLAY-FAIL: wave-mismatch\n");
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
 
     uint16_t audio_format = 0;
@@ -1998,48 +2048,37 @@ esp_err_t audio_processor_play_wav(const char* path)
         uint32_t chunk_size = 0;
         if (fread(chunk_id, 1, 4, f) != 4) break;
         if (fread(&chunk_size, 4, 1, f) != 1) break;
-        /* chunk_size is little-endian in WAV (host is little-endian on ESP32/Linux)
-         * but keep it as-is for portability assumptions used here. */
 
         if (memcmp(chunk_id, "fmt ", 4) == 0) {
-            /* Read minimal fmt chunk (PCM header is 16 bytes) */
-            if (chunk_size < 16) { 
+            if (chunk_size < 16) {
                 ESP_LOGW(TAG, "audio_processor_play_wav: fmt chunk too small (chunk_size=%u)", (unsigned)chunk_size);
                 printf("DIAG-APLAY-FAIL: fmt-chunk-too-small %u\n", (unsigned)chunk_size);
-                fclose(f); return ESP_ERR_INVALID_STATE; 
+                status = ESP_ERR_INVALID_STATE;
+                goto cleanup;
             }
             uint16_t fmt16_1 = 0;
             fread(&fmt16_1, 2, 1, f); audio_format = fmt16_1;
             fread(&num_channels, 2, 1, f);
             fread(&sample_rate, 4, 1, f);
-            /* skip byte rate */
-            fread(&tmp32, 4, 1, f);
-            /* skip block align */
-            uint16_t tmp16 = 0; fread(&tmp16, 2, 1, f);
+            fread(&tmp32, 4, 1, f); /* skip byte rate */
+            uint16_t tmp16 = 0; fread(&tmp16, 2, 1, f); /* skip block align */
             fread(&bits_per_sample, 2, 1, f);
-            /* If fmt chunk larger than 16 bytes, skip remaining */
             if (chunk_size > 16) fseek(f, (long)(chunk_size - 16), SEEK_CUR);
             have_fmt = true;
         } else if (memcmp(chunk_id, "data", 4) == 0) {
             data_bytes = chunk_size;
-            /* file pointer now at start of data */
             break;
         } else {
-            /* skip other chunks */
             fseek(f, (long)chunk_size, SEEK_CUR);
         }
     }
 
-    /* Emit header diagnostics if we successfully parsed fmt/data so
-     * the test runner can inspect the WAV fields and a small data peek. */
     if (have_fmt && data_bytes > 0) {
         ESP_LOGI(TAG, "audio_processor_play_wav: parsed WAV fmt=%u ch=%u sr=%u bits=%u data=%u",
                  (unsigned)audio_format, (unsigned)num_channels, (unsigned)sample_rate, (unsigned)bits_per_sample, (unsigned)data_bytes);
         printf("DIAG-APLAY-HDR: fmt=%u ch=%u sr=%u bits=%u data=%u\n",
                (unsigned)audio_format, (unsigned)num_channels, (unsigned)sample_rate, (unsigned)bits_per_sample, (unsigned)data_bytes);
 
-        /* Peek the first few bytes of the data region to detect file/corruption issues.
-         * Save/restore the file pointer so normal processing is unaffected. */
         long cur = ftell(f);
         size_t peek_n = data_bytes < 16U ? data_bytes : 16U;
         if (peek_n > 0) {
@@ -2052,73 +2091,67 @@ esp_err_t audio_processor_play_wav(const char* path)
                 }
                 printf("\n");
             }
-            /* restore file pointer to where it was (start of data) */
             if (cur >= 0) fseek(f, cur, SEEK_SET);
         }
     }
 
-    if (!have_fmt || data_bytes == 0) { 
+    if (!have_fmt || data_bytes == 0) {
         ESP_LOGW(TAG, "audio_processor_play_wav: missing fmt or data chunk (have_fmt=%d data_bytes=%u)", (int)have_fmt, (unsigned)data_bytes);
         printf("DIAG-APLAY-FAIL: missing-fmt-or-data %d %u\n", (int)have_fmt, (unsigned)data_bytes);
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
 
-    /* Only support PCM (audio_format == 1) for now */
     if (audio_format != 1) {
         ESP_LOGE(TAG, "audio_processor_play_wav: unsupported WAV format=%u", (unsigned)audio_format);
-        fclose(f);
-        return ESP_ERR_NOT_SUPPORTED;
+        status = ESP_ERR_NOT_SUPPORTED;
+        goto cleanup;
     }
 
-    /* Map bits_per_sample to audio_bit_depth_t */
     audio_bit_depth_t src_bit = AUDIO_BIT_DEPTH_16;
     if (bits_per_sample == 16) src_bit = AUDIO_BIT_DEPTH_16;
     else if (bits_per_sample == 24) src_bit = AUDIO_BIT_DEPTH_24;
     else if (bits_per_sample == 32) src_bit = AUDIO_BIT_DEPTH_32;
     else {
         ESP_LOGE(TAG, "audio_processor_play_wav: unsupported bits_per_sample=%u", (unsigned)bits_per_sample);
-        fclose(f);
-        return ESP_ERR_NOT_SUPPORTED;
+        status = ESP_ERR_NOT_SUPPORTED;
+        goto cleanup;
     }
 
     size_t frame_bytes_src = (bits_per_sample / 8) * (size_t)num_channels;
-    if (frame_bytes_src == 0) { 
+    if (frame_bytes_src == 0) {
         ESP_LOGW(TAG, "audio_processor_play_wav: computed zero frame_bytes_src (bits=%u channels=%u)", (unsigned)bits_per_sample, (unsigned)num_channels);
         printf("DIAG-APLAY-FAIL: zero-frame-bytes bits=%u ch=%u\n", (unsigned)bits_per_sample, (unsigned)num_channels);
-        fclose(f); return ESP_ERR_INVALID_STATE; 
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
     }
 
-    /* Read data in chunks, convert/resample and enqueue */
     size_t remaining = data_bytes;
     while (remaining > 0) {
         size_t to_read = AUDIO_WORK_BUFFER_BYTES;
-        /* align to frame */
         to_read = (to_read / frame_bytes_src) * frame_bytes_src;
         if (to_read == 0) to_read = frame_bytes_src;
         if (to_read > remaining) to_read = remaining;
 
         size_t actually = fread(s_proc_buffer, 1, to_read, f);
-        if (actually == 0) break; /* unexpected EOF */
+        if (actually == 0) break;
 
-        /* Convert to internal bit depth */
         size_t conv_size = 0;
         if (convert_audio_format(s_proc_buffer, s_proc_buffer, actually, src_bit, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_play_wav: convert_audio_format failed");
             printf("DIAG-APLAY-FAIL: convert-failed\n");
-            fclose(f);
-            return ESP_ERR_INVALID_STATE;
+            status = ESP_ERR_INVALID_STATE;
+            goto cleanup;
         }
 
-        /* Resample if needed */
         size_t res_size = 0;
         if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, (audio_sample_rate_t)sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_play_wav: resample_audio failed");
             printf("DIAG-APLAY-FAIL: resample-failed\n");
-            fclose(f);
-            return ESP_ERR_INVALID_STATE;
+            status = ESP_ERR_INVALID_STATE;
+            goto cleanup;
         }
 
-        /* Enqueue to ringbuffer with same retry/drop logic used by beep */
         BaseType_t sent = pdFALSE;
         const int max_attempts = 3;
         for (int attempt = 0; attempt < max_attempts && sent != pdTRUE; ++attempt) {
@@ -2129,7 +2162,6 @@ esp_err_t audio_processor_play_wav(const char* path)
             taskYIELD();
         }
         if (sent != pdTRUE) {
-            /* Try to free some space by dropping oldest items (bounded) */
             size_t needed = res_size;
             int drop_attempts = 0;
             const int max_drop_attempts = 16;
@@ -2141,22 +2173,37 @@ esp_err_t audio_processor_play_wav(const char* path)
                 drop_attempts++;
                 taskYIELD();
             }
-            /* Try once more without waiting */
             sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
             if (sent != pdTRUE) {
-                /* Match format specifiers to argument types to satisfy -Wformat */
                 ESP_LOGW(TAG, "audio_processor_play_wav: ringbuffer full, aborting playback (enqueued %u/%u bytes)", (unsigned)(data_bytes - remaining), (unsigned)data_bytes);
-                fclose(f);
-                return ESP_ERR_NO_MEM;
+                status = ESP_ERR_NO_MEM;
+                goto cleanup;
             }
         }
 
         remaining -= actually;
     }
 
-    fclose(f);
     ESP_LOGI(TAG, "audio_processor_play_wav: playback enqueued for %s", path);
-    return ESP_OK;
+    status = ESP_OK;
+
+cleanup:
+    if (f != NULL) {
+        fclose(f);
+        f = NULL;
+    }
+
+    if (resume_pipeline) {
+        esp_err_t restart_ret = audio_processor_start();
+        if (restart_ret != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_play_wav: failed to restart pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
+            if (status == ESP_OK) {
+                status = restart_ret;
+            }
+        }
+    }
+
+    return status;
 }
 
 /**
@@ -2314,6 +2361,7 @@ static void i2s_reader_task(void *pvParameters)
                     .len = s_force_synth ? 0 : bytes_read,
                     .capacity = bytes_read,
                     .synth_fill = s_force_synth,
+                    .pooled_ptr = true,
                 };
                 if (!blk.synth_fill && blk.len > 0) {
                     memcpy(blk.ptr, s_i2s_buffer, blk.len);
@@ -2349,6 +2397,73 @@ static void i2s_reader_task(void *pvParameters)
     }
 }
 
+static inline void log_worker_block_state(const char *phase, const i2s_block_t *blk)
+{
+    if (esp_log_level_get(TAG) < ESP_LOG_DEBUG) {
+        return;
+    }
+    const char *tag = (phase != NULL) ? phase : "unknown";
+    ESP_LOGD(TAG, "audio_worker_task[%s]: ptr=%p len=%zu cap=%zu synth=%d pooled=%d",
+             tag,
+             (blk != NULL) ? blk->ptr : NULL,
+             (blk != NULL) ? blk->len : 0U,
+             (blk != NULL) ? blk->capacity : 0U,
+             (blk != NULL) ? (int)blk->synth_fill : 0,
+             (blk != NULL) ? (int)blk->pooled_ptr : 0);
+}
+
+static void audio_worker_return_block(const char *phase, i2s_block_t *blk)
+{
+    const char *tag = (phase != NULL) ? phase : "unknown";
+    if (blk == NULL || blk->ptr == NULL) {
+        ESP_LOGD(TAG, "audio_worker_task[%s]: return skipped (ptr=NULL)", tag);
+        return;
+    }
+
+    void *raw_ptr = blk->ptr;
+    const bool pooled = blk->pooled_ptr && s_i2s_free_queue != NULL;
+
+    if (pooled) {
+        ESP_LOGV(TAG, "audio_worker_task[%s]: returning pooled ptr=%p", tag, raw_ptr);
+        if (xQueueSend(s_i2s_free_queue, &raw_ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
+            ESP_LOGW(TAG, "audio_worker_task[%s]: free queue full, freeing pooled ptr=%p", tag, raw_ptr);
+            heap_caps_free(raw_ptr);
+        }
+    } else {
+        ESP_LOGV(TAG, "audio_worker_task[%s]: freeing non-pooled ptr=%p", tag, raw_ptr);
+        heap_caps_free(raw_ptr);
+    }
+
+    blk->ptr = NULL;
+    blk->len = 0;
+    blk->capacity = 0;
+    blk->synth_fill = false;
+    blk->pooled_ptr = false;
+}
+
+static void audio_worker_discard_block(const char *phase, i2s_block_t *blk)
+{
+    const char *tag = (phase != NULL) ? phase : "unknown";
+    if (blk == NULL || blk->ptr == NULL) {
+        ESP_LOGD(TAG, "audio_worker_task[%s]: discard skipped (ptr=NULL)", tag);
+        return;
+    }
+
+    if (blk->pooled_ptr) {
+        ESP_LOGV(TAG, "audio_worker_task[%s]: discard pooled ptr=%p -> recycle", tag, blk->ptr);
+        audio_worker_return_block(phase, blk);
+        return;
+    }
+
+    ESP_LOGV(TAG, "audio_worker_task[%s]: discarding non-pooled ptr=%p", tag, blk->ptr);
+    heap_caps_free(blk->ptr);
+    blk->ptr = NULL;
+    blk->len = 0;
+    blk->capacity = 0;
+    blk->synth_fill = false;
+    blk->pooled_ptr = false;
+}
+
 /**
  * @brief Lower-priority worker that converts, resamples and pushes to ringbuffer
  */
@@ -2367,7 +2482,10 @@ static void audio_worker_task(void *pvParameters)
             continue; // timeout
         }
 
+        log_worker_block_state("dequeue", &blk);
+
         if (blk.ptr == NULL) {
+            log_worker_block_state("dequeue-null", &blk);
             continue;
         }
 
@@ -2389,14 +2507,7 @@ static void audio_worker_task(void *pvParameters)
 #endif
             blk.len = generated;
             if (generated == 0) {
-                if (s_i2s_free_queue != NULL) {
-                    if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
-                        heap_caps_free(blk.ptr);
-                    }
-                } else {
-                    heap_caps_free(blk.ptr);
-                }
-                blk.ptr = NULL;
+                audio_worker_return_block("synth-zero", &blk);
                 blk.len = 0;
                 blk.capacity = 0;
                 blk.synth_fill = false;
@@ -2405,14 +2516,7 @@ static void audio_worker_task(void *pvParameters)
         }
 
         if (blk.len == 0) {
-            if (s_i2s_free_queue != NULL) {
-                if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
-                    heap_caps_free(blk.ptr);
-                }
-            } else {
-                heap_caps_free(blk.ptr);
-            }
-            blk.ptr = NULL;
+            audio_worker_return_block("zero-len", &blk);
             blk.capacity = 0;
             blk.synth_fill = false;
             continue;
@@ -2425,8 +2529,7 @@ static void audio_worker_task(void *pvParameters)
                                               &conv_size);
         if (cret != ESP_OK) {
             s_audio_stats.conversion_errors++;
-            heap_caps_free(blk.ptr);
-            blk.ptr = NULL;
+            audio_worker_discard_block("convert-fail", &blk);
             continue;
         }
 
@@ -2437,8 +2540,7 @@ static void audio_worker_task(void *pvParameters)
                                         &res_size);
         if (rret != ESP_OK) {
             s_audio_stats.conversion_errors++;
-            heap_caps_free(blk.ptr);
-            blk.ptr = NULL;
+            audio_worker_discard_block("resample-fail", &blk);
             continue;
         }
 
@@ -2459,30 +2561,22 @@ static void audio_worker_task(void *pvParameters)
                 s_audio_stats.buffer_overruns++;
                 if (free_size < (res_size / 2)) {
                     /* Skip adding if buffer very full */
-                    heap_caps_free(blk.ptr);
-                    blk.ptr = NULL;
+                    audio_worker_discard_block("overrun-drop", &blk);
                     continue;
                 }
             }
 
             BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, pdMS_TO_TICKS(5));
-                if (sent != pdTRUE) {
-                    s_audio_stats.buffer_overruns++;
-                    ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
-                    log_heap_stats("worker-send-failed");
-                }
+            if (sent != pdTRUE) {
+                s_audio_stats.buffer_overruns++;
+                ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
+                log_heap_stats("worker-send-failed");
+            }
         }
 
         /* Return the raw block to the free pool if present, otherwise free it */
         if (blk.ptr != NULL) {
-            if (s_i2s_free_queue != NULL) {
-                if (xQueueSend(s_i2s_free_queue, &blk.ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
-                    heap_caps_free(blk.ptr);
-                }
-            } else {
-                heap_caps_free(blk.ptr);
-            }
-            blk.ptr = NULL;
+            audio_worker_return_block("return-final", &blk);
             blk.len = 0;
             blk.capacity = 0;
             blk.synth_fill = false;

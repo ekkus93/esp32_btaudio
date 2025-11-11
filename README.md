@@ -5,17 +5,17 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
 - Another ESP32 handling WiFi and web server capabilities
 
-## Project Status (2025-11-10)
+## Project Status (2025-11-11)
 
 **Completed recently**
-- Raised the audio ringbuffer allocator floor so DRAM-only test builds match the production 128 KiB target; the WAV playback watchdog regression is resolved.
-- Standardized SPIFFS handling so all Unity apps share the same 256 KiB image and refreshed helper scripts (`tools/make_spiffs.py`, `tools/run_unity.py`).
-- End-to-end `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweeps now finish cleanly (host 19/19; Unity `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 24/24).
+- `audio_processor_play_wav()` now pauses the pipeline (stop → drain → restart) so WAV commands never fail due to full ringbuffer space; the helper that drains pending beeps also resets the synth state before playback resumes.
+- `idf.py build` for `esp_bt_audio_source/test_app_audio` succeeds after the WAV pipeline changes (Nov 11) with only legacy synth/beep fallback warnings outstanding.
+- SPIFFS tooling remains consolidated across suites (`tools/make_spiffs.py`, shared 256 KiB image) and the runtime ringbuffer floor stays at the full 128 KiB target even on DRAM-only boards.
 
 **Active TODOs**
-- Add a CLI path that arms `audio_processor_enable_next_beep_diag()` before issuing BEEP so diagnostics can be captured on demand.
-- Replace the sine-wave stub in `main/bt_streaming_manager.c` with the real I2S capture pipeline and document any remaining limitations.
-- Improve Unity log formatting so the aggregator can emit canonical pass/fail lines without relying on fallback counters.
+- Quiet the remaining compiler warnings in `audio_processor.c` (`s_beep_fallback_phase_*`, `s_synth_phase`, `last_i2s_ret`).
+- Re-run `tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --timeout 300` to confirm the WAV test passes with the new pause/drain flow, then follow up with the full `tools/run_all_tests.py` sweep.
+- Add a CLI hook for `audio_processor_enable_next_beep_diag()` so beep diagnostics can be captured on demand, and finish migrating the production I2S capture path into `bt_streaming_manager.c`.
 
 ## System Architecture
 
