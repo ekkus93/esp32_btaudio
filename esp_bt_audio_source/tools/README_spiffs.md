@@ -13,6 +13,12 @@ Files you can include:
 - Use the existing normalized WAV in the repo:
   - `test_app/build/worker_long_norm.wav` (already present in your build outputs)
 
+## Repo helpers (2025-11-10 refresh)
+
+- `tools/make_spiffs.py` now auto-detects whether `mkspiffs` supports the required flags; if not, it falls back to ESP-IDF's `spiffsgen.py` so the generated image always honors `CONFIG_SPIFFS_META_LENGTH` and `CONFIG_SPIFFS_OBJ_NAME_LEN`.
+- `tools/run_unity.py` invokes the helper above before flashing Unity apps and reuses the shared SPIFFS image located under `esp_bt_audio_source/main/assets/spiffs`.
+- Test apps include a lightweight `spiffs_dep` component that wires in the shared assets directory and a symlinked `partitions.csv`, keeping the partition layout aligned with the main project.
+
 Recommended approach (using mkspiffs from ESP-IDF)
 1) Ensure IDF environment is exported in your shell (so `$IDF_PATH` is set):
 
@@ -42,7 +48,15 @@ Explanation:
 - `-p 256`: page size
 - `-s 0x40000`: total image size (must match partition size: 0x40000 = 262,144)
 
-Alternative: If your system has `mkspiffs` in PATH you can call it directly.
+Alternative: If your system has `mkspiffs` in PATH you can call it directly. If the binary bundled with your IDF does not support long file names/meta lengths, rerun the helper with `--prefer-spiffsgen` to force the Python fallback:
+
+```bash
+python3 esp_bt_audio_source/tools/make_spiffs.py \
+  -c esp_bt_audio_source/main/assets/spiffs \
+  -s 0x40000 \
+  -o esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+  --prefer-spiffsgen
+```
 
 4) Flash the generated `spiffs.bin` to the partition offset. First locate the `spiffs` entry and offset for the app you will flash (project-level CSV or per-app CSV):
 
@@ -64,6 +78,10 @@ idf.py -p /dev/ttyUSB0 flash
 
 # Note: flashing the entire app will write the partition table too. To update only SPIFFS prefer the esptool write_flash approach.
 
+```
+
+`tools/run_unity.py` performs both the SPIFFS build and flash steps automatically when you pass `--project-dir`; only use the manual commands above when you need to refresh the filesystem outside the Unity runner.
+
 Optional helper: a Python script to build the SPIFFS image
 
 If you prefer a small helper that locates `mkspiffs` (via `$IDF_PATH` or your PATH) and builds the image for you, the repository includes `tools/make_spiffs.py`. Example:
@@ -76,7 +94,7 @@ python3 esp_bt_audio_source/tools/make_spiffs.py \
   -o esp_bt_audio_source/main/assets/spiffs/spiffs.bin
 ```
 
-The script prints the `mkspiffs` command it runs and reports the created image size. If `mkspiffs` cannot be found it exits with a helpful error asking you to set `$IDF_PATH` or install `mkspiffs` on PATH.
+The script prints the command it runs (either `mkspiffs` or `spiffsgen.py`) and reports the created image size. If neither tool can be located it explains how to install them or export `$IDF_PATH`.
 ```
 
 5) Verify the SPIFFS image

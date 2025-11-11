@@ -41,6 +41,7 @@
 	- [ ] Add command handler path to arm `audio_processor_enable_next_beep_diag()` before BEEP.
 	- [ ] Rebuild firmware after CLI addition.
 	- [ ] Flash device and run SYNTH/START/BEEP sequence to capture diagnostic logs.
+- 2025-11-10: README.md updated with project status snapshot, consolidated test sweep instructions, and outstanding TODOs; README_spiffs.md documents the new `spiffsgen.py` fallback and Unity SPIFFS dependency wiring.
 - TODO: Track integration of the real I2S capture path into `main/bt_streaming_manager.c` (replace sine-wave stub). Keep README “Open Work” item in sync until implementation lands.
 - TODO (PAIR bonding overhaul)
 	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.

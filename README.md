@@ -5,6 +5,18 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
 - Another ESP32 handling WiFi and web server capabilities
 
+## Project Status (2025-11-10)
+
+**Completed recently**
+- Raised the audio ringbuffer allocator floor so DRAM-only test builds match the production 128 KiB target; the WAV playback watchdog regression is resolved.
+- Standardized SPIFFS handling so all Unity apps share the same 256 KiB image and refreshed helper scripts (`tools/make_spiffs.py`, `tools/run_unity.py`).
+- End-to-end `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` sweeps now finish cleanly (host 19/19; Unity `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 24/24).
+
+**Active TODOs**
+- Add a CLI path that arms `audio_processor_enable_next_beep_diag()` before issuing BEEP so diagnostics can be captured on demand.
+- Replace the sine-wave stub in `main/bt_streaming_manager.c` with the real I2S capture pipeline and document any remaining limitations.
+- Improve Unity log formatting so the aggregator can emit canonical pass/fail lines without relying on fallback counters.
+
 ## System Architecture
 
 ## Running Unity Firmware Tests
@@ -30,6 +42,21 @@ The on-device Unity suites live in `esp_bt_audio_source/test_app` (command-inter
 5. For the Bluetooth integration suites in `test_app2`, rerun the same command with `--project-dir esp_bt_audio_source/test_app2`.
 
 > Prefer to drive `idf.py` manually? You can still run `idf.py -p /dev/ttyUSB0 -b 115200 flash monitor | tee unity.log`, but remember to press `Ctrl+]` once the Unity footer appears because `idf.py monitor` will continue running otherwise.
+
+### One-command regression sweep
+
+Use `tools/run_all_tests.py` from the repository root to execute host CTest plus all three Unity suites with fresh builds, SPIFFS flashing, and log aggregation:
+
+```bash
+conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+```
+
+Outputs:
+- Host summary: `tmp/host_ctest_output.log`
+- Unity logs: `esp_bt_audio_source/test_app*/build/one_run_unity.log`
+- Aggregated counts: `tmp/run_all_tests_summary.json` (authoritative totals) and `tmp/canonical_unity_summary.json`
+
+The script cleans prior artifacts before each run and reports pass/fail counts for every suite. Update the `--port` or `--timeout` arguments if you are using a different device path or need longer runs.
 
 ### ESP32 Bluetooth Audio Source
 - **Function**: Captures audio input and transmits it over Bluetooth A2DP
