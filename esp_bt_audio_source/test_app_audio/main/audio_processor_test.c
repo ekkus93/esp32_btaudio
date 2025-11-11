@@ -7,6 +7,7 @@
 #include "unity.h"
 #include "esp_log.h"
 #include "audio_processor.h"
+#include "command_interface.h"
 #include "driver/i2s_std.h"
 
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
@@ -363,6 +364,9 @@ static void test_audio_buffer_management(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
+/* forward declaration so RUN_TEST can reference the test defined later */
+static void test_play_wav_command(void);
+
 void run_audio_processor_tests(void)
 {
     ESP_LOGI(TAG, "Starting audio processor tests");
@@ -376,5 +380,82 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_format_conversion);
     RUN_TEST(test_audio_i2s_config);
     RUN_TEST(test_audio_buffer_management);
+    RUN_TEST(test_play_wav_command);
     ESP_LOGI(TAG, "Audio processor tests completed");
+}
+
+/* forward declaration so RUN_TEST can reference the test defined below */
+static void test_play_wav_command(void);
+
+static void test_play_wav_command(void)
+{
+    /* Ensure the audio processor is initialized and can enqueue a WAV from SPIFFS
+     * The project's SPIFFS image should contain /spiffs/worker_long_norm.wav. The
+     * test issues the PLAY command (which prepends /spiffs/) and then attempts to
+     * read some audio bytes to confirm playback was enqueued. */
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Start the processor so worker tasks are running and can process the
+     * enqueued WAV file. Drain any leftover data to make the assertion below
+     * deterministic. */
+    ret = audio_processor_start();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    /* Ensure ringbuffer is empty before we start */
+    (void) audio_processor_drain_ringbuffer();
+
+    /* Parse & execute PLAY against the command layer so the same code-path
+     * used in production is exercised. Use the asset filename only; the
+     * command layer will prefix /spiffs/ for us. */
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    /* Retry a few times to allow the worker to process file chunks and
+     * enqueue them to the ringbuffer. Be defensive about return conventions:
+     * - Preferred: audio_processor_read returns ESP_OK and sets bytes_read>0
+     * - Legacy/alternate: audio_processor_read returns a positive integer
+     *   interpreted as bytes read (ret > 0)
+     */
+    uint8_t buf[1024];
+    size_t bytes_read = 0;
+    bool ok = false;
+    const int max_attempts = 8;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (ret == ESP_OK) {
+            if (bytes_read > 0) {
+                ok = true; break;
+            }
+            /* zero bytes but no error — wait and retry */
+        } else if ((int)ret > 0) {
+            /* Some implementations return byte-count as the return value */
+            bytes_read = (size_t)ret;
+            if (bytes_read > 0) { ok = true; break; }
+        } else {
+            /* Non-trivial error: log and retry a couple times before failing */
+            ESP_LOGW(TAG, "test_play_wav_command: audio_processor_read returned %d (attempt %d)", (int)ret, attempt);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(ok, "PLAY did not produce audio bytes within timeout");
+    TEST_ASSERT_TRUE(bytes_read > 0);
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
 }

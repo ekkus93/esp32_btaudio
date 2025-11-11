@@ -149,7 +149,7 @@ def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_even
                 break
 
 
-def run_flash_and_monitor(port, project_root, timeout):
+def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None = None, spiffs_offset_arg: str | None = None, force_spiffs: bool = False):
     logfile = os.path.join(project_root, "build", "one_run_unity.log")
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
     env = os.environ.copy()
@@ -168,6 +168,126 @@ def run_flash_and_monitor(port, project_root, timeout):
             return 3, logfile
         if ret.returncode != 0:
             return 3, logfile
+
+    # Attempt to flash an in-tree SPIFFS image, if present. This helps ensure
+    # device-side tests that expect /spiffs/... assets (e.g. worker_long_norm.wav)
+    # are available. We append outputs/warnings to the same logfile used by the
+    # monitor so callers have a single capture to inspect.
+    try:
+        # Determine spiffs image path: explicit CLI override wins, otherwise
+        # search common candidate locations.
+        spiffs_bin = None
+        if spiffs_image:
+            cand = Path(spiffs_image)
+            if cand.exists():
+                spiffs_bin = cand
+        else:
+            # common candidate locations for spiffs.bin inside the project
+            spiffs_candidates = [
+                project_root / "main" / "assets" / "spiffs" / "spiffs.bin",
+                project_root / "main" / "assets" / "spiffs.bin",
+                project_root / "main" / "assets" / "spiffs" / "spiffs.img",
+                project_root / "spiffs.bin",
+                project_root / "build" / "spiffs.bin",
+                project_root / "build" / "spiffs" / "spiffs.bin",
+            ]
+            for p in spiffs_candidates:
+                try:
+                    if p.exists():
+                        spiffs_bin = p
+                        break
+                except Exception:
+                    continue
+
+        if spiffs_bin:
+            # Determine target offset: CLI override wins, otherwise parse partitions.csv
+            spiffs_offset = spiffs_offset_arg
+            if not spiffs_offset:
+                part_file = project_root / "partitions.csv"
+                if part_file.exists():
+                    try:
+                        with open(part_file, 'r', encoding='utf-8', errors='ignore') as pf:
+                            for line in pf:
+                                if 'spiffs' in line.lower():
+                                    cols = [c.strip() for c in line.split(',')]
+                                    for c in cols:
+                                        if c.lower().startswith('0x'):
+                                            spiffs_offset = c
+                                            break
+                                    if spiffs_offset:
+                                        break
+                    except Exception:
+                        spiffs_offset = None
+
+            with open(logfile, "ab", buffering=0) as fh:
+                fh.write(b"\n=== SPIFFS flash attempt ===\n")
+                fh.write(f"Found spiffs image: {str(spiffs_bin)}\n".encode('utf-8', 'replace'))
+
+                if not spiffs_offset:
+                    # If caller forced flashing but didn't provide an offset, we can't
+                    # safely proceed. Otherwise, skip flashing and log why.
+                    if force_spiffs:
+                        fh.write(b"Force flash requested but no spiffs offset provided and none parsed from partitions.csv; skipping SPIFFS flash.\n")
+                    else:
+                        fh.write(b"Could not determine spiffs offset from partitions.csv and no --spiffs-offset provided; skipping spiffs flash.\n")
+                else:
+                    import shutil
+
+                    def _esptool_command() -> list[str] | None:
+                        """Resolve an esptool invocation suitable for flashing SPIFFS."""
+                        # 1) Prefer esptool(.py) from PATH (user may have installed it globally).
+                        from_path = shutil.which('esptool.py') or shutil.which('esptool')
+                        if from_path:
+                            return [from_path, '--chip', 'esp32', 'write_flash', spiffs_offset, str(spiffs_bin)]
+
+                        # 2) If ESP-IDF is available, call its bundled esptool.py with the
+                        #    current Python interpreter. This avoids depending on pip installs.
+                        idf_path = env.get('IDF_PATH') or os.environ.get('IDF_PATH')
+                        if not idf_path and export_sh:
+                            # When we sourced export.sh via bash -lc the env changes are not
+                            # propagated back to this process. Derive IDF_PATH from export_sh
+                            # (../ relative path inside the ESP-IDF tree) as a best-effort.
+                            candidate = Path(export_sh).resolve().parent
+                            if candidate.name == 'esp-idf':
+                                idf_path = str(candidate)
+                            else:
+                                # common layout: <...>/esp-idf/export.sh
+                                maybe_root = candidate
+                                if (maybe_root / 'components' / 'esptool_py' / 'esptool' / 'esptool.py').exists():
+                                    idf_path = str(maybe_root)
+
+                        if idf_path:
+                            bundled = Path(idf_path) / 'components' / 'esptool_py' / 'esptool' / 'esptool.py'
+                            if bundled.exists():
+                                return [sys.executable, str(bundled), '--chip', 'esp32', 'write_flash', spiffs_offset, str(spiffs_bin)]
+
+                        # 3) Fall back to python -m esptool; this will fail cleanly with the
+                        #    current interpreter if the module is absent, which we log below.
+                        return [sys.executable, '-m', 'esptool', '--chip', 'esp32', 'write_flash', spiffs_offset, str(spiffs_bin)]
+
+                    flash_cmd = _esptool_command()
+
+                    try:
+                        fh.write(f"Flashing SPIFFS image at offset {spiffs_offset}...\n".encode('utf-8', 'replace'))
+                        ret = subprocess.run(flash_cmd, cwd=project_root, env=env, stdout=fh, stderr=subprocess.STDOUT)
+                        if ret.returncode != 0:
+                            fh.write(b"SPIFFS flash command returned non-zero exit status.\n")
+                        else:
+                            fh.write(b"SPIFFS flash completed (esptool exited 0).\n")
+                    except FileNotFoundError:
+                        fh.write(b"esptool not found and python -m esptool failed; could not flash spiffs.bin.\n")
+                    except Exception as e:
+                        fh.write(b"Exception while attempting to flash spiffs.bin: ")
+                        fh.write(str(e).encode('utf-8', 'replace'))
+                        fh.write(b"\n")
+        else:
+            # no spiffs image found; nothing to do
+            with open(logfile, "ab", buffering=0) as fh:
+                fh.write(b"\n=== No spiffs.bin found in common candidate locations and no --spiffs-image provided; skipping spiffs flash. ===\n")
+    except Exception:
+        # best-effort only; do not break the runner if this fails
+        with open(logfile, "ab", buffering=0) as fh:
+            fh.write(b"\n=== Unexpected error during SPIFFS flash attempt (ignored) ===\n")
 
     # Flash + monitor
     flash_args = ['idf.py', '-p', port, 'flash', 'monitor']
@@ -349,9 +469,19 @@ def main():
     ap.add_argument('--port', '-p', required=True, help='Serial port, e.g. /dev/ttyUSB0')
     ap.add_argument('--timeout', '-t', type=int, default=300, help='Timeout in seconds to wait for Unity summary (default 300s)')
     ap.add_argument('--project-root', '-r', default='.', help='Project root (defaults to cwd, must contain the test project and idf.py)')
+    ap.add_argument('--spiffs-image', help='Explicit path to a spiffs.bin image to flash before running monitor')
+    ap.add_argument('--spiffs-offset', help='Explicit offset (e.g. 0x1c0000) where to write the spiffs image')
+    ap.add_argument('--force-spiffs', action='store_true', help='Force attempting a SPIFFS flash when --spiffs-image is provided; if offset cannot be determined, will skip and log a message')
     args = ap.parse_args()
 
-    rc, logfile = run_flash_and_monitor(args.port, args.project_root, args.timeout)
+    rc, logfile = run_flash_and_monitor(
+        args.port,
+        args.project_root,
+        args.timeout,
+        spiffs_image=args.spiffs_image,
+        spiffs_offset_arg=args.spiffs_offset,
+        force_spiffs=args.force_spiffs,
+    )
 
     if rc != 0 and os.path.isfile(logfile):
         try:

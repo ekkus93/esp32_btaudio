@@ -23,8 +23,11 @@ idf_component_register(
         nvs_storage
         esp_ringbuf
         esp_timer
+    spiffs
         unity
         test_utils
+    PRIV_REQUIRES
+        test_command_interface
 )
 
 # Audio-focused tests still rely on the mock-enabled build to avoid accessing

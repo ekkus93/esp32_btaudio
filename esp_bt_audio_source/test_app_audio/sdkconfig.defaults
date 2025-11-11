@@ -5,3 +5,11 @@ CONFIG_UNITY_ENABLE_FLOAT=y
 CONFIG_UNITY_ENABLE_DOUBLE=y
 CONFIG_UNITY_ENABLE_IDF_TEST_RUNNER=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+## Enable custom partition table so the test app uses the repository partitions.csv (needed for SPIFFS)
+## Disable single-app partition table and enable custom partition table
+# (Kconfig choice: only one partition table option may be selected)
+# Disable single-app partition table
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

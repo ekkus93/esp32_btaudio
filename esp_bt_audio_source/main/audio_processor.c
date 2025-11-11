@@ -231,17 +231,14 @@ static size_t audio_calculate_buffer_capacity(const audio_config_t* config)
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
 
 #ifdef CONFIG_BT_MOCK_TESTING
-    size_t block_bytes = (size_t)AUDIO_BLOCK_SIZE * frame_bytes;
-    if (block_bytes == 0) {
-        block_bytes = 4096;
-    }
-    /* Keep the mock buffer modest to fit within the Unity test app's RAM
-     * budget while still holding several processing blocks. */
-    size_t capacity = block_bytes * 8U;
+    (void)config;
 #else
     (void)config;
-    size_t capacity = AUDIO_BUFFER_SIZE;
 #endif
+    size_t capacity = AUDIO_BUFFER_SIZE;
+    if (capacity < AUDIO_WORK_BUFFER_BYTES) {
+        capacity = AUDIO_WORK_BUFFER_BYTES;
+    }
 
     if (capacity == 0) {
         capacity = frame_bytes * AUDIO_BLOCK_SIZE;
@@ -521,12 +518,11 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     // allocation fails (useful for DRAM-only boards where the compile-time
     // DRAM-safe fallback may still be too large).
     size_t try_capacity = buffer_capacity;
-    /* Reduce initial desired capacity on DRAM-only boards to limit one-time
-     * large allocations that can fragment DRAM and starve the BT stack. */
-    if (!runtime_psram_ready && try_capacity > (32 * 1024)) {
-        try_capacity = 32 * 1024; /* start at 32 KiB on DRAM-only boards */
-    }
-    const size_t min_floor = 4 * 1024; // Allow down to 4 KiB for Unity/mock builds
+    /* Keep the initial target at the full computed capacity; the retry loop
+     * below will progressively reduce the size if allocations fail. This
+     * avoids preemptively constraining DRAM-only boards to 32 KiB and gives
+     * more headroom for larger resampled audio blocks. */
+    const size_t min_floor = (AUDIO_WORK_BUFFER_BYTES > (4U * 1024U)) ? AUDIO_WORK_BUFFER_BYTES : (4U * 1024U);
 
     /* Ensure we never shrink below a single processing block and keep a
      * modest floor so the stream retains some buffering depth on DRAM-only
@@ -1945,6 +1941,14 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
  */
 esp_err_t audio_processor_play_wav(const char* path)
 {
+    /* Diagnostic: record initialization/running state to help trace
+     * unexpected INVALID_STATE returns observed in unit tests. Use both
+     * ESP_LOG and a plain printf so the test monitor captures the output
+     * regardless of log configuration. */
+    ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, s_audio_buffer=%p)",
+             (int)s_is_initialized, (int)s_is_running, (void*)s_audio_buffer);
+    printf("DIAG-APLAY-STATE: init=%d run=%d buf=%p path=%s\n",
+           (int)s_is_initialized, (int)s_is_running, (void*)s_audio_buffer, path ? path : "(null)");
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
 
@@ -1956,14 +1960,30 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     /* Basic WAV header parsing (RIFF/WAVE, fmt chunk, data chunk) */
     char riff[4];
-    if (fread(riff, 1, 4, f) != 4) { fclose(f); return ESP_ERR_INVALID_STATE; }
-    if (memcmp(riff, "RIFF", 4) != 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    if (fread(riff, 1, 4, f) != 4) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: missing RIFF header (fread failed)");
+        printf("DIAG-APLAY-FAIL: missing-riff\n");
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
+    if (memcmp(riff, "RIFF", 4) != 0) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: RIFF header mismatch");
+        printf("DIAG-APLAY-FAIL: riff-mismatch\n");
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
     /* skip file size */
     uint32_t tmp32 = 0;
     fread(&tmp32, 4, 1, f);
     char wave[4];
-    if (fread(wave, 1, 4, f) != 4) { fclose(f); return ESP_ERR_INVALID_STATE; }
-    if (memcmp(wave, "WAVE", 4) != 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    if (fread(wave, 1, 4, f) != 4) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: missing WAVE header (fread failed)");
+        printf("DIAG-APLAY-FAIL: missing-wave\n");
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
+    if (memcmp(wave, "WAVE", 4) != 0) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: WAVE header mismatch");
+        printf("DIAG-APLAY-FAIL: wave-mismatch\n");
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
 
     uint16_t audio_format = 0;
     uint16_t num_channels = 0;
@@ -1983,7 +2003,11 @@ esp_err_t audio_processor_play_wav(const char* path)
 
         if (memcmp(chunk_id, "fmt ", 4) == 0) {
             /* Read minimal fmt chunk (PCM header is 16 bytes) */
-            if (chunk_size < 16) { fclose(f); return ESP_ERR_INVALID_STATE; }
+            if (chunk_size < 16) { 
+                ESP_LOGW(TAG, "audio_processor_play_wav: fmt chunk too small (chunk_size=%u)", (unsigned)chunk_size);
+                printf("DIAG-APLAY-FAIL: fmt-chunk-too-small %u\n", (unsigned)chunk_size);
+                fclose(f); return ESP_ERR_INVALID_STATE; 
+            }
             uint16_t fmt16_1 = 0;
             fread(&fmt16_1, 2, 1, f); audio_format = fmt16_1;
             fread(&num_channels, 2, 1, f);
@@ -2006,7 +2030,38 @@ esp_err_t audio_processor_play_wav(const char* path)
         }
     }
 
-    if (!have_fmt || data_bytes == 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    /* Emit header diagnostics if we successfully parsed fmt/data so
+     * the test runner can inspect the WAV fields and a small data peek. */
+    if (have_fmt && data_bytes > 0) {
+        ESP_LOGI(TAG, "audio_processor_play_wav: parsed WAV fmt=%u ch=%u sr=%u bits=%u data=%u",
+                 (unsigned)audio_format, (unsigned)num_channels, (unsigned)sample_rate, (unsigned)bits_per_sample, (unsigned)data_bytes);
+        printf("DIAG-APLAY-HDR: fmt=%u ch=%u sr=%u bits=%u data=%u\n",
+               (unsigned)audio_format, (unsigned)num_channels, (unsigned)sample_rate, (unsigned)bits_per_sample, (unsigned)data_bytes);
+
+        /* Peek the first few bytes of the data region to detect file/corruption issues.
+         * Save/restore the file pointer so normal processing is unaffected. */
+        long cur = ftell(f);
+        size_t peek_n = data_bytes < 16U ? data_bytes : 16U;
+        if (peek_n > 0) {
+            unsigned char peek[16];
+            size_t got = fread(peek, 1, peek_n, f);
+            if (got > 0) {
+                printf("DIAG-APLAY-PEEK: %u bytes:", (unsigned)got);
+                for (size_t i = 0; i < got; ++i) {
+                    printf(" %02x", (unsigned)peek[i]);
+                }
+                printf("\n");
+            }
+            /* restore file pointer to where it was (start of data) */
+            if (cur >= 0) fseek(f, cur, SEEK_SET);
+        }
+    }
+
+    if (!have_fmt || data_bytes == 0) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: missing fmt or data chunk (have_fmt=%d data_bytes=%u)", (int)have_fmt, (unsigned)data_bytes);
+        printf("DIAG-APLAY-FAIL: missing-fmt-or-data %d %u\n", (int)have_fmt, (unsigned)data_bytes);
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
 
     /* Only support PCM (audio_format == 1) for now */
     if (audio_format != 1) {
@@ -2027,12 +2082,14 @@ esp_err_t audio_processor_play_wav(const char* path)
     }
 
     size_t frame_bytes_src = (bits_per_sample / 8) * (size_t)num_channels;
-    if (frame_bytes_src == 0) { fclose(f); return ESP_ERR_INVALID_STATE; }
+    if (frame_bytes_src == 0) { 
+        ESP_LOGW(TAG, "audio_processor_play_wav: computed zero frame_bytes_src (bits=%u channels=%u)", (unsigned)bits_per_sample, (unsigned)num_channels);
+        printf("DIAG-APLAY-FAIL: zero-frame-bytes bits=%u ch=%u\n", (unsigned)bits_per_sample, (unsigned)num_channels);
+        fclose(f); return ESP_ERR_INVALID_STATE; 
+    }
 
     /* Read data in chunks, convert/resample and enqueue */
     size_t remaining = data_bytes;
-    const TickType_t wait_ticks = pdMS_TO_TICKS(100);
-
     while (remaining > 0) {
         size_t to_read = AUDIO_WORK_BUFFER_BYTES;
         /* align to frame */
@@ -2047,6 +2104,7 @@ esp_err_t audio_processor_play_wav(const char* path)
         size_t conv_size = 0;
         if (convert_audio_format(s_proc_buffer, s_proc_buffer, actually, src_bit, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_play_wav: convert_audio_format failed");
+            printf("DIAG-APLAY-FAIL: convert-failed\n");
             fclose(f);
             return ESP_ERR_INVALID_STATE;
         }
@@ -2055,6 +2113,7 @@ esp_err_t audio_processor_play_wav(const char* path)
         size_t res_size = 0;
         if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, (audio_sample_rate_t)sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_play_wav: resample_audio failed");
+            printf("DIAG-APLAY-FAIL: resample-failed\n");
             fclose(f);
             return ESP_ERR_INVALID_STATE;
         }
@@ -2062,11 +2121,12 @@ esp_err_t audio_processor_play_wav(const char* path)
         /* Enqueue to ringbuffer with same retry/drop logic used by beep */
         BaseType_t sent = pdFALSE;
         const int max_attempts = 3;
-        int attempt = 0;
-        while (attempt < max_attempts) {
-            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, wait_ticks);
-            if (sent == pdTRUE) break;
-            attempt++;
+        for (int attempt = 0; attempt < max_attempts && sent != pdTRUE; ++attempt) {
+            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
+            if (sent == pdTRUE) {
+                break;
+            }
+            taskYIELD();
         }
         if (sent != pdTRUE) {
             /* Try to free some space by dropping oldest items (bounded) */
@@ -2079,6 +2139,7 @@ esp_err_t audio_processor_play_wav(const char* path)
                 if (it == NULL || rsz == 0) break;
                 vRingbufferReturnItem(s_audio_buffer, it);
                 drop_attempts++;
+                taskYIELD();
             }
             /* Try once more without waiting */
             sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);

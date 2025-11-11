@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_vfs.h"
-#include "esp_vfs_spiffs.h"
+#include "esp_spiffs.h"
 #include "esp_log.h"
 
 static const char *TAG = "spiffs_test";

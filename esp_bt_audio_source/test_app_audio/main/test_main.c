@@ -4,6 +4,12 @@
 #include "esp_log.h"
 #include "unity.h"
 #include "test_app_main.h"
+#include "esp_spiffs.h"
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "esp_partition.h"
 
 static const char *TAG = "TEST_MAIN_AUDIO";
 extern void app_test_main(void);
@@ -32,6 +38,119 @@ static void run_audio_tests(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting audio-focused Unity test suite");
+    /* Attempt to mount the repository-provided SPIFFS partition so tests that
+     * open /spiffs/ files (for example worker_long_norm.wav) can access them.
+     * This is intentionally a best-effort mount; if it fails we continue so
+     * other tests can run and failure will be visible in test output. */
+    {
+        /* Check partition table first so we can see whether a partition labeled
+         * "spiffs" actually exists at runtime (diagnose partition/label mismatch). */
+        esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                                    ESP_PARTITION_SUBTYPE_DATA_SPIFFS,
+                                                    "spiffs");
+        if (p) {
+            ESP_LOGI(TAG, "Found partition 'spiffs' at offset 0x%08x size 0x%08x",
+                     (unsigned int)p->address, (unsigned int)p->size);
+        } else {
+            ESP_LOGW(TAG, "Partition 'spiffs' not found via esp_partition_find_first()");
+        }
+
+        esp_vfs_spiffs_conf_t conf = {
+            .base_path = "/spiffs",
+            .partition_label = "spiffs",
+            .max_files = 5,
+            .format_if_mount_failed = false,
+        };
+        esp_err_t _err = esp_vfs_spiffs_register(&conf);
+        if (_err == ESP_OK) {
+            ESP_LOGI(TAG, "SPIFFS mounted at /spiffs");
+            /* Additional diagnostics: try to open the expected test file right away */
+            FILE *f = fopen("/spiffs/worker_long_norm.wav", "rb");
+            if (f) {
+                ESP_LOGI(TAG, "SPIFFS test file opened successfully");
+                /* Diagnostic: print file size and a short hex peek of the
+                 * beginning bytes so device logs can verify the flashed
+                 * SPIFFS image matches the repository asset. */
+                if (fseek(f, 0, SEEK_END) == 0) {
+                    long sz = ftell(f);
+                    if (sz >= 0) {
+                        ESP_LOGI(TAG, "SPIFFS file size: %ld bytes", sz);
+                        /* Read first 32 bytes (or file size) */
+                        long to_read = sz < 32 ? sz : 32;
+                        if (to_read > 0) {
+                            if (fseek(f, 0, SEEK_SET) == 0) {
+                                unsigned char buf[32] = {0};
+                                size_t r = fread(buf, 1, (size_t)to_read, f);
+                                if (r > 0) {
+                                    /* Print as hex string */
+                                    char hx[3 * 32 + 1];
+                                    hx[0] = '\0';
+                                    for (size_t i = 0; i < r; ++i) {
+                                        char tmp[4];
+                                        snprintf(tmp, sizeof(tmp), "%02x ", buf[i]);
+                                        strncat(hx, tmp, sizeof(hx) - strlen(hx) - 1);
+                                    }
+                                    ESP_LOGI(TAG, "SPIFFS file head (%zu bytes): %s", r, hx);
+                                } else {
+                                    ESP_LOGW(TAG, "SPIFFS diag: fread returned 0 when peeking file head");
+                                }
+                            } else {
+                                ESP_LOGW(TAG, "SPIFFS diag: fseek rewind failed");
+                            }
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "SPIFFS diag: ftell returned negative value");
+                    }
+                } else {
+                    ESP_LOGW(TAG, "SPIFFS diag: fseek end failed");
+                }
+                fclose(f);
+
+                /* POSIX-level diagnostic: open the file via open()/read() to
+                 * differentiate stdio wrapper issues from lower-level VFS
+                 * behavior. */
+                int fd = open("/spiffs/worker_long_norm.wav", O_RDONLY);
+                if (fd >= 0) {
+                    ESP_LOGI(TAG, "SPIFFS POSIX open succeeded (fd=%d)", fd);
+                    unsigned char posix_buf[32] = {0};
+                    ssize_t rr = read(fd, posix_buf, sizeof(posix_buf));
+                    if (rr > 0) {
+                        char hx[3 * 32 + 1];
+                        hx[0] = '\0';
+                        for (ssize_t i = 0; i < rr && i < (ssize_t)sizeof(posix_buf); ++i) {
+                            char tmp[4];
+                            snprintf(tmp, sizeof(tmp), "%02x ", posix_buf[i]);
+                            strncat(hx, tmp, sizeof(hx) - strlen(hx) - 1);
+                        }
+                        ESP_LOGI(TAG, "SPIFFS POSIX head (%zd bytes): %s", rr, hx);
+                    } else if (rr == 0) {
+                        ESP_LOGW(TAG, "SPIFFS POSIX read returned 0 bytes");
+                    } else {
+                        int saved_errno = errno;
+                        ESP_LOGW(TAG, "SPIFFS POSIX read failed: errno=%d (%s)",
+                                 saved_errno, strerror(saved_errno));
+                    }
+                    close(fd);
+                } else {
+                    int saved_errno = errno;
+                    ESP_LOGW(TAG, "SPIFFS POSIX open failed: errno=%d (%s)",
+                             saved_errno, strerror(saved_errno));
+                }
+            } else {
+                ESP_LOGW(TAG, "SPIFFS test file open failed: errno=%d (%s)", errno, strerror(errno));
+            }
+            /* Report filesystem usage statistics to help detect format/size issues */
+            size_t total = 0, used = 0;
+            esp_err_t info_err = esp_spiffs_info("spiffs", &total, &used);
+            if (info_err == ESP_OK) {
+                ESP_LOGI(TAG, "SPIFFS info: total=%u used=%u", (unsigned int)total, (unsigned int)used);
+            } else {
+                ESP_LOGW(TAG, "esp_vfs_spiffs_info failed: %s (%d)", esp_err_to_name(info_err), (int)info_err);
+            }
+        } else {
+            ESP_LOGW(TAG, "SPIFFS mount failed: %s (%d)", esp_err_to_name(_err), (int)_err);
+        }
+    }
     run_audio_tests();
     printf("======== OVERALL TEST SUMMARY ========\n");
     printf("Tests run    : %d\n", Unity.NumberOfTests);

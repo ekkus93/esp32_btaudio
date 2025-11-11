@@ -200,7 +200,7 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     return summary
 
 
-def run_device_suite(project_root: Path, runner_script: Path, port: str, timeout: int, source_idf: str | None) -> dict:
+def run_device_suite(project_root: Path, runner_script: Path, port: str, timeout: int, source_idf: str | None, spiffs_image: str | None = None, spiffs_offset: str | None = None, force_spiffs: bool = False) -> dict:
     # runner_script is a path to tools/run_unity.py inside the repo
     proj = project_root.resolve()
     summary = {"project": str(proj), "rc": None, "output_file": None, "stdout": None}
@@ -217,6 +217,13 @@ def run_device_suite(project_root: Path, runner_script: Path, port: str, timeout
 
     # Build the invocation
     cmd = [sys.executable, str(runner_script), "--project-root", str(proj), "--port", port, "--timeout", str(timeout)]
+    # If caller provided a spiffs image / offset, forward them to the runner
+    if spiffs_image:
+        cmd += ["--spiffs-image", str(spiffs_image)]
+    if spiffs_offset:
+        cmd += ["--spiffs-offset", str(spiffs_offset)]
+    if force_spiffs:
+        cmd += ["--force-spiffs"]
 
     # If caller requested sourcing the IDF export, run under bash -lc to source first
     # Use an interactive/non-capturing subprocess.run here so the runner can attach
@@ -374,6 +381,36 @@ def main(argv: list[str] | None = None):
         suites = [ROOT / "esp_bt_audio_source" / "test_app",
                   ROOT / "esp_bt_audio_source" / "test_app2",
                   ROOT / "esp_bt_audio_source" / "test_app_audio"]
+        # attempt to detect an in-tree SPIFFS image and partition offset so the
+        # runner can flash it before the monitor step. Prefer the canonical
+        # location inside esp_bt_audio_source/main/assets/spiffs/spiffs.bin and
+        # parse esp_bt_audio_source/partitions.csv for the offset.
+        spiffs_image = None
+        spiffs_offset = None
+        try:
+            esp_root = ROOT / "esp_bt_audio_source"
+            cand = esp_root / "main" / "assets" / "spiffs" / "spiffs.bin"
+            if cand.exists():
+                spiffs_image = str(cand)
+            # parse partitions.csv for spiffs offset
+            part_file = esp_root / "partitions.csv"
+            if part_file.exists():
+                try:
+                    with open(part_file, 'r', encoding='utf-8', errors='ignore') as pf:
+                        for line in pf:
+                            if 'spiffs' in line.lower():
+                                cols = [c.strip() for c in line.split(',')]
+                                for c in cols:
+                                    if c.lower().startswith('0x'):
+                                        spiffs_offset = c
+                                        break
+                                if spiffs_offset:
+                                    break
+                except Exception:
+                    spiffs_offset = None
+        except Exception:
+            spiffs_image = None
+            spiffs_offset = None
         for s in suites:
             print(f"\n-- Suite: {s.name} --")
             # ensure we use the in-tree runner inside esp_bt_audio_source if present
@@ -385,7 +422,16 @@ def main(argv: list[str] | None = None):
             # record per-suite start/end epoch to measure execution time (higher resolution)
             start_epoch = time.time()
             print(f"START_EPOCH: {start_epoch:.3f}")
-            report["devices"][s.name] = run_device_suite(s, runner_to_use, args.port, args.timeout, args.source_idf)
+            report["devices"][s.name] = run_device_suite(
+                s,
+                runner_to_use,
+                args.port,
+                args.timeout,
+                args.source_idf,
+                spiffs_image=spiffs_image,
+                spiffs_offset=spiffs_offset,
+                force_spiffs=False,
+            )
             end_epoch = time.time()
             print(f"END_EPOCH: {end_epoch:.3f}")
             # attach timestamps and duration to the suite summary

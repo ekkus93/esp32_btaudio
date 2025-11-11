@@ -174,7 +174,7 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     { "SAMPLE_RATE", "<Hz>", "Apply I2S sample rate" },
     { "SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)" },
     { "I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins" },
-    { "BEEP", NULL, "Emit short notification tone" },
+         { "PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)" },
     { "MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)" },
     { "RESET", NULL, "Reboot the device" },
 #ifdef ESP_PLATFORM
@@ -1138,6 +1138,7 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
     else if (strcasecmp(token, "SYNTH") == 0) ctx->type = CMD_TYPE_SYNTH;
     else if (strcasecmp(token, "I2S_CONFIG") == 0) ctx->type = CMD_TYPE_I2S_CONFIG;
     else if (strcasecmp(token, "BEEP") == 0) ctx->type = CMD_TYPE_BEEP;
+    else if (strcasecmp(token, "PLAY") == 0) ctx->type = CMD_TYPE_PLAY;
     else if (strcasecmp(token, "PAIR") == 0) ctx->type = CMD_TYPE_PAIR;
     else if (strcasecmp(token, "CONFIRM_PIN") == 0) ctx->type = CMD_TYPE_CONFIRM_PIN;
     else if (strcasecmp(token, "ENTER_PIN") == 0) ctx->type = CMD_TYPE_ENTER_PIN;

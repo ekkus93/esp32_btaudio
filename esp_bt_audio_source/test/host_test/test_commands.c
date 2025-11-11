@@ -292,6 +292,9 @@ int main(void) {
     extern void test_beep_command_connected(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
+    // Test PLAY command enqueues audio via host stub and makes data available
+    extern void test_play_command(void);
+    RUN_TEST(test_play_command);
     
     // Tests for SYNTH command (host-mode verifies parsing + response)
     extern void test_synth_on_command(void);
@@ -633,6 +636,55 @@ void test_beep_command_connected(void) {
 
     // Verify that beep was actually triggered
     TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+}
+
+// Test PLAY command: request playback of a spiffs asset (host-mode) and
+// verify the command emitted the mock-enqueued response and that the
+// host audio_processor stub appended audio data readable via
+// audio_processor_read(). Use the asset filename as the parameter so
+// cmd_execute() builds the /spiffs/<name> path as it would on-device.
+void test_play_command(void) {
+    mock_uart_reset_tx();
+
+    // Ensure ringbuffer empty before test
+    audio_processor_drain_ringbuffer();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    // Expect the mock enqueue response containing the original filename
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED|worker_long_norm.wav"));
+
+    // Read some data from the audio_processor ringbuffer to ensure playback
+    uint8_t buf[1024]; size_t read = 0;
+    /* Diagnostic: capture return value so we can see what implementation
+     * is being invoked (useful when linker/headers mismatch) */
+    int ret = audio_processor_read(buf, sizeof(buf), &read);
+    /* Accept either the esp_err_t style (ESP_OK + bytes_read>0) or a
+     * legacy/alternate style where the function returns the number of
+     * bytes read directly (positive int). Be explicit so the test is
+     * resilient across small signature mismatches in host stubs. */
+    if (ret == ESP_OK) {
+        TEST_ASSERT_TRUE(read > 0);
+    } else if (ret > 0) {
+        /* Some builds may return the byte-count directly. Ensure we
+         * actually received data. */
+        TEST_ASSERT_TRUE((size_t)ret == read || read > 0);
+    } else {
+        /* Explicit fail with the numeric code for easier triage. */
+        char msg[64];
+        snprintf(msg, sizeof(msg), "audio_processor_read failed: %d", ret);
+        TEST_FAIL_MESSAGE(msg);
+    }
+    // Data should not be all zeros (stub generates deterministic non-zero pattern)
+    int found_nonzero = 0;
+    for (size_t i = 0; i < read; ++i) { if (buf[i] != 0) { found_nonzero = 1; break; } }
+    TEST_ASSERT_EQUAL_INT(1, found_nonzero);
+    // Ensure beep flag wasn't accidentally set by play
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
 }
 
 // Verify SYNTH ON toggles the mode (host: verifies response emitted)

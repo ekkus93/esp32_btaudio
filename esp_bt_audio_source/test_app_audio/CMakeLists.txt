@@ -11,6 +11,10 @@ set(EXTRA_COMPONENT_DIRS
     "../test_app/components"
 )
 
+# Use the repository's partition table (which contains a spiffs partition)
+# so the audio-focused tests can mount /spiffs and access assets.
+set(PARTITION_TABLE_FILENAME "${CMAKE_CURRENT_LIST_DIR}/../partitions.csv")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(esp_bt_audio_source_audio_test)
@@ -19,9 +23,11 @@ project(esp_bt_audio_source_audio_test)
 # run against the fake Bluetooth stack when necessary.
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
 
-# Expose bt_manager headers so the audio-focused test build can find the
-# canonical prototypes (this keeps the test image small but allows the
-# real audio component headers to be used during compilation).
+# Note: test_app_audio uses a test-only command_interface component placed under
+# test_app_audio/components/test_command_interface. We intentionally avoid
+# exposing the project's bt_manager/bluetooth components to keep the test
+# image small.
+
 target_include_directories(${PROJECT_NAME}.elf PUBLIC
-    "${CMAKE_SOURCE_DIR}/../components/bt_manager/include"
+    "${CMAKE_SOURCE_DIR}/components/test_command_interface/include"
 )
