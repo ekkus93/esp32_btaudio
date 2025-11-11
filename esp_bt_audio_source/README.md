@@ -5,7 +5,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 ## Contents (quick links)
 
 - [Features](#features)
-- [Project status — October 2025](#project-status--october-2025)
+- [Project status — November 2025](#project-status--november-2025)
 - [Hardware Configuration](#hardware-configuration)
 - [Implementation Tasks](#implementation-tasks)
 - [Developer tools / Diagnostics](#developer-tools-diagnostics)
@@ -22,25 +22,24 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Multiple Device Support:** Can scan for and connect to various Bluetooth audio sinks
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
 
-<a id="project-status--october-2025"></a>
-## Project status — November 1, 2025
+<a id="project-status--november-2025"></a>
+## Project status — November 10, 2025
 
-- Latest firmware commit `85ea4d74` (2025-10-29) disables BLE features to reclaim flash headroom, documents the harmless `ESP_EVENT_ANY_ID` warning, and updates the internal runbook (`memory.md`). The current working tree also adds weak default UNIT_TEST hook implementations in `bt_manager` so production/device builds link cleanly while host tests continue to override them.
-- Audio processor updates (2025-11-01): synthetic sample generation now runs in the worker task so the high-priority I2S reader can re-enter the scheduler immediately after each DMA callback, and the ring buffer allocator shrinks down to 4 KiB when PSRAM is absent. This keeps watchdogs quiet on DRAM-only boards and removes the "3/8 blocks" allocation warnings while we continue to stub real capture.
-- Boot auto-start path: `app_main()` now restores any persisted I2S pins from NVS, calls `audio_processor_init()`, and immediately invokes `audio_processor_start()` so capture is live (synth mode by default) before Bluetooth streaming begins.
-- Ring-buffer flow: the high-priority I2S reader pushes DMA blocks into `s_i2s_queue`, the worker task performs convert/resample work, and commits into the shared ring buffer that `audio_processor_read()` exposes to consumers.
-- Underrun handling: `bt_streaming_manager`'s `bt_audio_data_callback()` zero-fills any short read from `audio_processor_read()` and logs an underrun so A2DP packets stay well-formed even when capture stalls.
-- Full regression sweep completed on 2025-11-01 @ 12:17 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300 --source-idf "$HOME/esp/esp-idf/export.sh"` (host CTest + three Unity suites). Run artifacts:
+- Latest firmware updates (2025-11-10) removed the 32 KiB runtime cap from `audio_processor` so DRAM-only builds now allocate the full 128 KiB ring buffer (`AUDIO_WORK_BUFFER_BYTES`), eliminating the Unity watchdog triggered by WAV playback.
+- SPIFFS helpers were refreshed: `tools/make_spiffs.py` now falls back to `spiffsgen.py` when mkspiffs lacks required flags, and all Unity apps share the same 256 KiB image baked during the regression sweep.
+- Boot auto-start path remains intact: `app_main()` restores persisted I2S pins from NVS, initializes `audio_processor`, and calls `audio_processor_start()` so capture comes up in synth mode before Bluetooth streaming begins.
+- Ring-buffer flow: the high-priority I2S reader queues DMA blocks into `s_i2s_queue`, the worker task performs convert/resample work, and commits into the shared ring buffer exposed via `audio_processor_read()`. Underrun handling keeps A2DP packets valid by zero-filling short reads.
+- Full regression sweep completed on 2025-11-11 @ 05:59 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` (host CTest + three Unity suites). Run artifacts:
    - Host `ctest` bundle: 19/19 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
-   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, raw runner stdout at `tmp/runner_test_app_stdout.log`).
+   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_stdout.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
-   - `test_app_audio`: 26 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
-   - Aggregate totals (141 tests / 0 failures / 0 ignored) with per-suite timing and metadata: `tmp/run_all_tests_summary.json`.
-- Timing snapshot from the same sweep (wall-clock ≈96 s total): `test_app` 40.3 s (flash 11.6 s, tests 28.7 s); `test_app2` 35.5 s (flash 8.3 s, tests 27.2 s); `test_app_audio` 17.1 s (flash 3.1 s, tests 14.0 s). These measurements come directly from the orchestrator by parsing Unity logs and esptool output.
+   - `test_app_audio`: 24 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
+   - Aggregate totals (146 tests / 0 failures / 0 ignored) with per-suite timing and metadata: `tmp/run_all_tests_summary.json`.
+- Timing snapshot from the same sweep (wall-clock ≈438 s total due to long audio diagnostics): `test_app` 62.4 s (flash 11.6 s, tests 50.8 s); `test_app2` 46.6 s (flash 11.5 s, tests 35.1 s); `test_app_audio` 322.5 s (flash 3.7 s, tests 318.8 s). Durations are parsed directly from the orchestrator's esptool and Unity logs.
 
 - Key recent completions:
    - Host-based unit tests: all host tests pass and the host-test harness updated to support sequence-number diagnostics.
-   - Audio processor cleanup: synthetic generation moved into the worker path, the I2S reader yields immediately after queuing buffers, and DRAM fallback sizing now avoids ring-buffer allocation warnings on devices without PSRAM.
+   - Audio processor cleanup: synthetic generation moved into the worker path, the I2S reader yields immediately after queuing buffers, and DRAM-only builds now retain the full 128 KiB ring buffer without allocation warnings.
    - Pairing event stream hardening: sequence numbers added to `EVENT|PAIR|...` and tests updated to validate ordering/monotonicity.
    - Device-side pairing test added: `test_app/main/test_pairing_seq_hardening_device.c` (device-only Unity test that checks CONFIRM+SUCCESS sequencing on-device).
    - CI: Added a compile-only device build workflow (`.github/workflows/ci-device-build.yml`) that runs `idf.py build` on `ubuntu-latest` to detect device compile regressions. This ensures the main app continues to compile on PRs/pushes even without hardware.
@@ -98,66 +97,33 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-Current test status (2025-11-01)
+## Current test status (2025-11-10)
 --------------------------------
-- `tools/run_all_tests.py` (2025-11-01) executes the full sweep in one command. Output artifacts:
+- `tools/run_all_tests.py` (2025-11-11) executes the full sweep in one command. Output artifacts:
    - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
    - Device Unity suites (via `tools/run_unity.py` through the orchestrator):
       - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
       - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
-      - `test_app_audio`: 26/0/0 (`test_app_audio/build/one_run_unity.log`).
-   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` (141 tests / 0 failures / 0 ignored).
+      - `test_app_audio`: 24/0/0 (`test_app_audio/build/one_run_unity.log`).
+   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` (146 tests / 0 failures / 0 ignored).
 - Standalone re-runs are still supported with `tools/run_unity.py`, but the orchestrator now emits per-suite flash/test breakdowns for timing analysis.
 
 Remaining work (short list)
 ---------------------------
 - Test coverage gaps (Priority: High — ETA: 1–2 days):
-   Address false-positive tests in `audio_processor` where unit tests pass on stubs but don't verify observable behavior, risking undetected regressions. Specific areas: beep functionality (tests check command response but not audio generation), volume control (tests may not verify actual volume application), read buffer filling (tests may not check if buffers are actually filled), and audio streaming (tests might not verify real streaming behavior). Steps: add focused host tests for synth/beep output and ringbuffer filling, fix stubs to expose observable behavior, run host CTest and iterate.
+   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. Add regression coverage for WAV playback to ensure the non-blocking ringbuffer writes stay watchdog-safe.
 
 - On-device end-to-end verification (Priority: High — ETA: 2–3 days):
-   Run real-device pairing scenarios to validate pairing persistence across reboot and interoperability with common phones/speakers. Steps: run pairing on-device, capture serial logs, reboot and confirm paired list persists, and file fixes if issues are found.
+   Re-run pairing scenarios with real sinks (phone, speaker, car stereo) to validate persistence across reboot and confirm the refreshed event stream sequencing.
 
-- Pairing event stream hardening (Priority: High — ETA: 1–1.5 days):
-   Ensure `EVENT|PAIR|...` emissions remain ordered and noise-free under stress and that host-driven confirmation flows (CONFIRM_PIN / ENTER_PIN) are robust on hardware. Steps: add on-device stress harness, validate sequence numbers, and apply rate-limiting or batching if needed.
+- Beep diagnostics CLI (Priority: High — ETA: 1 day):
+   Add a command handler path that arms `audio_processor_enable_next_beep_diag()` before issuing BEEP so operators can capture diagnostics without reflashing test firmware.
 
-- Mock fault-injection coverage (Priority: Medium — ETA: 1–2 days):
-   Extend host mocks to simulate connection drops/timeouts and add unit tests to assert recovery logic and robustness.
+- Real I2S capture integration (Priority: Medium — ETA: 2–3 days):
+   Replace the sine-wave stub in `main/bt_streaming_manager.c` with the actual capture pipeline now that runtime buffers match production sizing; document any performance limits observed on DRAM-only boards.
 
-- Timeline analysis of pairing logs (Priority: Medium — ETA: 1 day):
-   Parse `build/pairing_e2_logs/serial.log`, symbolise addresses with the built ELF (using `addr2line`), correlate allocator frees with BTM lifecycle events, and produce a concise report with proposed fixes.
-
-- CI automation: host tests + archive logs (Priority: Medium — ETA: 0.5–1 day):
-   Add a PR job that runs host tests on every PR and preserves Unity logs/ELFs as artifacts. Hardware-backed runners are a follow-up item.
-
-- Documentation polish (Priority: Low — ETA: 0.5 day):
-   Add a pairing-log triage guide and refresh command help output once pairing verification completes; update README command sections accordingly.
-- Command implementation gaps (trackers):
-   - `UNPAIR`: ✅ Completed 2025-11-01 — command now removes the controller bond via `esp_bt_gap_remove_bond_device()` before deleting the NVS record; host tests cover both success and simulated failure paths.
-      - `UNPAIR_ALL`: ✅ Completed 2025-11-02 — manager now walks controller bonds before clearing NVS so responses report the number of devices removed; host (`test_commands`) and Unity (`test_pairing_commands.c`) suites exercise success and failure paths.
-   - `PAIR`: ✅ Completed 2025-11-02 — command now initiates GAP-level bonding (service discovery fallback to remote-name), maintains pending state for PIN/SSP flows, and passes host + Unity coverage; plan real-world soak tests to confirm persistence across reboots.
-   - `VERSION`: ✅ Completed 2025-11-01 — command now reports `esp_app_get_description()->version` on device builds (with a host override for tests) so the response always matches the flashed firmware.
-
-Prioritized next steps (actionable)
-----------------------------------
-1. On-device E2E pairing verification (High, **~2–3 days**)
-   - Task: Run pairing scenarios with representative sinks (phone, speaker, car stereo).
-   - Acceptance: pairing → reboot → verify paired list persists and device connects as expected.
-
-2. Pairing event stream hardening (High, **~1–1.5 days**)
-   - Task: Stress `EVENT|PAIR|...` emissions, confirm ordering, and validate that host `CONFIRM_PIN` / `ENTER_PIN` commands succeed on hardware.
-   - Acceptance: Host-driven pairing flows complete successfully with stable event sequencing.
-
-3. Host fault-injection coverage (Medium, **~1–2 days**)
-   - Task: Extend mocks to simulate connection drops/timeouts and assert recovery logic through unit tests.
-   - Acceptance: New tests fail without the current safeguards and pass with them in place.
-
-4. Timeline analysis (Medium, **~1 day**)
-   - Task: Parse `build/pairing_e2_logs/serial.log`, symbolise addresses with the latest ELF, and document suspected ownership issues.
-   - Acceptance: A concise report outlining findings and proposed fixes is published alongside logs.
-
-5. CI & documentation uplift (Lower, **~0.5–1 day**)
-   - Task: Add a PR-host-test job that archives Unity logs/ELFs and draft a short pairing-log triage guide.
-   - Acceptance: CI surfaces host regressions automatically and the guide ships with the repo.
+- Unity log formatting uplift (Priority: Medium — ETA: 1 day):
+   Improve the Unity runners so canonical pass/fail lines emit without fallbacks, keeping `tmp/canonical_unity_summary.json` minimal and CI-friendly.
 
 Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.

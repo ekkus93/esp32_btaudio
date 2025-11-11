@@ -42,6 +42,7 @@
 	- [ ] Rebuild firmware after CLI addition.
 	- [ ] Flash device and run SYNTH/START/BEEP sequence to capture diagnostic logs.
 - 2025-11-10: README.md updated with project status snapshot, consolidated test sweep instructions, and outstanding TODOs; README_spiffs.md documents the new `spiffsgen.py` fallback and Unity SPIFFS dependency wiring.
+- 2025-11-10: Refreshed `esp_bt_audio_source/README.md` with the latest ringbuffer changes, SPIFFS workflow, and the 2025-11-11 regression sweep results (host 19/19; Unity 37/45/24; 146 aggregate tests).
 - TODO: Track integration of the real I2S capture path into `main/bt_streaming_manager.c` (replace sine-wave stub). Keep README “Open Work” item in sync until implementation lands.
 - TODO (PAIR bonding overhaul)
 	- [x] Replace the `esp_a2d_source_connect()` fallback with a GAP-level bonding initiation path in `bt_pair()`.
