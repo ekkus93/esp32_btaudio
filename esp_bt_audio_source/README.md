@@ -23,28 +23,24 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
 
 <a id="project-status--november-2025"></a>
-## Project status — November 11, 2025
+## Project status — November 15, 2025
 
-- Latest firmware updates (2025-11-10) removed the 32 KiB runtime cap from `audio_processor` so DRAM-only builds now allocate the full 128 KiB ring buffer (`AUDIO_WORK_BUFFER_BYTES`), eliminating the Unity watchdog triggered by WAV playback.
-- WAV playback path now pauses the audio pipeline during file enqueue: playback stops, pending buffers drain (including beep state reset), and the pipeline restarts once WAV data is committed. This guarantees ringbuffer space before Unity’s `test_play_wav_command` and prevents the previous `ESP_ERR_NO_MEM` failure.
-- SPIFFS helpers were refreshed: `tools/make_spiffs.py` now falls back to `spiffsgen.py` when mkspiffs lacks required flags, and all Unity apps share the same 256 KiB image baked during the regression sweep.
-- Boot auto-start path remains intact: `app_main()` restores persisted I2S pins from NVS, initializes `audio_processor`, and calls `audio_processor_start()` so capture comes up in synth mode before Bluetooth streaming begins.
-- Ring-buffer flow: the high-priority I2S reader queues DMA blocks into `s_i2s_queue`, the worker task performs convert/resample work, and commits into the shared ring buffer exposed via `audio_processor_read()`. Underrun handling keeps A2DP packets valid by zero-filling short reads.
-- Full regression sweep last captured on 2025-11-11 @ 05:59 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300` (host CTest + three Unity suites). Run artifacts:
+- Latest audio pipeline fixes (2025-11-15) clamp WAV prime/read chunk sizing to the runtime `audio_processor_get_work_buffer_bytes()` allocation and throttle ringbuffer sends based on live free-space readings. Combined with the switch to `RINGBUF_TYPE_ALLOWSPLIT`, WAV playback now completes without watchdog resets or buffer overruns.
+- `tools/run_unity.py` now launches `idf.py flash monitor` inside a pseudo-terminal, hardens EOF handling, and captures the canonical Unity summary markers. Aggregator tooling consumes these logs directly, so regression sweeps succeed from non-interactive shells.
+- The worker/reader pipeline keeps DRAM-only builds healthy: runtime work-buffer detection preserves full 128 KiB ringbuffer capacity, synth fallback throttling prevents starvation, and diagnostics report SPIFFS, WAV refill, and ringbuffer state during tests.
+- Full regression sweep completed on 2025-11-15 @ 06:16 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (host CTest + three Unity suites). Run artifacts:
    - Host `ctest` bundle: 19/19 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_stdout.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
-   - `test_app_audio`: 24 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
-   - Aggregate totals (146 tests / 0 failures / 0 ignored) with per-suite timing and metadata: `tmp/run_all_tests_summary.json`.
-- Timing snapshot from the same sweep (wall-clock ≈438 s total due to long audio diagnostics): `test_app` 62.4 s (flash 11.6 s, tests 50.8 s); `test_app2` 46.6 s (flash 11.5 s, tests 35.1 s); `test_app_audio` 322.5 s (flash 3.7 s, tests 318.8 s). Durations are parsed directly from the orchestrator's esptool and Unity logs.
-- `idf.py build` for `test_app_audio` (2025-11-11) succeeds with the paused WAV path; current warnings flag unused synth/beep fallback variables and the `last_i2s_ret` scratch in `i2s_reader_task` (cleanup tracked below).
+   - `test_app_audio`: 12 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
+   - Aggregate totals (142 tests / 0 failures / 0 ignored) with per-suite timing and metadata captured in `tmp/run_all_tests_summary.json` and `tmp/run_all_tests_summary.csv`.
+- Timing snapshot from the same sweep: `test_app` 64.9 s total (flash 11.7 s, tests 53.3 s); `test_app2` 44.6 s (flash 11.5 s, tests 33.1 s); `test_app_audio` 33.7 s (flash 3.9 s, tests 29.8 s). Durations are parsed directly from the orchestrator's esptool timing and Unity markers.
 
 - Key recent completions:
-   - Host-based unit tests: all host tests pass and the host-test harness updated to support sequence-number diagnostics.
-   - Audio processor cleanup: synthetic generation moved into the worker path, the I2S reader yields immediately after queuing buffers, and DRAM-only builds now retain the full 128 KiB ring buffer without allocation warnings.
-   - Pairing event stream hardening: sequence numbers added to `EVENT|PAIR|...` and tests updated to validate ordering/monotonicity.
-   - Device-side pairing test added: `test_app/main/test_pairing_seq_hardening_device.c` (device-only Unity test that checks CONFIRM+SUCCESS sequencing on-device).
-   - CI: Added a compile-only device build workflow (`.github/workflows/ci-device-build.yml`) that runs `idf.py build` on `ubuntu-latest` to detect device compile regressions. This ensures the main app continues to compile on PRs/pushes even without hardware.
+   - Host-based unit tests: harness remains green (19/19) with pairing sequence-number diagnostics and command coverage intact.
+   - Audio processor hardening: WAV enqueue limits respect live ringbuffer capacity, playback refills pace themselves, and idle synth traffic yields so consumers drain pending audio immediately.
+   - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping keeps regression automation deterministic; fallback parsing is no longer required for green runs.
+   - Regression reporting: `tmp/run_all_tests_summary.csv` is generated post-sweep for per-suite totals, durations, and log pointers, complementing the JSON artifact for downstream tooling.
 
 - Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
 - Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs capture and documentation (see [Remaining work](#remaining-work-short-list)).
@@ -99,30 +95,27 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-## Current test status (2025-11-10)
---------------------------------
-- `tools/run_all_tests.py` (2025-11-11) executes the full sweep in one command. Output artifacts:
-   - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
-   - Device Unity suites (via `tools/run_unity.py` through the orchestrator):
-      - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
-      - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
-      - `test_app_audio`: 24/0/0 (`test_app_audio/build/one_run_unity.log`).
-   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` (146 tests / 0 failures / 0 ignored).
-- Standalone re-runs are still supported with `tools/run_unity.py`, but the orchestrator now emits per-suite flash/test breakdowns for timing analysis.
+## Current test status (2025-11-15)
+---------------------------------
+- `tools/run_all_tests.py` (2025-11-15) executes the full sweep in one command. Output artifacts:
+  - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
+  - Device Unity suites (via `tools/run_unity.py` orchestrated flash/monitor):
+     - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
+     - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
+     - `test_app_audio`: 12/0/0 (`test_app_audio/build/one_run_unity.log`).
+  - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` & `tmp/run_all_tests_summary.csv` (142 tests / 0 failures / 0 ignored).
+- Standalone re-runs remain available with `tools/run_unity.py`, and the orchestrator now emits per-suite flash/test breakdowns for timing analysis directly into the CSV for downstream consumption.
 
 Remaining work (short list)
 ---------------------------
 - Test coverage gaps (Priority: High — ETA: 1–2 days):
-   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. Add regression coverage for the paused WAV playback flow (stop → drain → enqueue → restart) so watchdog protection matches the new implementation.
+   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. Add regression coverage for WAV playback to ensure the non-blocking ringbuffer writes stay watchdog-safe.
 
 - On-device end-to-end verification (Priority: High — ETA: 2–3 days):
    Re-run pairing scenarios with real sinks (phone, speaker, car stereo) to validate persistence across reboot and confirm the refreshed event stream sequencing.
 
 - Beep diagnostics CLI (Priority: High — ETA: 1 day):
    Add a command handler path that arms `audio_processor_enable_next_beep_diag()` before issuing BEEP so operators can capture diagnostics without reflashing test firmware.
-
-- Build warning cleanup (Priority: Medium — ETA: 1 day):
-   Trim unused synth/beep fallback symbols and remove the lingering `last_i2s_ret` scratch variable so `idf.py build` finishes warning-free.
 
 - Real I2S capture integration (Priority: Medium — ETA: 2–3 days):
    Replace the sine-wave stub in `main/bt_streaming_manager.c` with the actual capture pipeline now that runtime buffers match production sizing; document any performance limits observed on DRAM-only boards.
