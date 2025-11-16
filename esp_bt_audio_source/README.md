@@ -33,7 +33,19 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
    - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_stdout.log`).
    - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
    - `test_app_audio`: 12 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
-   - Aggregate totals (142 tests / 0 failures / 0 ignored) with per-suite timing and metadata captured in `tmp/run_all_tests_summary.json` and `tmp/run_all_tests_summary.csv`.
+       - Aggregate totals (147 tests / 0 failures / 0 ignored) from the most recent sweep. The full aggregated JSON summary is available at `tmp/run_all_tests_summary.json`.
+
+   Diagnostics & trace parsing
+   - A parser script was added to `tools/parse_traces.py` to extract DIAG/TRACE allocation lines from host and monitor logs and write structured output.
+      - Parsed outputs (example run):
+         - CSV: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.csv`
+         - JSON: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json`
+      - A small summary helper `tools/trace_stats.py` computes counts and basic statistics (min/max/mean/median) for fields such as `len`, `size`, `free_before`, and `free_after`.
+      - Example summary (parsed run): 5076 records parsed across host+monitor logs; per-suite totals remain green and allocation traces show expected ENQ/RET behavior with median transfer size 512 bytes.
+
+   Notes about PSRAM tests
+   - PSRAM-specific tests are gated at build-time and at runtime using `CONFIG_SPIRAM` and `esp_psram_is_initialized()` respectively. For non-PSRAM hardware the PSRAM tests are skipped at runtime with a clear message.
+   - When PSRAM-equipped hardware is available, re-enable SPIRAM in the project `sdkconfig`, flash the tests and re-run parsing to capture `malloc_usable_size()` and heap_caps_* values for fragmentation analysis.
 - Timing snapshot from the same sweep: `test_app` 64.9 s total (flash 11.7 s, tests 53.3 s); `test_app2` 44.6 s (flash 11.5 s, tests 33.1 s); `test_app_audio` 33.7 s (flash 3.9 s, tests 29.8 s). Durations are parsed directly from the orchestrator's esptool timing and Unity markers.
 
 - Key recent completions:

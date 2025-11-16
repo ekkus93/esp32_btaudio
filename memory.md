@@ -1,4 +1,14 @@
 ## Current Focus
+- RECENT (host-test): Enabled PSRAM-path recording in host mocks so `test_audio_processor_real`
+- now records PSRAM allocations. Changes made:
+- - `test/host_test/mocks/fake_ringbuf.c`: allocate backing buffer with `heap_caps_malloc(uxMemoryCaps)` so
+-   xRingbufferCreateWithCaps(...) requests are recorded by the heap_caps mock.
+- - `test/host_test/mocks/esp_heap_caps_mock.c`: added `esp_psram_is_initialized()` exposing the mock PSRAM state.
+- - `test/host_test/mocks/include/esp_psram.h`: new header declaring `esp_psram_is_initialized()`.
+- - `test/host_test/CMakeLists.txt`: compile-def `CONFIG_SPIRAM=1` added for `test_audio_processor_real` so
+-   PSRAM-preferring branches are compiled in for the host test.
+- Result: `test_audio_processor_real` now passes locally (2 tests, 0 failures) when run from `test/host_test/build`.
+
 - TODO (2025-11-14 regression sweep & summary CSV)
 	- [x] Run `tools/run_all_tests.py` (full host + device sweep) and capture fresh artifacts
 	- [x] Extract per-suite counts from new summary/logs
@@ -147,6 +157,8 @@
 		- 2025-11-11: Added INFO-level diagnostics for worker ringbuffer sends and read consumption to observe flow during next Unity run.
 		- [x] 2025-11-11: Enforced ringbuffer capacity floor (≥3× burst + headroom) via `audio_ringbuffer_min_capacity()` so WAV bursts fit even on DRAM-only boards.
 		- [x] 2025-11-11: Updated WAV enqueue path to honor `xRingbufferGetMaxItemSize()` and chunk payloads, preventing 6 KiB resample bursts from overrunning when free space dips.
+	- [ ] Rebuild main app with PSRAM-default allocator change and confirm runtime MEM diagnostics reflect lower DRAM usage / no BT malloc failure.
+	- [ ] Run targeted playback/command tests post-PSRAM change to ensure DRAM-only override still functions when requested.
 	- [x] 2025-11-11: `idf.py -C esp_bt_audio_source/test_app_audio build` succeeded post ringbuffer sizing changes (warnings about unused synth/beep helpers persist).
 - TODO (Command interface SPIFFS commands)
 	- [x] Implement CMD_TYPE_FILE parsing/handler in `components/command_interface/commands.c`.
@@ -313,3 +325,50 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 	- Artifact paths used as sources-of-truth: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and each suite's `*/build/one_run_unity.log`. If these artifacts are missing, explicitly report which files are missing and provide partial counts from whatever logs are available.
 
 - Reminder to the agent: the user has documented prior inaccuracies and low trust regarding unit-test summaries. Treat this as a hard requirement: always compute and return numeric counts sourced from logs/JSON and include the artifact file paths used to derive the numbers. Record this in memory so future runs follow the rule.
+
+## Session checkpoint — Chat restart (2025-11-15)
+
+- Checkpoint timestamp: 2025-11-15 UTC
+- Most recent automated activity:
+	- Full regression sweep executed via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`.
+	- Aggregate result: 142 tests run, 142 passed, 0 failed, 0 ignored.
+	- Key artifacts (sources-of-truth):
+		- `tmp/run_all_tests_summary.json`
+		- `tmp/canonical_unity_summary.json`
+		- `tmp/run_all_tests_full.log`
+		- Per-suite example logs:
+			- `esp_bt_audio_source/test_app/build/one_run_unity.log`
+			- `esp_bt_audio_source/test_app2/build/one_run_unity.log`
+			- `esp_bt_audio_source/test_app_audio/build/one_run_unity.log`
+
+- PSRAM / allocator status:
+	- Source changes were made to prefer PSRAM for large audio allocations (in `audio_processor.c`).
+	- The last flashed binary logged: "runtime DRAM-only override active; PSRAM will not be used" — i.e., the device did not use PSRAM in that run. Runtime verification is still pending.
+
+- Pending (high priority):
+	1. Rebuild and flash `esp_bt_audio_source/test_app_audio` with SPIRAM enabled (or ensure target board has PSRAM available).
+	2. Capture the serial monitor output to `tmp/monitor_test_app_audio.log` and parse for PSRAM allocation, DRAM-only override messages, and any BT malloc failures.
+	3. Update this `memory.md` checkpoint with the verification result and attach the monitor log path.
+
+- Agent note for restart:
+	- Default device port used for recent runs: `/dev/ttyUSB0`.
+	- Planned monitor capture path (if the rebuild+flash is executed): `tmp/monitor_test_app_audio.log`.
+	- If PSRAM is absent on the board, the device will log the DRAM-only fallback; that is expected and not a code regression.
+
+AGENT_ACTIONS_ON_RESTART:
+- Continue with the pending rebuild+flash for PSRAM verification when instructed by the user. Capture artifacts and update this checkpoint.
+
+## Recent session notes (2025-11-15)
+- Created `tools/parse_traces.py` to extract DIAG/TRACE allocation lines from host and monitor logs and emit structured CSV/JSON outputs.
+- Fixed a parser bug (missing `line` arg to regex calls), re-ran the parser and produced:
+  - `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.csv`
+  - `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json`
+  Parser reported: "Parsed 5076 records from 2 files." on success.
+- Added `tools/trace_stats.py` to compute quick summary metrics from the parsed JSON; example summary includes 5076 records, median `len` = 512, and primary types `DIAG-WORKER-OTHER/ENQ/RET`.
+- Confirmed aggregated test results: 147 tests, 0 failures, 0 ignored (see `tmp/run_all_tests_summary.json`). PSRAM tests remain gated and were skipped at runtime when hardware lacked PSRAM.
+
+Next steps tracked:
+- Harden `tools/parse_traces.py` to additionally capture on-device `malloc_usable_size()` and `heap_caps_get_*` outputs when present.
+- Add symbolization helper using addr2line that maps captured addresses to source file:line using the built ELF.
+- When PSRAM-equipped hardware is available: re-enable SPIRAM in `sdkconfig`, rebuild/flash, capture the serial monitor, and re-run the parser to compute fragmentation metrics.
+
