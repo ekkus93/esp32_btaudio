@@ -3,7 +3,8 @@ set(priv_requires
     bt_manager
     bt
     driver
-    esp_app_format)
+    esp_app_format
+    spiffs)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND priv_requires bt_stack_stub)

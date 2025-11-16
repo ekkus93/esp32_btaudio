@@ -52,6 +52,11 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
    - Host-based unit tests: harness remains green (19/19) with pairing sequence-number diagnostics and command coverage intact.
    - Audio processor hardening: WAV enqueue limits respect live ringbuffer capacity, playback refills pace themselves, and idle synth traffic yields so consumers drain pending audio immediately.
    - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping keeps regression automation deterministic; fallback parsing is no longer required for green runs.
+   - Host helper for SPIFFS flash+verify: a small host-side helper script was added at
+     `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` to automate a reproducible
+     flash workflow (flash app + partition table, write SPIFFS image to its offset,
+     then open serial and assert runtime `PARTS` and `FILES` responses). See the
+     "Flashing SPIFFS and validating on-device" section below for usage and CI examples.
    - Regression reporting: `tmp/run_all_tests_summary.csv` is generated post-sweep for per-suite totals, durations, and log pointers, complementing the JSON artifact for downstream tooling.
 
 - Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
@@ -429,6 +434,109 @@ Re-run `idf.py build` after changing the version so `esp_app_get_description()` 
    Replace `PORT` with your device's serial port (e.g., `/dev/ttyUSB0` on Linux)
 
 Note: On most Linux systems the common USB serial adapter shows up as `/dev/ttyUSB0` by default. If you don't have a different preference, you can use `/dev/ttyUSB0` in the command above (for example: `idf.py -p /dev/ttyUSB0 flash monitor`). If your adapter enumerates as `/dev/ttyACM0` or a different device node, replace the port accordingly.
+
+
+### Flashing SPIFFS and validating on-device
+
+When the firmware expects a SPIFFS partition (for example to serve small audio assets or configuration files), you must flash a properly-created SPIFFS image to the SPIFFS partition offset in addition to flashing the app and partition table. The repository includes a helper to build and flash the SPIFFS image and a small host helper to automate flashing+validation.
+
+1) Build the SPIFFS image (if missing)
+
+```bash
+# from repo root
+cd esp_bt_audio_source
+python3 tools/make_spiffs.py -c main/assets/spiffs -s 0x40000 -o main/assets/spiffs/spiffs.bin
+# This writes the canonical SPIFFS image to main/assets/spiffs/spiffs.bin (size 0x40000 in this project).
+```
+
+2) Flash app + partition table (normal flash)
+
+```bash
+# from repo root (recommended)
+cd esp_bt_audio_source
+. $HOME/esp/esp-idf/export.sh
+idf.py -p /dev/ttyUSB0 flash
+```
+
+3) Write the SPIFFS image to the SPIFFS partition offset
+
+The SPIFFS partition in this project is at offset 0x1C0000 with size 0x40000. Use `esptool` to write the SPIFFS image after `idf.py flash` completes:
+
+```bash
+# from repo root
+python3 -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash 0x1C0000 esp_bt_audio_source/main/assets/spiffs/spiffs.bin
+```
+
+4) Validate on-device (quick checks)
+
+The firmware provides two runtime diagnostics useful for validation:
+
+- `PARTS` — lists partitions discovered via `esp_partition_find_*` APIs. Expect an INFO line for the `spiffs` partition and an `OK|PARTS|SUMMARY|COUNT=` line.
+- `FILES` — attempts to `opendir("/spiffs")` and list files. After the runtime mount fallback, `FILES` will try to register the `spiffs` partition if an ENOENT is returned. Expect `INFO|FILES|ROOT|/spiffs`, one or more `INFO|FILES|ITEM|...` lines, and a final `OK|FILES|SUMMARY|ROOT=/spiffs,COUNT=...,TOTAL=...` line.
+
+Use a small serial client to send `PARTS` and `FILES` and inspect output. For a quick manual check you can do:
+
+```bash
+# open a monitor in one shell
+picocom --baud 115200 /dev/ttyUSB0
+# (or use idf.py -C esp_bt_audio_source -p /dev/ttyUSB0 monitor from the project folder)
+# then type: PARTS<Enter>
+# and: FILES<Enter>
+
+# short automated example (from the repo root)
+python3 - <<'PY'
+import serial, time
+s=serial.Serial('/dev/ttyUSB0',115200,timeout=2)
+time.sleep(0.5)
+s.write(b'PARTS\r\n')
+print(s.read_until(b'OK|PARTS|SUMMARY').decode(errors='ignore'))
+s.write(b'FILES\r\n')
+print(s.read_until(b'OK|FILES|SUMMARY').decode(errors='ignore'))
+s.close()
+PY
+```
+
+If you see `INFO|PARTS|ITEM|...|spiffs,...` and `OK|PARTS|SUMMARY|COUNT=...` and a `FILES` summary like `OK|FILES|SUMMARY|ROOT=/spiffs,COUNT=...,TOTAL=...` then the SPIFFS image is present and the runtime can access it.
+
+5) Use the repository helper (recommended)
+
+To automate the full sequence (flash app+partition table, write SPIFFS image, open serial, assert PARTS and FILES), a small helper is included:
+
+`esp_bt_audio_source/tools/flash_and_verify_spiffs.py`
+
+Example invocation (from repo root):
+
+```bash
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
+   --port /dev/ttyUSB0 \
+   --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+   --spiffs-offset 0x1C0000 \
+   --project-dir esp_bt_audio_source \
+   --baud 115200 \
+   --monitor-wait 4
+```
+
+The helper will exit non-zero on failure and prints the captured serial lines for diagnostics. This makes it suitable for CI smoke tests.
+
+Example CI snippet (bash job step)
+
+```bash
+# ensure ESP-IDF is sourced in the CI job environment
+. $HOME/esp/esp-idf/export.sh
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py --port ${PORT:-/dev/ttyUSB0} --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin --spiffs-offset 0x1C0000 --project-dir esp_bt_audio_source --baud 115200 --monitor-wait 6
+if [ $? -ne 0 ]; then
+   echo "SPIFFS flash or verification failed" >&2
+   exit 1
+fi
+```
+
+Notes & troubleshooting
+- If `make_spiffs.py` can't find `mkspiffs` it will fall back to `spiffsgen.py` when available. The helper prints where the image was written.
+- If `PARTS` does not list a `spiffs` partition, re-check that the flashed partition table contains a partition named `spiffs` (the project partition table is built into `build/partition_table/partition-table.bin` for the `esp_bt_audio_source` project).
+- If `FILES` returns errors about `opendir` or no entries, verify the SPIFFS image actually contains files (inspect the contents used to build the image in `main/assets/spiffs/`).
+
+If you'd like, I can also add a one-line README in `esp_bt_audio_source/tools/` that documents the helper's arguments and exit codes for CI readability.
+
 
 ## Unit Testing Framework
 

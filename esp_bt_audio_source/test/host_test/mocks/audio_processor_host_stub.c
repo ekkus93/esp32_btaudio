@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "../../main/include/audio_processor.h"
 
 /* Host-only stub for audio_processor used by native unit tests.
@@ -28,6 +29,10 @@ static audio_bit_depth_t s_bit_depth = AUDIO_BIT_DEPTH_16;
 static audio_channel_t s_channels = AUDIO_CHANNEL_STEREO;
 static bool s_beep_active = false;
 static bool s_synth_mode = false;
+static bool s_wav_active = false;
+static size_t s_wav_pending = 0;
+static bool s_wav_prev_valid = false;
+static bool s_wav_prev_force_synth = false;
 
 /* Simple host-side FIFO for injected/produced audio data. */
 static uint8_t* s_ring = NULL;
@@ -286,5 +291,89 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
     /* Append injected data to our ring buffer used by audio_processor_read */
     ring_append(data, size);
     return ESP_OK;
+}
+
+void audio_processor_test_wav_reset_state(void)
+{
+    s_wav_active = false;
+    s_wav_pending = 0;
+    s_wav_prev_valid = false;
+    s_wav_prev_force_synth = false;
+}
+
+void audio_processor_test_wav_begin(void)
+{
+    s_wav_prev_force_synth = s_synth_mode;
+    s_wav_prev_valid = true;
+    s_wav_pending = 0;
+    s_wav_active = true;
+    s_synth_mode = false;
+}
+
+void audio_processor_test_wav_add_pending(size_t bytes)
+{
+    if (!s_wav_active || bytes == 0) {
+        return;
+    }
+
+    if (SIZE_MAX - s_wav_pending < bytes) {
+        s_wav_pending = SIZE_MAX;
+    } else {
+        s_wav_pending += bytes;
+    }
+}
+
+bool audio_processor_test_wav_consume(size_t bytes)
+{
+    if (!s_wav_active || bytes == 0) {
+        return false;
+    }
+
+    if (bytes >= s_wav_pending) {
+        s_wav_pending = 0;
+        s_wav_active = false;
+        if (s_wav_prev_valid) {
+            s_synth_mode = s_wav_prev_force_synth;
+            s_wav_prev_valid = false;
+            return true;
+        }
+        return false;
+    }
+
+    s_wav_pending -= bytes;
+    return false;
+}
+
+void audio_processor_test_wav_abort(void)
+{
+    s_wav_pending = 0;
+    s_wav_active = false;
+    if (s_wav_prev_valid) {
+        s_synth_mode = s_wav_prev_force_synth;
+        s_wav_prev_valid = false;
+    }
+}
+
+void audio_processor_test_wav_complete_if_idle(void)
+{
+    if (!s_wav_active || s_wav_pending != 0) {
+        return;
+    }
+
+    s_wav_active = false;
+    if (s_wav_prev_valid) {
+        s_synth_mode = s_wav_prev_force_synth;
+        s_wav_prev_valid = false;
+    }
+}
+
+bool audio_processor_test_wav_is_active(void)
+{
+    return s_wav_active;
+}
+
+size_t audio_processor_test_wav_pending_bytes(void)
+{
+    return s_wav_pending;
 }
 #endif

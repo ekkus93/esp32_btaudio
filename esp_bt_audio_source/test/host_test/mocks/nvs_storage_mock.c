@@ -124,3 +124,21 @@ esp_err_t nvs_storage_clear_paired_devices(void) {
     mock_paired_count = 0;
     return ESP_OK;
 }
+
+// Additional stubs used by production code when linking in host tests
+esp_err_t nvs_storage_init(void)
+{
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_set_volume(uint8_t vol)
+{
+    (void)vol;
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_set_i2s_pins(int bclk, int ws, int din, int dout)
+{
+    (void)bclk; (void)ws; (void)din; (void)dout;
+    return ESP_OK;
+}

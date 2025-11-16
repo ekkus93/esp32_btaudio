@@ -23,6 +23,10 @@ project(esp_bt_audio_source_audio_test)
 # run against the fake Bluetooth stack when necessary.
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
 
+if(DEFINED UNITY_AUDIO_TEST_GROUP_OVERRIDE AND NOT "${UNITY_AUDIO_TEST_GROUP_OVERRIDE}" STREQUAL "")
+    target_compile_definitions(${PROJECT_NAME}.elf PRIVATE UNITY_AUDIO_TEST_GROUP_OVERRIDE="${UNITY_AUDIO_TEST_GROUP_OVERRIDE}")
+endif()
+
 # Note: test_app_audio uses a test-only command_interface component placed under
 # test_app_audio/components/test_command_interface. We intentionally avoid
 # exposing the project's bt_manager/bluetooth components to keep the test

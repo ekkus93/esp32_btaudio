@@ -364,7 +364,8 @@ static void test_audio_buffer_management(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
-/* forward declaration so RUN_TEST can reference the test defined later */
+/* forward declarations so RUN_TEST can reference tests defined later */
+static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
 
 void run_audio_processor_tests(void)
@@ -380,12 +381,76 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_format_conversion);
     RUN_TEST(test_audio_i2s_config);
     RUN_TEST(test_audio_buffer_management);
+    RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
+    /* On-device PSRAM integration tests */
+#if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
+    extern void test_heap_psram_simple(void);
+    extern void test_audio_processor_psram_allocations(void);
+    RUN_TEST(test_heap_psram_simple);
+    RUN_TEST(test_audio_processor_psram_allocations);
+#else
+    ESP_LOGI(TAG, "PSRAM integration tests disabled by Kconfig (CONFIG_TEST_APP_AUDIO_PSRAM_TESTS=0) or SPIRAM not enabled - skipping");
+#endif
     ESP_LOGI(TAG, "Audio processor tests completed");
 }
 
 /* forward declaration so RUN_TEST can reference the test defined below */
+static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
+
+static void test_audio_processor_play_wav_api(void)
+{
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    ret = audio_processor_start();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    (void)audio_processor_drain_ringbuffer();
+
+    ret = audio_processor_play_wav("/spiffs/worker_long_norm.wav");
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    uint8_t buf[1024];
+    size_t bytes_read = 0;
+    bool ok = false;
+    const int max_attempts = 8;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (ret == ESP_OK && bytes_read > 0) {
+            ok = true;
+            break;
+        }
+        if ((int)ret > 0) {
+            bytes_read = (size_t)ret;
+            if (bytes_read > 0) {
+                ok = true;
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(ok, "audio_processor_play_wav did not enqueue data");
+    TEST_ASSERT_TRUE(bytes_read > 0);
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+}
 
 static void test_play_wav_command(void)
 {

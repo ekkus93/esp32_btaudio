@@ -1,10 +1,24 @@
 // Minimal audio_processor stub for test_app2 to satisfy linker
 #include "esp_err.h"
+#include "esp_log.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#define AUDIO_PROC_STUB2_LOG_ONCE()                                                      \
+    do {                                                                                \
+        static bool _logged = false;                                                    \
+        if (!_logged) {                                                                 \
+            ESP_LOGI(TAG, "audio_processor (test_app2) entered %s", __func__);         \
+            _logged = true;                                                             \
+        }                                                                               \
+    } while (0)
+
+static const char *TAG = "AUDIO_PROC_STUB2";
+
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     (void)buffer;
     (void)size;
     if (bytes_read) *bytes_read = 0;
@@ -51,6 +65,7 @@ static audio_stub_state_t s_audio_stub = {
 
 esp_err_t audio_processor_get_status(audio_status_t *status)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     if (!status) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -60,6 +75,7 @@ esp_err_t audio_processor_get_status(audio_status_t *status)
 
 esp_err_t audio_processor_set_mute(bool mute)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.status.mute = mute;
     s_audio_stub.config.mute = mute;
     return ESP_OK;
@@ -67,6 +83,7 @@ esp_err_t audio_processor_set_mute(bool mute)
 
 esp_err_t audio_processor_set_volume(uint8_t volume)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     if (volume > 100) {
         volume = 100;
     }
@@ -77,6 +94,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
 
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.config.i2s_bclk_pin = bclk_pin;
     s_audio_stub.config.i2s_ws_pin = ws_pin;
     s_audio_stub.config.i2s_din_pin = din_pin;
@@ -86,6 +104,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 
 esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.config.sample_rate = sample_rate;
     s_audio_stub.status.sample_rate = sample_rate;
     return ESP_OK;
@@ -97,6 +116,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 
 esp_err_t audio_processor_play_wav(const char *path)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     (void)path;
     /* No-op in tests */
     return ESP_OK;
@@ -108,21 +128,25 @@ esp_err_t audio_processor_play_wav(const char *path)
  */
 void audio_processor_enable_next_beep_diag(void)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     /* intentionally empty for tests */
 }
 
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
 esp_err_t audio_processor_drain_ringbuffer(void)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
 /* Public header: `void audio_processor_set_dram_only(bool enable)` */
 void audio_processor_set_dram_only(bool dram_only)
 {
+    AUDIO_PROC_STUB2_LOG_ONCE();
     (void)dram_only;
 }

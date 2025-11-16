@@ -2,17 +2,20 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/ringbuf.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "driver/i2s_std.h"  // Use the current I2S driver
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "esp_err.h"
+#include "esp_debug_helpers.h"
 #include "audio_processor.h"
 #include "nvs_storage.h"
 #include "esp_heap_caps.h"
@@ -32,6 +35,14 @@ static volatile bool s_dump_next_beep_diag = false;
 static const size_t DIAG_DUMP_BYTES = 64; /* bytes to dump for snapshots */
 
 static const char *TAG = "AUDIO_PROC";
+#define AUDIO_PROC_LOG_ONCE()                                                           \
+    do {                                                                                \
+        static bool _logged = false;                                                    \
+        if (!_logged) {                                                                 \
+            ESP_LOGI(TAG, "audio_processor (main) entered %s", __func__);              \
+            _logged = true;                                                             \
+        }                                                                               \
+    } while (0)
 
 // Audio buffer sizes
 /* If SPIRAM is available at build-time use the full-size buffer (1s stereo
@@ -83,6 +94,8 @@ static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
 #define I2S_DEFAULT_DMA_DESC_NUM 6U
 #define I2S_DEFAULT_DMA_FRAME_NUM 32U
 #define I2S_MAX_READ_BYTES (4 * 1024)
+#define SYNTH_MIN_HEADROOM_BYTES  (AUDIO_WORK_BUFFER_BYTES)
+#define SYNTH_THROTTLE_DELAY_MS   2
 
 // Ring buffer for audio data
 static RingbufHandle_t s_audio_buffer = NULL;
@@ -118,6 +131,20 @@ static bool s_is_running = false;
  * at runtime via audio_processor_set_synth_mode(). */
 static bool s_force_synth = true;
 static uint8_t s_volume_gain = 80; // Internal volume as percentage
+static volatile bool s_trace_next_read_call = false;
+static size_t s_runtime_work_bytes = 0U;
+
+static size_t audio_get_runtime_work_bytes(void)
+{
+    size_t bytes = s_runtime_work_bytes;
+    if (bytes == 0U) {
+        bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    }
+    return bytes;
+}
+
+static void log_read_summary(const char *phase, size_t requested, size_t produced);
+static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
 /* Remember previous synth mode when we temporarily enable synth for
@@ -150,6 +177,11 @@ static double s_beep_fallback_phase_inc = 0.0;
 static size_t s_beep_fallback_total_frames = 0;
 static portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
 
+#define WAV_RINGBUFFER_WAIT_MS (50U)
+#define WAV_RINGBUFFER_MAX_DROPS (16)
+/* Limit WAV ringbuffer writes to smaller slices to keep critical sections short. */
+#define WAV_RINGBUFFER_SUBCHUNK_BYTES (256U)
+
 // Diagnostics throttling state for high-frequency logging inside the
 // audio processing task. We emit the first log immediately and then
 // rate-limit updates to avoid starving the idle task and tripping the watchdog.
@@ -159,11 +191,110 @@ static size_t s_diag_last_frame_bytes = SIZE_MAX;
 static int s_diag_last_src_rate = -1;
 static int s_diag_last_dst_rate = -1;
 
+typedef enum {
+    WORKER_DIAG_SOURCE_WORKER = 0,
+    WORKER_DIAG_SOURCE_WAV
+} worker_diag_source_t;
+
+typedef struct {
+    uint32_t dequeued_blocks;
+    uint32_t synth_blocks;
+    size_t bytes_sent;
+    size_t worker_bytes_sent;
+    size_t wav_bytes_sent;
+    uint32_t wav_chunks;
+    uint32_t ringbuffer_failures;
+    size_t last_enqueued_bytes;
+    BaseType_t last_send_result;
+    TickType_t last_report_tick;
+    worker_diag_source_t last_source;
+} worker_diag_state_t;
+
+static worker_diag_state_t s_worker_diag = {0};
+static const TickType_t WORKER_DIAG_INTERVAL_TICKS = pdMS_TO_TICKS(1000);
+
+static TickType_t s_wav_retry_log_next_tick = 0;
+static const TickType_t WAV_RETRY_LOG_INTERVAL_TICKS = pdMS_TO_TICKS(200);
+
+static inline void wav_stream_log_backpressure(size_t chunk, size_t free_sz, size_t frame_sz,
+                                               size_t max_item, size_t remaining)
+{
+    TickType_t now = xTaskGetTickCount();
+    if (now >= s_wav_retry_log_next_tick) {
+        ESP_LOGW(TAG,
+                 "WAV enqueue backpressure: chunk=%zu free=%zu frame=%zu max=%zu remaining=%zu",
+                 chunk, free_sz, frame_sz, max_item, remaining);
+        s_wav_retry_log_next_tick = now + WAV_RETRY_LOG_INTERVAL_TICKS;
+    }
+}
+
+static void log_read_summary(const char *phase, size_t requested, size_t produced);
+static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
+                                      audio_bit_depth_t src_bit_depth, audio_bit_depth_t dst_bit_depth,
+                                      size_t* dst_size);
+static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
+                                audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
+                                size_t* dst_size);
+static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result);
+
 static inline void audio_proc_mock_yield(void)
 {
 #ifdef CONFIG_BT_MOCK_TESTING
     vTaskDelay(1);
 #endif
+}
+
+static bool wait_for_ringbuffer_space(size_t required_bytes, uint32_t timeout_ms, size_t *free_before_out)
+{
+    if (free_before_out != NULL) {
+        *free_before_out = 0U;
+    }
+
+    if (required_bytes == 0U) {
+        if (s_audio_buffer != NULL && free_before_out != NULL) {
+            *free_before_out = xRingbufferGetCurFreeSize(s_audio_buffer);
+        }
+        return (s_audio_buffer != NULL);
+    }
+
+    if (s_audio_buffer == NULL) {
+        return false;
+    }
+
+    size_t free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
+    if (free_before_out != NULL) {
+        *free_before_out = free_now;
+    }
+    if (free_now >= required_bytes) {
+        return true;
+    }
+
+    TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ms > 0U && timeout_ticks == 0) {
+        timeout_ticks = 1;
+    }
+    bool use_deadline = (timeout_ms != 0U);
+    TickType_t start_tick = xTaskGetTickCount();
+    TickType_t poll_delay = pdMS_TO_TICKS(1);
+    if (poll_delay == 0) {
+        poll_delay = 1;
+    }
+
+    while (free_now < required_bytes) {
+        vTaskDelay(poll_delay);
+        free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
+        if (free_now >= required_bytes) {
+            return true;
+        }
+        if (use_deadline) {
+            TickType_t now = xTaskGetTickCount();
+            if ((now - start_tick) >= timeout_ticks) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 /* Helper to log heap free sizes for DRAM and PSRAM (when available).
@@ -190,12 +321,14 @@ static void log_heap_stats(const char *ctx)
  */
 void audio_processor_set_synth_mode(bool enable)
 {
+    AUDIO_PROC_LOG_ONCE();
     s_force_synth = enable ? true : false;
     ESP_LOGI(TAG, "audio_processor: synth mode %s", s_force_synth ? "ENABLED" : "DISABLED");
 }
 
 bool audio_processor_is_synth_mode_enabled(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     return s_force_synth;
 }
 
@@ -208,6 +341,708 @@ static uint8_t *s_proc_buffer2 = NULL;
  * chance of a successful allocation on low-memory boards. We allocate one
  * block and carve it into three sub-buffers (i2s, proc, proc2). */
 static uint8_t *s_work_block = NULL;
+/* Residual buffers hold partial ringbuffer chunks so subsequent reads can
+ * resume without dropping samples when the caller requests smaller blocks
+ * than the chunk size produced by the worker or WAV enqueue paths. */
+static uint8_t s_audio_rb_residual[AUDIO_WORK_BUFFER_BYTES];
+static size_t s_audio_rb_residual_len = 0;
+static size_t s_audio_rb_residual_pos = 0;
+static uint8_t s_beep_rb_residual[BEEP_BUFFER_SIZE];
+static size_t s_beep_rb_residual_len = 0;
+static size_t s_beep_rb_residual_pos = 0;
+static volatile bool s_wav_playback_active = false;
+static size_t s_wav_pending_bytes = 0;
+static bool s_wav_prev_force_synth = false;
+static bool s_wav_prev_valid = false;
+static portMUX_TYPE s_wav_lock = portMUX_INITIALIZER_UNLOCKED;
+
+typedef struct {
+    bool active;
+    bool resume_pipeline;
+    FILE *file;
+    audio_bit_depth_t src_bit_depth;
+    audio_sample_rate_t src_sample_rate;
+    size_t frame_bytes_src;
+    size_t frame_bytes_dst;
+    size_t remaining_bytes;
+} wav_stream_state_t;
+
+static SemaphoreHandle_t s_wav_mutex = NULL;
+static wav_stream_state_t s_wav_stream = {0};
+static uint8_t s_wav_send_residual[AUDIO_WORK_BUFFER_BYTES];
+static size_t s_wav_send_residual_len = 0;
+static size_t s_wav_send_residual_pos = 0;
+
+static size_t audio_ringbuffer_min_capacity(size_t frame_bytes)
+{
+    /* Ensure we always have space for several resample bursts plus headroom
+     * for the ringbuffer's bookkeeping. Use AUDIO_WORK_BUFFER_BYTES as the
+     * nominal burst size and fall back to a frame-aligned block when the
+     * build-time constant is smaller than the current configuration. */
+    size_t block_bytes = frame_bytes * (size_t)AUDIO_BLOCK_SIZE;
+    if (block_bytes == 0U) {
+        block_bytes = 1024U;
+    }
+
+    size_t burst_bytes = AUDIO_WORK_BUFFER_BYTES;
+    if (burst_bytes < block_bytes) {
+        burst_bytes = block_bytes;
+    }
+
+    /* Target at least three bursts so 6 KiB resample chunks do not saturate
+     * the buffer immediately while WAV playback is enqueueing data. */
+    size_t floor = burst_bytes;
+    if (burst_bytes <= (SIZE_MAX / 3U)) {
+        floor = burst_bytes * 3U;
+    } else {
+        floor = SIZE_MAX & ~((size_t)3U);
+    }
+
+    /* Add an extra burst worth of headroom to accommodate the ringbuffer's
+     * internal bookkeeping and small drifts in producer/consumer pacing. */
+    if (block_bytes <= (SIZE_MAX - burst_bytes)) {
+        size_t padded = burst_bytes + block_bytes;
+        if (padded > floor) {
+            floor = padded;
+        }
+    }
+
+    const size_t static_floor = (AUDIO_WORK_BUFFER_BYTES > (4U * 1024U)) ? AUDIO_WORK_BUFFER_BYTES : (4U * 1024U);
+    if (floor < static_floor) {
+        floor = static_floor;
+    }
+
+    floor = (floor + 3U) & ~((size_t)3U);
+    return floor;
+}
+
+static size_t residual_copy(uint8_t *dest, size_t dest_len,
+                            uint8_t *buffer, size_t *pos, size_t *len)
+{
+    if (dest == NULL || buffer == NULL || pos == NULL || len == NULL || dest_len == 0) {
+        return 0;
+    }
+
+    size_t available = (*len > *pos) ? (*len - *pos) : 0;
+    size_t to_copy = (available < dest_len) ? available : dest_len;
+    if (to_copy == 0) {
+        return 0;
+    }
+
+    memcpy(dest, buffer + *pos, to_copy);
+    *pos += to_copy;
+    if (*pos >= *len) {
+        *pos = 0;
+        *len = 0;
+    }
+    return to_copy;
+}
+
+static size_t residual_store(const uint8_t *src, size_t len,
+                             uint8_t *buffer, size_t capacity,
+                             size_t *pos, size_t *stored_len)
+{
+    if (src == NULL || buffer == NULL || pos == NULL || stored_len == NULL) {
+        return 0;
+    }
+
+    if (len == 0 || capacity == 0) {
+        *stored_len = 0;
+        *pos = 0;
+        return 0;
+    }
+
+    size_t copy_len = (len > capacity) ? capacity : len;
+    memcpy(buffer, src, copy_len);
+    *stored_len = copy_len;
+    *pos = 0;
+    return copy_len;
+}
+
+static bool wav_playback_is_active(void)
+{
+    return s_wav_playback_active;
+}
+
+static void wav_playback_begin(void)
+{
+    bool prev = false;
+    portENTER_CRITICAL(&s_wav_lock);
+    prev = s_force_synth;
+    s_wav_prev_force_synth = s_force_synth;
+    s_wav_prev_valid = true;
+    s_wav_pending_bytes = 0;
+    s_wav_playback_active = true;
+    s_force_synth = false;
+    portEXIT_CRITICAL(&s_wav_lock);
+    ESP_LOGI(TAG, "audio_processor: WAV playback begin (prev synth=%s)", prev ? "ENABLED" : "DISABLED");
+}
+
+static void wav_playback_add_pending(size_t bytes)
+{
+    if (bytes == 0) {
+        return;
+    }
+
+    portENTER_CRITICAL(&s_wav_lock);
+    if (s_wav_playback_active) {
+        if (SIZE_MAX - s_wav_pending_bytes < bytes) {
+            s_wav_pending_bytes = SIZE_MAX;
+        } else {
+            s_wav_pending_bytes += bytes;
+        }
+    }
+    portEXIT_CRITICAL(&s_wav_lock);
+}
+
+static bool wav_playback_consume(size_t bytes)
+{
+    if (bytes == 0) {
+        return false;
+    }
+
+    bool restored = false;
+    bool synth_mode = false;
+    portENTER_CRITICAL(&s_wav_lock);
+    if (s_wav_playback_active) {
+        if (bytes >= s_wav_pending_bytes) {
+            s_wav_pending_bytes = 0;
+            s_wav_playback_active = false;
+            if (s_wav_prev_valid) {
+                s_force_synth = s_wav_prev_force_synth;
+                synth_mode = s_force_synth;
+                s_wav_prev_valid = false;
+                restored = true;
+            }
+        } else {
+            s_wav_pending_bytes -= bytes;
+        }
+    }
+    portEXIT_CRITICAL(&s_wav_lock);
+
+    if (restored) {
+        ESP_LOGI(TAG, "audio_processor: WAV playback drained (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
+    }
+
+    return restored;
+}
+
+static void wav_playback_abort(void)
+{
+    bool restored = false;
+    bool synth_mode = false;
+    portENTER_CRITICAL(&s_wav_lock);
+    if (s_wav_playback_active || s_wav_prev_valid) {
+        s_wav_pending_bytes = 0;
+        s_wav_playback_active = false;
+        if (s_wav_prev_valid) {
+            s_force_synth = s_wav_prev_force_synth;
+            synth_mode = s_force_synth;
+            s_wav_prev_valid = false;
+            restored = true;
+        }
+    }
+    portEXIT_CRITICAL(&s_wav_lock);
+
+    if (restored) {
+        ESP_LOGI(TAG, "audio_processor: WAV playback aborted (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
+    }
+}
+
+static void wav_playback_complete_if_idle(void)
+{
+    bool restored = false;
+    bool synth_mode = false;
+    portENTER_CRITICAL(&s_wav_lock);
+    if (s_wav_playback_active && s_wav_pending_bytes == 0) {
+        s_wav_playback_active = false;
+        if (s_wav_prev_valid) {
+            s_force_synth = s_wav_prev_force_synth;
+            synth_mode = s_force_synth;
+            s_wav_prev_valid = false;
+            restored = true;
+        }
+    }
+    portEXIT_CRITICAL(&s_wav_lock);
+
+    if (restored) {
+        ESP_LOGI(TAG, "audio_processor: WAV playback completed (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
+    }
+}
+
+static void wav_stream_mutex_init(void)
+{
+    if (s_wav_mutex != NULL) {
+        return;
+    }
+
+    s_wav_mutex = xSemaphoreCreateMutex();
+    if (s_wav_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate WAV stream mutex");
+    }
+}
+
+static inline void wav_stream_reset_residual_locked(void)
+{
+    s_wav_send_residual_len = 0;
+    s_wav_send_residual_pos = 0;
+}
+
+static size_t wav_stream_frame_bytes_dst(void)
+{
+    if (s_wav_stream.frame_bytes_dst != 0U) {
+        return s_wav_stream.frame_bytes_dst;
+    }
+
+    size_t bytes_per_sample = (size_t)audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample == 0U) {
+        bytes_per_sample = 2U;
+    }
+    size_t channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
+    if (channels == 0U) {
+        channels = 2U;
+    }
+    return bytes_per_sample * channels;
+}
+
+static bool wav_stream_flush_residual_locked(void)
+{
+    if (s_audio_buffer == NULL) {
+        return false;
+    }
+
+    if (s_wav_send_residual_len == 0 || s_wav_send_residual_pos >= s_wav_send_residual_len) {
+        wav_stream_reset_residual_locked();
+        return false;
+    }
+
+    size_t frame_bytes = wav_stream_frame_bytes_dst();
+    size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+    bool pending = false;
+
+    while (s_wav_send_residual_pos < s_wav_send_residual_len) {
+        size_t remaining = s_wav_send_residual_len - s_wav_send_residual_pos;
+        size_t send_size = remaining;
+        if (max_item > 0U && send_size > max_item) {
+            send_size = max_item;
+        }
+        if (frame_bytes > 0U && send_size >= frame_bytes) {
+            size_t aligned = (send_size / frame_bytes) * frame_bytes;
+            if (aligned == 0U) {
+                aligned = frame_bytes;
+            }
+            if (aligned > send_size) {
+                aligned = send_size;
+            }
+            send_size = aligned;
+        }
+        if (send_size == 0U) {
+            pending = true;
+            break;
+        }
+
+        BaseType_t sent = xRingbufferSend(s_audio_buffer,
+                                          s_wav_send_residual + s_wav_send_residual_pos,
+                                          send_size,
+                                          0);
+        if (sent != pdTRUE) {
+            pending = true;
+            break;
+        }
+
+        wav_playback_add_pending(send_size);
+        worker_diag_report(WORKER_DIAG_SOURCE_WAV, send_size, sent);
+        printf("DIAG-APLAY-STREAM: residual-send=%ld size=%zu\n", (long)sent, send_size);
+        s_wav_send_residual_pos += send_size;
+    }
+
+    if (!pending || s_wav_send_residual_pos >= s_wav_send_residual_len) {
+        wav_stream_reset_residual_locked();
+        pending = false;
+    }
+
+    return pending;
+}
+
+static bool wav_stream_queue_data_locked(const uint8_t *data, size_t len)
+{
+    if (data == NULL || len == 0U || s_audio_buffer == NULL) {
+        return false;
+    }
+
+    size_t frame_bytes = wav_stream_frame_bytes_dst();
+    size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+    size_t offset = 0U;
+    bool deferred = false;
+
+    while (offset < len) {
+        size_t remaining = len - offset;
+        size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+
+        if (free_size == 0U) {
+            deferred = true;
+            wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, remaining);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        if (max_item > 0U) {
+            if (remaining > max_item) {
+                remaining = max_item;
+            }
+            if (free_size > max_item) {
+                free_size = max_item;
+            }
+        }
+
+        /* Limit per-send to a small subchunk to keep any ringbuffer
+         * critical sections short. This prevents large single sends (for
+         * example 6 KiB resample bursts) from holding internal spinlocks
+         * for too long and triggering the interrupt WDT. */
+        /* Cap individual sends to a small slice to keep critical sections
+         * brief. This avoids long single xRingbufferSend invocations. */
+        size_t chunk_size = remaining;
+        
+        const size_t send_cap = WAV_RINGBUFFER_SUBCHUNK_BYTES;
+        if (chunk_size > send_cap) {
+            chunk_size = send_cap;
+        }
+        if (chunk_size > free_size) {
+            chunk_size = free_size;
+        }
+
+        if (frame_bytes > 0U) {
+            if (free_size < frame_bytes) {
+                deferred = true;
+                wav_stream_log_backpressure(chunk_size, free_size, frame_bytes, max_item, len - offset);
+                vTaskDelay(pdMS_TO_TICKS(1));
+                break;
+            }
+
+            chunk_size = (chunk_size / frame_bytes) * frame_bytes;
+            if (chunk_size == 0U) {
+                deferred = true;
+                wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, len - offset);
+                vTaskDelay(pdMS_TO_TICKS(1));
+                break;
+            }
+        } else if (chunk_size == 0U) {
+            deferred = true;
+            wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, len - offset);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        int64_t t_before = esp_timer_get_time();
+        BaseType_t sent = xRingbufferSend(s_audio_buffer, data + offset, chunk_size, pdMS_TO_TICKS(1));
+        int64_t t_after = esp_timer_get_time();
+        printf("DIAG-APLAY-STREAM: send=%ld size=%zu free=%zu took=%lldus\n",
+               (long)sent, chunk_size, free_size, (long long)(t_after - t_before));
+        if (t_after - t_before > 5000) {
+            ESP_LOGW(TAG, "wav path ringbuf send long: %lld us chunk=%zu free=%zu",
+                     (long long)(t_after - t_before), chunk_size, free_size);
+        }
+        if (sent != pdTRUE) {
+            deferred = true;
+            wav_stream_log_backpressure(chunk_size, free_size, frame_bytes, max_item, len - offset);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        wav_playback_add_pending(chunk_size);
+        worker_diag_report(WORKER_DIAG_SOURCE_WAV, chunk_size, sent);
+        offset += chunk_size;
+    }
+
+    if (deferred) {
+        size_t residual = len - offset;
+        if (residual > sizeof(s_wav_send_residual)) {
+            residual = sizeof(s_wav_send_residual);
+        }
+        memcpy(s_wav_send_residual, data + offset, residual);
+        s_wav_send_residual_len = residual;
+        s_wav_send_residual_pos = 0U;
+        printf("DIAG-APLAY-STREAM: backlog=%zu\n", residual);
+    }
+
+    return deferred;
+}
+
+/* Attempt to enqueue `len` bytes from `data` into the audio ringbuffer without
+ * holding the WAV mutex. Returns the number of bytes successfully enqueued.
+ * This function does not modify WAV playback shared state (residual buffers)
+ * and is safe to call without `s_wav_mutex` held. It will perform paced
+ * retries with a small delay when the ringbuffer is temporarily full. */
+static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len)
+{
+    if (data == NULL || len == 0U || s_audio_buffer == NULL) {
+        return 0U;
+    }
+
+    size_t frame_bytes = wav_stream_frame_bytes_dst();
+    size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+    size_t offset = 0U;
+
+    while (offset < len) {
+        size_t remaining = len - offset;
+        size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+
+        if (free_size == 0U) {
+            /* backpressure: yield a bit and return what we've queued so far */
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        if (max_item > 0U) {
+            if (remaining > max_item) {
+                remaining = max_item;
+            }
+            if (free_size > max_item) {
+                free_size = max_item;
+            }
+        }
+
+        size_t chunk_size = remaining;
+        if (chunk_size > free_size) {
+            chunk_size = free_size;
+        }
+
+        if (frame_bytes > 0U) {
+            if (free_size < frame_bytes) {
+                /* Not enough room for a full frame; yield and stop */
+                vTaskDelay(pdMS_TO_TICKS(1));
+                break;
+            }
+            chunk_size = (chunk_size / frame_bytes) * frame_bytes;
+            if (chunk_size == 0U) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+                break;
+            }
+        } else if (chunk_size == 0U) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        /* Try sending with a short wait to avoid long spinlock holds inside
+         * the ringbuffer implementation. Also capture lightweight timing
+         * info to help diagnose stalls that previously triggered the
+         * interrupt WDT. Keep logs at debug level to avoid noisy output. */
+        int64_t t_before = esp_timer_get_time();
+        BaseType_t sent = xRingbufferSend(s_audio_buffer, data + offset, chunk_size, pdMS_TO_TICKS(1));
+        int64_t t_after = esp_timer_get_time();
+        if (t_after - t_before > 5000) {
+            ESP_LOGW(TAG, "ringbuf send stalled: took %lld us chunk=%zu free=%zu",
+                     (long long)(t_after - t_before), chunk_size, free_size);
+        } else {
+            ESP_LOGD(TAG, "ringbuf send: took %lld us chunk=%zu",
+                     (long long)(t_after - t_before), chunk_size);
+        }
+        if (sent != pdTRUE) {
+            /* Could not send now; yield and stop so caller can handle residuals */
+            vTaskDelay(pdMS_TO_TICKS(1));
+            break;
+        }
+
+        wav_playback_add_pending(chunk_size);
+        worker_diag_report(WORKER_DIAG_SOURCE_WAV, chunk_size, sent);
+        offset += chunk_size;
+    }
+
+    return offset;
+}
+
+static esp_err_t wav_stream_fill_locked(void)
+{
+    if (!s_wav_stream.active || s_wav_stream.file == NULL) {
+        return ESP_OK;
+    }
+
+    if (s_audio_buffer == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (wav_stream_flush_residual_locked()) {
+        return ESP_OK;
+    }
+
+    const int max_iterations = 4;
+    for (int iter = 0; iter < max_iterations && s_wav_stream.remaining_bytes > 0U; ++iter) {
+        size_t frame_src = (s_wav_stream.frame_bytes_src != 0U) ? s_wav_stream.frame_bytes_src : 1U;
+        size_t work_bytes = audio_get_runtime_work_bytes();
+        if (work_bytes < frame_src) {
+            work_bytes = frame_src;
+        }
+        size_t to_read = work_bytes;
+        to_read = (to_read / frame_src) * frame_src;
+        if (to_read == 0U) {
+            to_read = frame_src;
+        }
+        if (to_read > s_wav_stream.remaining_bytes) {
+            to_read = s_wav_stream.remaining_bytes;
+        }
+        if (to_read == 0U) {
+            break;
+        }
+
+        size_t raw_read = fread(s_proc_buffer, 1, to_read, s_wav_stream.file);
+        if (raw_read == 0U) {
+            s_wav_stream.remaining_bytes = 0U;
+            break;
+        }
+
+        if (raw_read > s_wav_stream.remaining_bytes) {
+            s_wav_stream.remaining_bytes = 0U;
+        } else {
+            s_wav_stream.remaining_bytes -= raw_read;
+        }
+
+        size_t conv_size = 0U;
+        esp_err_t conv_ret = convert_audio_format(s_proc_buffer,
+                                                  s_proc_buffer,
+                                                  raw_read,
+                                                  s_wav_stream.src_bit_depth,
+                                                  s_audio_config.bit_depth,
+                                                  &conv_size);
+        if (conv_ret != ESP_OK) {
+            return conv_ret;
+        }
+
+        size_t res_size = 0U;
+        esp_err_t res_ret = resample_audio(s_proc_buffer,
+                                           s_proc_buffer2,
+                                           conv_size,
+                                           s_wav_stream.src_sample_rate,
+                                           s_audio_config.sample_rate,
+                                           &res_size);
+        if (res_ret != ESP_OK) {
+            return res_ret;
+        }
+
+        if (res_size == 0U) {
+            continue;
+        }
+
+        /* Release wav mutex while doing potentially long ringbuffer sends.
+         * We perform the actual sends in an unlocked helper so we don't hold
+         * `s_wav_mutex` (the WAV state mutex) while entering ringbuffer
+         * critical sections. Any remaining bytes are stored back into the
+         * residual buffer under the mutex. */
+        size_t sent_bytes = 0;
+        xSemaphoreGive(s_wav_mutex);
+        sent_bytes = wav_stream_try_enqueue_unlocked(s_proc_buffer2, res_size);
+        /* Re-acquire WAV mutex to update shared state */
+        if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) != pdTRUE) {
+            /* Should not happen; treat as error */
+            return ESP_FAIL;
+        }
+
+        if (sent_bytes < res_size) {
+            size_t residual = res_size - sent_bytes;
+            if (residual > sizeof(s_wav_send_residual)) {
+                residual = sizeof(s_wav_send_residual);
+            }
+            memcpy(s_wav_send_residual, s_proc_buffer2 + sent_bytes, residual);
+            s_wav_send_residual_len = residual;
+            s_wav_send_residual_pos = 0U;
+            /* indicate we could not send all data */
+            break;
+        }
+
+        if (wav_stream_flush_residual_locked()) {
+            break;
+        }
+    }
+
+    return ESP_OK;
+}
+
+static bool wav_stream_clear_locked(bool close_file)
+{
+    bool resume_needed = s_wav_stream.resume_pipeline;
+
+    if (close_file && s_wav_stream.file != NULL) {
+        fclose(s_wav_stream.file);
+    }
+
+    s_wav_stream.active = false;
+    s_wav_stream.resume_pipeline = false;
+    s_wav_stream.file = NULL;
+    s_wav_stream.src_bit_depth = s_audio_config.bit_depth;
+    s_wav_stream.src_sample_rate = s_audio_config.sample_rate;
+    s_wav_stream.frame_bytes_src = 0U;
+    s_wav_stream.frame_bytes_dst = 0U;
+    s_wav_stream.remaining_bytes = 0U;
+    wav_stream_reset_residual_locked();
+
+    return resume_needed;
+}
+
+static void wav_stream_try_refill(void)
+{
+    if (s_wav_mutex == NULL) {
+        return;
+    }
+
+    bool resume_needed = false;
+    esp_err_t fill_ret = ESP_OK;
+
+    if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) == pdTRUE) {
+        if (s_wav_stream.active) {
+            fill_ret = wav_stream_fill_locked();
+            if (fill_ret != ESP_OK) {
+                ESP_LOGE(TAG, "wav_stream_fill_locked failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));
+                s_wav_stream.resume_pipeline = true;
+                resume_needed = wav_stream_clear_locked(true);
+            } else if (s_wav_stream.remaining_bytes == 0U && s_wav_pending_bytes == 0U && s_wav_send_residual_len == 0U) {
+                resume_needed = wav_stream_clear_locked(true);
+            }
+        }
+        xSemaphoreGive(s_wav_mutex);
+    }
+
+    if (fill_ret != ESP_OK) {
+        wav_playback_abort();
+    }
+
+    if (resume_needed) {
+        wav_playback_complete_if_idle();
+        if (s_is_initialized) {
+            esp_err_t restart_ret = audio_processor_start();
+            if (restart_ret != ESP_OK) {
+                ESP_LOGE(TAG, "wav_stream_try_refill: failed to resume pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
+            }
+        }
+    }
+}
+
+static void wav_stream_abort(bool allow_resume)
+{
+    if (s_wav_mutex == NULL) {
+        return;
+    }
+
+    bool resume_needed = false;
+
+    if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) == pdTRUE) {
+        if (s_wav_stream.active || s_wav_stream.file != NULL) {
+            if (!allow_resume) {
+                s_wav_stream.resume_pipeline = false;
+            }
+            resume_needed = wav_stream_clear_locked(true);
+        }
+        xSemaphoreGive(s_wav_mutex);
+    }
+
+    if (allow_resume && resume_needed) {
+        wav_playback_complete_if_idle();
+        if (s_is_initialized) {
+            esp_err_t restart_ret = audio_processor_start();
+            if (restart_ret != ESP_OK) {
+                ESP_LOGE(TAG, "wav_stream_abort: failed to resume pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
+            }
+        }
+    }
+}
 
 static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth)
 {
@@ -236,13 +1071,15 @@ static size_t audio_calculate_buffer_capacity(const audio_config_t* config)
 #else
     (void)config;
 #endif
+    size_t min_capacity = audio_ringbuffer_min_capacity(frame_bytes);
+
     size_t capacity = AUDIO_BUFFER_SIZE;
-    if (capacity < AUDIO_WORK_BUFFER_BYTES) {
-        capacity = AUDIO_WORK_BUFFER_BYTES;
+    if (capacity < min_capacity) {
+        capacity = min_capacity;
     }
 
     if (capacity == 0) {
-        capacity = frame_bytes * AUDIO_BLOCK_SIZE;
+        capacity = min_capacity;
     }
 
     /* Ringbuffer expects 4-byte aligned sizes. */
@@ -276,12 +1113,6 @@ static void i2s_reader_task(void *pvParameters);
 static void audio_worker_task(void *pvParameters);
 static esp_err_t configure_i2s(const audio_config_t* config);
 static void apply_volume(void* buffer, size_t size, uint8_t volume);
-static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size, 
-                                      audio_bit_depth_t src_bit_depth, audio_bit_depth_t dst_bit_depth,
-                                      size_t* dst_size);
-static esp_err_t resample_audio(void* src, void* dst, size_t src_size, 
-                               audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
-                               size_t* dst_size);
 
 /* Diagnostic helper forward-declaration (defined later) */
 static void diag_dump_bytes(const void* data, size_t len, const char* tag);
@@ -291,10 +1122,15 @@ static void drain_beep_buffer(void);
 /* Temporarily default to true for Option 2: boot with DRAM-only allocations
  * (this avoids PSRAM placement for audio buffers so we can A/B the beep).
  * Revert this change after debugging or make persistent via Kconfig/NVS as needed. */
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+static bool s_dram_only_alloc = false;
+#else
 static bool s_dram_only_alloc = true;
+#endif
 
 void audio_processor_set_dram_only(bool enable)
 {
+    AUDIO_PROC_LOG_ONCE();
     s_dram_only_alloc = enable ? true : false;
     ESP_LOGI(TAG, "audio_processor: DRAM-only allocations %s", s_dram_only_alloc ? "ENABLED" : "DISABLED");
 }
@@ -346,7 +1182,7 @@ static size_t beep_buffer_send_chunked(const uint8_t* data, size_t total_bytes, 
         const int max_drop_attempts = 4;
         while (xRingbufferGetCurFreeSize(s_beep_buffer) < this_chunk && drop_attempts < max_drop_attempts) {
             size_t rsz = 0;
-            void* it = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, this_chunk, 0);
+            void* it = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, 0, this_chunk);
             if (it == NULL || rsz == 0) break;
             vRingbufferReturnItem(s_beep_buffer, it);
             dropped += rsz;
@@ -478,6 +1314,7 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
  */
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (s_is_initialized) {
         ESP_LOGW(TAG, "Audio processor already initialized");
         return ESP_ERR_INVALID_STATE;
@@ -487,6 +1324,11 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         ESP_LOGE(TAG, "Null config provided");
         return ESP_ERR_INVALID_ARG;
     }
+
+    wav_stream_mutex_init();
+
+    /* Ensure diagnostics requested for current investigation are emitted. */
+    esp_log_level_set(TAG, ESP_LOG_INFO);
 
     // Copy configuration
     memcpy(&s_audio_config, config, sizeof(audio_config_t));
@@ -520,12 +1362,23 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     // allocation fails (useful for DRAM-only boards where the compile-time
     // DRAM-safe fallback may still be too large).
     size_t try_capacity = buffer_capacity;
+    /* If PSRAM is not available at runtime, prefer a conservative initial
+     * allocation target to avoid exhausting DRAM and starving other
+     * subsystems (for example the Bluetooth stack). The allocation loop
+     * below will still try larger sizes if necessary, but starting lower
+     * prevents happily succeeding with a very large DRAM allocation that
+     * later causes malloc failures elsewhere. */
+    if (!runtime_psram_ready) {
+        const size_t dram_initial_cap = 32 * 1024; /* 32 KiB conservative start */
+        if (try_capacity > dram_initial_cap) {
+            ESP_LOGW(TAG, "Runtime: PSRAM absent — capping initial audio buffer target to %zu bytes to reduce DRAM pressure", dram_initial_cap);
+            try_capacity = dram_initial_cap;
+        }
+    }
     /* Keep the initial target at the full computed capacity; the retry loop
      * below will progressively reduce the size if allocations fail. This
      * avoids preemptively constraining DRAM-only boards to 32 KiB and gives
      * more headroom for larger resampled audio blocks. */
-    const size_t min_floor = (AUDIO_WORK_BUFFER_BYTES > (4U * 1024U)) ? AUDIO_WORK_BUFFER_BYTES : (4U * 1024U);
-
     /* Ensure we never shrink below a single processing block and keep a
      * modest floor so the stream retains some buffering depth on DRAM-only
      * boards. */
@@ -546,9 +1399,9 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         block_requirement = 1024U;
     }
 
-    size_t desired_min = block_requirement;
-    if (desired_min < min_floor) {
-        desired_min = min_floor;
+    size_t desired_min = audio_ringbuffer_min_capacity(frame_bytes);
+    if (desired_min < block_requirement) {
+        desired_min = block_requirement;
     }
     size_t min_capacity = (buffer_capacity < desired_min) ? buffer_capacity : desired_min;
     if (min_capacity == 0U) {
@@ -580,18 +1433,27 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 #endif
     if (s_dram_only_alloc) psram_ready_local = false;
         if (psram_ready_local) {
+            /* Use BYTEBUF so the consumer can safely call xRingbufferReceiveUpTo()
+             * without tripping the ESP-IDF allow-split assertion. The writer
+             * already chunks WAV data to fit within the configured max item size. */
             s_audio_buffer = xRingbufferCreateWithCaps(try_capacity, RINGBUF_TYPE_BYTEBUF,
                                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
             if (s_audio_buffer != NULL) {
-                ESP_LOGI(TAG, "Audio buffer created in PSRAM (%zu bytes)", try_capacity);
+                size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+                ESP_LOGI(TAG, "Audio buffer created in PSRAM (%zu bytes capacity, max item %zu)",
+                         try_capacity,
+                         max_item);
                 break;
             }
             ESP_LOGW(TAG, "xRingbufferCreateWithCaps(PSRAM) failed for %zu, falling back to default allocator", try_capacity);
         }
 
-        s_audio_buffer = xRingbufferCreate(try_capacity, RINGBUF_TYPE_BYTEBUF);
+    s_audio_buffer = xRingbufferCreate(try_capacity, RINGBUF_TYPE_BYTEBUF);
         if (s_audio_buffer != NULL) {
-            ESP_LOGI(TAG, "Audio buffer created (%zu bytes)", try_capacity);
+            size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+            ESP_LOGI(TAG, "Audio buffer created (%zu bytes capacity, max item %zu)",
+                     try_capacity,
+                     max_item);
             break;
         }
 
@@ -655,6 +1517,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
      * progressively smaller buffer sizes for all three work buffers so the
      * system can boot with reduced capability. */
     size_t try_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    s_runtime_work_bytes = 0U;
     /* Lower work buffer sizing on DRAM-only systems to reduce resident
      * DRAM usage (we'll still try progressively smaller sizes). */
     if (!runtime_psram_ready && try_work_bytes > 4096) {
@@ -696,6 +1559,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
             s_proc_buffer2 = s_work_block + (try_work_bytes * 2U);
 
             ESP_LOGI(TAG, "Audio work combined block allocated: %zu bytes (3 x %zu)", combined, try_work_bytes);
+            s_runtime_work_bytes = try_work_bytes;
             work_allocated = true;
             break;
         }
@@ -848,6 +1712,10 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     s_diag_last_src_rate = -1;
     s_diag_last_dst_rate = -1;
 
+    if (s_runtime_work_bytes == 0U) {
+        s_runtime_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    }
+
     ESP_LOGI(TAG, "Audio processor initialized: %dHz, %d-bit, %d channels", 
              config->sample_rate, config->bit_depth, config->channels);
 
@@ -859,6 +1727,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
  */
 esp_err_t audio_processor_deinit(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         return ESP_OK; // Already deinitialized
     }
@@ -871,6 +1740,8 @@ esp_err_t audio_processor_deinit(void)
             return ret;
         }
     }
+
+    wav_stream_abort(false);
 
     // Delete reader and worker tasks
     if (s_audio_task_handle != NULL) {
@@ -948,6 +1819,7 @@ esp_err_t audio_processor_deinit(void)
     s_i2s_buffer = NULL;
     s_proc_buffer = NULL;
     s_proc_buffer2 = NULL;
+    s_runtime_work_bytes = 0U;
 
     /* Delete beep buffer if present */
     if (s_beep_buffer != NULL) {
@@ -966,6 +1838,7 @@ esp_err_t audio_processor_deinit(void)
  */
 esp_err_t audio_processor_start(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -998,6 +1871,7 @@ esp_err_t audio_processor_start(void)
  */
 esp_err_t audio_processor_stop(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1022,6 +1896,9 @@ esp_err_t audio_processor_stop(void)
     s_is_running = false;
     ESP_LOGI(TAG, "Audio processor stopped");
 
+    wav_playback_abort();
+    wav_stream_abort(false);
+
     return ESP_OK;
 }
 
@@ -1030,6 +1907,7 @@ esp_err_t audio_processor_stop(void)
  */
 esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1079,6 +1957,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
  */
 esp_err_t audio_processor_set_volume(uint8_t volume)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1104,6 +1983,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
  */
 esp_err_t audio_processor_set_mute(bool mute)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1120,6 +2000,7 @@ esp_err_t audio_processor_set_mute(bool mute)
  */
 esp_err_t audio_processor_get_config(audio_config_t* config)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1139,6 +2020,7 @@ esp_err_t audio_processor_get_config(audio_config_t* config)
  */
 esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1158,6 +2040,7 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
  */
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1168,6 +2051,17 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (s_trace_next_read_call) {
+        s_trace_next_read_call = false;
+        const char *task_name = pcTaskGetName(NULL);
+        if (task_name == NULL) {
+            task_name = "<unknown>";
+        }
+        ESP_LOGI(TAG, "audio_processor_read trace: task=%s request_size=%zu", task_name, size);
+        printf("TRACE: audio_processor_read task=%s request_size=%zu\n", task_name, size);
+        esp_backtrace_print(10);
+    }
+
     // If muted and no beep override/fallback is pending, just fill with zeros
     if (s_audio_config.mute && s_beep_remaining_bytes == 0 && !s_beep_fallback_active) {
         /* If the dedicated beep buffer is empty (or unavailable) then
@@ -1176,6 +2070,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         if (s_beep_buffer == NULL || xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE) {
             memset(buffer, 0, size);
             *bytes_read = size;
+            wav_stream_try_refill();
             return ESP_OK;
         }
     }
@@ -1191,22 +2086,90 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
 
-    /* Drain any urgent beep data from the small beep buffer first so queued
-     * tones are emitted with lower latency than the main ringbuffer. */
-    if (s_beep_buffer != NULL) {
+    /* Drain any previously saved beep residual data so queued tones retain
+     * ordering even when callers request smaller buffers than the enqueued
+     * chunk size. */
+    if (bytes_written < size && s_beep_rb_residual_len > s_beep_rb_residual_pos) {
+        size_t copied = residual_copy(buffer + bytes_written, size - bytes_written,
+                                      s_beep_rb_residual, &s_beep_rb_residual_pos,
+                                      &s_beep_rb_residual_len);
+        if (copied > 0) {
+            bytes_written += copied;
+            if (s_beep_remaining_bytes > copied) s_beep_remaining_bytes -= copied;
+            else s_beep_remaining_bytes = 0;
+        }
+    }
+
+    /* Drain any urgent beep data from the small beep buffer so queued tones
+     * are emitted with lower latency than the main ringbuffer. Store any
+     * unconsumed tail in the residual buffer for the next read. */
+    if (s_beep_buffer != NULL && bytes_written < size) {
         while (bytes_written < size) {
-            size_t want = size - bytes_written;
             size_t read_sz = 0;
-            void* itm = xRingbufferReceiveUpTo(s_beep_buffer, &read_sz, want, 0);
-            if (itm == NULL || read_sz == 0) break;
-            memcpy(buffer + bytes_written, itm, read_sz);
-            vRingbufferReturnItem(s_beep_buffer, itm);
-            /* Decrement bypass counter for beep bytes consumed */
-            if (s_beep_remaining_bytes > 0) {
-                if (read_sz >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
-                else s_beep_remaining_bytes -= read_sz;
+            size_t free_before = xRingbufferGetCurFreeSize(s_beep_buffer);
+            void* itm = xRingbufferReceive(s_beep_buffer, &read_sz, 0);
+            if (itm == NULL || read_sz == 0) {
+                ESP_LOGI(TAG, "audio_processor_read: beep dequeue empty free_before=%zu", free_before);
+                printf("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
+            } else {
+                ESP_LOGI(TAG, "audio_processor_read: beep dequeue len=%zu free_before=%zu", read_sz, free_before);
+                printf("DIAG-READ-BEEP-DEQ: len=%zu free_before=%zu\n", read_sz, free_before);
             }
-            bytes_written += read_sz;
+            if (itm == NULL || read_sz == 0) {
+                break;
+            }
+
+            size_t to_copy = read_sz;
+            size_t remaining = size - bytes_written;
+            if (to_copy > remaining) {
+                to_copy = remaining;
+            }
+
+            if (to_copy > 0) {
+                    printf("DIAG-READ-START: size=%zu init=%d run=%d rb=%p\n",
+                           size,
+                           (int)s_is_initialized,
+                           (int)s_is_running,
+                           (void*)s_audio_buffer);
+                memcpy(buffer + bytes_written, itm, to_copy);
+                bytes_written += to_copy;
+                if (s_beep_remaining_bytes > 0) {
+                    if (to_copy >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
+                    else s_beep_remaining_bytes -= to_copy;
+                }
+            }
+                            printf("DIAG-READ-EXIT: mute-silence bytes=%zu ret=ESP_OK\n", size);
+
+            size_t leftover = (read_sz > to_copy) ? (read_sz - to_copy) : 0;
+            if (leftover > 0) {
+            printf("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
+                size_t stored = residual_store((const uint8_t*)itm + to_copy, leftover,
+                                               s_beep_rb_residual, sizeof(s_beep_rb_residual),
+                                               &s_beep_rb_residual_pos, &s_beep_rb_residual_len);
+                if (stored < leftover) {
+                    size_t dropped = leftover - stored;
+                    ESP_LOGW(TAG, "audio_processor_read: beep residual truncated %zu -> %zu", leftover, stored);
+                    s_audio_stats.buffer_overruns++;
+                    if (s_beep_remaining_bytes > dropped) {
+                        s_beep_remaining_bytes -= dropped;
+                    } else {
+                        s_beep_remaining_bytes = 0;
+                    }
+                }
+            } else {
+                s_beep_rb_residual_len = 0;
+                s_beep_rb_residual_pos = 0;
+            }
+
+            size_t free_after = xRingbufferGetCurFreeSize(s_beep_buffer);
+            ESP_LOGI(TAG, "audio_processor_read: beep return len=%zu free_after=%zu", read_sz, free_after);
+            printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
+            printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
+            vRingbufferReturnItem(s_beep_buffer, itm);
+
+            if (to_copy == 0) {
+                break;
+            }
         }
     }
 
@@ -1309,6 +2272,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
              * synth for fallback playback. */
             s_force_synth = s_beep_prev_force_synth;
             ESP_LOGI(TAG, "audio_processor_beep: fallback finished, restored synth mode=%s", s_force_synth ? "ENABLED" : "DISABLED");
+            printf("DIAG-READ-EXIT: fallback bytes=%zu ret=ESP_OK\n", bytes_written);
+            wav_stream_try_refill();
+            return ESP_OK;
         }
     }
 
@@ -1317,38 +2283,139 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     if (bytes_written == size) {
         if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
         *bytes_read = bytes_written;
+        log_read_summary("fallback", size, bytes_written);
+        printf("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
+        wav_stream_try_refill();
         return ESP_OK;
     }
 
-    /* Otherwise, try to pull the remainder from the ringbuffer. */
-    size_t want = size - bytes_written;
-    size_t read_size = 0;
-    void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, want, 0);
-    if (item != NULL && read_size > 0) {
-        memcpy(buffer + bytes_written, item, read_size);
+    /* Otherwise, try to pull the remainder from the ringbuffer using the
+     * same residual-handling strategy. */
+    while (bytes_written < size) {
+        size_t copied = residual_copy(buffer + bytes_written, size - bytes_written,
+                                      s_audio_rb_residual, &s_audio_rb_residual_pos,
+                                      &s_audio_rb_residual_len);
+        if (copied > 0) {
+            bytes_written += copied;
+            wav_playback_consume(copied);
+            continue;
+        }
+
+        size_t read_size = 0;
+        size_t free_before = xRingbufferGetCurFreeSize(s_audio_buffer);
+        size_t max_fetch = size - bytes_written;
+        if (max_fetch == 0) {
+            break;
+        }
+        TickType_t wait_ticks = 0;
+        bool wav_active = wav_playback_is_active();
+        if (wav_active) {
+            wait_ticks = pdMS_TO_TICKS(50);
+        }
+        size_t wav_remaining_snapshot = 0;
+        bool wav_remaining_valid = false;
+        if (wav_active && s_wav_mutex != NULL && xSemaphoreTake(s_wav_mutex, 0) == pdTRUE) {
+            wav_remaining_snapshot = s_wav_stream.remaining_bytes;
+            wav_remaining_valid = true;
+            xSemaphoreGive(s_wav_mutex);
+        }
+        size_t rb_max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+     ESP_LOGI(TAG,
+           "DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu valid=%d rb_free=%lu rb_max_item=%lu",
+           (unsigned long)max_fetch,
+           (unsigned long)wait_ticks,
+           wav_active ? 1 : 0,
+           (unsigned long)s_wav_pending_bytes,
+           (unsigned long)wav_remaining_snapshot,
+           wav_remaining_valid ? 1 : 0,
+           (unsigned long)free_before,
+           (unsigned long)rb_max_item);
+     printf("DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu wav_remaining_valid=%d rb_free=%lu rb_max_item=%lu\n",
+         (unsigned long)max_fetch,
+         (unsigned long)wait_ticks,
+         wav_active ? 1 : 0,
+         (unsigned long)s_wav_pending_bytes,
+         (unsigned long)wav_remaining_snapshot,
+         wav_remaining_valid ? 1 : 0,
+         (unsigned long)free_before,
+         (unsigned long)rb_max_item);
+        void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, wait_ticks, max_fetch);
+     ESP_LOGI(TAG,
+           "DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu",
+           item,
+           (unsigned long)read_size,
+           (unsigned long)wait_ticks,
+           (unsigned long)max_fetch,
+           (unsigned long)free_before,
+           (unsigned long)s_wav_pending_bytes);
+     printf("DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu\n",
+         item,
+         (unsigned long)read_size,
+         (unsigned long)wait_ticks,
+         (unsigned long)max_fetch,
+         (unsigned long)free_before,
+         (unsigned long)s_wav_pending_bytes);
+        if (item == NULL || read_size == 0) {
+            ESP_LOGI(TAG, "audio_processor_read: audio dequeue empty free_before=%zu", free_before);
+            printf("DIAG-READ-AUDIO-DEQ: empty free_before=%lu\n", (unsigned long)free_before);
+        } else {
+            ESP_LOGI(TAG, "audio_processor_read: audio dequeue len=%zu free_before=%zu", read_size, free_before);
+            printf("DIAG-READ-AUDIO-DEQ: len=%lu free_before=%lu\n", (unsigned long)read_size, (unsigned long)free_before);
+        }
+        if (item == NULL || read_size == 0) {
+            break;
+        }
+
+        size_t to_copy = read_size;
+        size_t remaining = size - bytes_written;
+        if (to_copy > remaining) {
+            to_copy = remaining;
+        }
+
+        if (to_copy > 0) {
+            memcpy(buffer + bytes_written, item, to_copy);
+            bytes_written += to_copy;
+            if (s_beep_remaining_bytes > 0) {
+                if (to_copy >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
+                else s_beep_remaining_bytes -= to_copy;
+            }
+            wav_playback_consume(to_copy);
+        }
+
+        size_t leftover = (read_size > to_copy) ? (read_size - to_copy) : 0;
+        if (leftover > 0) {
+            size_t stored = residual_store((const uint8_t*)item + to_copy, leftover,
+                                           s_audio_rb_residual, sizeof(s_audio_rb_residual),
+                                           &s_audio_rb_residual_pos, &s_audio_rb_residual_len);
+            if (stored < leftover) {
+                ESP_LOGW(TAG, "audio_processor_read: residual truncated %zu -> %zu", leftover, stored);
+                s_audio_stats.buffer_overruns++;
+            }
+        } else {
+            s_audio_rb_residual_len = 0;
+            s_audio_rb_residual_pos = 0;
+        }
+
+        size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
+        ESP_LOGI(TAG, "audio_processor_read: audio return len=%zu free_after=%zu", read_size, free_after);
+        printf("DIAG-READ-AUDIO-RET: len=%zu free_after=%zu\n", read_size, free_after);
         vRingbufferReturnItem(s_audio_buffer, item);
+    }
 
-        /* If part of this data was scheduled as a beep (queued earlier),
-         * decrement remaining counter so subsequent reads know when to
-         * re-enable mute behavior. */
-        if (s_beep_remaining_bytes > 0) {
-            if (read_size >= s_beep_remaining_bytes) s_beep_remaining_bytes = 0;
-            else s_beep_remaining_bytes -= read_size;
-        }
+    if (bytes_written == 0) {
+        *bytes_read = 0;
+        s_audio_stats.buffer_underruns++;
+        log_read_summary("empty", size, bytes_written);
+        printf("DIAG-READ-EXIT: empty bytes=%zu ret=ESP_OK\n", bytes_written);
+        wav_stream_try_refill();
+        return ESP_OK;
+    }
 
-        bytes_written += read_size;
-    } else {
-        /* No ringbuffer data available for the remainder; if we have already
-         * generated some fallback samples return them (silence-fill the
-         * rest for caller expectations). If nothing generated, report underrun. */
-        if (bytes_written == 0) {
-            *bytes_read = 0;
-            s_audio_stats.buffer_underruns++;
-            return ESP_OK;
-        }
+    if (bytes_written < size) {
         /* Zero-fill remaining tail so output buffer is deterministic */
-        memset(buffer + bytes_written, 0, want);
-        bytes_written += want;
+        size_t tail = size - bytes_written;
+        memset(buffer + bytes_written, 0, tail);
+        bytes_written += tail;
     }
 
     // Apply volume if not at maximum
@@ -1358,12 +2425,15 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     *bytes_read = bytes_written;
 
+    log_read_summary("complete", size, bytes_written);
+
     // Update statistics
     s_audio_stats.current_buffer_level = xRingbufferGetCurFreeSize(s_audio_buffer);
     if (s_audio_stats.current_buffer_level > s_audio_stats.peak_buffer_level) {
         s_audio_stats.peak_buffer_level = s_audio_stats.current_buffer_level;
     }
 
+    wav_stream_try_refill();
     return ESP_OK;
 }
 
@@ -1467,6 +2537,7 @@ static esp_err_t configure_i2s(const audio_config_t* config)
 
 esp_err_t audio_processor_get_status(audio_status_t* status)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (status == NULL) return ESP_ERR_INVALID_ARG;
     status->initialized = s_is_initialized;
     status->running = s_is_running;
@@ -1480,6 +2551,7 @@ esp_err_t audio_processor_get_status(audio_status_t* status)
 
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -1509,6 +2581,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 
 esp_err_t audio_processor_drain_ringbuffer(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (s_audio_buffer == NULL) return ESP_ERR_INVALID_STATE;
 
@@ -1519,12 +2592,22 @@ esp_err_t audio_processor_drain_ringbuffer(void)
      * reasonable number of iterations to avoid starving other tasks. */
     int drained = 0;
     const int max_drains = 256;
+    size_t max_chunk = xRingbufferGetMaxItemSize(s_audio_buffer);
+    if (max_chunk == 0) {
+        /* Fallback: ensure we still retrieve data even if the API reports
+         * zero (shouldn't happen for byte buffers, but be defensive). */
+        max_chunk = audio_get_runtime_work_bytes();
+        if (max_chunk == 0) {
+            max_chunk = 1024; /* final fallback */
+        }
+    }
     while (drained < max_drains) {
-        it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, 0);
+        it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, max_chunk);
         if (it == NULL || rsz == 0) break;
         vRingbufferReturnItem(s_audio_buffer, it);
         drained++;
     }
+    wav_playback_abort();
     ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
     return ESP_OK;
 }
@@ -1539,7 +2622,7 @@ static void drain_beep_buffer(void)
     void* item = NULL;
     int drained = 0;
 
-    while ((item = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, 0, 0)) != NULL && rsz > 0) {
+    while ((item = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, 0, SIZE_MAX)) != NULL && rsz > 0) {
         vRingbufferReturnItem(s_beep_buffer, item);
         drained++;
     }
@@ -1559,9 +2642,10 @@ static void drain_beep_buffer(void)
  */
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
 
-    size_t target = AUDIO_WORK_BUFFER_BYTES;
+    size_t target = audio_get_runtime_work_bytes();
     if (target == 0) return ESP_ERR_INVALID_ARG;
 
     size_t generated = 0;
@@ -1673,6 +2757,7 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
  */
 esp_err_t audio_processor_beep(uint32_t duration_ms)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGW(TAG, "audio_processor_beep: not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -1833,7 +2918,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
             const int max_drop_attempts = 32; /* avoid unbounded loops */
             while (xRingbufferGetCurFreeSize(s_audio_buffer) < needed && drop_attempts < max_drop_attempts) {
                 size_t rsz = 0;
-                void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, needed, 0);
+                void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, needed);
                 if (it == NULL || rsz == 0) break;
                 /* Return the item to free the space (we're intentionally dropping it) */
                 vRingbufferReturnItem(s_audio_buffer, it);
@@ -1963,6 +3048,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
  */
 esp_err_t audio_processor_play_wav(const char* path)
 {
+    AUDIO_PROC_LOG_ONCE();
     /* Diagnostic: record initialization/running state to help trace
      * unexpected INVALID_STATE returns observed in unit tests. Use both
      * ESP_LOG and a plain printf so the test monitor captures the output
@@ -1973,6 +3059,9 @@ esp_err_t audio_processor_play_wav(const char* path)
            (int)s_is_initialized, (int)s_is_running, (void*)s_audio_buffer, path ? path : "(null)");
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
+
+    s_trace_next_read_call = true;
+    ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");
 
     esp_err_t status = ESP_OK;
     FILE* f = fopen(path, "rb");
@@ -2003,6 +3092,8 @@ esp_err_t audio_processor_play_wav(const char* path)
     s_beep_fallback_frames_remaining = 0;
     s_beep_fallback_total_frames = 0;
     portEXIT_CRITICAL(&s_beep_lock);
+
+    wav_playback_begin();
 
     /* Basic WAV header parsing (RIFF/WAVE, fmt chunk, data chunk) */
     uint32_t tmp32 = 0;
@@ -2126,71 +3217,117 @@ esp_err_t audio_processor_play_wav(const char* path)
         goto cleanup;
     }
 
-    size_t remaining = data_bytes;
-    while (remaining > 0) {
-        size_t to_read = AUDIO_WORK_BUFFER_BYTES;
-        to_read = (to_read / frame_bytes_src) * frame_bytes_src;
-        if (to_read == 0) to_read = frame_bytes_src;
-        if (to_read > remaining) to_read = remaining;
-
-        size_t actually = fread(s_proc_buffer, 1, to_read, f);
-        if (actually == 0) break;
-
-        size_t conv_size = 0;
-        if (convert_audio_format(s_proc_buffer, s_proc_buffer, actually, src_bit, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
-            ESP_LOGE(TAG, "audio_processor_play_wav: convert_audio_format failed");
-            printf("DIAG-APLAY-FAIL: convert-failed\n");
-            status = ESP_ERR_INVALID_STATE;
-            goto cleanup;
+    size_t frame_bytes_dst = (size_t)audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (frame_bytes_dst == 0U) {
+        frame_bytes_dst = 2U;
+    }
+    int dst_channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    if (dst_channels <= 0) {
+        dst_channels = 2;
+    }
+    frame_bytes_dst *= (size_t)dst_channels;
+    if (frame_bytes_dst == 0U) {
+        frame_bytes_dst = frame_bytes_src;
+        if (frame_bytes_dst == 0U) {
+            frame_bytes_dst = 2U;
         }
-
-        size_t res_size = 0;
-        if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, (audio_sample_rate_t)sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
-            ESP_LOGE(TAG, "audio_processor_play_wav: resample_audio failed");
-            printf("DIAG-APLAY-FAIL: resample-failed\n");
-            status = ESP_ERR_INVALID_STATE;
-            goto cleanup;
-        }
-
-        BaseType_t sent = pdFALSE;
-        const int max_attempts = 3;
-        for (int attempt = 0; attempt < max_attempts && sent != pdTRUE; ++attempt) {
-            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
-            if (sent == pdTRUE) {
-                break;
-            }
-            taskYIELD();
-        }
-        if (sent != pdTRUE) {
-            size_t needed = res_size;
-            int drop_attempts = 0;
-            const int max_drop_attempts = 16;
-            while (xRingbufferGetCurFreeSize(s_audio_buffer) < needed && drop_attempts < max_drop_attempts) {
-                size_t rsz = 0;
-                void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, needed, 0);
-                if (it == NULL || rsz == 0) break;
-                vRingbufferReturnItem(s_audio_buffer, it);
-                drop_attempts++;
-                taskYIELD();
-            }
-            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, 0);
-            if (sent != pdTRUE) {
-                ESP_LOGW(TAG, "audio_processor_play_wav: ringbuffer full, aborting playback (enqueued %u/%u bytes)", (unsigned)(data_bytes - remaining), (unsigned)data_bytes);
-                status = ESP_ERR_NO_MEM;
-                goto cleanup;
-            }
-        }
-
-        remaining -= actually;
     }
 
-    ESP_LOGI(TAG, "audio_processor_play_wav: playback enqueued for %s", path);
+    if (s_wav_mutex == NULL) {
+        wav_stream_mutex_init();
+    }
+
+    if (s_wav_mutex == NULL) {
+        ESP_LOGE(TAG, "audio_processor_play_wav: streaming mutex unavailable");
+        status = ESP_ERR_NO_MEM;
+        goto cleanup;
+    }
+
+    if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGE(TAG, "audio_processor_play_wav: failed to take streaming mutex");
+        status = ESP_ERR_TIMEOUT;
+        goto cleanup;
+    }
+
+    bool resume_prev = wav_stream_clear_locked(true);
+    if (resume_prev) {
+        /* Previous playback left the pipeline stopped; resume now so callers
+         * do not observe a stuck stream. We'll restart below once we release
+         * the mutex if needed. */
+        xSemaphoreGive(s_wav_mutex);
+        if (s_is_initialized) {
+            esp_err_t restart_prev = audio_processor_start();
+            if (restart_prev != ESP_OK) {
+                ESP_LOGW(TAG, "audio_processor_play_wav: failed to resume previous pipeline (%d %s)", (int)restart_prev, esp_err_to_name(restart_prev));
+            }
+        }
+        if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) != pdTRUE) {
+            status = ESP_ERR_TIMEOUT;
+            goto cleanup;
+        }
+    }
+
+    wav_stream_reset_residual_locked();
+    s_wav_stream.active = true;
+    s_wav_stream.resume_pipeline = resume_pipeline;
+    s_wav_stream.file = f;
+    s_wav_stream.src_bit_depth = src_bit;
+    s_wav_stream.src_sample_rate = (audio_sample_rate_t)sample_rate;
+    s_wav_stream.frame_bytes_src = frame_bytes_src;
+    s_wav_stream.frame_bytes_dst = frame_bytes_dst;
+    s_wav_stream.remaining_bytes = data_bytes;
+
+    esp_err_t prime_ret = wav_stream_fill_locked();
+    if (prime_ret != ESP_OK) {
+        ESP_LOGE(TAG, "audio_processor_play_wav: failed priming stream (%d %s)", (int)prime_ret, esp_err_to_name(prime_ret));
+        s_wav_stream.resume_pipeline = true;
+        bool resume_now = wav_stream_clear_locked(true);
+        xSemaphoreGive(s_wav_mutex);
+        status = prime_ret;
+        if (resume_now && s_is_initialized) {
+            esp_err_t restart_now = audio_processor_start();
+            if (restart_now != ESP_OK) {
+                ESP_LOGW(TAG, "audio_processor_play_wav: pipeline resume failed after prime error (%d %s)", (int)restart_now, esp_err_to_name(restart_now));
+            }
+        }
+        goto cleanup;
+    }
+
+    bool prime_empty = (s_wav_stream.remaining_bytes == 0U && s_wav_pending_bytes == 0U && s_wav_send_residual_len == 0U);
+
+    xSemaphoreGive(s_wav_mutex);
+
+    /* File ownership transferred to streaming context */
+    f = NULL;
+    resume_pipeline = false; /* streaming context will resume when drained */
+
+    if (prime_empty) {
+        bool resume_now = false;
+        if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) == pdTRUE) {
+            resume_now = wav_stream_clear_locked(true);
+            xSemaphoreGive(s_wav_mutex);
+        }
+        wav_playback_complete_if_idle();
+        if (resume_now && s_is_initialized) {
+            esp_err_t restart_ret = audio_processor_start();
+            if (restart_ret != ESP_OK) {
+                ESP_LOGW(TAG, "audio_processor_play_wav: resume failed after empty WAV (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
+            }
+        }
+    }
+
+    ESP_LOGI(TAG, "audio_processor_play_wav: playback streaming for %s", path);
     status = ESP_OK;
 
 cleanup:
     if (f != NULL) {
         fclose(f);
         f = NULL;
+    }
+
+    if (status != ESP_OK) {
+        wav_stream_abort(false);
+        wav_playback_abort();
     }
 
     if (resume_pipeline) {
@@ -2322,8 +3459,12 @@ static void i2s_reader_task(void *pvParameters)
 
         const int FAILURE_THRESHOLD = 20;
             if (s_i2s_consecutive_failures >= FAILURE_THRESHOLD) {
-                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", s_i2s_consecutive_failures);
-                s_force_synth = true;
+                if (!wav_playback_is_active()) {
+                    ESP_LOGW(TAG, "I2S read failing repeatedly (%d); enabling runtime synth mode", s_i2s_consecutive_failures);
+                    s_force_synth = true;
+                } else {
+                    ESP_LOGW(TAG, "I2S read failing (%d) but WAV playback active; keeping synth disabled", s_i2s_consecutive_failures);
+                }
             }
         }
 
@@ -2356,13 +3497,39 @@ static void i2s_reader_task(void *pvParameters)
         if (s_i2s_queue != NULL && s_i2s_free_queue != NULL && uxQueueSpacesAvailable(s_i2s_queue) > 0U) {
             void* pooled_ptr = NULL;
             if (xQueueReceive(s_i2s_free_queue, &pooled_ptr, 0) == pdTRUE && pooled_ptr != NULL) {
+                const bool synth_fill = s_force_synth;
+                if (synth_fill && s_audio_buffer != NULL) {
+                    size_t rb_free = xRingbufferGetCurFreeSize(s_audio_buffer);
+                    if (rb_free < (size_t)SYNTH_MIN_HEADROOM_BYTES) {
+                        (void)xQueueSend(s_i2s_free_queue, &pooled_ptr, 0);
+                        /*s
+                        printf("DIAG-READER-SYNTH-HOLD: rb_free=%zu threshold=%zu\n",
+                               rb_free,
+                               (size_t)SYNTH_MIN_HEADROOM_BYTES);
+                        */
+                        TickType_t hold_ticks = pdMS_TO_TICKS(SYNTH_THROTTLE_DELAY_MS);
+                        if (hold_ticks == 0) {
+                            hold_ticks = 1;
+                        }
+                        vTaskDelay(hold_ticks);
+                        continue;
+                    }
+                }
+
                 i2s_block_t blk = {
                     .ptr = pooled_ptr,
-                    .len = s_force_synth ? 0 : bytes_read,
+                    .len = synth_fill ? 0 : bytes_read,
                     .capacity = bytes_read,
-                    .synth_fill = s_force_synth,
+                    .synth_fill = synth_fill,
                     .pooled_ptr = true,
                 };
+                /*
+                printf("DIAG-READER-ALLOC: ptr=%p len=%zu synth=%d free_q=%lu\n",
+                       pooled_ptr,
+                       blk.len,
+                       blk.synth_fill ? 1 : 0,
+                       (unsigned long)uxQueueMessagesWaiting(s_i2s_free_queue));
+                */
                 if (!blk.synth_fill && blk.len > 0) {
                     memcpy(blk.ptr, s_i2s_buffer, blk.len);
                 }
@@ -2371,16 +3538,43 @@ static void i2s_reader_task(void *pvParameters)
                     s_audio_stats.buffer_overruns++;
                     backpressure = true;
                     ESP_LOGW(TAG, "i2s_reader_task: backpressure while enqueueing i2s block len=%zu", blk.len);
+                    /*
+                    printf("DIAG-READER-SEND-FAIL: ptr=%p len=%zu synth=%d q_wait=%lu\n",
+                           blk.ptr,
+                           blk.len,
+                           blk.synth_fill ? 1 : 0,
+                           (unsigned long)uxQueueMessagesWaiting(s_i2s_queue));
+                    */    
                     log_heap_stats("i2s-backpressure");
+                } else {
+                    /*
+                    printf("DIAG-READER-SEND: ptr=%p len=%zu synth=%d q_wait=%lu\n",
+                           blk.ptr,
+                           blk.len,
+                           blk.synth_fill ? 1 : 0,
+                           (unsigned long)uxQueueMessagesWaiting(s_i2s_queue));
+                    */
                 }
             } else {
                 s_audio_stats.buffer_overruns++;
                 backpressure = true;
+                /*
+                printf("DIAG-READER-NO-BUF: synth=%d free_q=%lu\n",
+                       s_force_synth ? 1 : 0,
+                       (unsigned long)uxQueueMessagesWaiting(s_i2s_free_queue));
+                */
             }
         } else {
             s_audio_stats.buffer_overruns++;
             backpressure = true;
             ESP_LOGW(TAG, "i2s_reader_task: backpressure (no free queue) for len=%zu", bytes_read);
+            /*
+            printf("DIAG-READER-BP: len=%zu synth=%d q_wait=%lu free_q=%lu\n",
+                   bytes_read,
+                   s_force_synth ? 1 : 0,
+                   (unsigned long)(s_i2s_queue != NULL ? uxQueueMessagesWaiting(s_i2s_queue) : 0UL),
+                   (unsigned long)(s_i2s_free_queue != NULL ? uxQueueMessagesWaiting(s_i2s_free_queue) : 0UL));
+            */
             log_heap_stats("i2s-backpressure-no-free-queue");
         }
 
@@ -2428,10 +3622,16 @@ static void audio_worker_return_block(const char *phase, i2s_block_t *blk)
         if (xQueueSend(s_i2s_free_queue, &raw_ptr, pdMS_TO_TICKS(10)) != pdTRUE) {
             ESP_LOGW(TAG, "audio_worker_task[%s]: free queue full, freeing pooled ptr=%p", tag, raw_ptr);
             heap_caps_free(raw_ptr);
+        } else {
+            printf("DIAG-WORKER-RETPOOL: ptr=%p phase=%s free_q=%lu\n",
+                   raw_ptr,
+                   tag,
+                   (unsigned long)uxQueueMessagesWaiting(s_i2s_free_queue));
         }
     } else {
         ESP_LOGV(TAG, "audio_worker_task[%s]: freeing non-pooled ptr=%p", tag, raw_ptr);
         heap_caps_free(raw_ptr);
+        printf("DIAG-WORKER-FREE: ptr=%p phase=%s\n", raw_ptr, tag);
     }
 
     blk->ptr = NULL;
@@ -2464,6 +3664,40 @@ static void audio_worker_discard_block(const char *phase, i2s_block_t *blk)
     blk->pooled_ptr = false;
 }
 
+static void log_read_summary(const char *phase, size_t requested, size_t produced)
+{
+    if (esp_log_level_get(TAG) < ESP_LOG_INFO) {
+        return;
+    }
+
+    const char *tag = (phase != NULL) ? phase : "done";
+    size_t audio_residual = 0;
+    if (s_audio_rb_residual_len > s_audio_rb_residual_pos) {
+        audio_residual = s_audio_rb_residual_len - s_audio_rb_residual_pos;
+    }
+    size_t beep_residual = 0;
+    if (s_beep_rb_residual_len > s_beep_rb_residual_pos) {
+        beep_residual = s_beep_rb_residual_len - s_beep_rb_residual_pos;
+    }
+    size_t rb_free = 0;
+    if (s_audio_buffer != NULL) {
+        rb_free = xRingbufferGetCurFreeSize(s_audio_buffer);
+    }
+
+    ESP_LOGI(TAG,
+             "audio_processor_read[%s]: req=%zu produced=%zu mute=%d beep_remaining=%zu audio_residual=%zu beep_residual=%zu rb_free=%zu underruns=%u overruns=%u",
+             tag,
+             requested,
+             produced,
+             (int)s_audio_config.mute,
+             s_beep_remaining_bytes,
+             audio_residual,
+             beep_residual,
+             rb_free,
+             (unsigned)s_audio_stats.buffer_underruns,
+             (unsigned)s_audio_stats.buffer_overruns);
+}
+
 /**
  * @brief Lower-priority worker that converts, resamples and pushes to ringbuffer
  */
@@ -2482,6 +3716,15 @@ static void audio_worker_task(void *pvParameters)
             continue; // timeout
         }
 
+        s_worker_diag.dequeued_blocks++;
+
+        printf("DIAG-WORKER-DEQ: ptr=%p len=%zu synth=%d q_wait=%lu free_q=%lu\n",
+               blk.ptr,
+               blk.len,
+               blk.synth_fill ? 1 : 0,
+               (unsigned long)uxQueueMessagesWaiting(s_i2s_queue),
+               (unsigned long)(s_i2s_free_queue != NULL ? uxQueueMessagesWaiting(s_i2s_free_queue) : 0UL));
+
         log_worker_block_state("dequeue", &blk);
 
         if (blk.ptr == NULL) {
@@ -2490,6 +3733,20 @@ static void audio_worker_task(void *pvParameters)
         }
 
         if (blk.synth_fill) {
+            if (wav_playback_is_active()) {
+                s_worker_diag.synth_blocks++;
+                audio_worker_return_block("wav-priority", &blk);
+                TickType_t pause_ticks = pdMS_TO_TICKS(1);
+                if (pause_ticks == 0) {
+                    pause_ticks = 1;
+                }
+                vTaskDelay(pause_ticks);
+                blk.len = 0;
+                blk.capacity = 0;
+                blk.synth_fill = false;
+                continue;
+            }
+            s_worker_diag.synth_blocks++;
             size_t target = blk.capacity;
             if (target > AUDIO_WORK_BUFFER_BYTES) {
                 target = AUDIO_WORK_BUFFER_BYTES;
@@ -2557,11 +3814,18 @@ static void audio_worker_task(void *pvParameters)
         /* Push to ringbuffer (xRingbufferSend copies data) */
         if (res_size > 0) {
             size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+            printf("DIAG-WORKER-ENQ: attempt len=%zu free_before=%zu synth=%d\n", res_size, free_size, blk.synth_fill ? 1 : 0);
             if (free_size < res_size) {
                 s_audio_stats.buffer_overruns++;
                 if (free_size < (res_size / 2)) {
                     /* Skip adding if buffer very full */
+                    printf("DIAG-WORKER-ENQ: drop len=%zu free_before=%zu reason=overrun\n", res_size, free_size);
                     audio_worker_discard_block("overrun-drop", &blk);
+                    TickType_t pause_ticks = pdMS_TO_TICKS(1);
+                    if (pause_ticks == 0) {
+                        pause_ticks = 1;
+                    }
+                    vTaskDelay(pause_ticks);
                     continue;
                 }
             }
@@ -2570,7 +3834,28 @@ static void audio_worker_task(void *pvParameters)
             if (sent != pdTRUE) {
                 s_audio_stats.buffer_overruns++;
                 ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
+                printf("DIAG-WORKER-ENQ: fail len=%zu free_before=%zu\n", res_size, free_size);
                 log_heap_stats("worker-send-failed");
+                s_worker_diag.ringbuffer_failures++;
+                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, sent);
+                TickType_t pause_ticks = pdMS_TO_TICKS(1);
+                if (pause_ticks == 0) {
+                    pause_ticks = 1;
+                }
+                vTaskDelay(pause_ticks);
+            } else {
+                size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
+                const char *src = blk.synth_fill ? "synth" : "capture";
+                ESP_LOGI(TAG,
+                         "audio_worker_task: enqueued %zu bytes (%s) free_before=%zu free_after=%zu dequeued=%u rb_fail=%u",
+                         res_size,
+                         src,
+                         free_size,
+                         free_after,
+                         (unsigned)s_worker_diag.dequeued_blocks,
+                         (unsigned)s_worker_diag.ringbuffer_failures);
+                printf("DIAG-WORKER-RET: len=%zu free_before=%zu free_after=%zu\n", res_size, free_size, free_after);
+                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, sent);
             }
         }
 
@@ -2581,6 +3866,63 @@ static void audio_worker_task(void *pvParameters)
             blk.capacity = 0;
             blk.synth_fill = false;
         }
+    }
+}
+
+static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result)
+{
+    if (esp_log_level_get(TAG) < ESP_LOG_INFO) {
+        return;
+    }
+
+    if (enqueued_bytes > 0) {
+        if (source == WORKER_DIAG_SOURCE_WORKER) {
+            s_worker_diag.worker_bytes_sent += enqueued_bytes;
+        } else if (source == WORKER_DIAG_SOURCE_WAV) {
+            s_worker_diag.wav_bytes_sent += enqueued_bytes;
+            s_worker_diag.wav_chunks++;
+        }
+        s_worker_diag.bytes_sent += enqueued_bytes;
+    }
+
+    s_worker_diag.last_enqueued_bytes = enqueued_bytes;
+    s_worker_diag.last_send_result = send_result;
+    s_worker_diag.last_source = source;
+
+    const TickType_t now = xTaskGetTickCount();
+    if (s_worker_diag.last_report_tick == 0 ||
+        (now - s_worker_diag.last_report_tick) >= WORKER_DIAG_INTERVAL_TICKS) {
+        size_t rb_free = 0U;
+        size_t rb_max_item = 0U;
+        if (s_audio_buffer != NULL) {
+            rb_free = xRingbufferGetCurFreeSize(s_audio_buffer);
+            rb_max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+        }
+
+        const char *src_str = (s_worker_diag.last_source == WORKER_DIAG_SOURCE_WAV) ? "wav" : "worker";
+        ESP_LOGI(TAG,
+                 "worker diag: src=%s dequeued=%" PRIu32 " synth=%" PRIu32 " worker_bytes=%zu wav_chunks=%" PRIu32 " wav_bytes=%zu total_bytes=%zu rb_free=%zu rb_max_item=%zu send_failures=%" PRIu32 " last_enqueued=%zu last_send=%ld",
+                 src_str,
+                 s_worker_diag.dequeued_blocks,
+                 s_worker_diag.synth_blocks,
+                 s_worker_diag.worker_bytes_sent,
+                 s_worker_diag.wav_chunks,
+                 s_worker_diag.wav_bytes_sent,
+                 s_worker_diag.bytes_sent,
+                 rb_free,
+                 rb_max_item,
+                 s_worker_diag.ringbuffer_failures,
+                 s_worker_diag.last_enqueued_bytes,
+                 (long)s_worker_diag.last_send_result);
+
+        s_worker_diag.dequeued_blocks = 0U;
+        s_worker_diag.synth_blocks = 0U;
+        s_worker_diag.bytes_sent = 0U;
+        s_worker_diag.worker_bytes_sent = 0U;
+        s_worker_diag.wav_bytes_sent = 0U;
+        s_worker_diag.wav_chunks = 0U;
+        s_worker_diag.ringbuffer_failures = 0U;
+        s_worker_diag.last_report_tick = now;
     }
 }
 
@@ -2650,12 +3992,17 @@ static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
                                       audio_bit_depth_t src_bit_depth, audio_bit_depth_t dst_bit_depth,
                                       size_t* dst_size)
 {
+    size_t work_bytes = audio_get_runtime_work_bytes();
+    if (work_bytes == 0U) {
+        work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    }
+
     if (src_bit_depth == dst_bit_depth) {
         // Same format, just copy
         size_t copy_size = src_size;
-        if (copy_size > AUDIO_WORK_BUFFER_BYTES) {
-            ESP_LOGW(TAG, "convert_audio_format: copy truncated from %zu to %u bytes", copy_size, (unsigned)AUDIO_WORK_BUFFER_BYTES);
-            copy_size = AUDIO_WORK_BUFFER_BYTES;
+        if (copy_size > work_bytes) {
+            ESP_LOGW(TAG, "convert_audio_format: copy truncated from %zu to %zu bytes", copy_size, work_bytes);
+            copy_size = work_bytes;
             s_audio_stats.conversion_errors++;
         }
         memcpy(dst, src, copy_size);
@@ -2671,9 +4018,9 @@ static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
     }
     int src_sample_count = src_size / src_bytes_per_sample;
     size_t calculated = (size_t)src_sample_count * (size_t)dst_bytes_per_sample;
-    if (calculated > AUDIO_WORK_BUFFER_BYTES) {
-        ESP_LOGW(TAG, "convert_audio_format: dst size %zu exceeds buffer %u, truncating", calculated, (unsigned)AUDIO_WORK_BUFFER_BYTES);
-        calculated = AUDIO_WORK_BUFFER_BYTES;
+    if (calculated > work_bytes) {
+        ESP_LOGW(TAG, "convert_audio_format: dst size %zu exceeds buffer %zu, truncating", calculated, work_bytes);
+        calculated = work_bytes;
         s_audio_stats.conversion_errors++;
     }
     *dst_size = calculated;
@@ -2762,10 +4109,15 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
         return ESP_OK;
     }
 
+    size_t work_bytes = audio_get_runtime_work_bytes();
+    if (work_bytes == 0U) {
+        work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+    }
+
     // Sanity clamp: never write more than our work buffers
-    if (src_size > AUDIO_WORK_BUFFER_BYTES) {
-        ESP_LOGW(TAG, "resample_audio: src_size (%zu) exceeds AUDIO_WORK_BUFFER_BYTES (%d), truncating", src_size, AUDIO_WORK_BUFFER_BYTES);
-        src_size = AUDIO_WORK_BUFFER_BYTES;
+    if (src_size > work_bytes) {
+        ESP_LOGW(TAG, "resample_audio: src_size (%zu) exceeds work buffer (%zu), truncating", src_size, work_bytes);
+        src_size = work_bytes;
         s_audio_stats.conversion_errors++;
     }
 
@@ -2794,9 +4146,9 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (src_size > AUDIO_WORK_BUFFER_BYTES) {
-        ESP_LOGW(TAG, "Resample input truncated from %zu to %u bytes", src_size, (unsigned)AUDIO_WORK_BUFFER_BYTES);
-        src_size = AUDIO_WORK_BUFFER_BYTES;
+    if (src_size > work_bytes) {
+        ESP_LOGW(TAG, "Resample input truncated from %zu to %zu bytes", src_size, work_bytes);
+        src_size = work_bytes;
         s_audio_stats.conversion_errors++;
     }
 
@@ -2816,9 +4168,9 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
             ESP_LOGE(TAG, "resample_audio: null src/dst on small-frame pass-through");
             return ESP_ERR_INVALID_ARG;
         }
-        if (src_size > AUDIO_WORK_BUFFER_BYTES) {
-            ESP_LOGW(TAG, "resample_audio: pass-through truncated %zu -> %u", src_size, (unsigned)AUDIO_WORK_BUFFER_BYTES);
-            src_size = AUDIO_WORK_BUFFER_BYTES;
+        if (src_size > work_bytes) {
+            ESP_LOGW(TAG, "resample_audio: pass-through truncated %zu -> %zu", src_size, work_bytes);
+            src_size = work_bytes;
             s_audio_stats.conversion_errors++;
         }
         memmove(dst, src, src_size);
@@ -2835,9 +4187,9 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
             ESP_LOGE(TAG, "resample_audio: null src/dst on rate-equal copy");
             return ESP_ERR_INVALID_ARG;
         }
-        if (src_size > AUDIO_WORK_BUFFER_BYTES) {
-            ESP_LOGW(TAG, "resample_audio: rate-equal copy truncated %zu -> %u", src_size, (unsigned)AUDIO_WORK_BUFFER_BYTES);
-            src_size = AUDIO_WORK_BUFFER_BYTES;
+        if (src_size > work_bytes) {
+            ESP_LOGW(TAG, "resample_audio: rate-equal copy truncated %zu -> %zu", src_size, work_bytes);
+            src_size = work_bytes;
             s_audio_stats.conversion_errors++;
         }
         memmove(dst, src, src_size);
@@ -2850,7 +4202,7 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
         return ESP_ERR_INVALID_ARG;
     }
 
-    size_t max_dst_frames = AUDIO_WORK_BUFFER_BYTES / frame_bytes;
+    size_t max_dst_frames = work_bytes / frame_bytes;
     if (max_dst_frames == 0) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -2870,7 +4222,7 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
     size_t dst_sample_count = dst_frame_count * (size_t)channels;
     size_t dst_bytes = dst_sample_count * (size_t)bytes_per_sample;
 
-    if (dst_bytes > AUDIO_WORK_BUFFER_BYTES) {
+    if (dst_bytes > work_bytes) {
         dst_frame_count = max_dst_frames;
         dst_sample_count = dst_frame_count * (size_t)channels;
         dst_bytes = dst_sample_count * (size_t)bytes_per_sample;
@@ -3008,6 +4360,7 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
  */
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "Audio processor not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -3056,6 +4409,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
  * @brief Check if a beep is currently active (for testing)
  */
 bool audio_processor_is_beep_active(void) {
+    AUDIO_PROC_LOG_ONCE();
     return s_beep_remaining_bytes > 0;
 }
 
@@ -3065,6 +4419,7 @@ bool audio_processor_is_beep_active(void) {
  */
 void audio_processor_enable_next_beep_diag(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     s_dump_next_beep_diag = true;
     ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");
 }
@@ -3076,15 +4431,80 @@ void audio_processor_enable_next_beep_diag(void)
  */
 bool audio_processor_is_running(void)
 {
+    AUDIO_PROC_LOG_ONCE();
     return s_is_running;
 }
 
+size_t audio_processor_get_work_buffer_bytes(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return s_runtime_work_bytes;
+}
+
 #ifdef CONFIG_BT_MOCK_TESTING
+void audio_processor_test_wav_reset_state(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    portENTER_CRITICAL(&s_wav_lock);
+    s_wav_playback_active = false;
+    s_wav_pending_bytes = 0;
+    s_wav_prev_valid = false;
+    s_wav_prev_force_synth = false;
+    portEXIT_CRITICAL(&s_wav_lock);
+}
+
+void audio_processor_test_wav_begin(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    wav_playback_begin();
+}
+
+void audio_processor_test_wav_add_pending(size_t bytes)
+{
+    AUDIO_PROC_LOG_ONCE();
+    wav_playback_add_pending(bytes);
+}
+
+bool audio_processor_test_wav_consume(size_t bytes)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return wav_playback_consume(bytes);
+}
+
+void audio_processor_test_wav_abort(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    wav_playback_abort();
+}
+
+void audio_processor_test_wav_complete_if_idle(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    wav_playback_complete_if_idle();
+}
+
+bool audio_processor_test_wav_is_active(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return wav_playback_is_active();
+}
+
+size_t audio_processor_test_wav_pending_bytes(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    size_t pending = 0;
+    portENTER_CRITICAL(&s_wav_lock);
+    pending = s_wav_pending_bytes;
+    portEXIT_CRITICAL(&s_wav_lock);
+    return pending;
+}
+
 /**
  * @brief Inject audio data directly into the ring buffer (for testing only)
  */
 esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size)
 {
+    AUDIO_PROC_LOG_ONCE();
     if (!s_is_initialized) {
         ESP_LOGE(TAG, "audio_processor_test_inject_audio_data: not initialized");
         return ESP_ERR_INVALID_STATE;

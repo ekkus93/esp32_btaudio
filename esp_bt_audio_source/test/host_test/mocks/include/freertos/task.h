@@ -1,3 +1,18 @@
+// Minimal task.h stub for host tests
+#ifndef MOCK_FREERTOS_TASK_H
+#define MOCK_FREERTOS_TASK_H
+
+#include "FreeRTOS.h"
+
+typedef void* TaskHandle_t;
+typedef int BaseType_t;
+
+BaseType_t xTaskCreate(void (*task)(void*), const char* name, unsigned stackDepth, void* params, unsigned uxPriority, TaskHandle_t* outHandle);
+void vTaskDelete(TaskHandle_t task);
+const char* pcTaskGetName(TaskHandle_t xTaskToQuery);
+void taskYIELD(void);
+
+#endif // MOCK_FREERTOS_TASK_H
 #pragma once
 
 #include <stdint.h>

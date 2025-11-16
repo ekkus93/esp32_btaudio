@@ -219,6 +219,20 @@ esp_err_t i2s_write(i2s_port_t i2s_num, const void *src, size_t size, size_t *by
     return ESP_OK;
 }
 
+// Compatibility wrappers for production code that uses i2s_channel_* APIs
+int i2s_channel_read(void* channel, void* data, size_t size, size_t* bytes_read, unsigned ticks_to_wait)
+{
+    (void)channel; // channel is ignored in this host mock; use port 0
+    esp_err_t r = i2s_read(I2S_NUM_0, data, size, bytes_read, (TickType_t)ticks_to_wait);
+    return (r == ESP_OK) ? 0 : -1; // production code expects esp_err style; use 0 for OK
+}
+
+int i2s_del_channel(void* channel)
+{
+    (void)channel;
+    return i2s_driver_uninstall(I2S_NUM_0) == ESP_OK ? 0 : -1;
+}
+
 // Test helper functions
 
 bool mock_i2s_is_initialized(i2s_port_t i2s_num) {

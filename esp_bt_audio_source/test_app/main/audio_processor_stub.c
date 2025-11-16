@@ -1,6 +1,19 @@
 #include "audio_processor.h"
 #include "esp_err.h"
+#include "esp_log.h"
+#include <stdbool.h>
 #include <string.h>
+
+#define AUDIO_PROC_STUB_LOG_ONCE()                                                       \
+    do {                                                                                \
+        static bool _logged = false;                                                    \
+        if (!_logged) {                                                                 \
+            ESP_LOGI(TAG, "audio_processor (test_app) entered %s", __func__);          \
+            _logged = true;                                                             \
+        }                                                                               \
+    } while (0)
+
+static const char *TAG = "AUDIO_PROC_STUB";
 
 /*
  * Lightweight stub of the audio processor interface for the Unity test_app
@@ -60,6 +73,7 @@ static void clamp_volume(uint8_t *volume)
 
 esp_err_t audio_processor_init(const audio_config_t *config)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!config) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -80,6 +94,7 @@ esp_err_t audio_processor_init(const audio_config_t *config)
 
 esp_err_t audio_processor_deinit(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.status.initialized = false;
     s_audio_stub.status.running = false;
     return ESP_OK;
@@ -87,6 +102,7 @@ esp_err_t audio_processor_deinit(void)
 
 esp_err_t audio_processor_start(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!s_audio_stub.status.initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -96,12 +112,14 @@ esp_err_t audio_processor_start(void)
 
 esp_err_t audio_processor_stop(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.status.running = false;
     return ESP_OK;
 }
 
 esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.config.sample_rate = sample_rate;
     s_audio_stub.status.sample_rate = sample_rate;
     return ESP_OK;
@@ -109,6 +127,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.config.bit_depth = bit_depth;
     s_audio_stub.status.bit_depth = bit_depth;
     return ESP_OK;
@@ -116,6 +135,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 
 esp_err_t audio_processor_set_volume(uint8_t volume)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     clamp_volume(&volume);
     s_audio_stub.config.volume = volume;
     s_audio_stub.status.volume = volume;
@@ -124,6 +144,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
 
 esp_err_t audio_processor_set_mute(bool mute)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.config.mute = mute;
     s_audio_stub.status.mute = mute;
     return ESP_OK;
@@ -131,6 +152,7 @@ esp_err_t audio_processor_set_mute(bool mute)
 
 esp_err_t audio_processor_get_config(audio_config_t *config)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!config) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -140,6 +162,7 @@ esp_err_t audio_processor_get_config(audio_config_t *config)
 
 esp_err_t audio_processor_get_stats(audio_stats_t *stats)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!stats) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -149,6 +172,7 @@ esp_err_t audio_processor_get_stats(audio_stats_t *stats)
 
 esp_err_t audio_processor_read(uint8_t *buffer, size_t size, size_t *bytes_read)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!buffer || size == 0 || !bytes_read) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -162,6 +186,7 @@ esp_err_t audio_processor_read(uint8_t *buffer, size_t size, size_t *bytes_read)
 
 esp_err_t audio_processor_get_status(audio_status_t *status)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     if (!status) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -171,6 +196,7 @@ esp_err_t audio_processor_get_status(audio_status_t *status)
 
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     s_audio_stub.config.i2s_bclk_pin = bclk_pin;
     s_audio_stub.config.i2s_ws_pin = ws_pin;
     s_audio_stub.config.i2s_din_pin = din_pin;
@@ -187,6 +213,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 
 esp_err_t audio_processor_play_wav(const char *path)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     (void)path;
     /* Treat WAV play requests as accepted in the test stub */
     return ESP_OK;
@@ -194,23 +221,27 @@ esp_err_t audio_processor_play_wav(const char *path)
 
 void audio_processor_enable_next_beep_diag(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     /* No-op in test stub */
 }
 
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     /* Indicate diagnostic emitted successfully */
     return ESP_OK;
 }
 
 esp_err_t audio_processor_drain_ringbuffer(void)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     /* No-op drain; report success */
     return ESP_OK;
 }
 
 void audio_processor_set_dram_only(bool enable)
 {
+    AUDIO_PROC_STUB_LOG_ONCE();
     (void)enable;
     /* Test stub doesn't allocate differently; no-op */
 }

@@ -20,6 +20,15 @@ void nvs_storage_set_volume(uint8_t volume)
 }
 #endif
 
+#define AUDIO_PROC_HOST_LOG_ONCE()                                                       \
+    do {                                                                                \
+        static bool _logged = false;                                                    \
+        if (!_logged) {                                                                 \
+            printf("audio_processor (host_stub) entered %s\n", __func__);            \
+            _logged = true;                                                             \
+        }                                                                               \
+    } while (0)
+
 static audio_config_t s_config = {
     .sample_rate = AUDIO_SAMPLE_RATE_44K,
     .bit_depth = AUDIO_BIT_DEPTH_16,
@@ -52,6 +61,7 @@ static size_t s_test_buffer_count = 0;
 
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!config) return ESP_ERR_INVALID_ARG;
     s_config = *config;
     s_status.initialized = true;
@@ -70,6 +80,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
 esp_err_t audio_processor_deinit(void)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_status.initialized = false;
     s_status.running = false;
     return ESP_OK;
@@ -77,6 +88,7 @@ esp_err_t audio_processor_deinit(void)
 
 esp_err_t audio_processor_start(void)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!s_status.initialized) return ESP_ERR_INVALID_STATE;
     s_status.running = true;
     return ESP_OK;
@@ -84,12 +96,14 @@ esp_err_t audio_processor_start(void)
 
 esp_err_t audio_processor_stop(void)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_status.running = false;
     return ESP_OK;
 }
 
 esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_config.sample_rate = sample_rate;
     s_status.sample_rate = sample_rate;
     return ESP_OK;
@@ -97,6 +111,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_config.bit_depth = bit_depth;
     s_status.bit_depth = bit_depth;
     return ESP_OK;
@@ -104,6 +119,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 
 esp_err_t audio_processor_set_volume(uint8_t volume)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!s_status.initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -124,6 +140,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
 
 esp_err_t audio_processor_set_mute(bool mute)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_config.mute = mute;
     s_status.mute = mute;
     return ESP_OK;
@@ -131,6 +148,7 @@ esp_err_t audio_processor_set_mute(bool mute)
 
 esp_err_t audio_processor_get_config(audio_config_t* config)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!config) return ESP_ERR_INVALID_ARG;
     *config = s_config;
     return ESP_OK;
@@ -138,6 +156,7 @@ esp_err_t audio_processor_get_config(audio_config_t* config)
 
 esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!stats) return ESP_ERR_INVALID_ARG;
     stats->samples_processed = 0;
     stats->buffer_overruns = 0;
@@ -151,6 +170,7 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!buffer || !bytes_read) return ESP_ERR_INVALID_ARG;
     
     size_t available = s_test_buffer_count;
@@ -194,6 +214,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
 esp_err_t audio_processor_get_status(audio_status_t* status)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!status) return ESP_ERR_INVALID_ARG;
     *status = s_status;
     return ESP_OK;
@@ -201,6 +222,7 @@ esp_err_t audio_processor_get_status(audio_status_t* status)
 
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     s_config.i2s_bclk_pin = bclk_pin;
     s_config.i2s_ws_pin = ws_pin;
     s_config.i2s_din_pin = din_pin;
@@ -212,6 +234,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 // should provide a proper hardware-backed implementation.
 esp_err_t audio_processor_beep(uint32_t duration_ms)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     (void)duration_ms;
     if (!s_status.initialized) return ESP_ERR_INVALID_STATE;
     // No-op for host tests; report success so command layer can respond.
@@ -223,6 +246,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
 // This bypasses the audio processing task for unit testing
 esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size)
 {
+    AUDIO_PROC_HOST_LOG_ONCE();
     if (!data) return ESP_ERR_INVALID_ARG;
     
     // Check if there's enough space in the test buffer

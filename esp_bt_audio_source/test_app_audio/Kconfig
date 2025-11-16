@@ -1,0 +1,12 @@
+# Kconfig for test_app_audio
+
+config TEST_APP_AUDIO_PSRAM_TESTS
+    bool "Enable on-device PSRAM integration tests"
+    default SPIRAM
+    help
+      Enable the PSRAM integration tests which exercise heap_caps and
+      audio_processor allocations that prefer PSRAM. This option defaults to
+      the value of SPIRAM (enabled when SPIRAM is enabled in project config).
+
+      If disabled, the PSRAM integration tests will be skipped and the
+      test runner will print a clear skip message.

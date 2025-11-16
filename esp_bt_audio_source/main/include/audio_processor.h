@@ -257,6 +257,14 @@ esp_err_t audio_processor_drain_ringbuffer(void);
  */
 void audio_processor_set_dram_only(bool enable);
 
+/**
+ * @brief Query the byte size of the runtime audio work buffers.
+ *
+ * Returns the per-buffer size selected during init. When the processor is not
+ * initialized this returns 0.
+ */
+size_t audio_processor_get_work_buffer_bytes(void);
+
 
 /**
  * @brief Inject audio data directly into the ring buffer (for testing only)
@@ -271,6 +279,14 @@ void audio_processor_set_dram_only(bool enable);
  */
 #ifdef CONFIG_BT_MOCK_TESTING
 esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size);
+void audio_processor_test_wav_reset_state(void);
+void audio_processor_test_wav_begin(void);
+void audio_processor_test_wav_add_pending(size_t bytes);
+bool audio_processor_test_wav_consume(size_t bytes);
+void audio_processor_test_wav_abort(void);
+void audio_processor_test_wav_complete_if_idle(void);
+bool audio_processor_test_wav_is_active(void);
+size_t audio_processor_test_wav_pending_bytes(void);
 #endif
 
 /**

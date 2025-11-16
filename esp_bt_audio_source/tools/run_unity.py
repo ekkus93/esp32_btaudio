@@ -15,7 +15,9 @@ not found on PATH (convenience for interactive shells).
 """
 
 import argparse
+import errno
 import os
+import pty
 import re
 import shlex
 import signal
@@ -94,11 +96,16 @@ def make_shell_cmd(args_list, export_sh=None):
         return args_list
 
 
-def tail_process_output(proc, logfile_path, stop_event, summary_event, boot_event, test_complete_event):
+def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_event, boot_event, test_complete_event):
     """Read process stdout line-by-line, write to logfile, and signal when summary seen."""
     with open(logfile_path, "ab", buffering=0) as fh:
         while True:
-            line = proc.stdout.readline()
+            try:
+                line = stdout_stream.readline()
+            except OSError as exc:
+                if exc.errno in (errno.EIO, errno.EBADF):
+                    break
+                raise
             if not line:
                 if proc.poll() is not None:
                     break
@@ -293,9 +300,30 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     flash_args = ['idf.py', '-p', port, 'flash', 'monitor']
     flash_cmd = make_shell_cmd(flash_args, export_sh=export_sh)
 
+    stdout_stream = None
     try:
-        proc = subprocess.Popen(flash_cmd, cwd=project_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    except FileNotFoundError:
+        master_fd, slave_fd = pty.openpty()
+        try:
+            proc = subprocess.Popen(
+                flash_cmd,
+                cwd=project_root,
+                env=env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+            )
+        except FileNotFoundError:
+            os.close(master_fd)
+            os.close(slave_fd)
+            return 3, logfile
+        finally:
+            try:
+                os.close(slave_fd)
+            except OSError:
+                pass
+        stdout_stream = os.fdopen(master_fd, "rb", buffering=0)
+    except OSError:
         return 3, logfile
 
     stop_event = threading.Event()
@@ -303,7 +331,11 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     boot_event = threading.Event()
     test_complete_event = threading.Event()
 
-    t = threading.Thread(target=tail_process_output, args=(proc, logfile, stop_event, summary_event, boot_event, test_complete_event), daemon=True)
+    t = threading.Thread(
+        target=tail_process_output,
+        args=(proc, stdout_stream, logfile, stop_event, summary_event, boot_event, test_complete_event),
+        daemon=True,
+    )
     t.start()
 
     start = time.time()
@@ -462,6 +494,12 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
         except Exception:
             pass
         return 3, logfile
+    finally:
+        if stdout_stream is not None:
+            try:
+                stdout_stream.close()
+            except Exception:
+                pass
 
 
 def main():

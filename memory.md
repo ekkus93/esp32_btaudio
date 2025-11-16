@@ -1,4 +1,12 @@
 ## Current Focus
+### Latest: PARTS & FILES fixes (2025-11-16)
+- Implemented best-effort runtime SPIFFS mount in the `FILES` handler: when `opendir("/spiffs")` returned ENOENT the handler now attempts `esp_vfs_spiffs_register()` with partition_label="spiffs" and retries, which allows the command to list files when the partition is available.
+- Regenerated and flashed the partition table (`build/partition_table/partition-table.bin` -> flash offset `0x8000`) so the on-device table advertises the `spiffs` label; verified the canonical `spiffs.bin` bytes at offset `0x1C0000` and size `0x40000`.
+- Added a runtime `PARTS` command to enumerate partitions via the `esp_partition_*` APIs. Fixed a crash caused by double-releasing the partition iterator by switching to a safe iteration pattern: `for (esp_partition_iterator_t cur = it; cur != NULL; cur = esp_partition_next(cur)) { ... }` and removed the explicit `esp_partition_iterator_release()` inside the loop.
+- Rebuilt and reflashed the app partition. Verified `PARTS` over serial: device emits `INFO|PARTS|ITEM|...` lines for `nvs`, `phy_init`, `factory`, and `spiffs` and finishes with `OK|PARTS|SUMMARY|COUNT=4` and no allocator assertions.
+- Next actionable suggestion: add a host helper or CI smoke test that flashes partition-table + spiffs + app, then runs `PARTS` and `FILES` over serial to assert correctness and prevent regressions.
+	- Status: helper implemented at `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` (flashes app+partition table via `idf.py`, writes SPIFFS image to `0x1C0000` via `esptool`, then opens serial and asserts `PARTS` and `FILES` responses). TODO: add CI invocation snippet and brief README note in `esp_bt_audio_source/tools/`.
+
 - RECENT (host-test): Enabled PSRAM-path recording in host mocks so `test_audio_processor_real`
 - now records PSRAM allocations. Changes made:
 - - `test/host_test/mocks/fake_ringbuf.c`: allocate backing buffer with `heap_caps_malloc(uxMemoryCaps)` so

@@ -1,28 +1,30 @@
-#pragma once
+// Minimal FreeRTOS.h stub for host tests
+#ifndef MOCK_FREERTOS_H
+#define MOCK_FREERTOS_H
 
 #include <stdint.h>
-#include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Host-mode tick configuration mirrors a 1 kHz RTOS tick for simplicity. */
-#ifndef configTICK_RATE_HZ
-#define configTICK_RATE_HZ 1000U
-#endif
-
-#ifndef portTICK_PERIOD_MS
-#define portTICK_PERIOD_MS (1000U / configTICK_RATE_HZ)
-#endif
-
+/* Basic tick and base types - choose uint32_t to match common ESP-IDF
+ * FreeRTOS config and avoid conflicts with other headers. */
 typedef uint32_t TickType_t;
-
 typedef int BaseType_t;
 typedef unsigned int UBaseType_t;
 
+/* Port/RTOS macros used by the production code */
+#define pdTRUE 1
+#define pdFALSE 0
+#define pdPASS 1
+#define portMAX_DELAY ((TickType_t)0xffffffffU)
+
+/* Helper to convert milliseconds to ticks for host tests */
+#ifndef configTICK_RATE_HZ
+#define configTICK_RATE_HZ 1000U
+#endif
+#define portTICK_PERIOD_MS (1000U / configTICK_RATE_HZ)
 #define pdMS_TO_TICKS(ms) ((TickType_t)((ms) / portTICK_PERIOD_MS))
 
-#ifdef __cplusplus
-}
-#endif
+/* Simple port spinlock type used by the code (no-op in host tests) */
+typedef int portMUX_TYPE;
+#define portMUX_INITIALIZER_UNLOCKED 0
+
+#endif // MOCK_FREERTOS_H

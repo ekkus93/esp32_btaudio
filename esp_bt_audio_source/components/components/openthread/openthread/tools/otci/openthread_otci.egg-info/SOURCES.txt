@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+openthread_otci.egg-info/PKG-INFO
+openthread_otci.egg-info/SOURCES.txt
+openthread_otci.egg-info/dependency_links.txt
+openthread_otci.egg-info/top_level.txt
+otci/__init__.py
+otci/command_handlers.py
+otci/connectors.py
+otci/constants.py
+otci/errors.py
+otci/otci.py
+otci/types.py
+otci/utils.py
+tests/test_otci.py

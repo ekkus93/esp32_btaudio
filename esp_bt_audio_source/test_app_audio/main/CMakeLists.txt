@@ -12,6 +12,9 @@ idf_component_register(
         "i2s_test.c"
         "pcm_format_test.c"
         "i2s_test_stubs.c"
+        "test_psram_integration.c"
+    "test_psram_fragmentation.c"
+    "test_psram_audio_stress.c"
     "../../main/audio_processor.c"
     INCLUDE_DIRS
         "."
@@ -23,14 +26,32 @@ idf_component_register(
         nvs_storage
         esp_ringbuf
         esp_timer
-    spiffs
+        spiffs
         unity
         test_utils
     PRIV_REQUIRES
         test_command_interface
+        esp_psram
 )
 
 # Audio-focused tests still rely on the mock-enabled build to avoid accessing
 # physical peripherals on the DUT. Reuse the CONFIG_BT_MOCK_TESTING define so
 # existing code paths remain enabled.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CONFIG_BT_MOCK_TESTING)
+
+if(DEFINED UNITY_AUDIO_TEST_GROUP_OVERRIDE AND NOT "${UNITY_AUDIO_TEST_GROUP_OVERRIDE}" STREQUAL "")
+    # Ensure the main component test sources are compiled with the override so
+    # the runtime banner and group-shortcut code path are enabled.
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE UNITY_AUDIO_TEST_GROUP_OVERRIDE="${UNITY_AUDIO_TEST_GROUP_OVERRIDE}")
+endif()
+
+# Warn at build time if the PSRAM integration test gate is enabled but SPIRAM
+# is not enabled in the project's sdkconfig. This helps avoid confusion where
+# tests are compiled-in but will be skipped at runtime.
+if(DEFINED CONFIG_TEST_APP_AUDIO_PSRAM_TESTS)
+    if(CONFIG_TEST_APP_AUDIO_PSRAM_TESTS)
+        if(NOT DEFINED CONFIG_SPIRAM OR NOT CONFIG_SPIRAM)
+            message(FATAL_ERROR "CONFIG_TEST_APP_AUDIO_PSRAM_TESTS is enabled but CONFIG_SPIRAM is not set. Enable CONFIG_SPIRAM or disable TEST_APP_AUDIO_PSRAM_TESTS to proceed.")
+        endif()
+    endif()
+endif()

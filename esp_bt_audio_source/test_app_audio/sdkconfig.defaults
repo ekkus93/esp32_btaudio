@@ -1,3 +1,9 @@
+# Enable SPIRAM (PSRAM) for test runs so PSRAM allocations are exercised.
+CONFIG_SPIRAM=n
+# Choose a reasonable default speed/mode — keep minimal to avoid platform-specific issues.
+# These can be adjusted per-board if needed.
+#CONFIG_SPIRAM_SPEED_80M=y
+#CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_UNITY_FREERTOS_STACK_SIZE=8192
 CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y

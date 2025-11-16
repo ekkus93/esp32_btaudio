@@ -97,6 +97,40 @@ add_executable(test_nvs_storage test_nvs_storage.c
 target_link_libraries(test_nvs_storage unity)
 add_test(NAME test_nvs_storage COMMAND $<TARGET_FILE:test_nvs_storage>)
 
+# Simple host PSRAM unit tests (uses heap_caps mock)
+add_executable(test_psram test_psram.c
+    mocks/esp_heap_caps_mock.c
+    mocks/audio_alloc_host.c)
+target_include_directories(test_psram PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_link_libraries(test_psram unity)
+add_test(NAME test_psram COMMAND $<TARGET_FILE:test_psram>)
+
+## Real audio_processor host test: link production source with host mocks
+add_executable(test_audio_processor_real test_audio_processor_real.c
+    ../../main/audio_processor.c
+    mocks/esp_heap_caps_mock.c
+    mocks/mock_i2s.c
+    mocks/mock_gap.c
+    mocks/mock_audio_and_btstate.c
+    mocks/nvs_storage_mock.c)
+# Add foundational host-side RTOS and helper mocks so the production
+# audio_processor implementation can link in a host build.
+target_sources(test_audio_processor_real PRIVATE
+    mocks/fake_task.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c
+    mocks/fake_ringbuf.c
+    mocks/fake_timer.c
+    mocks/fake_esp_err.c)
+target_sources(test_audio_processor_real PRIVATE
+    mocks/fake_log.c
+    mocks/fake_debug_helpers.c)
+target_include_directories(test_audio_processor_real PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_include_directories(test_audio_processor_real PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_audio_processor_real PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1)
+target_link_libraries(test_audio_processor_real unity m)
+add_test(NAME test_audio_processor_real COMMAND $<TARGET_FILE:test_audio_processor_real>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ../../components/components/bt/common/osi/allocator.c
