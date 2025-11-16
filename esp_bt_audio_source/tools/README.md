@@ -1,3 +1,159 @@
+# Tools — esp_bt_audio_source
+
+This folder contains helper scripts used for flashing, running and capturing on-device tests and simple CI/host smoke checks for the `esp_bt_audio_source` project.
+
+Helper of interest
+------------------
+
+- `flash_and_verify_spiffs.py` — automates a reproducible flash + SPIFFS write + verification sequence for `esp_bt_audio_source`.
+
+Purpose
+-------
+
+The `flash_and_verify_spiffs.py` helper performs the following steps (when called from the repository root):
+
+1. Runs `idf.py -C <project-dir> flash` to flash the app and partition table.
+2. Uses `esptool` to write the SPIFFS image to the configured SPIFFS partition offset.
+3. Opens the serial port, sends `PARTS` and `FILES` commands, captures the responses and asserts the presence of expected `OK|...|SUMMARY` lines.
+
+Usage
+-----
+
+Basic invocation (from repo root):
+
+```bash
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
+  --port /dev/ttyUSB0 \
+  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+  --spiffs-offset 0x1C0000 \
+  --project-dir esp_bt_audio_source \
+  --baud 115200 \
+  --monitor-wait 4
+```
+
+Options (summary)
+- `--port` (required): serial device (for example `/dev/ttyUSB0`).
+- `--spiffs-image` (required): path to the SPIFFS binary to write.
+- `--spiffs-offset` (required): flash offset where the SPIFFS partition is located (hex, e.g. `0x1C0000`).
+- `--project-dir` (optional, default `esp_bt_audio_source`): project path passed to `idf.py -C` for flashing.
+- `--baud` (optional, default 115200): serial monitor baud for the test commands.
+- `--monitor-wait` (optional, default 4): seconds to wait after flashing for the target to boot before opening serial.
+
+Exit codes
+----------
+
+The helper uses the following exit codes to make it CI-friendly:
+
+- `0` — success: flash completed, SPIFFS write succeeded, and both `PARTS` and `FILES` emitted expected `OK|...|SUMMARY` lines.
+- `1` — verification failure: either `PARTS` or `FILES` did not report the expected summary lines within the configured timeout.
+- `2` — fatal error: I/O or environment error (for example, cannot open serial, esptool not found, or `idf.py` failed to run).
+
+CI example
+----------
+
+This snippet shows a minimal CI job step (assumes the runner has serial access and ESP-IDF is sourced):
+
+```bash
+. $HOME/esp/esp-idf/export.sh
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
+  --port ${PORT:-/dev/ttyUSB0} \
+  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+  --spiffs-offset 0x1C0000 \
+  --project-dir esp_bt_audio_source \
+  --baud 115200 \
+  --monitor-wait 6
+if [ $? -ne 0 ]; then
+  echo "SPIFFS flash or verification failed" >&2
+  exit 1
+fi
+```
+
+Notes & troubleshooting
+-----------------------
+
+- If `make_spiffs.py` is used to build the image it may fall back to `spiffsgen.py` when `mkspiffs` is not available — that is expected in some toolchains.
+- If the `PARTS` output does not list a `spiffs` partition, verify the flashed partition table contains a `spiffs` label (the `esp_bt_audio_source` project builds `build/partition_table/partition-table.bin`).
+- If the `FILES` output shows no entries, confirm the SPIFFS image actually contains files under `main/assets/spiffs/`.
+
+If you'd like, I can add this README to CI artifacts or link to it from your pipeline docs for quick reference.
+# Tools — esp_bt_audio_source
+
+This folder contains helper scripts used for flashing, running and capturing on-device tests and simple CI/host smoke checks.
+
+Helper of interest
+------------------
+
+- `flash_and_verify_spiffs.py` — automates a reproducible flash + SPIFFS write + verification sequence.
+
+Purpose
+-------
+
+The `flash_and_verify_spiffs.py` helper performs the following steps (when called from the repository root):
+
+1. Runs `idf.py -C <project-dir> flash` to flash the app and partition table.
+2. Uses `esptool` to write the SPIFFS image to the configured SPIFFS partition offset.
+3. Opens the serial port, sends `PARTS` and `FILES` commands, captures the responses and asserts the presence of expected `OK|...|SUMMARY` lines.
+
+Usage
+-----
+
+Basic invocation:
+
+```bash
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
+  --port /dev/ttyUSB0 \
+  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+  --spiffs-offset 0x1C0000 \
+  --project-dir esp_bt_audio_source \
+  --baud 115200 \
+  --monitor-wait 4
+```
+
+Options (summary)
+- `--port` (required): serial device (for example `/dev/ttyUSB0`).
+- `--spiffs-image` (required): path to the SPIFFS binary to write.
+- `--spiffs-offset` (required): flash offset where the SPIFFS partition is located (hex, e.g. `0x1C0000`).
+- `--project-dir` (optional, default `esp_bt_audio_source`): project path passed to `idf.py -C` for flashing.
+- `--baud` (optional, default 115200): serial monitor baud for the test commands.
+- `--monitor-wait` (optional, default 4): seconds to wait after flashing for the target to boot before opening serial.
+
+Exit codes
+----------
+
+The helper uses the following exit codes to make it CI-friendly:
+
+- `0` — success: flash completed, SPIFFS write succeeded, and both `PARTS` and `FILES` emitted expected `OK|...|SUMMARY` lines.
+- `1` — verification failure: either `PARTS` or `FILES` did not report the expected summary lines within the configured timeout.
+- `2` — fatal error: I/O or environment error (for example, cannot open serial, esptool not found, or `idf.py` failed to run).
+
+CI example
+----------
+
+This snippet shows a minimal CI job step (assumes the runner has serial access and ESP-IDF is sourced):
+
+```bash
+. $HOME/esp/esp-idf/export.sh
+python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
+  --port ${PORT:-/dev/ttyUSB0} \
+  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
+  --spiffs-offset 0x1C0000 \
+  --project-dir esp_bt_audio_source \
+  --baud 115200 \
+  --monitor-wait 6
+if [ $? -ne 0 ]; then
+  echo "SPIFFS flash or verification failed" >&2
+  exit 1
+fi
+```
+
+Notes & troubleshooting
+-----------------------
+
+- If `make_spiffs.py` is used to build the image it may fall back to `spiffsgen.py` when `mkspiffs` is not available — that is expected in some toolchains.
+- If the `PARTS` output does not list a `spiffs` partition, verify the flashed partition table contains a `spiffs` label (the `esp_bt_audio_source` project builds `build/partition_table/partition-table.bin`).
+- If the `FILES` output shows no entries, confirm the SPIFFS image actually contains files under `main/assets/spiffs/`.
+
+If you'd like, add this README to CI artifacts or link to it from your pipeline docs for quick reference.
 Host Pairing Test Harness
 =========================
 
