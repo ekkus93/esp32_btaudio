@@ -1,4 +1,59 @@
 ## Current Focus
+### Latest: Full orchestrator run recorded (2025-11-17)
+- Executed a full host + on-device sweep after repairing the ESP-IDF environment and fixing host mock semantics.
+- Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
+	- Host CTest: 22/22 passed (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, `tmp/host_ctest_output.log`).
+	- `test_app`: 37/37 passed (`esp_bt_audio_source/test_app/build/one_run_unity.log`).
+	- `test_app2`: 45/45 passed (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
+	- `test_app_audio`: 26/26 passed (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`).
+	- Aggregate: 130 tests run, 130 passed, 0 failed (22 host + 108 device). Aggregated JSON written to `tmp/run_all_tests_summary.json` and `tmp/canonical_unity_summary.json`.
+
+Notes:
+- All per-suite `one_run_unity.log` files and the orchestrator JSON were preserved under `tmp/` and under each test app's build directory for future triage and archival.
+- Next step (optional): push these documentation updates and the updated `memory.md` to `origin/master` (user permission required). The commit is staged in this session and will be pushed if you confirm.
+
+### SPIFFS image hygiene (2025-11-16)
+- Only `esp_bt_audio_source/main/assets/spiffs/spiffs.bin` is authoritative. Deleted legacy copies in `esp_bt_audio_source/spiffs.bin` and under `tmp/` (`spiffs_readback.bin`, `spiffs_dump.bin`, `spiffs_extract/spiffs.bin`). Future flash/write operations must use the canonical assets path, and **no other `spiffs.bin` may be referenced unless the user explicitly overrides this rule.**
+### Latest: WAV synth suppression (2025-11-16)
+- Updated `audio_processor_read()` so WAV playback temporarily bypasses all beep residual/buffer/fallback output, preventing synthesized tones from mixing with file playback; pending beep bytes resume once WAV drains.
+- `audio_processor_beep()` now refuses to arm the fallback synth when WAV playback is active, keeping `s_force_synth` from being re-enabled mid-stream.
+- `idf.py build` for `esp_bt_audio_source` succeeds after the change (warnings unchanged from prior builds).
+- 2025-11-16 hardware validation: reflashed `esp_bt_audio_source` and issued `PLAY worker_long_norm.wav` over UART (capture in terminal buffer). Logs show `wav_active=1`, `synth=0`, `beep_remaining=0`, and continuous `DIAG-APLAY-STREAM` cycles with 4 KiB payloads. No synthesized beeps were heard on the paired headset; WAV audio played cleanly. A task watchdog warning (`IDLE0`) appeared once during the long capture, likely because the monitor script held the serial port while BTC_TASK was busy printing diagnostics; playback continued unaffected. Keep an eye on BTC_TASK verbosity if longer captures are required.
+
+### Latest: WAV chunk marker review (2025-11-16)
+- Confirmed `wav_stream_try_enqueue_unlocked()` currently enqueues WAV data without tagging the first byte; no marker injection exists before the ringbuffer send, so downstream logs will not show unique per-chunk markers yet.
+
+### Latest: WAV synth restore guard (2025-11-22)
+- `wav_playback_consume()` now keeps `s_wav_playback_active` asserted until the streamer signals completion, so `s_force_synth` stays disabled through temporary underruns; synth restore moves exclusively into `wav_playback_complete_if_idle()` / `wav_playback_abort()`.
+- Updated the WAV state-machine component test plus the host stub implementation to reflect the deferred restore semantics (synth only resumes after `complete_if_idle`).
+- Rebuilt and ran host tests via `cmake --build . && ctest --output-on-failure` under `esp_bt_audio_source/test/host_test/build_host_tests`; 21/21 tests passed.
+
+### Latest: Audio metadata ringbuffer (2025-11-25)
+- Implemented metadata tag helpers (`audio_source_tag_push/take/drop`) and wired WAV residual flush plus producer paths (worker synth/WAV, beep) to push/drop tags in sync with audio ringbuffer enqueues.
+- Added `audio_source_tag_reset_buffer()` utility to drain the tag ringbuffer so resets can clear pending metadata alongside audio data.
+- Simplified `wav_stream_queue_data_locked()` to reuse `wav_stream_try_enqueue_unlocked()` so WAV stream injections share the new tagging/error handling and residual metadata bookkeeping.
+- Remaining work: instantiate/destroy the metadata ringbuffer during init/deinit, propagate tag consumption through readers/drains, and extend diagnostics/tests to validate tag alignment.
+- TODO (Metadata tag/drop sweep)
+	- [x] Add metadata tag drops to the main beep ringbuffer discard loop so audio/tag ringbuffers stay in sync.
+	- [ ] Audit remaining discard paths (beep buffer flush, WAV residual flush, drains) and confirm metadata handling.
+	- [ ] Rebuild affected targets or run focused tests once tag-drop plumbing is in place.
+
+### Latest: SPIFFS auto-mount fix (2025-11-20)
+- Added `cmd_mount_spiffs_if_needed()` (command interface helper) and now invoke it from the FILES and PLAY handlers so both commands re-register SPIFFS on demand before touching `/spiffs`. This removes the race where PLAY ran before the partition was mounted and hit `ESP_ERR_NOT_FOUND` despite FILES succeeding moments earlier.
+- `idf.py build` for `esp_bt_audio_source` succeeded after the change; firmware is ready to flash for on-device verification.
+- Next: flash the updated image, run FILES and PLAY over UART, and confirm that `/spiffs/worker_long_norm.wav` streams WAV audio instead of falling back to the synth.
+
+### Latest: PLAY command verification (2025-11-21)
+- Issued `PLAY worker_long_norm.wav` twice over UART after flashing the refreshed SPIFFS image. The second capture shows the command parser acknowledging the file (`OK|PLAY|ENQUEUED|/spiffs/worker_long_norm.wav`) and continuous WAV streaming diagnostics (ringbuffer dequeue/return logs with pending bytes decreasing from 76 KiB).
+- The first long capture triggered the Task WDT (`IDLE0`) while BTC_TASK was draining buffered logs; playback continued afterward. Shorter captures avoid the watchdog, suggesting the WDT was caused by prolonged logging/monitoring rather than a stuck audio pipeline.
+- Pending follow-up: confirm audible output on the paired headset during sustained PLAY and decide whether BTC_TASK logging needs throttling to prevent WDT noise during long captures.
+
+### Latest: Connect & PLAY capture (2025-11-19)
+- Re-ran `tmp/paired_connect_play.py` per "try it again" request; script paired with `00:18:6b:76:d7:1c`, issued CONNECT/PLAY, and logged to `tmp/paired_connect_play.log` (mirrored to `tmp/playback_capture_connect_then_play.log`).
+- CONNECT succeeded (`OK|CONNECT|INITIATED|` + link-up), but PLAY failed immediately: `audio_processor_play_wav` reported `ESP_ERR_NOT_FOUND` while opening `/spiffs/worker_long_norm.wav`. BTC_TASK logs show streaming loop continued with synth fallback.
+- Follow-up FILES/FILE commands were sent (responses obscured by DIAG spam), so filesystem presence still needs a quieter verification. Next step: investigate why PLAY can't open the WAV despite prior FILES success (mount timing? handle leak?).
+- 2025-11-19: Captured dedicated PLAY telemetry via direct UART session (`tmp/play_debug.log`). Log confirms the command parser receives `PLAY`, but `audio_processor_play_wav` immediately fails to open `/spiffs/worker_long_norm.wav` (ESP_ERR_NOT_FOUND) even though SPIFFS listings previously showed the file. After the failure, BTC task continues streaming synth-only, yielding the audible beeps reported on hardware. Need to reconcile SPIFFS mount state between FILES and PLAY handlers—suspect mount loss between commands or a stale path reference.
+
 ### Latest: PARTS & FILES fixes (2025-11-16)
 - Implemented best-effort runtime SPIFFS mount in the `FILES` handler: when `opendir("/spiffs")` returned ENOENT the handler now attempts `esp_vfs_spiffs_register()` with partition_label="spiffs" and retries, which allows the command to list files when the partition is available.
 - Regenerated and flashed the partition table (`build/partition_table/partition-table.bin` -> flash offset `0x8000`) so the on-device table advertises the `spiffs` label; verified the canonical `spiffs.bin` bytes at offset `0x1C0000` and size `0x40000`.
@@ -265,6 +320,8 @@
 ## Assumptions & Constraints
 - User reiterated on 2025-11-02 that production pairing targets Bluetooth Classic only (no BLE path required).
 
+- Agent behavior: Do not waste the user's time with avoidable mistakes or poor-quality work; prioritize concise, correct actions and explicit verification steps.
+
 - When we refer to "all unit tests" in notes or in conversation, this means the complete set of:
 	- Host-side tests registered with CTest under `test/host_test` (the CTest bundle / host_tests), and
 	- On-device Unity suites: `test_app`, `test_app2`, and `test_app_audio` (these require flashing an ESP32 and capturing the Unity logs with the runner scripts).
@@ -363,6 +420,27 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 	- Planned monitor capture path (if the rebuild+flash is executed): `tmp/monitor_test_app_audio.log`.
 	- If PSRAM is absent on the board, the device will log the DRAM-only fallback; that is expected and not a code regression.
 
+	## Quick factual summary — latest sweep (2025-11-15 run)
+
+	- Host CTest (source: `tmp/run_all_tests_summary.json` -> host.ctest_output): 21 total tests — 21 passed, 0 failed.
+	- On-device Unity suites (runner results recorded in `tmp/run_all_tests_summary.json`):
+		- `test_app`: runner rc=0, runner log contains "Unity tests passed"; canonical per-test counts not extracted by aggregator (see note). Log at `esp_bt_audio_source/test_app/build/one_run_unity.log`.
+		- `test_app2`: runner rc=0, runner log contains "Unity tests passed"; canonical per-test counts not extracted by aggregator. Log at `esp_bt_audio_source/test_app2/build/one_run_unity.log`.
+		- `test_app_audio`: runner rc=0, runner log contains "Unity tests passed"; canonical per-test counts not extracted by aggregator. Log at `esp_bt_audio_source/test_app_audio/build/one_run_unity.log`.
+
+	Notes & provenance:
+	- Host counts were read directly from `tmp/run_all_tests_summary.json` (`host.host.ctest_output`) — this contains the full CTest output listing each test.
+	- The aggregator could not extract numeric per-test counts from the Unity logs (it reported "no canonical log found to extract test counts"), but the runner saw the canonical Unity completion markers and printed "Unity tests passed" for each suite; each suite returned rc=0 in the summary JSON. Because the aggregator did not parse per-test lines, I cannot assert exact numeric per-suite counts from the aggregator alone.
+	- If you want exact per-suite numeric counts, I can parse each `build/one_run_unity.log` now and extract the numbers (e.g., the Unity summary line or count PASS/FAIL entries) and report an aggregated total. Say "parse logs" and I'll run that immediately and update this file.
+
+	Artifacts used as sources-of-truth for this summary:
+	- `/home/phil/work/esp32/esp32_btaudio/tmp/run_all_tests_summary.json`
+	- `/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app/build/one_run_unity.log`
+	- `/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app2/build/one_run_unity.log`
+	- `/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app_audio/build/one_run_unity.log`
+
+	If you'd like, I will now parse the three `one_run_unity.log` files to extract exact per-suite counts and then compute an aggregate total (host + all device suites). Reply with: `parse logs` and I'll do that immediately.
+
 AGENT_ACTIONS_ON_RESTART:
 - Continue with the pending rebuild+flash for PSRAM verification when instructed by the user. Capture artifacts and update this checkpoint.
 
@@ -379,4 +457,22 @@ Next steps tracked:
 - Harden `tools/parse_traces.py` to additionally capture on-device `malloc_usable_size()` and `heap_caps_get_*` outputs when present.
 - Add symbolization helper using addr2line that maps captured addresses to source file:line using the built ELF.
 - When PSRAM-equipped hardware is available: re-enable SPIRAM in `sdkconfig`, rebuild/flash, capture the serial monitor, and re-run the parser to compute fragmentation metrics.
+
+## Fundamental purpose (user note) — 2025-11-15
+
+- The fundamental purpose of `esp_bt_audio_source` is to play audio to a Bluetooth audio device over Bluetooth.
+- The audio may originate from one of several sources:
+	- I2S input (live capture)
+	- A WAV file stored on the SPIFFS partition
+	- Synthesized/generated audio produced by the code
+
+The user insisted that this purpose be explicit and unambiguous. Acknowledged: this is now recorded as a top-level project memory entry and will be treated as authoritative guidance for future changes, tests, and prioritization decisions.
+
+Action: Future work, tests, and design decisions should always keep this goal in mind (deliver audio over Bluetooth from I2S, SPIFFS WAV, or generated sources). If a proposed change conflicts with or obscures this primary purpose, call it out before proceeding.
+
+## Recent flash
+
+- 2025-11-16: Built and flashed updated firmware with producer-chunking patch applied to `main/audio_processor.c` (limits WAV enqueue chunk size and adds bounded retries/yields).
+- 2025-11-16: Wrote SPIFFS image to 0x1C0000 and verified PARTS/FILES OK via `tools/flash_and_verify_spiffs.py` (serial output contained `OK|PARTS|SUMMARY` and `OK|FILES|SUMMARY`). Device autoconnected to paired headset 00:18:6b:76:d7:1c.
+- Next: run PLAY/BEEP functional test and capture serial to confirm audible output and that overruns/WDTs are eliminated.
 

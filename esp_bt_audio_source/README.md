@@ -23,47 +23,41 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - **Pairing Management:** Supports different pairing methods including "Just Works" and PIN-based pairing
 
 <a id="project-status--november-2025"></a>
-## Project status — November 15, 2025
+## Project status — recent (finalized run)
 
-- Latest audio pipeline fixes (2025-11-15) clamp WAV prime/read chunk sizing to the runtime `audio_processor_get_work_buffer_bytes()` allocation and throttle ringbuffer sends based on live free-space readings. Combined with the switch to `RINGBUF_TYPE_ALLOWSPLIT`, WAV playback now completes without watchdog resets or buffer overruns.
-- `tools/run_unity.py` now launches `idf.py flash monitor` inside a pseudo-terminal, hardens EOF handling, and captures the canonical Unity summary markers. Aggregator tooling consumes these logs directly, so regression sweeps succeed from non-interactive shells.
-- The worker/reader pipeline keeps DRAM-only builds healthy: runtime work-buffer detection preserves full 128 KiB ringbuffer capacity, synth fallback throttling prevents starvation, and diagnostics report SPIFFS, WAV refill, and ringbuffer state during tests.
-- Full regression sweep completed on 2025-11-15 @ 06:16 UTC via `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (host CTest + three Unity suites). Run artifacts:
-   - Host `ctest` bundle: 19/19 tests passing (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, mirrored in `tmp/host_ctest_output.log`).
-   - `test_app`: 37 tests, 0 failures, 0 ignored (`test_app/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_stdout.log`).
-   - `test_app2`: 45 tests, 0 failures, 0 ignored (`test_app2/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app2_stdout.log`).
-   - `test_app_audio`: 12 tests, 0 failures, 0 ignored (`test_app_audio/build/one_run_unity.log`, runner stdout at `tmp/runner_test_app_audio_stdout.log`).
-       - Aggregate totals (147 tests / 0 failures / 0 ignored) from the most recent sweep. The full aggregated JSON summary is available at `tmp/run_all_tests_summary.json`.
+- Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer.
+- The Unity runner and orchestrator were hardened to run non-interactively: `tools/run_unity.py` (and the helper `tools/flash_and_watch.py`) now run `idf.py flash monitor` inside a pseudo-TTY, detect canonical Unity summary markers reliably, and the aggregator consumes those canonical logs for CI-friendly summaries.
+- Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
+   - Host CTest bundle: 22/22 passed (see host CTest output in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, also mirrored in `tmp/host_ctest_output.log`).
+   - Device Unity suites (per-suite canonical `one_run_unity.log`):
+      - `test_app`: 37 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app/build/one_run_unity.log`).
+      - `test_app2`: 45 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
+      - `test_app_audio`: 26 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`).
+   - Aggregate totals: 22 (host) + 108 (device) = 130 tests run; 130 passed, 0 failed, 0 ignored. The orchestrator wrote the aggregated JSON summary to `tmp/run_all_tests_summary.json` and `tmp/canonical_unity_summary.json`.
 
-   Diagnostics & trace parsing
-   - A parser script was added to `tools/parse_traces.py` to extract DIAG/TRACE allocation lines from host and monitor logs and write structured output.
-      - Parsed outputs (example run):
-         - CSV: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.csv`
-         - JSON: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json`
-      - A small summary helper `tools/trace_stats.py` computes counts and basic statistics (min/max/mean/median) for fields such as `len`, `size`, `free_before`, and `free_after`.
-      - Example summary (parsed run): 5076 records parsed across host+monitor logs; per-suite totals remain green and allocation traces show expected ENQ/RET behavior with median transfer size 512 bytes.
+Diagnostics & trace parsing
+- `tools/parse_traces.py` extracts DIAG/TRACE allocation lines from host and monitor logs and writes structured CSV/JSON artifacts. Example outputs from the last sweep:
+   - CSV: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.csv`
+   - JSON: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json`
+   - A helper `tools/trace_stats.py` computes counts and basic statistics (min/max/mean/median) for captured fields; recent parsed run reported ~5076 records with median transfer size ≈512 bytes.
 
-   Notes about PSRAM tests
-   - PSRAM-specific tests are gated at build-time and at runtime using `CONFIG_SPIRAM` and `esp_psram_is_initialized()` respectively. For non-PSRAM hardware the PSRAM tests are skipped at runtime with a clear message.
-   - When PSRAM-equipped hardware is available, re-enable SPIRAM in the project `sdkconfig`, flash the tests and re-run parsing to capture `malloc_usable_size()` and heap_caps_* values for fragmentation analysis.
-- Timing snapshot from the same sweep: `test_app` 64.9 s total (flash 11.7 s, tests 53.3 s); `test_app2` 44.6 s (flash 11.5 s, tests 33.1 s); `test_app_audio` 33.7 s (flash 3.9 s, tests 29.8 s). Durations are parsed directly from the orchestrator's esptool timing and Unity markers.
+Notes about PSRAM tests
+- PSRAM-specific tests remain gated at build-time (`CONFIG_SPIRAM`) and at runtime (via `esp_psram_is_initialized()`). On non-PSRAM hardware they are skipped with a clear message. When PSRAM-equipped hardware is available, enable SPIRAM in `sdkconfig`, flash the image and re-run the orchestrator to capture fragmentation metrics.
 
-- Key recent completions:
-   - Host-based unit tests: harness remains green (19/19) with pairing sequence-number diagnostics and command coverage intact.
-   - Audio processor hardening: WAV enqueue limits respect live ringbuffer capacity, playback refills pace themselves, and idle synth traffic yields so consumers drain pending audio immediately.
-   - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping keeps regression automation deterministic; fallback parsing is no longer required for green runs.
-   - Host helper for SPIFFS flash+verify: a small host-side helper script was added at
-     `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` to automate a reproducible
-     flash workflow (flash app + partition table, write SPIFFS image to its offset,
-     then open serial and assert runtime `PARTS` and `FILES` responses). See the
-     "Flashing SPIFFS and validating on-device" section below for usage and CI examples.
-   - Regression reporting: `tmp/run_all_tests_summary.csv` is generated post-sweep for per-suite totals, durations, and log pointers, complementing the JSON artifact for downstream tooling.
+Timing snapshot from the sweep (per-orchestrator timing): `test_app` ~65 s total (flash ~12 s, tests ~53 s); `test_app2` ~45 s (flash ~11 s, tests ~34 s); `test_app_audio` ~34 s (flash ~4 s, tests ~30 s). Durations are recorded in the orchestrator CSV output.
 
-- Recent bt_manager fixes (2025-10-29) implemented proper state validation and ESP-IDF API calls for START/STOP audio streaming commands, ensuring correct A2DP media control flow and error handling.
-- Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator timeline correlation still needs capture and documentation (see [Remaining work](#remaining-work-short-list)).
-- Known warning: ESP-IDF builds currently print duplicate-definition notices for `ESP_EVENT_ANY_ID` because our legacy Bluetooth shim header (`components/components/bt/include/esp32/include/esp_event_base.h`) still defines the macro; plan is to guard/remove that old definition in a future cleanup.
-- **Build warnings present (2025-10-30)**: 
-   - **Crystal frequency**: Detected 41.01MHz crystal frequency differs from normalized 40MHz (unsupported crystal in use)
+Key recent completions:
+- Host tests: all host CTest targets are green (22/22) with pairing and command coverage intact.
+- Audio processor: WAV enqueue limits now respect ringbuffer capacity and pace retries to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio.
+- Unity runner reliability: pseudo-TTY execution plus canonical summary scraping yields deterministic automation and clean aggregator JSON for CI.
+- SPIFFS flash+verify helper is available at `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` for reproducible SPIFFS flashing and on-device validation (PARTS/FILES checks).
+
+- Pairing diagnostics under `build/pairing_e2_logs/` remain under analysis; allocator-timeline correlation is an active follow-up (see [Remaining work](#remaining-work-short-list)).
+
+- Known warning: ESP-IDF builds may show duplicate-definition notices for `ESP_EVENT_ANY_ID` coming from a legacy shim header; plan to guard/remove that legacy definition in a cleanup pass.
+
+- **Build warnings present (note date):**
+   - Crystal frequency divergence: detected 41.01MHz vs the expected 40MHz on the current hardware; this is informational but should be documented before release.
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
@@ -465,6 +459,8 @@ The SPIFFS partition in this project is at offset 0x1C0000 with size 0x40000. Us
 ```bash
 # from repo root
 python3 -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash 0x1C0000 esp_bt_audio_source/main/assets/spiffs/spiffs.bin
+
+> **Mandatory SPIFFS rule:** The only valid SPIFFS image for this project lives at `esp_bt_audio_source/main/assets/spiffs/spiffs.bin`. Do not generate, flash, or reference any other `spiffs.bin` copy unless explicitly directed otherwise by the project owner. Always recreate the image in-place with `tools/make_spiffs.py` and flash that exact file.
 ```
 
 4) Validate on-device (quick checks)
