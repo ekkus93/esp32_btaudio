@@ -1,4 +1,8 @@
 ## Current Focus
+### Functional Specification baseline (2025-12-04)
+- Authored `esp_bt_audio_source/docs/FS.md`, translating the PRD into an implementation-ready spec that covers architecture, command set, bluetooth/audio subsystems, data contracts, testing/verification, and open issues/traceability. This is now the canonical reference for behavior-level decisions until the next revision.
+- Open follow-up: keep FS/memory in sync when future implementation work (metadata ringbuffer lifecycle, pairing soak validation, PSRAM validation, beep diagnostics CLI) lands.
+
 ### Latest: Full orchestrator run recorded (2025-11-17)
 - Executed a full host + on-device sweep after repairing the ESP-IDF environment and fixing host mock semantics.
 - Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):

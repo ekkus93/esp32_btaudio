@@ -131,6 +131,34 @@ target_compile_definitions(test_audio_processor_real PRIVATE CONFIG_BT_MOCK_TEST
 target_link_libraries(test_audio_processor_real unity m)
 add_test(NAME test_audio_processor_real COMMAND $<TARGET_FILE:test_audio_processor_real>)
 
+# Include the tag-alignment unit test in the real audio_processor host runner so
+# it runs alongside other audio processor integration tests.
+## The tag-alignment test is built as a separate native host test so it can
+## exercise the real production audio_processor implementation with a
+## focused test harness. This avoids colliding with the main runner's
+## Unity entrypoint which would cause duplicate `main`/`setUp` symbols.
+add_executable(test_audio_tag_alignment test_audio_tag_alignment.c
+    ../../main/audio_processor.c
+    mocks/esp_heap_caps_mock.c
+    mocks/mock_i2s.c
+    mocks/mock_gap.c
+    mocks/mock_audio_and_btstate.c
+    mocks/nvs_storage_mock.c)
+target_sources(test_audio_tag_alignment PRIVATE
+    mocks/fake_task.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c
+    mocks/fake_ringbuf.c
+    mocks/fake_timer.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c
+    mocks/fake_debug_helpers.c)
+target_include_directories(test_audio_tag_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_include_directories(test_audio_tag_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_audio_tag_alignment PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1 CONFIG_AUDIO_TAG_DIAGNOSTICS)
+target_link_libraries(test_audio_tag_alignment unity m)
+add_test(NAME test_audio_tag_alignment COMMAND $<TARGET_FILE:test_audio_tag_alignment>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ../../components/components/bt/common/osi/allocator.c

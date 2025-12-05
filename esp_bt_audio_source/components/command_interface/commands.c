@@ -402,6 +402,58 @@ static const char *cmd_files_get_root(void)
 #endif
 }
 
+#if defined(UNIT_TEST)
+static cmd_test_spiffs_mount_hook_t s_cmd_spiffs_mount_hook = NULL;
+
+void cmd_test_install_spiffs_mount_hook(cmd_test_spiffs_mount_hook_t hook)
+{
+    s_cmd_spiffs_mount_hook = hook;
+}
+
+static inline void cmd_test_notify_spiffs_mount_hook(void)
+{
+    if (s_cmd_spiffs_mount_hook)
+    {
+        s_cmd_spiffs_mount_hook();
+    }
+}
+#else
+static inline void cmd_test_notify_spiffs_mount_hook(void)
+{
+}
+#endif
+
+#ifdef ESP_PLATFORM
+static esp_err_t cmd_mount_spiffs_if_needed(void)
+{
+    cmd_test_notify_spiffs_mount_hook();
+    if (esp_spiffs_mounted("spiffs"))
+    {
+        return ESP_OK;
+    }
+
+    esp_vfs_spiffs_conf_t cfg = {
+        .base_path = "/spiffs",
+        .partition_label = "spiffs",
+        .max_files = 5,
+        .format_if_mount_failed = false,
+    };
+
+    esp_err_t err = esp_vfs_spiffs_register(&cfg);
+    if (err == ESP_ERR_INVALID_STATE && esp_spiffs_mounted("spiffs"))
+    {
+        return ESP_OK;
+    }
+    return err;
+}
+#else
+static esp_err_t cmd_mount_spiffs_if_needed(void)
+{
+    cmd_test_notify_spiffs_mount_hook();
+    return ESP_OK;
+}
+#endif
+
 // Test-only function to reset sequence counter
 #if defined(UNIT_TEST) || defined(ESP_PLATFORM)
 void cmd_reset_event_sequence(void)
@@ -671,15 +723,37 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             snprintf(path, sizeof(path), "/spiffs/%s", p);
         }
 
+        esp_err_t mount_err = cmd_mount_spiffs_if_needed();
 #ifdef ESP_PLATFORM
-        /* If connected but not streaming, try to start A2DP so the sink will
-         * pull the queued audio. This is best-effort; failure to start
-         * streaming will be reported but we still attempt to queue audio. */
+        if (mount_err != ESP_OK)
+        {
+            cmd_send_response("ERR", "PLAY", "SPIFFS_MOUNT_FAILED", esp_err_to_name(mount_err));
+            break;
+        }
+
+        /* Require A2DP to be present for PLAY. If a device is connected but
+         * not currently streaming, attempt to start A2DP and fail if the
+         * start call does not succeed. This prevents silently falling back
+         * to the local I2S path when a Bluetooth sink is expected. */
         int conn = bt_get_connection_state();
         int streaming = bt_get_streaming_state_int();
-        if (conn == 1 && streaming != 1)
+        if (conn != 1)
         {
-            (void)bt_manager_start_audio();
+            /* No A2DP connection: return a parseable error and do not queue */
+            cmd_send_response("ERR", "PLAY", "A2DP_NOT_CONNECTED", path);
+            break;
+        }
+        if (streaming != 1)
+        {
+            esp_err_t sret = bt_manager_start_audio();
+            if (sret != ESP_OK)
+            {
+                /* Starting A2DP failed (might be low-memory or other issue).
+                 * Report the ESP error name so callers can diagnose and do
+                 * not enqueue to the fallback I2S pipeline. */
+                cmd_send_response("ERR", "PLAY", esp_err_to_name(sret), path);
+                break;
+            }
         }
         esp_err_t r = audio_processor_play_wav(path);
         if (r == ESP_OK)
@@ -687,6 +761,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         else
             cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
 #else
+        (void)mount_err;
         (void)path;
         if (audio_processor_play_wav(path) == ESP_OK)
             cmd_send_response("OK", "PLAY", "MOCK_ENQUEUED", ctx->params[0]);
@@ -802,47 +877,32 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 
         cmd_send_response("INFO", "FILES", "ROOT", root);
 
+        esp_err_t mount_err = cmd_mount_spiffs_if_needed();
+#ifdef ESP_PLATFORM
+        if (mount_err != ESP_OK)
+        {
+            char errbuf[64];
+            snprintf(errbuf, sizeof(errbuf), "mount_err=%d", (int)mount_err);
+            cmd_send_response("ERR", "FILES", "MOUNT_FAILED", errbuf);
+            break;
+        }
+#else
+        (void)mount_err;
+#endif
+
         DIR *dir = opendir(root);
         if (dir == NULL)
         {
             char errbuf[96];
             int open_err = errno;
-            /* If opendir() failed, attempt a best-effort SPIFFS mount on-device
-             * in case the filesystem hasn't been registered yet. This helps
-             * interactive use where SPIFFS may be mounted later in startup. */
-#ifdef ESP_PLATFORM
-            if (open_err == ENOENT) {
-                esp_vfs_spiffs_conf_t cfg = {
-                    .base_path = "/spiffs",
-                    .partition_label = "spiffs",
-                    .max_files = 5,
-                    .format_if_mount_failed = false
-                };
-                esp_err_t mret = esp_vfs_spiffs_register(&cfg);
-                if (mret == ESP_OK) {
-                    /* retry opendir after mounting */
-                    dir = opendir(root);
-                } else {
-                    snprintf(errbuf, sizeof(errbuf), "errno=%d,mount_err=%d", open_err, (int)mret);
-                    cmd_send_response("ERR", "FILES", "OPEN_FAILED", errbuf);
-                    break;
-                }
-            }
-#endif
-
 #ifndef ESP_PLATFORM
             const char *reason = strerror(open_err);
             snprintf(errbuf, sizeof(errbuf), "%d:%s", open_err, (reason != NULL) ? reason : "UNKNOWN");
+#else
+            snprintf(errbuf, sizeof(errbuf), "errno=%d", open_err);
+#endif
             cmd_send_response("ERR", "FILES", "OPEN_FAILED", errbuf);
             break;
-#else
-            if (dir == NULL) {
-                /* If we fell through (not ENOENT or mount retry failed), report errno */
-                snprintf(errbuf, sizeof(errbuf), "errno=%d", open_err);
-                cmd_send_response("ERR", "FILES", "OPEN_FAILED", errbuf);
-                break;
-            }
-#endif
         }
 
         int file_count = 0;

@@ -64,8 +64,15 @@ void* xRingbufferReceive(RingbufHandle_t handle, size_t* item_size, unsigned tic
     mock_ringbuf_t* r = (mock_ringbuf_t*)handle;
     if (r->used == 0) { *item_size = 0; return NULL; }
     /* Return pointer to data (caller must return it) */
+    /* Simulate consumption: return up to the full used size and reduce
+     * the mock's used count to reflect that the item has been taken.
+     * In the real FreeRTOS ringbuffer the caller must call
+     * vRingbufferReturnItem() to free the memory; our lightweight mock
+     * models this by adjusting used on receive so tests observing
+     * free-size see the expected change. */
     *item_size = r->used;
-    return r->data; /* note: this makes ReturnItem a no-op for our stub */
+    r->used = 0;
+    return r->data;
 }
 
 void* xRingbufferReceiveUpTo(RingbufHandle_t handle, size_t* item_size, unsigned ticks_to_wait, size_t max_size)
@@ -76,6 +83,11 @@ void* xRingbufferReceiveUpTo(RingbufHandle_t handle, size_t* item_size, unsigned
     if (r->used == 0) { *item_size = 0; return NULL; }
     size_t to_copy = r->used < max_size ? r->used : max_size;
     *item_size = to_copy;
+    /* Reduce used to simulate that bytes have been removed from the
+     * ring buffer. This mirrors the effective behavior tests expect
+     * (free size increases after a receive/return cycle). */
+    if (to_copy >= r->used) r->used = 0;
+    else r->used -= to_copy;
     return r->data;
 }
 
@@ -94,5 +106,5 @@ int xRingbufferSend(RingbufHandle_t handle, const void* item, size_t size, unsig
 void vRingbufferReturnItem(RingbufHandle_t handle, void* item)
 {
     (void)handle; (void)item;
-    /* No-op in this simple stub */
+    /* No-op: consumption is simulated on receive in this mock. */
 }

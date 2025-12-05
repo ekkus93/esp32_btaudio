@@ -44,6 +44,19 @@ const char* cmd_files_host_mount_override(void)
     return s_test_spiffs_root_ready ? s_test_spiffs_root : NULL;
 }
 
+static int s_spiffs_mount_hook_count = 0;
+
+static void test_spiffs_mount_hook(void)
+{
+    ++s_spiffs_mount_hook_count;
+}
+
+static void reset_spiffs_mount_hook_counter(void)
+{
+    s_spiffs_mount_hook_count = 0;
+    cmd_test_install_spiffs_mount_hook(test_spiffs_mount_hook);
+}
+
 static void test_create_sample_spiffs(void)
 {
     TEST_ASSERT_TRUE(s_test_spiffs_root_ready);
@@ -108,12 +121,14 @@ void setUp(void) {
     s_test_spiffs_root[sizeof(s_test_spiffs_root) - 1] = '\0';
     s_test_spiffs_root_ready = 1;
     test_create_sample_spiffs();
+    reset_spiffs_mount_hook_counter();
 }
 
 void tearDown(void) {
     // Clean up after each test
     cmd_deinit();
     test_cleanup_spiffs_root();
+    cmd_test_install_spiffs_mount_hook(NULL);
 }
 
 // Test basic command parsing
@@ -380,6 +395,8 @@ int main(void) {
     RUN_TEST(test_file_command_found);
     RUN_TEST(test_file_command_not_found);
     RUN_TEST(test_file_command_not_file);
+    extern void test_files_command_lists_entries(void);
+    RUN_TEST(test_files_command_lists_entries);
     
     // Tests for SYNTH command (host-mode verifies parsing + response)
     extern void test_synth_on_command(void);
@@ -730,9 +747,14 @@ void test_beep_command_connected(void) {
 // cmd_execute() builds the /spiffs/<name> path as it would on-device.
 void test_play_command(void) {
     mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
 
     // Ensure ringbuffer empty before test
     audio_processor_drain_ringbuffer();
+    // Simulate a BT connection so PLAY will enqueue (new behavior: PLAY
+    // requires an A2DP connection instead of falling back to I2S).
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
 
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
@@ -770,6 +792,8 @@ void test_play_command(void) {
     TEST_ASSERT_EQUAL_INT(1, found_nonzero);
     // Ensure beep flag wasn't accidentally set by play
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(1, s_spiffs_mount_hook_count);
 }
 
 void test_file_command_found(void) {
@@ -808,6 +832,24 @@ void test_file_command_not_file(void) {
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_EQUAL_STRING("ERR|FILE|NOT_FILE|logs\r\n", tx);
+}
+
+void test_files_command_lists_entries(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILES", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|FILES|ROOT|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|FILES|ITEM|alpha.txt"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|FILES|ITEM|beta.bin"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|FILES|SUMMARY|"));
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(1, s_spiffs_mount_hook_count);
 }
 
 // Verify SYNTH ON toggles the mode (host: verifies response emitted)

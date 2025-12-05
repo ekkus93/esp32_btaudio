@@ -331,13 +331,7 @@ bool audio_processor_test_wav_consume(size_t bytes)
 
     if (bytes >= s_wav_pending) {
         s_wav_pending = 0;
-        s_wav_active = false;
-        if (s_wav_prev_valid) {
-            s_synth_mode = s_wav_prev_force_synth;
-            s_wav_prev_valid = false;
-            return true;
-        }
-        return false;
+        return true;
     }
 
     s_wav_pending -= bytes;

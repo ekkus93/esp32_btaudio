@@ -288,23 +288,27 @@ void test_audio_processor_wav_begin_tracks_state(void)
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, audio_processor_test_wav_pending_bytes());
 }
 
-void test_audio_processor_wav_consume_restores_previous_synth(void)
+void test_audio_processor_wav_consume_requires_completion_signal(void)
 {
     audio_processor_test_wav_reset_state();
     audio_processor_set_synth_mode(true);
     audio_processor_test_wav_begin();
     audio_processor_test_wav_add_pending(1000);
 
-    bool restored = audio_processor_test_wav_consume(600);
-    TEST_ASSERT_FALSE(restored);
+    bool drained = audio_processor_test_wav_consume(600);
+    TEST_ASSERT_FALSE(drained);
     TEST_ASSERT_TRUE(audio_processor_test_wav_is_active());
     TEST_ASSERT_EQUAL_size_t(400, audio_processor_test_wav_pending_bytes());
     TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
 
-    restored = audio_processor_test_wav_consume(500);
-    TEST_ASSERT_TRUE(restored);
-    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
+    drained = audio_processor_test_wav_consume(500);
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_TRUE(audio_processor_test_wav_is_active());
     TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_wav_pending_bytes());
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+
+    audio_processor_test_wav_complete_if_idle();
+    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
     TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
 }
 
@@ -363,7 +367,7 @@ int app_main(void)
     RUN_TEST(test_audio_processor_beep_bypasses_mute);
 #ifdef CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_audio_processor_wav_begin_tracks_state);
-    RUN_TEST(test_audio_processor_wav_consume_restores_previous_synth);
+    RUN_TEST(test_audio_processor_wav_consume_requires_completion_signal);
     RUN_TEST(test_audio_processor_wav_complete_if_idle_requires_zero_pending);
     RUN_TEST(test_audio_processor_wav_abort_clears_state);
 #endif

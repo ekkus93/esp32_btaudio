@@ -58,7 +58,10 @@ static const char *TAG = "AUDIO_PROC";
 #ifdef CONFIG_BT_MOCK_TESTING
 #define AUDIO_RESAMPLE_MAX_RATIO     6    // Cover worst-case 8 kHz -> 48 kHz upsampling in tests
 #else
-#define AUDIO_RESAMPLE_MAX_RATIO     12   // Cover 8 kHz -> 96 kHz upsampling in production paths
+/* Reduce worst-case resample ratio on DRAM-only boards to save a modest
+ * amount of temporary work buffer space. 12->8 still covers common
+ * upsampling (8k->64k) while lowering memory pressure. */
+#define AUDIO_RESAMPLE_MAX_RATIO     8    // Reduced from 12 to 8 to save RAM
 #endif
 #define AUDIO_WORK_BUFFER_BYTES      (AUDIO_BLOCK_SIZE * 8 * AUDIO_RESAMPLE_MAX_RATIO)
 
@@ -66,10 +69,15 @@ static const char *TAG = "AUDIO_PROC";
  * delivered even when the main pipeline is congested. Keep modest to
  * limit DRAM pressure. Reduce to 8 KiB by default to avoid DRAM
  * allocation failures in the Bluetooth stack (see runtime logs). */
-#define BEEP_BUFFER_SIZE (8 * 1024)
+#define BEEP_BUFFER_SIZE (4 * 1024)
 /* Fade duration (ms) applied to the start and end of queued/fallback beeps
  * Option A: small crossfade to reduce clicks. Reasonable default: 8 ms. */
 #define BEEP_FADE_MS 8
+
+/* Metadata ringbuffer capacity scaled relative to audio buffer with a
+ * modest floor so tag enqueue operations never outpace the audio data
+ * writers even on DRAM-only systems with reduced audio buffers. */
+#define AUDIO_SOURCE_BUFFER_SIZE ((AUDIO_BUFFER_SIZE / 16U) > 512U ? (AUDIO_BUFFER_SIZE / 16U) : 512U)
 
 // Audio processing task handle
 static TaskHandle_t s_audio_task_handle = NULL; /* I2S reader task */
@@ -82,11 +90,21 @@ typedef struct {
     bool pooled_ptr;
 } i2s_block_t;
 
+typedef enum {
+    AUDIO_SOURCE_TAG_INVALID = 0,
+    AUDIO_SOURCE_TAG_WAV     = 1,
+    AUDIO_SOURCE_TAG_CAPTURE = 2,
+    AUDIO_SOURCE_TAG_SYNTH   = 3,
+    AUDIO_SOURCE_TAG_BEEP    = 4,
+} audio_source_tag_t;
+
 static QueueHandle_t s_i2s_queue = NULL; /* Queue of i2s_block_t */
 static QueueHandle_t s_i2s_free_queue = NULL; /* Queue of free raw block pointers */
 static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
 #define I2S_RAW_POOL_DEFAULT_COUNT 8U
-#define I2S_RAW_POOL_DRAM_COUNT    3U
+/* On DRAM-only devices reduce the small prealloc pool to avoid large
+ * upfront DRAM consumption. Increase only if PSRAM is available. */
+#define I2S_RAW_POOL_DRAM_COUNT    1U
 /* Tunable I2S parameters to trade latency vs RAM. Lower per-read sizes
  * reduce blocking time in the reader; more descriptors give the DMA more
  * headroom without needing very large per-descriptor frames. Adjust if
@@ -99,6 +117,7 @@ static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
 
 // Ring buffer for audio data
 static RingbufHandle_t s_audio_buffer = NULL;
+static RingbufHandle_t s_audio_source_buffer = NULL;
 // Small low-latency buffer for urgent beeps
 static RingbufHandle_t s_beep_buffer = NULL;
 
@@ -236,11 +255,151 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
                                 audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
                                 size_t* dst_size);
 static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result);
+static bool audio_source_tag_push(audio_source_tag_t tag);
+static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks);
+static void audio_source_tag_drop_one(void);
+static void audio_source_tag_reset_buffer(void);
 
 static inline void audio_proc_mock_yield(void)
 {
 #ifdef CONFIG_BT_MOCK_TESTING
     vTaskDelay(1);
+#endif
+}
+
+/* Diagnostic logging helper for tag lifecycle traces used during
+ * investigation and unit testing. These are silent by default; to
+ * enable the verbose tag diagnostics for a host test run define
+ * CONFIG_AUDIO_TAG_DIAGNOSTICS in the test target. This avoids
+ * producing large volumes of test output during normal runs while
+ * allowing focused troubleshooting when explicitly requested. */
+#if defined(CONFIG_BT_MOCK_TESTING) && defined(CONFIG_AUDIO_TAG_DIAGNOSTICS)
+#define AUDIO_TAG_DIAG(...) printf(__VA_ARGS__)
+#else
+#define AUDIO_TAG_DIAG(...) do {} while (0)
+#endif
+
+static bool audio_source_tag_push(audio_source_tag_t tag)
+{
+    if (s_audio_source_buffer == NULL) {
+        return false;
+    }
+
+    const uint8_t value = (uint8_t)tag;
+    const TickType_t wait_ticks = pdMS_TO_TICKS(2);
+    /* Test-only: capture occupancy before/after to make push atomic in logs */
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-BEFORE: tag=%u used=%zu\n", (unsigned)value, (cap_before > free_before ? cap_before - free_before : 0));
+#endif
+    BaseType_t sent = xRingbufferSend(s_audio_source_buffer, &value, sizeof(value), wait_ticks);
+    if (sent != pdTRUE) {
+        ESP_LOGE(TAG, "audio_source_tag_push: failed tag=%u", (unsigned)value);
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_fail = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap_fail = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-FAILED: tag=%u used=%zu\n", (unsigned)value, (cap_fail > free_fail ? cap_fail - free_fail : 0));
+#endif
+        return false;
+    }
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* Test-only diagnostic: show occupancy after push */
+    size_t free_now = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-AFTER: tag=%u used=%zu\n", (unsigned)value, (cap > free_now ? cap - free_now : 0));
+#endif
+    return true;
+}
+
+static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks)
+{
+    if (s_audio_source_buffer == NULL) {
+        return false;
+    }
+
+    /* Test-only: show occupancy before/after take so logs reflect atomic change */
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-BEFORE: used=%zu\n", (cap_before > free_before ? cap_before - free_before : 0));
+#endif
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_before_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+#endif
+    size_t size = 0;
+    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, wait_ticks, sizeof(uint8_t));
+    if (item == NULL || size == 0) {
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_after_recv_empty = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-EMPTY: item=NULL size=%zu free_before=%zu free_after=%zu\n", size, free_before_recv, free_after_recv_empty);
+#endif
+        return false;
+    }
+
+    uint8_t value = *((const uint8_t *)item);
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_after_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RECV: ptr=%p size=%zu free_before=%zu free_after_recv=%zu\n", item, size, free_before_recv, free_after_recv);
+#endif
+    vRingbufferReturnItem(s_audio_source_buffer, item);
+    if (tag != NULL) {
+        *tag = (audio_source_tag_t)value;
+    }
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_after_return = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap2 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RETURN: got=%u used=%zu free_after_return=%zu\n", (unsigned)value, (cap2 > free_after_return ? cap2 - free_after_return : 0), free_after_return);
+#endif
+    
+    return true;
+}
+
+static void audio_source_tag_drop_one(void)
+{
+    if (s_audio_source_buffer == NULL) {
+        return;
+    }
+
+    /* Test-only: occupancy before drop */
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-DROP-BEFORE: used=%zu free_before=%zu\n", (cap_before > free_before ? cap_before - free_before : 0), free_before);
+#endif
+    size_t size = 0;
+    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, sizeof(uint8_t));
+    if (item != NULL && size > 0) {
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_after_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    AUDIO_TAG_DIAG("DIAG-TAG-DROP-RECV: ptr=%p size=%zu free_after_recv=%zu\n", item, size, free_after_recv);
+#endif
+        vRingbufferReturnItem(s_audio_source_buffer, item);
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_now3 = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap3 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-DROP-AFTER: dropped used=%zu free_after_return=%zu\n", (cap3 > free_now3 ? cap3 - free_now3 : 0), free_now3);
+#endif
+    }
+}
+
+static void audio_source_tag_reset_buffer(void)
+{
+    if (s_audio_source_buffer == NULL) {
+        return;
+    }
+
+    size_t size = 0;
+    void *item = NULL;
+    const size_t max_take = sizeof(uint8_t);
+
+    while ((item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, max_take)) != NULL && size > 0U) {
+        vRingbufferReturnItem(s_audio_source_buffer, item);
+    }
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t free_now4 = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap4 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    AUDIO_TAG_DIAG("DIAG-TAG-RESET: used=%zu\n", (cap4 > free_now4 ? cap4 - free_now4 : 0));
 #endif
 }
 
@@ -347,6 +506,8 @@ static uint8_t *s_work_block = NULL;
 static uint8_t s_audio_rb_residual[AUDIO_WORK_BUFFER_BYTES];
 static size_t s_audio_rb_residual_len = 0;
 static size_t s_audio_rb_residual_pos = 0;
+static audio_source_tag_t s_audio_rb_residual_tag = AUDIO_SOURCE_TAG_INVALID;
+static bool s_audio_rb_residual_tag_valid = false;
 static uint8_t s_beep_rb_residual[BEEP_BUFFER_SIZE];
 static size_t s_beep_rb_residual_len = 0;
 static size_t s_beep_rb_residual_pos = 0;
@@ -372,6 +533,8 @@ static wav_stream_state_t s_wav_stream = {0};
 static uint8_t s_wav_send_residual[AUDIO_WORK_BUFFER_BYTES];
 static size_t s_wav_send_residual_len = 0;
 static size_t s_wav_send_residual_pos = 0;
+static audio_source_tag_t s_wav_residual_tag = AUDIO_SOURCE_TAG_INVALID;
+static bool s_wav_residual_tag_valid = false;
 
 static size_t audio_ringbuffer_min_capacity(size_t frame_bytes)
 {
@@ -501,30 +664,19 @@ static bool wav_playback_consume(size_t bytes)
         return false;
     }
 
-    bool restored = false;
-    bool synth_mode = false;
+    bool drained = false;
     portENTER_CRITICAL(&s_wav_lock);
     if (s_wav_playback_active) {
         if (bytes >= s_wav_pending_bytes) {
             s_wav_pending_bytes = 0;
-            s_wav_playback_active = false;
-            if (s_wav_prev_valid) {
-                s_force_synth = s_wav_prev_force_synth;
-                synth_mode = s_force_synth;
-                s_wav_prev_valid = false;
-                restored = true;
-            }
+            drained = true;
         } else {
             s_wav_pending_bytes -= bytes;
         }
     }
     portEXIT_CRITICAL(&s_wav_lock);
 
-    if (restored) {
-        ESP_LOGI(TAG, "audio_processor: WAV playback drained (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
-    }
-
-    return restored;
+    return drained;
 }
 
 static void wav_playback_abort(void)
@@ -586,6 +738,8 @@ static inline void wav_stream_reset_residual_locked(void)
 {
     s_wav_send_residual_len = 0;
     s_wav_send_residual_pos = 0;
+    s_wav_residual_tag = AUDIO_SOURCE_TAG_INVALID;
+    s_wav_residual_tag_valid = false;
 }
 
 static size_t wav_stream_frame_bytes_dst(void)
@@ -641,11 +795,18 @@ static bool wav_stream_flush_residual_locked(void)
             break;
         }
 
+        audio_source_tag_t tag = s_wav_residual_tag_valid ? s_wav_residual_tag : AUDIO_SOURCE_TAG_WAV;
+        if (!audio_source_tag_push(tag)) {
+            pending = true;
+            break;
+        }
+
         BaseType_t sent = xRingbufferSend(s_audio_buffer,
                                           s_wav_send_residual + s_wav_send_residual_pos,
                                           send_size,
                                           0);
         if (sent != pdTRUE) {
+            audio_source_tag_drop_one();
             pending = true;
             break;
         }
@@ -664,108 +825,33 @@ static bool wav_stream_flush_residual_locked(void)
     return pending;
 }
 
+/* Ensure prototype is visible before first use in this translation unit.
+ * Some callers appear earlier in the file; declare the signature so the
+ * compiler doesn't assume an implicit int-returning declaration. */
+static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len, audio_source_tag_t source_tag);
+
 static bool wav_stream_queue_data_locked(const uint8_t *data, size_t len)
 {
     if (data == NULL || len == 0U || s_audio_buffer == NULL) {
         return false;
     }
 
-    size_t frame_bytes = wav_stream_frame_bytes_dst();
-    size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
-    size_t offset = 0U;
-    bool deferred = false;
-
-    while (offset < len) {
-        size_t remaining = len - offset;
-        size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
-
-        if (free_size == 0U) {
-            deferred = true;
-            wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, remaining);
-            vTaskDelay(pdMS_TO_TICKS(1));
-            break;
-        }
-
-        if (max_item > 0U) {
-            if (remaining > max_item) {
-                remaining = max_item;
-            }
-            if (free_size > max_item) {
-                free_size = max_item;
-            }
-        }
-
-        /* Limit per-send to a small subchunk to keep any ringbuffer
-         * critical sections short. This prevents large single sends (for
-         * example 6 KiB resample bursts) from holding internal spinlocks
-         * for too long and triggering the interrupt WDT. */
-        /* Cap individual sends to a small slice to keep critical sections
-         * brief. This avoids long single xRingbufferSend invocations. */
-        size_t chunk_size = remaining;
-        
-        const size_t send_cap = WAV_RINGBUFFER_SUBCHUNK_BYTES;
-        if (chunk_size > send_cap) {
-            chunk_size = send_cap;
-        }
-        if (chunk_size > free_size) {
-            chunk_size = free_size;
-        }
-
-        if (frame_bytes > 0U) {
-            if (free_size < frame_bytes) {
-                deferred = true;
-                wav_stream_log_backpressure(chunk_size, free_size, frame_bytes, max_item, len - offset);
-                vTaskDelay(pdMS_TO_TICKS(1));
-                break;
-            }
-
-            chunk_size = (chunk_size / frame_bytes) * frame_bytes;
-            if (chunk_size == 0U) {
-                deferred = true;
-                wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, len - offset);
-                vTaskDelay(pdMS_TO_TICKS(1));
-                break;
-            }
-        } else if (chunk_size == 0U) {
-            deferred = true;
-            wav_stream_log_backpressure(0U, free_size, frame_bytes, max_item, len - offset);
-            vTaskDelay(pdMS_TO_TICKS(1));
-            break;
-        }
-
-        int64_t t_before = esp_timer_get_time();
-        BaseType_t sent = xRingbufferSend(s_audio_buffer, data + offset, chunk_size, pdMS_TO_TICKS(1));
-        int64_t t_after = esp_timer_get_time();
-        printf("DIAG-APLAY-STREAM: send=%ld size=%zu free=%zu took=%lldus\n",
-               (long)sent, chunk_size, free_size, (long long)(t_after - t_before));
-        if (t_after - t_before > 5000) {
-            ESP_LOGW(TAG, "wav path ringbuf send long: %lld us chunk=%zu free=%zu",
-                     (long long)(t_after - t_before), chunk_size, free_size);
-        }
-        if (sent != pdTRUE) {
-            deferred = true;
-            wav_stream_log_backpressure(chunk_size, free_size, frame_bytes, max_item, len - offset);
-            vTaskDelay(pdMS_TO_TICKS(1));
-            break;
-        }
-
-        wav_playback_add_pending(chunk_size);
-        worker_diag_report(WORKER_DIAG_SOURCE_WAV, chunk_size, sent);
-        offset += chunk_size;
-    }
-
-    if (deferred) {
-        size_t residual = len - offset;
+    size_t sent = wav_stream_try_enqueue_unlocked(data, len, AUDIO_SOURCE_TAG_WAV);
+    if (sent < len) {
+        size_t residual = len - sent;
         if (residual > sizeof(s_wav_send_residual)) {
             residual = sizeof(s_wav_send_residual);
         }
-        memcpy(s_wav_send_residual, data + offset, residual);
+        memcpy(s_wav_send_residual, data + sent, residual);
         s_wav_send_residual_len = residual;
         s_wav_send_residual_pos = 0U;
+        s_wav_residual_tag = AUDIO_SOURCE_TAG_WAV;
+        s_wav_residual_tag_valid = true;
         printf("DIAG-APLAY-STREAM: backlog=%zu\n", residual);
+        return true;
     }
 
-    return deferred;
+    return false;
 }
 
 /* Attempt to enqueue `len` bytes from `data` into the audio ringbuffer without
@@ -773,7 +859,7 @@ static bool wav_stream_queue_data_locked(const uint8_t *data, size_t len)
  * This function does not modify WAV playback shared state (residual buffers)
  * and is safe to call without `s_wav_mutex` held. It will perform paced
  * retries with a small delay when the ringbuffer is temporarily full. */
-static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len)
+static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len, audio_source_tag_t source_tag)
 {
     if (data == NULL || len == 0U || s_audio_buffer == NULL) {
         return 0U;
@@ -783,8 +869,19 @@ static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len)
     size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
     size_t offset = 0U;
 
+    /* Target producer chunk size to match typical consumer fetch size.
+     * Keep this conservative and align to frame size so the consumer always
+     * receives full frames. This reduces bursty enqueues that fill the
+     * ringbuffer and cause overruns / backpressure. */
+    const size_t PRODUCER_CHUNK_TARGET = 512U;
+    size_t producer_chunk = PRODUCER_CHUNK_TARGET;
+    if (frame_bytes > 0U) {
+        producer_chunk = (producer_chunk / frame_bytes) * frame_bytes;
+        if (producer_chunk == 0U) producer_chunk = frame_bytes;
+    }
+
     while (offset < len) {
-        size_t remaining = len - offset;
+    size_t remaining = len - offset;
         size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
 
         if (free_size == 0U) {
@@ -807,6 +904,14 @@ static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len)
             chunk_size = free_size;
         }
 
+        /* Limit chunk size to a conservative producer_chunk to avoid
+         * enqueuing very large items (e.g. 4 KiB) that the consumer
+         * reads in small pieces. This keeps the ringbuffer levels
+         * stable and reduces overruns. */
+        if (producer_chunk > 0U && chunk_size > producer_chunk) {
+            chunk_size = producer_chunk;
+        }
+
         if (frame_bytes > 0U) {
             if (free_size < frame_bytes) {
                 /* Not enough room for a full frame; yield and stop */
@@ -827,24 +932,46 @@ static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len)
          * the ringbuffer implementation. Also capture lightweight timing
          * info to help diagnose stalls that previously triggered the
          * interrupt WDT. Keep logs at debug level to avoid noisy output. */
-        int64_t t_before = esp_timer_get_time();
-        BaseType_t sent = xRingbufferSend(s_audio_buffer, data + offset, chunk_size, pdMS_TO_TICKS(1));
-        int64_t t_after = esp_timer_get_time();
-        if (t_after - t_before > 5000) {
-            ESP_LOGW(TAG, "ringbuf send stalled: took %lld us chunk=%zu free=%zu",
-                     (long long)(t_after - t_before), chunk_size, free_size);
-        } else {
-            ESP_LOGD(TAG, "ringbuf send: took %lld us chunk=%zu",
-                     (long long)(t_after - t_before), chunk_size);
+        /* Try sending with a short wait; if it fails, do a bounded retry
+         * with brief yields to avoid busy spins and to give the consumer a
+         * chance to free space. This prevents task watchdog triggers from
+         * tight enqueue loops. */
+        if (!audio_source_tag_push(source_tag)) {
+            break;
+        }
+
+        int retry = 0;
+        const int max_retries = 3;
+        BaseType_t sent = pdFALSE;
+        while (retry <= max_retries) {
+            int64_t t_before = esp_timer_get_time();
+            sent = xRingbufferSend(s_audio_buffer, data + offset, chunk_size, pdMS_TO_TICKS(1));
+            int64_t t_after = esp_timer_get_time();
+            if (t_after - t_before > 5000) {
+                ESP_LOGW(TAG, "ringbuf send stalled: took %lld us chunk=%zu free=%zu",
+                         (long long)(t_after - t_before), chunk_size, free_size);
+            } else {
+                ESP_LOGD(TAG, "ringbuf send: took %lld us chunk=%zu",
+                         (long long)(t_after - t_before), chunk_size);
+            }
+            if (sent == pdTRUE) break;
+            /* not sent: small backoff and try a couple more times */
+            vTaskDelay(pdMS_TO_TICKS(1));
+            retry++;
         }
         if (sent != pdTRUE) {
-            /* Could not send now; yield and stop so caller can handle residuals */
+            audio_source_tag_drop_one();
+            /* Could not send promptly; yield and stop so caller will save
+             * residuals and avoid long blocking. */
             vTaskDelay(pdMS_TO_TICKS(1));
             break;
         }
 
-        wav_playback_add_pending(chunk_size);
-        worker_diag_report(WORKER_DIAG_SOURCE_WAV, chunk_size, sent);
+        if (source_tag == AUDIO_SOURCE_TAG_WAV) {
+            wav_playback_add_pending(chunk_size);
+        }
+        worker_diag_source_t diag_src = (source_tag == AUDIO_SOURCE_TAG_WAV) ? WORKER_DIAG_SOURCE_WAV : WORKER_DIAG_SOURCE_WORKER;
+        worker_diag_report(diag_src, chunk_size, sent);
         offset += chunk_size;
     }
 
@@ -927,9 +1054,9 @@ static esp_err_t wav_stream_fill_locked(void)
          * `s_wav_mutex` (the WAV state mutex) while entering ringbuffer
          * critical sections. Any remaining bytes are stored back into the
          * residual buffer under the mutex. */
-        size_t sent_bytes = 0;
-        xSemaphoreGive(s_wav_mutex);
-        sent_bytes = wav_stream_try_enqueue_unlocked(s_proc_buffer2, res_size);
+    size_t sent_bytes = 0;
+    xSemaphoreGive(s_wav_mutex);
+    sent_bytes = wav_stream_try_enqueue_unlocked(s_proc_buffer2, res_size, AUDIO_SOURCE_TAG_WAV);
         /* Re-acquire WAV mutex to update shared state */
         if (xSemaphoreTake(s_wav_mutex, portMAX_DELAY) != pdTRUE) {
             /* Should not happen; treat as error */
@@ -944,6 +1071,8 @@ static esp_err_t wav_stream_fill_locked(void)
             memcpy(s_wav_send_residual, s_proc_buffer2 + sent_bytes, residual);
             s_wav_send_residual_len = residual;
             s_wav_send_residual_pos = 0U;
+            s_wav_residual_tag = AUDIO_SOURCE_TAG_WAV;
+            s_wav_residual_tag_valid = true;
             /* indicate we could not send all data */
             break;
         }
@@ -1033,6 +1162,13 @@ static void wav_stream_abort(bool allow_resume)
         xSemaphoreGive(s_wav_mutex);
     }
 
+    /* If abort was requested without allowing resume and we cleared the
+     * WAV stream state, also drop any pending metadata tags so the tag
+     * buffer doesn't reference audio items that were discarded. */
+    if (!allow_resume && resume_needed) {
+        audio_source_tag_reset_buffer();
+    }
+
     if (allow_resume && resume_needed) {
         wav_playback_complete_if_idle();
         if (s_is_initialized) {
@@ -1095,7 +1231,26 @@ typedef struct {
 
 static mock_i2s_state_t s_mock_i2s_state = {0};
 
+#ifdef CONFIG_BT_MOCK_TESTING
+/* Simple mock I2S audio generator used for host-unit tests. Produces a
+ * deterministic byte pattern so consumers can validate reads. Returns the
+ * number of bytes written into `buffer`. */
+static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0) return 0;
+    /* Fill with a simple 8-bit saw pattern to make the data non-zero and
+     * deterministic for assertions in tests. */
+    for (size_t i = 0; i < buffer_size; ++i) {
+        buffer[i] = (uint8_t)((i + s_mock_i2s_state.frame_counter) & 0xFF);
+    }
+    /* Advance the frame counter by a coarse amount (not exact frames).
+     * Tests don't depend on precise sample counting, just reproducibility. */
+    s_mock_i2s_state.frame_counter += (uint32_t)(buffer_size / 2);
+    return buffer_size;
+}
+#else
 static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size);
+#endif
 #endif
 
 #if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
@@ -1113,6 +1268,10 @@ static void i2s_reader_task(void *pvParameters);
 static void audio_worker_task(void *pvParameters);
 static esp_err_t configure_i2s(const audio_config_t* config);
 static void apply_volume(void* buffer, size_t size, uint8_t volume);
+/* Forward declare wav_stream_try_enqueue_unlocked so callers earlier in
+ * this translation unit see the correct signature and the compiler does
+ * not assume an implicit int-returning declaration. */
+static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len, audio_source_tag_t source_tag);
 
 /* Diagnostic helper forward-declaration (defined later) */
 static void diag_dump_bytes(const void* data, size_t len, const char* tag);
@@ -1152,162 +1311,61 @@ static size_t beep_buffer_send_chunked(const uint8_t* data, size_t total_bytes, 
 {
     if (s_beep_buffer == NULL || data == NULL || total_bytes == 0 || frame_bytes == 0) return 0;
 
-    /* Choose a small chunk size friendly to the beep buffer and DMA. Use
-     * 4 KiB as a reasonable default and align down to frame size. */
+    /* Choose a small chunk size friendly to the beep buffer and DMA. */
     size_t chunk_bytes = 4 * 1024;
     if (chunk_bytes > (size_t)BEEP_BUFFER_SIZE) chunk_bytes = (size_t)BEEP_BUFFER_SIZE;
-    /* Align chunk to frame size */
     chunk_bytes = (chunk_bytes / frame_bytes) * frame_bytes;
     if (chunk_bytes == 0) chunk_bytes = frame_bytes;
 
     size_t sent_total = 0;
-
-    /* Short per-chunk wait to let the consumer free space */
     const TickType_t chunk_wait = pdMS_TO_TICKS(10);
 
     while (sent_total < total_bytes) {
         size_t remaining = total_bytes - sent_total;
         size_t this_chunk = remaining > chunk_bytes ? chunk_bytes : remaining;
 
+        /* Push a matching metadata tag for this beep chunk so the tag
+         * buffer remains aligned with audio items regardless of which
+         * ringbuffer holds them. If the send fails we will drop the tag
+         * to keep counts balanced. */
+        (void)audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP);
         BaseType_t ok = xRingbufferSend(s_beep_buffer, data + sent_total, this_chunk, chunk_wait);
         if (ok == pdTRUE) {
             sent_total += this_chunk;
             continue;
         }
 
-        /* If direct send failed, try freeing a little space by dropping
-         * oldest items from the beep buffer (bounded attempts). */
-        size_t dropped = 0;
+        /* Try freeing a little space by dropping oldest items from the beep buffer. */
         int drop_attempts = 0;
         const int max_drop_attempts = 4;
         while (xRingbufferGetCurFreeSize(s_beep_buffer) < this_chunk && drop_attempts < max_drop_attempts) {
             size_t rsz = 0;
             void* it = xRingbufferReceiveUpTo(s_beep_buffer, &rsz, 0, this_chunk);
             if (it == NULL || rsz == 0) break;
+            /* Return the item to free the space (we're intentionally dropping it) */
+            /* Drop the matching metadata tag for the item we removed. */
+            audio_source_tag_drop_one();
             vRingbufferReturnItem(s_beep_buffer, it);
-            dropped += rsz;
             drop_attempts++;
         }
 
-        if (dropped > 0) {
-            log_heap_stats("beep-after-drop-beepbuf");
-            ok = xRingbufferSend(s_beep_buffer, data + sent_total, this_chunk, 0);
-            if (ok == pdTRUE) {
-                sent_total += this_chunk;
-                continue;
-            }
+        /* After dropping a few items try one immediate send without waiting. */
+        ok = xRingbufferSend(s_beep_buffer, data + sent_total, this_chunk, 0);
+        if (ok == pdTRUE) {
+            sent_total += this_chunk;
+            continue;
         }
 
-        /* Couldn't send this chunk promptly; give up to avoid blocking
-         * the caller for long periods. Higher-level code will enable the
-         * fallback synth for any remaining bytes. */
+        /* Could not enqueue this chunk; give up and return what we managed. */
+        /* Failed to enqueue: remove the tag we pushed for this chunk so
+         * the tag buffer remains balanced. */
+        audio_source_tag_drop_one();
         break;
     }
 
     return sent_total;
 }
 
-#ifdef CONFIG_BT_MOCK_TESTING
-static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
-{
-    if (buffer == NULL || buffer_size == 0) {
-        return 0;
-    }
-
-    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-    int channels = s_audio_config.channels;
-    if (channels <= 0) {
-        channels = AUDIO_CHANNEL_STEREO;
-    }
-
-    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
-    if (frame_bytes == 0) {
-        return 0;
-    }
-
-    size_t max_frames = buffer_size / frame_bytes;
-    if (max_frames == 0) {
-        return 0;
-    }
-
-    size_t frames_to_write = AUDIO_BLOCK_SIZE;
-    if (frames_to_write > max_frames) {
-        frames_to_write = max_frames;
-    }
-
-    size_t bytes_to_write = frames_to_write * frame_bytes;
-
-    /* Fill with a simple deterministic ramp so downstream checks can
-     * observe non-zero data without relying on real hardware. */
-    uint8_t seed = (uint8_t)(s_mock_i2s_state.frame_counter & 0xFF);
-    for (size_t i = 0; i < bytes_to_write; ++i) {
-        buffer[i] = (uint8_t)(seed + i);
-    }
-
-    s_mock_i2s_state.frame_counter += frames_to_write;
-    return bytes_to_write;
-}
-#endif
-
-#if defined(CONFIG_AUDIO_USE_SYNTH_SOURCE)
-static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
-{
-    if (buffer == NULL || buffer_size == 0) return 0;
-
-    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-    if (bytes_per_sample <= 0) bytes_per_sample = 2;
-    int channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
-    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
-    if (frame_bytes == 0) return 0;
-
-    size_t max_frames = buffer_size / frame_bytes;
-    if (max_frames == 0) return 0;
-
-    /* Generate up to AUDIO_BLOCK_SIZE frames per iteration to match the
-     * existing processing granularity. */
-    size_t frames_to_write = AUDIO_BLOCK_SIZE;
-    if (frames_to_write > max_frames) frames_to_write = max_frames;
-
-    /* Use a square wave at 440Hz (A4). Square wave generation only needs
-     * a phase and a comparison—no trig calls—so it's extremely cheap. */
-    const float freq = 440.0f; /* A4 tone */
-    const float sample_rate = (float)s_audio_config.sample_rate;
-
-    /* Use a sine wave for a smoother tone. Compute phase increment in
-     * radians and maintain a persistent floating-point phase accumulator
-     * to avoid quantization artifacts. Amplitude chosen to fit in 16-bit
-     * while leaving headroom for downstream processing. */
-    const double two_pi = 2.0 * M_PI;
-    double phase_inc = (sample_rate > 0.0f) ? ((two_pi * freq) / (double)sample_rate) : ((two_pi * freq) / 44100.0);
-
-    if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
-        int16_t* out = (int16_t*)buffer;
-        const double amp = 12000.0; /* amplitude for 16-bit */
-        for (size_t f = 0; f < frames_to_write; ++f) {
-            int16_t sample = (int16_t)(sinf(s_synth_phase) * amp);
-            for (int ch = 0; ch < channels; ++ch) {
-                *out++ = sample;
-            }
-            s_synth_phase += phase_inc;
-            if (s_synth_phase >= two_pi) s_synth_phase -= two_pi;
-        }
-        return frames_to_write * frame_bytes;
-    } else {
-        /* 32-bit container (32-bit or 24-bit stored in 32-bit) */
-        int32_t* out32 = (int32_t*)buffer;
-        const double amp32 = 12000.0 * (1 << 16);
-        for (size_t f = 0; f < frames_to_write; ++f) {
-            int32_t sample = (int32_t)(sinf(s_synth_phase) * amp32);
-            for (int ch = 0; ch < channels; ++ch) {
-                *out32++ = sample;
-            }
-            s_synth_phase += phase_inc;
-            if (s_synth_phase >= two_pi) s_synth_phase -= two_pi;
-        }
-        return frames_to_write * frame_bytes;
-    }
-}
-#endif
 
 /**
  * @brief Initialize the audio processor
@@ -1369,7 +1427,10 @@ esp_err_t audio_processor_init(const audio_config_t* config)
      * prevents happily succeeding with a very large DRAM allocation that
      * later causes malloc failures elsewhere. */
     if (!runtime_psram_ready) {
-        const size_t dram_initial_cap = 32 * 1024; /* 32 KiB conservative start */
+        /* Lower the initial conservative allocation on DRAM-only boards to
+         * reduce startup pressure and increase the chance the Bluetooth
+         * stack retains sufficient free/contiguous heap for A2DP startup. */
+        const size_t dram_initial_cap = 16 * 1024; /* 16 KiB conservative start (reduced from 32K) */
         if (try_capacity > dram_initial_cap) {
             ESP_LOGW(TAG, "Runtime: PSRAM absent — capping initial audio buffer target to %zu bytes to reduce DRAM pressure", dram_initial_cap);
             try_capacity = dram_initial_cap;
@@ -1432,12 +1493,15 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     psram_ready_local = esp_psram_is_initialized();
 #endif
     if (s_dram_only_alloc) psram_ready_local = false;
-        if (psram_ready_local) {
-            /* Use BYTEBUF so the consumer can safely call xRingbufferReceiveUpTo()
-             * without tripping the ESP-IDF allow-split assertion. The writer
-             * already chunks WAV data to fit within the configured max item size. */
-            s_audio_buffer = xRingbufferCreateWithCaps(try_capacity, RINGBUF_TYPE_BYTEBUF,
-                                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (psram_ready_local) {
+                                /* Use BYTEBUF so the consumer's xRingbufferReceiveUpTo usage
+                                 * remains valid. The consumer currently assumes byte-buffer
+                                 * semantics (it expects ReceiveUpTo behavior). If we later
+                                 * switch to ALLOWSPLIT we must also update the consumer to
+                                 * use split-aware receive APIs or ensure the producer chunks
+                                 * items no larger than the consumer's requests. */
+                                            s_audio_buffer = xRingbufferCreateWithCaps(try_capacity, RINGBUF_TYPE_BYTEBUF,
+                                                                                                                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
             if (s_audio_buffer != NULL) {
                 size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
                 ESP_LOGI(TAG, "Audio buffer created in PSRAM (%zu bytes capacity, max item %zu)",
@@ -1464,6 +1528,40 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
         try_capacity = try_capacity / 2U;
         try_capacity = (try_capacity + 3U) & ~((size_t)3U);
+    }
+
+    /* Create metadata tag buffer to track the source for each audio chunk.
+     * Prefer PSRAM when available to keep DRAM pressure low. */
+    s_audio_source_buffer = NULL;
+    size_t tag_capacity = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    bool psram_ready_tags = false;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+    psram_ready_tags = esp_psram_is_initialized();
+#endif
+    if (s_dram_only_alloc) {
+        psram_ready_tags = false;
+    }
+
+    if (psram_ready_tags) {
+        s_audio_source_buffer = xRingbufferCreateWithCaps(tag_capacity, RINGBUF_TYPE_BYTEBUF,
+                                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_audio_source_buffer != NULL) {
+            ESP_LOGI(TAG, "Metadata source buffer created in PSRAM (%zu bytes)", tag_capacity);
+        } else {
+            ESP_LOGW(TAG, "audio_processor_init: failed to create metadata buffer in PSRAM, falling back to DRAM");
+        }
+    }
+
+    if (s_audio_source_buffer == NULL) {
+        s_audio_source_buffer = xRingbufferCreate(tag_capacity, RINGBUF_TYPE_BYTEBUF);
+        if (s_audio_source_buffer != NULL) {
+            ESP_LOGI(TAG, "Metadata source buffer created (%zu bytes)", tag_capacity);
+        } else {
+            ESP_LOGE(TAG, "audio_processor_init: failed to create metadata buffer (%zu bytes)", tag_capacity);
+            vRingbufferDelete(s_audio_buffer);
+            s_audio_buffer = NULL;
+            return ESP_ERR_NO_MEM;
+        }
     }
 
     /* Create small beep buffer for urgent tones. Prefer allocating the
@@ -1499,6 +1597,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     }
 
     if (s_audio_buffer == NULL) {
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         ESP_LOGE(TAG, "Failed to create audio buffer (tried down to %zu bytes)", try_capacity);
         return ESP_ERR_NO_MEM;
     }
@@ -1572,6 +1678,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     if (!work_allocated) {
         ESP_LOGE(TAG, "Failed to allocate audio work buffers (tried down to %zu bytes each)", min_work_bytes);
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         return ESP_ERR_NO_MEM;
@@ -1581,6 +1695,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     esp_err_t ret = configure_i2s(config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to configure I2S: %d", ret);
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         return ret;
@@ -1599,6 +1721,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     s_i2s_queue = xQueueCreate(i2s_queue_len, sizeof(i2s_block_t));
     if (s_i2s_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create I2S queue");
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         i2s_del_channel(s_i2s_rx_handle);
@@ -1682,6 +1812,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         ESP_LOGE(TAG, "Failed to create i2s reader task");
         vQueueDelete(s_i2s_queue);
         s_i2s_queue = NULL;
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         i2s_del_channel(s_i2s_rx_handle);
@@ -1696,6 +1834,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         s_audio_task_handle = NULL;
         vQueueDelete(s_i2s_queue);
         s_i2s_queue = NULL;
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(s_audio_source_buffer);
+            s_audio_source_buffer = NULL;
+        }
+        if (s_beep_buffer != NULL) {
+            vRingbufferDelete(s_beep_buffer);
+            s_beep_buffer = NULL;
+        }
         vRingbufferDelete(s_audio_buffer);
         s_audio_buffer = NULL;
         i2s_del_channel(s_i2s_rx_handle);
@@ -1820,6 +1966,12 @@ esp_err_t audio_processor_deinit(void)
     s_proc_buffer = NULL;
     s_proc_buffer2 = NULL;
     s_runtime_work_bytes = 0U;
+
+    if (s_audio_source_buffer != NULL) {
+        audio_source_tag_reset_buffer();
+        vRingbufferDelete(s_audio_source_buffer);
+        s_audio_source_buffer = NULL;
+    }
 
     /* Delete beep buffer if present */
     if (s_beep_buffer != NULL) {
@@ -2085,11 +2237,15 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     int channels = s_audio_config.channels;
     if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+    bool wav_override_beep = wav_playback_is_active();
+    if (wav_override_beep && s_beep_remaining_bytes > 0) {
+        ESP_LOGD(TAG, "audio_processor_read: WAV playback suppressing %zu pending beep bytes", s_beep_remaining_bytes);
+    }
 
     /* Drain any previously saved beep residual data so queued tones retain
      * ordering even when callers request smaller buffers than the enqueued
      * chunk size. */
-    if (bytes_written < size && s_beep_rb_residual_len > s_beep_rb_residual_pos) {
+    if (!wav_override_beep && bytes_written < size && s_beep_rb_residual_len > s_beep_rb_residual_pos) {
         size_t copied = residual_copy(buffer + bytes_written, size - bytes_written,
                                       s_beep_rb_residual, &s_beep_rb_residual_pos,
                                       &s_beep_rb_residual_len);
@@ -2103,7 +2259,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     /* Drain any urgent beep data from the small beep buffer so queued tones
      * are emitted with lower latency than the main ringbuffer. Store any
      * unconsumed tail in the residual buffer for the next read. */
-    if (s_beep_buffer != NULL && bytes_written < size) {
+    if (!wav_override_beep && s_beep_buffer != NULL && bytes_written < size) {
         while (bytes_written < size) {
             size_t read_sz = 0;
             size_t free_before = xRingbufferGetCurFreeSize(s_beep_buffer);
@@ -2165,6 +2321,11 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             ESP_LOGI(TAG, "audio_processor_read: beep return len=%zu free_after=%zu", read_sz, free_after);
             printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
             printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
+            /* Consume any matching metadata tag for this beep item so the
+             * tag ringbuffer stays aligned with audio items that came
+             * from the beep buffer. This is a non-blocking take; if no
+             * tag is present the call simply returns false. */
+            audio_source_tag_take(NULL, 0);
             vRingbufferReturnItem(s_beep_buffer, itm);
 
             if (to_copy == 0) {
@@ -2173,7 +2334,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         }
     }
 
-    if (s_beep_fallback_active) {
+    if (!wav_override_beep && s_beep_fallback_active) {
         bool _beep_need_restore_synth = false;
         portENTER_CRITICAL(&s_beep_lock);
         if (s_beep_fallback_active && s_beep_fallback_frames_remaining > 0) {
@@ -2396,10 +2557,15 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             s_audio_rb_residual_pos = 0;
         }
 
-        size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
-        ESP_LOGI(TAG, "audio_processor_read: audio return len=%zu free_after=%zu", read_size, free_after);
-        printf("DIAG-READ-AUDIO-RET: len=%zu free_after=%zu\n", read_size, free_after);
-        vRingbufferReturnItem(s_audio_buffer, item);
+    size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
+    ESP_LOGI(TAG, "audio_processor_read: audio return len=%zu free_after=%zu", read_size, free_after);
+    printf("DIAG-READ-AUDIO-RET: len=%zu free_after=%zu\n", read_size, free_after);
+    /* Consume the matching metadata tag for this audio item so the
+     * tag ringbuffer stays aligned with the audio ringbuffer. We
+     * drop the tag value (caller doesn't need it) and perform a
+     * non-blocking take. */
+    audio_source_tag_take(NULL, 0);
+    vRingbufferReturnItem(s_audio_buffer, item);
     }
 
     if (bytes_written == 0) {
@@ -2607,6 +2773,10 @@ esp_err_t audio_processor_drain_ringbuffer(void)
         vRingbufferReturnItem(s_audio_buffer, it);
         drained++;
     }
+    /* Drain any pending metadata tags that correspond to the items we just
+     * removed from the audio ringbuffer so consumers don't observe stale
+     * tag state. */
+    audio_source_tag_reset_buffer();
     wav_playback_abort();
     ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
     return ESP_OK;
@@ -2861,19 +3031,22 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
          * have freed space yet; instead of failing immediately, perform a
          * small number of short waits to allow the worker to make room. If
          * still unsuccessful, bail and report what was queued. */
-        BaseType_t sent = pdFALSE;
-        const TickType_t wait_ticks = pdMS_TO_TICKS(50);
         const int max_attempts = 3;
         int attempt = 0;
-            while (attempt < max_attempts) {
+        /* Track bytes enqueued across attempts so callers below can inspect
+         * the final result even when the send was performed inside the
+         * retry loop. Declared outside the loop to avoid scope issues. */
+        size_t enqueued = 0;
+        while (attempt < max_attempts) {
             size_t free_before_attempt = xRingbufferGetCurFreeSize(s_audio_buffer);
             ESP_LOGD(TAG, "audio_processor_beep: attempt %d/%d frames=%zu bytes=%zu free_before_attempt=%zu",
                      attempt + 1, max_attempts, frames, (size_t)frames * frame_bytes, free_before_attempt);
 
-            sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, wait_ticks);
+            /* Use chunked enqueue helper to avoid very large atomic sends */
+            enqueued = wav_stream_try_enqueue_unlocked(s_proc_buffer, (size_t)frames * frame_bytes, AUDIO_SOURCE_TAG_BEEP);
 
             size_t free_after_attempt = xRingbufferGetCurFreeSize(s_audio_buffer);
-            if (sent == pdTRUE) {
+            if (enqueued == (size_t)frames * frame_bytes) {
                 ESP_LOGD(TAG, "audio_processor_beep: send succeeded on attempt %d, free_after=%zu",
                          attempt + 1, free_after_attempt);
                 /* If diagnostics were armed, synthesize the worker's
@@ -2902,7 +3075,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
                      attempt + 1, max_attempts, free_before_attempt, free_after_attempt);
             attempt++;
         }
-        if (sent != pdTRUE) {
+        if (enqueued != (size_t)frames * frame_bytes) {
             size_t free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
             ESP_LOGW(TAG, "audio_processor_beep: ringbuffer send failed after %d attempts, free_now=%zu; attempting to free space by dropping oldest items",
                      attempt, free_now);
@@ -2921,6 +3094,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
                 void* it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, needed);
                 if (it == NULL || rsz == 0) break;
                 /* Return the item to free the space (we're intentionally dropping it) */
+                audio_source_tag_drop_one();
                 vRingbufferReturnItem(s_audio_buffer, it);
                 dropped += rsz;
                 drop_attempts++;
@@ -2932,8 +3106,9 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
                          dropped, free_after_drop);
                     log_heap_stats("beep-after-drop");
                 /* Try one immediate send (no wait) after dropping */
-                sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, (size_t)frames * frame_bytes, 0);
-                if (sent == pdTRUE) {
+                /* Try one immediate chunked send (no wait) after dropping */
+                size_t enq2 = wav_stream_try_enqueue_unlocked(s_proc_buffer, (size_t)frames * frame_bytes, AUDIO_SOURCE_TAG_BEEP);
+                if (enq2 == (size_t)frames * frame_bytes) {
                     /* success: continue with next chunk */
                     bytes_remaining -= (size_t)frames * frame_bytes;
                     continue;
@@ -2997,6 +3172,16 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
     /* If there are leftover bytes that weren't queued, enable the on-the-fly
      * fallback generator for the remaining frames. */
     if (bytes_remaining > 0) {
+        if (wav_playback_is_active()) {
+            ESP_LOGW(TAG, "audio_processor_beep: suppressing fallback (%zu bytes) because WAV playback is active", bytes_remaining);
+            if (s_beep_remaining_bytes >= bytes_remaining) {
+                s_beep_remaining_bytes -= bytes_remaining;
+            } else {
+                s_beep_remaining_bytes = 0;
+            }
+            bytes_remaining = 0;
+        }
+
         size_t remaining_frames = bytes_remaining / frame_bytes;
             if (remaining_frames > 0) {
                 portENTER_CRITICAL(&s_beep_lock);
@@ -3830,14 +4015,18 @@ static void audio_worker_task(void *pvParameters)
                 }
             }
 
-            BaseType_t sent = xRingbufferSend(s_audio_buffer, s_proc_buffer2, res_size, pdMS_TO_TICKS(5));
-            if (sent != pdTRUE) {
+            /* Use the chunked enqueue helper to avoid large atomic sends
+             * that can saturate the ringbuffer. The helper returns the
+             * number of bytes actually enqueued. */
+            audio_source_tag_t tag = blk.synth_fill ? AUDIO_SOURCE_TAG_SYNTH : AUDIO_SOURCE_TAG_CAPTURE;
+            size_t sent_bytes = wav_stream_try_enqueue_unlocked(s_proc_buffer2, res_size, tag);
+            if (sent_bytes < res_size) {
                 s_audio_stats.buffer_overruns++;
-                ESP_LOGW(TAG, "audio_worker_task: xRingbufferSend failed for res_size=%zu", res_size);
-                printf("DIAG-WORKER-ENQ: fail len=%zu free_before=%zu\n", res_size, free_size);
+                ESP_LOGW(TAG, "audio_worker_task: enqueue incomplete for res_size=%zu sent=%zu", res_size, sent_bytes);
+                printf("DIAG-WORKER-ENQ: fail len=%zu sent=%zu free_before=%zu\n", res_size, sent_bytes, free_size);
                 log_heap_stats("worker-send-failed");
                 s_worker_diag.ringbuffer_failures++;
-                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, sent);
+                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, (BaseType_t)pdFALSE);
                 TickType_t pause_ticks = pdMS_TO_TICKS(1);
                 if (pause_ticks == 0) {
                     pause_ticks = 1;
@@ -3855,7 +4044,7 @@ static void audio_worker_task(void *pvParameters)
                          (unsigned)s_worker_diag.dequeued_blocks,
                          (unsigned)s_worker_diag.ringbuffer_failures);
                 printf("DIAG-WORKER-RET: len=%zu free_before=%zu free_after=%zu\n", res_size, free_size, free_after);
-                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, sent);
+                worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, (BaseType_t)pdTRUE);
             }
         }
 
@@ -4529,5 +4718,23 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
     }
 
     return ESP_OK;
+}
+#endif
+
+#ifdef CONFIG_BT_MOCK_TESTING
+/* Return number of bytes currently used in the metadata/tag ringbuffer.
+ * Each tag is stored as a single byte; callers can use this to validate
+ * that producer-side tag pushes and consumer-side tag takes remain
+ * balanced during unit tests. Returns 0 if the metadata buffer is not
+ * initialized. */
+size_t audio_processor_test_get_tag_used(void)
+{
+    if (s_audio_source_buffer == NULL) return 0;
+    /* Capacity of the tag buffer is AUDIO_SOURCE_BUFFER_SIZE. xRingbuffer
+     * provides the current free size; compute used = capacity - free. */
+    size_t free_sz = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t capacity = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    if (free_sz > capacity) return 0; /* defensive */
+    return capacity - free_sz;
 }
 #endif

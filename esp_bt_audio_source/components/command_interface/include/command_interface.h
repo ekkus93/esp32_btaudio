@@ -127,4 +127,9 @@ cmd_status_t cmd_process(void);
  */
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data);
 
+#if defined(UNIT_TEST)
+typedef void (*cmd_test_spiffs_mount_hook_t)(void);
+void cmd_test_install_spiffs_mount_hook(cmd_test_spiffs_mount_hook_t hook);
+#endif
+
 #endif // COMMAND_INTERFACE_H

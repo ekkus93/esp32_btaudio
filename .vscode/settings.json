@@ -1,4 +1,11 @@
 {
     "cmake.sourceDirectory": "/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source",
-    "idf.monitorPort": "/dev/ttyUSB0"
+    "idf.monitorPort": "/dev/ttyUSB0",
+    "python-envs.pythonProjects": [
+        {
+            "path": "",
+            "envManager": "ms-python.python:conda",
+            "packageManager": "ms-python.python:conda"
+        }
+    ]
 }

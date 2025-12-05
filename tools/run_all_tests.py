@@ -311,6 +311,22 @@ def aggregate_summary(root: Path) -> dict:
                 if ignored < 0:
                     ignored = 0
                 by_file[str(f)] = {"tests": total, "failures": (failed if failed is not None else 0), "ignored": ignored}
+
+                continue
+
+            # final robust fallback: count Unity per-test tokens in the log
+            # (matches lines like './main/main.c:70:test_name:PASS')
+            try:
+                pass_count = len(re.findall(r":PASS\b", txt))
+                fail_count = len(re.findall(r":FAIL\b", txt))
+                ignore_count = len(re.findall(r":IGNORE\b", txt))
+                total = pass_count + fail_count + ignore_count
+                if total > 0:
+                    by_file[str(f)] = {"tests": total, "failures": fail_count, "ignored": ignore_count}
+                    continue
+            except Exception:
+                # best-effort: if counting fails, move on
+                pass
     agg = {"generated_at": time.asctime(), "by_file": by_file}
     outpath.write_text(json.dumps(agg, indent=2))
     return agg
@@ -350,6 +366,30 @@ def parse_flash_time_from_log(path: Path) -> float:
     return best_duration
 
 
+def count_unity_results(path: Path) -> dict:
+    """Count Unity per-test PASS/FAIL/IGNORE tokens as a last-resort fallback.
+
+    Returns a dict: {"tests": N, "failures": F, "ignored": I}
+    If the file cannot be read or no tokens found, returns {"tests": 0, "failures": 0, "ignored": 0}
+    """
+    try:
+        txt = path.read_text(errors="ignore")
+    except Exception:
+        return {"tests": 0, "failures": 0, "ignored": 0}
+
+    import re
+    try:
+        pass_count = len(re.findall(r":PASS\\b", txt))
+        fail_count = len(re.findall(r":FAIL\\b", txt))
+        ignore_count = len(re.findall(r":IGNORE\\b", txt))
+        total = pass_count + fail_count + ignore_count
+        if total == 0:
+            return {"tests": 0, "failures": 0, "ignored": 0}
+        return {"tests": total, "failures": fail_count, "ignored": ignore_count}
+    except Exception:
+        return {"tests": 0, "failures": 0, "ignored": 0}
+
+
 def main(argv: list[str] | None = None):
     p = argparse.ArgumentParser(description="Run host + on-device unit tests and collect logs")
     p.add_argument("--port", default="/dev/ttyUSB0", help="Serial port for flashing (device runs)")
@@ -371,6 +411,14 @@ def main(argv: list[str] | None = None):
     if not args.no_host:
         print("\n== Running host tests ==")
         report["host"] = run_host_tests(ROOT, jobs=args.jobs)
+        # run_host_tests historically returned a wrapper dict {"host": {...}}
+        # unwrap it if present so downstream code can treat report['host'] as
+        # the host-summary dict directly.
+        try:
+            if isinstance(report["host"], dict) and "host" in report["host"] and isinstance(report["host"]["host"], dict):
+                report["host"] = report["host"]["host"]
+        except Exception:
+            pass
     else:
         print("Skipping host tests (--no-host)")
 
@@ -463,6 +511,18 @@ def main(argv: list[str] | None = None):
     # Aggregate
     print("\n== Aggregating results ==")
     report["aggregate"] = aggregate_summary(ROOT)
+
+    # Ensure aggregate contains device_totals computed from per-device entries
+    try:
+        dev_totals = {"tests": 0, "failures": 0, "ignored": 0}
+        for dev in report.get("devices", {}).values():
+            dev_totals["tests"] += int(dev.get("tests_total", 0) or 0)
+            dev_totals["failures"] += int(dev.get("tests_failed", 0) or 0)
+            dev_totals["ignored"] += int(dev.get("tests_ignored", 0) or 0)
+        if isinstance(report.get("aggregate"), dict):
+            report["aggregate"]["device_totals"] = dev_totals
+    except Exception:
+        pass
 
     # Extract per-suite numeric summaries (tests / failures / ignored) from
     # the aggregate summary and attach them to each device entry. Also print
@@ -604,6 +664,84 @@ def main(argv: list[str] | None = None):
     report["end_epoch"] = time.time()
     report["duration_seconds"] = report["end_epoch"] - report["start_epoch"]
     outjson.write_text(json.dumps(report, indent=2))
+    # Print a concise human-readable summary to stdout so callers get instant counts
+    try:
+        print("\n=== Quick test summary ===")
+        # Host summary (if present)
+        host = report.get("host")
+        if host and isinstance(host, dict) and host.get("ctest_rc") is not None:
+            # try to extract total tests from the ctest output
+            ctest_out = host.get("ctest_output", "")
+            import re
+            m = re.search(r"(\d+)% tests passed, (\d+) tests failed out of (\d+)", ctest_out)
+            if m:
+                # older patterns may vary; fallback to shown counts
+                print(f"Host tests: {m.group(3)} total, {int(m.group(3))-int(m.group(2))} passed, {m.group(2)} failed")
+            else:
+                # best-effort: print ctest summary header
+                print("Host tests: ctest run (see host_ctest_output.log)")
+
+        # Device suites
+        devices = report.get("devices", {}) or {}
+        total_tests = 0
+        total_failed = 0
+        total_ignored = 0
+        if devices:
+            for sname, dev in devices.items():
+                tests = dev.get("tests_total") or dev.get("tests") or 0
+                passed = dev.get("tests_passed")
+                failed = dev.get("tests_failed")
+                ignored = dev.get("tests_ignored")
+                # if numeric fields missing, try to derive from aggregated 'aggregate.by_file'
+                if passed is None or failed is None:
+                    # attempt to find entry in report['aggregate']['by_file']
+                    try:
+                        by_file = report.get("aggregate", {}).get("by_file", {})
+                        # look for a key that endswith the suite's one_run_unity.log
+                        match_key = None
+                        for k in by_file.keys():
+                            if sname in k and k.endswith("one_run_unity.log"):
+                                match_key = k
+                                break
+                        if match_key:
+                            entries = by_file.get(match_key, {}).get("entries", [])
+                            if entries:
+                                vals = entries[-1]
+                                tests = vals.get("tests", tests)
+                                failed = vals.get("failures", failed if failed is not None else 0)
+                                ignored = vals.get("ignored", ignored if ignored is not None else 0)
+                                passed = tests - failed - ignored
+                    except Exception:
+                        pass
+
+                # final fallback: count tokens in the output_file
+                if (passed is None or failed is None) and dev.get("output_file"):
+                    try:
+                        p = Path(dev.get("output_file"))
+                        counted = count_unity_results(p)
+                        tests = counted.get("tests", tests)
+                        failed = counted.get("failures", failed if failed is not None else 0)
+                        ignored = counted.get("ignored", ignored if ignored is not None else 0)
+                        passed = tests - failed - ignored
+                    except Exception:
+                        pass
+
+                if passed is None:
+                    passed = tests - (failed or 0) - (ignored or 0)
+                if failed is None:
+                    failed = tests - passed - (ignored or 0)
+                if ignored is None:
+                    ignored = 0
+
+                total_tests += int(tests or 0)
+                total_failed += int(failed or 0)
+                total_ignored += int(ignored or 0)
+                print(f"{sname}: {int(tests)} total, {int(passed)} passed, {int(failed)} failed, {int(ignored)} ignored")
+
+        print(f"Aggregate device totals: {total_tests} total, {total_tests - total_failed - total_ignored} passed, {total_failed} failed, {total_ignored} ignored")
+    except Exception as _:
+        # don't fail the script if pretty printing fails
+        pass
     print("Done.")
 
 
