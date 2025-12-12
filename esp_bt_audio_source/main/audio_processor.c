@@ -203,10 +203,7 @@ static int s_i2s_consecutive_failures = 0;
  * simple portMUX critical section. */
 static bool s_beep_fallback_active = false;
 static size_t s_beep_fallback_frames_remaining = 0;
-static uint32_t s_beep_fallback_phase_acc = 0;
-static uint32_t s_beep_fallback_phase_step = 0;
 /* Floating-point phase helpers for sine generation (used for nicer beep) */
-static double s_synth_phase = 0.0;
 static double s_beep_fallback_phase = 0.0;
 static double s_beep_fallback_phase_inc = 0.0;
 /* Track total frames scheduled for the fallback so we can compute
@@ -369,6 +366,9 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
     if (tag != NULL) {
         *tag = (audio_source_tag_t)value;
     }
+#ifndef CONFIG_BT_MOCK_TESTING
+    (void)id;
+#endif
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_after_return = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap2 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
@@ -482,59 +482,6 @@ void audio_source_tag_test_reset_buffer(void)
 }
 #endif
 
-static bool wait_for_ringbuffer_space(size_t required_bytes, uint32_t timeout_ms, size_t *free_before_out)
-{
-    if (free_before_out != NULL) {
-        *free_before_out = 0U;
-    }
-
-    if (required_bytes == 0U) {
-        if (s_audio_buffer != NULL && free_before_out != NULL) {
-            *free_before_out = xRingbufferGetCurFreeSize(s_audio_buffer);
-        }
-        return (s_audio_buffer != NULL);
-    }
-
-    if (s_audio_buffer == NULL) {
-        return false;
-    }
-
-    size_t free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
-    if (free_before_out != NULL) {
-        *free_before_out = free_now;
-    }
-    if (free_now >= required_bytes) {
-        return true;
-    }
-
-    TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
-    if (timeout_ms > 0U && timeout_ticks == 0) {
-        timeout_ticks = 1;
-    }
-    bool use_deadline = (timeout_ms != 0U);
-    TickType_t start_tick = xTaskGetTickCount();
-    TickType_t poll_delay = pdMS_TO_TICKS(1);
-    if (poll_delay == 0) {
-        poll_delay = 1;
-    }
-
-    while (free_now < required_bytes) {
-        vTaskDelay(poll_delay);
-        free_now = xRingbufferGetCurFreeSize(s_audio_buffer);
-        if (free_now >= required_bytes) {
-            return true;
-        }
-        if (use_deadline) {
-            TickType_t now = xTaskGetTickCount();
-            if ((now - start_tick) >= timeout_ticks) {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
 /* Helper to log heap free sizes for DRAM and PSRAM (when available).
  * Call this at diagnostic points to observe allocator pressure during
  * operations that previously triggered BT malloc failures. */
@@ -585,8 +532,6 @@ static uint8_t *s_work_block = NULL;
 static uint8_t s_audio_rb_residual[AUDIO_WORK_BUFFER_BYTES];
 static size_t s_audio_rb_residual_len = 0;
 static size_t s_audio_rb_residual_pos = 0;
-static audio_source_tag_t s_audio_rb_residual_tag = AUDIO_SOURCE_TAG_INVALID;
-static bool s_audio_rb_residual_tag_valid = false;
 static uint8_t s_beep_rb_residual[BEEP_BUFFER_SIZE];
 static size_t s_beep_rb_residual_len = 0;
 static size_t s_beep_rb_residual_pos = 0;
@@ -947,30 +892,6 @@ static bool wav_stream_flush_residual_locked(void)
  * Some callers appear earlier in the file; declare the signature so the
  * compiler doesn't assume an implicit int-returning declaration. */
 static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len, audio_source_tag_t source_tag);
-
-static bool wav_stream_queue_data_locked(const uint8_t *data, size_t len)
-{
-    if (data == NULL || len == 0U || s_audio_buffer == NULL) {
-        return false;
-    }
-
-    size_t sent = wav_stream_try_enqueue_unlocked(data, len, AUDIO_SOURCE_TAG_WAV);
-    if (sent < len) {
-        size_t residual = len - sent;
-        if (residual > sizeof(s_wav_send_residual)) {
-            residual = sizeof(s_wav_send_residual);
-        }
-        memcpy(s_wav_send_residual, data + sent, residual);
-        s_wav_send_residual_len = residual;
-        s_wav_send_residual_pos = 0U;
-        s_wav_residual_tag = AUDIO_SOURCE_TAG_WAV;
-        s_wav_residual_tag_valid = true;
-        printf("DIAG-APLAY-STREAM: backlog=%zu\n", residual);
-        return true;
-    }
-
-    return false;
-}
 
 /* Attempt to enqueue `len` bytes from `data` into the audio ringbuffer without
  * holding the WAV mutex. Returns the number of bytes successfully enqueued.

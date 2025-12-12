@@ -11,7 +11,6 @@
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
 #include "bt_source.h"
-#include "driver/i2s.h"
 #include "audio_processor.h"
 
 static const char *TAG = "BT_STREAM_MGR";

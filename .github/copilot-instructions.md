@@ -161,7 +161,7 @@ Repeat: **write one test → make it pass → improve structure**.
 - Avoid adding branches or features without failing tests that demand them.
 - Do **not** game tests (e.g., by hard-coding values or shortcuts) — the goal is **real, working behavior**, not “green at any cost”.
 
-### Refactoring rules
+### Refactoring ruleswar
 - Refactor only when tests are passing (Green phase).
 - Use known refactorings: extract function, rename, move function to new module, introduce struct, etc.
 - Make one deliberate refactor at a time and re-run tests.

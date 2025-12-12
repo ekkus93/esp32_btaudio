@@ -1,4 +1,11 @@
 ## Current Focus
+### Latest: I2S header cleanup (2025-12-13)
+- Removed unused `driver/i2s.h` include from `esp_bt_audio_source/main/bt_streaming_manager.c` to eliminate deprecated I2S/ADC warning noise; file only depends on `audio_processor` APIs. Build not re-run yet—expect warnings to drop on next `idf.py build`.
+### Latest: Test sweep attempt (2025-12-12)
+- Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after sourcing IDF; `export.sh` reported dependency failure (esptool 5.1.0 installed vs required 4.8) but host tests still ran and passed (ctest 22/22). All device Unity suites failed to run (monitor errors, 0 tests executed) leaving aggregate device totals at 0. Action: fix IDF python env to match constraint (esptool~=4.8) and rerun device suites.
+### Latest: Full test sweep green (2025-12-12)
+- Fixed IDF v5.4 python env by pinning `esptool~=4.8` in `/home/phil/.espressif/python_env/idf5.4_py3.10_env`; `export.sh` now passes dependency checks.
+- Reran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root with `python310` conda env active. Results: host CTest 22/22 pass; device suites `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 26/26, `test_app3` 3/3 all pass. Aggregate device totals 111/111 pass. Artifacts in `tmp/run_all_tests_summary.json` and per-suite `build/one_run_unity.log` files.
 ### Latest: Aggregation rerun (2025-12-12)
 - Ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after the aggregation fallback fix landed; host CTest 22/22 passed and Unity suites reported `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 28/28, `test_app3` 3/3 (device total 113, overall 135).
 - Aggregator now emits per-suite counts correctly (`tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json` regenerated); `aggregate_unity.py` reported the same numbers.

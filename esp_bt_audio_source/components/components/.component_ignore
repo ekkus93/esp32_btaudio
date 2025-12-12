@@ -1,0 +1,1 @@
+# Skip nested ESP-IDF component mirror; project uses IDF_PATH-provided components.
