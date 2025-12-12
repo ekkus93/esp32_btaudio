@@ -73,6 +73,7 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
             root / "esp_bt_audio_source" / "test_app",
             root / "esp_bt_audio_source" / "test_app2",
             root / "esp_bt_audio_source" / "test_app_audio",
+            root / "esp_bt_audio_source" / "test_app3",
         ]
         for proj in unity_projects:
             _unlink_artifact(proj / "build" / "one_run_unity.log")
@@ -260,74 +261,83 @@ def run_device_suite(project_root: Path, runner_script: Path, port: str, timeout
 
 
 def aggregate_summary(root: Path) -> dict:
-    # If tools/aggregate_unity.py exists, prefer to call it to build canonical summary
+    # Prefer the project aggregator if present, then augment with local parsing to ensure counts.
     agg = {"generated_at": time.asctime(), "by_file": {}}
     agg_script = root / "tools" / "aggregate_unity.py"
     outpath = TMP_DIR / "canonical_unity_summary.json"
     if agg_script.exists():
-        rc, out = run_cmd([sys.executable, str(agg_script), "--output", str(outpath)])
+        rc, _ = run_cmd([sys.executable, str(agg_script), "--output", str(outpath)])
         if rc == 0 and outpath.exists():
             try:
-                return json.loads(outpath.read_text())
+                agg = json.loads(outpath.read_text())
             except Exception:
                 pass
-    # fallback: scan canonical locations in repo for numeric summary lines
+
+    if not isinstance(agg, dict):
+        agg = {"generated_at": time.asctime(), "by_file": {}}
+    if "by_file" not in agg or not isinstance(agg.get("by_file"), dict):
+        agg["by_file"] = {}
+
+    # fallback/augmentation: scan canonical locations for numeric summary lines and merge
     import re
-    # Preferred canonical Unity summary (some projects print: "<N> Tests <F> Failures <I> Ignored")
+
     canonical_pat = re.compile(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored")
-    # Alternate human-friendly footer used by some test mains (e.g. test_app2/main.c):
-    # "Tests run    : <N>", "Tests passed : <P>", "Tests failed : <F>"
     alt_run_pat = re.compile(r"Tests\s*run\s*:\s*(\d+)", re.IGNORECASE)
     alt_failed_pat = re.compile(r"Tests\s*failed\s*:\s*(\d+)", re.IGNORECASE)
     alt_passed_pat = re.compile(r"Tests\s*passed\s*:\s*(\d+)", re.IGNORECASE)
 
+    def parse_log(path: Path) -> dict | None:
+        try:
+            txt = path.read_text(errors="ignore")
+        except Exception:
+            return None
+
+        m = canonical_pat.search(txt)
+        if m:
+            return {"tests": int(m.group(1)), "failures": int(m.group(2)), "ignored": int(m.group(3))}
+
+        m_run = alt_run_pat.search(txt)
+        m_failed = alt_failed_pat.search(txt)
+        m_passed = alt_passed_pat.search(txt)
+        if m_run:
+            total = int(m_run.group(1))
+            failed = int(m_failed.group(1)) if m_failed else None
+            passed = int(m_passed.group(1)) if m_passed else None
+            if failed is None and passed is not None:
+                failed = total - passed
+            if passed is None and failed is not None:
+                passed = total - failed
+            ignored = total - (passed if passed is not None else 0) - (failed if failed is not None else 0)
+            if ignored < 0:
+                ignored = 0
+            return {"tests": total, "failures": (failed if failed is not None else 0), "ignored": ignored}
+
+        try:
+            pass_count = len(re.findall(r":PASS\b", txt))
+            fail_count = len(re.findall(r":FAIL\b", txt))
+            ignore_count = len(re.findall(r":IGNORE\b", txt))
+            total = pass_count + fail_count + ignore_count
+            if total > 0:
+                return {"tests": total, "failures": fail_count, "ignored": ignore_count}
+        except Exception:
+            return None
+        return None
+
     files = [root / "esp_bt_audio_source" / "test_app" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test_app2" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test_app_audio" / "build" / "one_run_unity.log"]
-    by_file = {}
+             root / "esp_bt_audio_source" / "test_app_audio" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test_app3" / "build" / "one_run_unity.log"]
+
     for f in files:
-        if f.exists():
-            txt = f.read_text()
-            # try canonical pattern first
-            m = canonical_pat.search(txt)
-            if m:
-                by_file[str(f)] = {"tests": int(m.group(1)), "failures": int(m.group(2)), "ignored": int(m.group(3))}
-                continue
+        if not f.exists():
+            continue
+        parsed = parse_log(f)
+        key = str(f)
+        existing = agg["by_file"].get(key, {}) if isinstance(agg.get("by_file"), dict) else {}
+        if parsed:
+            if not existing or int(existing.get("tests", 0) or 0) == 0:
+                agg["by_file"][key] = parsed
 
-            # try alternate footer (Tests run / Tests failed / Tests passed)
-            m_run = alt_run_pat.search(txt)
-            m_failed = alt_failed_pat.search(txt)
-            m_passed = alt_passed_pat.search(txt)
-            if m_run:
-                total = int(m_run.group(1))
-                failed = int(m_failed.group(1)) if m_failed else None
-                passed = int(m_passed.group(1)) if m_passed else None
-                # If we only have total+passed, infer failed. If only total+failed, infer passed.
-                if failed is None and passed is not None:
-                    failed = total - passed
-                if passed is None and failed is not None:
-                    passed = total - failed
-                ignored = total - (passed if passed is not None else 0) - (failed if failed is not None else 0)
-                if ignored < 0:
-                    ignored = 0
-                by_file[str(f)] = {"tests": total, "failures": (failed if failed is not None else 0), "ignored": ignored}
-
-                continue
-
-            # final robust fallback: count Unity per-test tokens in the log
-            # (matches lines like './main/main.c:70:test_name:PASS')
-            try:
-                pass_count = len(re.findall(r":PASS\b", txt))
-                fail_count = len(re.findall(r":FAIL\b", txt))
-                ignore_count = len(re.findall(r":IGNORE\b", txt))
-                total = pass_count + fail_count + ignore_count
-                if total > 0:
-                    by_file[str(f)] = {"tests": total, "failures": fail_count, "ignored": ignore_count}
-                    continue
-            except Exception:
-                # best-effort: if counting fails, move on
-                pass
-    agg = {"generated_at": time.asctime(), "by_file": by_file}
     outpath.write_text(json.dumps(agg, indent=2))
     return agg
 
@@ -427,8 +437,9 @@ def main(argv: list[str] | None = None):
         print("\n== Running on-device Unity suites ==")
         runner = ROOT / "tools" / "run_unity.py"
         suites = [ROOT / "esp_bt_audio_source" / "test_app",
-                  ROOT / "esp_bt_audio_source" / "test_app2",
-                  ROOT / "esp_bt_audio_source" / "test_app_audio"]
+              ROOT / "esp_bt_audio_source" / "test_app2",
+              ROOT / "esp_bt_audio_source" / "test_app_audio",
+              ROOT / "esp_bt_audio_source" / "test_app3"]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
         # runner can flash it before the monitor step. Prefer the canonical
         # location inside esp_bt_audio_source/main/assets/spiffs/spiffs.bin and

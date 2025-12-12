@@ -1,0 +1,10 @@
+# Test-only defaults for test_app3
+CONFIG_BT_MOCK_TESTING=y
+# Optionally enable verbose diagnostics for tag tests
+CONFIG_AUDIO_TAG_DIAGNOSTICS=y
+
+# Lower log level noise for tests
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+
+# Enable IDF test runner integration so `idf.py test` discovers Unity tests
+CONFIG_UNITY_ENABLE_IDF_TEST_RUNNER=y

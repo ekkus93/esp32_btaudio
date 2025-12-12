@@ -98,6 +98,24 @@ typedef enum {
     AUDIO_SOURCE_TAG_BEEP    = 4,
 } audio_source_tag_t;
 
+/* Tag item stored in the metadata ringbuffer. Includes a small
+ * monotonically-incrementing counter so we can detect replay/stalls
+ * of metadata entries during diagnostics. The counter is relaxed-
+ * atomically incremented on each enqueue. */
+typedef struct {
+    uint8_t tag;
+    uint16_t counter;
+} audio_source_tag_item_t;
+
+/* Monotonic counter for tag items. Relaxed atomic updates are
+ * sufficient for diagnostics and avoid needing a mutex. Wrap-around
+ * is allowed. */
+/* Monotonic counter for tag items. Use a full sequentially-consistent
+ * atomic increment so diagnostics that later correlate tag ids with
+ * other events observe a well-defined global order. Wrap-around is
+ * allowed and expected for this diagnostic counter. */
+static uint16_t s_audio_source_tag_counter = 0;
+
 static QueueHandle_t s_i2s_queue = NULL; /* Queue of i2s_block_t */
 static QueueHandle_t s_i2s_free_queue = NULL; /* Queue of free raw block pointers */
 static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
@@ -163,6 +181,7 @@ static size_t audio_get_runtime_work_bytes(void)
 }
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced);
+static void drain_beep_buffer(void);
 static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
@@ -284,22 +303,25 @@ static bool audio_source_tag_push(audio_source_tag_t tag)
     if (s_audio_source_buffer == NULL) {
         return false;
     }
-
-    const uint8_t value = (uint8_t)tag;
     const TickType_t wait_ticks = pdMS_TO_TICKS(2);
+    /* Build the item with a monotonic counter for diagnostics */
+    audio_source_tag_item_t item;
+    item.tag = (uint8_t)tag;
+    item.counter = __atomic_fetch_add(&s_audio_source_tag_counter, 1, __ATOMIC_SEQ_CST);
+
     /* Test-only: capture occupancy before/after to make push atomic in logs */
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
-    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-BEFORE: tag=%u used=%zu\n", (unsigned)value, (cap_before > free_before ? cap_before - free_before : 0));
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-BEFORE: tag=%u used=%zu\n", (unsigned)item.tag, (cap_before > free_before ? cap_before - free_before : 0));
 #endif
-    BaseType_t sent = xRingbufferSend(s_audio_source_buffer, &value, sizeof(value), wait_ticks);
+    BaseType_t sent = xRingbufferSend(s_audio_source_buffer, &item, sizeof(item), wait_ticks);
     if (sent != pdTRUE) {
-        ESP_LOGE(TAG, "audio_source_tag_push: failed tag=%u", (unsigned)value);
+        ESP_LOGE(TAG, "audio_source_tag_push: failed tag=%u id=%u", (unsigned)item.tag, (unsigned)item.counter);
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_fail = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap_fail = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
-    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-FAILED: tag=%u used=%zu\n", (unsigned)value, (cap_fail > free_fail ? cap_fail - free_fail : 0));
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-FAILED: tag=%u id=%u used=%zu\n", (unsigned)item.tag, (unsigned)item.counter, (cap_fail > free_fail ? cap_fail - free_fail : 0));
 #endif
         return false;
     }
@@ -307,7 +329,7 @@ static bool audio_source_tag_push(audio_source_tag_t tag)
     /* Test-only diagnostic: show occupancy after push */
     size_t free_now = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
-    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-AFTER: tag=%u used=%zu\n", (unsigned)value, (cap > free_now ? cap - free_now : 0));
+    AUDIO_TAG_DIAG("DIAG-TAG-PUSH-AFTER: tag=%u id=%u used=%zu\n", (unsigned)item.tag, (unsigned)item.counter, (cap > free_now ? cap - free_now : 0));
 #endif
     return true;
 }
@@ -328,7 +350,7 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
     size_t free_before_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
 #endif
     size_t size = 0;
-    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, wait_ticks, sizeof(uint8_t));
+    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, wait_ticks, sizeof(audio_source_tag_item_t));
     if (item == NULL || size == 0) {
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_after_recv_empty = xRingbufferGetCurFreeSize(s_audio_source_buffer);
@@ -336,12 +358,13 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
 #endif
         return false;
     }
-
-    uint8_t value = *((const uint8_t *)item);
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_after_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RECV: ptr=%p size=%zu free_before=%zu free_after_recv=%zu\n", item, size, free_before_recv, free_after_recv);
 #endif
+    audio_source_tag_item_t *it = (audio_source_tag_item_t *)item;
+    uint8_t value = it->tag;
+    uint16_t id = it->counter;
     vRingbufferReturnItem(s_audio_source_buffer, item);
     if (tag != NULL) {
         *tag = (audio_source_tag_t)value;
@@ -349,7 +372,7 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_after_return = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap2 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
-    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RETURN: got=%u used=%zu free_after_return=%zu\n", (unsigned)value, (cap2 > free_after_return ? cap2 - free_after_return : 0), free_after_return);
+    AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RETURN: got=%u id=%u used=%zu free_after_return=%zu\n", (unsigned)value, (unsigned)id, (cap2 > free_after_return ? cap2 - free_after_return : 0), free_after_return);
 #endif
     
     return true;
@@ -368,11 +391,12 @@ static void audio_source_tag_drop_one(void)
     AUDIO_TAG_DIAG("DIAG-TAG-DROP-BEFORE: used=%zu free_before=%zu\n", (cap_before > free_before ? cap_before - free_before : 0), free_before);
 #endif
     size_t size = 0;
-    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, sizeof(uint8_t));
+    void *item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, sizeof(audio_source_tag_item_t));
     if (item != NULL && size > 0) {
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_after_recv = xRingbufferGetCurFreeSize(s_audio_source_buffer);
-    AUDIO_TAG_DIAG("DIAG-TAG-DROP-RECV: ptr=%p size=%zu free_after_recv=%zu\n", item, size, free_after_recv);
+    audio_source_tag_item_t *it = (audio_source_tag_item_t *)item;
+    AUDIO_TAG_DIAG("DIAG-TAG-DROP-RECV: ptr=%p size=%zu tag=%u id=%u free_after_recv=%zu\n", item, size, (unsigned)it->tag, (unsigned)it->counter, free_after_recv);
 #endif
         vRingbufferReturnItem(s_audio_source_buffer, item);
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -388,12 +412,15 @@ static void audio_source_tag_reset_buffer(void)
     if (s_audio_source_buffer == NULL) {
         return;
     }
-
     size_t size = 0;
     void *item = NULL;
-    const size_t max_take = sizeof(uint8_t);
+    const size_t max_take = sizeof(audio_source_tag_item_t);
 
     while ((item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, max_take)) != NULL && size > 0U) {
+#ifdef CONFIG_BT_MOCK_TESTING
+        audio_source_tag_item_t *it = (audio_source_tag_item_t *)item;
+        AUDIO_TAG_DIAG("DIAG-TAG-RESET-DRIVE: dropping tag=%u id=%u\n", (unsigned)it->tag, (unsigned)it->counter);
+#endif
         vRingbufferReturnItem(s_audio_source_buffer, item);
     }
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -402,6 +429,58 @@ static void audio_source_tag_reset_buffer(void)
     AUDIO_TAG_DIAG("DIAG-TAG-RESET: used=%zu\n", (cap4 > free_now4 ? cap4 - free_now4 : 0));
 #endif
 }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+/* Test-only wrappers to expose tag helpers to unit tests. These are
+ * placed in this translation unit so they can call the static
+ * implementations directly while keeping the production API unchanged. */
+
+bool audio_source_tag_test_init_buffer(size_t buf_size)
+{
+    if (s_audio_source_buffer != NULL) return true;
+    if (buf_size == 0) buf_size = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    s_audio_source_buffer = xRingbufferCreate(buf_size, RINGBUF_TYPE_BYTEBUF);
+    return (s_audio_source_buffer != NULL);
+}
+
+void audio_source_tag_test_deinit_buffer(void)
+{
+    if (s_audio_source_buffer != NULL) {
+        vRingbufferDelete(s_audio_source_buffer);
+        s_audio_source_buffer = NULL;
+    }
+}
+
+uint16_t audio_source_tag_test_get_counter(void)
+{
+    return s_audio_source_tag_counter;
+}
+
+void audio_source_tag_test_set_counter(uint16_t v)
+{
+    __atomic_store_n(&s_audio_source_tag_counter, v, __ATOMIC_SEQ_CST);
+}
+
+bool audio_source_tag_test_push(audio_source_tag_t tag)
+{
+    return audio_source_tag_push(tag);
+}
+
+bool audio_source_tag_test_take(audio_source_tag_t *tag_out, TickType_t wait_ticks)
+{
+    return audio_source_tag_take(tag_out, wait_ticks);
+}
+
+void audio_source_tag_test_drop_one(void)
+{
+    audio_source_tag_drop_one();
+}
+
+void audio_source_tag_test_reset_buffer(void)
+{
+    audio_source_tag_reset_buffer();
+}
+#endif
 
 static bool wait_for_ringbuffer_space(size_t required_bytes, uint32_t timeout_ms, size_t *free_before_out)
 {
@@ -688,17 +767,37 @@ static void wav_playback_abort(void)
         s_wav_pending_bytes = 0;
         s_wav_playback_active = false;
         if (s_wav_prev_valid) {
-            s_force_synth = s_wav_prev_force_synth;
+            /* Do not automatically re-enable synth mode after a WAV
+             * playback. Leave synth disabled so we don't produce an
+             * unexpected continuous tone; operators can explicitly
+             * re-enable synth mode via CLI if desired. */
+            s_force_synth = false;
             synth_mode = s_force_synth;
             s_wav_prev_valid = false;
+            s_wav_prev_force_synth = false;
             restored = true;
         }
     }
     portEXIT_CRITICAL(&s_wav_lock);
 
+    /* Ensure any transient beep/fallback state is cleared when WAV is
+     * aborted so we don't leave a fallback tone active. The call to
+     * drain_beep_buffer() is safe here and idempotent. */
+    drain_beep_buffer();
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = 0;
+    s_beep_fallback_active = false;
+    s_beep_fallback_frames_remaining = 0;
+    s_beep_fallback_total_frames = 0;
+    portEXIT_CRITICAL(&s_beep_lock);
+
     if (restored) {
         ESP_LOGI(TAG, "audio_processor: WAV playback aborted (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
     }
+    ESP_LOGI(TAG, "audio_processor: wav_playback_abort called -> s_force_synth=%s s_beep_fallback_active=%d s_beep_remaining=%zu",
+             s_force_synth ? "ENABLED" : "DISABLED",
+             s_beep_fallback_active ? 1 : 0,
+             s_beep_remaining_bytes);
 }
 
 static void wav_playback_complete_if_idle(void)
@@ -709,17 +808,36 @@ static void wav_playback_complete_if_idle(void)
     if (s_wav_playback_active && s_wav_pending_bytes == 0) {
         s_wav_playback_active = false;
         if (s_wav_prev_valid) {
-            s_force_synth = s_wav_prev_force_synth;
+            /* Do not automatically re-enable synth mode after WAV
+             * playback; clear the previous synth flag and keep synth
+             * disabled. Manual control remains available through CLI. */
+            s_force_synth = false;
             synth_mode = s_force_synth;
             s_wav_prev_valid = false;
+            s_wav_prev_force_synth = false;
             restored = true;
         }
     }
     portEXIT_CRITICAL(&s_wav_lock);
 
+    /* Clear any transient beep/fallback state that may have been left
+     * around. This prevents short tones from continuing after the WAV
+     * file has finished playing. */
+    drain_beep_buffer();
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = 0;
+    s_beep_fallback_active = false;
+    s_beep_fallback_frames_remaining = 0;
+    s_beep_fallback_total_frames = 0;
+    portEXIT_CRITICAL(&s_beep_lock);
+
     if (restored) {
         ESP_LOGI(TAG, "audio_processor: WAV playback completed (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
     }
+    ESP_LOGI(TAG, "audio_processor: wav_playback_complete_if_idle -> s_force_synth=%s s_beep_fallback_active=%d s_beep_remaining=%zu",
+             s_force_synth ? "ENABLED" : "DISABLED",
+             s_beep_fallback_active ? 1 : 0,
+             s_beep_remaining_bytes);
 }
 
 static void wav_stream_mutex_init(void)
@@ -3267,6 +3385,9 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
                 if (!s_beep_fallback_active) {
                     s_beep_prev_force_synth = s_force_synth;
                     s_force_synth = true;
+                    ESP_LOGI(TAG, "audio_processor_beep: enabling fallback -> s_beep_prev_force_synth=%s s_force_synth=%s",
+                             s_beep_prev_force_synth ? "ENABLED" : "DISABLED",
+                             s_force_synth ? "ENABLED" : "DISABLED");
                 }
                 s_beep_fallback_active = true;
                 s_beep_fallback_frames_remaining += remaining_frames; /* accumulate if multiple beeps */

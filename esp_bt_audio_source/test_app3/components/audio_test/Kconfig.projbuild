@@ -1,0 +1,15 @@
+menu "Audio test options"
+
+config BT_MOCK_TESTING
+    bool "Enable BT mock/testing hooks"
+    default y
+    help
+      Enable test-only audio tag helpers.
+
+config AUDIO_TAG_DIAGNOSTICS
+    bool "Enable audio tag diagnostics"
+    default y
+    help
+      Emit extra diagnostics around tag buffering during tests.
+
+endmenu

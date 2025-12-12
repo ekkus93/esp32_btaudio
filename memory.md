@@ -1,4 +1,8 @@
 ## Current Focus
+### Latest: Aggregation rerun (2025-12-12)
+- Ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after the aggregation fallback fix landed; host CTest 22/22 passed and Unity suites reported `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 28/28, `test_app3` 3/3 (device total 113, overall 135).
+- Aggregator now emits per-suite counts correctly (`tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json` regenerated); `aggregate_unity.py` reported the same numbers.
+
 ### Functional Specification baseline (2025-12-04)
 - Authored `esp_bt_audio_source/docs/FS.md`, translating the PRD into an implementation-ready spec that covers architecture, command set, bluetooth/audio subsystems, data contracts, testing/verification, and open issues/traceability. This is now the canonical reference for behavior-level decisions until the next revision.
 - Open follow-up: keep FS/memory in sync when future implementation work (metadata ringbuffer lifecycle, pairing soak validation, PSRAM validation, beep diagnostics CLI) lands.
@@ -348,6 +352,7 @@ Note: On-device Unity runs require a connected device (serial port) and explicit
 - Host test target `test_bt_connection_manager` builds via `cmake --build esp_bt_audio_source/test/host_test/build_host_tests` and passes under `ctest`.
 
 ## Recent Changes
+- 2025-12-11: Resolved `test_app3` warning flood by moving `BT_MOCK_TESTING`/`AUDIO_TAG_DIAGNOSTICS` Kconfig definitions into `components/audio_test/Kconfig.projbuild`, replacing the root Kconfig stub, and adding `audio_tag_test_shim.c` so tag tests link without the production `audio_processor`; clean rebuild now emits zero warnings.
 - 2025-11-13: Scoped `UNITY_AUDIO_TEST_GROUP_OVERRIDE` to the `test_app_audio` component only (removed global `add_compile_definitions` and verified build succeeds with `idf.py -DUNITY_AUDIO_TEST_GROUP_OVERRIDE=audio_processor build`).
 - 2025-11-13: Reflashed `test_app_audio` after component-scoped override change; boot log (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`) confirms "UNITY compile-time override for group 'audio_processor'" banner before Unity suite execution. Runtime initially tripped ringbuffer assertion inside `audio_processor_read` during WAV tests.
 - 2025-11-13: Switched audio ringbuffer back to `RINGBUF_TYPE_BYTEBUF` so `xRingbufferReceiveUpTo()` no longer asserts; rebuild and reflash succeeded, though WAV tests still stall with the known synth overrun/Task WDT loop (`build/one_run_unity.log`).
