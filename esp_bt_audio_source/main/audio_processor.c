@@ -1260,7 +1260,81 @@ static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size);
  * trig/math calls. */
 static uint32_t s_synth_phase_acc = 0;
 static uint32_t s_synth_phase_step = 0;
-static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size);
+static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0) {
+        return 0;
+    }
+
+    const int sample_rate = (s_audio_config.sample_rate > 0) ? s_audio_config.sample_rate : 44100;
+    const int tone_hz = 1000;
+    const int channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
+    if (bytes_per_sample <= 0) {
+        bytes_per_sample = 2;
+    }
+
+    const size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+    if (frame_bytes == 0) {
+        return 0;
+    }
+
+    /* Only generate whole frames so downstream consumers never see partial samples. */
+    const size_t max_bytes = buffer_size - (buffer_size % frame_bytes);
+    if (max_bytes == 0) {
+        return 0;
+    }
+
+    /* Recalculate the phase step if the sample-rate changes so pitch stays constant. */
+    uint32_t desired_step = 0;
+    if (sample_rate > 0) {
+        desired_step = (uint32_t)((((uint64_t)tone_hz) << 32) / (uint32_t)sample_rate);
+    }
+    if (desired_step == 0) {
+        desired_step = 1; /* ensure progress even if sample_rate is tiny */
+    }
+    if (desired_step != s_synth_phase_step) {
+        s_synth_phase_step = desired_step;
+    }
+
+    size_t produced = 0;
+    uint8_t* out = buffer;
+
+    if (bytes_per_sample == 2) {
+        /* 16-bit samples */
+        int16_t* out16 = (int16_t*)out;
+        const int16_t amplitude = 30000; /* leave headroom for later volume */
+        const int16_t neg_amp = (int16_t)(-amplitude);
+        const size_t total_samples = (max_bytes / (size_t)bytes_per_sample);
+        for (size_t sample_idx = 0; sample_idx < total_samples; sample_idx += (size_t)channels) {
+            /* Advance phase for each frame */
+            s_synth_phase_acc += s_synth_phase_step;
+            const bool high = (s_synth_phase_acc & 0x80000000U) != 0U;
+            const int16_t value = high ? amplitude : neg_amp;
+            for (int ch = 0; ch < channels; ++ch) {
+                *out16++ = value;
+            }
+        }
+        produced = (size_t)total_samples * (size_t)bytes_per_sample;
+    } else {
+        /* 24/32-bit path uses 32-bit container */
+        int32_t* out32 = (int32_t*)out;
+        const int32_t amplitude32 = 1 << 27; /* keep plenty of headroom */
+        const int32_t neg_amp32 = -amplitude32;
+        const size_t total_samples = (max_bytes / (size_t)bytes_per_sample);
+        for (size_t sample_idx = 0; sample_idx < total_samples; sample_idx += (size_t)channels) {
+            s_synth_phase_acc += s_synth_phase_step;
+            const bool high = (s_synth_phase_acc & 0x80000000U) != 0U;
+            const int32_t value = high ? amplitude32 : neg_amp32;
+            for (int ch = 0; ch < channels; ++ch) {
+                *out32++ = value;
+            }
+        }
+        produced = (size_t)total_samples * (size_t)bytes_per_sample;
+    }
+
+    return produced;
+}
 #endif
 
 // Forward declarations of internal functions
