@@ -738,6 +738,12 @@ void test_beep_command_connected(void) {
 
     // Verify that beep was actually triggered
     TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    // Verify the BEEP command requested a 10s middle-C tone
+    uint32_t dur_ms = 0; double freq_hz = 0.0;
+    audio_processor_get_last_beep_request(&dur_ms, &freq_hz);
+    TEST_ASSERT_EQUAL_UINT32(10000U, dur_ms);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 261.63f, (float)freq_hz);
 }
 
 // Test PLAY command: request playback of a spiffs asset (host-mode) and

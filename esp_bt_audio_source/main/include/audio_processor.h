@@ -190,11 +190,27 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 esp_err_t audio_processor_beep(uint32_t duration_ms);
 
 /**
+ * @brief Emit a sine-wave beep with an explicit frequency.
+ *
+ * @param duration_ms Duration of the beep in milliseconds
+ * @param freq_hz Frequency in Hz (e.g., 261.63 for middle C)
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz);
+
+/**
  * @brief Check if a beep is currently active (for testing)
  *
  * @return true if beep is active, false otherwise
  */
 bool audio_processor_is_beep_active(void);
+
+#ifdef UNIT_TEST
+/**
+ * @brief Retrieve the most recent beep request (for tests only).
+ */
+void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_hz);
+#endif
 
 /**
  * @brief Arm a one-shot diagnostic dump for the next beep invocation.
@@ -210,6 +226,22 @@ void audio_processor_enable_next_beep_diag(void);
  * inspection. Intended for deterministic captures from the serial console.
  */
 esp_err_t audio_processor_emit_sync_worker_diag(void);
+
+/**
+ * @brief Snapshot the metadata tag ringbuffer and log its contents.
+ *
+ * This is a diagnostic-only helper. It temporarily pauses task scheduling,
+ * copies up to `max_items` tag entries (tag type + monotonic counter) from
+ * the metadata ringbuffer, re-queues them unchanged to preserve runtime
+ * state, and emits an ESP_LOGI line per entry. The ringbuffer ordering and
+ * counters are preserved; producers/consumers see the same contents after
+ * the snapshot completes.
+ *
+ * @param max_items Maximum entries to log (clamped to a small internal cap)
+ * @param captured_out Optional pointer to receive the number of entries logged
+ * @return esp_err_t ESP_OK on success, ESP_ERR_INVALID_STATE if ringbuffer is missing
+ */
+esp_err_t audio_processor_dump_tag_ringbuffer(size_t max_items, size_t *captured_out);
 
 /**
  * @brief Convenience query for whether the audio processor is currently running

@@ -33,6 +33,8 @@ static bool s_wav_active = false;
 static size_t s_wav_pending = 0;
 static bool s_wav_prev_valid = false;
 static bool s_wav_prev_force_synth = false;
+static uint32_t s_last_beep_duration_ms = 0;
+static double s_last_beep_freq_hz = 0.0;
 
 /* Simple host-side FIFO for injected/produced audio data. */
 static uint8_t* s_ring = NULL;
@@ -210,9 +212,10 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     return ESP_OK;
 }
 
-esp_err_t audio_processor_beep(uint32_t duration_ms)
+esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 {
-    (void)duration_ms;
+    s_last_beep_duration_ms = duration_ms;
+    s_last_beep_freq_hz = freq_hz;
     /* Generate a short burst of non-zero sample bytes and append to ring.
      * Use a simple deterministic pattern so tests can detect non-zero data.
      */
@@ -224,9 +227,24 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
     return ESP_OK;
 }
 
+esp_err_t audio_processor_beep(uint32_t duration_ms)
+{
+    return audio_processor_beep_tone(duration_ms, 1000.0);
+}
+
 bool audio_processor_is_beep_active(void)
 {
     return s_beep_active;
+}
+
+void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_hz)
+{
+    if (duration_ms) {
+        *duration_ms = s_last_beep_duration_ms;
+    }
+    if (freq_hz) {
+        *freq_hz = s_last_beep_freq_hz;
+    }
 }
 
 bool audio_processor_is_running(void)

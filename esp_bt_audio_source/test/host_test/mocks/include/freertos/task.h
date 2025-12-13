@@ -11,6 +11,9 @@ BaseType_t xTaskCreate(void (*task)(void*), const char* name, unsigned stackDept
 void vTaskDelete(TaskHandle_t task);
 const char* pcTaskGetName(TaskHandle_t xTaskToQuery);
 void taskYIELD(void);
+TickType_t xTaskGetTickCount(void);
+void vTaskSuspendAll(void);
+BaseType_t xTaskResumeAll(void);
 
 #endif // MOCK_FREERTOS_TASK_H
 #pragma once

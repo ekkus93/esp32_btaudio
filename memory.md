@@ -1,4 +1,15 @@
 ## Current Focus
+### Latest: Full test sweep green (2025-12-13)
+- Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600 --source-idf "$HOME/esp/esp-idf/export.sh"` from repo root; host ctest 22/22 passed and device suites passed (test_app 37/37, test_app2 45/45, test_app_audio 26/26, test_app3 3/3). Summary in `tmp/run_all_tests_summary.json`; per-suite logs in each `build/one_run_unity.log`.
+### Latest: Synth keepalive high-tone (2025-12-13)
+- Raised synth keepalive tone to ~19 kHz (clamped below Nyquist with a small guard) so idle streaming is inaudible on headsets; fallback tone defaults to 1 kHz only if sample rate is invalid.
+
+### Latest: Beep autostart guard (2025-12-13)
+- Added guarded auto-start helper in `main/audio_processor.c` so beeps may trigger `bt_start_audio()` when connected but not streaming; attempts are rate-limited (`BEEP_AUTOSTART_COOLDOWN_TICKS` ~1500 ms) to avoid BT allocator churn, and still fall back to beep buffer/synth if start fails.
+- Exposed a UNIT_TEST hook (`audio_processor_test_autostart_due`) and added host test `test_audio_processor_autostart_cooldown` to validate cooldown gating (now in `test_audio_processor_real`).
+- Host BT mock now provides weak stubs for `bt_manager_is_connected`, `bt_get_streaming_state_int`, and `bt_start_audio` to keep host builds linking across targets.
+- Rebuilt host tests (`cmake --build esp_bt_audio_source/test/host_test/build`) and ran `ctest --test-dir .../build --output-on-failure`; 22/22 passed.
+
 ### Latest: Host FreeRTOS stub fix (2025-12-13)
 - Added host stubs for `vTaskSuspendAll`/`xTaskResumeAll` in `test/host_test/mocks/fake_task.c` to unblock `test_audio_processor_real` linking; host build now passes and ctest `test_audio_processor_real` succeeds.
 - Declared corresponding prototypes in `test/host_test/mocks/include/freertos/task.h` plus log/I2S host prototypes (`esp_log_level_set/get`, `i2s_channel_read`) to clear host implicit-declaration warnings; host rebuild + `ctest -R test_audio_processor_real` now clean.

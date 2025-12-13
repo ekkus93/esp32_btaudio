@@ -21,6 +21,8 @@ extern const char *cmd_files_host_mount_override(void);
 #define CMD_FILES_WARN_NAME_MAX 80
 #define CMD_FILES_ITEM_NAME_MAX 128
 #define CMD_FILES_SUMMARY_ROOT_MAX 120
+#define CMD_BEEP_DURATION_MS 10000U
+#define CMD_BEEP_FREQ_HZ 261.63
 
 static void copy_truncated_identifier(const char *src, char *dst, size_t dst_size)
 {
@@ -234,6 +236,7 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     {"UNMUTE", NULL, "Unmute audio output"},
     {"SAMPLE_RATE", "<Hz>", "Apply I2S sample rate"},
     {"SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)"},
+    {"BEEP", NULL, "Play 10s middle-C tone when connected"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
     {"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
@@ -642,9 +645,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #endif
 #endif
 
-        /* Use a 200ms default beep duration; production implementation may
-         * ignore or implement frequency/duration semantics. */
-        if (audio_processor_beep(200) == ESP_OK)
+        /* Play a 10s middle-C sine tone for an audible diagnostic. */
+        if (audio_processor_beep_tone(CMD_BEEP_DURATION_MS, CMD_BEEP_FREQ_HZ) == ESP_OK)
             cmd_send_response("OK", "BEEP", "SENT", NULL);
         else
             cmd_send_response("ERR", "BEEP", "FAILED", NULL);
@@ -1608,6 +1610,26 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                 cmd_send_response("OK", "DEBUG", "DRAIN_RING_DONE", NULL);
             else
                 cmd_send_response("ERR", "DEBUG", "DRAIN_RING_FAILED", NULL);
+#else
+            cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+        }
+        else if (strcasecmp(ctx->params[0], "TAG_DUMP") == 0)
+        {
+#ifdef ESP_PLATFORM
+            size_t max_items = 0;
+            if (ctx->param_count > 1)
+            {
+                max_items = (size_t)strtoul(ctx->params[1], NULL, 10);
+            }
+            size_t captured = 0;
+            esp_err_t err = audio_processor_dump_tag_ringbuffer(max_items, &captured);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%zu", captured);
+            if (err == ESP_OK)
+                cmd_send_response("OK", "DEBUG", "TAG_DUMP", buf);
+            else
+                cmd_send_response("ERR", "DEBUG", "TAG_DUMP_FAIL", esp_err_to_name(err));
 #else
             cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif

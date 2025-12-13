@@ -52,6 +52,10 @@ static audio_status_t s_status = {
     .channels = AUDIO_CHANNEL_STEREO
 };
 
+static bool s_beep_active = false;
+static uint32_t s_last_beep_duration_ms = 0;
+static double s_last_beep_freq_hz = 0.0;
+
 // Test buffer for host testing - simulates ring buffer behavior
 #define TEST_BUFFER_SIZE 4096
 static uint8_t s_test_buffer[TEST_BUFFER_SIZE];
@@ -232,13 +236,47 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 
 // Simple beep implementation used by host/unit tests. Production builds
 // should provide a proper hardware-backed implementation.
-esp_err_t audio_processor_beep(uint32_t duration_ms)
+esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 {
     AUDIO_PROC_HOST_LOG_ONCE();
-    (void)duration_ms;
     if (!s_status.initialized) return ESP_ERR_INVALID_STATE;
-    // No-op for host tests; report success so command layer can respond.
+
+    s_last_beep_duration_ms = duration_ms;
+    s_last_beep_freq_hz = freq_hz;
+
+    /* Generate a deterministic pattern and append to the test buffer to
+     * simulate audible data. */
+    const size_t beep_bytes = 256;
+    uint8_t buf[beep_bytes];
+    for (size_t i = 0; i < beep_bytes; ++i) buf[i] = (uint8_t)((i * 31) & 0xFF);
+
+    if (beep_bytes > TEST_BUFFER_SIZE - s_test_buffer_count) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    for (size_t i = 0; i < beep_bytes; ++i) {
+        s_test_buffer[(s_test_buffer_write_pos + i) % TEST_BUFFER_SIZE] = buf[i];
+    }
+    s_test_buffer_write_pos = (s_test_buffer_write_pos + beep_bytes) % TEST_BUFFER_SIZE;
+    s_test_buffer_count += beep_bytes;
+    s_beep_active = true;
     return ESP_OK;
+}
+
+esp_err_t audio_processor_beep(uint32_t duration_ms)
+{
+    return audio_processor_beep_tone(duration_ms, 1000.0);
+}
+
+bool audio_processor_is_beep_active(void)
+{
+    return s_beep_active;
+}
+
+void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_hz)
+{
+    if (duration_ms) *duration_ms = s_last_beep_duration_ms;
+    if (freq_hz) *freq_hz = s_last_beep_freq_hz;
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING

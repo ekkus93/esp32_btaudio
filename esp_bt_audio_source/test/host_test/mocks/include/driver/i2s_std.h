@@ -45,5 +45,6 @@ int i2s_channel_init_std_mode(i2s_chan_handle_t handle, const i2s_std_config_t* 
 int i2s_channel_enable(i2s_chan_handle_t handle);
 int i2s_channel_disable(i2s_chan_handle_t handle);
 int i2s_del_channel(i2s_chan_handle_t handle);
+int i2s_channel_read(i2s_chan_handle_t handle, void* data, size_t size, size_t* bytes_read, unsigned ticks_to_wait);
 
 #endif // MOCK_DRIVER_I2S_STD_H

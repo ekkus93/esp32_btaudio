@@ -877,6 +877,10 @@ void app_main(void)
 #endif
 
     ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting");
+    /* Quiet the very chatty audio processor logs so CLI commands aren't
+     * drowned out during diagnostics. Raise as needed when deep-diving.
+     */
+    esp_log_level_set("AUDIO_PROC", ESP_LOG_WARN);
     /* Ensure the console UART driver is installed early so command layer
      * can synchronously read/write without racing with other subsystems.
      * This mirrors the conservative install performed in the command

@@ -9,7 +9,11 @@
 #include "unity.h"
 #include "../../main/include/audio_processor.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
 #include <string.h>
+
+/* Expose UNIT_TEST hook from audio_processor.c */
+bool audio_processor_test_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks);
 
 void setUp(void) {
     esp_heap_caps_mock_set_psram_available(true);
@@ -58,6 +62,16 @@ void test_audio_processor_alloc_without_psram(void)
     /* No allocations should have come from PSRAM when disabled */
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)esp_heap_caps_mock_count_allocations_spiram());
     TEST_ASSERT_TRUE(esp_heap_caps_mock_count_allocations_dram() > 0);
+}
+
+void test_audio_processor_autostart_cooldown(void)
+{
+    /* First attempt after long gap should be allowed */
+    TEST_ASSERT_TRUE(audio_processor_test_autostart_due((TickType_t)100, (TickType_t)0, (TickType_t)50));
+    /* Within cooldown window should be suppressed */
+    TEST_ASSERT_FALSE(audio_processor_test_autostart_due((TickType_t)120, (TickType_t)100, (TickType_t)50));
+    /* Boundary: exactly at cooldown should allow */
+    TEST_ASSERT_TRUE(audio_processor_test_autostart_due((TickType_t)150, (TickType_t)100, (TickType_t)50));
 }
 
 int main(void)

@@ -6,6 +6,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
+#include "bt_api.h"
 #include "../../main/include/audio_processor.h"
 
 // Track mock connection state for host tests. bt_manager mock code will call
@@ -19,8 +21,21 @@ void bt_manager_test_set_connection_state(int v) {
 }
 
 // Return 1 when mock connection established, 0 otherwise.
-int bt_get_connection_state(void) {
+__attribute__((weak)) int bt_get_connection_state(void) {
     return s_mock_connected;
+}
+
+__attribute__((weak)) int bt_manager_is_connected(void) {
+    return s_mock_connected;
+}
+
+__attribute__((weak)) int bt_get_streaming_state_int(void) {
+    return 0; /* host tests default to not streaming */
+}
+
+__attribute__((weak)) bt_err_t bt_start_audio(void) {
+    /* Pretend start succeeds; host tests don't simulate full stack */
+    return ESP_OK;
 }
 
 

@@ -22,6 +22,10 @@ static inline unsigned int esp_log_timestamp(void)
     return (unsigned int)time(NULL);
 }
 
+/* Host-visible log level control used by production code */
+void esp_log_level_set(const char* tag, int level);
+int esp_log_level_get(const char* tag);
+
 static inline void esp_log_write(int level, const char* tag, const char* format, ...)
 {
     va_list ap;

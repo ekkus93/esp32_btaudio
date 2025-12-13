@@ -26,3 +26,8 @@ const char* pcTaskGetName(TaskHandle_t xTaskToQuery)
 void taskYIELD(void) { /* no-op */ }
 
 uint32_t xTaskGetTickCount(void) { return 0; }
+
+// Host build stub for critical section helpers used by audio_processor
+void vTaskSuspendAll(void) { /* no-op for host */ }
+
+BaseType_t xTaskResumeAll(void) { return pdTRUE; }

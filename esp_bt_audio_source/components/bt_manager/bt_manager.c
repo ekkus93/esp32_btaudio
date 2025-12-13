@@ -45,6 +45,10 @@ static struct {
     .volume = 75
 };
 
+/* Runtime preference: automatically issue START once connected/when audio is
+ * requested so the sink begins draining without manual intervention. */
+static bool s_autostart_enabled = true;
+
 typedef struct {
     bool pin_pending;
     bool ssp_pending;
@@ -683,6 +687,15 @@ bt_err_t bt_stop_audio(void) {
 #endif
     
     return ESP_OK;
+}
+
+void bt_manager_set_autostart_enabled(bool enable) {
+    s_autostart_enabled = enable;
+    ESP_LOGI(TAG, "bt_manager: autostart %s", enable ? "ENABLED" : "DISABLED");
+}
+
+bool bt_manager_is_autostart_enabled(void) {
+    return s_autostart_enabled;
 }
 
 // Start audio streaming
@@ -1425,6 +1438,11 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
                  * single A2DP callback. This keeps bt_get_connection_state()
                  * aligned with the manager's connected flag. */
                 bt_connection_state_cb(param->conn_stat.state, param->conn_stat.remote_bda);
+
+                if (s_autostart_enabled) {
+                    bt_err_t start_ret = bt_start_audio();
+                    ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));
+                }
             } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
                 ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);
                 

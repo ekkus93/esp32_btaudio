@@ -249,8 +249,8 @@ void test_audio_processor_beep_bypasses_mute(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_mute(true));
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
 
-    // Enqueue a 200ms beep
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(200));
+    // Enqueue a middle-C tone for 200ms (shortened for test runtime)
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(200, 261.63));
     TEST_ASSERT_TRUE(audio_processor_is_beep_active());
 
     // Read available audio - should return beep data even though muted

@@ -136,6 +136,17 @@ bt_err_t bt_start_audio(void);
 bt_err_t bt_stop_audio(void);
 
 /**
+ * @brief Enable or disable automatic A2DP start after connect/first audio.
+ * When disabled, streaming must be started manually via the START command.
+ */
+void bt_manager_set_autostart_enabled(bool enable);
+
+/**
+ * @brief Query whether automatic A2DP start is enabled.
+ */
+bool bt_manager_is_autostart_enabled(void);
+
+/**
  * Set volume level
  *
  * @param volume Volume level (0-100)
