@@ -367,6 +367,7 @@ static void test_audio_buffer_management(void)
 /* forward declarations so RUN_TEST can reference tests defined later */
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
+static void test_beep_should_not_report_tag_miss(void);
 
 void run_audio_processor_tests(void)
 {
@@ -381,6 +382,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_format_conversion);
     RUN_TEST(test_audio_i2s_config);
     RUN_TEST(test_audio_buffer_management);
+    RUN_TEST(test_beep_should_not_report_tag_miss);
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
     /* On-device PSRAM integration tests */
@@ -398,6 +400,44 @@ void run_audio_processor_tests(void)
 /* forward declaration so RUN_TEST can reference the test defined below */
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
+static void test_beep_should_not_report_tag_miss(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Kick a short beep and ensure audio + metadata stay aligned. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(200));
+
+    uint8_t buf[512];
+    size_t bytes_read = 0;
+    bool got_audio = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (ret == ESP_OK && bytes_read > 0) {
+            got_audio = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(got_audio, "Beep did not produce audio bytes");
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
 
 static void test_audio_processor_play_wav_api(void)
 {

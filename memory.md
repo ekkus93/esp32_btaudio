@@ -1,14 +1,15 @@
 ## Current Focus
 ### Environment preference (2025-12-13)
-- Always run Python commands in the `python310` conda environment (avoid the local `.conda` Python 3.14 env). When invoking scripts, activate/use that env explicitly and prefer `python3.10` if activation is unavailable.
+- Use the existing conda env `python310`; do not create or use new/other conda envs. Avoid the `.conda` env under the repo and clean it up if used accidentally.
+- 2025-12-13: Deleted `~/.espressif/python_env/idf5.4_py3.10_env` per user instruction. Only use the `python310` conda environment; do not recreate or touch ESP-IDF-managed venvs without explicit approval.
+- 2025-12-13 (user directive): One-time permission granted to update the `python310` conda environment to bring ESP-IDF/tooling deps up to date. Future updates to `python310` are forbidden unless explicitly requested; violating this will trigger user escalation ("If I catch you updating it again, I'll break all of your fingers").
 ### Latest: CONNECT+BEEP quiet capture (2025-12-13)
-- Ran serial script (`CONNECT 00:18:6B:76:D7:1C` then `BEEP`) with diagnostics filtered; device reported `ERR|CONNECT|FAILED|` (already connected) followed by `OK|BEEP|SENT|` and DIAG-BEEP showing `bt_get_connection_state=1` and streaming state=1.
-### Latest: BEEP with AUDIO_PROC=ERROR (2025-12-13)
-- Sent `DEBUG LOG AUDIO_PROC ERROR` then `BEEP`; command responses: `OK|DEBUG|LOG_SET|AUDIO_PROC:ERROR` and `OK|BEEP|SENT|` with DIAG-BEEP showing connection_state=1, streaming_state=1, bt_manager_conn=1. Still no audible beep reported on headset.
-### Latest: Runtime log control (2025-12-13)
 - Removed the forced `esp_log_level_set(AUDIO_PROC, INFO)` inside `audio_processor_init` so caller-set levels (e.g., WARN in `app_main`) stick.
 - Added `DEBUG LOG <TAG> <LEVEL>` CLI subcommand to set ESP log levels at runtime with validation (names or 0-5) and documented it in help output.
 - Added host unit test `test_debug_log_sets_level_and_response` in `test_commands` to verify the command updates the log level and emits an OK response payload.
+### Latest: TAG-MISS prevention (2025-12-13)
+- Added component Unity test `test_audio_processor_inject_pushes_and_consumes_tag` to ensure test-only audio injections push a metadata tag and consume it, preventing TAG-MISS during reads.
+- Updated `audio_processor_test_inject_audio_data` to push an `AUDIO_SOURCE_TAG_CAPTURE` tag and drop it on enqueue failure so tag/audio stay aligned. Tests not run in this session.
 ### Latest: CONNECT+BEEP attempt (2025-12-18)
 - Sent `CONNECT 00:18:6B:76:D7:1C` then `BEEP` via serial script on the current firmware. UART output was dominated by `AUDIO_PROC` diagnostics (no command responses seen), consistent with the build lacking the new `DEBUG AUDIO_DIAG` toggle. Need to flash the updated image (with diag gating) and retry CONNECT+BEEP with diagnostics off.
 ### Latest: Warning cleanup (2025-12-13)

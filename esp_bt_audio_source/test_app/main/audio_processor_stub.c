@@ -26,6 +26,7 @@ typedef struct {
     audio_status_t status;
     audio_config_t config;
     audio_stats_t stats;
+    bool diag_enabled;
 } audio_stub_state_t;
 
 static audio_stub_state_t s_audio_stub = {
@@ -59,6 +60,7 @@ static audio_stub_state_t s_audio_stub = {
         .current_buffer_level = 0,
         .peak_buffer_level = 0,
     },
+    .diag_enabled = false,
 };
 
 static void clamp_volume(uint8_t *volume)
@@ -222,7 +224,19 @@ esp_err_t audio_processor_play_wav(const char *path)
 void audio_processor_enable_next_beep_diag(void)
 {
     AUDIO_PROC_STUB_LOG_ONCE();
-    /* No-op in test stub */
+    /* Arm diagnostic flag in stub for visibility */
+    s_audio_stub.diag_enabled = true;
+}
+
+void audio_processor_set_diag_enabled(bool enable)
+{
+    AUDIO_PROC_STUB_LOG_ONCE();
+    s_audio_stub.diag_enabled = enable;
+}
+
+bool audio_processor_is_diag_enabled(void)
+{
+    return s_audio_stub.diag_enabled;
 }
 
 esp_err_t audio_processor_emit_sync_worker_diag(void)

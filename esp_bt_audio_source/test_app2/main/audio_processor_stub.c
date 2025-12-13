@@ -37,6 +37,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 typedef struct {
     audio_status_t status;
     audio_config_t config;
+    bool diag_enabled;
 } audio_stub_state_t;
 
 static audio_stub_state_t s_audio_stub = {
@@ -61,6 +62,7 @@ static audio_stub_state_t s_audio_stub = {
         .i2s_din_pin = -1,
         .i2s_dout_pin = -1,
     },
+    .diag_enabled = false,
 };
 
 esp_err_t audio_processor_get_status(audio_status_t *status)
@@ -129,7 +131,18 @@ esp_err_t audio_processor_play_wav(const char *path)
 void audio_processor_enable_next_beep_diag(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
-    /* intentionally empty for tests */
+    s_audio_stub.diag_enabled = true;
+}
+
+void audio_processor_set_diag_enabled(bool enable)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    s_audio_stub.diag_enabled = enable;
+}
+
+bool audio_processor_is_diag_enabled(void)
+{
+    return s_audio_stub.diag_enabled;
 }
 
 esp_err_t audio_processor_emit_sync_worker_diag(void)

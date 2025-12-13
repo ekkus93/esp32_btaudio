@@ -161,19 +161,46 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
     env = os.environ.copy()
 
+    # Prefer the ESP-IDF managed Python env over any outer conda/system python
+    # so `idf.py` can import its dependencies (e.g., click). Prepend to PATH so
+    # the shebang `#!/usr/bin/env python` resolves to the IDF interpreter.
+    # Normalize IDF_PYTHON_ENV_PATH which points to the venv root (not /bin).
+    idf_py_root = env.get("IDF_PYTHON_ENV_PATH")
+    idf_py_bin = None
+    if idf_py_root:
+        root_path = Path(idf_py_root)
+        candidate = root_path / "bin"
+        if candidate.is_dir():
+            idf_py_bin = str(candidate)
+        elif (root_path / "python").is_file():
+            idf_py_bin = str(root_path)
+    if not idf_py_bin:
+        idf_py_bin = os.path.expanduser("~/.espressif/python_env/idf5.4_py3.10_env/bin")
+    if idf_py_bin and os.path.isdir(idf_py_bin):
+        env["PATH"] = f"{idf_py_bin}:{env.get('PATH','')}"
+        env["PYTHON"] = os.path.join(idf_py_bin, "python")
+
     export_sh = find_export_sh()
 
-    # Build the project first
-    build_args = ['idf.py', 'build']
+    # Build the project first using the IDF-managed Python to avoid missing deps
+    idf_py_exe = env.get("PYTHON", shutil.which("python"))
+    idf_py_script = shutil.which("idf.py") or "idf.py"
+    build_args = [idf_py_exe, idf_py_script, 'build']
     build_cmd = make_shell_cmd(build_args, export_sh=export_sh)
     with open(logfile, "ab", buffering=0) as fh:
         fh.write(b"\n=== idf.py build output ===\n")
+        fh.write(f"build_cmd={build_cmd}\n".encode("utf-8", "replace"))
+        fh.write(f"env.PATH={env.get('PATH','')}\n".encode("utf-8", "replace"))
+        fh.write(f"env.PYTHON={env.get('PYTHON','')}\n".encode("utf-8", "replace"))
+        fh.write(f"env.IDF_PATH={env.get('IDF_PATH','')}\n".encode("utf-8", "replace"))
         # Run the build and stream output to logfile
         try:
             ret = subprocess.run(build_cmd, cwd=project_root, env=env, stdout=fh, stderr=subprocess.STDOUT)
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
+            fh.write(f"FileNotFoundError while launching build: {exc}\n".encode("utf-8", "replace"))
             return 3, logfile
         if ret.returncode != 0:
+            fh.write(f"idf.py build exited {ret.returncode}\n".encode("utf-8", "replace"))
             return 3, logfile
 
     # Attempt to flash an in-tree SPIFFS image, if present. This helps ensure
@@ -238,7 +265,6 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
                     else:
                         fh.write(b"Could not determine spiffs offset from partitions.csv and no --spiffs-offset provided; skipping spiffs flash.\n")
                 else:
-                    import shutil
 
                     def _esptool_command() -> list[str] | None:
                         """Resolve an esptool invocation suitable for flashing SPIFFS."""

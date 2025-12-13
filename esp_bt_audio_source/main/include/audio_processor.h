@@ -328,6 +328,12 @@ size_t audio_processor_test_wav_pending_bytes(void);
 size_t audio_processor_test_get_tag_used(void);
 #endif
 
+/* Diagnostic counter: number of times audio bytes were observed without a
+ * matching metadata tag. Exposed for tests/telemetry; counter is always
+ * available regardless of build config. */
+uint32_t audio_processor_test_get_tag_miss_count(void);
+void audio_processor_test_reset_tag_miss_count(void);
+
 /**
  * @brief Play a WAV file from the filesystem and inject it into the audio pipeline
  *

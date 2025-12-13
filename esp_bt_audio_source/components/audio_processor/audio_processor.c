@@ -55,6 +55,7 @@ static audio_status_t s_status = {
 static bool s_beep_active = false;
 static uint32_t s_last_beep_duration_ms = 0;
 static double s_last_beep_freq_hz = 0.0;
+static uint32_t s_tag_miss_count = 0;
 
 // Test buffer for host testing - simulates ring buffer behavior
 #define TEST_BUFFER_SIZE 4096
@@ -261,6 +262,16 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     s_test_buffer_count += beep_bytes;
     s_beep_active = true;
     return ESP_OK;
+}
+
+uint32_t audio_processor_test_get_tag_miss_count(void)
+{
+    return s_tag_miss_count;
+}
+
+void audio_processor_test_reset_tag_miss_count(void)
+{
+    s_tag_miss_count = 0;
 }
 
 esp_err_t audio_processor_beep(uint32_t duration_ms)

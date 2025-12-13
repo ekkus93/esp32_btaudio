@@ -88,7 +88,9 @@ static volatile bool s_audio_diag_enabled = false; /* gate noisy diagnostics */
 #define BEEP_BUFFER_SIZE (8 * 1024)
 /* Prefill headroom before releasing a beep to the sink to avoid crackle
  * at start and give A2DP a buffer to pull from. */
-#define BEEP_PREFILL_MS 150
+#define BEEP_PREFILL_MS 400
+/* Optional leading silence to let the sink settle before tone onset. */
+#define BEEP_HEAD_SILENCE_MS 80
 /* Fade duration (ms) applied to the start and end of queued/fallback beeps
  * Option A: small crossfade to reduce clicks. Reasonable default: 8 ms. */
 /* Longer fade to reduce edge clicks on beeps. */
@@ -138,6 +140,7 @@ static uint16_t s_audio_source_tag_counter = 0;
 static uint16_t s_last_tag_id_pushed = 0;
 static uint16_t s_last_tag_id_taken = 0;
 static uint32_t s_tag_push_count = 0;
+static uint32_t s_tag_miss_count = 0;
 
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
 {
@@ -207,6 +210,7 @@ static bool s_force_synth = true; /* keep synth active but render an inaudible t
 static uint8_t s_volume_gain = 80; // Internal volume as percentage
 static volatile bool s_trace_next_read_call = false;
 static size_t s_runtime_work_bytes = 0U;
+static bool s_i2s_first_read = true;
 
 static size_t audio_get_runtime_work_bytes(void)
 {
@@ -240,6 +244,7 @@ static int s_i2s_consecutive_failures = 0;
 static bool s_beep_prefill_active = false;
 static TickType_t s_beep_prefill_release_tick = 0;
 static size_t s_beep_prefill_goal_bytes = 0;
+static size_t s_beep_prefill_accum_bytes = 0;
 
 /* Fallback on-the-fly beep generator state
  * Used when the main ringbuffer is full and we still want to play a
@@ -326,6 +331,11 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
 #endif
 static void audio_source_tag_drop_one(void);
 static void audio_source_tag_reset_buffer(void);
+static bool beep_send_with_tag(const uint8_t *data,
+                               size_t len,
+                               TickType_t beep_wait,
+                               TickType_t audio_wait,
+                               int max_attempts);
 static const char *audio_source_tag_label(audio_source_tag_t tag);
 
 static inline void audio_proc_mock_yield(void)
@@ -453,6 +463,7 @@ static void audio_source_tag_drop_one(void)
 
 static void audio_source_tag_log_miss(const char *path)
 {
+    __atomic_add_fetch(&s_tag_miss_count, 1, __ATOMIC_RELAXED);
     TickType_t now = xTaskGetTickCount();
     if (now < s_tag_diag_next_log) {
         return;
@@ -493,6 +504,48 @@ static void audio_source_tag_reset_buffer(void)
     size_t cap4 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     AUDIO_TAG_DIAG("DIAG-TAG-RESET: used=%zu\n", (cap4 > free_now4 ? cap4 - free_now4 : 0));
 #endif
+}
+
+/* Enqueue a beep chunk ensuring the metadata tag and audio stay aligned.
+ * The tag is pushed first; if the subsequent audio send fails, the tag is
+ * dropped so consumers never see an untagged audio item. Returns true on
+ * success, false if either tag push or audio send ultimately fails. */
+static bool beep_send_with_tag(const uint8_t *data,
+                               size_t len,
+                               TickType_t beep_wait,
+                               TickType_t audio_wait,
+                               int max_attempts)
+{
+    if (data == NULL || len == 0) {
+        return false;
+    }
+
+    if (!audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP)) {
+        ESP_LOGW(TAG, "beep_send_with_tag: tag push failed len=%u", (unsigned)len);
+        return false;
+    }
+
+    BaseType_t sent = pdFALSE;
+    for (int attempt = 0; attempt < max_attempts && sent != pdTRUE; ++attempt) {
+        if (s_beep_buffer) {
+            sent = xRingbufferSend(s_beep_buffer, data, len, beep_wait);
+        }
+        if (sent != pdTRUE && s_audio_buffer) {
+            sent = xRingbufferSend(s_audio_buffer, data, len, audio_wait);
+        }
+        if (sent != pdTRUE) {
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+    }
+
+    if (sent != pdTRUE) {
+        /* Audio did not enqueue; drop the tag we already pushed. */
+        audio_source_tag_drop_one();
+        ESP_LOGW(TAG, "beep_send_with_tag: audio enqueue failed len=%u", (unsigned)len);
+        return false;
+    }
+
+    return true;
 }
 
 static const char *audio_source_tag_label(audio_source_tag_t tag)
@@ -624,6 +677,16 @@ void audio_source_tag_test_reset_buffer(void)
     audio_source_tag_reset_buffer();
 }
 #endif
+
+uint32_t audio_processor_test_get_tag_miss_count(void)
+{
+    return __atomic_load_n(&s_tag_miss_count, __ATOMIC_RELAXED);
+}
+
+void audio_processor_test_reset_tag_miss_count(void)
+{
+    __atomic_store_n(&s_tag_miss_count, 0, __ATOMIC_RELAXED);
+}
 
 /* Helper to log heap free sizes for DRAM and PSRAM (when available).
  * Call this at diagnostic points to observe allocator pressure during
@@ -2420,8 +2483,10 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     TickType_t now_ticks = xTaskGetTickCount();
     if (!wav_override_beep && s_beep_remaining_bytes > 0 && s_beep_prefill_active) {
-        if (now_ticks < s_beep_prefill_release_tick) {
-            /* Hold off consuming beep data until prefill time expires so the sink has headroom. */
+        bool time_ready = now_ticks >= s_beep_prefill_release_tick;
+        bool bytes_ready = s_beep_prefill_accum_bytes >= s_beep_prefill_goal_bytes;
+        if (!time_ready || !bytes_ready) {
+            /* Hold off consuming beep data until both time and buffer headroom are satisfied. */
             memset(buffer, 0, size);
             *bytes_read = size;
             wav_stream_try_refill();
@@ -2526,9 +2591,11 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         }
     }
 
-    /* Clear one-shot diag after beep drains to avoid noisy logs on future beeps. */
-    if (s_beep_diag_active && s_beep_remaining_bytes == 0 && (s_beep_buffer == NULL || xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE)) {
+    /* Clear one-shot diag and prefill state after beep drains to avoid noisy logs on future beeps. */
+    if (s_beep_remaining_bytes == 0 && (s_beep_buffer == NULL || xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE)) {
         s_beep_diag_active = false;
+        s_beep_prefill_active = false;
+        s_beep_prefill_accum_bytes = 0;
     }
 
     /* Restore synth mode once beep is fully drained. */
@@ -3185,6 +3252,25 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 
     const size_t fade_frames = (size_t)(((uint64_t)sample_rate * (uint64_t)BEEP_FADE_MS) / 1000ULL) ?: 1U;
 
+    /* Optional leading silence to avoid a sudden start and give the sink a stable baseline. */
+    if (BEEP_HEAD_SILENCE_MS > 0) {
+        size_t head_frames = ((uint64_t)sample_rate * (uint64_t)BEEP_HEAD_SILENCE_MS) / 1000ULL;
+        size_t head_bytes = head_frames * frame_bytes;
+        if (head_bytes > sizeof(s_proc_buffer)) {
+            head_bytes = sizeof(s_proc_buffer);
+        }
+        if (head_bytes > 0) {
+            memset(s_proc_buffer, 0, head_bytes);
+            const TickType_t beep_wait = pdMS_TO_TICKS(10);
+            const TickType_t audio_wait = pdMS_TO_TICKS(20);
+            if (beep_send_with_tag(s_proc_buffer, head_bytes, beep_wait, audio_wait, 5)) {
+                s_beep_remaining_bytes += head_bytes;
+                s_beep_prefill_accum_bytes += head_bytes;
+                bytes_enqueued += head_bytes;
+            }
+        }
+    }
+
     while (frames_generated < total_frames) {
         size_t chunk_frames = total_frames - frames_generated;
         if (chunk_frames > frames_per_chunk) {
@@ -3245,37 +3331,21 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         size_t chunk_bytes = chunk_frames * frame_bytes;
 
         /* Enqueue into the dedicated beep buffer first for low latency; fall back to audio buffer on failure. */
-        /* Try to enqueue; if buffers are full, retry a few times with a small delay
-         * so long beeps are not truncated just because the consumer is momentarily slow. */
-        BaseType_t sent = pdFALSE;
         const TickType_t beep_wait = pdMS_TO_TICKS(10);
         const TickType_t audio_wait = pdMS_TO_TICKS(20);
-        for (int attempt = 0; attempt < 10 && sent != pdTRUE; ++attempt) {
-            if (s_beep_buffer) {
-                sent = xRingbufferSend(s_beep_buffer, s_proc_buffer, chunk_bytes, beep_wait);
+        if (!beep_send_with_tag(s_proc_buffer, chunk_bytes, beep_wait, audio_wait, 10)) {
+            if (diag_once) {
+                size_t free_beep = s_beep_buffer ? xRingbufferGetCurFreeSize(s_beep_buffer) : 0;
+                size_t free_audio = s_audio_buffer ? xRingbufferGetCurFreeSize(s_audio_buffer) : 0;
+                ESP_LOGW(TAG, "BEEP-DIAG: enqueue fail chunk=%u free_beep=%u free_audio=%u", (unsigned)chunk_bytes, (unsigned)free_beep, (unsigned)free_audio);
             }
-            if (sent != pdTRUE && s_audio_buffer) {
-                sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, chunk_bytes, audio_wait);
-            }
-            if (sent != pdTRUE) {
-                if (diag_once) {
-                    size_t free_beep = s_beep_buffer ? xRingbufferGetCurFreeSize(s_beep_buffer) : 0;
-                    size_t free_audio = s_audio_buffer ? xRingbufferGetCurFreeSize(s_audio_buffer) : 0;
-                    ESP_LOGW(TAG, "BEEP-DIAG: enqueue fail attempt=%d chunk=%u free_beep=%u free_audio=%u", attempt, (unsigned)chunk_bytes, (unsigned)free_beep, (unsigned)free_audio);
-                }
-                vTaskDelay(pdMS_TO_TICKS(5));
-            }
-        }
-        if (sent != pdTRUE) {
             ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, dropping chunk bytes=%u after retries", (unsigned)chunk_bytes);
             break;
-        }
-        if (!audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP)) {
-            ESP_LOGW(TAG, "audio_processor_beep: tag push failed for chunk=%u", (unsigned)chunk_bytes);
         }
 
         /* Track remaining bytes so reader bypasses mute for the beep duration. */
         s_beep_remaining_bytes += chunk_bytes;
+        s_beep_prefill_accum_bytes += chunk_bytes;
         bytes_enqueued += chunk_bytes;
         frames_generated += chunk_frames;
     }
@@ -3295,6 +3365,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         }
         portENTER_CRITICAL(&s_beep_lock);
         s_beep_prefill_goal_bytes = prefill_goal;
+        s_beep_prefill_accum_bytes = 0;
         s_beep_prefill_release_tick = xTaskGetTickCount() + pdMS_TO_TICKS(BEEP_PREFILL_MS);
         s_beep_prefill_active = true;
         portEXIT_CRITICAL(&s_beep_lock);
@@ -3308,24 +3379,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             tail_bytes = sizeof(s_proc_buffer);
         }
         memset(s_proc_buffer, 0, tail_bytes);
-        BaseType_t tail_sent = pdFALSE;
         const TickType_t beep_wait = pdMS_TO_TICKS(10);
         const TickType_t audio_wait = pdMS_TO_TICKS(20);
-        for (int attempt = 0; attempt < 5 && tail_sent != pdTRUE; ++attempt) {
-            if (s_beep_buffer) {
-                tail_sent = xRingbufferSend(s_beep_buffer, s_proc_buffer, tail_bytes, beep_wait);
-            }
-            if (tail_sent != pdTRUE && s_audio_buffer) {
-                tail_sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, tail_bytes, audio_wait);
-            }
-            if (tail_sent != pdTRUE) {
-                vTaskDelay(pdMS_TO_TICKS(2));
-            }
-        }
-        if (tail_sent == pdTRUE) {
-            if (!audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP)) {
-                ESP_LOGW(TAG, "audio_processor_beep: tag push failed for tail=%u", (unsigned)tail_bytes);
-            }
+        if (beep_send_with_tag(s_proc_buffer, tail_bytes, beep_wait, audio_wait, 5)) {
             s_beep_remaining_bytes += tail_bytes;
             bytes_enqueued += tail_bytes;
         }
@@ -3704,6 +3760,12 @@ static void i2s_reader_task(void *pvParameters)
         }
 
         size_t read_request = ideal_read;
+        if (s_i2s_first_read) {
+            const size_t FIRST_READ_TARGET = 1024U;
+            if (read_request > FIRST_READ_TARGET) {
+                read_request = FIRST_READ_TARGET;
+            }
+        }
 
         if (s_force_synth) {
             bytes_read = synth_target_bytes;
@@ -3760,6 +3822,10 @@ static void i2s_reader_task(void *pvParameters)
                 if (total_read >= AUDIO_WORK_BUFFER_BYTES) {
                     break;
                 }
+            }
+
+            if (s_i2s_first_read) {
+                s_i2s_first_read = false;
             }
 
             bytes_read = total_read;
@@ -4859,9 +4925,18 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
         return ESP_ERR_NO_MEM;
     }
 
-    // Send data to ring buffer
+    /* Keep metadata aligned with injected audio so TAG-MISS never occurs
+     * during test-only injections. Use a capture tag to mark injected
+     * frames as external input. */
+    if (!audio_source_tag_push(AUDIO_SOURCE_TAG_CAPTURE)) {
+        ESP_LOGW(TAG, "audio_processor_test_inject_audio_data: tag push failed");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Send data to ring buffer; if enqueue fails drop the tag to preserve alignment
     BaseType_t sent = xRingbufferSend(s_audio_buffer, data, size, 0);
     if (sent != pdTRUE) {
+        audio_source_tag_drop_one();
         ESP_LOGE(TAG, "audio_processor_test_inject_audio_data: failed to send to ringbuffer");
         return ESP_FAIL;
     }
