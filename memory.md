@@ -1,8 +1,58 @@
 ## Current Focus
+### Latest: Host FreeRTOS stub fix (2025-12-13)
+- Added host stubs for `vTaskSuspendAll`/`xTaskResumeAll` in `test/host_test/mocks/fake_task.c` to unblock `test_audio_processor_real` linking; host build now passes and ctest `test_audio_processor_real` succeeds.
+- Declared corresponding prototypes in `test/host_test/mocks/include/freertos/task.h` plus log/I2S host prototypes (`esp_log_level_set/get`, `i2s_channel_read`) to clear host implicit-declaration warnings; host rebuild + `ctest -R test_audio_processor_real` now clean.
+### Latest: Test sweep (2025-12-13)
+- Ran `cmake --build . && ctest --output-on-failure` under `test/host_test/build`; all 22 host tests passed. One warning remains in `test_audio_tag_alignment.c` for implicit `esp_heap_caps_mock_*` declarations (needs header include).
+- Added device-build stubs for `audio_processor_dump_tag_ringbuffer` (test_app/test_app2) and `audio_processor_beep_tone` (test_app2) to satisfy command_interface links.
+- Re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`: host 22/22 pass; device suites now fully run and pass: `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 26/26, `test_app3` 3/3. Summary in `tmp/run_all_tests_summary.json` and per-suite logs under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+### Latest: Option 1 after log throttling (2025-12-16)
+- Ran Option 1 sequence after throttling I2S warning spam; capture `tmp/play_option1_throttled.log` includes VOLUME 95, STATUS, PLAY `/spiffs/worker_long_norm.wav`, and two `DEBUG TAG_DUMP 8` mid-stream. Command acks restored; WAV header parsed, streaming loop active (wav_active=1, overruns ~81, underruns=0) with rb_free oscillating 0–4 KiB. TAG_DUMP snapshots show `wav` ids 70–77 then 71–101 with truncation warnings; later TAG-MISS warnings flag push/take drift.
+- Task watchdog fired once (IDLE0, CPU0 BTC_TASK) about 0.6 s into playback; device did not reboot and streaming continued afterward.
+- Follow-up Option 1 rerun with delayed PLAY (`tmp/play_option1_new2.log`): device auto-connects, PLAY succeeds, streaming shows underruns=0/overruns~80. First TAG_DUMP (mid-play) captures one `wav` tag id 168 (available=1); second TAG_DUMP at tail returns empty (OK|...|1 then |0). WAV completes; I2S timeouts resume with synth still disabled; no reboot observed. User still reports silence; need sink-side check and BTC_TASK backtrace decode.
+### Latest: Connected PLAY replay (2025-12-15)
+- Ran serial script (`tmp/play_after_connect.log`) after user reported headset connected: commands `VOLUME 95`, `STATUS`, `PLAY /spiffs/worker_long_norm.wav`, `DEBUG TAG_DUMP 8`.
+- PLAY succeeded: WAV header parsed (fmt=1 ch=2 sr=44100 bits=16 data=88200), streaming loop ran with WAV tags, and playback completed cleanly (`WAV playback completed`, synth stayed DISABLED during/after).
+- TAG_DUMP returned `OK|DEBUG|TAG_DUMP|0` near completion (ringbuffer already drained when the command fired).
+- Post-completion logs show repeated I2S read timeouts with no active source; synth remained disabled (per fallback suppression) so no beep.
+- A backtrace printed once right after the first read trace but the system continued streaming; no reboot observed.
+- Follow-up attempt (`tmp/play_mid_tag.log`, `tmp/play_mid_tag_reset.log`) to grab mid-stream TAG_DUMP while playing did not capture any command responses—logs were dominated by ongoing I2S timeout spam and the UART parser acks were absent. Need a quieter capture (reset + longer wait) or reduced log level to reissue TAG_DUMP.
+### Latest: Late TAG_DUMP post-drain (2025-12-14)
+- Capture `tmp/play_tag_dump_post_drain.log` sends `FILES`, `PLAY /spiffs/worker_long_norm.wav`, then two `DEBUG TAG_DUMP 32` commands spaced near end of playback.
+- Only one TAG-DUMP executes (start available=33 captured=32); items `wav` ids 1321-1361. Both commands are ACKed (`OK|DEBUG|TAG_DUMP|32` twice) but no second TAG-DUMP start appears.
+- Tag warning during tail: `TAG-MISS path=audio_rb push=1470 take=1427 last_push_id=1469 last_take_id=1469 tag_free=8060` while WAV still draining.
+- After WAV completion, I2S read timeouts trigger synth re-enable; underruns climb to 9, overruns to ~9404. No crash; synth resumes steady output.
+- Follow-up spaced TAG_DUMP capture (`tmp/play_tag_dump_wide_spacing.log`): first TAG_DUMP start shows available=1 captured=1 (only `wav` id 4403) with TAG-MISS nearby (`push=4407 take=4364`). The second TAG_DUMP command acks `OK|DEBUG|TAG_DUMP|1` then `...|0` but emits no start block. WAV completes soon after; synth later resumes with underruns=14, overruns~32797.
+- Fix pending beeping: prevented auto-enabling synth on repeated I2S read failures when no source is active to avoid fallback tone after WAV completion.
+
+### Latest: PLAY + TAG_DUMP after log quiet (2025-12-12)
+- Rebuilt and flashed `esp_bt_audio_source` after clamping `AUDIO_PROC` runtime log level to WARN. Capture run (`tmp/play_tag_dump_after_quiet.log`) sent `FILES`, `PLAY worker_long_norm.wav`, and one `DEBUG TAG_DUMP 32` over `/dev/ttyUSB0`.
+- Commands landed cleanly: FILES listed `/spiffs` with `worker_long_norm.wav` (88,244 bytes); PLAY enqueued and WAV header parsed (fmt=1 ch=2 sr=44100 bits=16 data=88200). One TAG_DUMP executed and returned 27 items tagged `wav` with ids 69–104 (sequential).
+- Mid-stream tag warning observed: `TAG-MISS path=audio_rb push=136 take=103 last_push_id=135 last_take_id=135 tag_free=8192` while WAV still active; overruns remained low (≈81) early, rising into hundreds after WAV drained and synth resumed.
+- Second TAG_DUMP command issued by the script did not appear in the log (likely dropped during heavy logging near end of playback). Post-playback the pipeline reverted to synth-only with wav_active=0 and continued overruns growth.
+### Latest: residual_store build fix (2025-12-13)
+- Removed stray tag-helper call from `audio_processor.c::residual_store` and restored guard + copy logic; build warning reduced to unused helper only. Ran `. $HOME/esp/esp-idf/export.sh && idf.py -C esp_bt_audio_source build` successfully; ready to flash and capture TAG diagnostics during PLAY to debug WAV vs beep issue.
+### Latest: PLAY + TAG_DUMP capture (2025-12-13)
+- Sent `FILES`, `PLAY worker_long_norm.wav`, and `DEBUG TAG_DUMP 32` over `/dev/ttyUSB0`; capture saved to `tmp/play_tag_dump_capture.log`.
+- TAG-DUMP snapshot shows 32 metadata entries tagged `wav` with ids 33-64 (sequential), confirming WAV chunks populated the tag ringbuffer; no `beep` tags present.
+- Playback continued streaming WAV (DIAG-READ-AUDIO-REQ/ITEM/DEQ traces) with overruns ~81 and rb_free oscillating; no crash observed despite a one-time backtrace emitted right after the read trace.
+- WAV header parsed correctly (fmt=1 ch=2 sr=44100 bits=16 data=88200); FILES lists `/spiffs` with `worker_long_norm.wav`.
+### Latest: PLAY TAG capture (2025-12-13)
+- Flashed `esp_bt_audio_source` to `/dev/ttyUSB0` via `idf.py flash` (warnings unchanged). Sent `FILES` and `PLAY worker_long_norm.wav` over UART using a pyserial snippet; captured ~20 s of logs at `tmp/play_tag_capture.log`. FILES shows `/spiffs` mounted with `worker_long_norm.wav` (88,244 bytes). PLAY enqueued successfully (`OK|PLAY|ENQUEUED|...`), WAV header parsed (fmt=1 ch=2 sr=44100 bits=16 data=88200), and DIAG-APLAY stream/residual logs show WAV chunks draining; ringbuffer free space oscillates (8192→0) with wav_pending decreasing, no TAG-MISS entries seen. A backtrace line was printed immediately after the read trace but streaming continued without reboot.
+### Latest: TAG_DUMP debug command (2025-12-13)
+- Added `audio_processor_dump_tag_ringbuffer(max_items, captured_out)` to snapshot the metadata tag ringbuffer non-destructively (suspends scheduler, copies entries, requeues unchanged, logs `TAG-DUMP` per item). Added `DEBUG TAG_DUMP [max_items]` command to trigger it and return the captured count. Build succeeds; warning for unused `audio_source_tag_take` remains.
 ### Latest: I2S header cleanup (2025-12-13)
 - Removed unused `driver/i2s.h` include from `esp_bt_audio_source/main/bt_streaming_manager.c` to eliminate deprecated I2S/ADC warning noise; file only depends on `audio_processor` APIs. Build not re-run yet—expect warnings to drop on next `idf.py build`.
 ### Latest: Test sweep attempt (2025-12-12)
 - Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after sourcing IDF; `export.sh` reported dependency failure (esptool 5.1.0 installed vs required 4.8) but host tests still ran and passed (ctest 22/22). All device Unity suites failed to run (monitor errors, 0 tests executed) leaving aggregate device totals at 0. Action: fix IDF python env to match constraint (esptool~=4.8) and rerun device suites.
+
+### SPIFFS mount failure (2025-12-12)
+- Device FILES command now returns `MOUNT_FAILED` because runtime partition lookup cannot find `spiffs`; `sdkconfig` currently uses `CONFIG_PARTITION_TABLE_SINGLE_APP=y` (default `partitions_singleapp.csv` with no SPIFFS). Project includes `partitions.csv` with `spiffs` at 0x1C0000 size 0x40000, but it is not selected.
+- Fix: switch to custom partition table (`CONFIG_PARTITION_TABLE_CUSTOM=y`, filename `partitions.csv`), rebuild/flash app + partition table, then reflash the canonical SPIFFS image (`main/assets/spiffs/spiffs.bin`) to 0x1C0000 via esptool. Re-run `PARTS` and `FILES` to confirm `spiffs` is present and listable.
+### SPIFFS mount restored (2025-12-12)
+- Updated `sdkconfig` to use the custom partition table (`partitions.csv` with `spiffs` @ 0x1C0000 size 0x40000) and reflashed app + partition table via `idf.py -C esp_bt_audio_source -p /dev/ttyUSB0 flash`.
+- Wrote canonical SPIFFS image to 0x1C0000 with `python -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash 0x1C0000 esp_bt_audio_source/main/assets/spiffs/spiffs.bin`.
+- Next verification: run `PARTS` and `FILES` over serial; expect `spiffs` to mount and list.
 ### Latest: Full test sweep green (2025-12-12)
 - Fixed IDF v5.4 python env by pinning `esptool~=4.8` in `/home/phil/.espressif/python_env/idf5.4_py3.10_env`; `export.sh` now passes dependency checks.
 - Reran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root with `python310` conda env active. Results: host CTest 22/22 pass; device suites `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 26/26, `test_app3` 3/3 all pass. Aggregate device totals 111/111 pass. Artifacts in `tmp/run_all_tests_summary.json` and per-suite `build/one_run_unity.log` files.
