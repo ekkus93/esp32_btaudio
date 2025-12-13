@@ -216,6 +216,8 @@ void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_h
  * @brief Arm a one-shot diagnostic dump for the next beep invocation.
  */
 void audio_processor_enable_next_beep_diag(void);
+void audio_processor_set_diag_enabled(bool enable);
+bool audio_processor_is_diag_enabled(void);
 
 /**
  * @brief Emit a synchronous worker-like diagnostic snapshot.

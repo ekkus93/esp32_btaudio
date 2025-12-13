@@ -32,9 +32,24 @@ extern int bt_get_streaming_state_int(void);
  * then clear the flag. This is intentionally low-impact and only
  * intended for short debug sessions. */
 static volatile bool s_dump_next_beep_diag = false;
+static volatile bool s_beep_diag_active = false; /* one-shot diag arm for beep enqueue/dequeue */
 static const size_t DIAG_DUMP_BYTES = 64; /* bytes to dump for snapshots */
 
 static const char *TAG = "AUDIO_PROC";
+static volatile bool s_audio_diag_enabled = false; /* gate noisy diagnostics */
+#define AUDIO_DIAG_ENABLED() (s_audio_diag_enabled)
+#define AUDIO_DIAG_PRINTF(...)    \
+    do {                        \
+        if (AUDIO_DIAG_ENABLED()) { printf(__VA_ARGS__); } \
+    } while (0)
+#define AUDIO_DIAG_LOGI(fmt, ...)                         \
+    do {                                                \
+        if (AUDIO_DIAG_ENABLED()) { ESP_LOGI(TAG, fmt, ##__VA_ARGS__); } \
+    } while (0)
+#define AUDIO_DIAG_LOGW(fmt, ...)                         \
+    do {                                                \
+        if (AUDIO_DIAG_ENABLED()) { ESP_LOGW(TAG, fmt, ##__VA_ARGS__); } \
+    } while (0)
 #define AUDIO_PROC_LOG_ONCE()                                                           \
     do {                                                                                \
         static bool _logged = false;                                                    \
@@ -69,10 +84,15 @@ static const char *TAG = "AUDIO_PROC";
  * delivered even when the main pipeline is congested. Keep modest to
  * limit DRAM pressure. Reduce to 8 KiB by default to avoid DRAM
  * allocation failures in the Bluetooth stack (see runtime logs). */
-#define BEEP_BUFFER_SIZE (4 * 1024)
+/* Slightly larger to give long beeps headroom without contention. */
+#define BEEP_BUFFER_SIZE (8 * 1024)
+/* Prefill headroom before releasing a beep to the sink to avoid crackle
+ * at start and give A2DP a buffer to pull from. */
+#define BEEP_PREFILL_MS 150
 /* Fade duration (ms) applied to the start and end of queued/fallback beeps
  * Option A: small crossfade to reduce clicks. Reasonable default: 8 ms. */
-#define BEEP_FADE_MS 8
+/* Longer fade to reduce edge clicks on beeps. */
+#define BEEP_FADE_MS 50
 
 /* Metadata ringbuffer capacity scaled relative to audio buffer with a
  * modest floor so tag enqueue operations never outpace the audio data
@@ -209,11 +229,17 @@ size_t s_beep_remaining_bytes = 0;
  * locally while the fallback tone is active (useful on DRAM-only
  * boards or when I2S reads time out). */
 static bool s_beep_prev_force_synth = false;
+static bool s_beep_restore_synth = false;
 /* Track consecutive I2S read failures across the reader task so other
  * code (like the fallback restore logic) can detect whether the I2S
  * path is healthy. This prevents restoring synth mode when I2S is
  * currently failing, which caused choppy audio. */
 static int s_i2s_consecutive_failures = 0;
+/* Delay releasing a freshly enqueued beep until a small headroom is built
+ * and a short time elapses so the sink does not underrun on the first pull. */
+static bool s_beep_prefill_active = false;
+static TickType_t s_beep_prefill_release_tick = 0;
+static size_t s_beep_prefill_goal_bytes = 0;
 
 /* Fallback on-the-fly beep generator state
  * Used when the main ringbuffer is full and we still want to play a
@@ -992,7 +1018,7 @@ static bool wav_stream_flush_residual_locked(void)
 
         wav_playback_add_pending(send_size);
         worker_diag_report(WORKER_DIAG_SOURCE_WAV, send_size, sent);
-        printf("DIAG-APLAY-STREAM: residual-send=%ld size=%zu\n", (long)sent, send_size);
+        AUDIO_DIAG_PRINTF("DIAG-APLAY-STREAM: residual-send=%ld size=%zu\n", (long)sent, send_size);
         s_wav_send_residual_pos += send_size;
     }
 
@@ -1537,9 +1563,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     }
 
     wav_stream_mutex_init();
-
-    /* Ensure diagnostics requested for current investigation are emitted. */
-    esp_log_level_set(TAG, ESP_LOG_INFO);
 
     // Copy configuration
     memcpy(&s_audio_config, config, sizeof(audio_config_t));
@@ -2395,6 +2418,18 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         ESP_LOGD(TAG, "audio_processor_read: WAV playback suppressing %zu pending beep bytes", s_beep_remaining_bytes);
     }
 
+    TickType_t now_ticks = xTaskGetTickCount();
+    if (!wav_override_beep && s_beep_remaining_bytes > 0 && s_beep_prefill_active) {
+        if (now_ticks < s_beep_prefill_release_tick) {
+            /* Hold off consuming beep data until prefill time expires so the sink has headroom. */
+            memset(buffer, 0, size);
+            *bytes_read = size;
+            wav_stream_try_refill();
+            return ESP_OK;
+        }
+        s_beep_prefill_active = false;
+    }
+
     /* Drain any previously saved beep residual data so queued tones retain
      * ordering even when callers request smaller buffers than the enqueued
      * chunk size. */
@@ -2419,10 +2454,13 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             void* itm = xRingbufferReceive(s_beep_buffer, &read_sz, 0);
             if (itm == NULL || read_sz == 0) {
                 ESP_LOGI(TAG, "audio_processor_read: beep dequeue empty free_before=%zu", free_before);
-                printf("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
+                if (s_beep_diag_active && s_beep_remaining_bytes > 0) {
+                    ESP_LOGW(TAG, "BEEP-DIAG: dequeue empty while beep pending free_before=%zu", free_before);
+                }
+                AUDIO_DIAG_PRINTF("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
             } else {
                 ESP_LOGI(TAG, "audio_processor_read: beep dequeue len=%zu free_before=%zu", read_sz, free_before);
-                printf("DIAG-READ-BEEP-DEQ: len=%zu free_before=%zu\n", read_sz, free_before);
+                AUDIO_DIAG_PRINTF("DIAG-READ-BEEP-DEQ: len=%zu free_before=%zu\n", read_sz, free_before);
             }
             if (itm == NULL || read_sz == 0) {
                 break;
@@ -2434,12 +2472,12 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                 to_copy = remaining;
             }
 
-            if (to_copy > 0) {
-                    printf("DIAG-READ-START: size=%zu init=%d run=%d rb=%p\n",
-                           size,
-                           (int)s_is_initialized,
-                           (int)s_is_running,
-                           (void*)s_audio_buffer);
+                if (to_copy > 0) {
+                    AUDIO_DIAG_PRINTF("DIAG-READ-START: size=%zu init=%d run=%d rb=%p\n",
+                       size,
+                       (int)s_is_initialized,
+                       (int)s_is_running,
+                       (void*)s_audio_buffer);
                 memcpy(buffer + bytes_written, itm, to_copy);
                 bytes_written += to_copy;
                 if (s_beep_remaining_bytes > 0) {
@@ -2447,11 +2485,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                     else s_beep_remaining_bytes -= to_copy;
                 }
             }
-                            printf("DIAG-READ-EXIT: mute-silence bytes=%zu ret=ESP_OK\n", size);
-
             size_t leftover = (read_sz > to_copy) ? (read_sz - to_copy) : 0;
             if (leftover > 0) {
-            printf("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
+            AUDIO_DIAG_PRINTF("DIAG-READ-BEEP-DEQ: empty free_before=%zu\n", free_before);
                 size_t stored = residual_store((const uint8_t*)itm + to_copy, leftover,
                                                s_beep_rb_residual, sizeof(s_beep_rb_residual),
                                                &s_beep_rb_residual_pos, &s_beep_rb_residual_len);
@@ -2472,8 +2508,8 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
             size_t free_after = xRingbufferGetCurFreeSize(s_beep_buffer);
             ESP_LOGI(TAG, "audio_processor_read: beep return len=%zu free_after=%zu", read_sz, free_after);
-            printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
-            printf("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
+            AUDIO_DIAG_PRINTF("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
+            AUDIO_DIAG_PRINTF("DIAG-READ-BEEP-RET: len=%zu free_after=%zu\n", read_sz, free_after);
             /* Consume any matching metadata tag for this beep item so the
              * tag ringbuffer stays aligned with audio items that came
              * from the beep buffer. Log if a tag is missing so we can
@@ -2488,6 +2524,17 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                 break;
             }
         }
+    }
+
+    /* Clear one-shot diag after beep drains to avoid noisy logs on future beeps. */
+    if (s_beep_diag_active && s_beep_remaining_bytes == 0 && (s_beep_buffer == NULL || xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE)) {
+        s_beep_diag_active = false;
+    }
+
+    /* Restore synth mode once beep is fully drained. */
+    if (s_beep_restore_synth && s_beep_remaining_bytes == 0) {
+        s_force_synth = s_beep_prev_force_synth;
+        s_beep_restore_synth = false;
     }
 
     if (!wav_override_beep && s_beep_fallback_active) {
@@ -2516,10 +2563,14 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                         size_t gidx = frames_played + f; /* global index into total frames */
                         double env = 1.0;
                         if (gidx < fade_frames) {
-                            env = (double)gidx / (double)fade_frames;
+                            double t = (double)gidx / (double)fade_frames;
+                            env = 0.5 * (1.0 - cos(M_PI * t));
                         } else if (gidx + fade_frames > s_beep_fallback_total_frames) {
                             size_t tail_idx = s_beep_fallback_total_frames > gidx ? (s_beep_fallback_total_frames - gidx) : 0;
-                            if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                            if (tail_idx < fade_frames) {
+                                double t = (double)tail_idx / (double)fade_frames;
+                                env = 0.5 * (1.0 - cos(M_PI * t));
+                            }
                         }
                         double v = sin(s_beep_fallback_phase) * amp * env;
                         int16_t sample = (int16_t)v;
@@ -2537,10 +2588,14 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                         size_t gidx = frames_played + f;
                         double env = 1.0;
                         if (gidx < fade_frames) {
-                            env = (double)gidx / (double)fade_frames;
+                            double t = (double)gidx / (double)fade_frames;
+                            env = 0.5 * (1.0 - cos(M_PI * t));
                         } else if (gidx + fade_frames > s_beep_fallback_total_frames) {
                             size_t tail_idx = s_beep_fallback_total_frames > gidx ? (s_beep_fallback_total_frames - gidx) : 0;
-                            if (tail_idx < fade_frames) env = (double)tail_idx / (double)fade_frames;
+                            if (tail_idx < fade_frames) {
+                                double t = (double)tail_idx / (double)fade_frames;
+                                env = 0.5 * (1.0 - cos(M_PI * t));
+                            }
                         }
                         double v = sin(s_beep_fallback_phase) * amp32 * env;
                         int32_t sample = (int32_t)v;
@@ -2589,7 +2644,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
              * synth for fallback playback. */
             s_force_synth = s_beep_prev_force_synth;
             ESP_LOGI(TAG, "audio_processor_beep: fallback finished, restored synth mode=%s", s_force_synth ? "ENABLED" : "DISABLED");
-            printf("DIAG-READ-EXIT: fallback bytes=%zu ret=ESP_OK\n", bytes_written);
+            AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback bytes=%zu ret=ESP_OK\n", bytes_written);
             wav_stream_try_refill();
             return ESP_OK;
         }
@@ -2601,7 +2656,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
         *bytes_read = bytes_written;
         log_read_summary("fallback", size, bytes_written);
-        printf("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
+        AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
         wav_stream_try_refill();
         return ESP_OK;
     }
@@ -2637,47 +2692,47 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             xSemaphoreGive(s_wav_mutex);
         }
         size_t rb_max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
-     ESP_LOGI(TAG,
-           "DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu valid=%d rb_free=%lu rb_max_item=%lu",
-           (unsigned long)max_fetch,
-           (unsigned long)wait_ticks,
-           wav_active ? 1 : 0,
-           (unsigned long)s_wav_pending_bytes,
-           (unsigned long)wav_remaining_snapshot,
-           wav_remaining_valid ? 1 : 0,
-           (unsigned long)free_before,
-           (unsigned long)rb_max_item);
-     printf("DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu wav_remaining_valid=%d rb_free=%lu rb_max_item=%lu\n",
-         (unsigned long)max_fetch,
-         (unsigned long)wait_ticks,
-         wav_active ? 1 : 0,
-         (unsigned long)s_wav_pending_bytes,
-         (unsigned long)wav_remaining_snapshot,
-         wav_remaining_valid ? 1 : 0,
-         (unsigned long)free_before,
-         (unsigned long)rb_max_item);
+        AUDIO_DIAG_LOGI(
+              "DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu valid=%d rb_free=%lu rb_max_item=%lu",
+              (unsigned long)max_fetch,
+              (unsigned long)wait_ticks,
+              wav_active ? 1 : 0,
+              (unsigned long)s_wav_pending_bytes,
+              (unsigned long)wav_remaining_snapshot,
+              wav_remaining_valid ? 1 : 0,
+              (unsigned long)free_before,
+              (unsigned long)rb_max_item);
+        AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-REQ: max_fetch=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu wav_remaining_valid=%d rb_free=%lu rb_max_item=%lu\n",
+            (unsigned long)max_fetch,
+            (unsigned long)wait_ticks,
+            wav_active ? 1 : 0,
+            (unsigned long)s_wav_pending_bytes,
+            (unsigned long)wav_remaining_snapshot,
+            wav_remaining_valid ? 1 : 0,
+            (unsigned long)free_before,
+            (unsigned long)rb_max_item);
         void* item = xRingbufferReceiveUpTo(s_audio_buffer, &read_size, wait_ticks, max_fetch);
-     ESP_LOGI(TAG,
-           "DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu",
-           item,
-           (unsigned long)read_size,
-           (unsigned long)wait_ticks,
-           (unsigned long)max_fetch,
-           (unsigned long)free_before,
-           (unsigned long)s_wav_pending_bytes);
-     printf("DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu\n",
-         item,
-         (unsigned long)read_size,
-         (unsigned long)wait_ticks,
-         (unsigned long)max_fetch,
-         (unsigned long)free_before,
-         (unsigned long)s_wav_pending_bytes);
+        AUDIO_DIAG_LOGI(
+              "DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu",
+              item,
+              (unsigned long)read_size,
+              (unsigned long)wait_ticks,
+              (unsigned long)max_fetch,
+              (unsigned long)free_before,
+              (unsigned long)s_wav_pending_bytes);
+        AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu max_fetch=%lu free_before=%lu wav_pending=%lu\n",
+            item,
+            (unsigned long)read_size,
+            (unsigned long)wait_ticks,
+            (unsigned long)max_fetch,
+            (unsigned long)free_before,
+            (unsigned long)s_wav_pending_bytes);
         if (item == NULL || read_size == 0) {
-            ESP_LOGI(TAG, "audio_processor_read: audio dequeue empty free_before=%zu", free_before);
-            printf("DIAG-READ-AUDIO-DEQ: empty free_before=%lu\n", (unsigned long)free_before);
+            AUDIO_DIAG_LOGI("audio_processor_read: audio dequeue empty free_before=%zu", free_before);
+            AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-DEQ: empty free_before=%lu\n", (unsigned long)free_before);
         } else {
-            ESP_LOGI(TAG, "audio_processor_read: audio dequeue len=%zu free_before=%zu", read_size, free_before);
-            printf("DIAG-READ-AUDIO-DEQ: len=%lu free_before=%lu\n", (unsigned long)read_size, (unsigned long)free_before);
+            AUDIO_DIAG_LOGI("audio_processor_read: audio dequeue len=%zu free_before=%zu", read_size, free_before);
+            AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-DEQ: len=%lu free_before=%lu\n", (unsigned long)read_size, (unsigned long)free_before);
         }
         if (item == NULL || read_size == 0) {
             break;
@@ -2714,8 +2769,8 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         }
 
     size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
-    ESP_LOGI(TAG, "audio_processor_read: audio return len=%zu free_after=%zu", read_size, free_after);
-    printf("DIAG-READ-AUDIO-RET: len=%zu free_after=%zu\n", read_size, free_after);
+    AUDIO_DIAG_LOGI("audio_processor_read: audio return len=%zu free_after=%zu", read_size, free_after);
+    AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-RET: len=%zu free_after=%zu\n", read_size, free_after);
     /* Consume the matching metadata tag for this audio item so the
      * tag ringbuffer stays aligned with the audio ringbuffer. Log if
      * we cannot retrieve a tag so we can correlate tag/audio skew. */
@@ -2733,7 +2788,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         *bytes_read = 0;
         s_audio_stats.buffer_underruns++;
         log_read_summary("empty", size, bytes_written);
-        printf("DIAG-READ-EXIT: empty bytes=%zu ret=ESP_OK\n", bytes_written);
+        AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: empty bytes=%zu ret=ESP_OK\n", bytes_written);
         wav_stream_try_refill();
         return ESP_OK;
     }
@@ -3092,13 +3147,192 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         ESP_LOGW(TAG, "audio_processor_beep: not initialized");
         return ESP_ERR_INVALID_STATE;
     }
-    /* Disable audible beeps: acknowledge and exit without generating audio. */
-    ESP_LOGI(TAG, "audio_processor_beep: suppressed request duration=%u freq=%.2f", (unsigned)duration_ms, freq_hz);
+    /* Generate the beep tone into s_proc_buffer, then enqueue to the beep/audio buffers. */
+    /* Ensure duration is reasonable to avoid huge allocations. Clamp to 20 seconds. */
+    if (duration_ms == 0) {
+        duration_ms = 50; /* minimal chirp to ensure audibility */
+    } else if (duration_ms > 20000U) {
+        duration_ms = 20000U;
+    }
+
+    /* One-shot diagnostics: capture and clear the arm so only this beep logs. */
+    bool diag_once = s_dump_next_beep_diag;
+    s_dump_next_beep_diag = false;
+    s_beep_diag_active = diag_once;
+
+    /* Suppress synth fallback during the beep to keep the tone pure. Restore after drain. */
+    s_beep_prev_force_synth = s_force_synth;
+    s_force_synth = false;
+    s_beep_restore_synth = true;
+
+    const uint32_t sample_rate = (uint32_t)s_audio_config.sample_rate;
+    const uint32_t channels = (uint32_t)s_audio_config.channels;
+    const uint32_t frame_bytes = channels * (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16 ? sizeof(int16_t) : sizeof(int32_t));
+    const uint64_t total_frames = ((uint64_t)duration_ms * (uint64_t)sample_rate) / 1000ULL;
+
+    if (total_frames == 0 || frame_bytes == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Limit the generation in manageable chunks to avoid large stack/heap use. */
+    const size_t frames_per_chunk = AUDIO_BLOCK_SIZE * 8U; /* moderate chunk to reuse work buffers */
+    const double two_pi = 2.0 * M_PI;
+    double phase_inc = two_pi * freq_hz / (double)sample_rate;
+    double phase = 0.0;
+
+    size_t frames_generated = 0;
+    size_t bytes_enqueued = 0;
+
+    const size_t fade_frames = (size_t)(((uint64_t)sample_rate * (uint64_t)BEEP_FADE_MS) / 1000ULL) ?: 1U;
+
+    while (frames_generated < total_frames) {
+        size_t chunk_frames = total_frames - frames_generated;
+        if (chunk_frames > frames_per_chunk) {
+            chunk_frames = frames_per_chunk;
+        }
+
+        /* Fill s_proc_buffer with the sine wave chunk using cosine fades to smooth edges. */
+        if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+            int16_t* out = (int16_t*)s_proc_buffer;
+            const double amp = 20000.0; /* moderate level for audibility without hard clipping */
+            for (size_t f = 0; f < chunk_frames; ++f) {
+                double env = 1.0;
+                size_t global_frame = frames_generated + f;
+                if (global_frame < fade_frames) {
+                    double t = (double)global_frame / (double)fade_frames;
+                    env = 0.5 * (1.0 - cos(M_PI * t));
+                } else if (global_frame + fade_frames > total_frames) {
+                    size_t tail = total_frames - global_frame;
+                    if (tail < fade_frames) {
+                        double t = (double)tail / (double)fade_frames;
+                        env = 0.5 * (1.0 - cos(M_PI * t));
+                    }
+                }
+                double sample = sin(phase) * amp * env;
+                int16_t s = (int16_t)sample;
+                for (uint32_t ch = 0; ch < channels; ++ch) {
+                    *out++ = s;
+                }
+                phase += phase_inc;
+                if (phase >= two_pi) phase -= two_pi;
+            }
+        } else {
+            int32_t* out32 = (int32_t*)s_proc_buffer;
+            const double amp32 = 20000.0 * (1 << 16);
+            for (size_t f = 0; f < chunk_frames; ++f) {
+                double env = 1.0;
+                size_t global_frame = frames_generated + f;
+                if (global_frame < fade_frames) {
+                    double t = (double)global_frame / (double)fade_frames;
+                    env = 0.5 * (1.0 - cos(M_PI * t));
+                } else if (global_frame + fade_frames > total_frames) {
+                    size_t tail = total_frames - global_frame;
+                    if (tail < fade_frames) {
+                        double t = (double)tail / (double)fade_frames;
+                        env = 0.5 * (1.0 - cos(M_PI * t));
+                    }
+                }
+                double sample = sin(phase) * amp32 * env;
+                int32_t s = (int32_t)sample;
+                for (uint32_t ch = 0; ch < channels; ++ch) {
+                    *out32++ = s;
+                }
+                phase += phase_inc;
+                if (phase >= two_pi) phase -= two_pi;
+            }
+        }
+
+        size_t chunk_bytes = chunk_frames * frame_bytes;
+
+        /* Enqueue into the dedicated beep buffer first for low latency; fall back to audio buffer on failure. */
+        /* Try to enqueue; if buffers are full, retry a few times with a small delay
+         * so long beeps are not truncated just because the consumer is momentarily slow. */
+        BaseType_t sent = pdFALSE;
+        const TickType_t beep_wait = pdMS_TO_TICKS(10);
+        const TickType_t audio_wait = pdMS_TO_TICKS(20);
+        for (int attempt = 0; attempt < 10 && sent != pdTRUE; ++attempt) {
+            if (s_beep_buffer) {
+                sent = xRingbufferSend(s_beep_buffer, s_proc_buffer, chunk_bytes, beep_wait);
+            }
+            if (sent != pdTRUE && s_audio_buffer) {
+                sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, chunk_bytes, audio_wait);
+            }
+            if (sent != pdTRUE) {
+                if (diag_once) {
+                    size_t free_beep = s_beep_buffer ? xRingbufferGetCurFreeSize(s_beep_buffer) : 0;
+                    size_t free_audio = s_audio_buffer ? xRingbufferGetCurFreeSize(s_audio_buffer) : 0;
+                    ESP_LOGW(TAG, "BEEP-DIAG: enqueue fail attempt=%d chunk=%u free_beep=%u free_audio=%u", attempt, (unsigned)chunk_bytes, (unsigned)free_beep, (unsigned)free_audio);
+                }
+                vTaskDelay(pdMS_TO_TICKS(5));
+            }
+        }
+        if (sent != pdTRUE) {
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, dropping chunk bytes=%u after retries", (unsigned)chunk_bytes);
+            break;
+        }
+        if (!audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP)) {
+            ESP_LOGW(TAG, "audio_processor_beep: tag push failed for chunk=%u", (unsigned)chunk_bytes);
+        }
+
+        /* Track remaining bytes so reader bypasses mute for the beep duration. */
+        s_beep_remaining_bytes += chunk_bytes;
+        bytes_enqueued += chunk_bytes;
+        frames_generated += chunk_frames;
+    }
+
 #ifdef UNIT_TEST
     s_last_beep_duration_ms = duration_ms;
     s_last_beep_freq_hz = freq_hz;
 #endif
-    return ESP_OK;
+
+    if (bytes_enqueued > 0) {
+        size_t prefill_goal = (size_t)(((uint64_t)sample_rate * (uint64_t)frame_bytes * (uint64_t)BEEP_PREFILL_MS) / 1000ULL);
+        if (prefill_goal == 0) {
+            prefill_goal = frame_bytes;
+        }
+        if (prefill_goal > bytes_enqueued) {
+            prefill_goal = bytes_enqueued;
+        }
+        portENTER_CRITICAL(&s_beep_lock);
+        s_beep_prefill_goal_bytes = prefill_goal;
+        s_beep_prefill_release_tick = xTaskGetTickCount() + pdMS_TO_TICKS(BEEP_PREFILL_MS);
+        s_beep_prefill_active = true;
+        portEXIT_CRITICAL(&s_beep_lock);
+        ESP_LOGI(TAG, "audio_processor_beep: prefill armed goal=%u bytes delay=%u ms", (unsigned)prefill_goal, (unsigned)BEEP_PREFILL_MS);
+    }
+
+    /* Append a short zero tail so the sink ramps to silence instead of a hard cut. */
+    if (bytes_enqueued > 0) {
+        size_t tail_bytes = fade_frames * frame_bytes;
+        if (tail_bytes > sizeof(s_proc_buffer)) {
+            tail_bytes = sizeof(s_proc_buffer);
+        }
+        memset(s_proc_buffer, 0, tail_bytes);
+        BaseType_t tail_sent = pdFALSE;
+        const TickType_t beep_wait = pdMS_TO_TICKS(10);
+        const TickType_t audio_wait = pdMS_TO_TICKS(20);
+        for (int attempt = 0; attempt < 5 && tail_sent != pdTRUE; ++attempt) {
+            if (s_beep_buffer) {
+                tail_sent = xRingbufferSend(s_beep_buffer, s_proc_buffer, tail_bytes, beep_wait);
+            }
+            if (tail_sent != pdTRUE && s_audio_buffer) {
+                tail_sent = xRingbufferSend(s_audio_buffer, s_proc_buffer, tail_bytes, audio_wait);
+            }
+            if (tail_sent != pdTRUE) {
+                vTaskDelay(pdMS_TO_TICKS(2));
+            }
+        }
+        if (tail_sent == pdTRUE) {
+            if (!audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP)) {
+                ESP_LOGW(TAG, "audio_processor_beep: tag push failed for tail=%u", (unsigned)tail_bytes);
+            }
+            s_beep_remaining_bytes += tail_bytes;
+            bytes_enqueued += tail_bytes;
+        }
+    }
+
+    ESP_LOGI(TAG, "audio_processor_beep: enqueued=%u bytes duration_ms=%u freq=%.2f", (unsigned)bytes_enqueued, (unsigned)duration_ms, freq_hz);
+    return bytes_enqueued > 0 ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
 esp_err_t audio_processor_beep(uint32_t duration_ms)
@@ -3712,7 +3946,7 @@ static void audio_worker_return_block(const char *phase, i2s_block_t *blk)
             ESP_LOGW(TAG, "audio_worker_task[%s]: free queue full, freeing pooled ptr=%p", tag, raw_ptr);
             heap_caps_free(raw_ptr);
         } else {
-            printf("DIAG-WORKER-RETPOOL: ptr=%p phase=%s free_q=%lu\n",
+            AUDIO_DIAG_PRINTF("DIAG-WORKER-RETPOOL: ptr=%p phase=%s free_q=%lu\n",
                    raw_ptr,
                    tag,
                    (unsigned long)uxQueueMessagesWaiting(s_i2s_free_queue));
@@ -3720,7 +3954,7 @@ static void audio_worker_return_block(const char *phase, i2s_block_t *blk)
     } else {
         ESP_LOGV(TAG, "audio_worker_task[%s]: freeing non-pooled ptr=%p", tag, raw_ptr);
         heap_caps_free(raw_ptr);
-        printf("DIAG-WORKER-FREE: ptr=%p phase=%s\n", raw_ptr, tag);
+        AUDIO_DIAG_PRINTF("DIAG-WORKER-FREE: ptr=%p phase=%s\n", raw_ptr, tag);
     }
 
     blk->ptr = NULL;
@@ -3807,12 +4041,12 @@ static void audio_worker_task(void *pvParameters)
 
         s_worker_diag.dequeued_blocks++;
 
-        printf("DIAG-WORKER-DEQ: ptr=%p len=%zu synth=%d q_wait=%lu free_q=%lu\n",
-               blk.ptr,
-               blk.len,
-               blk.synth_fill ? 1 : 0,
-               (unsigned long)uxQueueMessagesWaiting(s_i2s_queue),
-               (unsigned long)(s_i2s_free_queue != NULL ? uxQueueMessagesWaiting(s_i2s_free_queue) : 0UL));
+         AUDIO_DIAG_PRINTF("DIAG-WORKER-DEQ: ptr=%p len=%zu synth=%d q_wait=%lu free_q=%lu\n",
+             blk.ptr,
+             blk.len,
+             blk.synth_fill ? 1 : 0,
+             (unsigned long)uxQueueMessagesWaiting(s_i2s_queue),
+             (unsigned long)(s_i2s_free_queue != NULL ? uxQueueMessagesWaiting(s_i2s_free_queue) : 0UL));
 
         log_worker_block_state("dequeue", &blk);
 
@@ -3903,12 +4137,12 @@ static void audio_worker_task(void *pvParameters)
         /* Push to ringbuffer (xRingbufferSend copies data) */
         if (res_size > 0) {
             size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
-            printf("DIAG-WORKER-ENQ: attempt len=%zu free_before=%zu synth=%d\n", res_size, free_size, blk.synth_fill ? 1 : 0);
+            AUDIO_DIAG_PRINTF("DIAG-WORKER-ENQ: attempt len=%zu free_before=%zu synth=%d\n", res_size, free_size, blk.synth_fill ? 1 : 0);
             if (free_size < res_size) {
                 s_audio_stats.buffer_overruns++;
                 if (free_size < (res_size / 2)) {
                     /* Skip adding if buffer very full */
-                    printf("DIAG-WORKER-ENQ: drop len=%zu free_before=%zu reason=overrun\n", res_size, free_size);
+                    AUDIO_DIAG_PRINTF("DIAG-WORKER-ENQ: drop len=%zu free_before=%zu reason=overrun\n", res_size, free_size);
                     audio_worker_discard_block("overrun-drop", &blk);
                     TickType_t pause_ticks = pdMS_TO_TICKS(1);
                     if (pause_ticks == 0) {
@@ -3927,7 +4161,7 @@ static void audio_worker_task(void *pvParameters)
             if (sent_bytes < res_size) {
                 s_audio_stats.buffer_overruns++;
                 ESP_LOGW(TAG, "audio_worker_task: enqueue incomplete for res_size=%zu sent=%zu", res_size, sent_bytes);
-                printf("DIAG-WORKER-ENQ: fail len=%zu sent=%zu free_before=%zu\n", res_size, sent_bytes, free_size);
+                AUDIO_DIAG_PRINTF("DIAG-WORKER-ENQ: fail len=%zu sent=%zu free_before=%zu\n", res_size, sent_bytes, free_size);
                 log_heap_stats("worker-send-failed");
                 s_worker_diag.ringbuffer_failures++;
                 worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, (BaseType_t)pdFALSE);
@@ -3939,7 +4173,7 @@ static void audio_worker_task(void *pvParameters)
             } else {
                 size_t free_after = xRingbufferGetCurFreeSize(s_audio_buffer);
                 const char *src = blk.synth_fill ? "synth" : "capture";
-                ESP_LOGI(TAG,
+                AUDIO_DIAG_LOGI(
                          "audio_worker_task: enqueued %zu bytes (%s) free_before=%zu free_after=%zu dequeued=%u rb_fail=%u",
                          res_size,
                          src,
@@ -3947,7 +4181,7 @@ static void audio_worker_task(void *pvParameters)
                          free_after,
                          (unsigned)s_worker_diag.dequeued_blocks,
                          (unsigned)s_worker_diag.ringbuffer_failures);
-                printf("DIAG-WORKER-RET: len=%zu free_before=%zu free_after=%zu\n", res_size, free_size, free_after);
+                AUDIO_DIAG_PRINTF("DIAG-WORKER-RET: len=%zu free_before=%zu free_after=%zu\n", res_size, free_size, free_after);
                 worker_diag_report(WORKER_DIAG_SOURCE_WORKER, res_size, (BaseType_t)pdTRUE);
             }
         }
@@ -4515,6 +4749,17 @@ void audio_processor_enable_next_beep_diag(void)
     AUDIO_PROC_LOG_ONCE();
     s_dump_next_beep_diag = true;
     ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");
+}
+
+void audio_processor_set_diag_enabled(bool enable)
+{
+    s_audio_diag_enabled = enable;
+    ESP_LOGI(TAG, "audio_processor: diagnostics %s", enable ? "ENABLED" : "DISABLED");
+}
+
+bool audio_processor_is_diag_enabled(void)
+{
+    return s_audio_diag_enabled;
 }
 
 /**

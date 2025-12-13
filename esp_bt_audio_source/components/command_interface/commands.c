@@ -4,10 +4,12 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <time.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include "esp_log.h"
 #if !defined(ESP_PLATFORM)
 #include <sys/time.h>
 #if defined(__GNUC__)
@@ -21,7 +23,7 @@ extern const char *cmd_files_host_mount_override(void);
 #define CMD_FILES_WARN_NAME_MAX 80
 #define CMD_FILES_ITEM_NAME_MAX 128
 #define CMD_FILES_SUMMARY_ROOT_MAX 120
-#define CMD_BEEP_DURATION_MS 10000U
+#define CMD_BEEP_DURATION_MS 20000U
 #define CMD_BEEP_FREQ_HZ 261.63
 
 static void copy_truncated_identifier(const char *src, char *dst, size_t dst_size)
@@ -60,6 +62,45 @@ static void copy_truncated_identifier(const char *src, char *dst, size_t dst_siz
     {
         dst[i] = '\0';
     }
+}
+
+static bool cmd_parse_log_level(const char *level_str, int *out_level)
+{
+    if (level_str == NULL || out_level == NULL)
+    {
+        return false;
+    }
+
+    /* Accept numeric levels 0-5 for convenience. */
+    char *end = NULL;
+    long numeric = strtol(level_str, &end, 10);
+    if (end != level_str && *end == '\0')
+    {
+        if (numeric >= ESP_LOG_NONE && numeric <= ESP_LOG_VERBOSE)
+        {
+            *out_level = (int)numeric;
+            return true;
+        }
+        return false;
+    }
+
+    /* Accept common level strings (case-insensitive). */
+    if (strcasecmp(level_str, "NONE") == 0)
+        *out_level = ESP_LOG_NONE;
+    else if (strcasecmp(level_str, "ERROR") == 0 || strcasecmp(level_str, "ERR") == 0)
+        *out_level = ESP_LOG_ERROR;
+    else if (strcasecmp(level_str, "WARN") == 0 || strcasecmp(level_str, "WARNING") == 0)
+        *out_level = ESP_LOG_WARN;
+    else if (strcasecmp(level_str, "INFO") == 0)
+        *out_level = ESP_LOG_INFO;
+    else if (strcasecmp(level_str, "DEBUG") == 0 || strcasecmp(level_str, "DBG") == 0)
+        *out_level = ESP_LOG_DEBUG;
+    else if (strcasecmp(level_str, "VERBOSE") == 0 || strcasecmp(level_str, "TRACE") == 0)
+        *out_level = ESP_LOG_VERBOSE;
+    else
+        return false;
+
+    return true;
 }
 
 // Include platform headers and storage/bt mocks so host builds have prototypes
@@ -237,6 +278,7 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     {"SAMPLE_RATE", "<Hz>", "Apply I2S sample rate"},
     {"SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)"},
     {"BEEP", NULL, "Play 10s middle-C tone when connected"},
+    {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
     {"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
@@ -1587,6 +1629,55 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #else
             cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
+        }
+        else if (strcasecmp(ctx->params[0], "AUDIO_DIAG") == 0)
+        {
+#ifdef ESP_PLATFORM
+            if (ctx->param_count < 2)
+            {
+                cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_MISSING", NULL);
+            }
+            else
+            {
+                const char *p = ctx->params[1];
+                bool enable = (strcasecmp(p, "ON") == 0) || (strcmp(p, "1") == 0) || (strcasecmp(p, "TRUE") == 0);
+                bool disable = (strcasecmp(p, "OFF") == 0) || (strcmp(p, "0") == 0) || (strcasecmp(p, "FALSE") == 0);
+                if (enable || disable)
+                {
+                    audio_processor_set_diag_enabled(enable);
+                    cmd_send_response("OK", "DEBUG", enable ? "AUDIO_DIAG_ON" : "AUDIO_DIAG_OFF", NULL);
+                }
+                else
+                {
+                    cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_BAD_PARAM", p);
+                }
+            }
+#else
+            cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+        }
+        else if (strcasecmp(ctx->params[0], "LOG") == 0)
+        {
+            if (ctx->param_count < 3)
+            {
+                cmd_send_response("ERR", "DEBUG", "LOG_MISSING", NULL);
+            }
+            else
+            {
+                int level = ESP_LOG_INFO;
+                if (!cmd_parse_log_level(ctx->params[2], &level))
+                {
+                    cmd_send_response("ERR", "DEBUG", "LOG_BAD_LEVEL", ctx->params[2]);
+                }
+                else
+                {
+                    const char *tag = ctx->params[1];
+                    esp_log_level_set(tag, level);
+                    char payload[96];
+                    snprintf(payload, sizeof(payload), "%s:%s", tag, ctx->params[2]);
+                    cmd_send_response("OK", "DEBUG", "LOG_SET", payload);
+                }
+            }
         }
         /* Developer helper: force a beep regardless of BT connection state
          * Useful for on-device diagnostics when no sink is available. This

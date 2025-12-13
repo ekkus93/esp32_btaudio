@@ -11,6 +11,7 @@
 #include "mock_uart.h"
 #include "nvs_storage.h"
 #include "audio_processor.h"
+#include "esp_log.h"
 
 static char s_test_spiffs_root[PATH_MAX];
 static int s_test_spiffs_root_ready = 0;
@@ -129,6 +130,21 @@ void tearDown(void) {
     cmd_deinit();
     test_cleanup_spiffs_root();
     cmd_test_install_spiffs_mount_hook(NULL);
+}
+
+void test_debug_log_sets_level_and_response(void) {
+    mock_uart_reset_tx();
+    esp_log_level_set("AUDIO_PROC", ESP_LOG_INFO);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DEBUG LOG AUDIO_PROC WARN", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    TEST_ASSERT_EQUAL_INT(ESP_LOG_WARN, esp_log_level_get("AUDIO_PROC"));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DEBUG|LOG_SET|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "AUDIO_PROC:WARN"));
 }
 
 // Test basic command parsing
@@ -329,6 +345,7 @@ int main(void) {
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
+    RUN_TEST(test_debug_log_sets_level_and_response);
     RUN_TEST(test_help_command);
     RUN_TEST(test_version_command);
     RUN_TEST(test_scan_invokes_manager);

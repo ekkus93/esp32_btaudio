@@ -1,4 +1,16 @@
 ## Current Focus
+### Environment preference (2025-12-13)
+- Always run Python commands in the `python310` conda environment (avoid the local `.conda` Python 3.14 env). When invoking scripts, activate/use that env explicitly and prefer `python3.10` if activation is unavailable.
+### Latest: CONNECT+BEEP quiet capture (2025-12-13)
+- Ran serial script (`CONNECT 00:18:6B:76:D7:1C` then `BEEP`) with diagnostics filtered; device reported `ERR|CONNECT|FAILED|` (already connected) followed by `OK|BEEP|SENT|` and DIAG-BEEP showing `bt_get_connection_state=1` and streaming state=1.
+### Latest: BEEP with AUDIO_PROC=ERROR (2025-12-13)
+- Sent `DEBUG LOG AUDIO_PROC ERROR` then `BEEP`; command responses: `OK|DEBUG|LOG_SET|AUDIO_PROC:ERROR` and `OK|BEEP|SENT|` with DIAG-BEEP showing connection_state=1, streaming_state=1, bt_manager_conn=1. Still no audible beep reported on headset.
+### Latest: Runtime log control (2025-12-13)
+- Removed the forced `esp_log_level_set(AUDIO_PROC, INFO)` inside `audio_processor_init` so caller-set levels (e.g., WARN in `app_main`) stick.
+- Added `DEBUG LOG <TAG> <LEVEL>` CLI subcommand to set ESP log levels at runtime with validation (names or 0-5) and documented it in help output.
+- Added host unit test `test_debug_log_sets_level_and_response` in `test_commands` to verify the command updates the log level and emits an OK response payload.
+### Latest: CONNECT+BEEP attempt (2025-12-18)
+- Sent `CONNECT 00:18:6B:76:D7:1C` then `BEEP` via serial script on the current firmware. UART output was dominated by `AUDIO_PROC` diagnostics (no command responses seen), consistent with the build lacking the new `DEBUG AUDIO_DIAG` toggle. Need to flash the updated image (with diag gating) and retry CONNECT+BEEP with diagnostics off.
 ### Latest: Warning cleanup (2025-12-13)
 - Removed unused helpers in `main/audio_processor.c` (beep auto-start wrapper, beep chunk sender) and unused synth phase statics; gated the test-only tag-take helper behind `CONFIG_BT_MOCK_TESTING`. `idf.py -C esp_bt_audio_source build` now completes with zero warnings.
 ### Latest: Full test sweep (2025-12-13)
