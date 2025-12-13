@@ -1,4 +1,14 @@
 ## Current Focus
+### Latest: Warning cleanup (2025-12-13)
+- Removed unused helpers in `main/audio_processor.c` (beep auto-start wrapper, beep chunk sender) and unused synth phase statics; gated the test-only tag-take helper behind `CONFIG_BT_MOCK_TESTING`. `idf.py -C esp_bt_audio_source build` now completes with zero warnings.
+### Latest: Full test sweep (2025-12-13)
+- Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with IDF 5.4 env. Host tests 22/22 passed; device suites passed: `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 26/26, `test_app3` 3/3. Aggregate device total 111/111. Logs: `tmp/run_all_tests_summary.json`, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+### Latest: Keepalive silenced (2025-12-13)
+- Removed all tone generation from `esp_bt_audio_source/main/main.c::bt_app_a2d_data_cb`; keepalive now zero-fills A2DP buffers so periodic beeps are eliminated. Rebuilt and flashed to `/dev/ttyUSB0`; brief UART spot-check shows synth worker enqueuing silence (beep_remaining=0) with no crashes.
+### Latest: Synth/beep muted (2025-12-13)
+- Forced synth generator in `audio_processor.c` to emit silence and defaulted `s_force_synth` to false; `audio_processor_beep_tone` now no-ops to suppress all beeps. Rebuilt and flashed to `/dev/ttyUSB0`; UART shows I2S timeouts with synth disabled and no beep activity (beep_remaining=0). Awaiting headset confirmation that all idle beeps are gone.
+### Latest: Idle UART spot-check (2025-12-17)
+- After flashing the near-ultrasonic keepalive build, polled `/dev/ttyUSB0` at 115200 baud for ~2.5 s; device is running and emitting `AUDIO_PROC` diagnostics showing synth worker enqueuing 512-byte chunks (synth=1, wav inactive, overruns climbing) with no crashes. Awaiting headset confirmation that the periodic keepalive is inaudible at 19 kHz/low amplitude.
 ### Latest: Full test sweep green (2025-12-13)
 - Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600 --source-idf "$HOME/esp/esp-idf/export.sh"` from repo root; host ctest 22/22 passed and device suites passed (test_app 37/37, test_app2 45/45, test_app_audio 26/26, test_app3 3/3). Summary in `tmp/run_all_tests_summary.json`; per-suite logs in each `build/one_run_unity.log`.
 ### Latest: Synth keepalive high-tone (2025-12-13)

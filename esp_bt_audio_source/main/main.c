@@ -168,18 +168,10 @@ static void bt_log_allocator_snapshot(const char *reason, bool dump_entries)
 }
 #endif
 
-/* global variables for beep generation */
-#define MIDDLE_C_FREQ 261.63f  // Middle C frequency in Hz
-#define SAMPLE_RATE 44100      // Standard A2DP sample rate
-#define BEEP_DURATION_MS 500   // Beep duration in milliseconds
-#define BEEP_INTERVAL_MS 60000 // Beep interval (1 minute) in milliseconds
+/* keepalive output remains silent to avoid audible beeps */
 
 // Stack size settings for better stability
 #define BT_APP_TASK_STACK_SIZE    8192     // Increased from default 4096
-
-static float s_tone_phase = 0.0f;  // Phase of the sine wave
-static uint32_t s_beep_timer = 0;  // Timer to track when to beep
-static bool s_is_beeping = false;  // Whether currently beeping
 
 /*********************************
  * STATIC FUNCTION DEFINITIONS
@@ -449,48 +441,13 @@ static void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
     bt_app_work_dispatch(bt_app_av_sm_hdlr, event, param, sizeof(esp_a2d_cb_param_t), NULL);
 }
 
-/* generate a middle C beep once per minute */
+/* keepalive callback: fill buffer with silence to avoid audible beeps */
 static int32_t bt_app_a2d_data_cb(uint8_t *data, int32_t len)
 {
     if (data == NULL || len < 0) {
         return 0;
     }
-
-    int16_t *p_buf = (int16_t *)data;
-    int samples = len >> 1;  // len is in bytes, we work with 16-bit samples
-    
-    // Update beep timer - each buffer is about 23ms at standard A2DP settings
-    uint32_t buffer_duration_ms = (samples * 1000) / SAMPLE_RATE;
-    s_beep_timer += buffer_duration_ms;
-    
-    // Check if we need to start or stop beeping
-    if (s_beep_timer >= BEEP_INTERVAL_MS) {
-        s_beep_timer = 0;  // Reset timer
-        s_is_beeping = true;  // Start beeping
-        ESP_LOGI(BT_AV_TAG, "Beep started");
-    } else if (s_is_beeping && s_beep_timer >= BEEP_DURATION_MS) {
-        s_is_beeping = false;  // Stop beeping
-        ESP_LOGI(BT_AV_TAG, "Beep stopped");
-    }
-    
-    // Fill the buffer with either sine wave or silence
-    for (int i = 0; i < samples; i++) {
-        if (s_is_beeping) {
-            // Generate a sine wave at middle C frequency
-            float sample_value = sinf(s_tone_phase) * 32767.0f * 0.5f;  // Half amplitude to avoid distortion
-            p_buf[i] = (int16_t)sample_value;
-            
-            // Update phase for next sample
-            s_tone_phase += 2.0f * M_PI * MIDDLE_C_FREQ / SAMPLE_RATE;
-            if (s_tone_phase >= 2.0f * M_PI) {
-                s_tone_phase -= 2.0f * M_PI;  // Keep phase in [0, 2π) range
-            }
-        } else {
-            // Output silence when not beeping
-            p_buf[i] = 0;
-        }
-    }
-
+    memset(data, 0, (size_t)len);
     return len;
 }
 
