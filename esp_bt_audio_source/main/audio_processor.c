@@ -3949,9 +3949,15 @@ static void i2s_reader_task(void *pvParameters)
             if (wav_playback_is_active()) {
                 ESP_LOGW(TAG, "I2S read failing (%d) but WAV playback active; keeping synth disabled", s_i2s_consecutive_failures);
             } else if (!s_beep_fallback_active) {
-                /* Avoid auto-enabling the runtime synth when no source is active;
-                 * otherwise we emit an unexpected tone after WAV completes. */
-                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); leaving synth disabled (no active source)", s_i2s_consecutive_failures);
+                /* Option 1: if no source/beep is active, park the reader in the
+                 * quiet synth keepalive instead of spinning on I2S timeouts. */
+                if (s_beep_remaining_bytes == 0 && !s_force_synth) {
+                    ESP_LOGW(TAG, "I2S read failing repeatedly (%d); re-enabling silent synth keepalive", s_i2s_consecutive_failures);
+                    s_force_synth = true;
+                    s_i2s_consecutive_failures = 0;
+                } else {
+                    ESP_LOGW(TAG, "I2S read failing repeatedly (%d); leaving synth disabled (no active source)", s_i2s_consecutive_failures);
+                }
             }
         }
         }

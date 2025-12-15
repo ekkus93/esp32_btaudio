@@ -2,6 +2,9 @@
 ### Latest: TAG-MISS latch/drop (2025-12-20)
 - Implemented Option 1 for TAG-MISS mitigation: added a 500 ms one-shot mute window around `audio_source_tag_recover_desync` and expanded the per-recovery drop window to up to 16 beep/audio items to suppress repeated TAG-MISS spam.
 
+### Latest: I2S idle synth park (2025-12-20)
+- Option 1: when I2S read failures pile up with no source or beep active, the reader now re-enables the silent synth keepalive and resets the failure counter to stop repeated ESP_ERR_TIMEOUT spam; flashed via `idf.py -C esp_bt_audio_source -p /dev/ttyUSB0 flash`.
+
 ### Latest: Full test sweep (2025-12-20)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + IDF 5.4 env; results: host 22/22, device suites `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 29/29, `test_app3` 3/3 (aggregate device 114/114). Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 
