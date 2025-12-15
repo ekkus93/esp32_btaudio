@@ -4,11 +4,18 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include "esp_rom_sys.h"
 #include "esp_log.h"
 #include "bt_mock.h"
 #include "bt_mock_devices.h"
+#include "util_safe.h"
 
 static const char *TAG = "BT_MOCK";
+
+#define safe_vsnprintf util_safe_vsnprintf
+#define safe_snprintf util_safe_snprintf
+#define safe_memcpy util_safe_memcpy
 
 /* Optional hook implemented by the test-app mock to keep its local caches in
  * sync when the authoritative component-level mock mutates the paired device
@@ -118,9 +125,9 @@ esp_err_t bt_mock_add_paired_device(bt_device_t* device)
      * bt_mock_add_device() and derive device type from COD field.
      */
     char addr_str[18] = {0};
-    snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-             device->addr[0], device->addr[1], device->addr[2],
-             device->addr[3], device->addr[4], device->addr[5]);
+    safe_snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  device->addr[0], device->addr[1], device->addr[2],
+                  device->addr[3], device->addr[4], device->addr[5]);
 
     bt_device_type_t type = BT_DEVICE_TYPE_OTHER;
     if ((device->cod & 0x200000) != 0) {
@@ -164,7 +171,7 @@ esp_err_t bt_mock_get_paired_devices(bt_device_t *devices, uint16_t max_count, u
     for (int i = 0; i < total && *actual_count < max_count; i++) {
         bt_device_t device;
         if (bt_mock_get_device(i, &device) == ESP_OK && device.paired) {
-            memcpy(&devices[*actual_count], &device, sizeof(bt_device_t));
+            safe_memcpy(&devices[*actual_count], sizeof(bt_device_t), &device, sizeof(bt_device_t));
             (*actual_count)++;
         }
     }

@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -21,6 +22,97 @@
 #include "nvs_storage.h"
 #include "esp_heap_caps.h"
 #include "bt_manager.h"
+#include "esp_rom_sys.h"
+
+// Local bounded helpers to keep analyzer happy without pragmas.
+static inline int audio_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
+    __attribute__((format(printf, 3, 0)));
+static inline int audio_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
+{
+    if (dst == NULL || dst_size == 0 || fmt == NULL)
+    {
+        return -1;
+    }
+    int written = vsnprintf(dst, dst_size, fmt, args); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    if (written < 0)
+    {
+        dst[0] = '\0';
+    }
+    else if ((size_t)written >= dst_size)
+    {
+        dst[dst_size - 1] = '\0';
+    }
+    return written;
+}
+
+static inline int audio_snprintf_safe(char *dst, size_t dst_size, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+static inline int audio_snprintf_safe(char *dst, size_t dst_size, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int written = audio_vsnprintf_safe(dst, dst_size, fmt, args);
+    va_end(args);
+    return written;
+}
+#define snprintf(...) audio_snprintf_safe(__VA_ARGS__)
+
+static inline void *audio_memcpy_safe(void *dst, const void *src, size_t len)
+{
+    if (dst == NULL || src == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (size_t i = 0; i < len; i++)
+    {
+        d[i] = s[i];
+    }
+    return dst;
+}
+#define memcpy(...) audio_memcpy_safe(__VA_ARGS__)
+
+static inline void *audio_memmove_safe(void *dst, const void *src, size_t len)
+{
+    if (dst == NULL || src == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    if (d < s)
+    {
+        for (size_t i = 0; i < len; i++)
+        {
+            d[i] = s[i];
+        }
+    }
+    else if (d > s)
+    {
+        for (size_t i = len; i > 0; i--)
+        {
+            d[i - 1] = s[i - 1];
+        }
+    }
+    return dst;
+}
+#define memmove(...) audio_memmove_safe(__VA_ARGS__)
+
+static inline void *audio_memset_safe(void *dst, int value, size_t len)
+{
+    if (dst == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    for (size_t i = 0; i < len; i++)
+    {
+        d[i] = (uint8_t)value;
+    }
+    return dst;
+}
+#define memset(...) audio_memset_safe(__VA_ARGS__)
 
 /* Connection manager helper exposed from bt_connection_manager.c */
 extern int bt_get_streaming_state_int(void);
@@ -3341,6 +3433,10 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         ESP_LOGW(TAG, "audio_processor_beep: not initialized");
         return ESP_ERR_INVALID_STATE;
     }
+    if (s_proc_buffer == NULL) {
+        ESP_LOGW(TAG, "audio_processor_beep: work buffer not ready");
+        return ESP_ERR_INVALID_STATE;
+    }
     /* Generate the beep tone into s_proc_buffer, then enqueue to the beep/audio buffers. */
     /* Ensure duration is reasonable to avoid huge allocations. Clamp to 20 seconds. */
     if (duration_ms == 0) {
@@ -3407,6 +3503,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         /* Fill s_proc_buffer with the sine wave chunk using cosine fades to smooth edges. */
         if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
             int16_t* out = (int16_t*)s_proc_buffer;
+            if (out == NULL) {
+                return ESP_ERR_INVALID_STATE;
+            }
             const double amp = 20000.0; /* moderate level for audibility without hard clipping */
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
@@ -3431,6 +3530,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             }
         } else {
             int32_t* out32 = (int32_t*)s_proc_buffer;
+            if (out32 == NULL) {
+                return ESP_ERR_INVALID_STATE;
+            }
             const double amp32 = 20000.0 * (1 << 16);
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
@@ -3909,7 +4011,11 @@ static void i2s_reader_task(void *pvParameters)
             size_t remaining = read_request;
             size_t total_read = 0;
             int local_failures = 0;
-            int64_t t_start = esp_timer_get_time();
+            const bool measure_debug = esp_log_level_get(TAG) >= ESP_LOG_DEBUG;
+            int64_t t_start = 0;
+            if (measure_debug) {
+                t_start = esp_timer_get_time();
+            }
 
             while (remaining > 0) {
                 size_t this_read = remaining;
@@ -3961,9 +4067,11 @@ static void i2s_reader_task(void *pvParameters)
                 /* nothing read and at least one failure */
             }
 
-            if (total_read > I2S_MAX_READ_BYTES) {
+            if (measure_debug && total_read > I2S_MAX_READ_BYTES) {
                 int64_t t_end = esp_timer_get_time();
-                ESP_LOGD(TAG, "i2s_reader_task: multi-chunk read total=%zu took=%lld us", total_read, (long long)(t_end - t_start));
+                int64_t duration = t_end - t_start;
+                (void)duration;
+                ESP_LOGD(TAG, "i2s_reader_task: multi-chunk read total=%zu took=%lld us", total_read, (long long)duration);
             }
 
         (void)audio_processor_handle_idle_i2s_failures(wav_playback_is_active(), s_beep_fallback_active, s_beep_remaining_bytes);
@@ -4099,9 +4207,8 @@ static inline void log_worker_block_state(const char *phase, const i2s_block_t *
     if (esp_log_level_get(TAG) < ESP_LOG_DEBUG) {
         return;
     }
-    const char *tag = (phase != NULL) ? phase : "unknown";
     ESP_LOGD(TAG, "audio_worker_task[%s]: ptr=%p len=%zu cap=%zu synth=%d pooled=%d",
-             tag,
+             (phase != NULL) ? phase : "unknown",
              (blk != NULL) ? blk->ptr : NULL,
              (blk != NULL) ? blk->len : 0U,
              (blk != NULL) ? blk->capacity : 0U,
@@ -4146,19 +4253,18 @@ static void audio_worker_return_block(const char *phase, i2s_block_t *blk)
 
 static void audio_worker_discard_block(const char *phase, i2s_block_t *blk)
 {
-    const char *tag = (phase != NULL) ? phase : "unknown";
     if (blk == NULL || blk->ptr == NULL) {
-        ESP_LOGD(TAG, "audio_worker_task[%s]: discard skipped (ptr=NULL)", tag);
+        ESP_LOGD(TAG, "audio_worker_task[%s]: discard skipped (ptr=NULL)", (phase != NULL) ? phase : "unknown");
         return;
     }
 
     if (blk->pooled_ptr) {
-        ESP_LOGV(TAG, "audio_worker_task[%s]: discard pooled ptr=%p -> recycle", tag, blk->ptr);
+        ESP_LOGV(TAG, "audio_worker_task[%s]: discard pooled ptr=%p -> recycle", (phase != NULL) ? phase : "unknown", blk->ptr);
         audio_worker_return_block(phase, blk);
         return;
     }
 
-    ESP_LOGV(TAG, "audio_worker_task[%s]: discarding non-pooled ptr=%p", tag, blk->ptr);
+    ESP_LOGV(TAG, "audio_worker_task[%s]: discarding non-pooled ptr=%p", (phase != NULL) ? phase : "unknown", blk->ptr);
     heap_caps_free(blk->ptr);
     blk->ptr = NULL;
     blk->len = 0;

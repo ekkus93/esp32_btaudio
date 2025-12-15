@@ -8,7 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <stdarg.h>
 #include <math.h>  // For sinf()
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -38,6 +40,50 @@
 #include "driver/i2s_std.h"
 #include "nvs_storage.h"
 #include "bt_manager.h"
+
+static int safe_vsnprintf(char *dst, size_t dst_size, const char *fmt, va_list args) {
+    if (dst == NULL || dst_size == 0 || fmt == NULL) {
+        return 0;
+    }
+    int written = vsnprintf(dst, dst_size, fmt, args); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    if (written < 0 || (size_t)written >= dst_size) {
+        dst[dst_size - 1] = '\0';
+    }
+    return written;
+}
+
+static int safe_snprintf(char *dst, size_t dst_size, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int written = safe_vsnprintf(dst, dst_size, fmt, args);
+    va_end(args);
+    return written;
+}
+
+static void safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
+    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
+        return;
+    }
+    size_t to_copy = len;
+    if (to_copy > dst_size) {
+        to_copy = dst_size;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (size_t i = 0; i < to_copy; ++i) {
+        d[i] = s[i];
+    }
+}
+
+static void safe_memset(void *dst, int value, size_t len) {
+    if (dst == NULL || len == 0) {
+        return;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    for (size_t i = 0; i < len; ++i) {
+        d[i] = (uint8_t)value;
+    }
+}
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
@@ -183,8 +229,8 @@ static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
         return NULL;
     }
 
-    sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
-            bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+    safe_snprintf(str, size, "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
     return str;
 }
 
@@ -209,7 +255,7 @@ static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len
         }
 
         if (bdname) {
-            memcpy(bdname, rmt_bdname, rmt_bdname_len);
+            safe_memcpy(bdname, ESP_BT_GAP_MAX_BDNAME_LEN + 1, rmt_bdname, rmt_bdname_len);
             bdname[rmt_bdname_len] = '\0';
         }
         if (bdname_len) {
@@ -278,7 +324,7 @@ static void filter_inquiry_scan_result(esp_bt_gap_cb_param_t *param)
         if (accept_by_name || accept_by_pending_pair) {
             ESP_LOGI(BT_AV_TAG, "Found suitable audio device: %s, name: %s", bda_str, s_peer_bdname);
             s_a2d_state = APP_AV_STATE_DISCOVERED;
-            memcpy(s_peer_bda, param->disc_res.bda, ESP_BD_ADDR_LEN);
+            safe_memcpy(s_peer_bda, sizeof(s_peer_bda), param->disc_res.bda, ESP_BD_ADDR_LEN);
             ESP_LOGI(BT_AV_TAG, "Cancelling device discovery and connecting to device...");
             esp_bt_gap_cancel_discovery();
         } else {
@@ -447,7 +493,7 @@ static int32_t bt_app_a2d_data_cb(uint8_t *data, int32_t len)
     if (data == NULL || len < 0) {
         return 0;
     }
-    memset(data, 0, (size_t)len);
+    safe_memset(data, 0, (size_t)len);
     return len;
 }
 

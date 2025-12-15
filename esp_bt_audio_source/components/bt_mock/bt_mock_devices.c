@@ -8,10 +8,15 @@
 
 #include "bt_mock_devices.h"
 #include "bt_source.h"
+#include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "esp_rom_sys.h"
 #include <inttypes.h>
+#include <stdarg.h>
 #include "esp_log.h"
+#include "util_safe.h"
 /* Temporary: enable diagnostic logging so DIAG_LOG-guarded prints are
  * compiled in during debug runs. Remove this define when debugging is
  * finished to avoid noisy logs.
@@ -58,11 +63,17 @@ static char s_ssp_passkey[16] = {0};
 static bool s_ssp_confirmation_requested = false;
 static char s_default_pin[16] = "1234";
 
+#define safe_vsnprintf util_safe_vsnprintf
+#define safe_snprintf util_safe_snprintf
+#define safe_copy_str util_safe_copy_str
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
+#define parse_mac_bytes util_parse_mac
+
 static void normalize_addr_upper(const char* in, char* out, size_t out_len)
 {
     if (!in || !out) return;
-    strncpy(out, in, out_len - 1);
-    out[out_len - 1] = '\0';
+    safe_copy_str(out, out_len, in);
     for (size_t i = 0; out[i]; i++) {
         if (out[i] >= 'a' && out[i] <= 'f') out[i] = out[i] - 'a' + 'A';
     }
@@ -70,7 +81,7 @@ static void normalize_addr_upper(const char* in, char* out, size_t out_len)
 
 void bt_mock_devices_init(void)
 {
-    memset(&mock_state, 0, sizeof(mock_state));
+    safe_memset(&mock_state, 0, sizeof(mock_state));
     mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     mock_state.streaming_state = BT_STREAMING_STATE_STOPPED;
 }
@@ -83,7 +94,7 @@ void bt_mock_devices_cleanup(void)
 void bt_mock_devices_reset(void)
 {
     int prev = mock_state.device_count;
-    memset(&mock_state, 0, sizeof(mock_state));
+    safe_memset(&mock_state, 0, sizeof(mock_state));
     mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     mock_state.streaming_state = BT_STREAMING_STATE_STOPPED;
 
@@ -96,7 +107,7 @@ void bt_mock_devices_reset(void)
     s_ssp_passkey_value = 0;
     s_ssp_passkey[0] = '\0';
     s_ssp_confirmation_requested = false;
-    strncpy(s_default_pin, "1234", sizeof(s_default_pin)-1);
+    safe_copy_str(s_default_pin, sizeof(s_default_pin), "1234");
 
     ESP_LOGI(TAG, "bt_mock_devices_reset: cleared %d devices", prev);
 }
@@ -111,12 +122,12 @@ esp_err_t bt_mock_add_device(const char* addr_str, const char* name, bt_device_t
     if (!addr_str || !name) return ESP_ERR_INVALID_ARG;
     if (mock_state.device_count >= MAX_TEST_DEVICES) return ESP_ERR_NO_MEM;
 
-    bt_device_t* d = &mock_state.devices[mock_state.device_count];
-    memset(d, 0, sizeof(*d));
-    sscanf(addr_str, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
-           &d->addr[0], &d->addr[1], &d->addr[2], &d->addr[3], &d->addr[4], &d->addr[5]);
-    strncpy(d->name, name, sizeof(d->name)-1);
-    d->name[sizeof(d->name)-1] = '\0';
+        bt_device_t* d = &mock_state.devices[mock_state.device_count];
+        safe_memset(d, 0, sizeof(*d));
+        if (!parse_mac_bytes(addr_str, d->addr)) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        safe_copy_str(d->name, sizeof(d->name), name);
     d->paired = paired;
     d->rssi = -70;
     switch (type) {
@@ -134,7 +145,7 @@ esp_err_t bt_mock_get_device(int index, bt_device_t* device)
 {
     if (!device) return ESP_ERR_INVALID_ARG;
     if (index < 0 || index >= mock_state.device_count) return ESP_ERR_NOT_FOUND;
-    memcpy(device, &mock_state.devices[index], sizeof(bt_device_t));
+    safe_memcpy(device, sizeof(*device), &mock_state.devices[index], sizeof(bt_device_t));
     return ESP_OK;
 }
 
@@ -142,7 +153,7 @@ esp_err_t bt_mock_remove_device(int index)
 {
     if (index < 0 || index >= mock_state.device_count) return ESP_ERR_NOT_FOUND;
     for (int j = index; j < mock_state.device_count - 1; j++) {
-        memcpy(&mock_state.devices[j], &mock_state.devices[j+1], sizeof(bt_device_t));
+        safe_memcpy(&mock_state.devices[j], sizeof(mock_state.devices[j]), &mock_state.devices[j+1], sizeof(bt_device_t));
     }
     mock_state.device_count--;
     return ESP_OK;
@@ -155,10 +166,10 @@ bool bt_mock_find_device(const char* addr_str, int* index)
     normalize_addr_upper(addr_str, norm, sizeof(norm));
     for (int i = 0; i < mock_state.device_count; i++) {
         char a[18];
-        snprintf(a, sizeof(a), "%02X:%02X:%02X:%02X:%02X:%02X",
-                mock_state.devices[i].addr[0], mock_state.devices[i].addr[1],
-                mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
-                mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+        safe_snprintf(a, sizeof(a), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  mock_state.devices[i].addr[0], mock_state.devices[i].addr[1],
+                  mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                  mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
         if (strcmp(a, norm) == 0) {
             if (index) *index = i;
             return true;
@@ -201,8 +212,7 @@ esp_err_t bt_mock_connect(const char* addr)
     }
 
     mock_state.is_connected = true;
-    strncpy(mock_state.connected_addr, addr, sizeof(mock_state.connected_addr)-1);
-    mock_state.connected_addr[sizeof(mock_state.connected_addr)-1] = '\0';
+    safe_copy_str(mock_state.connected_addr, sizeof(mock_state.connected_addr), addr);
     mock_state.connection_state = BT_CONNECTION_STATE_CONNECTED;
     ESP_LOGI(TAG, "Connected to %s", addr);
 #ifdef DIAG_LOG
@@ -267,10 +277,8 @@ void bt_mock_set_connect_by_name_hook(const char* name, const char* addr)
         return;
     }
     mock_state.connect_by_name_hook_enabled = true;
-    strncpy(mock_state.connect_by_name_device, name, sizeof(mock_state.connect_by_name_device)-1);
-    mock_state.connect_by_name_device[sizeof(mock_state.connect_by_name_device)-1] = '\0';
-    strncpy(mock_state.connect_by_name_addr, addr, sizeof(mock_state.connect_by_name_addr)-1);
-    mock_state.connect_by_name_addr[sizeof(mock_state.connect_by_name_addr)-1] = '\0';
+    safe_copy_str(mock_state.connect_by_name_device, sizeof(mock_state.connect_by_name_device), name);
+    safe_copy_str(mock_state.connect_by_name_addr, sizeof(mock_state.connect_by_name_addr), addr);
 }
 
 static esp_err_t bt_mock_connect_by_name(const char* device_name)
@@ -296,10 +304,10 @@ static esp_err_t bt_mock_connect_by_name(const char* device_name)
         if (strcasecmp(mock_state.devices[i].name, device_name) == 0) {
             /* Build address string and connect */
             char addr_str[18];
-            snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     mock_state.devices[i].addr[0], mock_state.devices[i].addr[1],
-                     mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
-                     mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+            safe_snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                          mock_state.devices[i].addr[0], mock_state.devices[i].addr[1],
+                          mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                          mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
             return bt_mock_connect(addr_str);
         }
     }
@@ -329,7 +337,7 @@ int bt_mock_get_scan_results(bt_device_t* devices, int max_count)
     if (!devices || max_count <= 0) return 0;
     int copied = 0;
     for (int i = 0; i < mock_state.device_count && copied < max_count; i++) {
-        memcpy(&devices[copied], &mock_state.devices[i], sizeof(bt_device_t));
+        safe_memcpy(&devices[copied], sizeof(devices[copied]), &mock_state.devices[i], sizeof(bt_device_t));
         copied++;
     }
     return copied;
@@ -350,7 +358,7 @@ esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey)
 {
     if (!is_pairing) return ESP_ERR_INVALID_STATE;
     s_ssp_passkey_value = passkey;
-    snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, passkey);
+    safe_snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, passkey);
     current_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
     s_ssp_confirmation_requested = true;
     current_pairing_method = BT_PAIRING_METHOD_SSP;
@@ -358,10 +366,10 @@ esp_err_t bt_mock_simulate_ssp_request(uint32_t passkey)
     /* Emit pairing CONFIRM event so the command interface / host can respond */
     char bda_str[18] = {0};
     if (current_pairing_addr[0]) {
-        strncpy(bda_str, current_pairing_addr, sizeof(bda_str)-1);
+        safe_copy_str(bda_str, sizeof(bda_str), current_pairing_addr);
     }
     char data[64];
-    snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)passkey);
+    safe_snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)passkey);
     cmd_send_event_pair("CONFIRM", data);
 #endif
     return ESP_OK;
@@ -378,7 +386,7 @@ esp_err_t bt_mock_confirm_ssp(bool confirm)
     /* Emit pairing result so host sees SUCCESS/FAILED */
     char bda_str[18] = {0};
     if (current_pairing_addr[0]) {
-        strncpy(bda_str, current_pairing_addr, sizeof(bda_str)-1);
+        safe_copy_str(bda_str, sizeof(bda_str), current_pairing_addr);
     }
     cmd_send_event_pair(confirm ? "SUCCESS" : "FAILED", bda_str);
 #endif
@@ -399,27 +407,25 @@ esp_err_t bt_mock_get_ssp_passkey(char* passkey, size_t size)
         return ESP_ERR_NOT_FOUND;
     }
     /* copy up to size-1 bytes and NUL terminate */
-    strncpy(passkey, s_ssp_passkey, size - 1);
-    passkey[size - 1] = '\0';
+    safe_copy_str(passkey, size, s_ssp_passkey);
     return ESP_OK;
 }
 
 esp_err_t bt_mock_start_pairing(const char* addr)
 {
     if (!addr) return ESP_ERR_INVALID_ARG;
-    strncpy(current_pairing_addr, addr, sizeof(current_pairing_addr)-1);
-    current_pairing_addr[sizeof(current_pairing_addr)-1] = '\0';
+    safe_copy_str(current_pairing_addr, sizeof(current_pairing_addr), addr);
     is_pairing = true;
     if (s_ssp_support_enabled) {
         current_pairing_method = BT_PAIRING_METHOD_SSP;
         current_pairing_state = BT_PAIRING_STATE_SSP_REQUESTED;
         s_ssp_passkey_value = 123456;
-        snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, s_ssp_passkey_value);
+         safe_snprintf(s_ssp_passkey, sizeof(s_ssp_passkey), "%06" PRIu32, s_ssp_passkey_value);
         s_ssp_confirmation_requested = true;
 #ifdef ESP_PLATFORM
         /* Notify host about SSP confirm request */
         char data[64];
-        snprintf(data, sizeof(data), "%s,%u", current_pairing_addr, (unsigned int)s_ssp_passkey_value);
+         safe_snprintf(data, sizeof(data), "%s,%u", current_pairing_addr, (unsigned int)s_ssp_passkey_value);
     cmd_send_event_pair("CONFIRM", data);
 #endif
     } else {
@@ -462,10 +468,11 @@ esp_err_t bt_mock_send_pin(const char* pin)
             /* If device not present, append a new paired device (preserve existing behavior) */
             if (mock_state.device_count < MAX_TEST_DEVICES) {
                 bt_device_t *d = &mock_state.devices[mock_state.device_count];
-                memset(d, 0, sizeof(*d));
-                sscanf(current_pairing_addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
-                       &d->addr[0], &d->addr[1], &d->addr[2], &d->addr[3], &d->addr[4], &d->addr[5]);
-                snprintf(d->name, sizeof(d->name), "Paired Device %d", mock_state.device_count+1);
+                  safe_memset(d, 0, sizeof(*d));
+                if (!parse_mac_bytes(current_pairing_addr, d->addr)) {
+                    return ESP_ERR_INVALID_ARG;
+                }
+                  safe_snprintf(d->name, sizeof(d->name), "Paired Device %d", mock_state.device_count+1);
                 d->paired = true; d->cod = 0x240404; d->rssi = -70;
                 mock_state.device_count++;
             }
@@ -482,16 +489,14 @@ void bt_mock_set_ssp_supported(bool supported) { s_ssp_support_enabled = support
 /* Default PIN helpers -----------------------------------------------------*/
 esp_err_t bt_mock_set_default_pin(const char* pin) {
     if (!pin) return ESP_ERR_INVALID_ARG;
-    strncpy(s_default_pin, pin, sizeof(s_default_pin)-1);
-    s_default_pin[sizeof(s_default_pin)-1] = '\0';
+    safe_copy_str(s_default_pin, sizeof(s_default_pin), pin);
     return ESP_OK;
 }
 
 esp_err_t bt_mock_get_default_pin(char* pin, size_t size) {
     if (!pin) return ESP_ERR_INVALID_ARG;
     if (size <= strlen(s_default_pin)) return ESP_ERR_INVALID_SIZE;
-    strncpy(pin, s_default_pin, size-1);
-    pin[size-1] = '\0';
+    safe_copy_str(pin, size, s_default_pin);
     return ESP_OK;
 }
 
@@ -499,8 +504,7 @@ esp_err_t bt_mock_unpair_device(const char* addr) {
     if (!addr) return ESP_ERR_INVALID_ARG;
 
     char normalized_addr[18];
-    strncpy(normalized_addr, addr, sizeof(normalized_addr)-1);
-    normalized_addr[sizeof(normalized_addr)-1] = '\0';
+    safe_copy_str(normalized_addr, sizeof(normalized_addr), addr);
     for (int i = 0; normalized_addr[i]; i++) {
         if (normalized_addr[i] >= 'a' && normalized_addr[i] <= 'f') {
             normalized_addr[i] = normalized_addr[i] - 'a' + 'A';
@@ -511,14 +515,14 @@ esp_err_t bt_mock_unpair_device(const char* addr) {
     int i = 0;
     while (i < mock_state.device_count) {
         char device_addr[18];
-        sprintf(device_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
-                mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
-                mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
-                mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+        safe_snprintf(device_addr, sizeof(device_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                   mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
+                   mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                   mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
 
         if (strcmp(device_addr, normalized_addr) == 0) {
             for (int j = i; j < mock_state.device_count - 1; j++) {
-                memcpy(&mock_state.devices[j], &mock_state.devices[j+1], sizeof(bt_device_t));
+                safe_memcpy(&mock_state.devices[j], sizeof(mock_state.devices[j]), &mock_state.devices[j+1], sizeof(bt_device_t));
             }
             mock_state.device_count--;
             found_any = true;
@@ -560,10 +564,10 @@ void bt_mock_print_device_list(void)
     ESP_LOGI(TAG, "Current device count: %d", mock_state.device_count);
     for (int i = 0; i < mock_state.device_count; i++) {
         char remaining_addr[18];
-        sprintf(remaining_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
-                mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
-                mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
-                mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
+        safe_snprintf(remaining_addr, sizeof(remaining_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                   mock_state.devices[i].addr[0], mock_state.devices[i].addr[1], 
+                   mock_state.devices[i].addr[2], mock_state.devices[i].addr[3],
+                   mock_state.devices[i].addr[4], mock_state.devices[i].addr[5]);
         ESP_LOGI(TAG, "Remaining device %d: %s, paired: %d", 
                 i, remaining_addr, mock_state.devices[i].paired);
     }
@@ -573,8 +577,7 @@ esp_err_t bt_mock_get_connected_addr(char* buf, size_t len)
 {
     if (!buf || len == 0) return ESP_ERR_INVALID_ARG;
     if (!mock_state.is_connected) return ESP_ERR_NOT_FOUND;
-    strncpy(buf, mock_state.connected_addr, len - 1);
-    buf[len - 1] = '\0';
+    safe_copy_str(buf, len, mock_state.connected_addr);
 #ifdef DIAG_LOG
     ESP_LOGI(TAG, "DIAG: bt_mock_get_connected_addr returning %s", mock_state.connected_addr);
 #endif

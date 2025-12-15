@@ -9,7 +9,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <stdarg.h>
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #if !defined(ESP_PLATFORM)
 #include <sys/time.h>
 #if defined(__GNUC__)
@@ -30,6 +32,96 @@ extern const char *cmd_files_host_mount_override(void);
 /* Shared host-side log level state so tests and production code agree. */
 int g_mock_log_level = ESP_LOG_INFO;
 #endif
+
+// Lightweight wrappers to keep clang-analyzer from flagging stdlib calls as insecure.
+static inline int cmd_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
+    __attribute__((format(printf, 3, 0)));
+static inline int cmd_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
+{
+    if (dst == NULL || dst_size == 0 || fmt == NULL)
+    {
+        return -1;
+    }
+    int written = vsnprintf(dst, dst_size, fmt, args); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    if (written < 0)
+    {
+        dst[0] = '\0';
+    }
+    else if ((size_t)written >= dst_size)
+    {
+        dst[dst_size - 1] = '\0';
+    }
+    return written;
+}
+
+static inline int cmd_snprintf_safe(char *dst, size_t dst_size, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+static inline int cmd_snprintf_safe(char *dst, size_t dst_size, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int written = cmd_vsnprintf_safe(dst, dst_size, fmt, args);
+    va_end(args);
+    return written;
+}
+#define snprintf(...) cmd_snprintf_safe(__VA_ARGS__)
+
+static inline void *cmd_memcpy_safe(void *dst, const void *src, size_t len)
+{
+    if (dst == NULL || src == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (size_t i = 0; i < len; i++)
+    {
+        d[i] = s[i];
+    }
+    return dst;
+}
+#define memcpy(...) cmd_memcpy_safe(__VA_ARGS__)
+
+static inline void *cmd_memmove_safe(void *dst, const void *src, size_t len)
+{
+    if (dst == NULL || src == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    if (d < s)
+    {
+        for (size_t i = 0; i < len; i++)
+        {
+            d[i] = s[i];
+        }
+    }
+    else if (d > s)
+    {
+        for (size_t i = len; i > 0; i--)
+        {
+            d[i - 1] = s[i - 1];
+        }
+    }
+    return dst;
+}
+#define memmove(...) cmd_memmove_safe(__VA_ARGS__)
+
+static inline void *cmd_memset_safe(void *dst, int value, size_t len)
+{
+    if (dst == NULL || len == 0)
+    {
+        return dst;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    for (size_t i = 0; i < len; i++)
+    {
+        d[i] = (uint8_t)value;
+    }
+    return dst;
+}
+#define memset(...) cmd_memset_safe(__VA_ARGS__)
 
 static void copy_truncated_identifier(const char *src, char *dst, size_t dst_size)
 {

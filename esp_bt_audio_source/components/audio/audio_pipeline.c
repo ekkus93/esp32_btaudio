@@ -14,6 +14,43 @@
 
 static const char *TAG = "AUDIO_PIPELINE";
 
+/* Local bounded helpers to avoid analyzer warnings. */
+static void pipeline_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
+    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
+        return;
+    }
+    size_t to_copy = len;
+    if (to_copy > dst_size) {
+        to_copy = dst_size;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (size_t i = 0; i < to_copy; i++) {
+        d[i] = s[i];
+    }
+}
+
+static void pipeline_memmove(void *dst, size_t dst_size, const void *src, size_t len) {
+    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
+        return;
+    }
+    size_t to_move = len;
+    if (to_move > dst_size) {
+        to_move = dst_size;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    if (d < s) {
+        for (size_t i = 0; i < to_move; i++) {
+            d[i] = s[i];
+        }
+    } else if (d > s) {
+        for (size_t i = to_move; i > 0; i--) {
+            d[i - 1] = s[i - 1];
+        }
+    }
+}
+
 // Global buffer pool
 static audio_buffer_pool_t *g_buffer_pool = NULL;
 
@@ -289,9 +326,13 @@ esp_err_t audio_pipeline_process(audio_pipeline_t *pipeline,
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Copy input to output first
-    memcpy(output->data, input->data, input->length);
-    output->length = input->length;
+    // Copy input to output first (bounded to output buffer size)
+    size_t to_copy = input->length;
+    if (to_copy > output->size) {
+        to_copy = output->size;
+    }
+    pipeline_memcpy(output->data, output->size, input->data, to_copy);
+    output->length = to_copy;
     
     // Process stages
     int16_t *samples = (int16_t*)output->data;
@@ -388,7 +429,7 @@ esp_err_t audio_buffer_write(audio_buffer_t* buffer, void* data, size_t size) {
         return ESP_ERR_INVALID_SIZE;
     }
     
-    memcpy((uint8_t*)buffer->data + buffer->length, data, size);
+    pipeline_memcpy((uint8_t*)buffer->data + buffer->length, buffer->size - buffer->length, data, size);
     buffer->length += size;
     ESP_LOGD(TAG, "Written %zu bytes to buffer, now contains %zu bytes", 
              size, buffer->length);
@@ -410,12 +451,12 @@ esp_err_t audio_buffer_read(audio_buffer_t* buffer, void* data, size_t size) {
     }
     
     // Copy data to the output buffer
-    memcpy(data, buffer->data, size);
+    pipeline_memcpy(data, size, buffer->data, size);
     ESP_LOGD(TAG, "Read %zu bytes from buffer", size);
     
     // Move remaining data to the beginning of the buffer
     if (size < buffer->length) {
-        memmove(buffer->data, (uint8_t*)buffer->data + size, buffer->length - size);
+        pipeline_memmove(buffer->data, buffer->size, (uint8_t*)buffer->data + size, buffer->length - size);
     }
     
     buffer->length -= size;

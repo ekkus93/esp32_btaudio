@@ -3,7 +3,8 @@ set(priv_requires
     nvs_flash
     bt
     bluetooth
-    command_interface)
+    command_interface
+    util_safe)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND priv_requires bt_stack_stub)

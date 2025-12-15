@@ -3,7 +3,8 @@ set(main_requires
     nvs_flash
     nvs_storage
     esp_ringbuf
-    driver)
+    driver
+    util_safe)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND main_requires bt_stack_stub)

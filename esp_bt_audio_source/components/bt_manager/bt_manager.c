@@ -2,10 +2,13 @@
 #include "bt_api.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
+#include "util_safe.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#pragma message("COMPILING bt_manager.c")
+#include <stdarg.h>
+#include <ctype.h>
+#include "esp_rom_sys.h"
 
 // Define this for ESP32 builds
 #ifdef ESP_PLATFORM
@@ -60,6 +63,13 @@ typedef struct {
     uint32_t passkey;
 } bt_pairing_pending_t;
 
+#define safe_vsnprintf util_safe_vsnprintf
+#define safe_snprintf util_safe_snprintf
+#define safe_copy_str util_safe_copy_str
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
+#define parse_mac_bytes util_parse_mac
+
 static bt_pairing_pending_t s_pair_pending = {0};
 
 #if CONFIG_BT_MOCK_TESTING
@@ -80,14 +90,13 @@ static void bt_pairing_format_mac(const esp_bd_addr_t bda, char* out, size_t out
     if (!out || out_len == 0) {
         return;
     }
-    snprintf(out, out_len, "%02X:%02X:%02X:%02X:%02X:%02X",
-             bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
-    out[out_len - 1] = '\0';
+    safe_snprintf(out, out_len, "%02X:%02X:%02X:%02X:%02X:%02X",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
 }
 
 static void bt_pairing_set_pending_addr(const esp_bd_addr_t bda)
 {
-    memcpy(s_pair_pending.bda, bda, sizeof(esp_bd_addr_t));
+    safe_memcpy(s_pair_pending.bda, sizeof(s_pair_pending.bda), bda, sizeof(esp_bd_addr_t));
     bt_pairing_format_mac(bda, s_pair_pending.mac, sizeof(s_pair_pending.mac));
 }
 
@@ -100,7 +109,7 @@ static void bt_pairing_clear_pending_flags(bool clear_pin, bool clear_ssp)
         s_pair_pending.ssp_pending = false;
     }
     if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
-        memset(s_pair_pending.bda, 0, sizeof(s_pair_pending.bda));
+        safe_memset(s_pair_pending.bda, 0, sizeof(s_pair_pending.bda));
         s_pair_pending.mac[0] = '\0';
         s_pair_pending.passkey = 0;
     }
@@ -108,20 +117,7 @@ static void bt_pairing_clear_pending_flags(bool clear_pin, bool clear_ssp)
 
 static bool bt_pairing_parse_mac_string(const char* mac, esp_bd_addr_t out)
 {
-    if (!mac || !out) {
-        return false;
-    }
-    unsigned int b0, b1, b2, b3, b4, b5;
-    if (sscanf(mac, "%02x:%02x:%02x:%02x:%02x:%02x", &b0, &b1, &b2, &b3, &b4, &b5) != 6) {
-        return false;
-    }
-    out[0] = (uint8_t)b0;
-    out[1] = (uint8_t)b1;
-    out[2] = (uint8_t)b2;
-    out[3] = (uint8_t)b3;
-    out[4] = (uint8_t)b4;
-    out[5] = (uint8_t)b5;
-    return true;
+    return parse_mac_bytes(mac, out);
 }
 
 static bool bt_pairing_addr_is_zero(const esp_bd_addr_t addr)
@@ -259,13 +255,13 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     }
     
     // Store configuration
-    strncpy(bt_ctx.device_name, config->device_name, sizeof(bt_ctx.device_name) - 1);
+    safe_copy_str(bt_ctx.device_name, sizeof(bt_ctx.device_name), config->device_name);
     bt_ctx.connected_callback = config->connected_cb;
     bt_ctx.disconnected_callback = config->disconnected_cb;
     
     // Initialize structures
-    memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
-    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    safe_memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
+    safe_memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
     
 #ifdef ESP_PLATFORM
     // Initialize NVS
@@ -351,8 +347,12 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
                 (void)name;
                 if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
                     int idx = bt_ctx.paired_devices.count;
-                    strncpy(bt_ctx.paired_devices.devices[idx].mac, mac, sizeof(bt_ctx.paired_devices.devices[idx].mac)-1);
-                    if (name[0]) strncpy(bt_ctx.paired_devices.devices[idx].name, name, sizeof(bt_ctx.paired_devices.devices[idx].name)-1);
+                    safe_copy_str(bt_ctx.paired_devices.devices[idx].mac,
+                                  sizeof(bt_ctx.paired_devices.devices[idx].mac), mac);
+                    if (name[0]) {
+                        safe_copy_str(bt_ctx.paired_devices.devices[idx].name,
+                                      sizeof(bt_ctx.paired_devices.devices[idx].name), name);
+                    }
                     bt_ctx.paired_devices.count++;
                 }
             }
@@ -420,7 +420,7 @@ int bt_manager_is_connected(void) {
     }
     
     // Clear previous discovered devices
-    memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
+    safe_memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
     
 #ifdef ESP_PLATFORM
     // Start discovery
@@ -498,8 +498,7 @@ int bt_manager_is_connected(void) {
 #ifdef ESP_PLATFORM
     // Convert MAC string to address
     esp_bd_addr_t bda;
-    if (sscanf(mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
-               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+    if (!parse_mac_bytes(mac, bda)) {
         printf("TRACE: bt_connect invalid MAC format\n");
         fflush(stdout);
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
@@ -515,7 +514,7 @@ int bt_manager_is_connected(void) {
     }
     
     ESP_LOGI(TAG, "Connecting to device: %s", mac);
-    strncpy(bt_ctx.connected_mac, mac, sizeof(bt_ctx.connected_mac) - 1);
+    safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
 #endif
     printf("TRACE: bt_connect success\n");
     fflush(stdout);
@@ -602,8 +601,7 @@ bt_err_t bt_disconnect(void) {
     
     // Convert MAC string to address
     esp_bd_addr_t bda;
-    if (sscanf(bt_ctx.connected_mac, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", 
-               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != 6) {
+        if (!parse_mac_bytes(bt_ctx.connected_mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC format in stored address: %s", bt_ctx.connected_mac);
 #if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
         ESP_LOGE(TAG, "DIAG: mgr_bt_disconnect aborting due to invalid MAC string");
@@ -1005,7 +1003,7 @@ exit:
 #endif
     }
 
-    memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    safe_memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
 
 #ifdef UNIT_TEST
     bt_manager_test_record_unpair_all_call(cleared_before, removed_count);
@@ -1031,7 +1029,7 @@ exit:
     if (pin_len > ESP_BT_PIN_CODE_LEN) {
         pin_len = ESP_BT_PIN_CODE_LEN;
     }
-    memcpy(pin_code, pin, pin_len);
+    safe_memcpy(pin_code, pin_len, pin, pin_len);
     esp_bt_pin_type_t pin_type = (pin_len == 16) ? ESP_BT_PIN_TYPE_VARIABLE : ESP_BT_PIN_TYPE_FIXED;
     
     esp_bt_gap_set_pin(pin_type, pin_len, pin_code);
@@ -1047,12 +1045,12 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
         return false;
     }
     if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
-        memset(info, 0, sizeof(*info));
+        safe_memset(info, 0, sizeof(*info));
         return false;
     }
     info->pin_request_pending = s_pair_pending.pin_pending;
     info->ssp_confirm_pending = s_pair_pending.ssp_pending;
-    strncpy(info->mac, s_pair_pending.mac, sizeof(info->mac) - 1);
+    safe_copy_str(info->mac, sizeof(info->mac), s_pair_pending.mac);
     info->mac[sizeof(info->mac) - 1] = '\0';
     info->passkey = s_pair_pending.passkey;
     return true;
@@ -1074,7 +1072,7 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
             return ESP_ERR_INVALID_ARG;
         }
     } else if (s_pair_pending.ssp_pending) {
-        memcpy(target, s_pair_pending.bda, sizeof(target));
+        safe_memcpy(target, sizeof(target), s_pair_pending.bda, sizeof(target));
     } else {
         return ESP_ERR_INVALID_STATE;
     }
@@ -1111,7 +1109,7 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
         bt_pairing_format_mac(target, formatted_mac, sizeof(formatted_mac));
         mac_to_emit = formatted_mac;
     } else if (s_pair_pending.pin_pending) {
-        memcpy(target, s_pair_pending.bda, sizeof(target));
+        safe_memcpy(target, sizeof(target), s_pair_pending.bda, sizeof(target));
         mac_to_emit = s_pair_pending.mac;
     } else {
         return ESP_ERR_INVALID_STATE;
@@ -1122,7 +1120,7 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
     }
 
     char confirm_payload[64];
-    snprintf(confirm_payload, sizeof(confirm_payload), "%s,%s", mac_to_emit, pin);
+    safe_snprintf(confirm_payload, sizeof(confirm_payload), "%s,%s", mac_to_emit, pin);
     cmd_send_event_pair("CONFIRM", confirm_payload);
 
     esp_err_t mock_err = bt_mock_send_pin(pin);
@@ -1138,7 +1136,7 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
             return ESP_ERR_INVALID_ARG;
         }
     } else if (s_pair_pending.pin_pending) {
-        memcpy(target, s_pair_pending.bda, sizeof(target));
+        safe_memcpy(target, sizeof(target), s_pair_pending.bda, sizeof(target));
     } else {
         return ESP_ERR_INVALID_STATE;
     }
@@ -1148,7 +1146,7 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
     if (pin_len > ESP_BT_PIN_CODE_LEN) {
         pin_len = ESP_BT_PIN_CODE_LEN;
     }
-    memcpy(pin_code, pin, pin_len);
+    safe_memcpy(pin_code, pin_len, pin, pin_len);
 
     esp_err_t err = esp_bt_gap_pin_reply(target, true, (uint8_t)pin_len, pin_code);
     if (err == ESP_OK) {
@@ -1304,19 +1302,19 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             int8_t rssi = 0;
             
             // Get device address
-            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                   param->disc_res.bda[0], param->disc_res.bda[1], param->disc_res.bda[2],
-                   param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5]);
+                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                         param->disc_res.bda[0], param->disc_res.bda[1], param->disc_res.bda[2],
+                         param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5]);
             
             // Get device name
             for (int i = 0; i < param->disc_res.num_prop; i++) {
                 if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_BDNAME) {
-                    memcpy(name, param->disc_res.prop[i].val, param->disc_res.prop[i].len);
-                    name[param->disc_res.prop[i].len] = '\0';
+                    safe_memcpy(name, sizeof(name), param->disc_res.prop[i].val, param->disc_res.prop[i].len);
+                    name[sizeof(name) - 1] = '\0';
                 } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_COD) {
-                    memcpy(&cod, param->disc_res.prop[i].val, sizeof(uint32_t));
+                    safe_memcpy(&cod, sizeof(cod), param->disc_res.prop[i].val, sizeof(uint32_t));
                 } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_RSSI) {
-                    memcpy(&rssi, param->disc_res.prop[i].val, sizeof(int8_t));
+                    safe_memcpy(&rssi, sizeof(rssi), param->disc_res.prop[i].val, sizeof(int8_t));
                 }
             }
             
@@ -1325,10 +1323,10 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             // Add to discovered devices list
             if (bt_ctx.discovered_devices.count < 20) {
                 int idx = bt_ctx.discovered_devices.count;
-                strncpy(bt_ctx.discovered_devices.devices[idx].mac, bda_str, 
-                        sizeof(bt_ctx.discovered_devices.devices[idx].mac) - 1);
-                strncpy(bt_ctx.discovered_devices.devices[idx].name, name, 
-                        sizeof(bt_ctx.discovered_devices.devices[idx].name) - 1);
+                safe_copy_str(bt_ctx.discovered_devices.devices[idx].mac,
+                          sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
+                safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
+                          sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
                 bt_ctx.discovered_devices.devices[idx].rssi = rssi;
                 bt_ctx.discovered_devices.count++;
             }
@@ -1349,9 +1347,9 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
         case ESP_BT_GAP_PIN_REQ_EVT: {
             // Remote device is requesting a PIN code (legacy pairing)
             char bda_str[18];
-            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                   param->pin_req.bda[0], param->pin_req.bda[1], param->pin_req.bda[2],
-                   param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
+                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                         param->pin_req.bda[0], param->pin_req.bda[1], param->pin_req.bda[2],
+                         param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
 
             ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
             bt_pairing_prepare_pending_for_event(param->pin_req.bda);
@@ -1365,13 +1363,13 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
         case ESP_BT_GAP_CFM_REQ_EVT: {
             // SSP confirmation request (numeric comparison)
             char bda_str[18];
-            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                   param->cfm_req.bda[0], param->cfm_req.bda[1], param->cfm_req.bda[2],
-                   param->cfm_req.bda[3], param->cfm_req.bda[4], param->cfm_req.bda[5]);
+                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                         param->cfm_req.bda[0], param->cfm_req.bda[1], param->cfm_req.bda[2],
+                         param->cfm_req.bda[3], param->cfm_req.bda[4], param->cfm_req.bda[5]);
 
             // num_val contains the numeric comparison value (32-bit)
             char data[64];
-            snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
+            safe_snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
             ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
             bt_pairing_prepare_pending_for_event(param->cfm_req.bda);
             s_pair_pending.ssp_pending = true;
@@ -1385,9 +1383,9 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             // Authentication complete (pairing result)
             char bda_str[18] = {0};
             /* bda is an array member (not a pointer) - format directly */
-            sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                   param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
-                   param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
+                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                         param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
+                         param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
             bt_pairing_prepare_pending_for_event(param->auth_cmpl.bda);
             if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
                 ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
@@ -1397,7 +1395,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                 char dev_name[32] = {0};
                 for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
                     if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
-                        strncpy(dev_name, bt_ctx.discovered_devices.devices[i].name, sizeof(dev_name)-1);
+                        safe_copy_str(dev_name, sizeof(dev_name), bt_ctx.discovered_devices.devices[i].name);
                         break;
                     }
                 }
@@ -1422,15 +1420,15 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
             // Connection state changed
             if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
                 char bda_str[18];
-                sprintf(bda_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                       param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
-                       param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
-                       param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
+                safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                              param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
+                              param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
+                              param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
                 
                 ESP_LOGI(TAG, "Connected to device: %s", bda_str);
                 
                 bt_ctx.connected = true;
-                strncpy(bt_ctx.connected_mac, bda_str, sizeof(bt_ctx.connected_mac) - 1);
+                safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
                 
                 // Get device name (simplified, actual implementation would get name from bt_ctx.discovered_devices)
                 if (bt_ctx.connected_callback != NULL) {
@@ -1491,7 +1489,7 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
     }
 
     // Fallback: provide silence if no data available
-    memset(buf, 0, len);
+    safe_memset(buf, 0, (size_t)len);
     return len;
 }
 #endif
@@ -1505,7 +1503,7 @@ void bt_manager_mock_device_found(const bt_device_t* device) {
     
     int idx = bt_ctx.discovered_devices.count;
     if (idx < 20) {
-        memcpy(&bt_ctx.discovered_devices.devices[idx], device, sizeof(bt_device_t));
+        safe_memcpy(&bt_ctx.discovered_devices.devices[idx], sizeof(bt_ctx.discovered_devices.devices[idx]), device, sizeof(bt_device_t));
         bt_ctx.discovered_devices.count++;
         
         // Log the device found
@@ -1528,8 +1526,8 @@ void bt_manager_mock_connection_established(const char* mac, const char* name) {
     }
     
     bt_ctx.connected = true;
-    strncpy(bt_ctx.connected_mac, mac, sizeof(bt_ctx.connected_mac) - 1);
-    strncpy(bt_ctx.connected_name, name, sizeof(bt_ctx.connected_name) - 1);
+    safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
+    safe_copy_str(bt_ctx.connected_name, sizeof(bt_ctx.connected_name), name);
     
     // Log the connection
     printf("Mock BT: Connected to device: %s, name: %s\n", mac, name);
@@ -1600,13 +1598,13 @@ void bt_manager_mock_pairing_complete(const char* mac, bool success) {
         // Add device to paired devices
         int idx = bt_ctx.paired_devices.count;
         if (idx < 20) {
-            strncpy(bt_ctx.paired_devices.devices[idx].mac, mac, 
-                    sizeof(bt_ctx.paired_devices.devices[idx].mac) - 1);
+                safe_copy_str(bt_ctx.paired_devices.devices[idx].mac,
+                      sizeof(bt_ctx.paired_devices.devices[idx].mac), mac);
             
             // In a real scenario, we would have the name, here we just set a placeholder
-            snprintf(bt_ctx.paired_devices.devices[idx].name, 
-                     sizeof(bt_ctx.paired_devices.devices[idx].name) - 1, 
-                     "Device_%s", mac);
+                safe_snprintf(bt_ctx.paired_devices.devices[idx].name,
+                              sizeof(bt_ctx.paired_devices.devices[idx].name),
+                              "Device_%s", mac);
             
             bt_ctx.paired_devices.count++;
         }
@@ -1637,7 +1635,7 @@ __attribute__((weak)) int bt_manager_forced_pair_failure(void) { return 0; }
 #endif
 
 #ifdef ESP_PLATFORM
-#pragma message("ESP_PLATFORM is defined")
+/* ESP-IDF build */
 #else
-#pragma message("ESP_PLATFORM is NOT defined")
+/* Host build */
 #endif

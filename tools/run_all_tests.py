@@ -411,6 +411,7 @@ def main(argv: list[str] | None = None):
     args = p.parse_args(argv)
 
     report = {"host": None, "devices": {}, "aggregate": None}
+    overall_failed = False
 
     cleanup_previous_artifacts(ROOT, remove_host=not args.no_host, remove_device=not args.no_device)
 
@@ -427,6 +428,12 @@ def main(argv: list[str] | None = None):
         try:
             if isinstance(report["host"], dict) and "host" in report["host"] and isinstance(report["host"]["host"], dict):
                 report["host"] = report["host"]["host"]
+        except Exception:
+            pass
+        # Treat host test failures as critical
+        try:
+            if report["host"].get("ctest_rc") not in (None, 0):
+                overall_failed = True
         except Exception:
             pass
     else:
@@ -516,6 +523,12 @@ def main(argv: list[str] | None = None):
                 # best-effort: don't fail the whole run if parsing fails
                 report["devices"][s.name]["flash_time_seconds"] = 0.0
                 report["devices"][s.name]["test_run_seconds"] = report["devices"][s.name]["duration_seconds"]
+            # Flag any non-zero runner return as critical
+            try:
+                if report["devices"][s.name].get("rc") not in (None, 0):
+                    overall_failed = True
+            except Exception:
+                pass
     else:
         print("Skipping device suites (--no-device)")
 
@@ -639,6 +652,7 @@ def main(argv: list[str] | None = None):
             else:
                 # no canonical capture found for this suite
                 print(f"Suite {sname}: no canonical log found to extract test counts; check {dev.get('output_file')}")
+                overall_failed = True
         # Fallback: if any device still has zero counts, try deriving counts from
         # the per_test list by counting tests that reference that suite's file.
         try:
@@ -709,10 +723,10 @@ def main(argv: list[str] | None = None):
             for sname, dev in devices.items():
                 tests = dev.get("tests_total") or dev.get("tests") or 0
                 passed = dev.get("tests_passed")
-                failed = dev.get("tests_failed")
+                failed_count = dev.get("tests_failed")
                 ignored = dev.get("tests_ignored")
                 # if numeric fields missing, try to derive from aggregated 'aggregate.by_file'
-                if passed is None or failed is None:
+                if passed is None or failed_count is None:
                     # attempt to find entry in report['aggregate']['by_file']
                     try:
                         by_file = report.get("aggregate", {}).get("by_file", {})
@@ -727,41 +741,49 @@ def main(argv: list[str] | None = None):
                             if entries:
                                 vals = entries[-1]
                                 tests = vals.get("tests", tests)
-                                failed = vals.get("failures", failed if failed is not None else 0)
+                                failed_count = vals.get("failures", failed_count if failed_count is not None else 0)
                                 ignored = vals.get("ignored", ignored if ignored is not None else 0)
                                 passed = tests - failed - ignored
                     except Exception:
                         pass
 
                 # final fallback: count tokens in the output_file
-                if (passed is None or failed is None) and dev.get("output_file"):
+                if (passed is None or failed_count is None) and dev.get("output_file"):
                     try:
                         p = Path(dev.get("output_file"))
                         counted = count_unity_results(p)
                         tests = counted.get("tests", tests)
-                        failed = counted.get("failures", failed if failed is not None else 0)
+                        failed_count = counted.get("failures", failed_count if failed_count is not None else 0)
                         ignored = counted.get("ignored", ignored if ignored is not None else 0)
                         passed = tests - failed - ignored
                     except Exception:
                         pass
 
                 if passed is None:
-                    passed = tests - (failed or 0) - (ignored or 0)
-                if failed is None:
-                    failed = tests - passed - (ignored or 0)
+                    passed = tests - (failed_count or 0) - (ignored or 0)
+                if failed_count is None:
+                    failed_count = tests - passed - (ignored or 0)
                 if ignored is None:
                     ignored = 0
 
                 total_tests += int(tests or 0)
-                total_failed += int(failed or 0)
+                total_failed += int(failed_count or 0)
                 total_ignored += int(ignored or 0)
-                print(f"{sname}: {int(tests)} total, {int(passed)} passed, {int(failed)} failed, {int(ignored)} ignored")
+                if int(tests) == 0:
+                    overall_failed = True
+                    print(f"{sname}: {int(tests)} total (CRITICAL: zero tests), {int(passed)} passed, {int(failed_count)} failed, {int(ignored)} ignored")
+                else:
+                    print(f"{sname}: {int(tests)} total, {int(passed)} passed, {int(failed_count)} failed, {int(ignored)} ignored")
 
         print(f"Aggregate device totals: {total_tests} total, {total_tests - total_failed - total_ignored} passed, {total_failed} failed, {total_ignored} ignored")
     except Exception as _:
         # don't fail the script if pretty printing fails
         pass
     print("Done.")
+    if overall_failed:
+        print("One or more suites failed to build/run or reported zero tests. Exiting with failure.")
+        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == '__main__':

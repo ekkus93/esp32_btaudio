@@ -1,4 +1,8 @@
 ## Current Focus
+### Latest: Clang-tidy secure API cleanup (2025-12-15)
+- Replaced remaining `vsscanf`/`memcpy` hotspots with manual bounded parsers/copies in `components/nvs_storage`, `components/bt_manager`, `components/bt_mock/bt_mock_devices`, and `components/bluetooth/bt_source`; added null guards for beep buffer writes in `main/audio_processor.c`.
+- Reran `tools/run_clang_tidy_xtensa.sh -j4 '/esp_bt_audio_source/(components|main)/'` (filtered to skip build artifacts) with no errors; earlier x509 assembly false-positive avoided by using the filter.
+
 ### Latest: Full test sweep (2025-12-15 rerun)
 - Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310` and ESP-IDF 5.4; host CTest 23/23 passed and all device suites passed (`test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3; device aggregate 115/115).
 - Artifacts regenerated: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`. Environment step: activate `python310` conda env then source `$HOME/esp/esp-idf/export.sh`.

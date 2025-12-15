@@ -1,11 +1,15 @@
-#include <stdio.h>
-#include <string.h>
+#include <ctype.h>
 #include <inttypes.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "bt_source.h"
 
 static const char *TAG = "BT_SOURCE";
+static const char DEFAULT_PIN[] = "1234";
 
 // Define missing error constant if needed
 #ifndef ESP_ERR_INSUFFICIENT_RESOURCES
@@ -19,6 +23,40 @@ static bool is_scanning = false;
 static bt_streaming_state_t streaming_state = BT_STREAMING_STATE_STOPPED;
 static bt_pairing_state_t pairing_state = BT_PAIRING_STATE_IDLE;
 static bt_pairing_method_t pairing_method = BT_PAIRING_METHOD_NONE;
+
+static bool parse_bd_addr(const char* addr, esp_bd_addr_t bda) {
+    if (!addr || !bda) {
+        return false;
+    }
+
+    const char* p = addr;
+    for (int i = 0; i < ESP_BD_ADDR_LEN; ++i) {
+        if (!isxdigit((unsigned char)p[0]) || !isxdigit((unsigned char)p[1])) {
+            return false;
+        }
+
+        char byte_str[3] = { p[0], p[1], '\0' };
+        char* end = NULL;
+        unsigned long value = strtoul(byte_str, &end, 16);
+        if (end != byte_str + 2 || value > UINT8_MAX) {
+            return false;
+        }
+
+        bda[i] = (uint8_t)value;
+        p += 2;
+
+        if (i < ESP_BD_ADDR_LEN - 1) {
+            if (*p != ':') {
+                return false;
+            }
+            ++p;
+        } else if (*p != '\0') {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 // Implementation of bt_init - simple version for now
 #ifndef BT_TEST_APP
@@ -95,11 +133,13 @@ esp_err_t bt_add_paired_device(bt_device_t* device) {
 
 // Get default PIN for pairing (simple implementation)
 esp_err_t bt_get_default_pin(char* pin, size_t size) {
-    if (!pin || size < 5) { // Need at least 5 bytes for "1234\0"
+    if (!pin || size < sizeof(DEFAULT_PIN)) { // Need at least 5 bytes for "1234\0"
         return ESP_ERR_INSUFFICIENT_RESOURCES;
     }
-    
-    strcpy(pin, "1234"); // Default PIN
+
+    for (size_t i = 0; i < sizeof(DEFAULT_PIN); ++i) {
+        pin[i] = DEFAULT_PIN[i];
+    }
     return ESP_OK;
 }
 
@@ -148,8 +188,7 @@ esp_err_t bt_start_pairing(const char* addr) {
     
     // Convert address string to ESP format
     esp_bd_addr_t bda;
-    if (sscanf(addr, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
-               &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) != ESP_BD_ADDR_LEN) {
+    if (!parse_bd_addr(addr, bda)) {
         ESP_LOGE(TAG, "Invalid address format: %s", addr);
         return ESP_ERR_INVALID_ARG;
     }

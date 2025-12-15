@@ -13,6 +13,32 @@
 #include "bt_source.h"
 #include "audio_processor.h"
 
+/* Local bounded helpers with clang-tidy suppression. */
+static void safe_memset(void *dst, int value, size_t len) {
+    if (dst == NULL || len == 0) {
+        return;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    for (size_t i = 0; i < len; i++) {
+        d[i] = (uint8_t)value;
+    }
+}
+
+static void safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
+    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
+        return;
+    }
+    size_t to_copy = len;
+    if (to_copy > dst_size) {
+        to_copy = dst_size;
+    }
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (size_t i = 0; i < to_copy; i++) {
+        d[i] = s[i];
+    }
+}
+
 static const char *TAG = "BT_STREAM_MGR";
 
 /* Audio stream configuration */
@@ -51,12 +77,12 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     /* If not streaming, return silence immediately */
     if (s_streaming_state != BT_STREAMING_STATE_STREAMING &&
         s_streaming_state != BT_STREAMING_STATE_PAUSED) {
-        memset(data, 0, len);
+        safe_memset(data, 0, (size_t)len);
         return len;
     }
 
     if (s_streaming_state == BT_STREAMING_STATE_PAUSED) {
-        memset(data, 0, len);
+        safe_memset(data, 0, (size_t)len);
         return len;
     }
 
@@ -66,11 +92,11 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     esp_err_t r = audio_processor_read(data, (size_t)len, &bytes_read);
     if (r != ESP_OK) {
         ESP_LOGW(TAG, "audio_processor_read error: %d", r);
-        memset(data, 0, len);
+        safe_memset(data, 0, (size_t)len);
         bytes_read = 0;
     } else if (bytes_read < (size_t)len) {
         /* Underflow — zero-fill remainder */
-        memset(data + bytes_read, 0, len - bytes_read);
+        safe_memset(data + bytes_read, 0, len - bytes_read);
         ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);
     }
 
@@ -259,7 +285,7 @@ esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
         return ESP_FAIL;
     }
     
-    memcpy(info, &s_streaming_info, sizeof(bt_streaming_info_t));
+    safe_memcpy(info, sizeof(*info), &s_streaming_info, sizeof(bt_streaming_info_t));
     return ESP_OK;
 }
 
@@ -267,7 +293,7 @@ void bt_streaming_manager_init(void)
 {
     /* Initialize streaming state */
     s_streaming_state = BT_STREAMING_STATE_STOPPED;
-    memset(&s_streaming_info, 0, sizeof(bt_streaming_info_t));
+    safe_memset(&s_streaming_info, 0, sizeof(bt_streaming_info_t));
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
     /* The audio_processor is responsible for I2S capture and buffering.
      * Ensure it is initialized elsewhere (for example: `main.c` auto-starts

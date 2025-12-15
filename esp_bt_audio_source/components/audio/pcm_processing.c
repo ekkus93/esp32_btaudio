@@ -6,13 +6,13 @@ static const char *TAG = "PCM_PROC";
 
 esp_err_t pcm_process_16bit(int16_t* buffer, size_t len) {
     if (!buffer) return ESP_ERR_INVALID_ARG;
-    ESP_LOGI(TAG, "Processing 16-bit PCM data, %d samples", len);
+    ESP_LOGI(TAG, "Processing 16-bit PCM data, %zu samples", len);
     return ESP_OK;
 }
 
 esp_err_t pcm_process_24bit(int32_t* buffer, size_t len) {
     if (!buffer) return ESP_ERR_INVALID_ARG;
-    ESP_LOGI(TAG, "Processing 24-bit PCM data, %d samples", len);
+    ESP_LOGI(TAG, "Processing 24-bit PCM data, %zu samples", len);
     return ESP_OK;
 }
 
