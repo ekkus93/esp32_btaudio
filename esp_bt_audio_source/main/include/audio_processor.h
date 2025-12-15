@@ -327,6 +327,7 @@ size_t audio_processor_test_get_beep_remaining_bytes(void);
  * where CONFIG_BT_MOCK_TESTING is defined. The value equals the number
  * of tag bytes enqueued (each tag is one byte per audio chunk). */
 size_t audio_processor_test_get_tag_used(void);
+void audio_source_tag_test_reset_buffer(void);
 #endif
 
 /* Diagnostic counter: number of times audio bytes were observed without a

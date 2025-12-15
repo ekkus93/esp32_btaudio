@@ -1,4 +1,10 @@
 ## Current Focus
+### Latest: TAG-MISS latch/drop (2025-12-20)
+- Implemented Option 1 for TAG-MISS mitigation: added a 500 ms one-shot mute window around `audio_source_tag_recover_desync` and expanded the per-recovery drop window to up to 16 beep/audio items to suppress repeated TAG-MISS spam.
+
+### Latest: Full test sweep (2025-12-20)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + IDF 5.4 env; results: host 22/22, device suites `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 29/29, `test_app3` 3/3 (aggregate device 114/114). Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
+
 ### Agent conduct note (2025-12-13)
 - Stay proactive and responsive: act quickly, avoid delays, and handle user requests without hesitation.
 - Be thorough, diligent, and clear; do not defer necessary steps when the user expects direct action.
@@ -8,6 +14,11 @@
 - Use the existing conda env `python310`; do not create or use new/other conda envs. Avoid the `.conda` env under the repo and clean it up if used accidentally.
 - 2025-12-13: Deleted `~/.espressif/python_env/idf5.4_py3.10_env` per user instruction. Only use the `python310` conda environment; do not recreate or touch ESP-IDF-managed venvs without explicit approval.
 - 2025-12-13 (user directive): One-time permission granted to update the `python310` conda environment to bring ESP-IDF/tooling deps up to date. Future updates to `python310` are forbidden unless explicitly requested; violating this will trigger user escalation ("If I catch you updating it again, I'll break all of your fingers").
+
+### Latest: TAG-MISS recovery mitigation (2025-12-15)
+- Added `audio_source_tag_recover_desync` to log TAG-MISS, clear tag/residual state, and drop a few queued audio/beep items to stop repeated warnings; wired into beep/audio/fallback drains.
+- Exposed `audio_source_tag_test_reset_buffer` in the public header for CONFIG_BT_MOCK_TESTING so host tests can simulate missing metadata.
+- Added host test `test_tag_miss_recovery_should_drop_stale_beep` to confirm recovery limits TAG-MISS to a single occurrence when tags are missing; built and ran `test_audio_tag_alignment` host binary successfully.
 
 ### Latest: Unity aggregator TEST_RUN_COMPLETE parse (2025-12-15)
 - Added parsing of `TEST_RUN_COMPLETE: <tests> <failures> <ignored>` footers in `tools/aggregate_unity.py` so device logs without standard Unity numeric lines still count accurately (fixes the earlier 112 vs 114 device total undercount).

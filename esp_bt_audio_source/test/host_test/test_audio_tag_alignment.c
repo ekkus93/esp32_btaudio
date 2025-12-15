@@ -63,9 +63,47 @@ void test_producer_consumer_tag_alignment_beep(void)
     TEST_ASSERT_EQUAL_size_t(0, tags_final);
 }
 
+void test_tag_miss_recovery_should_drop_stale_beep(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 80;
+    cfg.mute = false;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    audio_processor_test_reset_tag_miss_count();
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep(200));
+
+    /* Simulate lost metadata so the next dequeue observes a tag miss. */
+    audio_source_tag_test_reset_buffer();
+
+    uint8_t buf[2048];
+    size_t bytes_read = 0;
+    int loops = 0;
+    do {
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+        loops++;
+        if (loops > 32) break;
+    } while (bytes_read > 0);
+
+    /* Recovery should have drained stale items so only one TAG-MISS is counted. */
+    uint32_t miss = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_EQUAL_UINT32(1, miss);
+
+    /* Tag buffer should be empty after the recovery path runs. */
+    size_t tags_final = audio_processor_test_get_tag_used();
+    TEST_ASSERT_EQUAL_size_t(0, tags_final);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_producer_consumer_tag_alignment_beep);
+    RUN_TEST(test_tag_miss_recovery_should_drop_stale_beep);
     return UNITY_END();
 }

@@ -141,6 +141,7 @@ static uint16_t s_last_tag_id_pushed = 0;
 static uint16_t s_last_tag_id_taken = 0;
 static uint32_t s_tag_push_count = 0;
 static uint32_t s_tag_miss_count = 0;
+static TickType_t s_tag_recover_mute_until = 0;
 
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
 {
@@ -611,9 +612,10 @@ esp_err_t audio_processor_dump_tag_ringbuffer(size_t max_items, size_t *captured
     }
     xTaskResumeAll();
 
-    ESP_LOGI(TAG, "TAG-DUMP start available=%zu captured=%zu used_bytes=%zu free_bytes=%zu", available, captured, used_bytes, free_bytes);
+    /* Use WARN to surface the snapshot even if the module log level is raised. */
+    ESP_LOGW(TAG, "TAG-DUMP start available=%zu captured=%zu used_bytes=%zu free_bytes=%zu", available, captured, used_bytes, free_bytes);
     for (size_t i = 0; i < captured; ++i) {
-        ESP_LOGI(TAG, "TAG-DUMP item[%zu]: tag=%s id=%u", i, audio_source_tag_label((audio_source_tag_t)snapshot[i].tag), (unsigned)snapshot[i].counter);
+        ESP_LOGW(TAG, "TAG-DUMP item[%zu]: tag=%s id=%u", i, audio_source_tag_label((audio_source_tag_t)snapshot[i].tag), (unsigned)snapshot[i].counter);
     }
     if (available > captured) {
         ESP_LOGW(TAG, "TAG-DUMP truncated (captured %zu of %zu items)", captured, available);
@@ -746,6 +748,66 @@ static size_t s_wav_pending_bytes = 0;
 static bool s_wav_prev_force_synth = false;
 static bool s_wav_prev_valid = false;
 static portMUX_TYPE s_wav_lock = portMUX_INITIALIZER_UNLOCKED;
+
+/* Flush tag/audio queues after a TAG-MISS so subsequent reads do not
+ * spam warnings. Drops a small number of queued audio/beep items and
+ * clears residual caches to realign producers/consumers. */
+static void audio_source_tag_recover_desync(const char *path, bool drop_audio, bool drop_beep)
+{
+    TickType_t now = xTaskGetTickCount();
+    if (now < s_tag_recover_mute_until) {
+        return;
+    }
+
+    audio_source_tag_log_miss(path);
+    s_tag_recover_mute_until = now + pdMS_TO_TICKS(500);
+
+    audio_source_tag_reset_buffer();
+    s_audio_rb_residual_len = 0;
+    s_audio_rb_residual_pos = 0;
+    s_beep_rb_residual_len = 0;
+    s_beep_rb_residual_pos = 0;
+    s_beep_remaining_bytes = 0;
+
+    if (drop_beep && s_beep_buffer != NULL) {
+        size_t sz = 0;
+        void *ptr = NULL;
+        int cleared = 0;
+        const int max_clear = 16;
+        while (cleared < max_clear) {
+            ptr = xRingbufferReceiveUpTo(s_beep_buffer, &sz, 0, SIZE_MAX);
+            if (ptr == NULL || sz == 0) break;
+            vRingbufferReturnItem(s_beep_buffer, ptr);
+            cleared++;
+        }
+        if (cleared > 0) {
+            ESP_LOGW(TAG, "TAG-RECOVER: cleared %d beep items", cleared);
+        }
+    }
+
+    if (drop_audio && s_audio_buffer != NULL) {
+        size_t sz = 0;
+        void *ptr = NULL;
+        size_t max_chunk = xRingbufferGetMaxItemSize(s_audio_buffer);
+        if (max_chunk == 0U) {
+            max_chunk = audio_get_runtime_work_bytes();
+            if (max_chunk == 0U) {
+                max_chunk = 1024U;
+            }
+        }
+        int dropped = 0;
+        const int max_drop = 16;
+        while (dropped < max_drop) {
+            ptr = xRingbufferReceiveUpTo(s_audio_buffer, &sz, 0, max_chunk);
+            if (ptr == NULL || sz == 0) break;
+            vRingbufferReturnItem(s_audio_buffer, ptr);
+            dropped++;
+        }
+        if (dropped > 0) {
+            ESP_LOGW(TAG, "TAG-RECOVER: dropped %d audio items", dropped);
+        }
+    }
+}
 
 typedef struct {
     bool active;
@@ -2586,7 +2648,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
              * correlate tag/audio divergence. */
             uint16_t tag_id = 0;
             if (!audio_source_tag_take_with_id(NULL, &tag_id, 0)) {
-                audio_source_tag_log_miss("beep_rb");
+                audio_source_tag_recover_desync("beep_rb", false, true);
             }
             vRingbufferReturnItem(s_beep_buffer, itm);
 
@@ -2734,7 +2796,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
         uint16_t dequeued_id = 0;
         if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-            audio_source_tag_log_miss("fallback");
+            audio_source_tag_recover_desync("fallback", true, false);
         }
         (void)dequeued_tag;
         (void)dequeued_id;
@@ -2862,7 +2924,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
     uint16_t dequeued_id = 0;
     if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-        audio_source_tag_log_miss("audio_rb");
+        audio_source_tag_recover_desync("audio_rb", true, false);
     }
     (void)dequeued_tag;
     (void)dequeued_id;
@@ -2890,7 +2952,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
             uint16_t dequeued_id = 0;
             if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-                audio_source_tag_log_miss("audio_read_tail");
+                audio_source_tag_recover_desync("audio_read_tail", true, false);
             }
             (void)dequeued_tag;
             (void)dequeued_id;
