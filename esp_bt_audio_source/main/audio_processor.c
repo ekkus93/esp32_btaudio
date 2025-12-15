@@ -78,14 +78,14 @@ static volatile bool s_audio_diag_enabled = false; /* gate noisy diagnostics */
  * upsampling (8k->64k) while lowering memory pressure. */
 #define AUDIO_RESAMPLE_MAX_RATIO     8    // Reduced from 12 to 8 to save RAM
 #endif
-#define AUDIO_WORK_BUFFER_BYTES      (AUDIO_BLOCK_SIZE * 8 * AUDIO_RESAMPLE_MAX_RATIO)
+#define AUDIO_WORK_BUFFER_BYTES      ((size_t)AUDIO_BLOCK_SIZE * 8U * (size_t)AUDIO_RESAMPLE_MAX_RATIO)
 
 /* Dedicated small buffer for urgent beep audio so short tones can be
  * delivered even when the main pipeline is congested. Keep modest to
  * limit DRAM pressure. Reduce to 8 KiB by default to avoid DRAM
  * allocation failures in the Bluetooth stack (see runtime logs). */
 /* Slightly larger to give long beeps headroom without contention. */
-#define BEEP_BUFFER_SIZE (8 * 1024)
+#define BEEP_BUFFER_SIZE ((size_t)8U * 1024U)
 /* Prefill headroom before releasing a beep to the sink to avoid crackle
  * at start and give A2DP a buffer to pull from. */
 #define BEEP_PREFILL_MS 400
@@ -170,7 +170,7 @@ static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
  * you have PSRAM or different timing requirements. */
 #define I2S_DEFAULT_DMA_DESC_NUM 6U
 #define I2S_DEFAULT_DMA_FRAME_NUM 32U
-#define I2S_MAX_READ_BYTES (4 * 1024)
+#define I2S_MAX_READ_BYTES ((size_t)4U * 1024U)
 #define SYNTH_MIN_HEADROOM_BYTES  (AUDIO_WORK_BUFFER_BYTES)
 #define SYNTH_THROTTLE_DELAY_MS   2
 
@@ -3942,10 +3942,6 @@ static void i2s_reader_task(void *pvParameters)
                 int64_t t_end = esp_timer_get_time();
                 ESP_LOGD(TAG, "i2s_reader_task: multi-chunk read total=%zu took=%lld us", total_read, (long long)(t_end - t_start));
             }
-
-        const int FAILURE_THRESHOLD = 20;
-        const int FAILURE_LOG_THROTTLE = 200;
-        static int s_last_i2s_failure_log = -FAILURE_LOG_THROTTLE;
 
         (void)audio_processor_handle_idle_i2s_failures(wav_playback_is_active(), s_beep_fallback_active, s_beep_remaining_bytes);
         }

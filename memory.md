@@ -1,4 +1,11 @@
 ## Current Focus
+### Latest: clang-tidy lint (2025-12-15)
+- Installed clang-tidy via apt and generated `compile_commands.json` with `ninja -t compdb` in `esp_bt_audio_source/build`.
+- Ran clang-tidy (`checks=clang-analyzer-*,bugprone-*`) on `esp_bt_audio_source` main/components C files; warnings flagged implicit widening around `AUDIO_WORK_BUFFER_BYTES`/`BEEP_BUFFER_SIZE`, swappable-parameter warnings (`worker_diag_report`, `apply_volume`, `convert_audio_format`, `resample_audio`), narrowing conversions in `apply_volume`, and reserved-identifier/use warnings in `main` (`get_name_from_eir`).
+- No source changes applied yet; warnings need follow-up fixes.
+- 2025-12-15 follow-up: Updated buffer-size macros (`AUDIO_WORK_BUFFER_BYTES`, `BEEP_BUFFER_SIZE`, `I2S_MAX_READ_BYTES`) to compute in `size_t` to address implicit-widening reports. Subsequent clang-tidy invocation (clang 14) hit xtensa flag parse errors (`-mlongcalls`, `-fno-shrink-wrap`) and aborted; need clang-tidy with xtensa support or filtered flag set for full rerun. Pending: clean up remaining bugprone warnings (swappable params, narrowing conversions, reserved identifiers).
+### Latest: Full test sweep (2025-12-21)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `python310` + ESP-IDF 5.4 environment active; host CTest 23/23 passed. Device Unity suites all passed: `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (aggregate device 115/115). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### Latest: Idle I2S host test (2025-12-21)
 - Added host test `test_audio_processor_idle_i2s` plus helper `audio_processor_test_idle_i2s_failures` (CONFIG_BT_MOCK_TESTING) to verify the idle-failure keepalive re-enables synth only when no beep is pending; built target `test_audio_processor_idle_i2s` and ran `./test_audio_processor_idle_i2s` successfully (2/2 tests).
 ### Latest: Beep synth gating device test (2025-12-21)
