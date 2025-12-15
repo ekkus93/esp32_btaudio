@@ -1,6 +1,14 @@
 ## Current Focus
 ### Timestamp policy (2025-12-15T14:31:57-08:00)
 - When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
+### Full test sweep (2025-12-15T15:19:22-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + ESP-IDF 5.4. Host 24/24 passed; device suites all green: `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 14/14 (device aggregate 141/141). Artifacts regenerated: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
+### Full test sweep (2025-12-15T14:55:53-08:00)
+- Re-ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + ESP-IDF 5.4). Results: host 24/24; device `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 130/130). No missing/undetected tests were found in `tmp/declared_vs_observed_project.csv`.
+### Latest: test_app3 audio fixes (2025-12-15T15:15:05-08:00)
+- Fixed audio pipeline buffer pool test to assert the second release fails; first release now expected OK (`components/audio/test/test_audio_pipeline.c`).
+- Prevented sign-extension in PCM endian swap helpers by using unsigned intermediates (`components/audio/pcm_processing.c`).
+- `idf.py -C esp_bt_audio_source/test_app3 build` passes; `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app3` now reports Unity tests passed (log updated at `esp_bt_audio_source/test_app3/build/one_run_unity.log`).
 ### Latest: util_safe edge coverage (2025-12-15T14:31:57-08:00)
 - Expanded util_safe host and device tests with zero-length, dst_size=0/1, truncation, and snprintf edge cases; added runners so each case executes.
 - Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + ESP-IDF 5.4). Results: host 24/24; device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 130/130). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.

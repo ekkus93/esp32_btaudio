@@ -20,8 +20,8 @@ esp_err_t pcm_convert_to_big_endian(int16_t* buffer, size_t len) {
     if (!buffer) return ESP_ERR_INVALID_ARG;
     
     for (size_t i = 0; i < len; i++) {
-        int16_t val = buffer[i];
-        buffer[i] = (val >> 8) | (val << 8); // Swap bytes
+        uint16_t val = (uint16_t)buffer[i];
+        buffer[i] = (int16_t)((val >> 8) | (val << 8)); // Swap bytes without sign-extension
     }
     
     return ESP_OK;
@@ -31,8 +31,8 @@ esp_err_t pcm_convert_to_little_endian(int16_t* buffer, size_t len) {
     if (!buffer) return ESP_ERR_INVALID_ARG;
     
     for (size_t i = 0; i < len; i++) {
-        int16_t val = buffer[i];
-        buffer[i] = (val >> 8) | (val << 8); // Swap bytes
+        uint16_t val = (uint16_t)buffer[i];
+        buffer[i] = (int16_t)((val >> 8) | (val << 8)); // Swap bytes without sign-extension
     }
     
     return ESP_OK;
