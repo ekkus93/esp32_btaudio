@@ -144,12 +144,12 @@ static uint32_t s_tag_push_count = 0;
 static uint32_t s_tag_miss_count = 0;
 static TickType_t s_tag_recover_mute_until = 0;
 
+#ifdef UNIT_TEST
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
 {
     return (now_ticks - last_ticks) >= cooldown_ticks;
 }
 
-#ifdef UNIT_TEST
 bool audio_processor_test_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
 {
     return beep_autostart_due(now_ticks, last_ticks, cooldown_ticks);
@@ -307,8 +307,6 @@ typedef struct {
 static worker_diag_state_t s_worker_diag = {0};
 static const TickType_t WORKER_DIAG_INTERVAL_TICKS = pdMS_TO_TICKS(1000);
 
-static TickType_t s_wav_retry_log_next_tick = 0;
-static const TickType_t WAV_RETRY_LOG_INTERVAL_TICKS = pdMS_TO_TICKS(200);
 
 typedef struct {
     const void* src;
@@ -327,18 +325,6 @@ typedef struct {
     audio_sample_rate_t dst_rate;
     size_t* dst_size;
 } audio_resample_args_t;
-
-static inline void wav_stream_log_backpressure(size_t chunk, size_t free_sz, size_t frame_sz,
-                                               size_t max_item, size_t remaining)
-{
-    TickType_t now = xTaskGetTickCount();
-    if (now >= s_wav_retry_log_next_tick) {
-        ESP_LOGW(TAG,
-                 "WAV enqueue backpressure: chunk=%zu free=%zu frame=%zu max=%zu remaining=%zu",
-                 chunk, free_sz, frame_sz, max_item, remaining);
-        s_wav_retry_log_next_tick = now + WAV_RETRY_LOG_INTERVAL_TICKS;
-    }
-}
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced);
 static esp_err_t convert_audio_format(const audio_convert_args_t* args);
@@ -864,7 +850,7 @@ static size_t audio_ringbuffer_min_capacity(size_t frame_bytes)
 
     /* Target at least three bursts so 6 KiB resample chunks do not saturate
      * the buffer immediately while WAV playback is enqueueing data. */
-    size_t floor = burst_bytes;
+    size_t floor = 0;
     if (burst_bytes <= (SIZE_MAX / 3U)) {
         floor = burst_bytes * 3U;
     } else {

@@ -1,9 +1,19 @@
 ## Current Focus
+### Latest: Full test sweep (2025-12-15 rerun)
+- Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310` and ESP-IDF 5.4; host CTest 23/23 passed and all device suites passed (`test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3; device aggregate 115/115).
+- Artifacts regenerated: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`. Environment step: activate `python310` conda env then source `$HOME/esp/esp-idf/export.sh`.
+### Latest: Clang-tidy warning fixes (2025-12-XX)
+- `audio_processor.c`: gated the autostart helper behind `UNIT_TEST`, removed the unused WAV backpressure logger/timers, and initialized the ringbuffer floor once to clear dead-store/unused warnings.
+- `command_interface/commands.c`: added bounded helpers (`cmd_safe_copy`/`cmd_safe_append`) and replaced all `strncpy`/`strncat` call sites in path/name/parsing logic to satisfy insecure API warnings without changing behavior.
 ### Latest: clang-tidy lint (2025-12-15)
 - Installed clang-tidy via apt and generated `compile_commands.json` with `ninja -t compdb` in `esp_bt_audio_source/build`.
 - Ran clang-tidy (`checks=clang-analyzer-*,bugprone-*`) on `esp_bt_audio_source` main/components C files; warnings flagged implicit widening around `AUDIO_WORK_BUFFER_BYTES`/`BEEP_BUFFER_SIZE`, swappable-parameter warnings (`worker_diag_report`, `apply_volume`, `convert_audio_format`, `resample_audio`), narrowing conversions in `apply_volume`, and reserved-identifier/use warnings in `main` (`get_name_from_eir`).
 - No source changes applied yet; warnings need follow-up fixes.
 - 2025-12-15 follow-up: Updated buffer-size macros (`AUDIO_WORK_BUFFER_BYTES`, `BEEP_BUFFER_SIZE`, `I2S_MAX_READ_BYTES`) to compute in `size_t` to address implicit-widening reports. Subsequent clang-tidy invocation (clang 14) hit xtensa flag parse errors (`-mlongcalls`, `-fno-shrink-wrap`) and aborted; need clang-tidy with xtensa support or filtered flag set for full rerun. Pending: clean up remaining bugprone warnings (swappable params, narrowing conversions, reserved identifiers).
+### Latest: clang-tidy xtensa wrapper (2025-12-15)
+- Added `tools/run_clang_tidy_xtensa.sh` that drives esp-clang clang-tidy with xtensa sysroot/runtime includes (`--target=xtensa-esp32-elf`, sysroot + clang 18 include, `-Qunused-arguments`) against `esp_bt_audio_source/build_clang_tidy/compile_commands.json`.
+- Wrapper accepts run-clang-tidy options/filters (e.g., `-j4 '/esp_bt_audio_source/'`) and keeps libc++ include optional.
+- Project-only sweep (`/esp_bt_audio_source/` filter) runs without header errors; reports numerous analyzer `insecureAPI` warnings on memcpy/memset/strncpy/snprintf plus existing dead-store/unused helper warnings in `audio_processor.c` and `command_interface/commands.c`. Exit code nonzero due to warnings; IDF-wide sweep still trips on assembly macros and GCC-only warning flags.
 ### Latest: Lint cleanup (2025-12-15)
 - Addressed clang-tidy bugprone warnings in `audio_processor.c` by using argument structs for `convert_audio_format`/`resample_audio` (avoids easily-swappable parameter pairs) and switching `apply_volume` to integer scaling with clamping to eliminate narrowing conversions. Removed unused attribute on `get_name_from_eir` in `main.c`. `idf.py -C esp_bt_audio_source build` now passes after these changes.
 ### Latest: Full test sweep (2025-12-21)

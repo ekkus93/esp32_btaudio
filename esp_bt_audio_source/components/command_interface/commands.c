@@ -69,6 +69,55 @@ static void copy_truncated_identifier(const char *src, char *dst, size_t dst_siz
     }
 }
 
+static void cmd_safe_copy(char *dst, size_t dst_size, const char *src)
+{
+    if (dst == NULL || dst_size == 0)
+    {
+        return;
+    }
+    if (src == NULL)
+    {
+        dst[0] = '\0';
+        return;
+    }
+
+    size_t i = 0;
+    while (i + 1 < dst_size && src[i] != '\0')
+    {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = '\0';
+}
+
+static void cmd_safe_append(char *dst, size_t dst_size, const char *suffix)
+{
+    if (dst == NULL || dst_size == 0)
+    {
+        return;
+    }
+
+    size_t used = strnlen(dst, dst_size);
+    if (used >= dst_size)
+    {
+        dst[dst_size - 1] = '\0';
+        return;
+    }
+    if (suffix == NULL || suffix[0] == '\0')
+    {
+        return;
+    }
+
+    size_t remaining = dst_size - used;
+    size_t i = 0;
+    while (i + 1 < remaining && suffix[i] != '\0')
+    {
+        dst[used + i] = suffix[i];
+        ++i;
+    }
+    dst[used + i] = '\0';
+}
+
 static bool cmd_parse_log_level(const char *level_str, int *out_level)
 {
     if (level_str == NULL || out_level == NULL)
@@ -764,8 +813,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         const char *p = ctx->params[0];
         if (p[0] == '/')
         {
-            strncpy(path, p, sizeof(path) - 1);
-            path[sizeof(path) - 1] = '\0';
+            cmd_safe_copy(path, sizeof(path), p);
         }
         else
         {
@@ -855,8 +903,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         char fullpath[256];
         if (requested[0] == '/')
         {
-            strncpy(fullpath, requested, sizeof(fullpath) - 1);
-            fullpath[sizeof(fullpath) - 1] = '\0';
+            cmd_safe_copy(fullpath, sizeof(fullpath), requested);
         }
         else
         {
@@ -981,8 +1028,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                 int warn_written = snprintf(warn, sizeof(warn), "SKIP_LONG_PATH,%s", warn_name);
                 if (warn_written < 0 || warn_written >= (int)sizeof(warn))
                 {
-                    strncpy(warn, "SKIP_LONG_PATH,???", sizeof(warn));
-                    warn[sizeof(warn) - 1] = '\0';
+                    cmd_safe_copy(warn, sizeof(warn), "SKIP_LONG_PATH,???");
                 }
                 cmd_send_response("INFO", "FILES", "SKIP", warn);
                 continue;
@@ -1003,8 +1049,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #endif
                 if (warn_written < 0 || warn_written >= (int)sizeof(warn))
                 {
-                    strncpy(warn, "STAT_FAILED,???,errno=?", sizeof(warn));
-                    warn[sizeof(warn) - 1] = '\0';
+                    cmd_safe_copy(warn, sizeof(warn), "STAT_FAILED,???,errno=?");
                 }
                 cmd_send_response("INFO", "FILES", "SKIP", warn);
                 continue;
@@ -1018,8 +1063,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                 int warn_written = snprintf(warn, sizeof(warn), "NON_FILE,%s", warn_name);
                 if (warn_written < 0 || warn_written >= (int)sizeof(warn))
                 {
-                    strncpy(warn, "NON_FILE,???", sizeof(warn));
-                    warn[sizeof(warn) - 1] = '\0';
+                    cmd_safe_copy(warn, sizeof(warn), "NON_FILE,???");
                 }
                 cmd_send_response("INFO", "FILES", "SKIP", warn);
                 continue;
@@ -1031,8 +1075,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             int line_written = snprintf(line, sizeof(line), "%s,%llu", item_name, (unsigned long long)st.st_size);
             if (line_written < 0 || line_written >= (int)sizeof(line))
             {
-                strncpy(line, "???,0", sizeof(line));
-                line[sizeof(line) - 1] = '\0';
+                cmd_safe_copy(line, sizeof(line), "???,0");
             }
             cmd_send_response("INFO", "FILES", "ITEM", line);
             file_count++;
@@ -1047,8 +1090,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         int summary_written = snprintf(summary, sizeof(summary), "ROOT=%s,COUNT=%d,TOTAL=%llu", root_label, file_count, total_size);
         if (summary_written < 0 || summary_written >= (int)sizeof(summary))
         {
-            strncpy(summary, "ROOT=?,COUNT=?,TOTAL=?", sizeof(summary));
-            summary[sizeof(summary) - 1] = '\0';
+            cmd_safe_copy(summary, sizeof(summary), "ROOT=?,COUNT=?,TOTAL=?");
         }
         cmd_send_response("OK", "FILES", "SUMMARY", summary);
     }
@@ -1098,11 +1140,11 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             break;
         }
         char name_buf[128] = {0};
-        strncpy(name_buf, ctx->params[0], sizeof(name_buf) - 1);
+        cmd_safe_copy(name_buf, sizeof(name_buf), ctx->params[0]);
         for (int i = 1; i < ctx->param_count; ++i)
         {
-            strncat(name_buf, " ", sizeof(name_buf) - strlen(name_buf) - 1);
-            strncat(name_buf, ctx->params[i], sizeof(name_buf) - strlen(name_buf) - 1);
+            cmd_safe_append(name_buf, sizeof(name_buf), " ");
+            cmd_safe_append(name_buf, sizeof(name_buf), ctx->params[i]);
         }
 #ifdef ESP_PLATFORM
         if (bt_connect_by_name(name_buf) == ESP_OK)
@@ -1360,8 +1402,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         }
         int pins[4] = {-1, -1, -1, -1};
         char param_copy[128];
-        strncpy(param_copy, ctx->params[0], sizeof(param_copy) - 1);
-        param_copy[sizeof(param_copy) - 1] = '\0';
+        cmd_safe_copy(param_copy, sizeof(param_copy), ctx->params[0]);
         char *tok = strtok(param_copy, ",");
         int idx = 0;
         while (tok != NULL && idx < 4)
@@ -1414,11 +1455,11 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         {
             // Join all params into a single name string
             char name_buf[128] = {0};
-            strncpy(name_buf, first, sizeof(name_buf) - 1);
+            cmd_safe_copy(name_buf, sizeof(name_buf), first);
             for (int i = 1; i < ctx->param_count; ++i)
             {
-                strncat(name_buf, " ", sizeof(name_buf) - strlen(name_buf) - 1);
-                strncat(name_buf, ctx->params[i], sizeof(name_buf) - strlen(name_buf) - 1);
+                cmd_safe_append(name_buf, sizeof(name_buf), " ");
+                cmd_safe_append(name_buf, sizeof(name_buf), ctx->params[i]);
             }
 #ifdef ESP_PLATFORM
             // Try connect-by-name which triggers pairing as needed
@@ -1558,8 +1599,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                     *comma = '\0';
                 }
                 /* store the MAC we will use for the mock pairing */
-                strncpy(s_cmd_mock_pairing_addr, mac, sizeof(s_cmd_mock_pairing_addr) - 1);
-                s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr) - 1] = '\0';
+                cmd_safe_copy(s_cmd_mock_pairing_addr, sizeof(s_cmd_mock_pairing_addr), mac);
 
                 /* Diagnostic: indicate we've reached the MOCK_ADD path and
                  * show the MAC that will be used. This helps confirm the
@@ -1593,19 +1633,16 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             {
 #ifdef ESP_PLATFORM
                 s_cmd_mock_enabled = true;
-                strncpy(s_cmd_mock_pairing_addr, ctx->params[1], sizeof(s_cmd_mock_pairing_addr) - 1);
-                s_cmd_mock_pairing_addr[sizeof(s_cmd_mock_pairing_addr) - 1] = '\0';
+                cmd_safe_copy(s_cmd_mock_pairing_addr, sizeof(s_cmd_mock_pairing_addr), ctx->params[1]);
                 char pass[16] = "000000";
                 size_t maclen = strlen(s_cmd_mock_pairing_addr);
                 if (maclen >= 2)
                 {
                     const char *tail = s_cmd_mock_pairing_addr + (maclen > 5 ? maclen - 5 : 0);
                     /* Copy at most sizeof(pass)-1 characters from tail to avoid overflow */
-                    strncpy(pass, tail, sizeof(pass) - 1);
-                    pass[sizeof(pass) - 1] = '\0';
+                    cmd_safe_copy(pass, sizeof(pass), tail);
                 }
-                strncpy(s_cmd_mock_passkey, pass, sizeof(s_cmd_mock_passkey) - 1);
-                s_cmd_mock_passkey[sizeof(s_cmd_mock_passkey) - 1] = '\0';
+                cmd_safe_copy(s_cmd_mock_passkey, sizeof(s_cmd_mock_passkey), pass);
                 char data[64];
                 snprintf(data, sizeof(data), "%s,%s", s_cmd_mock_pairing_addr, s_cmd_mock_passkey);
                 cmd_send_event_pair("CONFIRM", data);
@@ -1977,8 +2014,7 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
 
     // Copy and trim
     char buf[512];
-    strncpy(buf, cmd_str, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    cmd_safe_copy(buf, sizeof(buf), cmd_str);
     // Trim leading
     char *s = buf;
     while (*s && isspace((unsigned char)*s))
@@ -2074,8 +2110,7 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
             ++rest;
         if (rest && *rest)
         {
-            strncpy(ctx->params[0], rest, CMD_MAX_PARAM_LEN - 1);
-            ctx->params[0][CMD_MAX_PARAM_LEN - 1] = '\0';
+            cmd_safe_copy(ctx->params[0], CMD_MAX_PARAM_LEN, rest);
             ctx->param_count = 1;
         }
         else
@@ -2089,8 +2124,7 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     int idx = 0;
     while ((token = strtok_r(NULL, " \t", &save)) != NULL && idx < CMD_MAX_PARAMS)
     {
-        strncpy(ctx->params[idx], token, CMD_MAX_PARAM_LEN - 1);
-        ctx->params[idx][CMD_MAX_PARAM_LEN - 1] = '\0';
+        cmd_safe_copy(ctx->params[idx], CMD_MAX_PARAM_LEN, token);
         ++idx;
     }
     ctx->param_count = idx;
