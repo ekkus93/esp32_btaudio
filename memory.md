@@ -1,6 +1,12 @@
 ## Current Focus
 ### Timestamp policy (2025-12-15T14:31:57-08:00)
 - When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
+### Coverage gaps assessment (2025-12-15T15:44:27-08:00)
+- Reviewed latest aggregated test artifacts (`tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`) showing 206/206 tests green. Component-level tests exist only for `components/audio` (pcm/pipeline/tag helpers) and `components/util_safe`.
+- Identified weakly covered areas: `components/audio/audio_i2s.c` (I2S init/start/stop/read sequences lack host/device unit tests), `components/audio/i2s_audio.c` (byte alignment and sample conversion/offset handling only indirectly exercised), and event-heavy logic in `components/bt_manager/bt_manager.c` (pairing/autostart/state transitions) that is only partially covered by host tests.
+- Suggested adding host Unity cases (with mocks) for `bt_manager` pairing pending state helpers and autostart toggle, plus device/host tests around I2S start/stop/reinit error paths and read timeout handling once stubs are in place.
+### Full test sweep (2025-12-15T15:54:39-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `python310` + ESP-IDF 5.4. Results: host 24/24 pass; device suites pass — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32 (includes new i2s arg-check tests), `test_app3` 14/14. Aggregates: device 143/143, total 206/206. Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### Full test sweep (2025-12-15T15:19:22-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + ESP-IDF 5.4. Host 24/24 passed; device suites all green: `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 14/14 (device aggregate 141/141). Artifacts regenerated: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
 ### Repo access note (2025-12-15T15:25:03-08:00)
