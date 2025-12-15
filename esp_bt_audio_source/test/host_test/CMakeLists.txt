@@ -105,6 +105,15 @@ target_include_directories(test_psram PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
 target_link_libraries(test_psram unity)
 add_test(NAME test_psram COMMAND $<TARGET_FILE:test_psram>)
 
+# util_safe host coverage: reuse the component's Unity cases on host to keep
+# the fast "all tests" path exercising the safety helpers.
+add_executable(test_util_safe
+    ../../components/util_safe/util_safe.c
+    test_util_safe_host.c)
+target_include_directories(test_util_safe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
+target_link_libraries(test_util_safe unity)
+add_test(NAME test_util_safe COMMAND $<TARGET_FILE:test_util_safe>)
+
 ## Real audio_processor host test: link production source with host mocks
 add_executable(test_audio_processor_real test_audio_processor_real.c
     ../../main/audio_processor.c

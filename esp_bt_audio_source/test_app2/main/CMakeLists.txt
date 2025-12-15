@@ -40,6 +40,7 @@ idf_component_register(
         test_common
         command_interface
         nvs_storage
+        util_safe
         unity
         test_utils
     PRIV_REQUIRES

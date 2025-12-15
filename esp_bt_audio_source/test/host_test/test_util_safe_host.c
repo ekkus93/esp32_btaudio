@@ -1,13 +1,12 @@
-#include "unity_fixture.h"
+#include "unity.h"
 #include "util_safe.h"
+#include <stdint.h>
 #include <string.h>
 
-TEST_GROUP(util_safe);
+void setUp(void) {}
+void tearDown(void) {}
 
-TEST_SETUP(util_safe) {}
-TEST_TEAR_DOWN(util_safe) {}
-
-TEST(util_safe, safe_memcpy_truncates)
+static void test_safe_memcpy_truncates(void)
 {
     char dst[5] = {'x','x','x','x','!'};
     const char *src = "ABCDE";
@@ -16,14 +15,14 @@ TEST(util_safe, safe_memcpy_truncates)
     TEST_ASSERT_EQUAL_CHAR('!', dst[4]);
 }
 
-TEST(util_safe, safe_copy_str_handles_null)
+static void test_safe_copy_str_handles_null(void)
 {
     char dst[5] = {'x','x','x','x','x'};
     util_safe_copy_str(dst, sizeof(dst), NULL);
     TEST_ASSERT_EQUAL_CHAR('\0', dst[0]);
 }
 
-TEST(util_safe, parse_mac_accepts_colon_format)
+static void test_parse_mac_accepts_colon_format(void)
 {
     uint8_t mac[6] = {0};
     TEST_ASSERT_TRUE(util_parse_mac("AA:BB:CC:DD:EE:FF", mac));
@@ -31,14 +30,14 @@ TEST(util_safe, parse_mac_accepts_colon_format)
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, mac, 6);
 }
 
-TEST(util_safe, parse_mac_rejects_bad_format)
+static void test_parse_mac_rejects_bad_format(void)
 {
     uint8_t mac[6] = {0};
     TEST_ASSERT_FALSE(util_parse_mac("AA:BB:CC:DD:EE", mac));
     TEST_ASSERT_FALSE(util_parse_mac("GG:00:00:00:00:00", mac));
 }
 
-TEST(util_safe, format_mac_produces_upper_hex)
+static void test_format_mac_produces_upper_hex(void)
 {
     const uint8_t mac[6] = {0x0a, 0x1b, 0x2c, 0x3d, 0x4e, 0x5f};
     char buf[32] = {0};
@@ -46,11 +45,13 @@ TEST(util_safe, format_mac_produces_upper_hex)
     TEST_ASSERT_EQUAL_STRING("0A:1B:2C:3D:4E:5F", buf);
 }
 
-TEST_GROUP_RUNNER(util_safe)
+int main(void)
 {
-    RUN_TEST_CASE(util_safe, safe_memcpy_truncates);
-    RUN_TEST_CASE(util_safe, safe_copy_str_handles_null);
-    RUN_TEST_CASE(util_safe, parse_mac_accepts_colon_format);
-    RUN_TEST_CASE(util_safe, parse_mac_rejects_bad_format);
-    RUN_TEST_CASE(util_safe, format_mac_produces_upper_hex);
+    UNITY_BEGIN();
+    RUN_TEST(test_safe_memcpy_truncates);
+    RUN_TEST(test_safe_copy_str_handles_null);
+    RUN_TEST(test_parse_mac_accepts_colon_format);
+    RUN_TEST(test_parse_mac_rejects_bad_format);
+    RUN_TEST(test_format_mac_produces_upper_hex);
+    return UNITY_END();
 }

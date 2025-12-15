@@ -23,6 +23,7 @@ idf_component_register(
         "test_bt_scan.c"
         "test_pairing_commands.c"
         "unity_config.c"
+        "../../components/util_safe/test/test_util_safe.c"
     INCLUDE_DIRS 
         "."
         "include"
@@ -33,6 +34,7 @@ idf_component_register(
         test_common
         command_interface
         nvs_storage
+        util_safe
         unity
         test_utils
     PRIV_REQUIRES

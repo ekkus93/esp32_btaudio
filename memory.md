@@ -1,4 +1,11 @@
 ## Current Focus
+### Latest: util_safe device runner fix (2026-02-07)
+- Added `TEST_GROUP_RUNNER(util_safe)` forward declaration in `test_app/main/test_app_main.c` so RUN_TEST_GROUP resolves; `idf.py -C esp_bt_audio_source/test_app build` now succeeds after the util_safe fixture conversion.
+- Updated device util_safe test to match util_safe_memcpy semantics (truncate without implicit terminator), aligned with the host test.
+- Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + ESP-IDF 5.4: host 24/24 passed; device suites all green — `test_app` 42/42 (includes util_safe group), `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 120/120). Artifacts refreshed in `tmp/run_all_tests_summary.json` and per-suite `build/one_run_unity.log` files.
+### Latest: util_safe host coverage (2025-12-15)
+- Added host test `test_util_safe` (Unity) in `test/host_test/test_util_safe_host.c` plus CMake wiring so util_safe safety helpers run in the "all tests" path (host CTest now 24 targets). Test expectations match current util_safe_memcpy semantics (truncates without implicit terminator).
+- Reran `python tools/run_all_tests.py` with python310 + ESP-IDF 5.4: host 24/24 passed (includes util_safe); device suites unchanged and green — `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 115/115). Artifacts refreshed in `tmp/run_all_tests_summary.json` and `tmp/canonical_unity_summary.json`.
 ### Latest: Clang-tidy secure API cleanup (2025-12-15)
 - Replaced remaining `vsscanf`/`memcpy` hotspots with manual bounded parsers/copies in `components/nvs_storage`, `components/bt_manager`, `components/bt_mock/bt_mock_devices`, and `components/bluetooth/bt_source`; added null guards for beep buffer writes in `main/audio_processor.c`.
 - Reran `tools/run_clang_tidy_xtensa.sh -j4 '/esp_bt_audio_source/(components|main)/'` (filtered to skip build artifacts) with no errors; earlier x509 assembly false-positive avoided by using the filter.
