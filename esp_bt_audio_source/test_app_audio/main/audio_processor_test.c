@@ -368,6 +368,9 @@ static void test_audio_buffer_management(void)
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
 static void test_beep_should_not_report_tag_miss(void);
+#ifdef CONFIG_BT_MOCK_TESTING
+static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void);
+#endif
 
 void run_audio_processor_tests(void)
 {
@@ -383,6 +386,9 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_i2s_config);
     RUN_TEST(test_audio_buffer_management);
     RUN_TEST(test_beep_should_not_report_tag_miss);
+#ifdef CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_audio_processor_idle_failures_should_not_enable_synth_with_beep);
+#endif
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
     /* On-device PSRAM integration tests */
@@ -438,6 +444,22 @@ static void test_beep_should_not_report_tag_miss(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void)
+{
+    bool synth_after = true;
+    int failures_after = -1;
+
+    audio_processor_test_idle_i2s_failures(25 /* >= threshold */, false /* synth_enabled */, 2048 /* beep_remaining */, &synth_after, &failures_after);
+
+    TEST_ASSERT_FALSE_MESSAGE(synth_after, "synth should remain disabled while beep data is pending");
+    TEST_ASSERT_EQUAL(25, failures_after);
+
+    /* Reset the test-only state to avoid leaking into other tests. */
+    audio_processor_test_idle_i2s_failures(0, false, 0, NULL, NULL);
+}
+#endif
 
 static void test_audio_processor_play_wav_api(void)
 {

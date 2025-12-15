@@ -1,6 +1,8 @@
 ## Current Focus
 ### Latest: Idle I2S host test (2025-12-21)
 - Added host test `test_audio_processor_idle_i2s` plus helper `audio_processor_test_idle_i2s_failures` (CONFIG_BT_MOCK_TESTING) to verify the idle-failure keepalive re-enables synth only when no beep is pending; built target `test_audio_processor_idle_i2s` and ran `./test_audio_processor_idle_i2s` successfully (2/2 tests).
+### Latest: Beep synth gating device test (2025-12-21)
+- Added device Unity test `test_audio_processor_idle_failures_should_not_enable_synth_with_beep` in `test_app_audio` to ensure repeated idle I2S failures do not re-enable the synth while beep bytes remain. Full test sweep now passes with totals: host 23/23; device `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (aggregate device 115/115).
 ### Latest: TAG-MISS latch/drop (2025-12-20)
 - Implemented Option 1 for TAG-MISS mitigation: added a 500 ms one-shot mute window around `audio_source_tag_recover_desync` and expanded the per-recovery drop window to up to 16 beep/audio items to suppress repeated TAG-MISS spam.
 
