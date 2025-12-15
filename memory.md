@@ -3,6 +3,8 @@
 - When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
 ### Full test sweep (2025-12-15T15:19:22-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + ESP-IDF 5.4. Host 24/24 passed; device suites all green: `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 14/14 (device aggregate 141/141). Artifacts regenerated: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
+### Repo access note (2025-12-15T15:25:03-08:00)
+- User confirmed I may push directly to `origin master` from this environment; executed push after committing audio test wiring and PCM swap fixes.
 ### Full test sweep (2025-12-15T14:55:53-08:00)
 - Re-ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + ESP-IDF 5.4). Results: host 24/24; device `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 130/130). No missing/undetected tests were found in `tmp/declared_vs_observed_project.csv`.
 ### Latest: test_app3 audio fixes (2025-12-15T15:15:05-08:00)
