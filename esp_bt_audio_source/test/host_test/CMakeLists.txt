@@ -159,6 +159,29 @@ target_compile_definitions(test_audio_tag_alignment PRIVATE CONFIG_BT_MOCK_TESTI
 target_link_libraries(test_audio_tag_alignment unity m)
 add_test(NAME test_audio_tag_alignment COMMAND $<TARGET_FILE:test_audio_tag_alignment>)
 
+# Idle I2S failure recovery test (uses production audio_processor + mocks)
+add_executable(test_audio_processor_idle_i2s test_audio_processor_idle_i2s.c
+    ../../main/audio_processor.c
+    mocks/esp_heap_caps_mock.c
+    mocks/mock_i2s.c
+    mocks/mock_gap.c
+    mocks/mock_audio_and_btstate.c
+    mocks/nvs_storage_mock.c)
+target_sources(test_audio_processor_idle_i2s PRIVATE
+    mocks/fake_task.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c
+    mocks/fake_ringbuf.c
+    mocks/fake_timer.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c
+    mocks/fake_debug_helpers.c)
+target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_audio_processor_idle_i2s PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1)
+target_link_libraries(test_audio_processor_idle_i2s unity m)
+add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_processor_idle_i2s>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ../../components/components/bt/common/osi/allocator.c

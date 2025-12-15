@@ -240,6 +240,9 @@ static bool s_beep_restore_synth = false;
  * path is healthy. This prevents restoring synth mode when I2S is
  * currently failing, which caused choppy audio. */
 static int s_i2s_consecutive_failures = 0;
+static const int I2S_FAILURE_THRESHOLD = 20;
+static const int I2S_FAILURE_LOG_THROTTLE = 200;
+static int s_last_i2s_failure_log = -I2S_FAILURE_LOG_THROTTLE;
 /* Delay releasing a freshly enqueued beep until a small headroom is built
  * and a short time elapses so the sink does not underrun on the first pull. */
 static bool s_beep_prefill_active = false;
@@ -1639,6 +1642,7 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
 // Forward declarations of internal functions
 static void i2s_reader_task(void *pvParameters);
 static void audio_worker_task(void *pvParameters);
+static bool audio_processor_handle_idle_i2s_failures(bool wav_active, bool beep_fallback_active, size_t beep_remaining_bytes);
 static esp_err_t configure_i2s(const audio_config_t* config);
 static void apply_volume(void* buffer, size_t size, uint8_t volume);
 /* Forward declare wav_stream_try_enqueue_unlocked so callers earlier in
@@ -3943,23 +3947,7 @@ static void i2s_reader_task(void *pvParameters)
         const int FAILURE_LOG_THROTTLE = 200;
         static int s_last_i2s_failure_log = -FAILURE_LOG_THROTTLE;
 
-        if (s_i2s_consecutive_failures >= FAILURE_THRESHOLD &&
-            (s_i2s_consecutive_failures - s_last_i2s_failure_log) >= FAILURE_LOG_THROTTLE) {
-            s_last_i2s_failure_log = s_i2s_consecutive_failures;
-            if (wav_playback_is_active()) {
-                ESP_LOGW(TAG, "I2S read failing (%d) but WAV playback active; keeping synth disabled", s_i2s_consecutive_failures);
-            } else if (!s_beep_fallback_active) {
-                /* Option 1: if no source/beep is active, park the reader in the
-                 * quiet synth keepalive instead of spinning on I2S timeouts. */
-                if (s_beep_remaining_bytes == 0 && !s_force_synth) {
-                    ESP_LOGW(TAG, "I2S read failing repeatedly (%d); re-enabling silent synth keepalive", s_i2s_consecutive_failures);
-                    s_force_synth = true;
-                    s_i2s_consecutive_failures = 0;
-                } else {
-                    ESP_LOGW(TAG, "I2S read failing repeatedly (%d); leaving synth disabled (no active source)", s_i2s_consecutive_failures);
-                }
-            }
-        }
+        (void)audio_processor_handle_idle_i2s_failures(wav_playback_is_active(), s_beep_fallback_active, s_beep_remaining_bytes);
         }
 
         if (!have_frame) {
@@ -4160,6 +4148,28 @@ static void audio_worker_discard_block(const char *phase, i2s_block_t *blk)
     blk->pooled_ptr = false;
 }
 
+static bool audio_processor_handle_idle_i2s_failures(bool wav_active, bool beep_fallback_active, size_t beep_remaining_bytes)
+{
+    bool reenabled = false;
+    if (s_i2s_consecutive_failures >= I2S_FAILURE_THRESHOLD &&
+        (s_i2s_consecutive_failures - s_last_i2s_failure_log) >= I2S_FAILURE_LOG_THROTTLE) {
+        s_last_i2s_failure_log = s_i2s_consecutive_failures;
+        if (wav_active) {
+            ESP_LOGW(TAG, "I2S read failing (%d) but WAV playback active; keeping synth disabled", s_i2s_consecutive_failures);
+        } else if (!beep_fallback_active) {
+            if (beep_remaining_bytes == 0 && !s_force_synth) {
+                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); re-enabling silent synth keepalive", s_i2s_consecutive_failures);
+                s_force_synth = true;
+                s_i2s_consecutive_failures = 0;
+                reenabled = true;
+            } else {
+                ESP_LOGW(TAG, "I2S read failing repeatedly (%d); leaving synth disabled (no active source)", s_i2s_consecutive_failures);
+            }
+        }
+    }
+    return reenabled;
+}
+
 static void log_read_summary(const char *phase, size_t requested, size_t produced)
 {
     if (esp_log_level_get(TAG) < ESP_LOG_INFO) {
@@ -4201,7 +4211,6 @@ static void audio_worker_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "Audio worker task started");
     i2s_block_t blk = {0};
-
     while (1) {
         if (!s_is_running || !s_is_initialized) {
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -4957,6 +4966,24 @@ size_t audio_processor_test_get_beep_remaining_bytes(void)
 {
     AUDIO_PROC_LOG_ONCE();
     return s_beep_remaining_bytes;
+}
+
+void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after)
+{
+    AUDIO_PROC_LOG_ONCE();
+    s_i2s_consecutive_failures = failures;
+    s_force_synth = synth_enabled;
+    s_beep_remaining_bytes = beep_remaining;
+    s_beep_fallback_active = false;
+    s_wav_playback_active = false;
+    s_last_i2s_failure_log = -I2S_FAILURE_LOG_THROTTLE;
+    (void)audio_processor_handle_idle_i2s_failures(false, false, s_beep_remaining_bytes);
+    if (synth_after != NULL) {
+        *synth_after = s_force_synth;
+    }
+    if (failures_after != NULL) {
+        *failures_after = s_i2s_consecutive_failures;
+    }
 }
 
 void audio_processor_test_wav_reset_state(void)
