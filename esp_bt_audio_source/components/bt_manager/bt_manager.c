@@ -21,6 +21,9 @@
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
 #define TAG "BT_MGR"
+#else
+#include "esp_log.h"
+#define TAG "BT_MGR"
 #endif
 
 // Private data

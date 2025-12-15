@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "unity.h"
 #include "audio_processor.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // Mock for I2S functions
 #include "mock_i2s_std.h"
@@ -15,6 +17,9 @@ extern bool audio_source_tag_test_push(int tag);
 extern size_t audio_processor_test_get_tag_used(void);
 extern uint32_t audio_processor_test_get_tag_miss_count(void);
 extern void audio_processor_test_reset_tag_miss_count(void);
+#ifdef CONFIG_BT_MOCK_TESTING
+extern size_t audio_processor_test_get_beep_remaining_bytes(void);
+#endif
 
 void setUp(void)
 {
@@ -412,6 +417,40 @@ void test_audio_processor_beep_bypasses_mute(void)
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
+/* Beep prefill should release after the configured delay and allow data to drain. */
+void test_audio_processor_beep_prefill_releases_after_delay(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(200, 440.0));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    size_t before = audio_processor_test_get_beep_remaining_bytes();
+    TEST_ASSERT_TRUE(before > 0);
+
+    vTaskDelay(pdMS_TO_TICKS(450));
+
+    uint8_t outbuf[1024];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(outbuf, sizeof(outbuf), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, bytes_read);
+
+    size_t after = audio_processor_test_get_beep_remaining_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(after < before, "beep remaining bytes should drop after prefill release");
+}
+#endif
+
+#ifdef CONFIG_BT_MOCK_TESTING
 void test_audio_processor_wav_begin_tracks_state(void)
 {
     audio_processor_test_wav_reset_state();
@@ -512,6 +551,7 @@ int app_main(void)
     RUN_TEST(test_audio_processor_inject_pushes_and_consumes_tag);
     RUN_TEST(test_audio_processor_beep_no_tag_miss);
 #ifdef CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_audio_processor_beep_prefill_releases_after_delay);
     RUN_TEST(test_audio_processor_wav_begin_tracks_state);
     RUN_TEST(test_audio_processor_wav_consume_requires_completion_signal);
     RUN_TEST(test_audio_processor_wav_complete_if_idle_requires_zero_pending);

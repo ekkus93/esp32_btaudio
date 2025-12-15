@@ -22,9 +22,24 @@ static inline unsigned int esp_log_timestamp(void)
     return (unsigned int)time(NULL);
 }
 
-/* Host-visible log level control used by production code */
-void esp_log_level_set(const char* tag, int level);
-int esp_log_level_get(const char* tag);
+/* Host-visible log level control used by production code. Backed by a single
+ * global so all translation units share the same state instead of each TU
+ * keeping its own static copy. */
+extern int g_mock_log_level;
+
+#ifndef ESP_LOG_LEVEL_IMPL
+static inline void esp_log_level_set(const char* tag, int level)
+{
+    (void)tag;
+    g_mock_log_level = level;
+}
+
+static inline int esp_log_level_get(const char* tag)
+{
+    (void)tag;
+    return g_mock_log_level;
+}
+#endif
 
 static inline void esp_log_write(int level, const char* tag, const char* format, ...)
 {
@@ -44,11 +59,11 @@ static inline void esp_log_write(int level, const char* tag, const char* format,
     va_end(ap);
 }
 
-#define ESP_LOGE(fmt, ...) do { esp_log_write(ESP_LOG_ERROR, "", fmt, ##__VA_ARGS__); } while (0)
-#define ESP_LOGW(fmt, ...) do { esp_log_write(ESP_LOG_WARN,  "", fmt, ##__VA_ARGS__); } while (0)
-#define ESP_LOGI(fmt, ...) do { esp_log_write(ESP_LOG_INFO,  "", fmt, ##__VA_ARGS__); } while (0)
-#define ESP_LOGD(fmt, ...) do { esp_log_write(ESP_LOG_DEBUG, "", fmt, ##__VA_ARGS__); } while (0)
-#define ESP_LOGV(fmt, ...) do { esp_log_write(ESP_LOG_VERBOSE, "", fmt, ##__VA_ARGS__); } while (0)
+#define ESP_LOGE(TAG, fmt, ...) do { esp_log_write(ESP_LOG_ERROR, (TAG), fmt, ##__VA_ARGS__); } while (0)
+#define ESP_LOGW(TAG, fmt, ...) do { esp_log_write(ESP_LOG_WARN,  (TAG), fmt, ##__VA_ARGS__); } while (0)
+#define ESP_LOGI(TAG, fmt, ...) do { esp_log_write(ESP_LOG_INFO,  (TAG), fmt, ##__VA_ARGS__); } while (0)
+#define ESP_LOGD(TAG, fmt, ...) do { esp_log_write(ESP_LOG_DEBUG, (TAG), fmt, ##__VA_ARGS__); } while (0)
+#define ESP_LOGV(TAG, fmt, ...) do { esp_log_write(ESP_LOG_VERBOSE, (TAG), fmt, ##__VA_ARGS__); } while (0)
 
 #define ESP_LOG_BUFFER_HEXDUMP(TAG, BUF, LEN, ARGS) do { \
     (void)TAG; (void)BUF; (void)LEN; (void)ARGS; \

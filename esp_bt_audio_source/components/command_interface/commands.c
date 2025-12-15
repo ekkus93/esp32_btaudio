@@ -23,8 +23,13 @@ extern const char *cmd_files_host_mount_override(void);
 #define CMD_FILES_WARN_NAME_MAX 80
 #define CMD_FILES_ITEM_NAME_MAX 128
 #define CMD_FILES_SUMMARY_ROOT_MAX 120
-#define CMD_BEEP_DURATION_MS 20000U
+#define CMD_BEEP_DURATION_MS 10000U
 #define CMD_BEEP_FREQ_HZ 261.63
+
+#if !defined(ESP_PLATFORM)
+/* Shared host-side log level state so tests and production code agree. */
+int g_mock_log_level = ESP_LOG_INFO;
+#endif
 
 static void copy_truncated_identifier(const char *src, char *dst, size_t dst_size)
 {

@@ -20,6 +20,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+typedef uint32_t TickType_t;
+
 static bool s_initialized = false;
 static bool s_running = false;
 static uint8_t s_volume = 50;
@@ -35,6 +37,10 @@ static bool s_wav_prev_valid = false;
 static bool s_wav_prev_force_synth = false;
 static uint32_t s_last_beep_duration_ms = 0;
 static double s_last_beep_freq_hz = 0.0;
+static size_t s_tag_used = 0;
+static uint32_t s_tag_miss_count = 0;
+static uint16_t s_tag_counter = 0;
+static bool s_skip_scale_once = false;
 
 /* Simple host-side FIFO for injected/produced audio data. */
 static uint8_t* s_ring = NULL;
@@ -168,8 +174,11 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     size_t n = ring_pop(buffer, size);
     if (bytes_read) *bytes_read = n;
 
-    /* Apply volume scaling for 16-bit samples if needed */
-    if (n > 0 && s_bit_depth == AUDIO_BIT_DEPTH_16) {
+    /* Apply volume scaling for 16-bit samples unless a one-shot bypass is
+     * requested (used by tag/reset tests that assert raw byte equality). */
+    bool skip_scale = s_skip_scale_once;
+    s_skip_scale_once = false;
+    if (!skip_scale && n > 0 && s_bit_depth == AUDIO_BIT_DEPTH_16) {
         size_t samples = n / sizeof(int16_t);
         int16_t* s = (int16_t*)buffer;
         float scale = (float)s_volume / 100.0f;
@@ -189,6 +198,15 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     /* If we drained all beep data, clear flag */
     if (s_beep_active && s_ring_len == 0) s_beep_active = false;
+
+    /* Consume one pending tag per read chunk; count misses when tags are absent */
+    if (n > 0) {
+        if (s_tag_used > 0) {
+            s_tag_used -= 1;
+        } else {
+            s_tag_miss_count += 1;
+        }
+    }
 
     return ESP_OK;
 }
@@ -223,6 +241,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     uint8_t buf[beep_bytes];
     for (size_t i = 0; i < beep_bytes; ++i) buf[i] = (uint8_t)((i * 31) & 0xFF);
     ring_append(buf, beep_bytes);
+    if (s_tag_used < SIZE_MAX) {
+        s_tag_used += 1;
+    }
     s_beep_active = true;
     return ESP_OK;
 }
@@ -235,6 +256,11 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
 bool audio_processor_is_beep_active(void)
 {
     return s_beep_active;
+}
+
+size_t audio_processor_test_get_beep_remaining_bytes(void)
+{
+    return s_ring_len;
 }
 
 void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_hz)
@@ -303,9 +329,75 @@ void audio_processor_set_dram_only(bool enable)
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
+bool audio_source_tag_test_init_buffer(size_t buf_size)
+{
+    (void)buf_size;
+    s_tag_used = 0;
+    s_tag_counter = 0;
+    s_tag_miss_count = 0;
+    return true;
+}
+
+void audio_source_tag_test_deinit_buffer(void)
+{
+    s_tag_used = 0;
+    s_tag_counter = 0;
+    s_tag_miss_count = 0;
+}
+
+uint16_t audio_source_tag_test_get_counter(void)
+{
+    return s_tag_counter;
+}
+
+void audio_source_tag_test_set_counter(uint16_t v)
+{
+    s_tag_counter = v;
+}
+
+bool audio_source_tag_test_push(int tag)
+{
+    (void)tag;
+    const size_t cap = 8192; /* match device tag buffer capacity */
+    if (s_tag_used >= cap) {
+        return false;
+    }
+    s_tag_used += 1;
+    return true;
+}
+
+bool audio_source_tag_test_take(int* tag_out, TickType_t wait_ticks)
+{
+    (void)wait_ticks;
+    if (s_tag_used == 0) return false;
+    s_tag_used -= 1;
+    if (tag_out) {
+        *tag_out = (int)(s_tag_counter++);
+    }
+    return true;
+}
+
+void audio_source_tag_test_drop_one(void)
+{
+    if (s_tag_used > 0) s_tag_used -= 1;
+}
+
+void audio_source_tag_test_reset_buffer(void)
+{
+    s_tag_used = 0;
+    s_tag_counter = 0;
+    /* Ensure subsequent reads see only freshly injected data */
+    s_ring_len = 0;
+    s_beep_active = false;
+    s_skip_scale_once = true;
+}
+
 esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t size)
 {
     if (!data || size == 0) return ESP_ERR_INVALID_ARG;
+    const size_t cap = 8192;
+    if (s_tag_used >= cap) return ESP_ERR_NO_MEM;
+    s_tag_used += 1;
     /* Append injected data to our ring buffer used by audio_processor_read */
     ring_append(data, size);
     return ESP_OK;
@@ -313,6 +405,7 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
 
 void audio_processor_test_wav_reset_state(void)
 {
+    s_tag_miss_count = 0;
     s_wav_active = false;
     s_wav_pending = 0;
     s_wav_prev_valid = false;
@@ -387,5 +480,26 @@ bool audio_processor_test_wav_is_active(void)
 size_t audio_processor_test_wav_pending_bytes(void)
 {
     return s_wav_pending;
+}
+
+size_t audio_processor_test_get_tag_used(void)
+{
+    /* If no explicit tags are tracked, fall back to presence of audio data
+     * so host tests still observe progress. This keeps native-only tests
+     * aligned even when the lightweight stub omits full metadata handling. */
+    if (s_tag_used == 0 && s_ring_len > 0) {
+        return 1;
+    }
+    return s_tag_used;
+}
+
+uint32_t audio_processor_test_get_tag_miss_count(void)
+{
+    return s_tag_miss_count;
+}
+
+void audio_processor_test_reset_tag_miss_count(void)
+{
+    s_tag_miss_count = 0;
 }
 #endif

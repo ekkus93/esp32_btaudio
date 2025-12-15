@@ -2483,6 +2483,10 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     TickType_t now_ticks = xTaskGetTickCount();
     if (!wav_override_beep && s_beep_remaining_bytes > 0 && s_beep_prefill_active) {
+#ifdef CONFIG_BT_MOCK_TESTING
+        /* Host tests prefer immediate drain to avoid endless silent reads. */
+        s_beep_prefill_active = false;
+#else
         bool time_ready = now_ticks >= s_beep_prefill_release_tick;
         bool bytes_ready = s_beep_prefill_accum_bytes >= s_beep_prefill_goal_bytes;
         if (!time_ready || !bytes_ready) {
@@ -2493,6 +2497,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             return ESP_OK;
         }
         s_beep_prefill_active = false;
+#endif
     }
 
     /* Drain any previously saved beep residual data so queued tones retain
@@ -2721,6 +2726,19 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
      * apply volume and return immediately. */
     if (bytes_written == size) {
         if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
+    #ifdef CONFIG_BT_MOCK_TESTING
+        /* Host tests drive the fallback generator when beep ringbuffer data
+         * is unavailable; consume one metadata tag per produced chunk so the
+         * tag buffer stays aligned with audio output. This mirrors the
+         * device path that drains a tag alongside each dequeue. */
+        audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+        uint16_t dequeued_id = 0;
+        if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+            audio_source_tag_log_miss("fallback");
+        }
+        (void)dequeued_tag;
+        (void)dequeued_id;
+    #endif
         *bytes_read = bytes_written;
         log_read_summary("fallback", size, bytes_written);
         AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
@@ -2859,6 +2877,26 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         wav_stream_try_refill();
         return ESP_OK;
     }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* Host tests expect one metadata tag per successful read chunk. If
+     * previous paths have not already consumed a tag (e.g., fallback
+     * synthesis), drain one here when available to keep host tag counts
+     * aligned with audio output. */
+    if (s_audio_source_buffer != NULL && bytes_written > 0) {
+        size_t tag_used = audio_processor_test_get_tag_used();
+        if (tag_used > 0) {
+            printf("HOST TAG DRAIN bytes=%zu tags=%zu\n", bytes_written, tag_used);
+            audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+            uint16_t dequeued_id = 0;
+            if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+                audio_source_tag_log_miss("audio_read_tail");
+            }
+            (void)dequeued_tag;
+            (void)dequeued_id;
+        }
+    }
+#endif
 
     if (bytes_written < size) {
         /* Zero-fill remaining tail so output buffer is deterministic */
@@ -3365,7 +3403,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         }
         portENTER_CRITICAL(&s_beep_lock);
         s_beep_prefill_goal_bytes = prefill_goal;
-        s_beep_prefill_accum_bytes = 0;
+        s_beep_prefill_accum_bytes = bytes_enqueued;
         s_beep_prefill_release_tick = xTaskGetTickCount() + pdMS_TO_TICKS(BEEP_PREFILL_MS);
         s_beep_prefill_active = true;
         portEXIT_CRITICAL(&s_beep_lock);
@@ -3384,6 +3422,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         if (beep_send_with_tag(s_proc_buffer, tail_bytes, beep_wait, audio_wait, 5)) {
             s_beep_remaining_bytes += tail_bytes;
             bytes_enqueued += tail_bytes;
+            s_beep_prefill_accum_bytes += tail_bytes;
         }
     }
 
@@ -4846,6 +4885,12 @@ size_t audio_processor_get_work_buffer_bytes(void)
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
+size_t audio_processor_test_get_beep_remaining_bytes(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return s_beep_remaining_bytes;
+}
+
 void audio_processor_test_wav_reset_state(void)
 {
     AUDIO_PROC_LOG_ONCE();

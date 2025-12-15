@@ -615,9 +615,17 @@ def main(argv: list[str] | None = None):
 
             if matched:
                 vals = by_file.get(matched, {})
-                tests = int(vals.get("tests", 0))
-                failures = int(vals.get("failures", 0))
-                ignored = int(vals.get("ignored", 0))
+                # Support both flattened and nested aggregator shapes. Prefer
+                # the last entry in an "entries" list when present.
+                if isinstance(vals, dict) and "entries" in vals and isinstance(vals.get("entries"), list) and vals["entries"]:
+                    entry = vals["entries"][-1]
+                    tests = int(entry.get("tests", 0))
+                    failures = int(entry.get("failures", 0))
+                    ignored = int(entry.get("ignored", 0))
+                else:
+                    tests = int(vals.get("tests", 0))
+                    failures = int(vals.get("failures", 0))
+                    ignored = int(vals.get("ignored", 0))
                 passed = tests - failures - ignored
                 if passed < 0:
                     passed = 0

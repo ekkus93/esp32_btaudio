@@ -321,6 +321,7 @@ void audio_processor_test_wav_abort(void);
 void audio_processor_test_wav_complete_if_idle(void);
 bool audio_processor_test_wav_is_active(void);
 size_t audio_processor_test_wav_pending_bytes(void);
+size_t audio_processor_test_get_beep_remaining_bytes(void);
 /* Test-only helper: return number of bytes currently stored in the
  * metadata/tag ringbuffer. This is only available in mock/test builds
  * where CONFIG_BT_MOCK_TESTING is defined. The value equals the number
