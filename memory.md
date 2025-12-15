@@ -1,5 +1,10 @@
 ## Current Focus
-### Latest: util_safe device runner fix (2026-02-07)
+### Timestamp policy (2025-12-15T14:31:57-08:00)
+- When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
+### Latest: util_safe edge coverage (2025-12-15T14:31:57-08:00)
+- Expanded util_safe host and device tests with zero-length, dst_size=0/1, truncation, and snprintf edge cases; added runners so each case executes.
+- Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + ESP-IDF 5.4). Results: host 24/24; device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 130/130). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
+### Latest: util_safe device runner fix (2025-12-15T14:31:57-08:00)
 - Added `TEST_GROUP_RUNNER(util_safe)` forward declaration in `test_app/main/test_app_main.c` so RUN_TEST_GROUP resolves; `idf.py -C esp_bt_audio_source/test_app build` now succeeds after the util_safe fixture conversion.
 - Updated device util_safe test to match util_safe_memcpy semantics (truncate without implicit terminator), aligned with the host test.
 - Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + ESP-IDF 5.4: host 24/24 passed; device suites all green — `test_app` 42/42 (includes util_safe group), `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (device aggregate 120/120). Artifacts refreshed in `tmp/run_all_tests_summary.json` and per-suite `build/one_run_unity.log` files.
@@ -27,21 +32,21 @@
 - Project-only sweep (`/esp_bt_audio_source/` filter) runs without header errors; reports numerous analyzer `insecureAPI` warnings on memcpy/memset/strncpy/snprintf plus existing dead-store/unused helper warnings in `audio_processor.c` and `command_interface/commands.c`. Exit code nonzero due to warnings; IDF-wide sweep still trips on assembly macros and GCC-only warning flags.
 ### Latest: Lint cleanup (2025-12-15)
 - Addressed clang-tidy bugprone warnings in `audio_processor.c` by using argument structs for `convert_audio_format`/`resample_audio` (avoids easily-swappable parameter pairs) and switching `apply_volume` to integer scaling with clamping to eliminate narrowing conversions. Removed unused attribute on `get_name_from_eir` in `main.c`. `idf.py -C esp_bt_audio_source build` now passes after these changes.
-### Latest: Full test sweep (2025-12-21)
+### Latest: Full test sweep (2025-12-15T14:31:57-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `python310` + ESP-IDF 5.4 environment active; host CTest 23/23 passed. Device Unity suites all passed: `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (aggregate device 115/115). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### Latest: Full test sweep (2025-12-15)
 - Reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` post-lint fixes with `python310` + ESP-IDF 5.4. Results: host 23/23 passed; device suites all green — `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (aggregate device 115/115). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
-### Latest: Idle I2S host test (2025-12-21)
+### Latest: Idle I2S host test (2025-12-15T14:31:57-08:00)
 - Added host test `test_audio_processor_idle_i2s` plus helper `audio_processor_test_idle_i2s_failures` (CONFIG_BT_MOCK_TESTING) to verify the idle-failure keepalive re-enables synth only when no beep is pending; built target `test_audio_processor_idle_i2s` and ran `./test_audio_processor_idle_i2s` successfully (2/2 tests).
-### Latest: Beep synth gating device test (2025-12-21)
+### Latest: Beep synth gating device test (2025-12-15T14:31:57-08:00)
 - Added device Unity test `test_audio_processor_idle_failures_should_not_enable_synth_with_beep` in `test_app_audio` to ensure repeated idle I2S failures do not re-enable the synth while beep bytes remain. Full test sweep now passes with totals: host 23/23; device `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 30/30, `test_app3` 3/3 (aggregate device 115/115).
-### Latest: TAG-MISS latch/drop (2025-12-20)
+### Latest: TAG-MISS latch/drop (2025-12-15T14:31:57-08:00)
 - Implemented Option 1 for TAG-MISS mitigation: added a 500 ms one-shot mute window around `audio_source_tag_recover_desync` and expanded the per-recovery drop window to up to 16 beep/audio items to suppress repeated TAG-MISS spam.
 
-### Latest: I2S idle synth park (2025-12-20)
+### Latest: I2S idle synth park (2025-12-15T14:31:57-08:00)
 - Option 1: when I2S read failures pile up with no source or beep active, the reader now re-enables the silent synth keepalive and resets the failure counter to stop repeated ESP_ERR_TIMEOUT spam; flashed via `idf.py -C esp_bt_audio_source -p /dev/ttyUSB0 flash`.
 
-### Latest: Full test sweep (2025-12-20)
+### Latest: Full test sweep (2025-12-15T14:31:57-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` using python310 + IDF 5.4 env; results: host 22/22, device suites `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 29/29, `test_app3` 3/3 (aggregate device 114/114). Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 
 ### Agent conduct note (2025-12-13)
@@ -75,7 +80,7 @@
 - Reduced default BEEP duration to 10s (`CMD_BEEP_DURATION_MS=10000`) to match test expectation and mocked beep request tracking.
 - Host audio_processor stub now resets ring + beep flag on tag buffer reset and supports a one-shot volume-scaling bypass to keep raw-byte tag tests stable while preserving scaling for volume_application. Added a skip flag and reintroduced scaling logic.
 - Host test suite re-run via `python3 tools/run_all_tests.py --no-device`: 22/22 host tests passing (device suites skipped this run).
-### Latest: Beep prefill release fix (2025-12-19)
+### Latest: Beep prefill release fix (2025-12-15T14:31:57-08:00)
 - Added component test `test_audio_processor_beep_prefill_releases_after_delay` to assert beep data drains after the prefill window. Introduced test helper `audio_processor_test_get_beep_remaining_bytes` (CONFIG_BT_MOCK_TESTING) to observe remaining beep bytes.
 - Fixed `audio_processor_beep_tone` prefill logic to keep `s_beep_prefill_accum_bytes` at the enqueued byte count (including tail) instead of resetting to zero so the prefill gate can release; repeated beeps should no longer stall behind the prefill byte check.
 ### Latest: CONNECT+BEEP quiet capture (2025-12-13)
@@ -85,7 +90,7 @@
 ### Latest: TAG-MISS prevention (2025-12-13)
 - Added component Unity test `test_audio_processor_inject_pushes_and_consumes_tag` to ensure test-only audio injections push a metadata tag and consume it, preventing TAG-MISS during reads.
 - Updated `audio_processor_test_inject_audio_data` to push an `AUDIO_SOURCE_TAG_CAPTURE` tag and drop it on enqueue failure so tag/audio stay aligned. Tests not run in this session.
-### Latest: CONNECT+BEEP attempt (2025-12-18)
+### Latest: CONNECT+BEEP attempt (2025-12-15T14:31:57-08:00)
 - Sent `CONNECT 00:18:6B:76:D7:1C` then `BEEP` via serial script on the current firmware. UART output was dominated by `AUDIO_PROC` diagnostics (no command responses seen), consistent with the build lacking the new `DEBUG AUDIO_DIAG` toggle. Need to flash the updated image (with diag gating) and retry CONNECT+BEEP with diagnostics off.
 ### Latest: Warning cleanup (2025-12-13)
 - Removed unused helpers in `main/audio_processor.c` (beep auto-start wrapper, beep chunk sender) and unused synth phase statics; gated the test-only tag-take helper behind `CONFIG_BT_MOCK_TESTING`. `idf.py -C esp_bt_audio_source build` now completes with zero warnings.
@@ -95,7 +100,7 @@
 - Removed all tone generation from `esp_bt_audio_source/main/main.c::bt_app_a2d_data_cb`; keepalive now zero-fills A2DP buffers so periodic beeps are eliminated. Rebuilt and flashed to `/dev/ttyUSB0`; brief UART spot-check shows synth worker enqueuing silence (beep_remaining=0) with no crashes.
 ### Latest: Synth/beep muted (2025-12-13)
 - Forced synth generator in `audio_processor.c` to emit silence and defaulted `s_force_synth` to false; `audio_processor_beep_tone` now no-ops to suppress all beeps. Rebuilt and flashed to `/dev/ttyUSB0`; UART shows I2S timeouts with synth disabled and no beep activity (beep_remaining=0). Awaiting headset confirmation that all idle beeps are gone.
-### Latest: Idle UART spot-check (2025-12-17)
+### Latest: Idle UART spot-check (2025-12-15T14:31:57-08:00)
 - After flashing the near-ultrasonic keepalive build, polled `/dev/ttyUSB0` at 115200 baud for ~2.5 s; device is running and emitting `AUDIO_PROC` diagnostics showing synth worker enqueuing 512-byte chunks (synth=1, wav inactive, overruns climbing) with no crashes. Awaiting headset confirmation that the periodic keepalive is inaudible at 19 kHz/low amplitude.
 ### Latest: Full test sweep green (2025-12-13)
 - Ran `python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600 --source-idf "$HOME/esp/esp-idf/export.sh"` from repo root; host ctest 22/22 passed and device suites passed (test_app 37/37, test_app2 45/45, test_app_audio 26/26, test_app3 3/3). Summary in `tmp/run_all_tests_summary.json`; per-suite logs in each `build/one_run_unity.log`.
@@ -115,7 +120,7 @@
 - Ran `cmake --build . && ctest --output-on-failure` under `test/host_test/build`; all 22 host tests passed. One warning remains in `test_audio_tag_alignment.c` for implicit `esp_heap_caps_mock_*` declarations (needs header include).
 - Added device-build stubs for `audio_processor_dump_tag_ringbuffer` (test_app/test_app2) and `audio_processor_beep_tone` (test_app2) to satisfy command_interface links.
 - Re-ran `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`: host 22/22 pass; device suites now fully run and pass: `test_app` 37/37, `test_app2` 45/45, `test_app_audio` 26/26, `test_app3` 3/3. Summary in `tmp/run_all_tests_summary.json` and per-suite logs under `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
-### Latest: Option 1 after log throttling (2025-12-16)
+### Latest: Option 1 after log throttling (2025-12-15T14:31:57-08:00)
 - Ran Option 1 sequence after throttling I2S warning spam; capture `tmp/play_option1_throttled.log` includes VOLUME 95, STATUS, PLAY `/spiffs/worker_long_norm.wav`, and two `DEBUG TAG_DUMP 8` mid-stream. Command acks restored; WAV header parsed, streaming loop active (wav_active=1, overruns ~81, underruns=0) with rb_free oscillating 0–4 KiB. TAG_DUMP snapshots show `wav` ids 70–77 then 71–101 with truncation warnings; later TAG-MISS warnings flag push/take drift.
 - Task watchdog fired once (IDLE0, CPU0 BTC_TASK) about 0.6 s into playback; device did not reboot and streaming continued afterward.
 - Follow-up Option 1 rerun with delayed PLAY (`tmp/play_option1_new2.log`): device auto-connects, PLAY succeeds, streaming shows underruns=0/overruns~80. First TAG_DUMP (mid-play) captures one `wav` tag id 168 (available=1); second TAG_DUMP at tail returns empty (OK|...|1 then |0). WAV completes; I2S timeouts resume with synth still disabled; no reboot observed. User still reports silence; need sink-side check and BTC_TASK backtrace decode.
