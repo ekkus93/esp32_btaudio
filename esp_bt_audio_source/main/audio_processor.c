@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <limits.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -309,6 +310,24 @@ static const TickType_t WORKER_DIAG_INTERVAL_TICKS = pdMS_TO_TICKS(1000);
 static TickType_t s_wav_retry_log_next_tick = 0;
 static const TickType_t WAV_RETRY_LOG_INTERVAL_TICKS = pdMS_TO_TICKS(200);
 
+typedef struct {
+    const void* src;
+    void* dst;
+    size_t src_size;
+    audio_bit_depth_t src_bit_depth;
+    audio_bit_depth_t dst_bit_depth;
+    size_t* dst_size;
+} audio_convert_args_t;
+
+typedef struct {
+    const void* src;
+    void* dst;
+    size_t src_size;
+    audio_sample_rate_t src_rate;
+    audio_sample_rate_t dst_rate;
+    size_t* dst_size;
+} audio_resample_args_t;
+
 static inline void wav_stream_log_backpressure(size_t chunk, size_t free_sz, size_t frame_sz,
                                                size_t max_item, size_t remaining)
 {
@@ -322,12 +341,8 @@ static inline void wav_stream_log_backpressure(size_t chunk, size_t free_sz, siz
 }
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced);
-static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
-                                      audio_bit_depth_t src_bit_depth, audio_bit_depth_t dst_bit_depth,
-                                      size_t* dst_size);
-static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
-                                audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
-                                size_t* dst_size);
+static esp_err_t convert_audio_format(const audio_convert_args_t* args);
+static esp_err_t resample_audio(const audio_resample_args_t* args);
 static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result);
 static bool audio_source_tag_push(audio_source_tag_t tag);
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -1333,23 +1348,29 @@ static esp_err_t wav_stream_fill_locked(void)
         }
 
         size_t conv_size = 0U;
-        esp_err_t conv_ret = convert_audio_format(s_proc_buffer,
-                                                  s_proc_buffer,
-                                                  raw_read,
-                                                  s_wav_stream.src_bit_depth,
-                                                  s_audio_config.bit_depth,
-                                                  &conv_size);
+        audio_convert_args_t conv_args = {
+            .src = s_proc_buffer,
+            .dst = s_proc_buffer,
+            .src_size = raw_read,
+            .src_bit_depth = s_wav_stream.src_bit_depth,
+            .dst_bit_depth = s_audio_config.bit_depth,
+            .dst_size = &conv_size,
+        };
+        esp_err_t conv_ret = convert_audio_format(&conv_args);
         if (conv_ret != ESP_OK) {
             return conv_ret;
         }
 
         size_t res_size = 0U;
-        esp_err_t res_ret = resample_audio(s_proc_buffer,
-                                           s_proc_buffer2,
-                                           conv_size,
-                                           s_wav_stream.src_sample_rate,
-                                           s_audio_config.sample_rate,
-                                           &res_size);
+        audio_resample_args_t res_args = {
+            .src = s_proc_buffer,
+            .dst = s_proc_buffer2,
+            .src_size = conv_size,
+            .src_rate = s_wav_stream.src_sample_rate,
+            .dst_rate = s_audio_config.sample_rate,
+            .dst_size = &res_size,
+        };
+        esp_err_t res_ret = resample_audio(&res_args);
         if (res_ret != ESP_OK) {
             return res_ret;
         }
@@ -3288,12 +3309,28 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     size_t res_size = 0;
 
     /* Convert/resample to the worker output format (no-op if identical) */
-    if (convert_audio_format(s_proc_buffer, s_proc_buffer, generated, s_audio_config.bit_depth, s_audio_config.bit_depth, &conv_size) != ESP_OK) {
+    audio_convert_args_t conv_args = {
+        .src = s_proc_buffer,
+        .dst = s_proc_buffer,
+        .src_size = generated,
+        .src_bit_depth = s_audio_config.bit_depth,
+        .dst_bit_depth = s_audio_config.bit_depth,
+        .dst_size = &conv_size,
+    };
+    if (convert_audio_format(&conv_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
     }
     if (conv_size == 0) return ESP_ERR_INVALID_SIZE;
 
-    if (resample_audio(s_proc_buffer, s_proc_buffer2, conv_size, s_audio_config.sample_rate, s_audio_config.sample_rate, &res_size) != ESP_OK) {
+    audio_resample_args_t res_args = {
+        .src = s_proc_buffer,
+        .dst = s_proc_buffer2,
+        .src_size = conv_size,
+        .src_rate = s_audio_config.sample_rate,
+        .dst_rate = s_audio_config.sample_rate,
+        .dst_size = &res_size,
+    };
+    if (resample_audio(&res_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
     }
     if (res_size == 0) return ESP_ERR_INVALID_SIZE;
@@ -4282,9 +4319,15 @@ static void audio_worker_task(void *pvParameters)
 
         /* Convert */
         size_t conv_size = 0;
-        esp_err_t cret = convert_audio_format(blk.ptr, s_proc_buffer, blk.len,
-                                              s_audio_config.bit_depth, s_audio_config.bit_depth,
-                                              &conv_size);
+        audio_convert_args_t conv_args = {
+            .src = blk.ptr,
+            .dst = s_proc_buffer,
+            .src_size = blk.len,
+            .src_bit_depth = s_audio_config.bit_depth,
+            .dst_bit_depth = s_audio_config.bit_depth,
+            .dst_size = &conv_size,
+        };
+        esp_err_t cret = convert_audio_format(&conv_args);
         if (cret != ESP_OK) {
             s_audio_stats.conversion_errors++;
             audio_worker_discard_block("convert-fail", &blk);
@@ -4293,9 +4336,15 @@ static void audio_worker_task(void *pvParameters)
 
         /* Resample */
         size_t res_size = 0;
-        esp_err_t rret = resample_audio(s_proc_buffer, s_proc_buffer2, conv_size,
-                                        s_audio_config.sample_rate, s_audio_config.sample_rate,
-                                        &res_size);
+        audio_resample_args_t res_args = {
+            .src = s_proc_buffer,
+            .dst = s_proc_buffer2,
+            .src_size = conv_size,
+            .src_rate = s_audio_config.sample_rate,
+            .dst_rate = s_audio_config.sample_rate,
+            .dst_size = &res_size,
+        };
+        esp_err_t rret = resample_audio(&res_args);
         if (rret != ESP_OK) {
             s_audio_stats.conversion_errors++;
             audio_worker_discard_block("resample-fail", &blk);
@@ -4456,36 +4505,51 @@ static void diag_dump_bytes(const void* data, size_t len, const char* tag)
 /**
  * @brief Apply volume gain to audio buffer
  */
+static int16_t clamp_int16(int32_t value)
+{
+    if (value > INT16_MAX) return INT16_MAX;
+    if (value < INT16_MIN) return INT16_MIN;
+    return (int16_t)value;
+}
+
+static int32_t clamp_int32(int64_t value)
+{
+    if (value > INT32_MAX) return INT32_MAX;
+    if (value < INT32_MIN) return INT32_MIN;
+    return (int32_t)value;
+}
+
 static void apply_volume(void* buffer, size_t size, uint8_t volume)
 {
-    if (volume >= 100) {
+    if (volume >= 100U || buffer == NULL || size == 0U) {
         return; // No change needed
     }
 
-    if (volume == 0) {
-        // Muted
+    if (volume == 0U) {
         memset(buffer, 0, size);
         return;
     }
 
-    // Apply volume based on bit depth
-    float gain = volume / 100.0f;
-    
+    const int32_t scale = (int32_t)volume;
+    const int32_t divisor = 100;
+
     if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
         int16_t* samples = (int16_t*)buffer;
-        int sample_count = size / sizeof(int16_t);
-        
+        int sample_count = (int)(size / sizeof(int16_t));
+
         for (int i = 0; i < sample_count; i++) {
-            samples[i] = (int16_t)(samples[i] * gain);
+            int32_t scaled = ((int32_t)samples[i] * scale + (divisor / 2)) / divisor;
+            samples[i] = clamp_int16(scaled);
         }
-    } 
+    }
     else if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_24 ||
              s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) {
         int32_t* samples = (int32_t*)buffer;
-        int sample_count = size / sizeof(int32_t);
-        
+        int sample_count = (int)(size / sizeof(int32_t));
+
         for (int i = 0; i < sample_count; i++) {
-            samples[i] = (int32_t)(samples[i] * gain);
+            int64_t scaled = ((int64_t)samples[i] * (int64_t)scale + (divisor / 2)) / divisor;
+            samples[i] = clamp_int32(scaled);
         }
     }
 }
@@ -4493,10 +4557,19 @@ static void apply_volume(void* buffer, size_t size, uint8_t volume)
 /**
  * @brief Convert audio from one bit depth to another
  */
-static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size, 
-                                      audio_bit_depth_t src_bit_depth, audio_bit_depth_t dst_bit_depth,
-                                      size_t* dst_size)
+static esp_err_t convert_audio_format(const audio_convert_args_t* args)
 {
+    if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const void* src = args->src;
+    void* dst = args->dst;
+    size_t src_size = args->src_size;
+    audio_bit_depth_t src_bit_depth = args->src_bit_depth;
+    audio_bit_depth_t dst_bit_depth = args->dst_bit_depth;
+    size_t* dst_size = args->dst_size;
+
     size_t work_bytes = audio_get_runtime_work_bytes();
     if (work_bytes == 0U) {
         work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
@@ -4595,14 +4668,19 @@ static esp_err_t convert_audio_format(void* src, void* dst, size_t src_size,
  * Note: This is a basic linear interpolation resampler.
  * For production use, consider a higher quality algorithm like polyphase or FFT-based resampling.
  */
-static esp_err_t resample_audio(void* src, void* dst, size_t src_size, 
-                               audio_sample_rate_t src_rate, audio_sample_rate_t dst_rate,
-                               size_t* dst_size)
+static esp_err_t resample_audio(const audio_resample_args_t* args)
 {
-    if (dst_size == NULL) {
-        ESP_LOGE(TAG, "resample_audio: null dst_size");
+    if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
+        ESP_LOGE(TAG, "resample_audio: invalid args src=%p dst=%p dst_size=%p", args ? args->src : NULL, args ? args->dst : NULL, args ? args->dst_size : NULL);
         return ESP_ERR_INVALID_ARG;
     }
+    const void* src = args->src;
+    void* dst = args->dst;
+    size_t src_size = args->src_size;
+    audio_sample_rate_t src_rate = args->src_rate;
+    audio_sample_rate_t dst_rate = args->dst_rate;
+    size_t* dst_size = args->dst_size;
+
     *dst_size = 0;
 
     if (src == NULL || dst == NULL) {
@@ -4627,10 +4705,6 @@ static esp_err_t resample_audio(void* src, void* dst, size_t src_size,
     }
 
     // (diagnostic logging will be emitted after validation of config and sizes)
-
-    if (src == NULL || dst == NULL || dst_size == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
 
     if (src_rate <= 0 || dst_rate <= 0) {
         return ESP_ERR_INVALID_ARG;

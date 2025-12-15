@@ -188,7 +188,7 @@ static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
     return str;
 }
 
-static bool __attribute__((unused)) get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
+static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
 {
     uint8_t *rmt_bdname = NULL;
     uint8_t rmt_bdname_len = 0;
