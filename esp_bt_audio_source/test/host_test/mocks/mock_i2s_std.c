@@ -8,6 +8,10 @@ typedef struct {
     bool created;
     bool enabled;
     int last_id;
+    esp_err_t next_new_ret;
+    esp_err_t next_init_ret;
+    esp_err_t next_enable_ret;
+    esp_err_t next_disable_ret;
     esp_err_t next_read_ret;
     size_t next_read_bytes;
 } mock_i2s_state_t;
@@ -16,6 +20,10 @@ static mock_i2s_state_t s_i2s_state = {
     .created = false,
     .enabled = false,
     .last_id = -1,
+    .next_new_ret = ESP_OK,
+    .next_init_ret = ESP_OK,
+    .next_enable_ret = ESP_OK,
+    .next_disable_ret = ESP_OK,
     .next_read_ret = ESP_OK,
     .next_read_bytes = 0
 };
@@ -25,6 +33,10 @@ void mock_i2s_std_reset_state(void)
     s_i2s_state.created = false;
     s_i2s_state.enabled = false;
     s_i2s_state.last_id = -1;
+    s_i2s_state.next_new_ret = ESP_OK;
+    s_i2s_state.next_init_ret = ESP_OK;
+    s_i2s_state.next_enable_ret = ESP_OK;
+    s_i2s_state.next_disable_ret = ESP_OK;
     s_i2s_state.next_read_ret = ESP_OK;
     s_i2s_state.next_read_bytes = 0;
 }
@@ -35,6 +47,26 @@ void mock_i2s_std_set_next_read_result(esp_err_t ret, size_t bytes)
     s_i2s_state.next_read_bytes = bytes;
 }
 
+void mock_i2s_std_set_next_new_result(esp_err_t ret)
+{
+    s_i2s_state.next_new_ret = ret;
+}
+
+void mock_i2s_std_set_next_init_result(esp_err_t ret)
+{
+    s_i2s_state.next_init_ret = ret;
+}
+
+void mock_i2s_std_set_next_enable_result(esp_err_t ret)
+{
+    s_i2s_state.next_enable_ret = ret;
+}
+
+void mock_i2s_std_set_next_disable_result(esp_err_t ret)
+{
+    s_i2s_state.next_disable_ret = ret;
+}
+
 int i2s_new_channel(const i2s_chan_config_t* chan_cfg, void* out_tx, i2s_chan_handle_t* handle)
 {
     (void)out_tx;
@@ -43,6 +75,11 @@ int i2s_new_channel(const i2s_chan_config_t* chan_cfg, void* out_tx, i2s_chan_ha
     }
     if (s_i2s_state.created) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (s_i2s_state.next_new_ret != ESP_OK) {
+        esp_err_t tmp = s_i2s_state.next_new_ret;
+        s_i2s_state.next_new_ret = ESP_OK;
+        return tmp;
     }
     s_i2s_state.created = true;
     s_i2s_state.enabled = false;
@@ -56,7 +93,15 @@ int i2s_channel_init_std_mode(i2s_chan_handle_t handle, const i2s_std_config_t* 
     if (!handle || !cfg) {
         return ESP_ERR_INVALID_ARG;
     }
-    return s_i2s_state.created ? ESP_OK : ESP_ERR_INVALID_STATE;
+    if (!s_i2s_state.created) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_i2s_state.next_init_ret != ESP_OK) {
+        esp_err_t tmp = s_i2s_state.next_init_ret;
+        s_i2s_state.next_init_ret = ESP_OK;
+        return tmp;
+    }
+    return ESP_OK;
 }
 
 int i2s_channel_enable(i2s_chan_handle_t handle)
@@ -66,6 +111,11 @@ int i2s_channel_enable(i2s_chan_handle_t handle)
     }
     if (!s_i2s_state.created) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (s_i2s_state.next_enable_ret != ESP_OK) {
+        esp_err_t tmp = s_i2s_state.next_enable_ret;
+        s_i2s_state.next_enable_ret = ESP_OK;
+        return tmp;
     }
     s_i2s_state.enabled = true;
     return ESP_OK;
@@ -78,6 +128,11 @@ int i2s_channel_disable(i2s_chan_handle_t handle)
     }
     if (!s_i2s_state.created || !s_i2s_state.enabled) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (s_i2s_state.next_disable_ret != ESP_OK) {
+        esp_err_t tmp = s_i2s_state.next_disable_ret;
+        s_i2s_state.next_disable_ret = ESP_OK;
+        return tmp;
     }
     s_i2s_state.enabled = false;
     return ESP_OK;

@@ -42,6 +42,43 @@ static void test_read_before_start_should_fail(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_i2s_read(buf, sizeof(buf), &bytes, 10));
 }
 
+static void test_start_stop_should_succeed(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_start_stop_start_again_should_succeed(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+}
+
+static void test_stop_after_start_then_read_should_fail(void)
+{
+    uint8_t buf[8];
+    size_t bytes = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_i2s_read(buf, sizeof(buf), &bytes, 5));
+}
+
+static void test_reinit_after_deinit_should_succeed(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+
+    mock_i2s_std_reset_state();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+}
+
 static void test_read_success_reports_bytes(void)
 {
     uint8_t buf[8];
@@ -66,6 +103,94 @@ static void test_read_timeout_propagates_error(void)
     TEST_ASSERT_EQUAL(0u, bytes);
 }
 
+static void test_read_error_propagates_and_reports_bytes(void)
+{
+    uint8_t buf[8];
+    size_t bytes = 0;
+    mock_i2s_std_set_next_read_result(ESP_FAIL, 4);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_read(buf, sizeof(buf), &bytes, 5));
+    TEST_ASSERT_EQUAL(4u, bytes);
+}
+
+static void test_read_timeout_leaves_running_and_stop_ok(void)
+{
+    uint8_t buf[8];
+    size_t bytes = 0;
+    mock_i2s_std_set_next_read_result(ESP_ERR_TIMEOUT, 0);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, audio_i2s_read(buf, sizeof(buf), &bytes, 5));
+    TEST_ASSERT_EQUAL(0u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_stop_when_not_running_should_be_ok(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_start_error_propagates_and_stop_remains_ok(void)
+{
+    mock_i2s_std_set_next_enable_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_start());
+    /* Not running, so stop should still be a no-op OK */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_start_failure_then_recover_start_success(void)
+{
+    mock_i2s_std_set_next_enable_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_start());
+
+    mock_i2s_std_set_next_enable_result(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_stop_error_propagates(void)
+{
+    mock_i2s_std_reset_state();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    mock_i2s_std_set_next_disable_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_stop());
+    /* After a failed stop, try again with success to clear running state */
+    mock_i2s_std_set_next_disable_result(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_init_failure_on_channel_create_recovers(void)
+{
+    mock_i2s_std_set_next_new_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_init(&cfg));
+    /* After failure, a fresh attempt should succeed */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_init_failure_on_std_mode_recovers(void)
+{
+    mock_i2s_std_set_next_init_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_double_stop_should_be_ok(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -73,7 +198,20 @@ int main(void)
     RUN_TEST(test_stop_before_init_should_fail);
     RUN_TEST(test_double_init_should_report_invalid_state);
     RUN_TEST(test_read_before_start_should_fail);
+    RUN_TEST(test_start_stop_should_succeed);
+    RUN_TEST(test_start_stop_start_again_should_succeed);
+    RUN_TEST(test_stop_after_start_then_read_should_fail);
+    RUN_TEST(test_reinit_after_deinit_should_succeed);
     RUN_TEST(test_read_success_reports_bytes);
     RUN_TEST(test_read_timeout_propagates_error);
+    RUN_TEST(test_read_error_propagates_and_reports_bytes);
+    RUN_TEST(test_read_timeout_leaves_running_and_stop_ok);
+    RUN_TEST(test_stop_when_not_running_should_be_ok);
+    RUN_TEST(test_start_error_propagates_and_stop_remains_ok);
+    RUN_TEST(test_start_failure_then_recover_start_success);
+    RUN_TEST(test_stop_error_propagates);
+    RUN_TEST(test_init_failure_on_channel_create_recovers);
+    RUN_TEST(test_init_failure_on_std_mode_recovers);
+    RUN_TEST(test_double_stop_should_be_ok);
     return UNITY_END();
 }

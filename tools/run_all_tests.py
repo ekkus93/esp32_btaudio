@@ -198,6 +198,52 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     outpath = TMP_DIR / "host_ctest_output.log"
     outpath.write_text(out)
     summary["host"]["ctest_log"] = str(outpath)
+    
+    # After ctest completes, run each host test binary directly to capture Unity case counts
+    # (ctest only reports test targets, not per-Unity test cases).
+    # Look for executable files named test_* in the build directory.
+    def _unity_counts_from_output(stdout: str) -> dict:
+        m = re.search(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored", stdout)
+        if not m:
+            return {"tests": 0, "failures": 0, "ignored": 0}
+        tests = int(m.group(1))
+        failures = int(m.group(2))
+        ignored = int(m.group(3))
+        return {"tests": tests, "failures": failures, "ignored": ignored}
+
+    per_binary = {}
+    total_cases = 0
+    total_failures = 0
+    total_ignored = 0
+    try:
+        for entry in build_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if not entry.name.startswith("test_"):
+                continue
+            if not os.access(entry, os.X_OK):
+                continue
+            rc_bin, out_bin = run_cmd([str(entry)], cwd=str(build_dir))
+            counts = _unity_counts_from_output(out_bin)
+            per_binary[entry.name] = {
+                "rc": rc_bin,
+                "stdout": out_bin,
+                "tests": counts.get("tests", 0),
+                "failures": counts.get("failures", 0),
+                "ignored": counts.get("ignored", 0),
+            }
+            total_cases += counts.get("tests", 0)
+            total_failures += counts.get("failures", 0)
+            total_ignored += counts.get("ignored", 0)
+    except Exception as exc:
+        per_binary["_count_error"] = str(exc)
+
+    summary["host"]["case_counts"] = {
+        "total": total_cases,
+        "failures": total_failures,
+        "ignored": total_ignored,
+        "per_binary": per_binary,
+    }
     return summary
 
 
@@ -703,16 +749,24 @@ def main(argv: list[str] | None = None):
         # Host summary (if present)
         host = report.get("host")
         if host and isinstance(host, dict) and host.get("ctest_rc") is not None:
-            # try to extract total tests from the ctest output
-            ctest_out = host.get("ctest_output", "")
-            import re
-            m = re.search(r"(\d+)% tests passed, (\d+) tests failed out of (\d+)", ctest_out)
-            if m:
-                # older patterns may vary; fallback to shown counts
-                print(f"Host tests: {m.group(3)} total, {int(m.group(3))-int(m.group(2))} passed, {m.group(2)} failed")
+            # Prefer per-Unity case counts if available, otherwise fall back to ctest target counts
+            case_counts = host.get("case_counts", {}) if isinstance(host.get("case_counts"), dict) else {}
+            total_cases = int(case_counts.get("total", 0) or 0)
+            failed_cases = int(case_counts.get("failures", 0) or 0)
+            ignored_cases = int(case_counts.get("ignored", 0) or 0)
+            passed_cases = total_cases - failed_cases - ignored_cases
+            if total_cases > 0:
+                print(f"Host tests: {total_cases} total cases, {passed_cases} passed, {failed_cases} failed, {ignored_cases} ignored")
             else:
-                # best-effort: print ctest summary header
-                print("Host tests: ctest run (see host_ctest_output.log)")
+                # try to extract target counts from the ctest output
+                ctest_out = host.get("ctest_output", "")
+                import re
+                m = re.search(r"(\d+)% tests passed, (\d+) tests failed out of (\d+)", ctest_out)
+                if m:
+                    print(f"Host tests: {m.group(3)} total targets, {int(m.group(3))-int(m.group(2))} passed, {m.group(2)} failed")
+                else:
+                    # best-effort: print ctest summary header
+                    print("Host tests: ctest run (see host_ctest_output.log)")
 
         # Device suites
         devices = report.get("devices", {}) or {}

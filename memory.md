@@ -1,6 +1,21 @@
 ## Current Focus
 ### Timestamp policy (2025-12-15T14:31:57-08:00)
 - When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
+### Host case counts surfaced (2025-12-15T17:25:49-08:00)
+- `tools/run_all_tests.py` now executes each host test binary post-ctest to parse Unity totals (`X Tests Y Failures Z Ignored`) and includes per-binary + aggregate host case counts in the summary and quick printout. Host quick summary no longer relies solely on ctest target counts.
+### Full test sweep (2025-12-15T17:31:09-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + IDF 5.4 after host-case-count changes. Results: host 137/137 Unity cases (all pass); device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32, `test_app3` 14/14 (device aggregate 143/143). Quick summary now reports host cases, not just ctest targets. Artifacts refreshed: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
+### Test run attempt (2025-12-15T16:53:35-08:00)
+- `runTests` failed because `IDF_PATH` was unset (`CMakeLists.txt` include $ENV{IDF_PATH}/tools/cmake/project.cmake not found). Likely IDF lives at `/home/phil/esp/v5.4.1/esp-idf`; need env exported before rerun.
+- Same error tool also flagged "invalid type conversion" in `components/audio/test/test_pcm_processing.c`, but those may be spurious until CMake config succeeds.
+### Full test sweep instructions (2025-12-15T17:01:42-08:00)
+- To run all tests (host + device) per README: `cd /home/phil/work/esp32/esp32_btaudio && source /home/phil/mambaforge/bin/activate python310 && source /home/phil/esp/v5.4.1/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`.
+- Latest run (same timestamp) completed successfully: host 25/25; device totals — test_app 52/52, test_app2 45/45, test_app_audio 32/32, test_app3 14/14 (device aggregate 143/143). Summaries in `tmp/run_all_tests_summary.json` and per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+### Reminder to avoid wasting time (2025-12-15T17:07:54-08:00)
+- Do not rerun full suites or churn work without adding value. Confirm the expected change (new tests or code) before triggering long runs. Respect the user’s time and keep actions targeted.
+### I2S host tests expanded (2025-12-15T17:12:07-08:00)
+- Added host cases in `test_audio_i2s_host.c` for start failure recovery, read error propagation (non-timeout) reporting bytes, and ensuring read timeouts leave the channel running so stop still succeeds.
+- Built and ran `ctest -R test_audio_i2s_host` in `esp_bt_audio_source/test/host_test/build_host_tests`: passed (all cases green).
 ### Coverage gaps assessment (2025-12-15T15:44:27-08:00)
 - Reviewed latest aggregated test artifacts (`tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`) showing 206/206 tests green. Component-level tests exist only for `components/audio` (pcm/pipeline/tag helpers) and `components/util_safe`.
 - Identified weakly covered areas: `components/audio/audio_i2s.c` (I2S init/start/stop/read sequences lack host/device unit tests), `components/audio/i2s_audio.c` (byte alignment and sample conversion/offset handling only indirectly exercised), and event-heavy logic in `components/bt_manager/bt_manager.c` (pairing/autostart/state transitions) that is only partially covered by host tests.

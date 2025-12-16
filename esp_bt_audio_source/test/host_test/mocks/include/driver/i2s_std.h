@@ -90,5 +90,9 @@ int i2s_channel_read(i2s_chan_handle_t handle, void* data, size_t size, size_t* 
 // Mock control helpers
 void mock_i2s_std_reset_state(void);
 void mock_i2s_std_set_next_read_result(int ret, size_t bytes);
+void mock_i2s_std_set_next_new_result(int ret);
+void mock_i2s_std_set_next_init_result(int ret);
+void mock_i2s_std_set_next_enable_result(int ret);
+void mock_i2s_std_set_next_disable_result(int ret);
 
 #endif // MOCK_DRIVER_I2S_STD_H
