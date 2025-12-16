@@ -128,6 +128,50 @@ static void test_read_timeout_leaves_running_and_stop_ok(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
 }
 
+static void test_read_with_null_dest_should_fail(void)
+{
+    size_t bytes = 42;
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_i2s_read(NULL, 8, &bytes, 5));
+    TEST_ASSERT_EQUAL(42u, bytes);
+}
+
+static void test_read_with_null_bytes_ptr_should_succeed(void)
+{
+    uint8_t buf[8];
+    mock_i2s_std_set_next_read_result(ESP_OK, sizeof(buf));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_read(buf, sizeof(buf), NULL, 5));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_start_when_already_running_should_be_ok(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    /* Idempotent start should succeed when already running */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_start_failures_twice_then_success(void)
+{
+    mock_i2s_std_set_next_enable_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_start());
+
+    mock_i2s_std_set_next_enable_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, audio_i2s_start());
+
+    mock_i2s_std_set_next_enable_result(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
 static void test_stop_when_not_running_should_be_ok(void)
 {
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
@@ -206,6 +250,10 @@ int main(void)
     RUN_TEST(test_read_timeout_propagates_error);
     RUN_TEST(test_read_error_propagates_and_reports_bytes);
     RUN_TEST(test_read_timeout_leaves_running_and_stop_ok);
+    RUN_TEST(test_read_with_null_dest_should_fail);
+    RUN_TEST(test_read_with_null_bytes_ptr_should_succeed);
+    RUN_TEST(test_start_when_already_running_should_be_ok);
+    RUN_TEST(test_start_failures_twice_then_success);
     RUN_TEST(test_stop_when_not_running_should_be_ok);
     RUN_TEST(test_start_error_propagates_and_stop_remains_ok);
     RUN_TEST(test_start_failure_then_recover_start_success);
