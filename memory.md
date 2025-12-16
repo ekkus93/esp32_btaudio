@@ -12,6 +12,8 @@
 - Added `esp_heap_caps.h` include to `test/host_test/test_audio_tag_alignment.c` so `esp_heap_caps_mock_set_psram_available/reset_allocations` prototypes are visible; rebuilt target without warnings.
 ### Full test sweep (2025-12-15T16:35:38-08:00)
 - Ran `python tools/run_all_tests.py --timeout 600` from repo root (python310 + IDF 5.4 env). Results: host 25/25 passed; device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32, `test_app3` 14/14. Aggregate device 143/143, overall 168/168. Artifacts refreshed: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
+### Host i2s coverage commit (2025-12-15T16:37:11-08:00)
+- Committed and pushed `test: add audio i2s host coverage` to `origin/master` after adding `util_safe_host` linkage, `test_audio_i2s_host` plus mocks (`mock_i2s_std`, `esp_rom_sys.h`), and including heap_caps mock header. Push includes latest full test sweep (host 25/25, device 143/143).
 ### Full test sweep (2025-12-15T15:54:39-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `python310` + ESP-IDF 5.4. Results: host 24/24 pass; device suites pass — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32 (includes new i2s arg-check tests), `test_app3` 14/14. Aggregates: device 143/143, total 206/206. Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### Full test sweep (2025-12-15T15:19:22-08:00)
