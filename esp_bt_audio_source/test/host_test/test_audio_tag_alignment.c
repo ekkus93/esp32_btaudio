@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "../../main/include/audio_processor.h"
+#include "esp_heap_caps.h"
 #include <string.h>
 
 void setUp(void)

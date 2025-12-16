@@ -15,11 +15,16 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bluetooth/include
 )
+
+# util_safe helpers are needed by bt_manager/nvs_storage users in host builds
+add_library(util_safe_host OBJECT ../../components/util_safe/util_safe.c)
+target_include_directories(util_safe_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 
 # Find the unity package for unit testing
 find_package(unity QUIET)
@@ -43,7 +48,7 @@ target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
-target_link_libraries(test_commands unity)
+target_link_libraries(test_commands unity util_safe_host)
 
 # Enable CTest and register the test executables so `ctest` can discover them
 enable_testing()
@@ -55,7 +60,7 @@ add_executable(test_bluetooth test_bluetooth.c
 # Ensure test hooks are linked for bt_manager tests
 target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
 # Link with math library for sin function
-target_link_libraries(test_bluetooth unity m)
+target_link_libraries(test_bluetooth unity m util_safe_host)
 target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
@@ -107,11 +112,9 @@ add_test(NAME test_psram COMMAND $<TARGET_FILE:test_psram>)
 
 # util_safe host coverage: reuse the component's Unity cases on host to keep
 # the fast "all tests" path exercising the safety helpers.
-add_executable(test_util_safe
-    ../../components/util_safe/util_safe.c
-    test_util_safe_host.c)
+add_executable(test_util_safe test_util_safe_host.c)
 target_include_directories(test_util_safe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
-target_link_libraries(test_util_safe unity)
+target_link_libraries(test_util_safe unity util_safe_host)
 add_test(NAME test_util_safe COMMAND $<TARGET_FILE:test_util_safe>)
 
 ## Real audio_processor host test: link production source with host mocks
@@ -198,6 +201,16 @@ add_executable(test_list_ownership test_list_ownership.c
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
 target_link_libraries(test_list_ownership unity)
 add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
+
+# Host coverage for audio_i2s (std-channel API)
+add_executable(test_audio_i2s_host
+    test_audio_i2s_host.c
+    ../../components/audio/audio_i2s.c
+    mocks/mock_i2s_std.c)
+target_include_directories(test_audio_i2s_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio/include)
+target_compile_definitions(test_audio_i2s_host PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_i2s_host unity)
+add_test(NAME test_audio_i2s_host COMMAND $<TARGET_FILE:test_audio_i2s_host>)
 # allocator.c and list.c depend on bt_common.h which lives in the bt common include path
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
@@ -232,7 +245,7 @@ add_executable(test_pairing_confirm test_pairing_confirm.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_confirm unity)
+target_link_libraries(test_pairing_confirm unity util_safe_host)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
@@ -246,7 +259,7 @@ add_executable(test_connect_name test_connect_name.c
     mocks/mock_uart.c)
 target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
-target_link_libraries(test_connect_name unity)
+target_link_libraries(test_connect_name unity util_safe_host)
 target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
@@ -256,7 +269,7 @@ add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_enter_pin unity)
+target_link_libraries(test_pairing_enter_pin unity util_safe_host)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
@@ -275,7 +288,7 @@ add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_edge_cases unity)
+target_link_libraries(test_pairing_edge_cases unity util_safe_host)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
@@ -288,7 +301,7 @@ add_executable(test_pairing_pending test_pairing_pending.c
 target_sources(test_pairing_pending PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_pending unity)
+target_link_libraries(test_pairing_pending unity util_safe_host)
 add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
 
 # Event stress test: validates ordering and basic rate-limiting instrumentation
@@ -296,7 +309,7 @@ add_executable(test_event_stress test_event_stress.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(test_event_stress unity)
+target_link_libraries(test_event_stress unity util_safe_host)
 add_test(NAME test_event_stress COMMAND $<TARGET_FILE:test_event_stress>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
@@ -312,7 +325,7 @@ add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(test_pairing_seq_hardening unity)
+target_link_libraries(test_pairing_seq_hardening unity util_safe_host)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
@@ -331,7 +344,7 @@ add_executable(test_bt_connection_manager
 target_include_directories(test_bt_connection_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
 )
-target_link_libraries(test_bt_connection_manager unity)
+target_link_libraries(test_bt_connection_manager unity util_safe_host)
 add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connection_manager>)
 
 # Small test to lock mock-connection helper behavior: ensure the mock
@@ -343,7 +356,7 @@ add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
 # Provide test hooks used by bt_manager wrappers (forced-failure hooks)
 target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_mock_connection_helpers PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_mock_connection_helpers unity)
+target_link_libraries(test_mock_connection_helpers unity util_safe_host)
 add_test(NAME test_mock_connection_helpers COMMAND $<TARGET_FILE:test_mock_connection_helpers>)
 
 # Helper binary: run the same burst and print the mock UART TX buffer for parsing
@@ -351,7 +364,7 @@ add_executable(dump_event_stress_output dump_event_stress_output.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(dump_event_stress_output m)
+target_link_libraries(dump_event_stress_output m util_safe_host)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
 target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
@@ -380,7 +393,7 @@ target_sources(test_pairing_adapter_runner PRIVATE test_pairing_adapter_main.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/bt_manager_test_hooks.c)
-target_link_libraries(test_pairing_adapter_runner unity)
+target_link_libraries(test_pairing_adapter_runner unity util_safe_host)
 add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_adapter_runner>)
 # Enable SEQ/TS emission for this runner so we can validate ordering/timestamps
 target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)

@@ -5,6 +5,13 @@
 - Reviewed latest aggregated test artifacts (`tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`) showing 206/206 tests green. Component-level tests exist only for `components/audio` (pcm/pipeline/tag helpers) and `components/util_safe`.
 - Identified weakly covered areas: `components/audio/audio_i2s.c` (I2S init/start/stop/read sequences lack host/device unit tests), `components/audio/i2s_audio.c` (byte alignment and sample conversion/offset handling only indirectly exercised), and event-heavy logic in `components/bt_manager/bt_manager.c` (pairing/autostart/state transitions) that is only partially covered by host tests.
 - Suggested adding host Unity cases (with mocks) for `bt_manager` pairing pending state helpers and autostart toggle, plus device/host tests around I2S start/stop/reinit error paths and read timeout handling once stubs are in place.
+### Host util_safe linkage fix (2025-12-15T16:27:46-08:00)
+- Added `util_safe_host` object library in `test/host_test/CMakeLists.txt` and linked all bt_manager/nvs consumers to resolve host link errors on util_safe symbols; `test_util_safe` now reuses the object library.
+- Reconfigured and rebuilt host tests (`cmake -S . -B build && cmake --build build`), then ran `ctest --output-on-failure` in `test/host_test/build`: 25/25 host tests passed (includes new `test_audio_i2s_host`).
+### Host heap_caps mock include (2025-12-15T16:31:46-08:00)
+- Added `esp_heap_caps.h` include to `test/host_test/test_audio_tag_alignment.c` so `esp_heap_caps_mock_set_psram_available/reset_allocations` prototypes are visible; rebuilt target without warnings.
+### Full test sweep (2025-12-15T16:35:38-08:00)
+- Ran `python tools/run_all_tests.py --timeout 600` from repo root (python310 + IDF 5.4 env). Results: host 25/25 passed; device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32, `test_app3` 14/14. Aggregate device 143/143, overall 168/168. Artifacts refreshed: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
 ### Full test sweep (2025-12-15T15:54:39-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with `python310` + ESP-IDF 5.4. Results: host 24/24 pass; device suites pass — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32 (includes new i2s arg-check tests), `test_app3` 14/14. Aggregates: device 143/143, total 206/206. Artifacts regenerated in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### Full test sweep (2025-12-15T15:19:22-08:00)

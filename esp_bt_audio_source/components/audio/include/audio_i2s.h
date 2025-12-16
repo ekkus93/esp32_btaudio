@@ -8,6 +8,7 @@
 
 #include "esp_err.h"
 #include "driver/i2s_std.h"
+#include "driver/gpio.h"
 
 /**
  * @brief I2S audio configuration parameters
