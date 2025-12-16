@@ -7,6 +7,8 @@
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + IDF 5.4 after host-case-count changes. Results: host 137/137 Unity cases (all pass); device suites all green — `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 32/32, `test_app3` 14/14 (device aggregate 143/143). Quick summary now reports host cases, not just ctest targets. Artifacts refreshed: `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, per-suite `build/one_run_unity.log` files.
 ### audio_i2s host edges (2025-12-15T17:36:52-08:00)
 - Added host Unity cases covering invalid read args (NULL dest/bytes), idempotent start while running, and repeated start failures before success in `test_audio_i2s_host.c`. Built and ran `ctest -R test_audio_i2s_host` in `test/host_test/build_host_tests`: pass.
+### audio_i2s device edges (2025-12-15T17:41:52-08:00)
+- Added device Unity tests in `test_app_audio/main/i2s_test.c` for audio_i2s: start without init (invalid state), idempotent start/stop, stop-without-start OK, read without start failure, NULL dest read invalid arg, zero-length read success. Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app_audio`: pass.
 ### Test run attempt (2025-12-15T16:53:35-08:00)
 - `runTests` failed because `IDF_PATH` was unset (`CMakeLists.txt` include $ENV{IDF_PATH}/tools/cmake/project.cmake not found). Likely IDF lives at `/home/phil/esp/v5.4.1/esp-idf`; need env exported before rerun.
 - Same error tool also flagged "invalid type conversion" in `components/audio/test/test_pcm_processing.c`, but those may be spurious until CMake config succeeds.

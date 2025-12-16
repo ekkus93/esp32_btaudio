@@ -7,8 +7,17 @@
 #include "esp_log.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
+#include "audio_i2s.h"
 
 static const char *TAG = "I2S_TEST";
+
+/* audio_i2s edge-case prototypes */
+static void test_audio_i2s_start_without_init_should_fail(void);
+static void test_audio_i2s_start_stop_idempotent(void);
+static void test_audio_i2s_stop_without_start_should_be_ok(void);
+static void test_audio_i2s_read_without_start_should_fail(void);
+static void test_audio_i2s_read_null_dest_should_fail(void);
+static void test_audio_i2s_zero_length_read_should_succeed(void);
 
 static void test_i2s_driver_init(void)
 {
@@ -95,5 +104,82 @@ void run_i2s_tests(void)
     ESP_LOGI(TAG, "Starting I2S driver tests for audio input");
     RUN_TEST(test_i2s_driver_init);
     RUN_TEST(test_i2s_std_config);
+
+    /* audio_i2s state/argument edge cases */
+    RUN_TEST(test_audio_i2s_start_without_init_should_fail);
+    RUN_TEST(test_audio_i2s_start_stop_idempotent);
+    RUN_TEST(test_audio_i2s_stop_without_start_should_be_ok);
+    RUN_TEST(test_audio_i2s_read_without_start_should_fail);
+    RUN_TEST(test_audio_i2s_read_null_dest_should_fail);
+    RUN_TEST(test_audio_i2s_zero_length_read_should_succeed);
     ESP_LOGI(TAG, "I2S driver tests completed");
+}
+
+static void test_audio_i2s_start_without_init_should_fail(void)
+{
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_i2s_start());
+}
+
+static void test_audio_i2s_start_stop_idempotent(void)
+{
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    /* Second start should be benign */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    /* Second stop should also be benign */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_stop_without_start_should_be_ok(void)
+{
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    /* Stop without start should be a no-op success */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_read_without_start_should_fail(void)
+{
+    uint8_t buf[8];
+    size_t bytes = 0;
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_i2s_read(buf, sizeof(buf), &bytes, 5));
+    TEST_ASSERT_EQUAL(0u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_read_null_dest_should_fail(void)
+{
+    size_t bytes = 123;
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_i2s_read(NULL, 8, &bytes, 5));
+    TEST_ASSERT_EQUAL(123u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_zero_length_read_should_succeed(void)
+{
+    uint8_t buf[4] = {0};
+    size_t bytes = 77;
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_read(buf, 0, &bytes, 5));
+    TEST_ASSERT_EQUAL(0u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
 }
