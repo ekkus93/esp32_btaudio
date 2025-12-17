@@ -1,4 +1,8 @@
 ## Current Focus
+### Full test sweep (2025-12-17T02:32:22-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root with python310 + ESP-IDF 5.4 exported; full host+device sweep green.
+- Results: host 162/162; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (aggregate device 151/151).
+- Artifacts refreshed: tmp/run_all_tests_summary.json, tmp/canonical_unity_summary.json, per-suite esp_bt_audio_source/test_app*/build/one_run_unity.log.
 ### audio_processor host coverage (2025-12-17T02:14:08-08:00)
 - Added host Unity tests in `test_audio_processor_real.c` covering idle I2S failure backoff below threshold, WAV state lifecycle (pending bytes, synth disable, beep clear), and injected audio tag alignment/reset via test helpers.
 - Built and ran `ctest -R test_audio_processor_real` in `test/host_test/build_host_tests`: pass. Commit `test: add bt_manager and audio_processor coverage` pushed to `origin/master`.
