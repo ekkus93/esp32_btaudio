@@ -1,4 +1,7 @@
 ## Current Focus
+### command/bt_manager test additions (2025-12-17T00:28:50-08:00)
+- Added host parse boundary tests for `command_interface` (empty commands, param truncation/count limits, CONNECT_NAME spacing) in `test_commands.c`; added bt_manager scan hook/idempotence/require-init tests in `test_bluetooth.c`.
+- Full suite rerun with `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310`: host 148/148; device `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 38/38, `test_app3` 14/14 (device total 149/149). Artifacts refreshed under `tmp/` and per-suite `build/one_run_unity.log`.
 ### bt_manager test/mocks survey (2025-12-16T18:41:27-08:00)
 - Host bt_manager coverage exists in `test_bluetooth.c` (init/scan/connect/by-name/audio start/stop/pair/unpair), command-facing tests `test_connect_name.c` and `test_pair_command.c` (PAIR hook via `bt_manager_start_pair` weak override), and pairing pending helper tests `test_pairing_pending.c` (pin/ssp/auth complete replacement).
 - Host mocks: `mocks/bt_manager_test_hooks.c` tracks forced failures (disconnect/start/stop/unpair/all) plus counts (scan start, unpair last MAC, unpair-all cleared/removed). `mock_audio_and_btstate.c` provides weak stubs for connection state/`bt_start_audio`.

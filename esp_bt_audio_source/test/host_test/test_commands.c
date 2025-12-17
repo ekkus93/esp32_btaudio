@@ -196,6 +196,39 @@ void test_parse_command_with_whitespace(void) {
     TEST_ASSERT_EQUAL_STRING("75", ctx.params[0]);
 }
 
+void test_parse_empty_command_should_error(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   \t   ", &ctx));
+}
+
+void test_parse_limits_param_count_and_truncates(void) {
+    char long_token[CMD_MAX_PARAM_LEN + 8];
+    memset(long_token, 'A', sizeof(long_token));
+    long_token[sizeof(long_token) - 1] = '\0';
+
+    char cmd_buf[128];
+    /* Seven params -> only first five kept; first param truncated to CMD_MAX_PARAM_LEN-1. */
+    snprintf(cmd_buf, sizeof(cmd_buf), "CONNECT %s b c d e f g", long_token);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(cmd_buf, &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_CONNECT, ctx.type);
+    TEST_ASSERT_EQUAL(5, ctx.param_count);
+    TEST_ASSERT_EQUAL(strlen(ctx.params[0]), CMD_MAX_PARAM_LEN - 1);
+    TEST_ASSERT_EQUAL_STRING("b", ctx.params[1]);
+    TEST_ASSERT_EQUAL_STRING("c", ctx.params[2]);
+    TEST_ASSERT_EQUAL_STRING("d", ctx.params[3]);
+    TEST_ASSERT_EQUAL_STRING("e", ctx.params[4]);
+}
+
+void test_parse_connect_name_preserves_spaces(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("CONNECT_NAME   Living   Room   Speaker   ", &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_CONNECT_NAME, ctx.type);
+    TEST_ASSERT_EQUAL(1, ctx.param_count);
+    TEST_ASSERT_EQUAL_STRING("Living   Room   Speaker", ctx.params[0]);
+}
+
 // Test response generation
 void test_send_response(void) {
     mock_uart_reset_tx();
@@ -343,6 +376,9 @@ int main(void) {
     RUN_TEST(test_parse_file_command);
     RUN_TEST(test_parse_invalid_command);
     RUN_TEST(test_parse_command_with_whitespace);
+    RUN_TEST(test_parse_empty_command_should_error);
+    RUN_TEST(test_parse_limits_param_count_and_truncates);
+    RUN_TEST(test_parse_connect_name_preserves_spaces);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
     RUN_TEST(test_debug_log_sets_level_and_response);

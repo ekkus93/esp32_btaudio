@@ -10,6 +10,8 @@
 void bt_manager_test_set_force_disconnect_failure(int v);
 void bt_manager_test_set_force_start_failure(int v);
 void bt_manager_test_set_force_stop_failure(int v);
+void bt_manager_test_reset_forces(void);
+int bt_manager_test_get_scan_start_count(void);
 // Manager wrapper prototypes (not exposed via header)
 int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
@@ -236,6 +238,33 @@ void test_bt_audio_operations(void) {
     TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
 }
 
+// Ensure scan hook fires once per start, respects idempotence, and restarts after stop
+void test_bt_scan_hook_counts(void) {
+    bt_manager_test_reset_forces();
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_scan_start_count());
+
+    // Starting again while already scanning should be idempotent
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_scan_start_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_scan());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
+    TEST_ASSERT_EQUAL(2, bt_manager_test_get_scan_start_count());
+}
+
+// Verify start_scan fails when manager not initialized
+void test_bt_scan_requires_init(void) {
+    bt_manager_test_reset_forces();
+    bt_manager_force_initialized(false);
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_start_scan());
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_scan_start_count());
+
+    // Restore for other tests
+    bt_manager_force_initialized(true);
+}
+
 // Verify disconnect wrapper surfaces forced failure and leaves connection intact,
 // then succeeds once the hook is cleared.
 void test_bt_disconnect_failure_then_success(void) {
@@ -308,6 +337,8 @@ int main(void) {
     RUN_TEST(test_bt_connect_disconnect);
     RUN_TEST(test_bt_connect_by_name);
     RUN_TEST(test_bt_audio_operations);
+    RUN_TEST(test_bt_scan_hook_counts);
+    RUN_TEST(test_bt_scan_requires_init);
     RUN_TEST(test_bt_pairing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
