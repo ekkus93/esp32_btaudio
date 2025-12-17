@@ -1,4 +1,8 @@
 ## Current Focus
+### bt_manager test/mocks survey (2025-12-16T18:41:27-08:00)
+- Host bt_manager coverage exists in `test_bluetooth.c` (init/scan/connect/by-name/audio start/stop/pair/unpair), command-facing tests `test_connect_name.c` and `test_pair_command.c` (PAIR hook via `bt_manager_start_pair` weak override), and pairing pending helper tests `test_pairing_pending.c` (pin/ssp/auth complete replacement).
+- Host mocks: `mocks/bt_manager_test_hooks.c` tracks forced failures (disconnect/start/stop/unpair/all) plus counts (scan start, unpair last MAC, unpair-all cleared/removed). `mock_audio_and_btstate.c` provides weak stubs for connection state/`bt_start_audio`.
+- `bt_manager.c` state: pairing pending helpers, wrappers (`bt_manager_start_pair`, start/stop/scan), autostart flag default true; GAP callbacks drive pending PIN/SSP, auth complete persists via NVS; A2DP callback triggers autostart via `bt_start_audio`. Mock helper functions simulate discovered devices, connections, audio state, and pairing completion; unit-test hooks keep test-visible connection state aligned.
 ### Timestamp policy (2025-12-15T14:31:57-08:00)
 - When adding entries here, run `date --iso-8601=seconds` and use the current value; do not invent or future-date timestamps.
 ### Host case counts surfaced (2025-12-15T17:25:49-08:00)

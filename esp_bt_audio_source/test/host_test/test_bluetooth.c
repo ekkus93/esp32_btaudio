@@ -6,6 +6,15 @@
 #include "mock_i2s.h"
 #include "esp_bt.h"
 
+// Test-hook setters from mocks/bt_manager_test_hooks.c
+void bt_manager_test_set_force_disconnect_failure(int v);
+void bt_manager_test_set_force_start_failure(int v);
+void bt_manager_test_set_force_stop_failure(int v);
+// Manager wrapper prototypes (not exposed via header)
+int bt_manager_disconnect(void);
+int bt_manager_start_audio(void);
+int bt_manager_stop_audio(void);
+
 #ifdef UNIT_TEST
 void bt_manager_force_initialized(bool value);
 void bt_manager_debug_print(void);
@@ -227,6 +236,52 @@ void test_bt_audio_operations(void) {
     TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
 }
 
+// Verify disconnect wrapper surfaces forced failure and leaves connection intact,
+// then succeeds once the hook is cleared.
+void test_bt_disconnect_failure_then_success(void) {
+    const char* mac = "11:22:33:44:55:66";
+    const char* name = "Retry Speaker";
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect(mac));
+    bt_manager_mock_connection_established(mac, name);
+    TEST_ASSERT_EQUAL(1, bt_manager_is_connected());
+
+    bt_manager_test_set_force_disconnect_failure(1);
+    TEST_ASSERT_EQUAL(-1, bt_manager_disconnect());
+    TEST_ASSERT_EQUAL(1, bt_manager_is_connected());
+
+    bt_manager_test_set_force_disconnect_failure(0);
+    TEST_ASSERT_EQUAL(0, bt_manager_disconnect());
+    TEST_ASSERT_EQUAL(0, bt_manager_is_connected());
+}
+
+// Exercise start/stop wrappers under forced failure hooks and ensure recovery works.
+void test_bt_start_stop_failure_recovery(void) {
+    const char* mac = "22:33:44:55:66:77";
+    const char* name = "A2DP Sink";
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect(mac));
+    bt_manager_mock_connection_established(mac, name);
+
+    bt_manager_test_set_force_start_failure(1);
+    TEST_ASSERT_EQUAL(-1, bt_manager_start_audio());
+    // Not playing, so stop should still be a no-op success
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_audio());
+
+    bt_manager_test_set_force_start_failure(0);
+    TEST_ASSERT_EQUAL(0, bt_manager_start_audio());
+
+    // Now simulate stop failure while playing
+    bt_manager_test_set_force_stop_failure(1);
+    TEST_ASSERT_EQUAL(-1, bt_manager_stop_audio());
+
+    bt_manager_test_set_force_stop_failure(0);
+    TEST_ASSERT_EQUAL(0, bt_manager_stop_audio());
+
+    // Cleanly disconnect for good measure
+    TEST_ASSERT_EQUAL(0, bt_manager_disconnect());
+}
+
 // Test pairing operations
 void test_bt_pairing(void) {
     const char* test_mac = "BB:CC:DD:11:22:33";
@@ -254,6 +309,8 @@ int main(void) {
     RUN_TEST(test_bt_connect_by_name);
     RUN_TEST(test_bt_audio_operations);
     RUN_TEST(test_bt_pairing);
+    RUN_TEST(test_bt_disconnect_failure_then_success);
+    RUN_TEST(test_bt_start_stop_failure_recovery);
     
     return UNITY_END();
 }
