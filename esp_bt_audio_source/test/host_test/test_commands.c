@@ -181,10 +181,30 @@ void test_parse_file_command(void) {
     TEST_ASSERT_EQUAL_STRING(k_file_alpha_name, ctx.params[0]);
 }
 
+void test_parse_file_truncates_overlong_name(void) {
+    char long_name[128];
+    memset(long_name, 'X', sizeof(long_name));
+    long_name[sizeof(long_name) - 1] = '\0';
+
+    char cmd_buf[256];
+    snprintf(cmd_buf, sizeof(cmd_buf), "FILE %s", long_name);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(cmd_buf, &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_FILE, ctx.type);
+    TEST_ASSERT_EQUAL(1, ctx.param_count);
+    TEST_ASSERT_EQUAL(CMD_MAX_PARAM_LEN - 1, (int)strlen(ctx.params[0]));
+}
+
 // Test invalid command
 void test_parse_invalid_command(void) {
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("INVALID_COMMAND", &ctx));
+}
+
+void test_parse_malformed_tokens(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   ,,,", &ctx));
 }
 
 // Test command with whitespace
@@ -366,6 +386,36 @@ void test_enter_pin_command(void) {
     TEST_ASSERT_EQUAL_STRING("1234", mock_gap_get_last_pin());
 }
 
+void test_volume_invalid_param_should_error(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VOLUME 200", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|VOLUME|OUT_OF_RANGE"));
+}
+
+void test_volume_missing_param_should_error(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VOLUME", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|VOLUME|MISSING_PARAM"));
+}
+
+void test_debug_mock_add_missing_param_errors(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DEBUG MOCK_ADD", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|MOCK_ADD_MISSING"));
+}
+
 // Main test runner
 int main(void) {
     UNITY_BEGIN();
@@ -374,7 +424,9 @@ int main(void) {
     RUN_TEST(test_parse_connect_command);
     RUN_TEST(test_parse_i2s_config_command);
     RUN_TEST(test_parse_file_command);
+    RUN_TEST(test_parse_file_truncates_overlong_name);
     RUN_TEST(test_parse_invalid_command);
+    RUN_TEST(test_parse_malformed_tokens);
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_parse_empty_command_should_error);
     RUN_TEST(test_parse_limits_param_count_and_truncates);
@@ -389,6 +441,9 @@ int main(void) {
     // Pairing related tests
     RUN_TEST(test_confirm_pin_command);
     RUN_TEST(test_enter_pin_command);
+    RUN_TEST(test_volume_invalid_param_should_error);
+    RUN_TEST(test_volume_missing_param_should_error);
+    RUN_TEST(test_debug_mock_add_missing_param_errors);
     
     // Forward-declare tests implemented below
     extern void test_mute_unmute_command(void);
