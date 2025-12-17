@@ -1995,6 +1995,18 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #define CMD_BUF_SIZE 256
 #endif
 
+/* Persisted across cmd_process() calls so partial lines can be accumulated. */
+static char s_cmd_line_buf[CMD_BUF_SIZE];
+static size_t s_cmd_line_len;
+
+#if defined(UNIT_TEST)
+void cmd_test_reset_cmd_process_state(void)
+{
+    memset(s_cmd_line_buf, 0, sizeof(s_cmd_line_buf));
+    s_cmd_line_len = 0;
+}
+#endif
+
 // Simple init/deinit for host tests
 cmd_status_t cmd_init(void) { return CMD_SUCCESS; }
 cmd_status_t cmd_deinit(void) { return CMD_SUCCESS; }
@@ -2230,8 +2242,6 @@ cmd_status_t cmd_process(void)
     /* Implement a small persistent line buffer so partial UART reads are
      * accumulated across calls to cmd_process(). This also allows a single
      * uart_read_bytes() to contain multiple newline-terminated commands. */
-    static char line_buf[CMD_BUF_SIZE];
-    static size_t line_len = 0;
     uint8_t read_buf[CMD_BUF_SIZE];
 
     // Only attempt to read if the driver is installed for the command UART.
@@ -2272,25 +2282,25 @@ cmd_status_t cmd_process(void)
 
     // Append to persistent buffer (clip to available space)
     size_t to_copy = (size_t)r;
-    if (line_len + to_copy >= sizeof(line_buf))
+    if (s_cmd_line_len + to_copy >= sizeof(s_cmd_line_buf))
     {
         // Buffer overflow: reset to keep system responsive and log the event
 #ifdef ESP_PLATFORM
         ESP_LOGW(TAG, "cmd_process: line buffer overflow, resetting buffer");
 #endif
-        line_len = 0;
-        to_copy = sizeof(line_buf) - 1;
+        s_cmd_line_len = 0;
+        to_copy = sizeof(s_cmd_line_buf) - 1;
     }
-    memcpy(line_buf + line_len, read_buf, to_copy);
-    line_len += to_copy;
-    line_buf[line_len] = '\0';
+    memcpy(s_cmd_line_buf + s_cmd_line_len, read_buf, to_copy);
+    s_cmd_line_len += to_copy;
+    s_cmd_line_buf[s_cmd_line_len] = '\0';
 
     // Process complete lines (terminated by '\n' or '\r') one at a time
-    char *start = line_buf;
+    char *start = s_cmd_line_buf;
     while (true)
     {
-        char *nl = (char *)memchr(start, '\n', (size_t)(line_buf + line_len - start));
-        char *cr = (char *)memchr(start, '\r', (size_t)(line_buf + line_len - start));
+        char *nl = (char *)memchr(start, '\n', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
+        char *cr = (char *)memchr(start, '\r', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
         char *term = nl ? nl : cr;
         if (!term)
             break;
@@ -2313,16 +2323,16 @@ cmd_status_t cmd_process(void)
 
         // Move to the next character after the terminator
         start = term + 1;
-        while (start < line_buf + line_len && (*start == '\n' || *start == '\r'))
+        while (start < s_cmd_line_buf + s_cmd_line_len && (*start == '\n' || *start == '\r'))
             ++start;
     }
 
     // Move any remaining bytes to the start of the buffer
-    size_t remaining = (size_t)(line_buf + line_len - start);
+    size_t remaining = (size_t)(s_cmd_line_buf + s_cmd_line_len - start);
     if (remaining > 0)
-        memmove(line_buf, start, remaining);
-    line_len = remaining;
-    line_buf[line_len] = '\0';
+        memmove(s_cmd_line_buf, start, remaining);
+    s_cmd_line_len = remaining;
+    s_cmd_line_buf[s_cmd_line_len] = '\0';
 
     return CMD_SUCCESS;
 }

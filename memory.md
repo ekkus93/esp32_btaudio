@@ -3,6 +3,14 @@
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root with python310 + ESP-IDF 5.4 exported; full host+device sweep green.
 - Results: host 162/162; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (aggregate device 151/151).
 - Artifacts refreshed: tmp/run_all_tests_summary.json, tmp/canonical_unity_summary.json, per-suite esp_bt_audio_source/test_app*/build/one_run_unity.log.
+### CLI runner edge coverage (2025-12-17T02:45:49-08:00)
+- Added host Unity tests to `test_commands.c` covering multi-command reads in a single UART call, partial-line accumulation across cmd_process() invocations, and overflow recovery after line buffer reset.
+- Exposed test-only `cmd_test_reset_cmd_process_state()` and moved cmd_process line buffer to file scope so tests can reset state between runs.
+- `ctest --output-on-failure -R test_commands` in `esp_bt_audio_source/test/host_test/build_host_tests` now passes with the new cases.
+### Full test sweep (2025-12-17T02:51:36-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after CLI runner additions; environment python310 + ESP-IDF 5.4.
+- Results: host 165/165; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (device aggregate 151/151). All green.
+- Artifacts refreshed: tmp/run_all_tests_summary.json, tmp/canonical_unity_summary.json, per-suite esp_bt_audio_source/test_app*/build/one_run_unity.log.
 ### audio_processor host coverage (2025-12-17T02:14:08-08:00)
 - Added host Unity tests in `test_audio_processor_real.c` covering idle I2S failure backoff below threshold, WAV state lifecycle (pending bytes, synth disable, beep clear), and injected audio tag alignment/reset via test helpers.
 - Built and ran `ctest -R test_audio_processor_real` in `test/host_test/build_host_tests`: pass. Commit `test: add bt_manager and audio_processor coverage` pushed to `origin/master`.

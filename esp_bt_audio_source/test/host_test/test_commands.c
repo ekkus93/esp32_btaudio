@@ -105,6 +105,7 @@ void setUp(void) {
     test_cleanup_spiffs_root();
     mock_uart_init(115200);
     cmd_init();
+    cmd_test_reset_cmd_process_state();
     bt_manager_init_t cfg = {
         .device_name = "MockBT",
         .connected_cb = NULL,
@@ -278,6 +279,64 @@ void test_command_processing(void) {
     TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
 }
 
+void test_cmd_process_handles_multiple_commands_in_one_read(void) {
+    mock_uart_reset_tx();
+
+    /* Two commands arrive in a single UART read; both should be parsed and executed. */
+    mock_uart_inject_rx_data("SCAN\r\nSTATUS\r\n", strlen("SCAN\r\nSTATUS\r\n"));
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SCAN"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|STATUS"));
+}
+
+void test_cmd_process_accumulates_partial_line_across_calls(void) {
+    mock_uart_reset_tx();
+
+    /* First call provides no terminator; nothing should be emitted. */
+    mock_uart_inject_rx_data("VOLUME 10", strlen("VOLUME 10"));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+    const char* tx_after_partial = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx_after_partial);
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)strlen(tx_after_partial));
+
+    /* Second call supplies the newline so the buffered command runs. */
+    mock_uart_inject_rx_data("\r\n", 2);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VOLUME|MOCK_SET|10"));
+}
+
+void test_cmd_process_recovers_after_overflow_reset(void) {
+    mock_uart_reset_tx();
+
+    /* Fill most of the line buffer without a newline to trigger the overflow path. */
+    char filler1[250];
+    memset(filler1, 'A', sizeof(filler1));
+    mock_uart_inject_rx_data(filler1, sizeof(filler1));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+    /* No response expected yet. */
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)strlen(mock_uart_get_tx_data()));
+
+    /* Next read includes a valid command plus extra data to force line_len + to_copy past the buffer size.
+     * cmd_process should reset the buffer and still execute the SCAN command. */
+    char overflow_payload[260];
+    memset(overflow_payload, 'B', sizeof(overflow_payload));
+    const char cmd_str[] = "SCAN\r\n";
+    memcpy(overflow_payload, cmd_str, sizeof(cmd_str) - 1);
+    mock_uart_inject_rx_data(overflow_payload, sizeof(overflow_payload));
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "SCAN"));
+}
+
 static int count_substring(const char* haystack, const char* needle)
 {
     int count = 0;
@@ -433,6 +492,9 @@ int main(void) {
     RUN_TEST(test_parse_connect_name_preserves_spaces);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
+    RUN_TEST(test_cmd_process_handles_multiple_commands_in_one_read);
+    RUN_TEST(test_cmd_process_accumulates_partial_line_across_calls);
+    RUN_TEST(test_cmd_process_recovers_after_overflow_reset);
     RUN_TEST(test_debug_log_sets_level_and_response);
     RUN_TEST(test_help_command);
     RUN_TEST(test_version_command);
