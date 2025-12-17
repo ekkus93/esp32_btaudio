@@ -1,4 +1,18 @@
 ## Current Focus
+### How to run all tests (host + device)
+- Pre-req env: `export IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310 && source /home/phil/mambaforge/bin/activate python310 && . /home/phil/esp/v5.4.1/esp-idf/export.sh`.
+- Command (from repo root): `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (default suites include host + test_app + test_app2 + test_app_audio + test_app3). The tool does its own clean of tmp artifacts; no `--suites` flag exists.
+- If you see the mixed-python/"project configured with ..." warning, run `idf.py -C esp_bt_audio_source/test_app[2|_audio|3] fullclean` with the same env, then rerun the command above.
+- Artifacts: tmp/run_all_tests_summary.json and .csv, tmp/run_all_tests_full.log, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+
+### Full test sweep (2025-12-17T03:27:18-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (default suites) with conda `python310` and ESP-IDF 5.4.1.
+- Results: host 165/165; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (device aggregate 151/151). All pass.
+- Artifacts: tmp/run_all_tests_summary.json, tmp/run_all_tests_summary.csv, tmp/run_all_tests_full.log, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log` refreshed.
+### Full test sweep (2025-12-17T03:16:04-08:00)
+- Re-ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after fullcleans to resolve the mixed python-env warning (stuck build cache pointing at the old ESP-IDF venv). Environment: conda `python310` + ESP-IDF 5.4.1.
+- Results: host 19/19; device suites all green — test_app 37/37, test_app2 45/45, test_app_audio 12/12 (aggregate 113/113 for this run; test_app3 not in the configured sweep).
+- Artifacts: tmp/run_all_tests_summary.csv, tmp/run_all_tests_full.log, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log` regenerated.
 ### Full test sweep (2025-12-17T02:32:22-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root with python310 + ESP-IDF 5.4 exported; full host+device sweep green.
 - Results: host 162/162; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (aggregate device 151/151).

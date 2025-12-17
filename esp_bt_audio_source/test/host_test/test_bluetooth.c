@@ -5,6 +5,13 @@
 #include "esp_err.h"
 #include "mock_i2s.h"
 #include "esp_bt.h"
+#include "nvs_storage.h"
+
+// Host nvs mock controls
+void nvs_storage_mock_set_init_result(esp_err_t err);
+void nvs_storage_mock_set_get_count_result(esp_err_t err);
+void nvs_storage_mock_set_get_device_result(esp_err_t err);
+void nvs_storage_mock_reset(void);
 
 // Test-hook setters from mocks/bt_manager_test_hooks.c
 void bt_manager_test_set_force_disconnect_failure(int v);
@@ -63,6 +70,7 @@ void setUp(void) {
     memset(bt_connected_mac, 0, sizeof(bt_connected_mac));
     memset(bt_connected_name, 0, sizeof(bt_connected_name));
     memset(bt_disconnected_mac, 0, sizeof(bt_disconnected_mac));
+    nvs_storage_mock_reset();
     
     // Initialize the BT manager
     bt_manager_init_t config = {
@@ -250,6 +258,69 @@ void test_bt_audio_operations(void) {
     TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
 }
 
+// NVS init/count failures should not prevent manager init nor populate paired list
+void test_bt_init_survives_nvs_failures(void) {
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
+
+    nvs_storage_mock_set_init_result(ESP_FAIL);
+    bt_manager_init_t config = {
+        .device_name = "ESP32_TEST",
+        .connected_cb = test_bt_connected_cb,
+        .disconnected_cb = test_bt_disconnected_cb
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
+    TEST_ASSERT_EQUAL(0, bt_get_paired_devices()->count);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
+
+    // Count failure should also leave list empty
+    nvs_storage_mock_reset();
+    nvs_storage_mock_set_get_count_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
+    TEST_ASSERT_EQUAL(0, bt_get_paired_devices()->count);
+}
+
+// Paired device load failures should be skipped without crashing
+void test_bt_init_skips_corrupt_paired_device_entries(void) {
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
+    nvs_storage_mock_reset();
+
+    // Seed paired storage with an entry but force retrieval failure
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:FF", "Stored"));
+    nvs_storage_mock_set_get_device_result(ESP_FAIL);
+
+    bt_manager_init_t config = {
+        .device_name = "ESP32_TEST",
+        .connected_cb = test_bt_connected_cb,
+        .disconnected_cb = test_bt_disconnected_cb
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
+    TEST_ASSERT_EQUAL(0, bt_get_paired_devices()->count);
+}
+
+// Stop failure should leave playing state intact until an explicit STOP event clears it
+void test_bt_stop_failure_then_recovery_on_state_event(void) {
+    const char* mac = "30:31:32:33:34:35";
+    const char* name = "StopFailSink";
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect(mac));
+    bt_manager_mock_connection_established(mac, name);
+    bt_manager_mock_audio_state_changed(2);
+
+    bt_manager_test_set_force_stop_failure(1);
+    TEST_ASSERT_EQUAL(-1, bt_manager_stop_audio());
+
+    // Still playing, so autostart guard should block
+    TEST_ASSERT_FALSE(bt_manager_test_autostart_on_connect());
+
+    bt_manager_test_set_force_stop_failure(0);
+    bt_manager_mock_audio_state_changed(1);
+
+    // With playback marked stopped, autostart helper can trigger start again
+    TEST_ASSERT_TRUE(bt_manager_test_autostart_on_connect());
+}
+
 // Ensure scan hook fires once per start, respects idempotence, and restarts after stop
 void test_bt_scan_hook_counts(void) {
     bt_manager_test_reset_forces();
@@ -422,6 +493,9 @@ int main(void) {
     RUN_TEST(test_bt_autostart_guard_when_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
+    RUN_TEST(test_bt_init_survives_nvs_failures);
+    RUN_TEST(test_bt_init_skips_corrupt_paired_device_entries);
+    RUN_TEST(test_bt_stop_failure_then_recovery_on_state_event);
     
     return UNITY_END();
 }

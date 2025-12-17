@@ -8,6 +8,9 @@
 
 // Simple in-memory mock storage used only for host tests
 static char s_default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
+static esp_err_t s_init_result = ESP_OK;
+static esp_err_t s_get_count_result = ESP_OK;
+static esp_err_t s_get_device_result = ESP_OK;
 
 esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len)
 {
@@ -21,6 +24,32 @@ esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len)
     strncpy(buf, s_default_pin, buf_len - 1);
     buf[buf_len - 1] = '\0';
     return ESP_OK;
+}
+
+void nvs_storage_mock_set_init_result(esp_err_t err)
+{
+    s_init_result = err;
+}
+
+void nvs_storage_mock_set_get_count_result(esp_err_t err)
+{
+    s_get_count_result = err;
+}
+
+void nvs_storage_mock_set_get_device_result(esp_err_t err)
+{
+    s_get_device_result = err;
+}
+
+void nvs_storage_mock_reset(void)
+{
+    memset(s_default_pin, 0, sizeof(s_default_pin));
+    memset(mock_paired_mac, 0, sizeof(mock_paired_mac));
+    memset(mock_paired_name, 0, sizeof(mock_paired_name));
+    mock_paired_count = 0;
+    s_init_result = ESP_OK;
+    s_get_count_result = ESP_OK;
+    s_get_device_result = ESP_OK;
 }
 
 esp_err_t nvs_storage_set_default_pin(const char* pin)
@@ -71,12 +100,18 @@ static void format_mac(const uint8_t mac[6], char* buf, size_t buf_len) {
 
 esp_err_t nvs_storage_get_paired_count(int* count) {
     if (!count) return ESP_ERR_INVALID_ARG;
+    if (s_get_count_result != ESP_OK) {
+        return s_get_count_result;
+    }
     *count = mock_paired_count;
     return ESP_OK;
 }
 
 esp_err_t nvs_storage_get_paired_device_by_index(int index, char* mac, size_t mac_len, char* name, size_t name_len) {
     if (!mac || mac_len == 0) return ESP_ERR_INVALID_ARG;
+    if (s_get_device_result != ESP_OK) {
+        return s_get_device_result;
+    }
     if (index < 0 || index >= mock_paired_count) return ESP_ERR_NOT_FOUND;
     format_mac(mock_paired_mac[index], mac, mac_len);
     if (name && name_len > 0) {
@@ -128,7 +163,7 @@ esp_err_t nvs_storage_clear_paired_devices(void) {
 // Additional stubs used by production code when linking in host tests
 esp_err_t nvs_storage_init(void)
 {
-    return ESP_OK;
+    return s_init_result;
 }
 
 esp_err_t nvs_storage_set_volume(uint8_t vol)

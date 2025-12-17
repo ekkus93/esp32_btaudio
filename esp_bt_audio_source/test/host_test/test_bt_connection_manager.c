@@ -124,6 +124,53 @@ void test_bt_connection_manager_attempts_reconnect_on_disconnect(void)
     TEST_ASSERT_EQUAL_UINT8(1, bt_connection_manager_get_reconnect_attempts_for_test());
 }
 
+void test_bt_connection_manager_limits_reconnect_attempts(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    // Force connect attempts to fail so the manager exercises its retry loop
+    mock_a2dp_set_connect_result(ESP_BT_STATUS_FAIL);
+
+    esp_bd_addr_t addr = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(5, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL_UINT8(5, bt_connection_manager_get_reconnect_attempts_for_test());
+}
+
+void test_bt_connection_manager_reconnect_resets_between_disconnects(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    esp_bd_addr_t addr = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+    TEST_ASSERT_EQUAL(1, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL_UINT8(1, bt_connection_manager_get_reconnect_attempts_for_test());
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+    TEST_ASSERT_EQUAL(2, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL_UINT8(1, bt_connection_manager_get_reconnect_attempts_for_test());
+}
+
+void test_bt_connection_manager_skips_reconnect_when_disabled(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(false);
+
+    esp_bd_addr_t addr = {0x21, 0x22, 0x23, 0x24, 0x25, 0x26};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(0, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL_UINT8(0, bt_connection_manager_get_reconnect_attempts_for_test());
+}
+
 void test_bt_audio_state_transitions_and_notifies(void)
 {
     init_connection_manager();
@@ -151,6 +198,9 @@ int main(void)
     RUN_TEST(test_bt_connection_manager_init_registers_callbacks);
     RUN_TEST(test_bt_connection_state_updates_and_notifies);
     RUN_TEST(test_bt_connection_manager_attempts_reconnect_on_disconnect);
+    RUN_TEST(test_bt_connection_manager_limits_reconnect_attempts);
+    RUN_TEST(test_bt_connection_manager_reconnect_resets_between_disconnects);
+    RUN_TEST(test_bt_connection_manager_skips_reconnect_when_disabled);
     RUN_TEST(test_bt_audio_state_transitions_and_notifies);
     return UNITY_END();
 }
