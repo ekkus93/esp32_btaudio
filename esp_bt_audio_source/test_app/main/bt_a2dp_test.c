@@ -387,10 +387,46 @@ void test_connection_status_info(void) {
 // Test 14: Auto-reconnect when connection drops
 void test_auto_reconnect(void) {
     ESP_LOGI(TAG, "Testing auto-reconnect when connection drops");
-    
-    // This needs a more complex mock implementation to simulate connection drops
-    // For now, we'll just mark as a placeholder
-    ESP_LOGI(TAG, "Auto-reconnect test completed");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    /* Baseline: connect with auto-reconnect disabled and ensure disconnect stays down. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(false));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_FALSE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_DISCONNECTED, info.state);
+
+    /* Enable auto-reconnect, reconnect manually once, then drop and verify mock restores. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+
+    /* Reconnect is asynchronous; allow the mock+stub pair to settle instead of
+     * asserting the immediate state right after the simulated drop. */
+    TEST_ASSERT_TRUE_MESSAGE(
+        wait_for_authoritative_connected_state(true, 1000),
+        "auto-reconnect should restore connection to authoritative mock");
+
+    memset(&info, 0, sizeof(info));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_TRUE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, info.state);
+    TEST_ASSERT_EQUAL_STRING(TEST_DEVICE_ADDR, info.addr);
+
+    /* Cleanup: disable auto-reconnect and ensure disconnect clears state. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(false));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
 }
 
 // Test 15: Bluetooth connects to A2DP sink

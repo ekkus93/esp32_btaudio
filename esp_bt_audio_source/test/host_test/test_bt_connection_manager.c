@@ -31,6 +31,7 @@ static int32_t dummy_data_cb(uint8_t *buf, int32_t len)
 typedef struct {
     bool invoked;
     bt_connection_info_t info;
+    int call_count;
     void *user_data;
 } test_connection_ctx_t;
 
@@ -38,6 +39,7 @@ static void test_connection_callback(bt_connection_info_t *info, void *user_data
 {
     test_connection_ctx_t *ctx = (test_connection_ctx_t *)user_data;
     ctx->invoked = true;
+    ctx->call_count++;
     ctx->info = *info;
 }
 
@@ -171,6 +173,34 @@ void test_bt_connection_manager_skips_reconnect_when_disabled(void)
     TEST_ASSERT_EQUAL_UINT8(0, bt_connection_manager_get_reconnect_attempts_for_test());
 }
 
+// Reconnect failures should drive state to FAILED, cap retries at max, and notify callbacks.
+void test_bt_reconnect_failures_report_failed_state_and_retry_count(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+    mock_a2dp_set_connect_result(ESP_BT_STATUS_FAIL);
+
+    test_connection_ctx_t conn_ctx = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_register_connection_callback(test_connection_callback, &conn_ctx));
+
+    esp_bd_addr_t addr = {0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x01};
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    TEST_ASSERT_EQUAL_STRING("CA:FE:BA:BE:00:01", bt_connection_manager_get_last_connected_addr_for_test());
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, bt_get_connection_state_detailed());
+    TEST_ASSERT_EQUAL(5, mock_a2dp_get_connect_calls());
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_EQUAL_UINT8(5, info.retry_count);
+    TEST_ASSERT_TRUE(conn_ctx.invoked);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(2, conn_ctx.call_count); // disconnected + failed transitions
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, conn_ctx.info.state);
+    TEST_ASSERT_EQUAL_UINT8(5, conn_ctx.info.retry_count);
+}
+
 void test_bt_audio_state_transitions_and_notifies(void)
 {
     init_connection_manager();
@@ -201,6 +231,7 @@ int main(void)
     RUN_TEST(test_bt_connection_manager_limits_reconnect_attempts);
     RUN_TEST(test_bt_connection_manager_reconnect_resets_between_disconnects);
     RUN_TEST(test_bt_connection_manager_skips_reconnect_when_disabled);
+    RUN_TEST(test_bt_reconnect_failures_report_failed_state_and_retry_count);
     RUN_TEST(test_bt_audio_state_transitions_and_notifies);
     return UNITY_END();
 }

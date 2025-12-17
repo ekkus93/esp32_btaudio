@@ -1,14 +1,7 @@
 {
-	"folders": [
-		{
-			"path": ".."
-		}
-	],
-	"settings": {
-		"files.associations": {
-			"*.inc": "c",
-			"list": "cpp"
-		},
-		"dotnet.defaultSolution": "disable"
-	}
+    "folders": [
+        {
+            "path": ".."
+        }
+    ]
 }

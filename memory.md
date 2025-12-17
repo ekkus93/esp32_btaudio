@@ -1,14 +1,31 @@
 ## Current Focus
+### Auto-reconnect baseline fix (2025-12-17T12:39:24-08:00)
+- Updated `bt_simulate_disconnect` in test_app mock to clear `s_current_connection` (connected/state/name/addr) before stub sync so `bt_get_connection_info` reports disconnected when auto-reconnect is disabled. Relevant file: esp_bt_audio_source/test_app/main/bt_source_mock.c.
+### Full sweep after auto-reconnect fix (2025-12-17T12:46:49-08:00)
+- Updated auto-reconnect to reuse stored string addr/name when reconnecting (bt_source_mock.c) and reran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; results: host 165/165, device suites all green (test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14).
 ### How to run all tests (host + device)
 - Pre-req env: `export IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310 && source /home/phil/mambaforge/bin/activate python310 && . /home/phil/esp/v5.4.1/esp-idf/export.sh`.
 - Command (from repo root): `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (default suites include host + test_app + test_app2 + test_app_audio + test_app3). The tool does its own clean of tmp artifacts; no `--suites` flag exists.
 - If you see the mixed-python/"project configured with ..." warning, run `idf.py -C esp_bt_audio_source/test_app[2|_audio|3] fullclean` with the same env, then rerun the command above.
 - Artifacts: tmp/run_all_tests_summary.json and .csv, tmp/run_all_tests_full.log, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
 
+### Env refresh (2025-12-17T12:22:06-08:00)
+- Activated python310 env + ESP-IDF 5.4.1 export; downgraded esptool to 4.8.1 (was 4.10.0); `idf.py -C esp_bt_audio_source/test_app build` now completes. Use the standard export sequence before builds.
+
+### Full test sweep (2025-12-17T12:33:27-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + IDF 5.4.1 after confirming /dev/ttyUSB0 present. Host 165/165 pass. Device totals: test_app 51/52 (fail: `test_auto_reconnect` expectation false but got true), test_app2 45/45, test_app_audio 40/40, test_app3 14/14; aggregate device 150/151. Logs: tmp/run_all_tests_summary.json and per-suite `esp_bt_audio_source/test_app/build/one_run_unity.log` (failure at ts ~7828, `stub_sync #19 connected=0 ... Expected FALSE Was TRUE`).
+
+### Full test sweep (2025-12-17T11:46:58-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after bt_a2dp_test autoreconnect timeout tweaks (IDF 5.4.1, python310).
+- Results: host 165/165 pass; device suites — test_app2 45/45 pass, test_app_audio 40/40 pass, test_app3 14/14 pass, test_app 52/52 with 8 failures. Failing cases: auto-reconnect false after simulated drop (`test_auto_reconnect`), A2DP connect/streaming start/stop/pause/state tests returning 259 or wrong state (`test_connect_to_a2dp_sink`, `test_a2dp_streaming`, `test_audio_streaming_start_success`, `test_audio_streaming_stop_success`, `test_streaming_requires_connection`, `test_streaming_pause_resume`, `test_streaming_state_reporting`).
+- one_run_unity.log: audio streaming helpers now return 259 (ESP_ERR_INVALID_STATE) after disconnect; streaming_state_reporting sees `streaming` still true.
+
 ### Full test sweep (2025-12-17T03:27:18-08:00)
 - Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (default suites) with conda `python310` and ESP-IDF 5.4.1.
 - Results: host 165/165; device suites — test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (device aggregate 151/151). All pass.
 - Artifacts: tmp/run_all_tests_summary.json, tmp/run_all_tests_summary.csv, tmp/run_all_tests_full.log, per-suite `esp_bt_audio_source/test_app*/build/one_run_unity.log` refreshed.
+### Host test count note (2025-12-17T03:44:53-08:00)
+- Added bt_connection_manager reconnect failure coverage; `test_bt_connection_manager` now reports 4 Unity cases in tmp/run_all_tests_summary.json. Aggregate host total remains 165 because the suite previously counted 165 cases and no device tests changed; per-binary counts in the JSON are authoritative (CSV may be stale).
 ### Full test sweep (2025-12-17T03:16:04-08:00)
 - Re-ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` after fullcleans to resolve the mixed python-env warning (stuck build cache pointing at the old ESP-IDF venv). Environment: conda `python310` + ESP-IDF 5.4.1.
 - Results: host 19/19; device suites all green — test_app 37/37, test_app2 45/45, test_app_audio 12/12 (aggregate 113/113 for this run; test_app3 not in the configured sweep).

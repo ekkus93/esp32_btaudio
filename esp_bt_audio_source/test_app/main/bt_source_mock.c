@@ -233,6 +233,9 @@ void bt_source_mock_reset_impl(void)
     s_active_profile = BT_PROFILE_A2DP_SOURCE;  // Changed from BT_PROFILE_NONE
     s_streaming = false;
     s_streaming_paused = false;
+    s_auto_reconnect_config.auto_reconnect_enabled = false;
+    s_auto_reconnect_config.retry_count = 3;
+    s_auto_reconnect_config.retry_interval_ms = 5000;
     /* Preserve or restore the initialized flag based on the configured
      * mock_control.init_return. Tests commonly call bt_init() followed by
      * bt_mock_reset(); resetting s_initialized to false here causes valid
@@ -1673,34 +1676,67 @@ esp_err_t bt_simulate_disconnect(void) {
         return ESP_ERR_INVALID_STATE;
     }
     
-    // Keep a safe copy of the current connection info
-    bt_device_t prev_device;  // Changed from bt_device_info_t
+    // Keep a safe copy of the current connection info (string address already formatted)
+    bt_connection_info_t prev_info;
     bool was_connected = s_connected;
-    memcpy(&prev_device, &s_current_connection, sizeof(bt_device_t));  // Changed from bt_device_info_t
+    memcpy(&prev_info, &s_current_connection, sizeof(prev_info));
+
+    // Ensure the authoritative device-level mock drops its connection too.
+    esp_err_t mock_disc_err = bt_mock_force_disconnect();
+    ESP_LOGI(TAG, "DIAG: bt_mock_force_disconnect -> %d", (int)mock_disc_err);
+    if (mock_disc_err != ESP_OK) {
+        ESP_LOGW(TAG, "bt_mock_disconnect returned %d", (int)mock_disc_err);
+    }
     
     // Simulate disconnect
     s_connected = false;
     s_streaming = false;
     s_streaming_paused = false;
     s_streaming_state = BT_STREAMING_STATE_STOPPED;  // Changed from BT_STREAM_STATE_IDLE
+    s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_defer_disconnect_visibility = false;
+    /* Clear the public connection view so bt_get_connection_info() reports the
+     * drop immediately when auto-reconnect is disabled. prev_device already
+     * holds the authoritative pre-disconnect details used for reconnection. */
+    s_current_connection.connected = false;
+    s_current_connection.state = BT_CONNECTION_STATE_DISCONNECTED;
+    s_current_connection.name[0] = '\0';
+    s_current_connection.addr[0] = '\0';
+
+    /* Propagate the disconnected state to the stub so authoritative and
+     * stub-visible views stay aligned before any auto-reconnect attempt. */
+    bt_source_stub_sync_connected_state(false, NULL, NULL);
     
-    // IMPORTANT: Ensure prev_device has a valid name string with proper null termination
-    prev_device.name[sizeof(prev_device.name) - 1] = '\0';
+    // IMPORTANT: Ensure prev_info has valid strings with proper null termination
+    prev_info.name[sizeof(prev_info.name) - 1] = '\0';
+    prev_info.addr[sizeof(prev_info.addr) - 1] = '\0';
     
     // If auto reconnect is enabled, reconnect with proper validation
     if (s_auto_reconnect_config.auto_reconnect_enabled && was_connected) {
-        if (strlen(prev_device.name) > 0) {
-            ESP_LOGI(TAG, "Auto reconnecting to %s", prev_device.name);
+        if (strlen(prev_info.name) > 0 && strlen(prev_info.addr) > 0) {
+            ESP_LOGI(TAG, "Auto reconnecting to %s", prev_info.name);
             
-            // Restore connection state
-            s_connected = true;
-            memcpy(&s_current_connection, &prev_device, sizeof(bt_device_t));
-            
-            // Ensure the remote_name is null-terminated
-            s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';  // Changed from remote_name
-            s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';  // Changed from remote_addr
+            if (bt_mock_connect(prev_info.addr) == ESP_OK) {
+                // Restore connection state using canonical string address
+                s_connected = true;
+                s_current_connection.connected = true;
+                s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+                s_connection_state = BT_CONNECTION_STATE_CONNECTED;
+                s_defer_disconnect_visibility = false;
+
+                strncpy(s_current_connection.name, prev_info.name, sizeof(s_current_connection.name) - 1);
+                s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
+                strncpy(s_current_connection.addr, prev_info.addr, sizeof(s_current_connection.addr) - 1);
+                s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+
+                bt_source_stub_sync_connected_state(true,
+                                                    s_current_connection.addr,
+                                                    (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
+            } else {
+                ESP_LOGW(TAG, "Auto reconnect failed for %s", prev_info.name);
+            }
         } else {
-            ESP_LOGW(TAG, "Cannot auto-reconnect: device name invalid");
+            ESP_LOGW(TAG, "Cannot auto-reconnect: device name/address invalid");
         }
     }
     
@@ -1715,7 +1751,9 @@ esp_err_t bt_simulate_disconnect(void) {
  */
 void bt_reset_for_test(void)
 {
-    // Use bt_mock_reset instead of redefining bt_mock_reset here
+    // Reset both stub-local state and the authoritative component mock.
+    bt_source_mock_reset_impl();
+    bt_source_stub_sync_connected_state(false, NULL, NULL);
     bt_mock_reset();
 }
 
