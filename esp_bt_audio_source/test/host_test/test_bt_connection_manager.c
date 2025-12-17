@@ -173,6 +173,21 @@ void test_bt_connection_manager_skips_reconnect_when_disabled(void)
     TEST_ASSERT_EQUAL_UINT8(0, bt_connection_manager_get_reconnect_attempts_for_test());
 }
 
+// Disconnect before any successful connection should not trigger reconnect attempts.
+void test_bt_connection_manager_disconnect_first_should_not_reconnect(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    esp_bd_addr_t addr = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(0, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL_UINT8(0, bt_connection_manager_get_reconnect_attempts_for_test());
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_DISCONNECTED, bt_get_connection_state_detailed());
+}
+
 // Reconnect failures should drive state to FAILED, cap retries at max, and notify callbacks.
 void test_bt_reconnect_failures_report_failed_state_and_retry_count(void)
 {
@@ -199,6 +214,29 @@ void test_bt_reconnect_failures_report_failed_state_and_retry_count(void)
     TEST_ASSERT_GREATER_OR_EQUAL_INT(2, conn_ctx.call_count); // disconnected + failed transitions
     TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, conn_ctx.info.state);
     TEST_ASSERT_EQUAL_UINT8(5, conn_ctx.info.retry_count);
+}
+
+// Streaming state should reset to STOPPED when a disconnect arrives after a STARTED event.
+void test_bt_audio_state_resets_on_disconnect(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(false);
+
+    test_stream_ctx_t stream_ctx = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_register_streaming_callback(test_stream_callback, &stream_ctx));
+
+    esp_bd_addr_t addr = {0};
+
+    bt_audio_state_cb(ESP_A2D_AUDIO_STATE_STARTED, addr);
+    TEST_ASSERT_TRUE(stream_ctx.invoked);
+    TEST_ASSERT_TRUE(stream_ctx.streaming_flag);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, bt_get_streaming_state());
+
+    stream_ctx.invoked = false;
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+    TEST_ASSERT_FALSE(stream_ctx.invoked); // disconnect alone does not issue a streaming callback
 }
 
 void test_bt_audio_state_transitions_and_notifies(void)
@@ -231,7 +269,9 @@ int main(void)
     RUN_TEST(test_bt_connection_manager_limits_reconnect_attempts);
     RUN_TEST(test_bt_connection_manager_reconnect_resets_between_disconnects);
     RUN_TEST(test_bt_connection_manager_skips_reconnect_when_disabled);
+    RUN_TEST(test_bt_connection_manager_disconnect_first_should_not_reconnect);
     RUN_TEST(test_bt_reconnect_failures_report_failed_state_and_retry_count);
+    RUN_TEST(test_bt_audio_state_resets_on_disconnect);
     RUN_TEST(test_bt_audio_state_transitions_and_notifies);
     return UNITY_END();
 }

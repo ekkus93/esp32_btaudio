@@ -304,6 +304,9 @@ void test_bt_stop_failure_then_recovery_on_state_event(void) {
     const char* mac = "30:31:32:33:34:35";
     const char* name = "StopFailSink";
 
+    /* Ensure autostart is enabled even if a prior test disabled it. */
+    bt_manager_set_autostart_enabled(true);
+
     TEST_ASSERT_EQUAL(ESP_OK, bt_connect(mac));
     bt_manager_mock_connection_established(mac, name);
     bt_manager_mock_audio_state_changed(2);

@@ -242,12 +242,13 @@ static void attempt_reconnection(void)
             s_reconnect_attempts++;
             update_connection_state(BT_CONNECTION_STATE_CONNECTING);
         } else {
+            /* Count the failed attempt before reporting state so retry_count matches attempts. */
+            s_reconnect_attempts++;
             ESP_LOGE(TAG, "Failed to initiate reconnection");
             update_connection_state(BT_CONNECTION_STATE_FAILED);
             
             /* Try again if retries remain */
             if (s_reconnect_attempts < BT_RECONNECT_MAX_ATTEMPTS) {
-                s_reconnect_attempts++;
                 attempt_reconnection();
             }
         }

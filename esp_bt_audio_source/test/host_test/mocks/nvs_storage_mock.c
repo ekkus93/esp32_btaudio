@@ -12,6 +12,12 @@ static esp_err_t s_init_result = ESP_OK;
 static esp_err_t s_get_count_result = ESP_OK;
 static esp_err_t s_get_device_result = ESP_OK;
 
+// In-memory paired devices mock (simulates binary blob storage)
+#define MOCK_MAX_PAIRED 20
+static uint8_t mock_paired_mac[MOCK_MAX_PAIRED][6];
+static char mock_paired_name[MOCK_MAX_PAIRED][32];
+static int mock_paired_count = 0;
+
 esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len)
 {
     if (!buf || buf_len == 0) return ESP_ERR_INVALID_ARG;
@@ -43,6 +49,9 @@ void nvs_storage_mock_set_get_device_result(esp_err_t err)
 
 void nvs_storage_mock_reset(void)
 {
+    /* Reset PIN and paired device mocks back to defaults for each test. The
+     * paired arrays live in this TU; clear them explicitly to avoid stale
+     * state between host test cases. */
     memset(s_default_pin, 0, sizeof(s_default_pin));
     memset(mock_paired_mac, 0, sizeof(mock_paired_mac));
     memset(mock_paired_name, 0, sizeof(mock_paired_name));
@@ -65,12 +74,6 @@ esp_err_t nvs_storage_set_device_name(const char* name)
     (void)name; // not needed for host tests
     return ESP_OK;
 }
-
-// In-memory paired devices mock (simulates binary blob storage)
-#define MOCK_MAX_PAIRED 20
-static uint8_t mock_paired_mac[MOCK_MAX_PAIRED][6];
-static char mock_paired_name[MOCK_MAX_PAIRED][32];
-static int mock_paired_count = 0;
 
 static int parse_mac(const char* s, uint8_t out[6]) {
     if (!s || !out) return 0;

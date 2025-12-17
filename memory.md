@@ -1,4 +1,21 @@
 ## Current Focus
+### Test wiring diligence reminder (2025-12-17T13:31:36-08:00)
+- Guard against moral hazard: every new test must be registered in runners/CMake and appear in per-binary Unity counts; do not accept green dashboards without verifying the new cases are executed.
+- After adding tests, compare expected vs reported host/device totals (tmp/run_all_tests_summary.json + per-suite logs) and fail fast if declared vs observed diverge.
+- Treat suite wiring as part of each change: update runners and summarize case deltas when reporting results.
+### Anti “X at any cost” guardrails (2025-12-17T13:36:35-08:00)
+- No speed over substance: read the code/context and confirm requirements before patching.
+- No diff minimization over correctness: fix root causes instead of bending tests/mocks to pass.
+- No silence-over-signal: do not disable warnings/logs to hide issues; address them.
+- No “local green” over real coverage: do not skip device/long tests just to keep dashboards green.
+- No stability theater: do not skip/flake-mark tests without tracking and fixing them.
+- No convenience over policy: respect repo rules (sdkconfig/targets/log levels/etc.) even if slower.
+### Host autostart + retry count fixes (2025-12-17T13:22:27-08:00)
+- Fixed test bleed: `test_bt_stop_failure_then_recovery_on_state_event` now re-enables autostart before asserting the helper so earlier tests that disabled it no longer block the assertion.
+- Adjusted `attempt_reconnection` in `main/bt_connection_manager.c` to increment `s_reconnect_attempts` before updating failed state so retry_count reports all failed tries; host reconnect failure test now passes.
+- Rebuilt `esp_bt_audio_source/test/host_test/build_host_tests` and `ctest --output-on-failure` now green (25/25).
+### bt_connection_manager coverage gaps (2025-12-17T13:06:01-08:00)
+- Reviewed `main/bt_connection_manager.c` and host suite `test_bt_connection_manager.c`. Missing cases: disconnect without prior connect should skip auto-reconnect; disconnect after a STARTED audio event should reset streaming state to STOPPED; bt_manager autostart helper `bt_manager_test_autostart_on_connect` currently untested for enable/disable/playing guards.
 ### Auto-reconnect baseline fix (2025-12-17T12:39:24-08:00)
 - Updated `bt_simulate_disconnect` in test_app mock to clear `s_current_connection` (connected/state/name/addr) before stub sync so `bt_get_connection_info` reports disconnected when auto-reconnect is disabled. Relevant file: esp_bt_audio_source/test_app/main/bt_source_mock.c.
 ### Full sweep after auto-reconnect fix (2025-12-17T12:46:49-08:00)
