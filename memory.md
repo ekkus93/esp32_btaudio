@@ -2,6 +2,7 @@
 ### audio_processor host coverage (2025-12-17T02:14:08-08:00)
 - Added host Unity tests in `test_audio_processor_real.c` covering idle I2S failure backoff below threshold, WAV state lifecycle (pending bytes, synth disable, beep clear), and injected audio tag alignment/reset via test helpers.
 - Built and ran `ctest -R test_audio_processor_real` in `test/host_test/build_host_tests`: pass. Commit `test: add bt_manager and audio_processor coverage` pushed to `origin/master`.
+- Full sweep rerun after these tests: `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + IDF 5.4) now reports host 160/160, device totals unchanged and green — test_app 52/52, test_app2 45/45, test_app_audio 38/38, test_app3 14/14 (device aggregate 149/149). Summaries at `tmp/run_all_tests_summary.json` and per-suite `build/one_run_unity.log` refreshed.
 ### bt_manager host scan/pair/autostart coverage (2025-12-17T02:00:13-08:00)
 - Added host bt_manager tests for scan ignore when idle, pairing pending out-of-order, and autostart guard while playing; new UNIT_TEST helper `bt_manager_test_autostart_on_connect` in `bt_manager.c`.
 - Fixed scan ignore test to stop any prior scan before baseline and assert relative discovery counts.
