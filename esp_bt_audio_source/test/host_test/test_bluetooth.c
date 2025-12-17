@@ -17,6 +17,18 @@ int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
 int bt_manager_stop_audio(void);
 
+// Pairing pending helpers (UNIT_TEST only)
+void bt_manager_test_reset_pending(void);
+bool bt_manager_test_gap_pin_request(const char* mac);
+bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey);
+void bt_manager_test_gap_auth_complete(const char* mac, bool success);
+bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info);
+
+// Autostart helper (UNIT_TEST only)
+bool bt_manager_test_autostart_on_connect(void);
+void bt_manager_set_autostart_enabled(bool enable);
+bool bt_manager_is_autostart_enabled(void);
+
 #ifdef UNIT_TEST
 void bt_manager_force_initialized(bool value);
 void bt_manager_debug_print(void);
@@ -328,6 +340,71 @@ void test_bt_pairing(void) {
     TEST_ASSERT_EQUAL(ESP_OK, bt_set_pin("1234"));
 }
 
+// Ensure discovered devices are ignored when not scanning and after stop
+void test_bt_scan_ignores_when_not_scanning(void) {
+    bt_device_t mock_device = {
+        .mac = "01:02:03:04:05:06",
+        .name = "Ignored",
+        .rssi = -30
+    };
+
+    /* Ensure we are not marked as scanning from prior tests. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_scan());
+
+    int baseline = bt_get_device_list()->count;
+
+    bt_manager_mock_device_found(&mock_device);
+    TEST_ASSERT_EQUAL(baseline, bt_get_device_list()->count);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_scan());
+    bt_manager_mock_device_found(&mock_device);
+    TEST_ASSERT_EQUAL(baseline + 1, bt_get_device_list()->count);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_stop_scan());
+    bt_manager_mock_device_found(&mock_device);
+    TEST_ASSERT_EQUAL(baseline + 1, bt_get_device_list()->count);
+}
+
+// Verify pairing pending helpers handle out-of-order SSP/PIN and clear on auth complete
+void test_bt_pairing_pending_out_of_order(void) {
+    bt_pairing_request_info_t info;
+    bt_manager_test_reset_pending();
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_ssp_confirm("AA:BB:CC:11:22:33", 123456));
+    TEST_ASSERT_TRUE(bt_pairing_get_pending_request(&info));
+    TEST_ASSERT_FALSE(info.pin_request_pending);
+    TEST_ASSERT_TRUE(info.ssp_confirm_pending);
+    TEST_ASSERT_EQUAL_UINT32(123456, info.passkey);
+    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:11:22:33", info.mac);
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("00:11:22:33:44:55"));
+    TEST_ASSERT_TRUE(bt_pairing_get_pending_request(&info));
+    TEST_ASSERT_TRUE(info.pin_request_pending);
+    TEST_ASSERT_FALSE(info.ssp_confirm_pending);
+    TEST_ASSERT_EQUAL_UINT32(0, info.passkey);
+    TEST_ASSERT_EQUAL_STRING("00:11:22:33:44:55", info.mac);
+
+    bt_manager_test_gap_auth_complete("00:11:22:33:44:55", true);
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+}
+
+// Autostart should not trigger when audio already playing and should honor disable flag
+void test_bt_autostart_guard_when_playing(void) {
+    bt_manager_set_autostart_enabled(true);
+    bt_manager_mock_connection_established("10:20:30:40:50:60", "AutoStartSink");
+
+    TEST_ASSERT_TRUE(bt_manager_test_autostart_on_connect());
+    TEST_ASSERT_TRUE(bt_manager_is_autostart_enabled());
+    TEST_ASSERT_EQUAL(1, bt_manager_is_connected());
+
+    bt_manager_mock_audio_state_changed(2);
+    TEST_ASSERT_FALSE(bt_manager_test_autostart_on_connect());
+
+    bt_manager_set_autostart_enabled(false);
+    bt_manager_mock_audio_state_changed(1);
+    TEST_ASSERT_FALSE(bt_manager_test_autostart_on_connect());
+}
+
 // Main test runner
 int main(void) {
     UNITY_BEGIN();
@@ -340,6 +417,9 @@ int main(void) {
     RUN_TEST(test_bt_scan_hook_counts);
     RUN_TEST(test_bt_scan_requires_init);
     RUN_TEST(test_bt_pairing);
+    RUN_TEST(test_bt_scan_ignores_when_not_scanning);
+    RUN_TEST(test_bt_pairing_pending_out_of_order);
+    RUN_TEST(test_bt_autostart_guard_when_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
     

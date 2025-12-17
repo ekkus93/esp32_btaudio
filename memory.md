@@ -1,4 +1,8 @@
 ## Current Focus
+### bt_manager host scan/pair/autostart coverage (2025-12-17T02:00:13-08:00)
+- Added host bt_manager tests for scan ignore when idle, pairing pending out-of-order, and autostart guard while playing; new UNIT_TEST helper `bt_manager_test_autostart_on_connect` in `bt_manager.c`.
+- Fixed scan ignore test to stop any prior scan before baseline and assert relative discovery counts.
+- Full sweep via `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` (python310 + IDF 5.4): host 156/156, device suites all green — test_app 52/52, test_app2 45/45, test_app_audio 38/38, test_app3 14/14 (device aggregate 149/149). Artifacts refreshed in `tmp/run_all_tests_summary.json`, `tmp/canonical_unity_summary.json`, and per-suite `build/one_run_unity.log` files.
 ### command/bt_manager test additions (2025-12-17T00:28:50-08:00)
 - Added host parse boundary tests for `command_interface` (empty commands, param truncation/count limits, CONNECT_NAME spacing) in `test_commands.c`; added bt_manager scan hook/idempotence/require-init tests in `test_bluetooth.c`.
 - Full suite rerun with `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310`: host 148/148; device `test_app` 52/52, `test_app2` 45/45, `test_app_audio` 38/38, `test_app3` 14/14 (device total 149/149). Artifacts refreshed under `tmp/` and per-suite `build/one_run_unity.log`.

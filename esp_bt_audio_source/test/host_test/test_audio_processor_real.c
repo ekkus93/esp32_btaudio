@@ -15,6 +15,69 @@
 /* Expose UNIT_TEST hook from audio_processor.c */
 bool audio_processor_test_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks);
 
+void test_audio_processor_idle_i2s_should_not_reenable_below_threshold(void)
+{
+    bool synth_after = true;
+    int failures_after = -1;
+
+    audio_processor_test_idle_i2s_failures(5 /* below threshold */, false /* synth_enabled */, 0 /* beep_remaining */, &synth_after, &failures_after);
+
+    TEST_ASSERT_FALSE(synth_after);
+    TEST_ASSERT_EQUAL_INT(5, failures_after);
+}
+
+void test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep(void)
+{
+    audio_processor_test_wav_reset_state();
+    audio_processor_set_synth_mode(true);
+
+    audio_processor_test_wav_begin();
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+
+    audio_processor_test_wav_add_pending(100);
+    TEST_ASSERT_EQUAL_UINT32(100, (uint32_t)audio_processor_test_wav_pending_bytes());
+
+    TEST_ASSERT_FALSE(audio_processor_test_wav_consume(60));
+    TEST_ASSERT_EQUAL_UINT32(40, (uint32_t)audio_processor_test_wav_pending_bytes());
+
+    TEST_ASSERT_TRUE(audio_processor_test_wav_consume(40));
+    audio_processor_test_wav_complete_if_idle();
+
+    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_wav_pending_bytes());
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_beep_remaining_bytes());
+}
+
+void test_audio_processor_inject_audio_should_tag_and_reset(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 50;
+    cfg.mute = false;
+    cfg.i2s_port = 0;
+    cfg.i2s_bclk_pin = GPIO_NUM_NC;
+    cfg.i2s_ws_pin = GPIO_NUM_NC;
+    cfg.i2s_din_pin = GPIO_NUM_NC;
+    cfg.i2s_dout_pin = GPIO_NUM_NC;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_reset_tag_miss_count();
+
+    uint8_t payload[16] = {0xAA};
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(payload, sizeof(payload)));
+    TEST_ASSERT_GREATER_THAN_UINT(0, audio_processor_test_get_tag_used());
+
+    audio_source_tag_test_reset_buffer();
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
+}
+
 void setUp(void) {
     esp_heap_caps_mock_set_psram_available(true);
     esp_heap_caps_mock_reset_allocations();
@@ -77,7 +140,11 @@ void test_audio_processor_autostart_cooldown(void)
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_audio_processor_idle_i2s_should_not_reenable_below_threshold);
+    RUN_TEST(test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep);
+    RUN_TEST(test_audio_processor_inject_audio_should_tag_and_reset);
     RUN_TEST(test_audio_processor_alloc_with_psram);
     RUN_TEST(test_audio_processor_alloc_without_psram);
+    RUN_TEST(test_audio_processor_autostart_cooldown);
     return UNITY_END();
 }

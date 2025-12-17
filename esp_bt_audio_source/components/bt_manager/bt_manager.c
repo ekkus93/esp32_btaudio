@@ -1632,6 +1632,27 @@ void bt_manager_debug_print(void) {
  * their own definition. Tests which want to simulate a forced failure
  * may provide a strong symbol overriding this. */
 __attribute__((weak)) int bt_manager_forced_pair_failure(void) { return 0; }
+
+/* Unit-test helper: simulate the auto-start path executed after a
+ * successful connection. Returns true if bt_start_audio() was invoked
+ * by this helper. This lets host tests verify autostart is skipped
+ * when audio is already playing or when the feature is disabled. */
+bool bt_manager_test_autostart_on_connect(void) {
+    if (!bt_ctx.initialized) {
+        return false;
+    }
+    if (!bt_ctx.connected) {
+        bt_ctx.connected = true;
+    }
+    if (!s_autostart_enabled) {
+        return false;
+    }
+    if (bt_ctx.audio_playing) {
+        return false;
+    }
+
+    return bt_start_audio() == ESP_OK;
+}
 #endif
 
 #ifdef ESP_PLATFORM
