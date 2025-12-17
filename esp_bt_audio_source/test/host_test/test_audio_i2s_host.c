@@ -128,6 +128,29 @@ static void test_read_timeout_leaves_running_and_stop_ok(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
 }
 
+static void test_read_zero_length_sets_zero_and_ok(void)
+{
+    size_t bytes = 123; /* sentinel */
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_read(NULL, 0, &bytes, 5));
+    TEST_ASSERT_EQUAL(0u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+}
+
+static void test_read_partial_updates_bytes(void)
+{
+    uint8_t buf[8];
+    size_t bytes = 0;
+    mock_i2s_std_set_next_read_result(ESP_OK, 3);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_read(buf, sizeof(buf), &bytes, 5));
+    TEST_ASSERT_EQUAL(3u, bytes);
+}
+
 static void test_read_with_null_dest_should_fail(void)
 {
     size_t bytes = 42;
@@ -250,6 +273,8 @@ int main(void)
     RUN_TEST(test_read_timeout_propagates_error);
     RUN_TEST(test_read_error_propagates_and_reports_bytes);
     RUN_TEST(test_read_timeout_leaves_running_and_stop_ok);
+    RUN_TEST(test_read_zero_length_sets_zero_and_ok);
+    RUN_TEST(test_read_partial_updates_bytes);
     RUN_TEST(test_read_with_null_dest_should_fail);
     RUN_TEST(test_read_with_null_bytes_ptr_should_succeed);
     RUN_TEST(test_start_when_already_running_should_be_ok);

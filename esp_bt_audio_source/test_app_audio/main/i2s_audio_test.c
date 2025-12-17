@@ -118,6 +118,31 @@ static void test_i2s_convert_argument_checks(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, i2s_convert_mono_to_stereo(mono, NULL, 4));
 }
 
+static void test_i2s_convert_mono_to_stereo_odd_count(void)
+{
+    int16_t mono[3] = {1, -2, 3};
+    int16_t stereo[6] = {0};
+
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_convert_mono_to_stereo(mono, stereo, 3));
+    TEST_ASSERT_EQUAL_INT16(1, stereo[0]);
+    TEST_ASSERT_EQUAL_INT16(1, stereo[1]);
+    TEST_ASSERT_EQUAL_INT16(-2, stereo[2]);
+    TEST_ASSERT_EQUAL_INT16(-2, stereo[3]);
+    TEST_ASSERT_EQUAL_INT16(3, stereo[4]);
+    TEST_ASSERT_EQUAL_INT16(3, stereo[5]);
+}
+
+static void test_i2s_convert_stereo_to_mono_rounding(void)
+{
+    int16_t stereo[4] = {2, 3, -3, -4};
+    int16_t mono[2] = {0};
+
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_convert_stereo_to_mono(stereo, mono, 2));
+    /* (2+3)/2 = 2, (-3-4)/2 = -3 (truncated toward zero) */
+    TEST_ASSERT_EQUAL_INT16(2, mono[0]);
+    TEST_ASSERT_EQUAL_INT16(-3, mono[1]);
+}
+
 void run_i2s_audio_tests(void)
 {
     ESP_LOGI(TAG, "Starting I2S audio tests");
@@ -126,5 +151,7 @@ void run_i2s_audio_tests(void)
     RUN_TEST(test_channel_conversion);
     RUN_TEST(test_i2s_write_argument_checks);
     RUN_TEST(test_i2s_convert_argument_checks);
+    RUN_TEST(test_i2s_convert_mono_to_stereo_odd_count);
+    RUN_TEST(test_i2s_convert_stereo_to_mono_rounding);
     ESP_LOGI(TAG, "I2S audio tests completed");
 }
