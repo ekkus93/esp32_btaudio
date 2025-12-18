@@ -1,4 +1,11 @@
 ## Current Focus
+### I2S timeout fix (2025-12-17T23:55:00-08:00)
+- `audio_i2s_read` now maps ESP_OK + zero bytes to ESP_ERR_TIMEOUT while preserving `bytes_read`; I2S test stubs return ESP_ERR_TIMEOUT with zero bytes when `ticks_to_wait <= 1` to mimic a timeout path. Host `ctest -R test_audio_i2s_host` and device `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app_audio` both pass (log: esp_bt_audio_source/test_app_audio/build/one_run_unity.log).
+
+### Full test sweep (2025-12-17T23:40:36-08:00)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` with python310 + ESP-IDF 5.4.1. Results: host 181/181 passed; device suites all green — test_app 52/52, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (aggregate device 154/154). Summary: tmp/run_all_tests_summary.json; per-suite logs under esp_bt_audio_source/test_app*/build/one_run_unity.log.
+### Push flow directive (2025-12-17T22:56:31-08:00)
+- Do not argue about ability to commit/push; just run the git status/add/commit/push commands directly in the terminal when asked. Assume push to origin/master is expected unless the user says otherwise.
 ### Include ordering + test_app_audio BT deps (2025-12-17T22:27:22-08:00)
 - Moved `command_interface.h` include to the top of bt_manager.c so `cmd_send_event_pair` is declared before use (fixed implicit declaration error in device builds).
 - Removed test_app_audio reliance on bt_manager/bluetooth components (EXTRA_COMPONENT_DIRS trimmed, main CMake REQUIRES cleaned) and dropped the unused bt_manager include from audio_processor.c; suites now build without pulling the IDF BT stack.

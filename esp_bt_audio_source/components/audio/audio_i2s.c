@@ -171,10 +171,11 @@ esp_err_t audio_i2s_read(void *dest, size_t size, size_t *bytes_read, uint32_t t
         return ESP_ERR_INVALID_STATE;
     }
 
-    /* Handle zero-length reads explicitly to avoid leaking stale byte counts
-     * from the driver into callers. This keeps behavior consistent with the
-     * device and host tests that expect bytes_read to be zeroed when size==0.
-     */
+    if (dest == NULL && size > 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Zero-length reads are explicitly treated as success with zero bytes. */
     if (size == 0) {
         if (bytes_read != NULL) {
             *bytes_read = 0;
@@ -182,7 +183,19 @@ esp_err_t audio_i2s_read(void *dest, size_t size, size_t *bytes_read, uint32_t t
         return ESP_OK;
     }
 
-    esp_err_t ret = i2s_channel_read(rx_handle, dest, size, bytes_read, timeout_ms);
+    size_t local_bytes = 0;
+    size_t *out_bytes = (bytes_read != NULL) ? &local_bytes : &local_bytes;
+
+    esp_err_t ret = i2s_channel_read(rx_handle, dest, size, out_bytes, timeout_ms);
+
+    if (ret == ESP_OK && local_bytes == 0) {
+        ret = ESP_ERR_TIMEOUT;
+    }
+
+    if (bytes_read != NULL) {
+        *bytes_read = local_bytes;
+    }
+
     if (ret != ESP_OK && ret != ESP_ERR_TIMEOUT) {
         ESP_LOGE(TAG, "Failed to read from I2S: %d", ret);
     }

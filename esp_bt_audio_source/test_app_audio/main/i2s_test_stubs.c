@@ -67,6 +67,10 @@ esp_err_t i2s_channel_init_std_mode(i2s_chan_handle_t chan, const i2s_std_config
 esp_err_t i2s_channel_read(i2s_chan_handle_t chan, void* buf, size_t size, size_t* bytes_read, int ticks_to_wait)
 {
     if (!chan || !buf || size == 0) return ESP_ERR_INVALID_ARG;
+    if (ticks_to_wait <= 1) {
+        if (bytes_read) *bytes_read = 0;
+        return ESP_ERR_TIMEOUT;
+    }
     /* Fill with zeroes to simulate silence/read data. */
     memset(buf, 0, size);
     if (bytes_read) *bytes_read = size;

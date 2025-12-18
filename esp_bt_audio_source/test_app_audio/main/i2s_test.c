@@ -18,6 +18,9 @@ static void test_audio_i2s_stop_without_start_should_be_ok(void);
 static void test_audio_i2s_read_without_start_should_fail(void);
 static void test_audio_i2s_read_null_dest_should_fail(void);
 static void test_audio_i2s_zero_length_read_should_succeed(void);
+static void test_audio_i2s_init_twice_should_fail(void);
+static void test_audio_i2s_reinit_after_deinit_should_succeed(void);
+static void test_audio_i2s_read_timeout_should_not_advance_bytes(void);
 
 static void test_i2s_driver_init(void)
 {
@@ -112,6 +115,9 @@ void run_i2s_tests(void)
     RUN_TEST(test_audio_i2s_read_without_start_should_fail);
     RUN_TEST(test_audio_i2s_read_null_dest_should_fail);
     RUN_TEST(test_audio_i2s_zero_length_read_should_succeed);
+    RUN_TEST(test_audio_i2s_init_twice_should_fail);
+    RUN_TEST(test_audio_i2s_reinit_after_deinit_should_succeed);
+    RUN_TEST(test_audio_i2s_read_timeout_should_not_advance_bytes);
     ESP_LOGI(TAG, "I2S driver tests completed");
 }
 
@@ -180,6 +186,42 @@ static void test_audio_i2s_zero_length_read_should_succeed(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_read(buf, 0, &bytes, 5));
     TEST_ASSERT_EQUAL(0u, bytes);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_init_twice_should_fail(void)
+{
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_reinit_after_deinit_should_succeed(void)
+{
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
+}
+
+static void test_audio_i2s_read_timeout_should_not_advance_bytes(void)
+{
+    uint8_t buf[16];
+    size_t bytes = 123; /* sentinel to verify clearing */
+    audio_i2s_config_t cfg = AUDIO_I2S_DEFAULT_CONFIG();
+
+    audio_i2s_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_start());
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, audio_i2s_read(buf, sizeof(buf), &bytes, 1));
+    TEST_ASSERT_EQUAL(0u, bytes);
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_i2s_deinit());
 }
