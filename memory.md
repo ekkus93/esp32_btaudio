@@ -3,6 +3,12 @@
 - Environment: conda `python310`, `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310`, ESP-IDF 5.4.1 export, `esptool` 4.8.1. Command: `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`.
 - Host suite: 196/196 Unity cases passing (ctest rc 0). Per-binary counts in tmp/run_all_tests_summary.json.
 - Device suites: all green. Per logs — test_app `54 Tests 0 Failures 0 Ignored`, test_app_audio `43 tests` pass, test_app3 `14 Tests 0 Failures 0 Ignored`, test_app2 log shows all cases PASS (Unity summary not parsed; no failures observed). Aggregate summary file generated at tmp/run_all_tests_summary.json.
+
+### Host i2s coverage expansion (2025-12-18T03:52:31-08:00)
+- Added host Unity tests for `i2s_audio` (format/reconfig/convert paths) in test/host_test/test_i2s_audio_host.c and registered CTest target `test_i2s_audio_host`.
+- Extended `test_audio_i2s_host` with OK+zero-byte read -> timeout case.
+- Fixed headers for host mocks (`i2s_std.h` includes stddef) and `i2s_audio.h` includes stddef; added stdlib include in `components/audio/i2s_audio.c`.
+- Host build/ctest: `ctest --output-on-failure -R "test_audio_i2s_host|test_i2s_audio_host"` in test/host_test/build_host_tests passes.
 ### bt_streaming_manager host coverage (2025-12-18T02:10:00-08:00)
 - mock_a2dp now records last media_ctrl command and call count with getters/reset; reset initializes last control to STOP.
 - Added UNIT_TEST helpers in main/bt_streaming_manager.c to reset state and force streaming/paused states for host harnesses.

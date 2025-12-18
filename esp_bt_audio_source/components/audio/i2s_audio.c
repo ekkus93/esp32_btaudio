@@ -1,10 +1,8 @@
 #include "i2s_audio.h"
 #include "esp_log.h"
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h" // For portMAX_DELAY
-
-// Define UNIT_TEST for the test build to bypass hardware operations
-#define UNIT_TEST
 
 static const char *TAG = "I2S_AUDIO";
 static bool driver_installed = false;

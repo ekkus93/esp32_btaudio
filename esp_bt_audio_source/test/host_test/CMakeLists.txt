@@ -213,6 +213,15 @@ target_include_directories(test_audio_i2s_host PRIVATE ${CMAKE_CURRENT_SOURCE_DI
 target_compile_definitions(test_audio_i2s_host PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_i2s_host unity)
 add_test(NAME test_audio_i2s_host COMMAND $<TARGET_FILE:test_audio_i2s_host>)
+
+# Host coverage for i2s_audio helpers (format/reconfig/convert)
+add_executable(test_i2s_audio_host
+    test_i2s_audio_host.c
+    ../../components/audio/i2s_audio.c)
+target_include_directories(test_i2s_audio_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio/include)
+target_compile_definitions(test_i2s_audio_host PRIVATE UNIT_TEST)
+target_link_libraries(test_i2s_audio_host unity)
+add_test(NAME test_i2s_audio_host COMMAND $<TARGET_FILE:test_i2s_audio_host>)
 # allocator.c and list.c depend on bt_common.h which lives in the bt common include path
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)

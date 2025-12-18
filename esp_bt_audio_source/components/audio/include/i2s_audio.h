@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 // Fix the include path - the component name is automatically handled by the include system
+#include <stddef.h>
 #include "driver/i2s_std.h" // Modern I2S API
 #include "freertos/FreeRTOS.h" // For portMAX_DELAY
 #include <stdbool.h>
