@@ -1,4 +1,9 @@
 ## Current Focus
+### bt_manager remote suspend fix (2025-12-18T01:17:33-08:00)
+- Added handling for `ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND` in bt_manager to clear `audio_playing` and forward the state; host regression resolved.
+- Full `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now passes: host 184/184, device test_app 52/52, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (aggregate device 154/154).
+### bt_manager callback coverage (2025-12-17T23:47:12-08:00)
+- Added host bt_manager Unity tests for autostart-disabled A2DP connection, remote suspend clearing playing, and GAP auth success pending clear in esp_bt_audio_source/test/host_test/test_bluetooth.c. Tests not run in this session; host suite needs execution (ctest -R test_bluetooth).
 ### I2S timeout fix (2025-12-17T23:55:00-08:00)
 - `audio_i2s_read` now maps ESP_OK + zero bytes to ESP_ERR_TIMEOUT while preserving `bytes_read`; I2S test stubs return ESP_ERR_TIMEOUT with zero bytes when `ticks_to_wait <= 1` to mimic a timeout path. Host `ctest -R test_audio_i2s_host` and device `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app_audio` both pass (log: esp_bt_audio_source/test_app_audio/build/one_run_unity.log).
 

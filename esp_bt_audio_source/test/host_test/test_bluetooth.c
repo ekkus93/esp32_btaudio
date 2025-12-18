@@ -492,6 +492,21 @@ void test_bt_autostart_guard_when_playing(void) {
     TEST_ASSERT_FALSE(bt_manager_test_autostart_on_connect());
 }
 
+// Connection event should not autostart when autostart is disabled
+void test_bt_a2dp_connection_respects_autostart_disable(void) {
+    bt_manager_set_autostart_enabled(false);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    TEST_ASSERT_EQUAL(ESP_A2D_CONNECTION_STATE_CONNECTED, bt_manager_test_get_last_conn_state());
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
+}
+
 // A2DP connection event should forward state, fire callbacks, and autostart when enabled.
 void test_bt_a2dp_connection_autostart_and_forwarding(void) {
     bt_manager_set_autostart_enabled(true);
@@ -540,6 +555,28 @@ void test_bt_a2dp_audio_state_forwarding(void) {
     TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
 }
 
+// Remote suspend should clear playing flag and not trigger autostart
+void test_bt_a2dp_remote_suspend_clears_playing(void) {
+    bt_manager_set_autostart_enabled(true);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    memcpy(param.audio_stat.remote_bda, bda, sizeof(bda));
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_TRUE(bt_manager_test_is_audio_playing());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_FALSE(bt_manager_test_is_audio_playing());
+    TEST_ASSERT_EQUAL(ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND, bt_manager_test_get_last_audio_state());
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_autostart_attempts());
+}
+
 // GAP PIN/SSP/auth events should emit command-interface events and clear pending flags
 void test_bt_gap_failure_paths_emit_events_and_clear_pending(void) {
     bt_manager_test_reset_pending();
@@ -557,6 +594,20 @@ void test_bt_gap_failure_paths_emit_events_and_clear_pending(void) {
     TEST_ASSERT_EQUAL_STRING("FAILED", bt_manager_test_get_last_pair_event_subtype());
 
     bt_pairing_request_info_t info = {0};
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+}
+
+// GAP auth success should emit SUCCESS and clear pending flags
+void test_bt_gap_success_emits_success_and_clears_pending(void) {
+    bt_pairing_request_info_t info = {0};
+    bt_manager_test_reset_pending();
+    bt_manager_test_reset_forces();
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("AA:BB:CC:DD:EE:FF"));
+    TEST_ASSERT_TRUE(bt_pairing_get_pending_request(&info));
+
+    bt_manager_test_gap_auth_complete("AA:BB:CC:DD:EE:FF", true);
+    TEST_ASSERT_EQUAL_STRING("SUCCESS", bt_manager_test_get_last_pair_event_subtype());
     TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
 }
 
@@ -602,9 +653,12 @@ int main(void) {
     RUN_TEST(test_bt_scan_ignores_when_not_scanning);
     RUN_TEST(test_bt_pairing_pending_out_of_order);
     RUN_TEST(test_bt_autostart_guard_when_playing);
+    RUN_TEST(test_bt_a2dp_connection_respects_autostart_disable);
     RUN_TEST(test_bt_a2dp_connection_autostart_and_forwarding);
     RUN_TEST(test_bt_a2dp_audio_state_forwarding);
+    RUN_TEST(test_bt_a2dp_remote_suspend_clears_playing);
     RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
+    RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
     RUN_TEST(test_bt_a2dp_disconnect_and_stop_clear_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);

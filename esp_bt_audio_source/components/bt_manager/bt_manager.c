@@ -1435,6 +1435,12 @@ static void bt_manager_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
+        ESP_LOGI(TAG, "Audio streaming remote suspend");
+        bt_ctx.audio_playing = false;
+        esp_bd_addr_t tmp_addr = {0};
+        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
+        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     }
 }
 #endif
