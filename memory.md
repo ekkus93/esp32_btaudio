@@ -1,4 +1,12 @@
 ## Current Focus
+### bt_connection_manager reconnect device tests (2025-12-18T01:40:31-08:00)
+- Added device Unity coverage for reconnect retries/backoff in test_app (bt_a2dp_test.c): failure-only path asserts retry_count/state FAILED; delay test measures configured backoff across multiple attempts using bt_conn_test hooks.
+- bt_source_mock now supports bt_conn_test_set_reconnect_results/delay/reset, tracks reconnect attempts and retry_count, and applies per-attempt delays with failure-state reporting; reset integrates with bt_reset_for_test.
+- bt_source.h exposes test-hook prototypes behind CONFIG_BT_MOCK_TESTING.
+### bt_connection_manager reconnect hooks repair (2025-12-18T01:27:00-08:00)
+- Rebuilt `bt_connection_manager.c` tail after corruption: restored connection handler logic (formatted addr buffer, proper CONNECTED handling), public API exports, INIT, and test hook placement.
+- Re-added UNIT_TEST reset helpers to clear reconnect delay and callbacks; CONFIG_BT_MOCK_TESTING reconnect override remains intact.
+- Next: add device Unity coverage for reconnect retry/backoff using the restored hooks.
 ### bt_manager remote suspend fix (2025-12-18T01:17:33-08:00)
 - Added handling for `ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND` in bt_manager to clear `audio_playing` and forward the state; host regression resolved.
 - Full `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now passes: host 184/184, device test_app 52/52, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (aggregate device 154/154).

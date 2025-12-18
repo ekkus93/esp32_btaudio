@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "esp_err.h"
 // Add necessary ESP-IDF includes
 #include "esp_a2dp_api.h"
@@ -472,6 +473,13 @@ esp_err_t bt_load_paired_devices(void);
  * @return ESP_OK if successful, ESP_ERR_NOT_FOUND if device not found
  */
 esp_err_t bt_get_paired_device_info(const char* addr, bt_connection_info_t* info);
+
+#if CONFIG_BT_MOCK_TESTING
+/* Test-only reconnect sequencing hooks (device/host). */
+void bt_conn_test_set_reconnect_results(const esp_err_t *results, size_t len);
+void bt_conn_test_set_reconnect_delay_ms(uint32_t delay_ms);
+void bt_conn_test_reset_state(void);
+#endif
 
 /* ----------------- TESTING FUNCTIONS (NOT FOR PRODUCTION) ----------------- */
 /**

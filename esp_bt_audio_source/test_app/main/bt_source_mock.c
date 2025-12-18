@@ -216,6 +216,16 @@ static auto_reconnect_config_t s_auto_reconnect_config = {
     .retry_interval_ms = 5000
 };
 
+/* Test-only reconnect controls (CONFIG_BT_MOCK_TESTING) */
+#if CONFIG_BT_MOCK_TESTING
+static esp_err_t s_test_reconnect_results[8];
+static size_t s_test_reconnect_results_len = 0;
+static size_t s_test_reconnect_results_idx = 0;
+static bool s_test_reconnect_delay_overridden = false;
+static uint32_t s_test_reconnect_delay_ms = 0;
+#endif
+static uint8_t s_reconnect_attempts = 0;
+
 /* Use canonical pairing state enums from bt_source.h.
  * Avoid redefining BT_PAIRING_STATE_* macros here — the header defines
  * the authoritative values used by the tests.
@@ -1714,26 +1724,65 @@ esp_err_t bt_simulate_disconnect(void) {
     // If auto reconnect is enabled, reconnect with proper validation
     if (s_auto_reconnect_config.auto_reconnect_enabled && was_connected) {
         if (strlen(prev_info.name) > 0 && strlen(prev_info.addr) > 0) {
-            ESP_LOGI(TAG, "Auto reconnecting to %s", prev_info.name);
-            
-            if (bt_mock_connect(prev_info.addr) == ESP_OK) {
-                // Restore connection state using canonical string address
-                s_connected = true;
-                s_current_connection.connected = true;
-                s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
-                s_connection_state = BT_CONNECTION_STATE_CONNECTED;
-                s_defer_disconnect_visibility = false;
+            uint16_t max_attempts = (s_auto_reconnect_config.retry_count == 0U) ? 1U : s_auto_reconnect_config.retry_count;
+#if CONFIG_BT_MOCK_TESTING
+            uint32_t delay_ms = s_test_reconnect_delay_overridden ? s_test_reconnect_delay_ms : s_auto_reconnect_config.retry_interval_ms;
+#else
+            uint32_t delay_ms = s_auto_reconnect_config.retry_interval_ms;
+#endif
+            bool reconnected = false;
 
-                strncpy(s_current_connection.name, prev_info.name, sizeof(s_current_connection.name) - 1);
-                s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
-                strncpy(s_current_connection.addr, prev_info.addr, sizeof(s_current_connection.addr) - 1);
-                s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+            s_reconnect_attempts = 0;
+            while (s_reconnect_attempts < max_attempts) {
+                if (delay_ms > 0U) {
+                    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+                }
 
-                bt_source_stub_sync_connected_state(true,
-                                                    s_current_connection.addr,
-                                                    (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
-            } else {
-                ESP_LOGW(TAG, "Auto reconnect failed for %s", prev_info.name);
+                esp_err_t attempt_res;
+#if CONFIG_BT_MOCK_TESTING
+                if (s_test_reconnect_results_len > 0U && s_test_reconnect_results_idx < s_test_reconnect_results_len) {
+                    attempt_res = s_test_reconnect_results[s_test_reconnect_results_idx++];
+                } else {
+                    attempt_res = bt_mock_connect(prev_info.addr);
+                }
+#else
+                attempt_res = bt_mock_connect(prev_info.addr);
+#endif
+
+                s_reconnect_attempts++;
+                s_current_connection.retry_count = s_reconnect_attempts;
+
+                if (attempt_res == ESP_OK) {
+                    ESP_LOGI(TAG, "Auto reconnecting to %s (attempt %u)", prev_info.name, (unsigned)s_reconnect_attempts);
+
+                    s_connected = true;
+                    s_current_connection.connected = true;
+                    s_current_connection.state = BT_CONNECTION_STATE_CONNECTED;
+                    s_connection_state = BT_CONNECTION_STATE_CONNECTED;
+                    s_defer_disconnect_visibility = false;
+
+                    strncpy(s_current_connection.name, prev_info.name, sizeof(s_current_connection.name) - 1);
+                    s_current_connection.name[sizeof(s_current_connection.name) - 1] = '\0';
+                    strncpy(s_current_connection.addr, prev_info.addr, sizeof(s_current_connection.addr) - 1);
+                    s_current_connection.addr[sizeof(s_current_connection.addr) - 1] = '\0';
+
+                    bt_source_stub_sync_connected_state(true,
+                                                        s_current_connection.addr,
+                                                        (s_current_connection.name[0] != '\0') ? s_current_connection.name : NULL);
+
+                    /* Reset retry counter after successful reconnection to mirror production behavior. */
+                    s_current_connection.retry_count = 0;
+                    s_reconnect_attempts = 0;
+                    reconnected = true;
+                    break;
+                }
+            }
+
+            if (!reconnected) {
+                ESP_LOGW(TAG, "Auto reconnect failed for %s after %u attempt(s)", prev_info.name, (unsigned)s_reconnect_attempts);
+                s_connection_state = BT_CONNECTION_STATE_FAILED;
+                s_current_connection.state = BT_CONNECTION_STATE_FAILED;
+                s_current_connection.connected = false;
             }
         } else {
             ESP_LOGW(TAG, "Cannot auto-reconnect: device name/address invalid");
@@ -1746,6 +1795,46 @@ esp_err_t bt_simulate_disconnect(void) {
 /* Testing specific mock implementations - only compiled when CONFIG_BT_MOCK_TESTING is enabled */
 #ifdef CONFIG_BT_MOCK_TESTING
 
+void bt_conn_test_set_reconnect_results(const esp_err_t *results, size_t len)
+{
+    if (results == NULL || len == 0U) {
+        s_test_reconnect_results_len = 0;
+        s_test_reconnect_results_idx = 0;
+        return;
+    }
+
+    size_t capped_len = len;
+    if (capped_len > (sizeof(s_test_reconnect_results) / sizeof(s_test_reconnect_results[0]))) {
+        capped_len = sizeof(s_test_reconnect_results) / sizeof(s_test_reconnect_results[0]);
+    }
+
+    memset(s_test_reconnect_results, 0, sizeof(s_test_reconnect_results));
+    memcpy(s_test_reconnect_results, results, capped_len * sizeof(results[0]));
+    s_test_reconnect_results_len = capped_len;
+    s_test_reconnect_results_idx = 0;
+}
+
+void bt_conn_test_set_reconnect_delay_ms(uint32_t delay_ms)
+{
+    s_test_reconnect_delay_ms = delay_ms;
+    s_test_reconnect_delay_overridden = true;
+}
+
+void bt_conn_test_reset_state(void)
+{
+    s_test_reconnect_results_len = 0;
+    s_test_reconnect_results_idx = 0;
+    s_reconnect_attempts = 0;
+    s_current_connection.retry_count = 0;
+    s_test_reconnect_delay_overridden = false;
+    s_test_reconnect_delay_ms = s_auto_reconnect_config.retry_interval_ms;
+}
+
+uint8_t bt_connection_manager_get_reconnect_attempts_for_test(void)
+{
+    return s_reconnect_attempts;
+}
+
 /**
  * @brief Reset mock state
  */
@@ -1755,6 +1844,7 @@ void bt_reset_for_test(void)
     bt_source_mock_reset_impl();
     bt_source_stub_sync_connected_state(false, NULL, NULL);
     bt_mock_reset();
+    bt_conn_test_reset_state();
 }
 
 #endif // CONFIG_BT_MOCK_TESTING

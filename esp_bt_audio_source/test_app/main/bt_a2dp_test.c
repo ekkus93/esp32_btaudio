@@ -429,6 +429,67 @@ void test_auto_reconnect(void) {
     TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
 }
 
+void test_auto_reconnect_should_stop_after_failed_attempts(void)
+{
+    ESP_LOGI(TAG, "Testing auto-reconnect stops after max failed attempts");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_FAIL, ESP_FAIL, ESP_FAIL};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(0);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_FALSE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, info.state);
+    TEST_ASSERT_EQUAL_UINT8(3, info.retry_count);
+}
+
+void test_auto_reconnect_should_apply_configured_delay(void)
+{
+    ESP_LOGI(TAG, "Testing auto-reconnect delay between attempts");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_FAIL, ESP_OK};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(50);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+    TickType_t start_ticks = xTaskGetTickCount();
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TickType_t end_ticks = xTaskGetTickCount();
+
+    uint32_t elapsed_ms = (uint32_t)((end_ticks - start_ticks) * portTICK_PERIOD_MS);
+    uint32_t expected_ms = 2U * 50U; /* Delay applied before each attempt (fail + retry). */
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_TRUE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, info.state);
+    TEST_ASSERT_EQUAL_UINT8(0, info.retry_count);
+
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(expected_ms, elapsed_ms);
+
+    /* Cleanup */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(false));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
+}
+
 // Test 15: Bluetooth connects to A2DP sink
 void test_connect_to_a2dp_sink(void) {
     ESP_LOGI(TAG, "Testing connecting to A2DP sink");
@@ -660,6 +721,8 @@ void run_bt_a2dp_tests(void)
     RUN_TEST(test_connection_timeout);
     RUN_TEST(test_connection_status_info);
     RUN_TEST(test_auto_reconnect);
+    RUN_TEST(test_auto_reconnect_should_stop_after_failed_attempts);
+    RUN_TEST(test_auto_reconnect_should_apply_configured_delay);
     RUN_TEST(test_connect_to_a2dp_sink);
 
     // 3. A2DP streaming tests
