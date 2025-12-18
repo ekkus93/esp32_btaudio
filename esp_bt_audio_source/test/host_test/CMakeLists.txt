@@ -358,6 +358,24 @@ target_include_directories(test_bt_connection_manager PRIVATE
 target_link_libraries(test_bt_connection_manager unity util_safe_host)
 add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connection_manager>)
 
+add_executable(test_bt_streaming_manager
+    test_bt_streaming_manager.c
+    ../../main/bt_streaming_manager.c
+    mocks/mock_a2dp.c
+    mocks/mock_audio_and_btstate.c
+    mocks/audio_processor_host_stub.c
+    mocks/fake_task.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+)
+target_include_directories(test_bt_streaming_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+)
+target_compile_definitions(test_bt_streaming_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_bt_streaming_manager unity m)
+add_test(NAME test_bt_streaming_manager COMMAND $<TARGET_FILE:test_bt_streaming_manager>)
+
 # Small test to lock mock-connection helper behavior: ensure the mock
 # helpers can be called without explicit manager init and the test-visible
 # getter (bt_get_connection_state) reflects the changes.

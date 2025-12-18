@@ -25,7 +25,17 @@ const char* pcTaskGetName(TaskHandle_t xTaskToQuery)
 
 void taskYIELD(void) { /* no-op */ }
 
-uint32_t xTaskGetTickCount(void) { return 0; }
+static uint32_t s_mock_tick = 0;
+
+void mock_task_set_tick(uint32_t ticks)
+{
+    s_mock_tick = ticks;
+}
+
+uint32_t xTaskGetTickCount(void)
+{
+    return s_mock_tick;
+}
 
 // Host build stub for critical section helpers used by audio_processor
 void vTaskSuspendAll(void) { /* no-op for host */ }

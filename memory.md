@@ -1,4 +1,11 @@
 ## Current Focus
+### bt_streaming_manager host coverage (2025-12-18T02:10:00-08:00)
+- mock_a2dp now records last media_ctrl command and call count with getters/reset; reset initializes last control to STOP.
+- Added UNIT_TEST helpers in main/bt_streaming_manager.c to reset state and force streaming/paused states for host harnesses.
+- New host Unity binary test_bt_streaming_manager exercises start/stop/pause/resume gating, media_ctrl invocations, and data callback stats using audio_processor_host_stub; wired into test/host_test/CMakeLists.txt and built via cmake -S test/host_test -B build_host followed by ctest -R test_bt_streaming_manager (pass).
+### bt_streaming_manager duration/pause edges (2025-12-18T02:35:11-08:00)
+- fake_task now allows mock_task_set_tick to control xTaskGetTickCount for host tests; task.h declares the setter.
+- Added pause=0 fill and underrun zero-fill coverage plus resume-after-underrun duration/stat checks to test_bt_streaming_manager; suite rebuilt and ctest -R test_bt_streaming_manager passes.
 ### bt_connection_manager reconnect device tests (2025-12-18T01:40:31-08:00)
 - Added device Unity coverage for reconnect retries/backoff in test_app (bt_a2dp_test.c): failure-only path asserts retry_count/state FAILED; delay test measures configured backoff across multiple attempts using bt_conn_test hooks.
 - bt_source_mock now supports bt_conn_test_set_reconnect_results/delay/reset, tracks reconnect attempts and retry_count, and applies per-attempt delays with failure-state reporting; reset integrates with bt_reset_for_test.

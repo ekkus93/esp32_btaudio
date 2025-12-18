@@ -10,8 +10,10 @@ static struct {
     esp_bt_status_t init_result;
     esp_bt_status_t deinit_result;
     esp_bt_status_t media_ctrl_result;
+    esp_a2d_media_ctrl_t last_media_ctrl;
     int connect_calls;
     int disconnect_calls;
+    int media_ctrl_calls;
     char last_connect_addr[MAC_STRING_LEN];
     char last_disconnect_addr[MAC_STRING_LEN];
     bool init_called;
@@ -24,6 +26,7 @@ static struct {
     .init_result = ESP_BT_STATUS_SUCCESS,
     .deinit_result = ESP_BT_STATUS_SUCCESS,
     .media_ctrl_result = ESP_BT_STATUS_SUCCESS,
+    .last_media_ctrl = ESP_A2D_MEDIA_CTRL_STOP,
 };
 
 static void format_mac(const esp_bd_addr_t addr, char *out)
@@ -46,8 +49,10 @@ void mock_a2dp_reset(void)
     s_a2dp_state.init_result = ESP_BT_STATUS_SUCCESS;
     s_a2dp_state.deinit_result = ESP_BT_STATUS_SUCCESS;
     s_a2dp_state.media_ctrl_result = ESP_BT_STATUS_SUCCESS;
+    s_a2dp_state.last_media_ctrl = ESP_A2D_MEDIA_CTRL_STOP;
     s_a2dp_state.connect_calls = 0;
     s_a2dp_state.disconnect_calls = 0;
+    s_a2dp_state.media_ctrl_calls = 0;
     s_a2dp_state.last_connect_addr[0] = '\0';
     s_a2dp_state.last_disconnect_addr[0] = '\0';
     s_a2dp_state.init_called = false;
@@ -101,6 +106,16 @@ const char *mock_a2dp_get_last_disconnect_addr(void)
     return s_a2dp_state.last_disconnect_addr;
 }
 
+int mock_a2dp_get_media_ctrl_calls(void)
+{
+    return s_a2dp_state.media_ctrl_calls;
+}
+
+esp_a2d_media_ctrl_t mock_a2dp_get_last_media_ctrl(void)
+{
+    return s_a2dp_state.last_media_ctrl;
+}
+
 bool mock_a2dp_was_init_called(void)
 {
     return s_a2dp_state.init_called;
@@ -149,7 +164,8 @@ esp_bt_status_t esp_a2d_source_disconnect(esp_bd_addr_t remote_bda)
 
 esp_bt_status_t esp_a2d_media_ctrl(esp_a2d_media_ctrl_t ctrl)
 {
-    (void)ctrl;
+    s_a2dp_state.last_media_ctrl = ctrl;
+    s_a2dp_state.media_ctrl_calls++;
     return s_a2dp_state.media_ctrl_result;
 }
 

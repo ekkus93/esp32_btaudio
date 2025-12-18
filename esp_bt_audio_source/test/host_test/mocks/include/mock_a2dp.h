@@ -21,6 +21,8 @@ bool mock_a2dp_was_init_called(void);
 bool mock_a2dp_was_deinit_called(void);
 esp_a2d_cb_t mock_a2dp_get_registered_callback(void);
 esp_a2d_source_data_cb_t mock_a2dp_get_registered_data_callback(void);
+int mock_a2dp_get_media_ctrl_calls(void);
+esp_a2d_media_ctrl_t mock_a2dp_get_last_media_ctrl(void);
 
 #ifdef __cplusplus
 }

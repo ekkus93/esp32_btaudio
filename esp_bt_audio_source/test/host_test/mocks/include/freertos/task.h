@@ -12,6 +12,7 @@ void vTaskDelete(TaskHandle_t task);
 const char* pcTaskGetName(TaskHandle_t xTaskToQuery);
 void taskYIELD(void);
 TickType_t xTaskGetTickCount(void);
+void mock_task_set_tick(uint32_t ticks);
 void vTaskSuspendAll(void);
 BaseType_t xTaskResumeAll(void);
 

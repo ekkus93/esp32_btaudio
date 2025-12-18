@@ -305,3 +305,23 @@ void bt_streaming_manager_init(void)
     
     ESP_LOGI(TAG, "Streaming manager initialized");
 }
+
+#ifdef UNIT_TEST
+void bt_streaming_manager_reset_state_for_test(void)
+{
+    s_stream_start_time = 0;
+    safe_memset(&s_streaming_info, 0, sizeof(s_streaming_info));
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
+    s_streaming_info.paused = false;
+    s_stream_callback = NULL;
+    s_stream_callback_data = NULL;
+}
+
+void bt_streaming_manager_force_state_for_test(bt_streaming_state_t state)
+{
+    s_streaming_state = state;
+    s_streaming_info.state = state;
+    s_streaming_info.paused = (state == BT_STREAMING_STATE_PAUSED);
+}
+#endif
