@@ -155,17 +155,7 @@ static void bt_pairing_prepare_pending_for_event(const esp_bd_addr_t addr)
     s_pair_pending.passkey = 0;
 }
 
-#ifdef ESP_PLATFORM
-#include <inttypes.h>
-#include "nvs_flash.h"
-// Callback declarations
-static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
-static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
-// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
-static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
-#include "command_interface.h"
-// Audio processor API - used by A2DP data callback to pull PCM
-#include "audio_processor.h"
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 #if defined(__GNUC__)
 /* Forward-declare the connection manager callbacks so the manager can
  * forward A2DP events it receives. This keeps the connection manager's
@@ -177,6 +167,19 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 extern void bt_connection_state_cb(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr);
 extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr);
 #endif
+#endif
+
+#ifdef ESP_PLATFORM
+#include <inttypes.h>
+#include "nvs_flash.h"
+// Callback declarations
+static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
+static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
+static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
+#include "command_interface.h"
+// Audio processor API - used by A2DP data callback to pull PCM
+#include "audio_processor.h"
 #endif
 
 #ifdef UNIT_TEST
@@ -198,9 +201,16 @@ __attribute__((weak)) void bt_manager_test_record_scan_start(void) { }
 #
 // Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
 __attribute__((weak)) void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
-#endif
+static int s_autostart_attempts = 0;
 
-#ifdef UNIT_TEST
+int bt_manager_test_get_autostart_attempts(void) {
+    return s_autostart_attempts;
+}
+
+void bt_manager_test_reset_autostart_attempts(void) {
+    s_autostart_attempts = 0;
+}
+
 void bt_manager_test_reset_pending(void)
 {
     bt_pairing_clear_pending_flags(true, true);
@@ -1290,6 +1300,75 @@ int bt_manager_stop_audio(void) {
 }
 
 
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
+static void bt_manager_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
+    if (!param) {
+        return;
+    }
+
+    if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+        char bda_str[18];
+        safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                      param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
+                      param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
+                      param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
+
+        ESP_LOGI(TAG, "Connected to device: %s", bda_str);
+
+        bt_ctx.connected = true;
+        safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
+
+        if (bt_ctx.connected_callback != NULL) {
+            bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
+        }
+
+        esp_bd_addr_t tmp_addr = {0};
+        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
+        bt_connection_state_cb(param->conn_stat.state, tmp_addr);
+
+        if (s_autostart_enabled) {
+    #if defined(UNIT_TEST)
+            s_autostart_attempts++;
+    #endif
+            bt_err_t start_ret = bt_start_audio();
+            ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));
+        }
+    } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+        ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);
+
+        if (bt_ctx.disconnected_callback != NULL) {
+            bt_ctx.disconnected_callback(bt_ctx.connected_mac);
+        }
+
+        bt_ctx.connected = false;
+        bt_ctx.audio_playing = false;
+        esp_bd_addr_t tmp_addr = {0};
+        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
+        bt_connection_state_cb(param->conn_stat.state, tmp_addr);
+    }
+}
+
+static void bt_manager_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
+    if (!param) {
+        return;
+    }
+
+    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+        ESP_LOGI(TAG, "Audio streaming started");
+        bt_ctx.audio_playing = true;
+        esp_bd_addr_t tmp_addr = {0};
+        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
+        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
+        ESP_LOGI(TAG, "Audio streaming stopped");
+        bt_ctx.audio_playing = false;
+        esp_bd_addr_t tmp_addr = {0};
+        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
+        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
+    }
+}
+#endif
+
 #ifdef ESP_PLATFORM
 // GAP callback for Bluetooth events
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
@@ -1417,61 +1496,11 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
-            // Connection state changed
-            if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-                char bda_str[18];
-                safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                              param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
-                              param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
-                              param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
-                
-                ESP_LOGI(TAG, "Connected to device: %s", bda_str);
-                
-                bt_ctx.connected = true;
-                safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
-                
-                // Get device name (simplified, actual implementation would get name from bt_ctx.discovered_devices)
-                if (bt_ctx.connected_callback != NULL) {
-                    bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
-                }
-                /* Forward event to the connection manager so its internal
-                 * state is updated even when bt_manager registered the
-                 * single A2DP callback. This keeps bt_get_connection_state()
-                 * aligned with the manager's connected flag. */
-                bt_connection_state_cb(param->conn_stat.state, param->conn_stat.remote_bda);
-
-                if (s_autostart_enabled) {
-                    bt_err_t start_ret = bt_start_audio();
-                    ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));
-                }
-            } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-                ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);
-                
-                if (bt_ctx.disconnected_callback != NULL) {
-                    bt_ctx.disconnected_callback(bt_ctx.connected_mac);
-                }
-                
-                bt_ctx.connected = false;
-                bt_ctx.audio_playing = false;
-                bt_connection_state_cb(param->conn_stat.state, param->conn_stat.remote_bda);
-            }
+            bt_manager_handle_a2dp_connection(param);
             break;
-            
         case ESP_A2D_AUDIO_STATE_EVT:
-            // Audio state changed
-            if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
-                ESP_LOGI(TAG, "Audio streaming started");
-                bt_ctx.audio_playing = true;
-                /* forward to connection manager so streaming state is updated */
-                bt_audio_state_cb(param->audio_stat.state, param->audio_stat.remote_bda);
-            } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
-                ESP_LOGI(TAG, "Audio streaming stopped");
-                bt_ctx.audio_playing = false;
-                bt_audio_state_cb(param->audio_stat.state, param->audio_stat.remote_bda);
-            }
+            bt_manager_handle_a2dp_audio(param);
             break;
-            
-        // Add other A2DP event handlers as needed
         default:
             break;
     }
@@ -1652,6 +1681,26 @@ bool bt_manager_test_autostart_on_connect(void) {
     }
 
     return bt_start_audio() == ESP_OK;
+}
+
+/* Unit-test helper: reuse the production A2DP handlers so host tests can
+ * simulate connection/audio state events and validate autostart/forwarding
+ * behaviour without ESP_PLATFORM callbacks. */
+void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
+    if (!param) {
+        return;
+    }
+
+    switch (event) {
+        case ESP_A2D_CONNECTION_STATE_EVT:
+            bt_manager_handle_a2dp_connection(param);
+            break;
+        case ESP_A2D_AUDIO_STATE_EVT:
+            bt_manager_handle_a2dp_audio(param);
+            break;
+        default:
+            break;
+    }
 }
 #endif
 

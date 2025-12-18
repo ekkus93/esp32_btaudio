@@ -89,8 +89,28 @@ typedef enum {
 // Bluetooth device address
 typedef uint8_t esp_bd_addr_t[ESP_BD_ADDR_LEN];
 
-typedef int esp_a2d_cb_event_t;
-typedef struct esp_a2d_cb_param_t esp_a2d_cb_param_t;
+typedef enum {
+    ESP_A2D_CONNECTION_STATE_EVT = 0,
+    ESP_A2D_AUDIO_STATE_EVT,
+} esp_a2d_cb_event_t;
+
+typedef struct {
+    esp_a2d_connection_state_t state;
+    esp_bd_addr_t remote_bda;
+} esp_a2d_conn_stat_t;
+
+typedef struct {
+    esp_a2d_audio_state_t state;
+    esp_bd_addr_t remote_bda;
+} esp_a2d_audio_stat_t;
+
+typedef union esp_a2d_cb_param_t {
+    esp_a2d_conn_stat_t conn_stat;
+    esp_a2d_audio_stat_t audio_stat;
+} esp_a2d_cb_param_t;
+
+#define ESP_A2D_HOST_STRUCT_DEFINED 1
+
 typedef void (*esp_a2d_cb_t)(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 typedef int32_t (*esp_a2d_source_data_cb_t)(uint8_t *buf, int32_t len);
 

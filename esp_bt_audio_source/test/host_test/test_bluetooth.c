@@ -19,6 +19,13 @@ void bt_manager_test_set_force_start_failure(int v);
 void bt_manager_test_set_force_stop_failure(int v);
 void bt_manager_test_reset_forces(void);
 int bt_manager_test_get_scan_start_count(void);
+void bt_manager_test_reset_btstate_mock(void);
+int bt_manager_test_get_start_audio_calls(void);
+int bt_manager_test_get_last_conn_state(void);
+int bt_manager_test_get_last_audio_state(void);
+int bt_manager_test_get_autostart_attempts(void);
+void bt_manager_test_reset_autostart_attempts(void);
+void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 // Manager wrapper prototypes (not exposed via header)
 int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
@@ -71,6 +78,8 @@ void setUp(void) {
     memset(bt_connected_name, 0, sizeof(bt_connected_name));
     memset(bt_disconnected_mac, 0, sizeof(bt_disconnected_mac));
     nvs_storage_mock_reset();
+    bt_manager_test_reset_btstate_mock();
+    bt_manager_test_reset_autostart_attempts();
     
     // Initialize the BT manager
     bt_manager_init_t config = {
@@ -479,6 +488,54 @@ void test_bt_autostart_guard_when_playing(void) {
     TEST_ASSERT_FALSE(bt_manager_test_autostart_on_connect());
 }
 
+// A2DP connection event should forward state, fire callbacks, and autostart when enabled.
+void test_bt_a2dp_connection_autostart_and_forwarding(void) {
+    bt_manager_set_autostart_enabled(true);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0xAA, 0xBB, 0xCC, 0x11, 0x22, 0x33};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    TEST_ASSERT_TRUE(bt_connected_callback_called);
+    TEST_ASSERT_EQUAL(1, bt_manager_is_connected());
+    TEST_ASSERT_EQUAL(ESP_A2D_CONNECTION_STATE_CONNECTED, bt_manager_test_get_last_conn_state());
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_autostart_attempts());
+
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    TEST_ASSERT_TRUE(bt_disconnected_callback_called);
+    TEST_ASSERT_EQUAL(0, bt_manager_is_connected());
+    TEST_ASSERT_EQUAL(ESP_A2D_CONNECTION_STATE_DISCONNECTED, bt_manager_test_get_last_conn_state());
+}
+
+// Audio state events should forward to the connection manager callbacks without autostart side effects.
+void test_bt_a2dp_audio_state_forwarding(void) {
+    bt_manager_set_autostart_enabled(false);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+
+    // Seed connected state without triggering autostart
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    memcpy(param.audio_stat.remote_bda, bda, sizeof(bda));
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(ESP_A2D_AUDIO_STATE_STARTED, bt_manager_test_get_last_audio_state());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STOPPED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(ESP_A2D_AUDIO_STATE_STOPPED, bt_manager_test_get_last_audio_state());
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
+}
+
 // Main test runner
 int main(void) {
     UNITY_BEGIN();
@@ -494,6 +551,8 @@ int main(void) {
     RUN_TEST(test_bt_scan_ignores_when_not_scanning);
     RUN_TEST(test_bt_pairing_pending_out_of_order);
     RUN_TEST(test_bt_autostart_guard_when_playing);
+    RUN_TEST(test_bt_a2dp_connection_autostart_and_forwarding);
+    RUN_TEST(test_bt_a2dp_audio_state_forwarding);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
     RUN_TEST(test_bt_init_survives_nvs_failures);

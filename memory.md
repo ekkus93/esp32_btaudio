@@ -1,4 +1,15 @@
 ## Current Focus
+### A2DP host shim + autostart counter (2025-12-17T20:30:37-08:00)
+- Shared A2DP connect/audio handlers exposed via `bt_manager_test_invoke_a2dp_event` for host tests; autostart attempts now tracked internally with getters/reset instead of external hooks.
+- Host mocks updated to track connection/audio state and start_audio invocations; new Unity cases in test_bluetooth cover autostart on connect, disconnect clearing, and audio state forwarding.
+- Removed stray UNIT_TEST hook call that caused implicit declaration warnings; rebuilt `esp_bt_audio_source/test/host_test/build_host_tests` and `ctest --output-on-failure` now clean (25/25 pass).
+### Header guard tightening for device builds (2025-12-17T21:34:16-08:00)
+- Updated bt_manager.h to prefer real ESP_PLATFORM headers (`esp_bt.h`, `esp_a2dp_api.h`) and only fall back to stubs when not on ESP_PLATFORM and headers are missing; prevents stubs from leaking into device builds while keeping host/unit compatibility.
+- Full `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green: host 176/176, device suites test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14.
+### bt_manager callback coverage plan (2025-12-17T20:19:54-08:00)
+- GAP/A2DP callbacks live under ESP_PLATFORM; host tests cannot currently invoke them. Any host coverage of connect/disconnect/audio-state forwarding or GAP auth failures will need a UNIT_TEST-visible hook or shared handler to mirror the callback logic.
+- Pending work items tracked in the todo list: map bt_manager event gaps, design host tests for GAP/A2DP failure paths, then implement and run them with proper wiring.
+- Existing host helpers cover pairing pending flags and mock connection/audio state but do not exercise command_interface event emission or A2DP forwarding to bt_connection_manager.
 ### Test wiring diligence reminder (2025-12-17T13:31:36-08:00)
 - Guard against moral hazard: every new test must be registered in runners/CMake and appear in per-binary Unity counts; do not accept green dashboards without verifying the new cases are executed.
 - After adding tests, compare expected vs reported host/device totals (tmp/run_all_tests_summary.json + per-suite logs) and fail fast if declared vs observed diverge.

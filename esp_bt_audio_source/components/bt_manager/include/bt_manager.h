@@ -5,6 +5,57 @@
 #include <stdint.h>
 #include "bt_api.h"
 
+#if defined(ESP_PLATFORM)
+#include "esp_bt.h"
+#include "esp_a2dp_api.h"
+#elif defined(__has_include)
+#if __has_include("esp_bt.h")
+#include "esp_bt.h"
+#else
+typedef uint8_t esp_bd_addr_t[6];
+#endif
+#if __has_include("esp_a2dp_api.h")
+#include "esp_a2dp_api.h"
+#endif
+#else
+#include "esp_bt.h"
+#endif
+
+#if defined(UNIT_TEST) && !defined(ESP_PLATFORM) && (!defined(__has_include) || !__has_include("esp_a2dp_api.h")) && !defined(ESP_A2D_HOST_STRUCT_DEFINED)
+typedef enum {
+    ESP_A2D_CONNECTION_STATE_DISCONNECTED = 0,
+    ESP_A2D_CONNECTION_STATE_CONNECTING,
+    ESP_A2D_CONNECTION_STATE_CONNECTED,
+    ESP_A2D_CONNECTION_STATE_DISCONNECTING,
+} esp_a2d_connection_state_t;
+
+typedef enum {
+    ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND = 0,
+    ESP_A2D_AUDIO_STATE_STOPPED,
+    ESP_A2D_AUDIO_STATE_STARTED,
+} esp_a2d_audio_state_t;
+
+typedef enum {
+    ESP_A2D_CONNECTION_STATE_EVT = 0,
+    ESP_A2D_AUDIO_STATE_EVT,
+} esp_a2d_cb_event_t;
+
+typedef struct {
+    esp_a2d_connection_state_t state;
+    esp_bd_addr_t remote_bda;
+} esp_a2d_conn_stat_t;
+
+typedef struct {
+    esp_a2d_audio_state_t state;
+    esp_bd_addr_t remote_bda;
+} esp_a2d_audio_stat_t;
+
+typedef union {
+    esp_a2d_conn_stat_t conn_stat;
+    esp_a2d_audio_stat_t audio_stat;
+} esp_a2d_cb_param_t;
+#endif
+
 /**
  * Bluetooth Manager - Handles A2DP source functionality
  */
@@ -236,6 +287,9 @@ void bt_manager_test_reset_pending(void);
 bool bt_manager_test_gap_pin_request(const char* mac);
 bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey);
 void bt_manager_test_gap_auth_complete(const char* mac, bool success);
+int bt_manager_test_get_autostart_attempts(void);
+void bt_manager_test_reset_autostart_attempts(void);
+void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 #endif
 
 #endif // BT_MANAGER_H

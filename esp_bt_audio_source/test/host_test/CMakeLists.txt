@@ -23,7 +23,9 @@ include_directories(
 )
 
 # util_safe helpers are needed by bt_manager/nvs_storage users in host builds
-add_library(util_safe_host OBJECT ../../components/util_safe/util_safe.c)
+add_library(util_safe_host OBJECT
+    ../../components/util_safe/util_safe.c
+    mocks/fake_esp_err.c)
 target_include_directories(util_safe_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 
 # Find the unity package for unit testing
