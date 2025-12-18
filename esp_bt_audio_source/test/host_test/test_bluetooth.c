@@ -25,6 +25,9 @@ int bt_manager_test_get_last_conn_state(void);
 int bt_manager_test_get_last_audio_state(void);
 int bt_manager_test_get_autostart_attempts(void);
 void bt_manager_test_reset_autostart_attempts(void);
+int bt_manager_test_get_pair_event_count(void);
+const char* bt_manager_test_get_last_pair_event_subtype(void);
+const char* bt_manager_test_get_last_pair_event_data(void);
 void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 // Manager wrapper prototypes (not exposed via header)
 int bt_manager_disconnect(void);
@@ -37,6 +40,7 @@ bool bt_manager_test_gap_pin_request(const char* mac);
 bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey);
 void bt_manager_test_gap_auth_complete(const char* mac, bool success);
 bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info);
+bool bt_manager_test_is_audio_playing(void);
 
 // Autostart helper (UNIT_TEST only)
 bool bt_manager_test_autostart_on_connect(void);
@@ -536,6 +540,53 @@ void test_bt_a2dp_audio_state_forwarding(void) {
     TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
 }
 
+// GAP PIN/SSP/auth events should emit command-interface events and clear pending flags
+void test_bt_gap_failure_paths_emit_events_and_clear_pending(void) {
+    bt_manager_test_reset_pending();
+    bt_manager_test_reset_forces();
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("12:34:56:78:9A:BC"));
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_pair_event_count());
+    TEST_ASSERT_EQUAL_STRING("PIN_REQUEST", bt_manager_test_get_last_pair_event_subtype());
+    TEST_ASSERT_EQUAL_STRING("12:34:56:78:9a:bc", bt_manager_test_get_last_pair_event_data());
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_ssp_confirm("12:34:56:78:9A:BC", 654321));
+    TEST_ASSERT_EQUAL_STRING("CONFIRM", bt_manager_test_get_last_pair_event_subtype());
+
+    bt_manager_test_gap_auth_complete("12:34:56:78:9A:BC", false);
+    TEST_ASSERT_EQUAL_STRING("FAILED", bt_manager_test_get_last_pair_event_subtype());
+
+    bt_pairing_request_info_t info = {0};
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+}
+
+// A2DP DISCONNECTED and STOPPED events should clear playing state and avoid autostart
+void test_bt_a2dp_disconnect_and_stop_clear_playing(void) {
+    bt_manager_set_autostart_enabled(true);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(1, bt_manager_is_connected());
+
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+    TEST_ASSERT_FALSE(bt_manager_is_connected());
+    TEST_ASSERT_FALSE(bt_manager_test_is_audio_playing());
+    TEST_ASSERT_EQUAL(ESP_A2D_CONNECTION_STATE_DISCONNECTED, bt_manager_test_get_last_conn_state());
+
+    // Simulate audio stop arriving after disconnect to ensure playing flag resets
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STOPPED;
+    memcpy(param.audio_stat.remote_bda, bda, sizeof(bda));
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_FALSE(bt_manager_test_is_audio_playing());
+    TEST_ASSERT_EQUAL(ESP_A2D_AUDIO_STATE_STOPPED, bt_manager_test_get_last_audio_state());
+    TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
+}
+
 // Main test runner
 int main(void) {
     UNITY_BEGIN();
@@ -553,6 +604,8 @@ int main(void) {
     RUN_TEST(test_bt_autostart_guard_when_playing);
     RUN_TEST(test_bt_a2dp_connection_autostart_and_forwarding);
     RUN_TEST(test_bt_a2dp_audio_state_forwarding);
+    RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
+    RUN_TEST(test_bt_a2dp_disconnect_and_stop_clear_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
     RUN_TEST(test_bt_init_survives_nvs_failures);

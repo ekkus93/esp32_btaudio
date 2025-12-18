@@ -19,7 +19,6 @@ idf_component_register(
     INCLUDE_DIRS
         "."
         "include"
-    "../../components/bt_manager/include"
     REQUIRES
         audio
         # driver component omitted for tests so we can provide test-only stubs

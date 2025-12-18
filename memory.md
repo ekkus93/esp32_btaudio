@@ -1,4 +1,17 @@
 ## Current Focus
+### Include ordering + test_app_audio BT deps (2025-12-17T22:27:22-08:00)
+- Moved `command_interface.h` include to the top of bt_manager.c so `cmd_send_event_pair` is declared before use (fixed implicit declaration error in device builds).
+- Removed test_app_audio reliance on bt_manager/bluetooth components (EXTRA_COMPONENT_DIRS trimmed, main CMake REQUIRES cleaned) and dropped the unused bt_manager include from audio_processor.c; suites now build without pulling the IDF BT stack.
+- Full run_all_tests is green: host 181/181, device test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14 (aggregate device 151/151).
+### Why new host tests broke device builds (2025-12-17T22:35:37-08:00)
+- Adding host pairing-event coverage required calling `cmd_send_event_pair` earlier in bt_manager.c; because `command_interface.h` was included later, device builds saw an implicit declaration and conflicting prototype (breaking test_app/test_app2).
+- To satisfy BT headers for test_app_audio, we briefly added bt_manager/bt into its CMake/EXTRA_COMPONENT_DIRS, which pulled in the BT stack without BT enabled in that config; CMake then failed on missing `esp_bt.h`/`esp_a2dp_api.h`.
+- Fix was structural: move the include up, then remove BT dependencies and the unused bt_manager include from audio_processor.c so test_app_audio stays BT-free. After that, all suites passed.
+### GAP/A2DP failure host tests (2025-12-17T21:54:07-08:00)
+- Refactored bt_manager GAP PIN/SSP/auth handlers into shared helpers and added a UNIT_TEST hook to record pairing events without calling cmd_send_event_pair.
+- Host bt_manager tests extended with GAP failure path assertions (PIN/SSP reject, auth failure) and A2DP disconnect/stop clearing audio_playing; new helpers expose last pairing event subtype/data and playing flag.
+- Built and ran host test target `test_bluetooth` via ctest in esp_bt_audio_source/test/host_test/build_host_tests: pass.
+- Added host pairing event notification test (`test_pairing_event_notifications`) to assert GAP-generated events via the new hook; built and ran ctest -R test_pairing_event_notifications: pass.
 ### A2DP host shim + autostart counter (2025-12-17T20:30:37-08:00)
 - Shared A2DP connect/audio handlers exposed via `bt_manager_test_invoke_a2dp_event` for host tests; autostart attempts now tracked internally with getters/reset instead of external hooks.
 - Host mocks updated to track connection/audio state and start_audio invocations; new Unity cases in test_bluetooth cover autostart on connect, disconnect clearing, and audio state forwarding.

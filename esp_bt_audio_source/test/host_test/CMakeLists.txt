@@ -306,6 +306,15 @@ target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_pending unity util_safe_host)
 add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
 
+# Pairing event emission tests using test hook (no UART dependency)
+add_executable(test_pairing_event_notifications test_pairing_event_notifications.c
+    ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/nvs_storage_mock.c)
+target_link_libraries(test_pairing_event_notifications unity util_safe_host)
+add_test(NAME test_pairing_event_notifications COMMAND $<TARGET_FILE:test_pairing_event_notifications>)
+
 # Event stress test: validates ordering and basic rate-limiting instrumentation
 add_executable(test_event_stress test_event_stress.c
     ../../components/command_interface/commands.c

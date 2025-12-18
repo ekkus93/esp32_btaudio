@@ -11,6 +11,9 @@ static int g_force_unpair_all_failure = 0;
 static int g_unpair_all_removed = 0;
 static int g_unpair_all_cleared_before = 0;
 static int g_scan_start_count = 0;
+static int g_pair_event_count = 0;
+static char g_last_pair_event_subtype[16] = {0};
+static char g_last_pair_event_data[64] = {0};
 
 int bt_manager_forced_disconnect_failure(void) {
     return g_force_disconnect_failure;
@@ -49,6 +52,9 @@ void bt_manager_test_reset_forces(void) {
     g_unpair_all_removed = 0;
     g_unpair_all_cleared_before = 0;
     g_scan_start_count = 0;
+    g_pair_event_count = 0;
+    g_last_pair_event_subtype[0] = '\0';
+    g_last_pair_event_data[0] = '\0';
 }
 
 void bt_manager_test_record_unpair(const char* mac) {
@@ -76,6 +82,30 @@ void bt_manager_test_record_scan_start(void) {
 
 int bt_manager_test_get_scan_start_count(void) {
     return g_scan_start_count;
+}
+
+void bt_manager_test_record_pair_event(const char* subtype, const char* data) {
+    g_pair_event_count++;
+    if (subtype) {
+        strncpy(g_last_pair_event_subtype, subtype, sizeof(g_last_pair_event_subtype) - 1);
+        g_last_pair_event_subtype[sizeof(g_last_pair_event_subtype) - 1] = '\0';
+    }
+    if (data) {
+        strncpy(g_last_pair_event_data, data, sizeof(g_last_pair_event_data) - 1);
+        g_last_pair_event_data[sizeof(g_last_pair_event_data) - 1] = '\0';
+    }
+}
+
+int bt_manager_test_get_pair_event_count(void) {
+    return g_pair_event_count;
+}
+
+const char* bt_manager_test_get_last_pair_event_subtype(void) {
+    return g_last_pair_event_subtype;
+}
+
+const char* bt_manager_test_get_last_pair_event_data(void) {
+    return g_last_pair_event_data;
 }
 
 int bt_manager_test_get_unpair_all_removed(void) {

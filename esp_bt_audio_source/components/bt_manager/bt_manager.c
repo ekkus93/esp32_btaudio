@@ -3,6 +3,7 @@
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
+#include "command_interface.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -155,6 +156,84 @@ static void bt_pairing_prepare_pending_for_event(const esp_bd_addr_t addr)
     s_pair_pending.passkey = 0;
 }
 
+#ifdef UNIT_TEST
+__attribute__((weak)) void bt_manager_test_record_pair_event(const char* subtype, const char* data) {
+    (void)subtype;
+    (void)data;
+}
+#endif
+
+static void bt_pairing_send_event(const char* subtype, const char* data)
+{
+    if (!subtype || !data) {
+        return;
+    }
+
+#if defined(ESP_PLATFORM)
+    cmd_send_event_pair(subtype, data);
+#elif defined(UNIT_TEST)
+    bt_manager_test_record_pair_event(subtype, data);
+#endif
+}
+
+static void bt_gap_handle_pin_req(const esp_bd_addr_t bda)
+{
+    char bda_str[18];
+    safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+    ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
+    bt_pairing_prepare_pending_for_event(bda);
+    s_pair_pending.pin_pending = true;
+    s_pair_pending.ssp_pending = false;
+    s_pair_pending.passkey = 0;
+    bt_pairing_send_event("PIN_REQUEST", bda_str);
+}
+
+static void bt_gap_handle_ssp_confirm(const esp_bd_addr_t bda, uint32_t passkey)
+{
+    char bda_str[18];
+    safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+    char data[64];
+    safe_snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)passkey);
+    ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)passkey);
+    bt_pairing_prepare_pending_for_event(bda);
+    s_pair_pending.ssp_pending = true;
+    s_pair_pending.pin_pending = false;
+    s_pair_pending.passkey = passkey;
+    bt_pairing_send_event("CONFIRM", data);
+}
+
+static void bt_gap_handle_auth_cmpl(const esp_bd_addr_t bda, esp_bt_status_t stat)
+{
+    char bda_str[18] = {0};
+    safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+    bt_pairing_prepare_pending_for_event(bda);
+    if (stat == ESP_BT_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
+        bt_pairing_send_event("SUCCESS", bda_str);
+#if defined(ESP_PLATFORM)
+        char dev_name[32] = {0};
+        for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+            if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
+                safe_copy_str(dev_name, sizeof(dev_name), bt_ctx.discovered_devices.devices[i].name);
+                break;
+            }
+        }
+        nvs_storage_add_paired_device(bda_str, dev_name[0] ? dev_name : NULL);
+#endif
+    } else {
+        ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
+        bt_pairing_send_event("FAILED", bda_str);
+    }
+
+    bt_pairing_clear_pending_flags(true, true);
+}
+
 #if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 #if defined(__GNUC__)
 /* Forward-declare the connection manager callbacks so the manager can
@@ -177,7 +256,6 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 // esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
-#include "command_interface.h"
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
 #endif
@@ -222,10 +300,7 @@ bool bt_manager_test_gap_pin_request(const char* mac)
     if (!bt_pairing_parse_mac_string(mac, addr)) {
         return false;
     }
-    bt_pairing_prepare_pending_for_event(addr);
-    s_pair_pending.pin_pending = true;
-    s_pair_pending.ssp_pending = false;
-    s_pair_pending.passkey = 0;
+    bt_gap_handle_pin_req(addr);
     return true;
 }
 
@@ -235,22 +310,17 @@ bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey)
     if (!bt_pairing_parse_mac_string(mac, addr)) {
         return false;
     }
-    bt_pairing_prepare_pending_for_event(addr);
-    s_pair_pending.pin_pending = false;
-    s_pair_pending.ssp_pending = true;
-    s_pair_pending.passkey = passkey;
+    bt_gap_handle_ssp_confirm(addr, passkey);
     return true;
 }
 
 void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 {
-    (void)success;
     esp_bd_addr_t addr = {0};
     if (!bt_pairing_parse_mac_string(mac, addr)) {
         return;
     }
-    bt_pairing_prepare_pending_for_event(addr);
-    bt_pairing_clear_pending_flags(true, true);
+    bt_gap_handle_auth_cmpl(addr, success ? ESP_BT_STATUS_SUCCESS : ESP_BT_STATUS_AUTH_FAILURE);
 }
 #endif
 
@@ -1425,65 +1495,19 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
             
         case ESP_BT_GAP_PIN_REQ_EVT: {
             // Remote device is requesting a PIN code (legacy pairing)
-            char bda_str[18];
-                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                         param->pin_req.bda[0], param->pin_req.bda[1], param->pin_req.bda[2],
-                         param->pin_req.bda[3], param->pin_req.bda[4], param->pin_req.bda[5]);
-
-            ESP_LOGI(TAG, "PIN request from device: %s", bda_str);
-            bt_pairing_prepare_pending_for_event(param->pin_req.bda);
-            s_pair_pending.pin_pending = true;
-            s_pair_pending.passkey = 0;
-            // Notify command interface: EVENT|PAIR|PIN_REQUEST|<MAC>
-            cmd_send_event_pair("PIN_REQUEST", bda_str);
+            bt_gap_handle_pin_req(param->pin_req.bda);
             break;
         }
 
         case ESP_BT_GAP_CFM_REQ_EVT: {
             // SSP confirmation request (numeric comparison)
-            char bda_str[18];
-                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                         param->cfm_req.bda[0], param->cfm_req.bda[1], param->cfm_req.bda[2],
-                         param->cfm_req.bda[3], param->cfm_req.bda[4], param->cfm_req.bda[5]);
-
-            // num_val contains the numeric comparison value (32-bit)
-            char data[64];
-            safe_snprintf(data, sizeof(data), "%s,%u", bda_str, (unsigned int)param->cfm_req.num_val);
-            ESP_LOGI(TAG, "SSP confirm request from %s value=%u", bda_str, (unsigned int)param->cfm_req.num_val);
-            bt_pairing_prepare_pending_for_event(param->cfm_req.bda);
-            s_pair_pending.ssp_pending = true;
-            s_pair_pending.passkey = param->cfm_req.num_val;
-            // Notify command interface: EVENT|PAIR|CONFIRM|<MAC>,<NUM>
-            cmd_send_event_pair("CONFIRM", data);
+            bt_gap_handle_ssp_confirm(param->cfm_req.bda, param->cfm_req.num_val);
             break;
         }
 
         case ESP_BT_GAP_AUTH_CMPL_EVT: {
             // Authentication complete (pairing result)
-            char bda_str[18] = {0};
-            /* bda is an array member (not a pointer) - format directly */
-                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                         param->auth_cmpl.bda[0], param->auth_cmpl.bda[1], param->auth_cmpl.bda[2],
-                         param->auth_cmpl.bda[3], param->auth_cmpl.bda[4], param->auth_cmpl.bda[5]);
-            bt_pairing_prepare_pending_for_event(param->auth_cmpl.bda);
-            if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
-                ESP_LOGI(TAG, "Authentication (pairing) successful: %s", bda_str);
-                cmd_send_event_pair("SUCCESS", bda_str);
-                // Persist paired device
-                // Try to get a device name from discovered list if available
-                char dev_name[32] = {0};
-                for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
-                    if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
-                        safe_copy_str(dev_name, sizeof(dev_name), bt_ctx.discovered_devices.devices[i].name);
-                        break;
-                    }
-                }
-                nvs_storage_add_paired_device(bda_str, dev_name[0] ? dev_name : NULL);
-            } else {
-                ESP_LOGW(TAG, "Authentication (pairing) failed: %s", bda_str);
-                cmd_send_event_pair("FAILED", bda_str);
-            }
-            bt_pairing_clear_pending_flags(true, true);
+            bt_gap_handle_auth_cmpl(param->auth_cmpl.bda, param->auth_cmpl.stat);
             break;
         }
 
@@ -1655,6 +1679,10 @@ void bt_manager_force_initialized(bool value) {
 void bt_manager_debug_print(void) {
     printf("DEBUG: bt_ctx.initialized=%d, connected=%d, audio_playing=%d\n",
         bt_ctx.initialized, bt_ctx.connected, bt_ctx.audio_playing);
+}
+
+bool bt_manager_test_is_audio_playing(void) {
+    return bt_ctx.audio_playing;
 }
 /* Provide a weak default for the optional forced-pair failure hook so
  * unit-test builds that don't need this behavior don't have to provide

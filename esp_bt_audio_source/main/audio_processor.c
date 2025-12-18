@@ -21,7 +21,6 @@
 #include "audio_processor.h"
 #include "nvs_storage.h"
 #include "esp_heap_caps.h"
-#include "bt_manager.h"
 #include "esp_rom_sys.h"
 
 // Local bounded helpers to keep analyzer happy without pragmas.
