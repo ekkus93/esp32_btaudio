@@ -324,4 +324,10 @@ void bt_streaming_manager_force_state_for_test(bt_streaming_state_t state)
     s_streaming_info.state = state;
     s_streaming_info.paused = (state == BT_STREAMING_STATE_PAUSED);
 }
+
+void bt_streaming_manager_set_callback_for_test(bt_stream_callback_t cb, void *user_data)
+{
+    s_stream_callback = cb;
+    s_stream_callback_data = user_data;
+}
 #endif

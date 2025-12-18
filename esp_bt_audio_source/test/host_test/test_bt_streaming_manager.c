@@ -16,12 +16,51 @@ esp_err_t bt_get_streaming_info(bt_streaming_info_t* info);
 void bt_streaming_manager_init(void);
 void bt_streaming_manager_reset_state_for_test(void);
 void bt_streaming_manager_force_state_for_test(bt_streaming_state_t state);
+void bt_streaming_manager_set_callback_for_test(bt_stream_callback_t cb, void *user_data);
 
 /* Helpers from mocks */
 void bt_manager_test_set_connection_state(int v);
 void bt_manager_test_reset_btstate_mock(void);
 void audio_source_tag_test_reset_buffer(void);
 void mock_task_set_tick(uint32_t ticks);
+
+typedef struct {
+    int calls;
+    bool first_recorded;
+    bool first_streaming;
+    bt_streaming_info_t first_info;
+    bool last_streaming;
+    bt_streaming_info_t last_info;
+    void *last_user_data;
+} stream_cb_ctx_t;
+
+static stream_cb_ctx_t g_cb_ctx;
+
+static void reset_cb_ctx(void)
+{
+    memset(&g_cb_ctx, 0, sizeof(g_cb_ctx));
+}
+
+static void test_stream_callback(bool streaming, const bt_streaming_info_t *info, void *user_data)
+{
+    g_cb_ctx.calls++;
+    if (!g_cb_ctx.first_recorded) {
+        g_cb_ctx.first_recorded = true;
+        g_cb_ctx.first_streaming = streaming;
+        if (info) {
+            memcpy(&g_cb_ctx.first_info, info, sizeof(bt_streaming_info_t));
+        } else {
+            memset(&g_cb_ctx.first_info, 0, sizeof(bt_streaming_info_t));
+        }
+    }
+    g_cb_ctx.last_streaming = streaming;
+    if (info) {
+        memcpy(&g_cb_ctx.last_info, info, sizeof(bt_streaming_info_t));
+    } else {
+        memset(&g_cb_ctx.last_info, 0, sizeof(bt_streaming_info_t));
+    }
+    g_cb_ctx.last_user_data = user_data;
+}
 
 static void init_streaming_manager(void)
 {
@@ -66,6 +105,23 @@ void test_stream_start_invokes_media_ctrl_and_sets_starting_state(void)
     TEST_ASSERT_FALSE(info.paused);
     TEST_ASSERT_EQUAL_UINT32(0, info.bytes_sent);
     TEST_ASSERT_EQUAL_UINT32(0, info.packets_sent);
+}
+
+void test_stream_callback_invoked_on_start_state_change(void)
+{
+    reset_cb_ctx();
+    bt_streaming_manager_set_callback_for_test(test_stream_callback, &g_cb_ctx);
+    bt_manager_test_set_connection_state(1);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_streaming_start());
+
+    TEST_ASSERT_EQUAL(1, g_cb_ctx.calls);
+    TEST_ASSERT_TRUE(g_cb_ctx.first_recorded);
+    TEST_ASSERT_FALSE(g_cb_ctx.first_streaming);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STARTING, g_cb_ctx.first_info.state);
+    TEST_ASSERT_FALSE(g_cb_ctx.first_info.paused);
+    TEST_ASSERT_EQUAL_UINT32(0, g_cb_ctx.first_info.bytes_sent);
+    TEST_ASSERT_EQUAL_PTR(&g_cb_ctx, g_cb_ctx.last_user_data);
 }
 
 void test_stream_stop_transitions_and_calls_media_ctrl(void)
@@ -168,6 +224,30 @@ void test_data_callback_returns_silence_when_paused(void)
     TEST_ASSERT_TRUE(info.paused);
 }
 
+void test_pause_failure_reverts_state_and_invokes_callbacks(void)
+{
+    reset_cb_ctx();
+    bt_streaming_manager_set_callback_for_test(test_stream_callback, &g_cb_ctx);
+    bt_streaming_manager_force_state_for_test(BT_STREAMING_STATE_STREAMING);
+    mock_a2dp_set_media_ctrl_result(ESP_BT_STATUS_FAIL);
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_streaming_pause());
+    TEST_ASSERT_EQUAL(2, g_cb_ctx.calls);
+    TEST_ASSERT_TRUE(g_cb_ctx.first_recorded);
+    TEST_ASSERT_FALSE(g_cb_ctx.first_streaming);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PAUSED, g_cb_ctx.first_info.state);
+    TEST_ASSERT_TRUE(g_cb_ctx.first_info.paused);
+    TEST_ASSERT_TRUE(g_cb_ctx.last_streaming);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, g_cb_ctx.last_info.state);
+    TEST_ASSERT_FALSE(g_cb_ctx.last_info.paused);
+    TEST_ASSERT_EQUAL_PTR(&g_cb_ctx, g_cb_ctx.last_user_data);
+
+    bt_streaming_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_streaming_info(&info));
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, info.state);
+    TEST_ASSERT_FALSE(info.paused);
+}
+
 void test_data_callback_zero_fills_on_underrun(void)
 {
     bt_streaming_manager_force_state_for_test(BT_STREAMING_STATE_STREAMING);
@@ -231,17 +311,38 @@ void test_resume_after_underrun_updates_duration(void)
     TEST_ASSERT_EQUAL_UINT32(160, info.stream_duration);
 }
 
+void test_media_ctrl_failure_on_start_reports_error_and_callback(void)
+{
+    reset_cb_ctx();
+    bt_streaming_manager_set_callback_for_test(test_stream_callback, &g_cb_ctx);
+    bt_manager_test_set_connection_state(1);
+    mock_a2dp_set_media_ctrl_result(ESP_BT_STATUS_FAIL);
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_streaming_start());
+    TEST_ASSERT_EQUAL(2, g_cb_ctx.calls);
+    TEST_ASSERT_TRUE(g_cb_ctx.first_recorded);
+    TEST_ASSERT_FALSE(g_cb_ctx.first_streaming);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STARTING, g_cb_ctx.first_info.state);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_ERROR, g_cb_ctx.last_info.state);
+    TEST_ASSERT_FALSE(g_cb_ctx.last_streaming);
+    TEST_ASSERT_FALSE(g_cb_ctx.last_info.paused);
+    TEST_ASSERT_EQUAL_PTR(&g_cb_ctx, g_cb_ctx.last_user_data);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_stream_start_fails_when_not_connected);
     RUN_TEST(test_stream_start_invokes_media_ctrl_and_sets_starting_state);
+    RUN_TEST(test_stream_callback_invoked_on_start_state_change);
     RUN_TEST(test_stream_stop_transitions_and_calls_media_ctrl);
     RUN_TEST(test_stream_pause_requires_streaming_state);
+    RUN_TEST(test_pause_failure_reverts_state_and_invokes_callbacks);
     RUN_TEST(test_stream_resume_requires_paused_state);
     RUN_TEST(test_data_callback_updates_stats_when_streaming);
     RUN_TEST(test_data_callback_returns_silence_when_paused);
     RUN_TEST(test_data_callback_zero_fills_on_underrun);
     RUN_TEST(test_resume_after_underrun_updates_duration);
+    RUN_TEST(test_media_ctrl_failure_on_start_reports_error_and_callback);
     return UNITY_END();
 }
