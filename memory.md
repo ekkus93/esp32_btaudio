@@ -1,4 +1,6 @@
 ## Current Focus
+### Relocation push (2025-12-19T06:56:32-08:00)
+- Committed and pushed 03900ffc moving all device test apps under esp_bt_audio_source/test/, carrying doc/tool path updates and the new test_app_audio sdkconfig/sdkconfig.defaults; no additional tests run after this push (last full sweep earlier on 2025-12-19 was green).
 ### Test app relocation (2025-12-19T06:30:00-08:00)
 - Device test apps now live under `esp_bt_audio_source/test/{test_app,test_app2,test_app3,test_app_audio}`; duplicate build-only copies removed from the old roots.
 - Updated helpers/docs to match new paths: tools/run_all_tests.py device list + aggregator, tools/extend_and_convert.py, tools/extend_and_crossfade.py, tools/flash_and_watch.py example, tools/trace_stats.py PATH, esp_bt_audio_source/README.md, esp_bt_audio_source/docs/PRD.md, esp_bt_audio_source/tools/README_spiffs.md. CLEAN_UP_TESTS.md reflects completed relocation steps; remaining: refresh tmp/declared_* and .gitignore, update memory/CI refs, rerun tests.
