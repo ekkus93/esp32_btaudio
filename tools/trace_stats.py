@@ -3,7 +3,7 @@ import json
 import statistics
 from collections import Counter
 
-PATH = '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json'
+PATH = '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_app_audio/tmp/trace_parsed.json'
 
 def to_int(x):
     if x is None:

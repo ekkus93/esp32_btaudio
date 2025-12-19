@@ -5,8 +5,8 @@ and write a valid WAV file. Assumes 16-bit signed little-endian samples.
 
 Usage examples:
   python3 tools/extend_and_convert.py \
-    --in esp_bt_audio_source/test_app/build/worker_long.bin \
-    --out esp_bt_audio_source/test_app/build/worker_long_1s.wav \
+        --in esp_bt_audio_source/test/test_app/build/worker_long.bin \
+        --out esp_bt_audio_source/test/test_app/build/worker_long_1s.wav \
     --seconds 1.0
 
 This script trims any trailing partial frame in the input .bin and repeats

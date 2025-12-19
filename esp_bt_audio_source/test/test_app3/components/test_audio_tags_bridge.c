@@ -2,4 +2,4 @@
  * is compiled into the test_app3 image. This avoids duplicating or
  * moving the original test file. */
 
-#include "../../components/audio/test/test_audio_tags.c"
+#include "../../../components/audio/test/test_audio_tags.c"

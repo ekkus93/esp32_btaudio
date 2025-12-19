@@ -30,15 +30,15 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 - Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
    - Host CTest bundle: 22/22 passed (see host CTest output in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, also mirrored in `tmp/host_ctest_output.log`).
    - Device Unity suites (per-suite canonical `one_run_unity.log`):
-      - `test_app`: 37 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app/build/one_run_unity.log`).
-      - `test_app2`: 45 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app2/build/one_run_unity.log`).
-      - `test_app_audio`: 26 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test_app_audio/build/one_run_unity.log`).
+      - `test_app`: 37 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app/build/one_run_unity.log`).
+      - `test_app2`: 45 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app2/build/one_run_unity.log`).
+      - `test_app_audio`: 26 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log`).
    - Aggregate totals: 22 (host) + 108 (device) = 130 tests run; 130 passed, 0 failed, 0 ignored. The orchestrator wrote the aggregated JSON summary to `tmp/run_all_tests_summary.json` and `tmp/canonical_unity_summary.json`.
 
 Diagnostics & trace parsing
 - `tools/parse_traces.py` extracts DIAG/TRACE allocation lines from host and monitor logs and writes structured CSV/JSON artifacts. Example outputs from the last sweep:
-   - CSV: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.csv`
-   - JSON: `esp_bt_audio_source/test_app_audio/tmp/trace_parsed.json`
+   - CSV: `esp_bt_audio_source/test/test_app_audio/tmp/trace_parsed.csv`
+   - JSON: `esp_bt_audio_source/test/test_app_audio/tmp/trace_parsed.json`
    - A helper `tools/trace_stats.py` computes counts and basic statistics (min/max/mean/median) for captured fields; recent parsed run reported ~5076 records with median transfer size ≈512 bytes.
 
 Notes about PSRAM tests
@@ -111,9 +111,9 @@ Notes on recent progress:
 - `tools/run_all_tests.py` (2025-11-15) executes the full sweep in one command. Output artifacts:
   - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
   - Device Unity suites (via `tools/run_unity.py` orchestrated flash/monitor):
-     - `test_app`: 37/0/0 (`test_app/build/one_run_unity.log`).
-     - `test_app2`: 45/0/0 (`test_app2/build/one_run_unity.log`).
-     - `test_app_audio`: 12/0/0 (`test_app_audio/build/one_run_unity.log`).
+   - `test_app`: 37/0/0 (`test/test_app/build/one_run_unity.log`).
+   - `test_app2`: 45/0/0 (`test/test_app2/build/one_run_unity.log`).
+   - `test_app_audio`: 12/0/0 (`test/test_app_audio/build/one_run_unity.log`).
   - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` & `tmp/run_all_tests_summary.csv` (142 tests / 0 failures / 0 ignored).
 - Standalone re-runs remain available with `tools/run_unity.py`, and the orchestrator now emits per-suite flash/test breakdowns for timing analysis directly into the CSV for downstream consumption.
 
@@ -148,7 +148,7 @@ Recent changes (host-test and pairing work)
 Recent on-device pairing diagnostics and status
 
 - On-device E2E pairing runs have been executed and serial monitor output was persisted to `build/pairing_e2_logs/serial.log` for post-run analysis. This log contains allocator diagnostic dumps (the allocator prints `osi_mem_dbg_clean not-found` with a `recent-free-history` buffer), temporary BTM lifecycle traces and additional WARN/ERRORs inserted for timeline correlation.
-- Unity regression sweeps on 2025-10-29 refreshed the canonical per-suite logs: `test_app/build/one_run_unity.log` (37 tests), `test_app_audio/build/one_run_unity.log` (26 tests), and `test_app2/build/one_run_unity.log` (45 tests) all show clean passes alongside the earlier `device_test_monitor.log` capture from 2025-10-11.
+- Unity regression sweeps on 2025-10-29 refreshed the canonical per-suite logs: `test/test_app/build/one_run_unity.log` (37 tests), `test/test_app_audio/build/one_run_unity.log` (26 tests), and `test/test_app2/build/one_run_unity.log` (45 tests) all show clean passes alongside the earlier `device_test_monitor.log` capture from 2025-10-11.
 - Minimal defensive fixes applied to aid stability and debug:
    - `BTM_SetPowerMode` now uses a zero-initialized local copy of the caller-provided `tBTM_PM_PWR_MD` structure before using it internally and before sending it to the power manager helper. This reduces reliance on caller memory lifetime.
    - `bta_dm_pm_sniff` contains an ACL-existence guard that skips requesting a power-mode change when no ACL is present; it logs the skip and returns a non-success status. This avoids invoking power-mode transitions during disconnect transient windows.
@@ -620,9 +620,9 @@ ctest --output-on-failure |& tee ctest_full_output.log
 
 # 2) From the repository root, run each on-device Unity suite with the canonical runner
 cd /home/phil/work/esp32/esp32_btaudio
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app  --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app2 --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app  --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
 
 # Each run writes a canonical capture into the respective project's build/one_run_unity.log
 ```
@@ -645,7 +645,7 @@ Running only the build (no flash)
 If you want to build without flashing (for a faster compile-check):
 
 ```bash
-cd esp_bt_audio_source/test_app
+cd esp_bt_audio_source/test/test_app
 idf.py build
 ```
 
@@ -654,7 +654,7 @@ Manual fallback (raw monitor capture)
 If you must capture the monitor manually (not recommended), run from the test app directory and pipe the monitor output into a file. This is less robust than the runner and may leave an interactive monitor running until you manually interrupt it:
 
 ```bash
-cd esp_bt_audio_source/test_app
+cd esp_bt_audio_source/test/test_app
 idf.py -p /dev/ttyUSB0 flash monitor |& tee build/one_run_unity.log
 ```
 
@@ -705,7 +705,7 @@ On-device (build + flash + monitor + capture) — explicit permission required
 
 ```bash
 # from repo root
-python3 esp_bt_audio_source/tools/run_unity.py --port /dev/ttyUSB0 --project-root esp_bt_audio_source/test_app --timeout 300
+python3 esp_bt_audio_source/tools/run_unity.py --port /dev/ttyUSB0 --project-root esp_bt_audio_source/test/test_app --timeout 300
 # Repeat for test_app2 and test_app_audio, updating --project-root accordingly.
 ```
 
@@ -763,12 +763,12 @@ Unity quickstart (host + on-device)
 2. **Bluetooth Unity firmware (`test_app`)**
    ```bash
    # build from inside the test app directory
-   cd esp_bt_audio_source/test_app
+   cd esp_bt_audio_source/test/test_app
    idf.py build
 
    # Preferred (robust): run from the repository root using the repo helper that exists
    cd /home/phil/work/esp32/esp32_btaudio
-   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test_app --port /dev/ttyUSB0 --timeout 300
+   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app --port /dev/ttyUSB0 --timeout 300
 
    # Alternative: run from inside the test_app directory (note the corrected relative path)
    # python3 ../../tools/flash_and_watch.py --project-dir . --port /dev/ttyUSB0 --timeout 300
@@ -777,7 +777,7 @@ Unity quickstart (host + on-device)
 
 3. **Integration Unity firmware (`test_app2`)**
    ```bash
-   cd esp_bt_audio_source/test_app2
+   cd esp_bt_audio_source/test/test_app2
    idf.py build
       python3 ../tools/run_unity.py --project-root test_app2 --port /dev/ttyUSB0 --timeout 300
    ```
@@ -790,18 +790,18 @@ Unity quickstart (host + on-device)
 4. **Audio Unity firmware (`test_app_audio`)**
    ```bash
    # build from the test app directory
-   cd esp_bt_audio_source/test_app_audio
+   cd esp_bt_audio_source/test/test_app_audio
    idf.py build
 
    # Preferred (robust): run from the repository root using the repo helper that exists
    cd /home/phil/work/esp32/esp32_btaudio
-   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test_app_audio --port /dev/ttyUSB0 --timeout 300
+   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
 
    # Alternative: run from inside the test_app_audio directory (note the corrected relative path)
    # python3 ../../tools/flash_and_watch.py --project-dir . --port /dev/ttyUSB0 --timeout 300
 
    # If you have an up-to-date run_unity.py at the repo root, you can also use it:
-   # python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --port /dev/ttyUSB0 --timeout 300
+   # python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
    ```
    This image (`build/esp_bt_audio_source_audio_test.bin`) exercises the audio/I²S suites. The log is written to `test_app_audio/build/one_run_unity.log`.
 
@@ -809,7 +809,7 @@ Canonical sequence:
 
 ```bash
 # 1. Build the Unity firmware once (incremental rebuilds are cheap)
-cd esp_bt_audio_source/test_app
+cd esp_bt_audio_source/test/test_app
 idf.py build
 
 # 2. Flash + monitor using the locked-down runner
@@ -866,11 +866,11 @@ ls -l /dev/ttyUSB* || ls -l /dev/ttyACM* || echo "No serial device found; check 
 ```bash
 # From repo root (recommended)
 cd /home/phil/work/esp32/esp32_btaudio
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app --port /dev/ttyUSB0 --timeout 300
 
 # Run other suites the same way
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app2 --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0 --timeout 300
+python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
 ```
 
 Notes:
@@ -885,14 +885,14 @@ Alternative helper (requires explicit ESP-IDF env)
 
 ```bash
 . $HOME/esp/esp-idf/export.sh
-python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test_app2 --port /dev/ttyUSB0
+python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0
 ```
 
 This helper also writes the canonical monitor capture to `test_app*/build/one_run_unity.log` and will exit when it sees the Unity summary.
 
 3) idf.py stdout captures (optional)
 
-- CI runs or scripted idf.py invocations sometimes leave `idf_py_stdout_output_*` captures under `esp_bt_audio_source/test_app/build/log/`. Include these only if you use the runner or CI that produces them.
+- CI runs or scripted idf.py invocations sometimes leave `idf_py_stdout_output_*` captures under `esp_bt_audio_source/test/test_app/build/log/`. Include these only if you use the runner or CI that produces them.
 
 4) Canonical aggregation (recommended)
 
@@ -900,10 +900,10 @@ This helper also writes the canonical monitor capture to `test_app*/build/one_ru
 
 ```bash
 grep -E "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored" \
-  esp_bt_audio_source/test_app/build/one_run_unity.log \
-  esp_bt_audio_source/test_app_audio/build/one_run_unity.log \
+  esp_bt_audio_source/test/test_app/build/one_run_unity.log \
+  esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log \
   esp_bt_audio_source/device_test_monitor.log \\
-  esp_bt_audio_source/test_app/build/log/idf_py_stdout_output_* \
+  esp_bt_audio_source/test/test_app/build/log/idf_py_stdout_output_* \
   test/host_test/**/Testing/Temporary/LastTest.log || true
 ```
 

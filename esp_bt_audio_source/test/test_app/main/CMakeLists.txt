@@ -23,7 +23,7 @@ idf_component_register(
         "test_bt_scan.c"
         "test_pairing_commands.c"
         "unity_config.c"
-        "../../components/util_safe/test/test_util_safe.c"
+        "../../../components/util_safe/test/test_util_safe.c"
     INCLUDE_DIRS 
         "."
         "include"

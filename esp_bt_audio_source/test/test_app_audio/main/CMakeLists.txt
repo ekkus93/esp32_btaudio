@@ -15,7 +15,7 @@ idf_component_register(
         "test_psram_integration.c"
     "test_psram_fragmentation.c"
     "test_psram_audio_stress.c"
-    "../../main/audio_processor.c"
+    "../../../main/audio_processor.c"
     INCLUDE_DIRS
         "."
         "include"

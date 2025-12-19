@@ -2,13 +2,13 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Set extra components directory
-set(EXTRA_COMPONENT_DIRS "../components" "${CMAKE_SOURCE_DIR}/components")
+set(EXTRA_COMPONENT_DIRS "../../components" "${CMAKE_SOURCE_DIR}/components" "${CMAKE_SOURCE_DIR}/../test_app/components")
 
 # Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # Set project name
-project(esp_bt_audio_source_test)
+project(esp_bt_audio_source_test2)
 
 # Optionally add compile definitions for testing mode
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
@@ -23,7 +23,7 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 # on-device Unity firmware. Host-only mock directories are intentionally
 # excluded here to prevent them from shadowing the real ESP-IDF headers.
 target_include_directories(${PROJECT_NAME}.elf PUBLIC
-    "${CMAKE_SOURCE_DIR}/../main/include"
+    "${CMAKE_SOURCE_DIR}/../../main/include"
     "${CMAKE_SOURCE_DIR}/components/test_mocks/include"
 )
 

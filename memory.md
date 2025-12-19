@@ -1,4 +1,8 @@
 ## Current Focus
+### Test app relocation (2025-12-19T06:30:00-08:00)
+- Device test apps now live under `esp_bt_audio_source/test/{test_app,test_app2,test_app3,test_app_audio}`; duplicate build-only copies removed from the old roots.
+- Updated helpers/docs to match new paths: tools/run_all_tests.py device list + aggregator, tools/extend_and_convert.py, tools/extend_and_crossfade.py, tools/flash_and_watch.py example, tools/trace_stats.py PATH, esp_bt_audio_source/README.md, esp_bt_audio_source/docs/PRD.md, esp_bt_audio_source/tools/README_spiffs.md. CLEAN_UP_TESTS.md reflects completed relocation steps; remaining: refresh tmp/declared_* and .gitignore, update memory/CI refs, rerun tests.
+- No tests run after relocation yet; next step is to rerun the chosen device suites once downstream scripts/lists are refreshed.
 ### Full test sweep (2025-12-19T05:52:36-08:00)
 - Env: `python310` conda + ESP-IDF 5.5.1 export (`. $HOME/esp/esp-idf/export.sh`). Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root.
 - Results: host 211/211 pass. Device suites all green — test_app 54/54, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (device aggregate 156/156). Summary files: tmp/run_all_tests_summary.json and tmp/canonical_unity_summary.json; per-suite logs refreshed under esp_bt_audio_source/test_app*/build/one_run_unity.log.

@@ -103,7 +103,7 @@ Representative Use Cases:
 
 ### 4.6 Testing & Tooling
 - `tools/run_all_tests.py` cleans prior artifacts, runs host CTest, then flashes and runs `test_app`, `test_app2`, and `test_app_audio` via runners.
-- Per-suite logs stored at `esp_bt_audio_source/test_app*/build/one_run_unity.log`.
+- Per-suite logs stored at `esp_bt_audio_source/test/test_app*/build/one_run_unity.log`.
 - Aggregated JSON/CSV recorded to `tmp/run_all_tests_summary.{json,csv}`; canonical summary to `tmp/canonical_unity_summary.json`.
 - Trace parser and stats tools live under `tools/` and accept captured logs from host/device runs.
 
@@ -157,4 +157,4 @@ Representative Use Cases:
 - `README.md` (esp_bt_audio_source root) — operational guide, command list, testing instructions.
 - `memory.md` — rolling engineering log; specific TODOs and verification notes.
 - `tools/run_all_tests.py`, `tools/run_unity.py`, `tools/flash_and_verify_spiffs.py` — automation and flashing helpers.
-- Per-suite artifacts under `esp_bt_audio_source/test_app*/build/` and aggregated outputs under `tmp/`.
+- Per-suite artifacts under `esp_bt_audio_source/test/test_app*/build/` and aggregated outputs under `tmp/`.

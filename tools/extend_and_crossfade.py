@@ -8,8 +8,8 @@ configurable sample rate, channels, and sample width.
 
 Usage:
   python3 tools/extend_and_crossfade.py \
-    --in esp_bt_audio_source/test_app/build/worker_long.bin \
-    --out esp_bt_audio_source/test_app/build/worker_long_1s_xfade.wav \
+        --in esp_bt_audio_source/test/test_app/build/worker_long.bin \
+        --out esp_bt_audio_source/test/test_app/build/worker_long_1s_xfade.wav \
     --seconds 1.0 --crossfade-ms 6
 
 The script trims trailing partial frames, repeats the chunk as needed,

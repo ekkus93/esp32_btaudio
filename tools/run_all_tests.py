@@ -70,10 +70,10 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
 
     if remove_device:
         unity_projects = [
-            root / "esp_bt_audio_source" / "test_app",
-            root / "esp_bt_audio_source" / "test_app2",
-            root / "esp_bt_audio_source" / "test_app_audio",
-            root / "esp_bt_audio_source" / "test_app3",
+            root / "esp_bt_audio_source" / "test" / "test_app",
+            root / "esp_bt_audio_source" / "test" / "test_app2",
+            root / "esp_bt_audio_source" / "test" / "test_app_audio",
+            root / "esp_bt_audio_source" / "test" / "test_app3",
         ]
         for proj in unity_projects:
             _unlink_artifact(proj / "build" / "one_run_unity.log")
@@ -369,10 +369,10 @@ def aggregate_summary(root: Path) -> dict:
             return None
         return None
 
-    files = [root / "esp_bt_audio_source" / "test_app" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test_app2" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test_app_audio" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test_app3" / "build" / "one_run_unity.log"]
+    files = [root / "esp_bt_audio_source" / "test" / "test_app" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test" / "test_app2" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log"]
 
     for f in files:
         if not f.exists():
@@ -489,10 +489,12 @@ def main(argv: list[str] | None = None):
     if not args.no_device:
         print("\n== Running on-device Unity suites ==")
         runner = ROOT / "tools" / "run_unity.py"
-        suites = [ROOT / "esp_bt_audio_source" / "test_app",
-              ROOT / "esp_bt_audio_source" / "test_app2",
-              ROOT / "esp_bt_audio_source" / "test_app_audio",
-              ROOT / "esp_bt_audio_source" / "test_app3"]
+        suites = [
+            ROOT / "esp_bt_audio_source" / "test" / "test_app",
+            ROOT / "esp_bt_audio_source" / "test" / "test_app2",
+            ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
+            ROOT / "esp_bt_audio_source" / "test" / "test_app3",
+        ]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
         # runner can flash it before the monitor step. Prefer the canonical
         # location inside esp_bt_audio_source/main/assets/spiffs/spiffs.bin and

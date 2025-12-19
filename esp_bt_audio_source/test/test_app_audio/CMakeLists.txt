@@ -6,15 +6,15 @@ cmake_minimum_required(VERSION 3.16)
 # build. The production audio component lives alongside the main firmware, and
 # we still expose the existing mock helpers that ship with the audio tests.
 set(EXTRA_COMPONENT_DIRS
-    "../components/audio"
-    "../components/nvs_storage"
-    "../components/util_safe"
+    "../../components/audio"
+    "../../components/nvs_storage"
+    "../../components/util_safe"
     "../test_app/components"
 )
 
 # Use the repository's partition table (which contains a spiffs partition)
 # so the audio-focused tests can mount /spiffs and access assets.
-set(PARTITION_TABLE_FILENAME "${CMAKE_CURRENT_LIST_DIR}/../partitions.csv")
+set(PARTITION_TABLE_FILENAME "${CMAKE_CURRENT_LIST_DIR}/../../partitions.csv")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

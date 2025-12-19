@@ -3,7 +3,7 @@ Ensure Unity test apps use the same SPIFFS partition
 For reliable host/device tests you requested that the Unity test suites (for example `test_app`, `test_app2`, `test_app_audio`) use the same `spiffs` partition as the main app. There are two ways this can be achieved:
 # SPIFFS image creation and flashing (256 KiB SPIFFS)
 
-This document shows how to create a 256 KiB SPIFFS image and flash it to the project's `spiffs` partition. The partition entry may be defined at the project level (e.g. `esp_bt_audio_source/partitions.csv`) or per-app (for example `esp_bt_audio_source/test_app/partitions.csv`).
+This document shows how to create a 256 KiB SPIFFS image and flash it to the project's `spiffs` partition. The partition entry may be defined at the project level (e.g. `esp_bt_audio_source/partitions.csv`) or per-app (for example `esp_bt_audio_source/test/test_app/partitions.csv`).
 
 Partition layout change (applied in repo)
 - `factory` shrunk from `0x1F0000` -> `0x1B0000` (was 2,031,616 bytes -> now 1,775,472 bytes)
@@ -11,7 +11,7 @@ Partition layout change (applied in repo)
 
 Files you can include:
 - Use the existing normalized WAV in the repo:
-  - `test_app/build/worker_long_norm.wav` (already present in your build outputs)
+  - `test/test_app/build/worker_long_norm.wav` (already present in your build outputs)
 
 ## Repo helpers (2025-11-10 refresh)
 
@@ -32,7 +32,7 @@ Recommended approach (using mkspiffs from ESP-IDF)
 mkdir -p /tmp/spiffs_root
 # Example: copy a WAV produced by the *main* app build. Adjust path if your build places artifacts elsewhere.
 cp esp_bt_audio_source/main/build/worker_long_norm.wav /tmp/spiffs_root/worker_long_norm.wav
-# Or copy from another app/build output if you prefer: cp esp_bt_audio_source/test_app/build/... /tmp/spiffs_root/
+# Or copy from another app/build output if you prefer: cp esp_bt_audio_source/test/test_app/build/... /tmp/spiffs_root/
 # Add any other files you want under /tmp/spiffs_root
 ```
 
