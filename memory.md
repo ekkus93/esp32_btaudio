@@ -1,4 +1,31 @@
 ## Current Focus
+### Full test sweep (2025-12-19T05:52:36-08:00)
+- Env: `python310` conda + ESP-IDF 5.5.1 export (`. $HOME/esp/esp-idf/export.sh`). Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root.
+- Results: host 211/211 pass. Device suites all green — test_app 54/54, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (device aggregate 156/156). Summary files: tmp/run_all_tests_summary.json and tmp/canonical_unity_summary.json; per-suite logs refreshed under esp_bt_audio_source/test_app*/build/one_run_unity.log.
+- Context: SPIFFS already flashed with canonical image; no failures observed.
+### Main app build (2025-12-19T04:35:03-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh` (ESP-IDF 5.5) and `idf.py build` in esp_bt_audio_source; build completed successfully (binary size ~0xe4b60, bootloader 0x6680).
+### Main app rebuild (2025-12-19T04:37:12-08:00)
+- Rebuilt esp_bt_audio_source with ESP-IDF 5.5; `idf.py build` succeeded. Noted warning in main/bt_connection_manager.c: `s_peer_bd_addr` unused (line ~87). Binary size unchanged (~0xe4b60).
+### Warning cleanup (2025-12-19T04:38:19-08:00)
+- Removed unused `s_peer_bd_addr` from main/bt_connection_manager.c to clear warning; `idf.py build` now clean (app ~0xe4b60, bootloader 0x6680).
+### Host tests build (2025-12-19T04:41:15-08:00)
+- Fixed remaining references to removed `s_peer_bd_addr` in bt_connection_manager test reset paths; `cmake --build test/host_test/build` now succeeds (all host binaries link).
+### Host build warning cleared (2025-12-19T04:43:24-08:00)
+- Reconfigured test/host_test with `cmake -S . -B build` (no unused-variable warnings) and rebuilt successfully via `cmake --build build`.
+### Host tests run (2025-12-19T05:15:00-08:00)
+- Ran `ctest --output-on-failure` in test/host_test/build: 28/28 host tests passed (all binaries green).
+### test_app device run (2025-12-19T05:21:45-08:00)
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app`; Unity summary shows 54/54 tests passed, 0 failed, 0 ignored (see test_app/build/one_run_unity.log).
+### test_app2 device run (2025-12-19T05:24:36-08:00)
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app2`; counted 45 PASS lines in one_run_unity.log, consistent with prior 45/45; all tests passed.
+### test_app3 device run (2025-12-19T05:26:31-08:00)
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app3`; counted 15 PASS lines in one_run_unity.log (15/15), all tests passed.
+### test_app_audio device run (2025-12-19T05:28:36-08:00)
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test_app_audio`; summary 43 run / 41 passed / 2 failed. Failures: `test_audio_processor_play_wav_api` (file /spiffs/worker_long_norm.wav missing, ESP_ERR_NOT_FOUND 261) and `test_play_wav_command` (PLAY returned 259). Log: esp_bt_audio_source/test_app_audio/build/one_run_unity.log.
+### Full test sweep + push (2025-12-18T04:15:30-08:00)
+- Ran `python3 tools/run_all_tests.py` from repo root; host 211/211, device suites all green (test_app 54/54, test_app2 45/45, test_app_audio 43/43, test_app3 14/14). Summary at tmp/run_all_tests_summary.json.
+- Committed and pushed `test: add i2s_audio host coverage` (30a47a4e) including new host i2s_audio tests, audio/i2s header includes, i2s_audio UNIT_TEST cleanup, and unity-app TEST_COMPONENTS update.
 ### Full test sweep green after env fix (2025-12-18T03:36:08-08:00)
 - Environment: conda `python310`, `IDF_PYTHON_ENV_PATH=/home/phil/mambaforge/envs/python310`, ESP-IDF 5.4.1 export, `esptool` 4.8.1. Command: `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`.
 - Host suite: 196/196 Unity cases passing (ctest rc 0). Per-binary counts in tmp/run_all_tests_summary.json.
