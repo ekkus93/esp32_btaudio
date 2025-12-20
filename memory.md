@@ -1,4 +1,7 @@
 ## Current Focus
+### Rapid tag recover throttle coverage (2025-12-20T17:05:00-08:00)
+- Added host Unity case `test_tag_recover_should_throttle_and_rearm_after_window` in [esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c](esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c#L22-L202) to assert tag_miss stays bounded during rapid desyncs and re-arms after forcing the mute window to expire (host tickless fallback uses `audio_processor_test_reset_tag_recover_window`).
+- Rebuilt host tests and ran `ctest -R test_audio_tag_alignment --output-on-failure` in test/host_test/build_host_tests; suite passed with the new coverage.
 ### Host tag recover throttle reset (2025-12-21T15:15:00-08:00)
 - Added test helper `audio_processor_test_reset_tag_recover_window` to clear TAG-RECOVER mute window between host Unity tests; call wired into test_audio_tag_alignment setUp.
 - Relaxed fallback/WAV host assertion to allow a single tag miss during fallback activation while still bounding unexpected misses.

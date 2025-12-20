@@ -1,6 +1,8 @@
 #include "unity.h"
 #include "../../main/include/audio_processor.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -15,6 +17,22 @@ void setUp(void)
 void tearDown(void)
 {
     audio_processor_deinit();
+}
+
+static void trigger_desync_recover_once(size_t payload_bytes)
+{
+    uint8_t *payload = (uint8_t *)malloc(payload_bytes);
+    TEST_ASSERT_NOT_NULL(payload);
+    memset(payload, 0x33, payload_bytes);
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(payload, payload_bytes));
+    free(payload);
+
+    /* Drop all metadata so the next read observes a tag miss. */
+    audio_source_tag_test_reset_buffer();
+
+    uint8_t sink[512];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(sink, sizeof(sink), &bytes_read));
 }
 
 void test_producer_consumer_tag_alignment_beep(void)
@@ -147,12 +165,46 @@ void test_tag_recover_should_drop_untracked_audio_and_reset_counters(void)
     TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
     TEST_ASSERT_TRUE_MESSAGE(audio_processor_test_get_audio_free_bytes() >= audio_free_before,
                               "Audio ringbuffer did not free back to baseline after recover");
+}
 
-    /* Second read should be empty and should not crash or add more tag misses within throttle window. */
-    size_t bytes_read2 = 0;
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read2));
-    TEST_ASSERT_EQUAL_size_t(0, bytes_read2);
+void test_tag_recover_should_throttle_and_rearm_after_window(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 60;
+    cfg.mute = false;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    audio_processor_test_reset_tag_miss_count();
+    audio_processor_test_reset_tag_recover_window();
+    audio_source_tag_test_reset_buffer();
+
+    /* First desync should increment the counter and arm the mute window. */
+    trigger_desync_recover_once(256);
     TEST_ASSERT_EQUAL_UINT32(1, audio_processor_test_get_tag_miss_count());
+
+    /* Second desync inside the throttle window should be ignored (bounded counter). */
+    trigger_desync_recover_once(256);
+    TEST_ASSERT_EQUAL_UINT32(1, audio_processor_test_get_tag_miss_count());
+
+    /* Advance beyond the mute window and ensure recover can re-arm and count again.
+     * Host tick may not advance without a scheduler, so also force expiry of the throttle window. */
+    vTaskDelay(pdMS_TO_TICKS(600));
+#if defined(INCLUDE_vTaskStepTick) && (INCLUDE_vTaskStepTick == 1)
+    vTaskStepTick(pdMS_TO_TICKS(600));
+#else
+    audio_processor_test_reset_tag_recover_window();
+#endif
+    trigger_desync_recover_once(256);
+    TEST_ASSERT_EQUAL_UINT32(2, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -238,6 +290,7 @@ int main(void)
     RUN_TEST(test_producer_consumer_tag_alignment_beep);
     RUN_TEST(test_tag_miss_recovery_should_drop_stale_beep);
     RUN_TEST(test_tag_recover_should_drop_untracked_audio_and_reset_counters);
+    RUN_TEST(test_tag_recover_should_throttle_and_rearm_after_window);
 #ifdef CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_fallback_then_wav_should_keep_tags_aligned);
 #endif
