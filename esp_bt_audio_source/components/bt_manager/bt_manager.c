@@ -333,6 +333,13 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     if (bt_ctx.initialized) {
         return ESP_OK; // Already initialized
     }
+
+    /* Reset runtime defaults at each init so per-session overrides (like
+     * autostart disable) do not leak across init/deinit cycles. */
+    s_autostart_enabled = true;
+#if defined(UNIT_TEST)
+    s_autostart_attempts = 0;
+#endif
     
     // Store configuration
     safe_copy_str(bt_ctx.device_name, sizeof(bt_ctx.device_name), config->device_name);

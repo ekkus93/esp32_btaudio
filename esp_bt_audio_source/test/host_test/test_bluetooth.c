@@ -650,6 +650,72 @@ void test_bt_gap_success_emits_success_and_clears_pending(void) {
     TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
 }
 
+// GAP PIN/SSP/auth events should emit command-interface events with formatted payloads
+void test_bt_gap_events_emit_command_events(void) {
+    bt_pairing_request_info_t info = {0};
+    bt_manager_test_reset_pending();
+    bt_manager_test_reset_forces();
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("AA:BB:CC:DD:EE:FF"));
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_pair_event_count());
+    TEST_ASSERT_EQUAL_STRING("PIN_REQUEST", bt_manager_test_get_last_pair_event_subtype());
+    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", bt_manager_test_get_last_pair_event_data());
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_ssp_confirm("AA:BB:CC:DD:EE:FF", 987654));
+    TEST_ASSERT_EQUAL(2, bt_manager_test_get_pair_event_count());
+    TEST_ASSERT_EQUAL_STRING("CONFIRM", bt_manager_test_get_last_pair_event_subtype());
+    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff,987654", bt_manager_test_get_last_pair_event_data());
+
+    bt_manager_test_gap_auth_complete("AA:BB:CC:DD:EE:FF", true);
+    TEST_ASSERT_EQUAL(3, bt_manager_test_get_pair_event_count());
+    TEST_ASSERT_EQUAL_STRING("SUCCESS", bt_manager_test_get_last_pair_event_subtype());
+    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", bt_manager_test_get_last_pair_event_data());
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+
+    // A subsequent auth failure for a different MAC should emit FAILED with the new address
+    bt_manager_test_gap_auth_complete("01:02:03:04:05:06", false);
+    TEST_ASSERT_EQUAL(4, bt_manager_test_get_pair_event_count());
+    TEST_ASSERT_EQUAL_STRING("FAILED", bt_manager_test_get_last_pair_event_subtype());
+    TEST_ASSERT_EQUAL_STRING("01:02:03:04:05:06", bt_manager_test_get_last_pair_event_data());
+}
+
+// Autostart flag and attempt counters should reset across deinit/reinit cycles
+void test_bt_autostart_resets_between_sessions(void) {
+    // Drive an autostart attempt in the current session to seed state
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xAB};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+
+    bt_manager_set_autostart_enabled(true);
+    bt_manager_test_reset_autostart_attempts();
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_autostart_attempts());
+
+    // Disable autostart then deinit to simulate a session boundary
+    bt_manager_set_autostart_enabled(false);
+    TEST_ASSERT_FALSE(bt_manager_is_autostart_enabled());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
+
+    // Reinitialize and ensure defaults restore autostart and counters
+    bt_manager_init_t config = {
+        .device_name = "ESP32_TEST",
+        .connected_cb = test_bt_connected_cb,
+        .disconnected_cb = test_bt_disconnected_cb
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
+    TEST_ASSERT_TRUE(bt_manager_is_autostart_enabled());
+
+    memset(&param, 0, sizeof(param));
+    uint8_t bda2[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    memcpy(param.conn_stat.remote_bda, bda2, sizeof(bda2));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    // After reinit the attempts counter should start fresh, not accumulate
+    TEST_ASSERT_EQUAL(1, bt_manager_test_get_autostart_attempts());
+}
+
 // A2DP DISCONNECTED and STOPPED events should clear playing state and avoid autostart
 void test_bt_a2dp_disconnect_and_stop_clear_playing(void) {
     bt_manager_set_autostart_enabled(true);
@@ -700,6 +766,8 @@ int main(void) {
     RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
     RUN_TEST(test_bt_gap_auth_failure_allows_retry);
     RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
+    RUN_TEST(test_bt_gap_events_emit_command_events);
+    RUN_TEST(test_bt_autostart_resets_between_sessions);
     RUN_TEST(test_bt_a2dp_disconnect_and_stop_clear_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);

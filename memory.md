@@ -1,6 +1,23 @@
 ## Current Focus
+### GAP/A2DP command event host tests (2025-12-20T10:20:00-08:00)
+- Added host Unity cases in [esp_bt_audio_source/test/host_test/test_bluetooth.c](esp_bt_audio_source/test/host_test/test_bluetooth.c#L458-L563) to verify GAP PIN/SSP/auth callbacks emit command_interface pairing events (pending, confirm, success, failure) with formatted payloads and to ensure autostart flags/counters reset across init/deinit cycles.
+- Reset autostart defaults in [esp_bt_audio_source/components/bt_manager/bt_manager.c](esp_bt_audio_source/components/bt_manager/bt_manager.c#L440-L448) so per-session overrides do not leak.
+- Host build + `ctest -R test_bluetooth` in esp_bt_audio_source/test/host_test/build_host_tests now passes with the new cases.
+### Full sweep after GAP/A2DP command event tests (2025-12-20T10:30:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && /home/phil/work/esp32_btaudio/.venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green — host 219/219, device test_app 60/60, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 164/164). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Confirms GAP/A2DP command-event host cases and autostart reset change are non-regressive.
+### Full sweep after host reconnect mirrors (2025-12-20T10:05:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && /home/phil/work/esp32_btaudio/.venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green — host 217/217, device test_app 60/60, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 164/164). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Confirms new host reconnect mirror tests are wired and non-regressive alongside existing device reconnect coverage.
 ### Full sweep after mock sync (2025-12-20T09:20:12-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && /home/phil/work/esp32_btaudio/.venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green — host 215/215, device test_app 57/57, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 161/161). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Committed and pushed `fix: handle remote suspend and sync mock streaming state` to origin/master after the green sweep.
+### Device reconnect edge tests (2025-12-20T09:37:02-08:00)
+- Added device Unity cases covering reconnect stop-after-success, disabled auto-reconnect skip, and streaming reset after failed retries in [esp_bt_audio_source/test/test_app/main/bt_a2dp_test.c](esp_bt_audio_source/test/test_app/main/bt_a2dp_test.c).
+- Ran `/.venv/bin/python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app`; suite passed with new tests (log: esp_bt_audio_source/test/test_app/build/one_run_unity.log).
+### Host reconnect mirrors (2025-12-20T09:54:12-08:00)
+- Added host mirror tests for reconnect retry reset and streaming stop-on-failure in [esp_bt_audio_source/test/host_test/test_bt_connection_manager.c](esp_bt_audio_source/test/host_test/test_bt_connection_manager.c#L115-L216), exercising auto-reconnect success reset and failure/streaming cleanup.
+- Built host tests and ran `ctest -R test_bt_connection_manager` in test/host_test/build_host_tests; all host cases passed.
 ### A2DP suspend + mock sync (2025-12-20T09:15:37-08:00)
 - Added remote suspend handling in bt_connection_manager and kept mock streaming state in sync (start/stop/pause/resume + helper to mirror injected audio states); bt_manager now invokes the mock helper under CONFIG_BT_MOCK_TESTING.
 - Auto-reconnect overrides now sync authoritative mock state when forced results return ESP_OK, eliminating stale streaming flags in device reconnect tests.

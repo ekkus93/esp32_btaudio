@@ -509,6 +509,112 @@ void test_auto_reconnect_should_apply_configured_delay(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
 }
 
+void test_auto_reconnect_should_stop_after_first_success(void)
+{
+    ESP_LOGI(TAG, "Testing auto-reconnect stops after first success");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_FAIL, ESP_OK, ESP_OK};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(40);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+
+    TickType_t start_ticks = xTaskGetTickCount();
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+    TickType_t end_ticks = xTaskGetTickCount();
+
+    uint32_t elapsed_ms = (uint32_t)((end_ticks - start_ticks) * portTICK_PERIOD_MS);
+    const uint32_t min_ms = 2U * 40U; /* Two attempts (fail + success). */
+    const uint32_t max_ms = (3U * 40U) + 200U; /* Guard against an unexpected third attempt. */
+
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(min_ms, elapsed_ms);
+    TEST_ASSERT_LESS_THAN_UINT32(max_ms, elapsed_ms);
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_TRUE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, info.state);
+    TEST_ASSERT_EQUAL_UINT8(0, info.retry_count); /* Reset after success. */
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(false));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
+}
+
+void test_auto_reconnect_disabled_should_skip_attempts(void)
+{
+    ESP_LOGI(TAG, "Testing auto-reconnect disabled skips attempts");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_OK, ESP_OK};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(20);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(false));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_a2dp_start_streaming());
+    TEST_ASSERT_TRUE(bt_a2dp_is_streaming());
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
+    vTaskDelay(pdMS_TO_TICKS(100)); /* Allow time for would-be reconnect attempts. */
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_FALSE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_DISCONNECTED, info.state);
+    TEST_ASSERT_EQUAL_UINT8(0, info.retry_count);
+
+    TEST_ASSERT_FALSE(bt_a2dp_is_streaming());
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+}
+
+void test_auto_reconnect_failures_clear_streaming_state(void)
+{
+    ESP_LOGI(TAG, "Testing auto-reconnect failures clear streaming state");
+
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_FAIL, ESP_FAIL, ESP_FAIL};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(20);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 1000));
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_a2dp_start_streaming());
+    TEST_ASSERT_TRUE(bt_a2dp_is_streaming());
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(false, 1000));
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_FALSE(info.connected);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, info.state);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT8(3, info.retry_count); /* Should exhaust retries. */
+
+    TEST_ASSERT_FALSE(bt_a2dp_is_streaming());
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+}
+
 // Test 15: Bluetooth connects to A2DP sink
 void test_connect_to_a2dp_sink(void) {
     ESP_LOGI(TAG, "Testing connecting to A2DP sink");
@@ -802,6 +908,9 @@ void run_bt_a2dp_tests(void)
     RUN_TEST(test_auto_reconnect);
     RUN_TEST(test_auto_reconnect_should_stop_after_failed_attempts);
     RUN_TEST(test_auto_reconnect_should_apply_configured_delay);
+    RUN_TEST(test_auto_reconnect_should_stop_after_first_success);
+    RUN_TEST(test_auto_reconnect_disabled_should_skip_attempts);
+    RUN_TEST(test_auto_reconnect_failures_clear_streaming_state);
     RUN_TEST(test_connect_to_a2dp_sink);
 
     // 3. A2DP streaming tests

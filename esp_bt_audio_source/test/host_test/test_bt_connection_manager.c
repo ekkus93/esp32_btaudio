@@ -216,6 +216,60 @@ void test_bt_reconnect_failures_report_failed_state_and_retry_count(void)
     TEST_ASSERT_EQUAL_UINT8(5, conn_ctx.info.retry_count);
 }
 
+// Successful reconnect should reset retry_count to 0 after connect event.
+void test_bt_reconnect_success_resets_retry_count(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    esp_bd_addr_t addr = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x01};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    TEST_ASSERT_EQUAL_STRING("AA:00:00:00:00:01", bt_connection_manager_get_last_connected_addr_for_test());
+
+    TEST_ASSERT_EQUAL(0, mock_a2dp_get_connect_calls());
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+    TEST_ASSERT_EQUAL(1, mock_a2dp_get_connect_calls());
+
+    // Simulate the reconnect succeeding so the handler clears retry_count.
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_EQUAL_UINT8(0, info.retry_count);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, info.state);
+}
+
+// Failed reconnect attempts should leave state FAILED and streaming stopped.
+void test_bt_reconnect_failures_clear_streaming_state(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+    mock_a2dp_set_connect_result(ESP_BT_STATUS_FAIL);
+
+    test_stream_ctx_t stream_ctx = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_register_streaming_callback(test_stream_callback, &stream_ctx));
+
+    esp_bd_addr_t addr = {0xBB, 0x00, 0x00, 0x00, 0x00, 0x02};
+
+    bt_audio_state_cb(ESP_A2D_AUDIO_STATE_STARTED, addr);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, bt_get_streaming_state());
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    TEST_ASSERT_EQUAL(5, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_FAILED, bt_get_connection_state_detailed());
+
+    // Streaming should be stopped after the disconnect path, even though failures followed.
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_FALSE(info.connected);
+    TEST_ASSERT_EQUAL_UINT8(5, info.retry_count);
+}
+
 // Streaming state should reset to STOPPED when a disconnect arrives after a STARTED event.
 void test_bt_audio_state_resets_on_disconnect(void)
 {
@@ -271,6 +325,8 @@ int main(void)
     RUN_TEST(test_bt_connection_manager_skips_reconnect_when_disabled);
     RUN_TEST(test_bt_connection_manager_disconnect_first_should_not_reconnect);
     RUN_TEST(test_bt_reconnect_failures_report_failed_state_and_retry_count);
+    RUN_TEST(test_bt_reconnect_success_resets_retry_count);
+    RUN_TEST(test_bt_reconnect_failures_clear_streaming_state);
     RUN_TEST(test_bt_audio_state_resets_on_disconnect);
     RUN_TEST(test_bt_audio_state_transitions_and_notifies);
     return UNITY_END();
