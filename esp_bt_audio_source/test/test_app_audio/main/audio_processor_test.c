@@ -374,6 +374,7 @@ static void test_beep_fallback_should_align_and_drain(void);
 static void test_fallback_volume_and_wav_resume_alignment(void);
 static void test_wav_and_beep_fallback_should_keep_tags_aligned(void);
 static void test_wav_fallback_with_live_volume_changes_should_resume_cleanly(void);
+static void test_wav_fallback_soak_with_volume_and_mute_toggles(void);
 #endif
 
 void run_audio_processor_tests(void)
@@ -396,6 +397,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_fallback_volume_and_wav_resume_alignment);
     RUN_TEST(test_wav_and_beep_fallback_should_keep_tags_aligned);
     RUN_TEST(test_wav_fallback_with_live_volume_changes_should_resume_cleanly);
+    RUN_TEST(test_wav_fallback_soak_with_volume_and_mute_toggles);
 #endif
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
@@ -779,6 +781,109 @@ static void test_wav_fallback_with_live_volume_changes_should_resume_cleanly(voi
     TEST_ASSERT_TRUE_MESSAGE(saw_wav, "WAV data did not resume after fallback and volume changes");
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_wav_fallback_soak_with_volume_and_mute_toggles(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    uint8_t wav_chunk[512];
+    memset(wav_chunk, 0x52, sizeof(wav_chunk));
+    size_t wav_target = audio_processor_test_get_audio_free_bytes() / 2U;
+    if (wav_target < sizeof(wav_chunk)) {
+        wav_target = sizeof(wav_chunk);
+    }
+
+    size_t queued = 0;
+    while ((queued + sizeof(wav_chunk)) <= wav_target) {
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(wav_chunk, sizeof(wav_chunk)));
+        queued += sizeof(wav_chunk);
+    }
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)queued);
+
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    const int cycles = 3;
+    for (int cycle = 0; cycle < cycles; ++cycle) {
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(750));
+
+        bool fallback_active = false;
+        for (int i = 0; i < 30; ++i) {
+            fallback_active = audio_processor_test_is_beep_fallback_active();
+            if (fallback_active) {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        TEST_ASSERT_TRUE_MESSAGE(fallback_active, "Fallback synth did not activate during soak");
+
+        /* Toggle volume and mute mid-fallback to stress tag accounting. */
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_volume(50));
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_mute(true));
+        vTaskDelay(pdMS_TO_TICKS(10));
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_mute(false));
+
+        uint8_t buf[1024];
+        for (int i = 0; i < 200 && audio_processor_test_is_beep_fallback_active(); ++i) {
+            size_t bytes_read = 0;
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+            TEST_ASSERT_TRUE(bytes_read > 0);
+            if (i == 60) {
+                TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_volume(90));
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+
+        TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+        TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
+
+        bool saw_wav = false;
+        for (int i = 0; i < 160; ++i) {
+            size_t bytes_read = 0;
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+            if (bytes_read == 0 && !audio_processor_test_is_beep_fallback_active()) {
+                break;
+            }
+            if (bytes_read > 0 && !audio_processor_test_is_beep_fallback_active()) {
+                saw_wav = true;
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+
+        TEST_ASSERT_TRUE_MESSAGE(saw_wav, "WAV data did not resume after fallback soak cycle");
+
+        size_t free_bytes = audio_processor_test_get_audio_free_bytes();
+        size_t refill_target = free_bytes / 2U;
+        size_t added = 0;
+        while ((added + sizeof(wav_chunk)) <= refill_target) {
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(wav_chunk, sizeof(wav_chunk)));
+            added += sizeof(wav_chunk);
+        }
+    }
+
+    uint32_t tag_miss_after = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_TRUE_MESSAGE((tag_miss_after - tag_miss_before) <= 2, "Tag miss count grew unexpectedly during fallback soak");
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    audio_source_tag_test_reset_buffer();
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());

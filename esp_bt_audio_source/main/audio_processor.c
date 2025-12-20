@@ -357,6 +357,9 @@ static double s_beep_fallback_phase_inc = 0.0;
  * envelope progress for fade-in/out. This accumulates when multiple
  * beeps are enabled while a previous fallback is active. */
 static size_t s_beep_fallback_total_frames = 0;
+/* Track how many fallback metadata tags still need to be consumed so we
+ * only drain one tag per fallback activation instead of once per read. */
+static size_t s_beep_fallback_tag_debt = 0;
 #ifdef UNIT_TEST
 static uint32_t s_last_beep_duration_ms = 0;
 static double s_last_beep_freq_hz = 0.0;
@@ -578,6 +581,7 @@ static void audio_source_tag_log_miss(const char *path)
              (unsigned)s_last_tag_id_pushed,
              (unsigned)s_last_tag_id_taken,
              free_sz);
+    ESP_LOGW(TAG, "TAG-MISS-DIAG debt=%zu fallback_active=%d fallback_frames=%zu", s_beep_fallback_tag_debt, s_beep_fallback_active ? 1 : 0, s_beep_fallback_frames_remaining);
     s_tag_diag_next_log = now + pdMS_TO_TICKS(500);
 }
 
@@ -625,11 +629,13 @@ static void audio_source_tag_consume_for_fallback(void)
     uint16_t dequeued_id = 0;
 
     if (audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+        ESP_LOGI(TAG, "TAG-FALLBACK-CONSUME: debt=%zu took=%u id=%u", s_beep_fallback_tag_debt, (unsigned)dequeued_tag, (unsigned)dequeued_id);
         return;
     }
 
     if (audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP) &&
         audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+        ESP_LOGI(TAG, "TAG-FALLBACK-SYNTH: debt=%zu synth tag=%u id=%u", s_beep_fallback_tag_debt, (unsigned)dequeued_tag, (unsigned)dequeued_id);
         return;
     }
 
@@ -1135,6 +1141,7 @@ static void wav_playback_abort(void)
     s_beep_fallback_active = false;
     s_beep_fallback_frames_remaining = 0;
     s_beep_fallback_total_frames = 0;
+    s_beep_fallback_tag_debt = 0;
     portEXIT_CRITICAL(&s_beep_lock);
 
     if (restored) {
@@ -1175,6 +1182,7 @@ static void wav_playback_complete_if_idle(void)
     s_beep_fallback_active = false;
     s_beep_fallback_frames_remaining = 0;
     s_beep_fallback_total_frames = 0;
+    s_beep_fallback_tag_debt = 0;
     portEXIT_CRITICAL(&s_beep_lock);
 
     if (restored) {
@@ -2434,6 +2442,7 @@ esp_err_t audio_processor_deinit(void)
     s_beep_fallback_total_frames = 0;
     s_beep_fallback_phase = 0.0;
     s_beep_fallback_phase_inc = 0.0;
+    s_beep_fallback_tag_debt = 0;
     portEXIT_CRITICAL(&s_beep_lock);
 
     s_is_initialized = false;
@@ -2843,7 +2852,6 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     }
 
     bool fallback_emitted = false;
-    bool audio_rb_empty_for_fallback = false;
     if (!wav_override_beep && s_beep_fallback_active) {
 #ifdef CONFIG_BT_MOCK_TESTING
         ESP_LOGI(TAG, "HOST-FALLBACK: active=%d frames=%zu request=%zu bytes_written=%zu", (int)s_beep_fallback_active, s_beep_fallback_frames_remaining, size, bytes_written);
@@ -2950,9 +2958,13 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             }
         }
         portEXIT_CRITICAL(&s_beep_lock);
-        audio_rb_empty_for_fallback = (s_audio_buffer == NULL) || (xRingbufferGetCurFreeSize(s_audio_buffer) == AUDIO_BUFFER_SIZE);
-        if (fallback_emitted && audio_rb_empty_for_fallback) {
+        if (fallback_emitted && s_beep_fallback_tag_debt > 0) {
+            ESP_LOGI(TAG, "TAG-FALLBACK-DRAIN: debt_before=%zu frames_rem=%zu bytes_written=%zu", s_beep_fallback_tag_debt, s_beep_fallback_frames_remaining, bytes_written);
             audio_source_tag_consume_for_fallback();
+            if (s_beep_fallback_tag_debt > 0) {
+                s_beep_fallback_tag_debt--;
+            }
+            ESP_LOGI(TAG, "TAG-FALLBACK-DRAIN: debt_after=%zu frames_rem=%zu bytes_written=%zu", s_beep_fallback_tag_debt, s_beep_fallback_frames_remaining, bytes_written);
         }
         if (_beep_need_restore_synth) {
             /* Restore the synth mode that was active before we forced
@@ -3736,7 +3748,11 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             }
 
             /* Push a metadata tag so fallback-generated samples stay aligned with consumers. */
-            (void)audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP);
+            bool fallback_tag_pushed = audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP);
+            if (fallback_tag_pushed) {
+                s_beep_fallback_tag_debt++;
+                ESP_LOGI(TAG, "TAG-FALLBACK-PUSH: debt=%zu total_frames=%zu", s_beep_fallback_tag_debt, s_beep_fallback_total_frames);
+            }
 
             ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, enabling fallback bytes=%u frames=%u", (unsigned)fallback_bytes, (unsigned)remaining_frames);
             break;
@@ -3858,6 +3874,7 @@ esp_err_t audio_processor_play_wav(const char* path)
     s_beep_fallback_active = false;
     s_beep_fallback_frames_remaining = 0;
     s_beep_fallback_total_frames = 0;
+    s_beep_fallback_tag_debt = 0;
     portEXIT_CRITICAL(&s_beep_lock);
 
     wav_playback_begin();
@@ -5335,6 +5352,16 @@ size_t audio_processor_test_get_beep_fallback_frames_remaining(void)
     return frames;
 }
 
+size_t audio_processor_test_get_fallback_tag_debt(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    size_t debt = 0;
+    portENTER_CRITICAL(&s_beep_lock);
+    debt = s_beep_fallback_tag_debt;
+    portEXIT_CRITICAL(&s_beep_lock);
+    return debt;
+}
+
 size_t audio_processor_test_get_beep_fallback_total_frames(void)
 {
     AUDIO_PROC_LOG_ONCE();
@@ -5352,6 +5379,7 @@ void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, si
     s_force_synth = synth_enabled;
     s_beep_remaining_bytes = beep_remaining;
     s_beep_fallback_active = false;
+    s_beep_fallback_tag_debt = 0;
     s_wav_playback_active = false;
     s_last_i2s_failure_log = -I2S_FAILURE_LOG_THROTTLE;
     (void)audio_processor_handle_idle_i2s_failures(false, false, s_beep_remaining_bytes);

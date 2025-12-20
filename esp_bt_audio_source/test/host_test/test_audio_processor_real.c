@@ -85,6 +85,53 @@ void test_audio_processor_inject_audio_should_tag_and_reset(void)
     TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
 }
 
+void test_audio_processor_partial_read_should_preserve_tags(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 60;
+    cfg.mute = false;
+    cfg.i2s_port = 0;
+    cfg.i2s_bclk_pin = GPIO_NUM_NC;
+    cfg.i2s_ws_pin = GPIO_NUM_NC;
+    cfg.i2s_din_pin = GPIO_NUM_NC;
+    cfg.i2s_dout_pin = GPIO_NUM_NC;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_reset_tag_miss_count();
+
+    uint8_t payload[512];
+    memset(payload, 0x29, sizeof(payload));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(payload, sizeof(payload)));
+
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
+
+    uint8_t out[2048];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+    TEST_ASSERT_TRUE(bytes_read > 0);
+    TEST_ASSERT_TRUE(bytes_read <= sizeof(out));
+
+    /* A follow-up read with no new data should not create tag misses. */
+    bytes_read = 0;
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+    TEST_ASSERT_TRUE(bytes_read <= sizeof(out));
+
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
+    audio_source_tag_test_reset_buffer();
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
+}
+
 void setUp(void) {
     esp_heap_caps_mock_set_psram_available(true);
     esp_heap_caps_mock_reset_allocations();
@@ -207,6 +254,7 @@ int main(void)
     RUN_TEST(test_audio_processor_idle_i2s_should_not_reenable_below_threshold);
     RUN_TEST(test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep);
     RUN_TEST(test_audio_processor_inject_audio_should_tag_and_reset);
+    RUN_TEST(test_audio_processor_partial_read_should_preserve_tags);
     RUN_TEST(test_audio_processor_alloc_with_psram);
     RUN_TEST(test_audio_processor_alloc_without_psram);
     RUN_TEST(test_audio_processor_autostart_cooldown);

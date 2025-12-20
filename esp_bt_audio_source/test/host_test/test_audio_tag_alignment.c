@@ -345,6 +345,86 @@ void test_fallback_then_wav_should_keep_tags_aligned(void)
     TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
 }
+
+void test_wav_and_fallback_partial_reads_should_keep_tags_aligned(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 75;
+    cfg.mute = false;
+
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_reset_tag_miss_count();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    const size_t partial_sizes[] = {300, 700, 900};
+
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        /* Prime WAV data then saturate the audio buffer to force fallback on beep. */
+        size_t free_bytes = audio_processor_test_get_audio_free_bytes();
+        size_t wav_bytes = free_bytes / 2;
+        if (wav_bytes < 2048) {
+            wav_bytes = (free_bytes > 0 && free_bytes < 2048) ? free_bytes : 2048;
+        }
+        uint8_t *wav_payload = (uint8_t *)malloc(wav_bytes);
+        TEST_ASSERT_NOT_NULL(wav_payload);
+        memset(wav_payload, 0x3C, wav_bytes);
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(wav_payload, wav_bytes));
+        free(wav_payload);
+
+        /* Fill remaining buffer space to guarantee beep enqueue will fall back. */
+        size_t remaining = audio_processor_test_get_audio_free_bytes();
+        if (remaining > 0) {
+            uint8_t *pad = (uint8_t *)malloc(remaining);
+            TEST_ASSERT_NOT_NULL(pad);
+            memset(pad, 0x55, remaining);
+            TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(pad, remaining));
+            free(pad);
+        }
+
+        size_t tags_after_wav = audio_processor_test_get_tag_used();
+        TEST_ASSERT_TRUE_MESSAGE(tags_after_wav > 0, "Expected tags queued for WAV payload");
+
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep(400));
+        TEST_ASSERT_TRUE_MESSAGE(audio_processor_test_is_beep_fallback_active(), "Fallback synth did not activate");
+
+        size_t tag_miss_start = audio_processor_test_get_tag_miss_count();
+
+        /* Alternate partial read sizes while fallback drains and WAV resumes. */
+        uint8_t out[1024];
+        int iter = 0;
+        while (iter < 120) {
+            size_t read_size = partial_sizes[iter % (sizeof(partial_sizes) / sizeof(partial_sizes[0]))];
+            size_t bytes_read = 0;
+            TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, read_size, &bytes_read));
+
+            /* After fallback ends, ensure tag debt cleared before proceeding. */
+            if (!audio_processor_test_is_beep_fallback_active()) {
+                TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_fallback_tag_debt());
+            }
+
+            /* Stop once both fallback is inactive and no more audio is produced. */
+            if (!audio_processor_test_is_beep_fallback_active() && bytes_read == 0) {
+                break;
+            }
+
+            iter++;
+        }
+
+        uint32_t tag_miss_delta = audio_processor_test_get_tag_miss_count() - tag_miss_start;
+        TEST_ASSERT_TRUE_MESSAGE(tag_miss_delta <= 1, "Unexpected tag miss growth during fallback/WAV partial reads");
+        TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
+        TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_fallback_tag_debt());
+    }
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
+}
 #endif
 
 int main(void)
@@ -357,6 +437,7 @@ int main(void)
 #ifdef CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_beep_fallback_should_not_double_activate_when_tags_drained);
     RUN_TEST(test_fallback_then_wav_should_keep_tags_aligned);
+    RUN_TEST(test_wav_and_fallback_partial_reads_should_keep_tags_aligned);
 #endif
     return UNITY_END();
 }

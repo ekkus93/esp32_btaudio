@@ -1,4 +1,31 @@
 ## Current Focus
+### Full sweep green after partial-read host case (2025-12-22T05:35:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && .venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green. Host 224/224; device: test_app 60/60, test_app2 45/45, test_app_audio 48/48, test_app3 14/14 (aggregate device 167/167). Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json); per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Confirms new host case `test_wav_and_fallback_partial_reads_should_keep_tags_aligned` and fallback tag debt getter are non-regressive.
+### Fallback log review (2025-12-22T04:30:00-08:00)
+- Parsed latest test_app_audio log after tag-debt instrumentation; fallback runs show paired TAG-FALLBACK-PUSH and TAG-FALLBACK-CONSUME events with debt returning to 0 each cycle (e.g., [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L7931-L7995)).
+- No TAG-MISS-DIAG entries observed; host tag drains occur after fallback deactivates with active=0 and tag debt already cleared (e.g., [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8844-L8872)).
+- Latest isolated run of test_app_audio passed; need a full run_all_tests to confirm regression resolved or intermittent.
+### Host fallback partial-read coverage (2025-12-22T05:05:00-08:00)
+- Added test-only getter for fallback tag debt in [esp_bt_audio_source/main/include/audio_processor.h](esp_bt_audio_source/main/include/audio_processor.h#L299-L336) and implementation in [esp_bt_audio_source/main/audio_processor.c](esp_bt_audio_source/main/audio_processor.c#L5346-L5365).
+- New host Unity case `test_wav_and_fallback_partial_reads_should_keep_tags_aligned` in [esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c](esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c#L343-L410) interleaves WAV payloads with fallback under partial reads, asserting bounded tag_miss, tag_used zero, and fallback tag debt clears each cycle.
+- Tests not yet run after the new host case; next step is to build host tests and run `ctest -R test_audio_tag_alignment` in esp_bt_audio_source/test/host_test/build_host_tests.
+### Run_all_tests after fallback tag debt (2025-12-20T03:05:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && .venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; host 223/223 passed.
+- Device suites: test_app 60/60, test_app2 45/45, test_app3 14/14, test_app_audio 48 total with 1 failure. Failing case remains `test_wav_fallback_with_live_volume_changes_should_resume_cleanly` with tag_miss delta; see [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3846).
+- New fallback tag debt logic did not clear the regression; next step is to debug why tag_miss grows during fallback drain.
+### Fallback tag debt guard (2025-12-22T02:45:00-08:00)
+- Added fallback tag debt tracking in [esp_bt_audio_source/main/audio_processor.c](esp_bt_audio_source/main/audio_processor.c) so only one metadata tag is consumed per fallback activation; reset the debt on WAV abort/complete, deinit, WAV play, and test helpers.
+- Intent is to stop tag_miss spikes seen in `test_wav_fallback_with_live_volume_changes_should_resume_cleanly` while keeping tag_used balanced.
+- Tests not yet rerun; next step remains to run test_app_audio (and full sweep if time).
+### Run_all_tests failure (2025-12-22T01:15:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && /home/phil/work/esp32_btaudio/.venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; host 223/223 passed. Device suites: test_app 60/60, test_app2 45/45, test_app3 14/14, test_app_audio 48 total with 1 failure.
+- Failure: `test_wav_fallback_with_live_volume_changes_should_resume_cleanly` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L740-L790) hit tag_miss delta of 4 (expected <=1). Log: [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3835-L3850) contains the FAIL line.
+- Next steps: investigate tag_miss accumulation during fallback/WAV resume volume-toggle path, then rerun test_app_audio (and full sweep if time).
+### Fallback soak + partial reads (2025-12-22T00:30:00-08:00)
+- Added device Unity case `test_wav_fallback_soak_with_volume_and_mute_toggles` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c) to exercise repeated beep fallback cycles with mid-fallback volume/mute toggles, ensuring WAV resume and bounded tag_miss growth.
+- Added host Unity case `test_audio_processor_partial_read_should_preserve_tags` in [esp_bt_audio_source/test/host_test/test_audio_processor_real.c](esp_bt_audio_source/test/host_test/test_audio_processor_real.c) to cover partial audio_processor_read calls without fallback, asserting tag alignment and no tag_miss increments.
+- Tests not yet run after these additions; next step is to run target-specific suites (at least test_audio_processor_real and test_app_audio) once hardware/time permit.
 ### WAV fallback volume-change resume (2025-12-21T23:55:00-08:00)
 - Added device Unity case `test_wav_fallback_with_live_volume_changes_should_resume_cleanly` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c) to verify WAV data resumes after fallback when volume drops below 100 then returns to 100, with bounded tag_miss and fallback frames draining to zero.
 - Ran `. $HOME/esp/esp-idf/export.sh && .venv/bin/python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio`; suite passed (log: esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log). Device totals now include the new case (46/46 in this run).
