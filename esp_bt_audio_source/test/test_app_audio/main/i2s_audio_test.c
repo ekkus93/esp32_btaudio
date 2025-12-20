@@ -15,6 +15,7 @@
 
 #include "i2s_audio.h"
 #include "audio_test_helpers.h"
+#include "audio_processor.h"
 
 static const char *TAG = "I2S_AUDIO_TEST";
 
@@ -34,6 +35,20 @@ void tearDown(void)
     ESP_LOGI(TAG, "Tearing down I2S audio test");
     if (i2s_is_driver_installed()) {
         i2s_driver_deinit();
+    }
+
+    /* Also reset the audio processor so tests that fail early do not
+     * contaminate subsequent cases. */
+    audio_status_t status = {0};
+    if (audio_processor_get_status(&status) == ESP_OK) {
+        if (status.running) {
+            (void)audio_processor_stop();
+        }
+        if (status.initialized) {
+            (void)audio_processor_drain_ringbuffer();
+            audio_processor_test_reset_tag_miss_count();
+            (void)audio_processor_deinit();
+        }
     }
 }
 

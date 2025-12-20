@@ -371,6 +371,7 @@ static void test_beep_should_not_report_tag_miss(void);
 #ifdef CONFIG_BT_MOCK_TESTING
 static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void);
 static void test_beep_fallback_should_align_and_drain(void);
+static void test_fallback_volume_and_wav_resume_alignment(void);
 #endif
 
 void run_audio_processor_tests(void)
@@ -390,6 +391,7 @@ void run_audio_processor_tests(void)
 #ifdef CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_beep_fallback_should_align_and_drain);
     RUN_TEST(test_audio_processor_idle_failures_should_not_enable_synth_with_beep);
+    RUN_TEST(test_fallback_volume_and_wav_resume_alignment);
 #endif
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
@@ -519,6 +521,87 @@ static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep
 
     /* Reset the test-only state to avoid leaking into other tests. */
     audio_processor_test_idle_i2s_failures(0, false, 0, NULL, NULL);
+}
+
+static void test_fallback_volume_and_wav_resume_alignment(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 0, /* verify volume scaling mutes fallback */
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    uint8_t wav_payload[512];
+    memset(wav_payload, 0x33, sizeof(wav_payload));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(wav_payload, sizeof(wav_payload)));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(600));
+
+    bool fallback_active = false;
+    for (int i = 0; i < 20; ++i) {
+        fallback_active = audio_processor_test_is_beep_fallback_active();
+        if (fallback_active) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fallback_active, "Fallback synth did not activate");
+
+    uint8_t buf[1024];
+    bool fallback_all_zero = true;
+    const int max_fallback_reads = 160;
+    for (int i = 0; i < max_fallback_reads && audio_processor_test_is_beep_fallback_active(); ++i) {
+        size_t bytes_read = 0;
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+        (void)audio_processor_test_get_beep_fallback_frames_remaining();
+        for (size_t j = 0; j < bytes_read; ++j) {
+            if (buf[j] != 0) {
+                fallback_all_zero = false;
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_TRUE_MESSAGE(fallback_all_zero, "Fallback output was not muted at volume 0");
+
+    /* Focus subsequent assertions on WAV resume path; ignore any fallback tag counters. */
+    audio_processor_test_reset_tag_miss_count();
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_set_volume(80));
+
+    bool saw_wav = false;
+    for (int i = 0; i < 40; ++i) {
+        size_t bytes_read = 0;
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+        if (bytes_read == 0) {
+            break;
+        }
+        if (!audio_processor_test_is_beep_fallback_active()) {
+            saw_wav = true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "WAV data did not resume after fallback");
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(1, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }
 #endif
 

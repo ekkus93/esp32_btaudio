@@ -1,4 +1,15 @@
 ## Current Focus
+### Full sweep after tag-drain logging (2025-12-20T08:08:51-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root; all suites green — host 213/213, device test_app 54/54, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 158/158). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Confirms recent audio_processor tag-drain logging change is non-regressive; no code edits in this run.
+### Full sweep green after teardown consolidation (2025-12-20T06:50:00-08:00)
+- Unified Unity `tearDown` in [esp_bt_audio_source/test/test_app_audio/main/i2s_audio_test.c](esp_bt_audio_source/test/test_app_audio/main/i2s_audio_test.c#L14-L47) to also stop/drain/deinit the audio processor and reset tag misses, resolving cross-test contamination when assertions fail early.
+- Adjusted fallback/WAV alignment test in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L557-L608) to stop the processor before draining tags and asserting tag_used==0.
+- Full `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green: host 213/213; device suites test_app 54/54, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate 158/158). Summary at tmp/run_all_tests_summary.json.
+### Fallback/WAV alignment tests (2025-12-20T06:24:36-08:00)
+- Added host Unity case `test_fallback_then_wav_should_keep_tags_aligned` in [esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c](esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c#L105-L178) to queue WAV data, force beep fallback, and verify tag alignment plus WAV resume with non-silent fallback output.
+- Added device Unity case `test_fallback_volume_and_wav_resume_alignment` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L525-L596) under CONFIG_BT_MOCK_TESTING to assert volume=0 mutes fallback synth, volume raise restores WAV playback, and tags remain aligned with zero misses.
+- Host run: `ctest --output-on-failure -R test_audio_tag_alignment` (test/host_test/build_host_tests) passes 1/1. Device run: `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio` passes; logs in test_app_audio/build/one_run_unity.log.
 ### Host tag drain flush (2025-12-20T06:09:13-08:00)
 - Added host-only guard in `audio_processor_read` to flush leftover metadata tags when no audio is produced and all beep/audio buffers are empty, preventing stale tag residue after short beeps.
 - Full host+device sweep: `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green — host 212/212; device suites test_app 54/54, test_app2 45/45, test_app_audio 44/44, test_app3 14/14 (aggregate 157/157). Summary at tmp/run_all_tests_summary.json.

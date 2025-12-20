@@ -586,9 +586,15 @@ static void audio_source_tag_reset_buffer(void)
     if (s_audio_source_buffer == NULL) {
         return;
     }
+    /* Capture baseline before draining for diagnostics. */
+    size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t cap = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    size_t used_before = (cap > free_before) ? (cap - free_before) : 0;
+
     size_t size = 0;
     void *item = NULL;
     const size_t max_take = sizeof(audio_source_tag_item_t);
+    int dropped = 0;
 
     while ((item = xRingbufferReceiveUpTo(s_audio_source_buffer, &size, 0, max_take)) != NULL && size > 0U) {
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -596,12 +602,18 @@ static void audio_source_tag_reset_buffer(void)
         AUDIO_TAG_DIAG("DIAG-TAG-RESET-DRIVE: dropping tag=%u id=%u\n", (unsigned)it->tag, (unsigned)it->counter);
 #endif
         vRingbufferReturnItem(s_audio_source_buffer, item);
+        dropped++;
     }
 #ifdef CONFIG_BT_MOCK_TESTING
     size_t free_now4 = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap4 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     AUDIO_TAG_DIAG("DIAG-TAG-RESET: used=%zu\n", (cap4 > free_now4 ? cap4 - free_now4 : 0));
 #endif
+    size_t free_after = xRingbufferGetCurFreeSize(s_audio_source_buffer);
+    size_t used_after = (cap > free_after) ? (cap - free_after) : 0;
+    if (dropped > 0 || used_before > 0) {
+        ESP_LOGI(TAG, "audio_source_tag_reset_buffer: dropped %d tags (used %zu -> %zu)", dropped, used_before, used_after);
+    }
 }
 
 /* Consume one metadata tag for fallback-generated audio. If no tag is

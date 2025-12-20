@@ -2,6 +2,7 @@
 #include "../../main/include/audio_processor.h"
 #include "esp_heap_caps.h"
 #include <string.h>
+#include <stdlib.h>
 
 void setUp(void)
 {
@@ -101,10 +102,89 @@ void test_tag_miss_recovery_should_drop_stale_beep(void)
     TEST_ASSERT_EQUAL_size_t(0, tags_final);
 }
 
+#ifdef CONFIG_BT_MOCK_TESTING
+void test_fallback_then_wav_should_keep_tags_aligned(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 50;
+    cfg.mute = false;
+
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_reset_tag_miss_count();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    size_t free_bytes = audio_processor_test_get_audio_free_bytes();
+    size_t wav_bytes = free_bytes / 4;
+    if (wav_bytes < 2048) {
+        wav_bytes = (free_bytes > 0 && free_bytes < 2048) ? free_bytes : 2048;
+    }
+    uint8_t *wav_payload = (uint8_t *)malloc(wav_bytes);
+    TEST_ASSERT_NOT_NULL(wav_payload);
+    memset(wav_payload, 0x5A, wav_bytes);
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(wav_payload, wav_bytes));
+    free(wav_payload);
+
+    size_t tags_after_wav = audio_processor_test_get_tag_used();
+    TEST_ASSERT_TRUE_MESSAGE(tags_after_wav > 0, "Expected tags queued for WAV payload");
+
+    size_t remaining = audio_processor_test_get_audio_free_bytes();
+    if (remaining > 0) {
+        uint8_t *pad = (uint8_t *)malloc(remaining);
+        TEST_ASSERT_NOT_NULL(pad);
+        memset(pad, 0x22, remaining);
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(pad, remaining));
+        free(pad);
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_audio_free_bytes());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep(600));
+    TEST_ASSERT_TRUE_MESSAGE(audio_processor_test_is_beep_fallback_active(), "Fallback synth did not activate");
+
+    uint8_t out[2048];
+    bool saw_nonzero = false;
+    bool saw_wav = false;
+    for (int i = 0; i < 120; ++i) {
+        size_t bytes_read = 0;
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+        if (bytes_read == 0) {
+            break;
+        }
+        for (size_t j = 0; j < bytes_read; ++j) {
+            if (out[j] != 0) {
+                saw_nonzero = true;
+                break;
+            }
+        }
+        if (!audio_processor_test_is_beep_fallback_active()) {
+            saw_wav = true;
+        }
+    }
+
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_TRUE_MESSAGE(saw_nonzero, "Fallback output was unexpectedly silent");
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "Queued WAV audio did not resume after fallback");
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
+}
+#endif
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_producer_consumer_tag_alignment_beep);
     RUN_TEST(test_tag_miss_recovery_should_drop_stale_beep);
+#ifdef CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_fallback_then_wav_should_keep_tags_aligned);
+#endif
     return UNITY_END();
 }
