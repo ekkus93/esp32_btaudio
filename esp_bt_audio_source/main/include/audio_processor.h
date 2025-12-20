@@ -322,6 +322,10 @@ void audio_processor_test_wav_complete_if_idle(void);
 bool audio_processor_test_wav_is_active(void);
 size_t audio_processor_test_wav_pending_bytes(void);
 size_t audio_processor_test_get_beep_remaining_bytes(void);
+size_t audio_processor_test_get_audio_free_bytes(void);
+bool audio_processor_test_is_beep_fallback_active(void);
+size_t audio_processor_test_get_beep_fallback_frames_remaining(void);
+size_t audio_processor_test_get_beep_fallback_total_frames(void);
 void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after);
 /* Test-only helper: return number of bytes currently stored in the
  * metadata/tag ringbuffer. This is only available in mock/test builds

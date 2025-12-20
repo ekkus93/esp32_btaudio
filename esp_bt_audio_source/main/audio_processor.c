@@ -2382,6 +2382,21 @@ esp_err_t audio_processor_deinit(void)
         s_beep_buffer = NULL;
     }
 
+    /* Reset transient beep/fallback state so subsequent initializations
+     * start clean even if a previous session ended while a beep was
+     * active. */
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = 0;
+    s_beep_prefill_active = false;
+    s_beep_prefill_accum_bytes = 0;
+    s_beep_prefill_goal_bytes = 0;
+    s_beep_fallback_active = false;
+    s_beep_fallback_frames_remaining = 0;
+    s_beep_fallback_total_frames = 0;
+    s_beep_fallback_phase = 0.0;
+    s_beep_fallback_phase_inc = 0.0;
+    portEXIT_CRITICAL(&s_beep_lock);
+
     s_is_initialized = false;
     ESP_LOGI(TAG, "Audio processor deinitialized");
 
@@ -2680,8 +2695,12 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     /* Drain any urgent beep data from the small beep buffer so queued tones
      * are emitted with lower latency than the main ringbuffer. Store any
-     * unconsumed tail in the residual buffer for the next read. */
+     * unconsumed tail in the residual buffer for the next read. When the
+     * fallback synth is armed, discard queued beep chunks instead of
+     * forwarding them so the fallback output length matches the caller's
+     * request. */
     if (!wav_override_beep && s_beep_buffer != NULL && bytes_written < size) {
+        const bool discard_beep_output = s_beep_fallback_active;
         while (bytes_written < size) {
             size_t read_sz = 0;
             size_t free_before = xRingbufferGetCurFreeSize(s_beep_buffer);
@@ -2698,6 +2717,17 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             }
             if (itm == NULL || read_sz == 0) {
                 break;
+            }
+
+            if (discard_beep_output) {
+                if (s_beep_remaining_bytes > read_sz) s_beep_remaining_bytes -= read_sz;
+                else s_beep_remaining_bytes = 0;
+                uint16_t tag_id = 0;
+                if (!audio_source_tag_take_with_id(NULL, &tag_id, 0)) {
+                    audio_source_tag_recover_desync("beep_rb", false, true);
+                }
+                vRingbufferReturnItem(s_beep_buffer, itm);
+                continue;
             }
 
             size_t to_copy = read_sz;
@@ -2774,6 +2804,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     }
 
     if (!wav_override_beep && s_beep_fallback_active) {
+#ifdef CONFIG_BT_MOCK_TESTING
+        ESP_LOGI(TAG, "HOST-FALLBACK: active=%d frames=%zu request=%zu bytes_written=%zu", (int)s_beep_fallback_active, s_beep_fallback_frames_remaining, size, bytes_written);
+#endif
         bool _beep_need_restore_synth = false;
         portENTER_CRITICAL(&s_beep_lock);
         if (s_beep_fallback_active && s_beep_fallback_frames_remaining > 0) {
@@ -2880,6 +2913,10 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
              * synth for fallback playback. */
             s_force_synth = s_beep_prev_force_synth;
             ESP_LOGI(TAG, "audio_processor_beep: fallback finished, restored synth mode=%s", s_force_synth ? "ENABLED" : "DISABLED");
+            if (s_volume_gain < 100 && bytes_written > 0) {
+                apply_volume(buffer, bytes_written, s_volume_gain);
+            }
+            *bytes_read = bytes_written;
             AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback bytes=%zu ret=ESP_OK\n", bytes_written);
             wav_stream_try_refill();
             return ESP_OK;
@@ -3567,7 +3604,58 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
                 size_t free_audio = s_audio_buffer ? xRingbufferGetCurFreeSize(s_audio_buffer) : 0;
                 ESP_LOGW(TAG, "BEEP-DIAG: enqueue fail chunk=%u free_beep=%u free_audio=%u", (unsigned)chunk_bytes, (unsigned)free_beep, (unsigned)free_audio);
             }
-            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, dropping chunk bytes=%u after retries", (unsigned)chunk_bytes);
+            size_t remaining_frames = 0;
+            if (total_frames > frames_generated) {
+                uint64_t rem = total_frames - frames_generated;
+                if (rem > SIZE_MAX) {
+                    remaining_frames = SIZE_MAX;
+                } else {
+                    remaining_frames = (size_t)rem;
+                }
+            }
+            if (remaining_frames == 0) {
+                remaining_frames = chunk_frames;
+            }
+
+            size_t fallback_bytes = 0;
+            if (remaining_frames > 0) {
+                if (remaining_frames > SIZE_MAX / frame_bytes) {
+                    fallback_bytes = SIZE_MAX;
+                } else {
+                    fallback_bytes = remaining_frames * frame_bytes;
+                }
+            }
+            portENTER_CRITICAL(&s_beep_lock);
+            if (!s_beep_fallback_active) {
+                s_beep_fallback_phase = 0.0;
+                s_beep_fallback_total_frames = 0;
+            }
+            s_beep_fallback_phase_inc = phase_inc;
+            if (remaining_frames > 0) {
+                if (SIZE_MAX - s_beep_fallback_frames_remaining < remaining_frames) {
+                    s_beep_fallback_frames_remaining = SIZE_MAX;
+                } else {
+                    s_beep_fallback_frames_remaining += remaining_frames;
+                }
+                if (SIZE_MAX - s_beep_fallback_total_frames < remaining_frames) {
+                    s_beep_fallback_total_frames = SIZE_MAX;
+                } else {
+                    s_beep_fallback_total_frames += remaining_frames;
+                }
+                s_beep_fallback_active = true;
+            }
+            portEXIT_CRITICAL(&s_beep_lock);
+
+            if (fallback_bytes > 0) {
+                s_beep_remaining_bytes += fallback_bytes;
+                s_beep_prefill_accum_bytes += fallback_bytes;
+                bytes_enqueued += fallback_bytes;
+            }
+
+            /* Push a metadata tag so fallback-generated samples stay aligned with consumers. */
+            (void)audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP);
+
+            ESP_LOGW(TAG, "audio_processor_beep: ringbuffer full, enabling fallback bytes=%u frames=%u", (unsigned)fallback_bytes, (unsigned)remaining_frames);
             break;
         }
 
@@ -5127,6 +5215,51 @@ size_t audio_processor_test_get_beep_remaining_bytes(void)
 {
     AUDIO_PROC_LOG_ONCE();
     return s_beep_remaining_bytes;
+}
+
+size_t audio_processor_test_get_audio_free_bytes(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    if (s_audio_buffer == NULL) {
+        return 0;
+    }
+    return xRingbufferGetCurFreeSize(s_audio_buffer);
+}
+
+bool audio_processor_test_is_beep_fallback_active(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    bool active = false;
+    portENTER_CRITICAL(&s_beep_lock);
+    active = s_beep_fallback_active;
+    portEXIT_CRITICAL(&s_beep_lock);
+#ifdef CONFIG_BT_MOCK_TESTING
+    ESP_LOGI(TAG, "HOST-FALLBACK-QUERY active=%d", active ? 1 : 0);
+#endif
+    return active;
+}
+
+size_t audio_processor_test_get_beep_fallback_frames_remaining(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    size_t frames = 0;
+    portENTER_CRITICAL(&s_beep_lock);
+    frames = s_beep_fallback_frames_remaining;
+    portEXIT_CRITICAL(&s_beep_lock);
+#ifdef CONFIG_BT_MOCK_TESTING
+    ESP_LOGI(TAG, "HOST-FALLBACK-FRAMES frames=%zu total=%zu", frames, s_beep_fallback_total_frames);
+#endif
+    return frames;
+}
+
+size_t audio_processor_test_get_beep_fallback_total_frames(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    size_t frames = 0;
+    portENTER_CRITICAL(&s_beep_lock);
+    frames = s_beep_fallback_total_frames;
+    portEXIT_CRITICAL(&s_beep_lock);
+    return frames;
 }
 
 void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after)

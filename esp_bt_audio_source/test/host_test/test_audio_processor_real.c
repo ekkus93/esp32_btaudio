@@ -10,10 +10,17 @@
 #include "../../main/include/audio_processor.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* Expose UNIT_TEST hook from audio_processor.c */
 bool audio_processor_test_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks);
+
+#ifdef CONFIG_SPIRAM
+#define TEST_AUDIO_BUFFER_SIZE (48000 * 4 * 2) /* matches AUDIO_BUFFER_SIZE when PSRAM is enabled */
+#else
+#define TEST_AUDIO_BUFFER_SIZE (131072)        /* DRAM-safe fallback */
+#endif
 
 void test_audio_processor_idle_i2s_should_not_reenable_below_threshold(void)
 {
@@ -137,6 +144,63 @@ void test_audio_processor_autostart_cooldown(void)
     TEST_ASSERT_TRUE(audio_processor_test_autostart_due((TickType_t)150, (TickType_t)100, (TickType_t)50));
 }
 
+void test_audio_processor_beep_should_activate_fallback_when_buffers_full(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 50;
+    cfg.mute = false;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+
+    size_t audio_free = audio_processor_test_get_audio_free_bytes();
+    TEST_ASSERT_GREATER_THAN_UINT(0, audio_free);
+
+    uint8_t *big_payload = (uint8_t *)malloc(audio_free);
+    TEST_ASSERT_NOT_NULL(big_payload);
+    memset(big_payload, 0, audio_free);
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(big_payload, audio_free));
+
+    /* Ringbuffer should now be full. */
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_audio_free_bytes());
+
+    /* Now the ringbuffer should refuse additional data. */
+    uint8_t payload[1024] = {0};
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_NO_MEM, audio_processor_test_inject_audio_data(payload, sizeof(payload)));
+
+    free(big_payload);
+
+    /* Activate a long beep while both ringbuffers are saturated; this should arm the fallback synth. */
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep_tone(800 /* ms */, 440.0));
+    TEST_ASSERT_TRUE(audio_processor_test_is_beep_fallback_active());
+
+    size_t fallback_frames = audio_processor_test_get_beep_fallback_frames_remaining();
+    TEST_ASSERT_GREATER_THAN_UINT(0, fallback_frames);
+
+    const size_t frame_bytes = 4; /* 16-bit stereo */
+    size_t request = fallback_frames * frame_bytes;
+    if (request == 0) {
+        request = frame_bytes;
+    }
+
+    uint8_t *out = (uint8_t *)malloc(request);
+    TEST_ASSERT_NOT_NULL(out);
+
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, request, &bytes_read));
+    TEST_ASSERT_EQUAL_UINT32(request, bytes_read);
+
+    free(out);
+
+    /* Fallback should be drained after the read. */
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_beep_remaining_bytes());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -146,5 +210,6 @@ int main(void)
     RUN_TEST(test_audio_processor_alloc_with_psram);
     RUN_TEST(test_audio_processor_alloc_without_psram);
     RUN_TEST(test_audio_processor_autostart_cooldown);
+    RUN_TEST(test_audio_processor_beep_should_activate_fallback_when_buffers_full);
     return UNITY_END();
 }

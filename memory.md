@@ -1,4 +1,15 @@
 ## Current Focus
+### Test_utils path fix + full sweep (2025-12-20T05:24:41-08:00)
+- Managed dependency for device test apps to use ESP-IDF's bundled test_utils via `override_path: "$IDF_PATH/tools/unit-test-app/components/test_utils"` in each main/idf_component.yml; added IDF unit-test-app component dir to EXTRA_COMPONENT_DIRS for all test apps.
+- Rebuilt test_app, test_app2, and test_app_audio successfully under ESP-IDF 5.5.1.
+- Full `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green: host 212/212, device totals — test_app 54/54, test_app2 45/45, test_app_audio 43/43, test_app3 14/14 (aggregate device 156/156). Summaries in tmp/run_all_tests_summary.json and per-suite one_run_unity.log files refreshed.
+### Beep fallback host test green (2025-12-20T05:01:34-08:00)
+- Skip copying queued beep ringbuffer data when the fallback synth is armed so fallback frames drive output deterministically; apply volume/bytes_read on early fallback return.
+- Added host-only diagnostics for fallback query helpers; rebuilt `test_audio_processor_real` and `ctest -R test_audio_processor_real --output-on-failure` now passes.
+### Beep fallback activation progress (2025-12-20T04:34:27-08:00)
+- Implemented fallback activation when beep enqueue fails: on ringbuffer full, accumulate remaining frames into fallback generator, carry phase increment, and push tag to keep metadata aligned. Added test-only helpers to read fallback active/frames state. Host tests not rerun yet.
+### Beep fallback activation gap (2025-12-20T04:26:36-08:00)
+- audio_processor.c (main) defines fallback generator state but never sets `s_beep_fallback_active`/frames to true; only resets. Expectation is fallback should engage when beep enqueue fails (ringbuffer full). Pending: add host Unity test that fills audio buffer, triggers beep, asserts fallback/tag alignment, and likely fix activation.
 ### Relocation push (2025-12-19T06:56:32-08:00)
 - Committed and pushed 03900ffc moving all device test apps under esp_bt_audio_source/test/, carrying doc/tool path updates and the new test_app_audio sdkconfig/sdkconfig.defaults; no additional tests run after this push (last full sweep earlier on 2025-12-19 was green).
 ### Test app relocation (2025-12-19T06:30:00-08:00)

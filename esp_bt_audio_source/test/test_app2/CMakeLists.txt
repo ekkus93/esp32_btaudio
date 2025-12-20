@@ -2,7 +2,12 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Set extra components directory
-set(EXTRA_COMPONENT_DIRS "../../components" "${CMAKE_SOURCE_DIR}/components" "${CMAKE_SOURCE_DIR}/../test_app/components")
+set(EXTRA_COMPONENT_DIRS
+    "../../components"
+    "${CMAKE_SOURCE_DIR}/components"
+    "${CMAKE_SOURCE_DIR}/../test_app/components"
+    "$ENV{IDF_PATH}/tools/unit-test-app/components"
+)
 
 # Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

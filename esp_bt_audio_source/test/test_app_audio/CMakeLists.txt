@@ -10,6 +10,7 @@ set(EXTRA_COMPONENT_DIRS
     "../../components/nvs_storage"
     "../../components/util_safe"
     "../test_app/components"
+    "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )
 
 # Use the repository's partition table (which contains a spiffs partition)

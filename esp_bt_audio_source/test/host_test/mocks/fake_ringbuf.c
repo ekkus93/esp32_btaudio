@@ -63,13 +63,7 @@ void* xRingbufferReceive(RingbufHandle_t handle, size_t* item_size, unsigned tic
     if (!handle || !item_size) return NULL;
     mock_ringbuf_t* r = (mock_ringbuf_t*)handle;
     if (r->used == 0) { *item_size = 0; return NULL; }
-    /* Return pointer to data (caller must return it) */
-    /* Simulate consumption: return up to the full used size and reduce
-     * the mock's used count to reflect that the item has been taken.
-     * In the real FreeRTOS ringbuffer the caller must call
-     * vRingbufferReturnItem() to free the memory; our lightweight mock
-     * models this by adjusting used on receive so tests observing
-     * free-size see the expected change. */
+    /* Return pointer to data (caller must return it). Consume everything. */
     *item_size = r->used;
     r->used = 0;
     return r->data;
@@ -96,10 +90,10 @@ int xRingbufferSend(RingbufHandle_t handle, const void* item, size_t size, unsig
     (void)ticks_to_wait;
     if (!handle || !item) return 0; /* pdFALSE */
     mock_ringbuf_t* r = (mock_ringbuf_t*)handle;
-    if (size > r->capacity) return 0;
-    /* Store beginning of buffer and set used to size */
-    memcpy(r->data, item, size);
-    r->used = size;
+    if (size > r->capacity || size > (r->capacity - r->used)) return 0;
+    /* Append into the backing buffer (no wrap handling needed for tests). */
+    memcpy(r->data + r->used, item, size);
+    r->used += size;
     return 1; /* pdTRUE */
 }
 
