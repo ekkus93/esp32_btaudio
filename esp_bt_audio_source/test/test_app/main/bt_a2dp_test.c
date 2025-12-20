@@ -10,6 +10,7 @@
 #include "include/unity_config.h"
 #include "unity.h"
 #include "esp_log.h"
+#include "esp_a2dp_api.h"
 // Add required FreeRTOS includes
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,6 +20,9 @@
 #include "bt_mock_setup.h"  // Update this include
 #include "bt_test_setup.h"
 #include "test_helpers.h"
+
+// Test hook to inject A2DP events into the manager from device tests
+void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 
 /* Test-only stub helper that clears the deferred disconnect visibility flag. */
 void bt_source_stub_release_disconnect_visibility(void);
@@ -83,6 +87,21 @@ static bool wait_for_authoritative_connected_state(bool expected, int timeout_ms
              last_mock_state,
              waited);
     return false;
+}
+
+static void parse_test_addr(esp_bd_addr_t out)
+{
+    unsigned int b0, b1, b2, b3, b4, b5;
+    if (sscanf(TEST_DEVICE_ADDR, "%02x:%02x:%02x:%02x:%02x:%02x", &b0, &b1, &b2, &b3, &b4, &b5) == 6) {
+        out[0] = (uint8_t)b0;
+        out[1] = (uint8_t)b1;
+        out[2] = (uint8_t)b2;
+        out[3] = (uint8_t)b3;
+        out[4] = (uint8_t)b4;
+        out[5] = (uint8_t)b5;
+    } else {
+        memset(out, 0, ESP_BD_ADDR_LEN);
+    }
 }
 
 // Test 1: Bluetooth stack initialization
@@ -695,6 +714,66 @@ void test_streaming_state_reporting(void) {
     bt_disconnect();
 }
 
+/* Ensure remote suspend clears streaming and a resumed START restores it. */
+void test_remote_suspend_and_resume_should_toggle_stream_state(void) {
+    test_bt_manager_init();
+    bt_mock_setup_common();
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+
+    esp_a2d_cb_param_t param = {0};
+    parse_test_addr(param.audio_stat.remote_bda);
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, bt_get_streaming_state());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PAUSED, bt_get_streaming_state());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, bt_get_streaming_state());
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
+}
+
+/* Disconnect mid-stream should clear streaming and auto-reconnect with delay. */
+void test_disconnect_during_streaming_should_reconnect_and_stop_stream(void) {
+    test_bt_manager_init();
+    bt_mock_setup_common();
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_set_auto_reconnect(true));
+
+    bt_conn_test_reset_state();
+    const esp_err_t reconnect_results[] = {ESP_FAIL, ESP_OK};
+    bt_conn_test_set_reconnect_results(reconnect_results, sizeof(reconnect_results) / sizeof(reconnect_results[0]));
+    bt_conn_test_set_reconnect_delay_ms(30);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_connect_device(TEST_DEVICE_ADDR));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_a2dp_start_streaming());
+    TEST_ASSERT_TRUE(bt_a2dp_is_streaming());
+
+    TickType_t start_ticks = xTaskGetTickCount();
+    TEST_ASSERT_EQUAL(ESP_OK, bt_simulate_disconnect());
+    TEST_ASSERT_TRUE(wait_for_authoritative_connected_state(true, 2000));
+    TickType_t end_ticks = xTaskGetTickCount();
+
+    uint32_t elapsed_ms = (uint32_t)((end_ticks - start_ticks) * portTICK_PERIOD_MS);
+    uint32_t expected_ms = 2U * 30U;
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(expected_ms, elapsed_ms);
+
+    TEST_ASSERT_FALSE(bt_a2dp_is_streaming());
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_TRUE(info.connected);
+    TEST_ASSERT_EQUAL_UINT8(0, info.retry_count);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_disconnect());
+}
+
 /**
  * Run all Bluetooth A2DP tests
  */
@@ -733,6 +812,8 @@ void run_bt_a2dp_tests(void)
     RUN_TEST(test_streaming_requires_connection);
     RUN_TEST(test_streaming_pause_resume);
     RUN_TEST(test_streaming_state_reporting);
+    RUN_TEST(test_remote_suspend_and_resume_should_toggle_stream_state);
+    RUN_TEST(test_disconnect_during_streaming_should_reconnect_and_stop_stream);
     
     unity_set_setup_function(NULL);
     

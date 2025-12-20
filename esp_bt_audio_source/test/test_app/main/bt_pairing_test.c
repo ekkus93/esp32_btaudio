@@ -20,6 +20,9 @@
 #include "bt_mock_setup.h" // Update this include
 #include "test_helpers.h"
 
+// Test-hook for completing GAP auth flow (declared in bt_manager_test_hooks.c)
+void bt_manager_test_gap_auth_complete(const char* mac, bool success);
+
 // Additional Unity tests covering the command interface pairing commands
 extern void test_pairing_commands_happy_path(void);
 extern void test_enter_pin_uses_default_when_missing(void);
@@ -217,6 +220,19 @@ void test_ssp_confirmation_rejected(void)
     TEST_ASSERT_FALSE(bt_mock_is_ssp_confirm_requested());
     
     ESP_LOGI(TAG, "SSP confirmation rejected test completed");
+}
+
+void test_gap_auth_failure_allows_retry(void)
+{
+    setup_mock_bt_implementation();
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_pairing(TEST_DEVICE_ADDR));
+    bt_manager_test_gap_auth_complete(TEST_DEVICE_ADDR, false);
+
+    /* Pending flags should be cleared so a new pairing attempt succeeds. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_start_pairing(TEST_DEVICE_ADDR));
+
+    bt_mock_reset();
 }
 
 /**
@@ -445,6 +461,7 @@ void run_bt_pairing_tests(void)
     RUN_TEST(test_ssp_confirmation_request);
     RUN_TEST(test_ssp_confirmation_accepted);
     RUN_TEST(test_ssp_confirmation_rejected);
+    RUN_TEST(test_gap_auth_failure_allows_retry);
     RUN_TEST(test_ssp_fallback_to_pin);
     RUN_TEST(test_unpair_specific_device);
     RUN_TEST(test_unpair_all_devices);

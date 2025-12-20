@@ -1,4 +1,10 @@
 ## Current Focus
+### Full sweep after mock sync (2025-12-20T09:20:12-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && /home/phil/work/esp32_btaudio/.venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green — host 215/215, device test_app 57/57, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 161/161). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+### A2DP suspend + mock sync (2025-12-20T09:15:37-08:00)
+- Added remote suspend handling in bt_connection_manager and kept mock streaming state in sync (start/stop/pause/resume + helper to mirror injected audio states); bt_manager now invokes the mock helper under CONFIG_BT_MOCK_TESTING.
+- Auto-reconnect overrides now sync authoritative mock state when forced results return ESP_OK, eliminating stale streaming flags in device reconnect tests.
+- Device-only `python tools/run_all_tests.py --no-host` green: test_app 57/57, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate 161/161). Host suite not rerun after these changes.
 ### Full sweep after tag-drain logging (2025-12-20T08:08:51-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root; all suites green — host 213/213, device test_app 54/54, test_app2 45/45, test_app_audio 45/45, test_app3 14/14 (aggregate device 158/158). Summary at tmp/run_all_tests_summary.json; per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 - Confirms recent audio_processor tag-drain logging change is non-regressive; no code edits in this run.

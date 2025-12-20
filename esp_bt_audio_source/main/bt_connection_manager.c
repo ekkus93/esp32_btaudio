@@ -180,6 +180,13 @@ static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd
     s_a2d_audio_state = state;
     
     switch (state) {
+        case ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND:
+            // Remote pause without full stop; keep connection but mark paused
+            s_reconnect_delay_ms = BT_RECONNECT_DELAY_MS;
+            update_streaming_state(BT_STREAMING_STATE_PAUSED);
+            ESP_LOGI(TAG, "Audio streaming suspended by remote");
+            break;
+
         case ESP_A2D_AUDIO_STATE_STOPPED:
             // In ESP-IDF, ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND might be defined as the same value
             // as ESP_A2D_AUDIO_STATE_STOPPED. We need to handle them differently based on context.

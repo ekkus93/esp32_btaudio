@@ -800,6 +800,7 @@ esp_err_t bt_start_streaming(void)
     // Update streaming state
     s_streaming = true;
     s_streaming_paused = false;
+    s_streaming_state = BT_STREAMING_STATE_STREAMING;
     s_active_profile = BT_PROFILE_A2DP_SINK;
     
     return ESP_OK;
@@ -818,6 +819,7 @@ esp_err_t bt_stop_streaming(void)
     // Update streaming state
     s_streaming = false;
     s_streaming_paused = false;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
     
     return ESP_OK;
 }
@@ -835,6 +837,7 @@ esp_err_t bt_pause_streaming(void)
     // Update streaming state
     s_streaming = false;
     s_streaming_paused = true;
+    s_streaming_state = BT_STREAMING_STATE_PAUSED;
     
     return ESP_OK;
 }
@@ -852,6 +855,7 @@ esp_err_t bt_resume_streaming(void)
     // Update streaming state
     s_streaming = true;
     s_streaming_paused = false;
+    s_streaming_state = BT_STREAMING_STATE_STREAMING;
     
     return ESP_OK;
 }
@@ -1742,6 +1746,14 @@ esp_err_t bt_simulate_disconnect(void) {
 #if CONFIG_BT_MOCK_TESTING
                 if (s_test_reconnect_results_len > 0U && s_test_reconnect_results_idx < s_test_reconnect_results_len) {
                     attempt_res = s_test_reconnect_results[s_test_reconnect_results_idx++];
+                    if (attempt_res == ESP_OK) {
+                        /* Keep the authoritative mock in sync when we short-circuit
+                         * results for deterministic testing. */
+                        esp_err_t sync_res = bt_mock_connect(prev_info.addr);
+                        if (sync_res != ESP_OK) {
+                            ESP_LOGW(TAG, "bt_mock_connect returned %d during forced reconnect", (int)sync_res);
+                        }
+                    }
                 } else {
                     attempt_res = bt_mock_connect(prev_info.addr);
                 }
@@ -1790,6 +1802,24 @@ esp_err_t bt_simulate_disconnect(void) {
     }
     
     return ESP_OK;
+}
+
+/* Keep streaming state in sync with injected A2DP audio state events. */
+void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state)
+{
+    if (state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
+        s_streaming = false;
+        s_streaming_paused = true;
+        s_streaming_state = BT_STREAMING_STATE_PAUSED;
+    } else if (state == ESP_A2D_AUDIO_STATE_STARTED) {
+        s_streaming = true;
+        s_streaming_paused = false;
+        s_streaming_state = BT_STREAMING_STATE_STREAMING;
+    } else if (state == ESP_A2D_AUDIO_STATE_STOPPED) {
+        s_streaming = false;
+        s_streaming_paused = false;
+        s_streaming_state = BT_STREAMING_STATE_STOPPED;
+    }
 }
 
 /* Testing specific mock implementations - only compiled when CONFIG_BT_MOCK_TESTING is enabled */

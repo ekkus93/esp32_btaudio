@@ -577,6 +577,30 @@ void test_bt_a2dp_remote_suspend_clears_playing(void) {
     TEST_ASSERT_EQUAL(1, bt_manager_test_get_autostart_attempts());
 }
 
+// Remote suspend should pause, and a subsequent START resumes playing
+void test_bt_a2dp_remote_suspend_then_resume(void) {
+    bt_manager_set_autostart_enabled(true);
+
+    esp_a2d_cb_param_t param = {0};
+    uint8_t bda[6] = {0x41, 0x42, 0x43, 0x44, 0x45, 0x46};
+    memcpy(param.conn_stat.remote_bda, bda, sizeof(bda));
+    param.conn_stat.state = ESP_A2D_CONNECTION_STATE_CONNECTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    memcpy(param.audio_stat.remote_bda, bda, sizeof(bda));
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_TRUE(bt_manager_test_is_audio_playing());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_FALSE(bt_manager_test_is_audio_playing());
+
+    param.audio_stat.state = ESP_A2D_AUDIO_STATE_STARTED;
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_AUDIO_STATE_EVT, &param);
+    TEST_ASSERT_TRUE(bt_manager_test_is_audio_playing());
+}
+
 // GAP PIN/SSP/auth events should emit command-interface events and clear pending flags
 void test_bt_gap_failure_paths_emit_events_and_clear_pending(void) {
     bt_manager_test_reset_pending();
@@ -595,6 +619,21 @@ void test_bt_gap_failure_paths_emit_events_and_clear_pending(void) {
 
     bt_pairing_request_info_t info = {0};
     TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+}
+
+// GAP auth failure should clear pending and allow a new pairing attempt
+void test_bt_gap_auth_failure_allows_retry(void) {
+    bt_manager_test_reset_pending();
+    bt_manager_test_reset_forces();
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("12:34:56:78:9A:BC"));
+    bt_manager_test_gap_auth_complete("12:34:56:78:9A:BC", false);
+
+    bt_pairing_request_info_t info = {0};
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+
+    TEST_ASSERT_TRUE(bt_manager_test_gap_pin_request("12:34:56:78:9A:BC"));
+    TEST_ASSERT_TRUE(bt_pairing_get_pending_request(&info));
 }
 
 // GAP auth success should emit SUCCESS and clear pending flags
@@ -657,7 +696,9 @@ int main(void) {
     RUN_TEST(test_bt_a2dp_connection_autostart_and_forwarding);
     RUN_TEST(test_bt_a2dp_audio_state_forwarding);
     RUN_TEST(test_bt_a2dp_remote_suspend_clears_playing);
+    RUN_TEST(test_bt_a2dp_remote_suspend_then_resume);
     RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
+    RUN_TEST(test_bt_gap_auth_failure_allows_retry);
     RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
     RUN_TEST(test_bt_a2dp_disconnect_and_stop_clear_playing);
     RUN_TEST(test_bt_disconnect_failure_then_success);

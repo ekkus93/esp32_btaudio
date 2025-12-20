@@ -1720,6 +1720,10 @@ bool bt_manager_test_autostart_on_connect(void) {
 /* Unit-test helper: reuse the production A2DP handlers so host tests can
  * simulate connection/audio state events and validate autostart/forwarding
  * behaviour without ESP_PLATFORM callbacks. */
+#ifdef CONFIG_BT_MOCK_TESTING
+/* Optional mock-side hook to keep device test streaming state in sync. */
+void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state) __attribute__((weak));
+#endif
 void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     if (!param) {
         return;
@@ -1731,6 +1735,11 @@ void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_para
             break;
         case ESP_A2D_AUDIO_STATE_EVT:
             bt_manager_handle_a2dp_audio(param);
+#ifdef CONFIG_BT_MOCK_TESTING
+            if (bt_source_mock_handle_audio_state) {
+                bt_source_mock_handle_audio_state(param->audio_stat.state);
+            }
+#endif
             break;
         default:
             break;

@@ -8,6 +8,7 @@
 
 #include "bt_source.h"
 #include "esp_err.h"
+#include "esp_a2dp_api.h"
 #include "bt_mock.h" /* include the component mock header so BT_MOCK_PROVIDES_PROTOTYPES is defined
 					  * before we check it — avoids static inline vs non-static prototype
 					  * collisions when this header is included before bt_mock.h
@@ -128,6 +129,9 @@ void bt_source_mock_cache_paired_device(const bt_device_t* device);
  * stub helpers and Unity tests see the authoritative connected state.
  */
 void bt_mock_release_disconnect_visibility(void);
+
+/* Synchronize mock streaming state with injected A2DP audio state events. */
+void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state);
 
 #ifdef __cplusplus
 }
