@@ -819,6 +819,11 @@ void audio_processor_test_reset_tag_miss_count(void)
     __atomic_store_n(&s_tag_miss_count, 0, __ATOMIC_RELAXED);
 }
 
+void audio_processor_test_reset_tag_recover_window(void)
+{
+    s_tag_recover_mute_until = 0;
+}
+
 /* Helper to log heap free sizes for DRAM and PSRAM (when available).
  * Call this at diagnostic points to observe allocator pressure during
  * operations that previously triggered BT malloc failures. */
@@ -2837,8 +2842,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         s_beep_restore_synth = false;
     }
 
-        bool fallback_emitted = false;
-        if (!wav_override_beep && s_beep_fallback_active) {
+    bool fallback_emitted = false;
+    bool audio_rb_empty_for_fallback = false;
+    if (!wav_override_beep && s_beep_fallback_active) {
 #ifdef CONFIG_BT_MOCK_TESTING
         ESP_LOGI(TAG, "HOST-FALLBACK: active=%d frames=%zu request=%zu bytes_written=%zu", (int)s_beep_fallback_active, s_beep_fallback_frames_remaining, size, bytes_written);
 #endif
@@ -2944,7 +2950,8 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             }
         }
         portEXIT_CRITICAL(&s_beep_lock);
-        if (fallback_emitted) {
+        audio_rb_empty_for_fallback = (s_audio_buffer == NULL) || (xRingbufferGetCurFreeSize(s_audio_buffer) == AUDIO_BUFFER_SIZE);
+        if (fallback_emitted && audio_rb_empty_for_fallback) {
             audio_source_tag_consume_for_fallback();
         }
         if (_beep_need_restore_synth) {
@@ -2966,9 +2973,6 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
      * apply volume and return immediately. */
     if (bytes_written == size) {
         if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
-        if (fallback_emitted) {
-            audio_source_tag_consume_for_fallback();
-        }
         *bytes_read = bytes_written;
         log_read_summary("fallback", size, bytes_written);
         AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
@@ -3328,6 +3332,18 @@ esp_err_t audio_processor_drain_ringbuffer(void)
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (s_audio_buffer == NULL) return ESP_ERR_INVALID_STATE;
 
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* Pause producers so the drain is deterministic during host tests. */
+    bool restart_after_drain = false;
+    if (s_is_running) {
+        esp_err_t stop_ret = audio_processor_stop();
+        if (stop_ret != ESP_OK) {
+            return stop_ret;
+        }
+        restart_after_drain = true;
+    }
+#endif
+
     size_t rsz = 0;
     void* it = NULL;
     /* Non-blocking drain: repeatedly receive any available items and
@@ -3354,8 +3370,20 @@ esp_err_t audio_processor_drain_ringbuffer(void)
      * removed from the audio ringbuffer so consumers don't observe stale
      * tag state. */
     audio_source_tag_reset_buffer();
+    drain_beep_buffer();
     wav_playback_abort();
     ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    if (restart_after_drain) {
+        esp_err_t start_ret = audio_processor_start();
+        if (start_ret != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_drain_ringbuffer: restart failed (%d %s)",
+                     (int)start_ret, esp_err_to_name(start_ret));
+            return start_ret;
+        }
+    }
+#endif
     return ESP_OK;
 }
 

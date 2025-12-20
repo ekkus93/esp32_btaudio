@@ -340,6 +340,7 @@ void audio_source_tag_test_reset_buffer(void);
  * available regardless of build config. */
 uint32_t audio_processor_test_get_tag_miss_count(void);
 void audio_processor_test_reset_tag_miss_count(void);
+void audio_processor_test_reset_tag_recover_window(void);
 
 /**
  * @brief Play a WAV file from the filesystem and inject it into the audio pipeline
