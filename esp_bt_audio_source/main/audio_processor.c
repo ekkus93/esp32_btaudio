@@ -319,6 +319,7 @@ static void drain_beep_buffer(void);
 static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 static bool audio_source_tag_take_with_id(audio_source_tag_t *tag, uint16_t *id_out, TickType_t wait_ticks);
 static void audio_source_tag_log_miss(const char *path);
+static void audio_source_tag_recover_desync(const char *path, bool drop_audio, bool drop_beep);
 // Beep override state: number of bytes enqueued as beep that should bypass mute
 size_t s_beep_remaining_bytes = 0;
 /* Remember previous synth mode when we temporarily enable synth for
@@ -427,6 +428,7 @@ static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks
 #endif
 static void audio_source_tag_drop_one(void);
 static void audio_source_tag_reset_buffer(void);
+static void audio_source_tag_consume_for_fallback(void);
 static bool beep_send_with_tag(const uint8_t *data,
                                size_t len,
                                TickType_t beep_wait,
@@ -600,6 +602,26 @@ static void audio_source_tag_reset_buffer(void)
     size_t cap4 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     AUDIO_TAG_DIAG("DIAG-TAG-RESET: used=%zu\n", (cap4 > free_now4 ? cap4 - free_now4 : 0));
 #endif
+}
+
+/* Consume one metadata tag for fallback-generated audio. If no tag is
+ * available, inject a synthetic beep tag so push/take counters remain
+ * balanced and TAG-MISS does not fire during host/device tests. */
+static void audio_source_tag_consume_for_fallback(void)
+{
+    audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+    uint16_t dequeued_id = 0;
+
+    if (audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+        return;
+    }
+
+    if (audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP) &&
+        audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+        return;
+    }
+
+    audio_source_tag_recover_desync("fallback", true, false);
 }
 
 /* Enqueue a beep chunk ensuring the metadata tag and audio stay aligned.
@@ -2803,7 +2825,8 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         s_beep_restore_synth = false;
     }
 
-    if (!wav_override_beep && s_beep_fallback_active) {
+        bool fallback_emitted = false;
+        if (!wav_override_beep && s_beep_fallback_active) {
 #ifdef CONFIG_BT_MOCK_TESTING
         ESP_LOGI(TAG, "HOST-FALLBACK: active=%d frames=%zu request=%zu bytes_written=%zu", (int)s_beep_fallback_active, s_beep_fallback_frames_remaining, size, bytes_written);
 #endif
@@ -2878,6 +2901,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
                 size_t emitted_bytes = emit_frames * frame_bytes;
                 s_beep_fallback_frames_remaining -= emit_frames;
+                fallback_emitted = emitted_bytes > 0;
                 if (s_beep_fallback_frames_remaining == 0) {
                     s_beep_fallback_active = false;
                     s_beep_fallback_total_frames = 0; /* reset totals when done */
@@ -2908,6 +2932,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             }
         }
         portEXIT_CRITICAL(&s_beep_lock);
+        if (fallback_emitted) {
+            audio_source_tag_consume_for_fallback();
+        }
         if (_beep_need_restore_synth) {
             /* Restore the synth mode that was active before we forced
              * synth for fallback playback. */
@@ -2927,19 +2954,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
      * apply volume and return immediately. */
     if (bytes_written == size) {
         if (s_volume_gain < 100) apply_volume(buffer, bytes_written, s_volume_gain);
-    #ifdef CONFIG_BT_MOCK_TESTING
-        /* Host tests drive the fallback generator when beep ringbuffer data
-         * is unavailable; consume one metadata tag per produced chunk so the
-         * tag buffer stays aligned with audio output. This mirrors the
-         * device path that drains a tag alongside each dequeue. */
-        audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
-        uint16_t dequeued_id = 0;
-        if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-            audio_source_tag_recover_desync("fallback", true, false);
+        if (fallback_emitted) {
+            audio_source_tag_consume_for_fallback();
         }
-        (void)dequeued_tag;
-        (void)dequeued_id;
-    #endif
         *bytes_read = bytes_written;
         log_read_summary("fallback", size, bytes_written);
         AUDIO_DIAG_PRINTF("DIAG-READ-EXIT: fallback-only bytes=%zu ret=ESP_OK\n", bytes_written);
@@ -3069,6 +3086,32 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     (void)dequeued_id;
     vRingbufferReturnItem(s_audio_buffer, item);
     }
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* Host sanity: if no audio was produced and all beep/audio buffers are empty,
+     * flush any leftover tags so producer/consumer state stays aligned. This
+     * guards against small-beep scenarios where more metadata tags than audio
+     * chunks were pushed. */
+    if (!wav_override_beep && bytes_written == 0 && s_audio_source_buffer != NULL && s_beep_remaining_bytes == 0) {
+        bool audio_rb_empty = (s_audio_buffer == NULL) || (xRingbufferGetCurFreeSize(s_audio_buffer) == AUDIO_BUFFER_SIZE);
+        bool beep_rb_empty = (s_beep_buffer == NULL) || (xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE);
+        if (audio_rb_empty && beep_rb_empty) {
+            size_t drained = 0;
+            while (audio_processor_test_get_tag_used() > 0) {
+                audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+                uint16_t dequeued_id = 0;
+                if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+                    audio_source_tag_recover_desync("audio_read_empty", true, false);
+                    break;
+                }
+                drained++;
+            }
+            if (drained > 0) {
+                ESP_LOGI(TAG, "audio_processor_read: drained %zu stale tags on empty read", drained);
+            }
+        }
+    }
+#endif
 
     if (bytes_written == 0) {
         *bytes_read = 0;

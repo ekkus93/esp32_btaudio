@@ -1,5 +1,7 @@
 # Enable SPIRAM (PSRAM) for test runs so PSRAM allocations are exercised.
 CONFIG_SPIRAM=n
+# Enable mock hooks so test-only helpers (beep fallback, tag counters, etc.) are compiled for device tests.
+CONFIG_BT_MOCK_TESTING=y
 # Choose a reasonable default speed/mode — keep minimal to avoid platform-specific issues.
 # These can be adjusted per-board if needed.
 #CONFIG_SPIRAM_SPEED_80M=y

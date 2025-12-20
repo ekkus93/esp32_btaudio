@@ -1,4 +1,13 @@
 ## Current Focus
+### Host tag drain flush (2025-12-20T06:09:13-08:00)
+- Added host-only guard in `audio_processor_read` to flush leftover metadata tags when no audio is produced and all beep/audio buffers are empty, preventing stale tag residue after short beeps.
+- Full host+device sweep: `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green — host 212/212; device suites test_app 54/54, test_app2 45/45, test_app_audio 44/44, test_app3 14/14 (aggregate 157/157). Summary at tmp/run_all_tests_summary.json.
+### Fallback tag drain fix (2025-12-20T05:58:25-08:00)
+- Added `audio_source_tag_consume_for_fallback` to synthesize/consume metadata tags for fallback-generated beep audio and avoid TAG-MISS during host/device reads; fallback chunk emission now consumes tags per chunk even on early return.
+- Device-only rerun: `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --no-host --port /dev/ttyUSB0 --timeout 600` -> device suites all green (test_app 54/54, test_app2 45/45, test_app_audio 44/44, test_app3 14/14; aggregate 157/157). Host tests were skipped on this run.
+### Device fallback alignment test (2025-12-20T05:40:07-08:00)
+- Enabled CONFIG_BT_MOCK_TESTING in test_app_audio/sdkconfig.defaults so test-only beep fallback/tag helpers are available on device builds.
+- Added Unity case test_beep_fallback_should_align_and_drain in test/test_app_audio/main/audio_processor_test.c to force beep buffer saturation, assert fallback activation, drain synthesized frames to zero, and verify tag_miss counter stays at 0.
 ### Test_utils path fix + full sweep (2025-12-20T05:24:41-08:00)
 - Managed dependency for device test apps to use ESP-IDF's bundled test_utils via `override_path: "$IDF_PATH/tools/unit-test-app/components/test_utils"` in each main/idf_component.yml; added IDF unit-test-app component dir to EXTRA_COMPONENT_DIRS for all test apps.
 - Rebuilt test_app, test_app2, and test_app_audio successfully under ESP-IDF 5.5.1.

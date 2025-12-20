@@ -370,6 +370,7 @@ static void test_play_wav_command(void);
 static void test_beep_should_not_report_tag_miss(void);
 #ifdef CONFIG_BT_MOCK_TESTING
 static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void);
+static void test_beep_fallback_should_align_and_drain(void);
 #endif
 
 void run_audio_processor_tests(void)
@@ -387,6 +388,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_buffer_management);
     RUN_TEST(test_beep_should_not_report_tag_miss);
 #ifdef CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_beep_fallback_should_align_and_drain);
     RUN_TEST(test_audio_processor_idle_failures_should_not_enable_synth_with_beep);
 #endif
     RUN_TEST(test_audio_processor_play_wav_api);
@@ -446,6 +448,65 @@ static void test_beep_should_not_report_tag_miss(void)
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
+static void test_beep_fallback_should_align_and_drain(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Issue a long beep to saturate the small beep buffer so enqueue falls back
+     * to on-the-fly synthesis. Keep the ringbuffer untouched so saturation is
+     * guaranteed. */
+    const uint32_t duration_ms = 800;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(duration_ms));
+
+    bool fallback_active = false;
+    const int max_waits = 20;
+    for (int i = 0; i < max_waits; ++i) {
+        fallback_active = audio_processor_test_is_beep_fallback_active();
+        if (fallback_active) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(25));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(fallback_active, "Fallback synth did not activate");
+
+    size_t total_frames = audio_processor_test_get_beep_fallback_total_frames();
+    size_t remaining_frames = audio_processor_test_get_beep_fallback_frames_remaining();
+    TEST_ASSERT_TRUE(total_frames > 0);
+    TEST_ASSERT_TRUE(remaining_frames > 0);
+    TEST_ASSERT_TRUE(total_frames >= remaining_frames);
+
+    /* Drain fallback-generated audio and ensure the frame counter reaches zero. */
+    uint8_t buf[2048];
+    size_t bytes_read = 0;
+    const int max_reads = 80;
+    for (int i = 0; i < max_reads && audio_processor_test_get_beep_fallback_frames_remaining() > 0; ++i) {
+        bytes_read = 0;
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+        TEST_ASSERT_TRUE(bytes_read > 0);
+    }
+
+    remaining_frames = audio_processor_test_get_beep_fallback_frames_remaining();
+    TEST_ASSERT_EQUAL(0U, remaining_frames);
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
 static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void)
 {
     bool synth_after = true;
