@@ -208,6 +208,69 @@ void test_tag_recover_should_throttle_and_rearm_after_window(void)
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
+void test_beep_fallback_should_not_double_activate_when_tags_drained(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 60;
+    cfg.mute = false;
+
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_reset_tag_miss_count();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
+
+    size_t free_bytes = audio_processor_test_get_audio_free_bytes();
+    if (free_bytes > 0) {
+        uint8_t *pad = (uint8_t *)malloc(free_bytes);
+        TEST_ASSERT_NOT_NULL(pad);
+        memset(pad, 0x11, free_bytes);
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(pad, free_bytes));
+        free(pad);
+    }
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_audio_free_bytes());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep(800));
+    TEST_ASSERT_TRUE_MESSAGE(audio_processor_test_is_beep_fallback_active(), "Fallback synth did not activate");
+
+    size_t fallback_total_initial = audio_processor_test_get_beep_fallback_total_frames();
+    TEST_ASSERT_TRUE_MESSAGE(fallback_total_initial > 0, "Fallback frames not initialized");
+
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    uint8_t out[1024];
+    int iterations = 0;
+    while (audio_processor_test_is_beep_fallback_active() && iterations < 200) {
+        size_t bytes_read = 0;
+        TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+
+        /* Simulate concurrent tag drain while fallback is active. */
+        audio_source_tag_test_reset_buffer();
+
+        size_t fallback_total_now = audio_processor_test_get_beep_fallback_total_frames();
+        if (!audio_processor_test_is_beep_fallback_active()) {
+            break;
+        }
+        TEST_ASSERT_EQUAL_size_t(fallback_total_initial, fallback_total_now);
+        iterations++;
+    }
+
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_beep_fallback_frames_remaining());
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_beep_fallback_total_frames());
+
+    uint32_t tag_miss_after = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_TRUE_MESSAGE((tag_miss_after - tag_miss_before) <= 1, "Tag miss count grew unexpectedly during fallback");
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
+}
+
 void test_fallback_then_wav_should_keep_tags_aligned(void)
 {
     audio_config_t cfg;
@@ -292,6 +355,7 @@ int main(void)
     RUN_TEST(test_tag_recover_should_drop_untracked_audio_and_reset_counters);
     RUN_TEST(test_tag_recover_should_throttle_and_rearm_after_window);
 #ifdef CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_beep_fallback_should_not_double_activate_when_tags_drained);
     RUN_TEST(test_fallback_then_wav_should_keep_tags_aligned);
 #endif
     return UNITY_END();

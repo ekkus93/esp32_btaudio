@@ -1,4 +1,7 @@
 ## Current Focus
+### Beep fallback concurrency guard (2025-12-21T23:25:00-08:00)
+- Added host Unity case `test_beep_fallback_should_not_double_activate_when_tags_drained` in [esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c](esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c) to ensure fallback activation does not double-trigger while tags drain under concurrent WAV traffic.
+- Full sweep after adding the guard is green via `. $HOME/esp/esp-idf/export.sh && .venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`: host 222/222; device suites test_app 60/60, test_app2 45/45, test_app_audio 46/46, test_app3 14/14 (device aggregate 165/165). Summary: [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json); per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 ### Rapid tag recover throttle coverage (2025-12-20T17:05:00-08:00)
 - Added host Unity case `test_tag_recover_should_throttle_and_rearm_after_window` in [esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c](esp_bt_audio_source/test/host_test/test_audio_tag_alignment.c#L22-L202) to assert tag_miss stays bounded during rapid desyncs and re-arms after forcing the mute window to expire (host tickless fallback uses `audio_processor_test_reset_tag_recover_window`).
 - Rebuilt host tests and ran `ctest -R test_audio_tag_alignment --output-on-failure` in test/host_test/build_host_tests; suite passed with the new coverage.
