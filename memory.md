@@ -1,4 +1,14 @@
 ## Current Focus
+### test_app_audio rerun (2025-12-22T06:55:00-08:00)
+- Reran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio` after adjusting `test_fallback_repeats_should_clear_debt_after_drain`; suite now passes and refreshed [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log).
+- Confirms fallback repeat/drain case is stable with the shorter beep, longer read loop, and conditional drain when fallback remains active.
+### Full sweep green (2025-12-22T07:15:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites passed. Host 224/224. Device: test_app 60/60, test_app2 45/45, test_app_audio 49/49, test_app3 14/14 (aggregate 168/168). Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json) and per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+- Confirms fallback/tag debt changes and new test coverage are stable end-to-end.
+### Fallback drain clears debt (2025-12-20T15:40:21-08:00)
+- Added device Unity case `test_fallback_repeats_should_clear_debt_after_drain` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c) to trigger repeated fallback activations, perform mid-stream reads, then drain the ringbuffer and assert tag_used, fallback debt, and remaining frames drop to zero.
+- audio_processor_drain_ringbuffer now clears fallback state (remaining bytes, prefill accum, active flag, frames, total frames, tag debt, restore flag) under the beep lock before logging, ensuring explicit drains reset fallback metadata alongside audio/tag buffers.
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio` with ESP-IDF 5.5.1; suite passed and refreshed [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log).
 ### Full sweep green after partial-read host case (2025-12-22T05:35:00-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && .venv/bin/python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites green. Host 224/224; device: test_app 60/60, test_app2 45/45, test_app_audio 48/48, test_app3 14/14 (aggregate device 167/167). Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json); per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 - Confirms new host case `test_wav_and_fallback_partial_reads_should_keep_tags_aligned` and fallback tag debt getter are non-regressive.

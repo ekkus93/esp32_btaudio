@@ -3383,6 +3383,17 @@ esp_err_t audio_processor_drain_ringbuffer(void)
      * tag state. */
     audio_source_tag_reset_buffer();
     drain_beep_buffer();
+    /* Clear fallback/beep state so subsequent reads start from a clean
+     * slate after an explicit drain. */
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = 0;
+    s_beep_prefill_accum_bytes = 0;
+    s_beep_fallback_active = false;
+    s_beep_fallback_frames_remaining = 0;
+    s_beep_fallback_total_frames = 0;
+    s_beep_fallback_tag_debt = 0;
+    s_beep_restore_synth = false;
+    portEXIT_CRITICAL(&s_beep_lock);
     wav_playback_abort();
     ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
 

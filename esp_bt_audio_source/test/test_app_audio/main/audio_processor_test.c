@@ -375,6 +375,7 @@ static void test_fallback_volume_and_wav_resume_alignment(void);
 static void test_wav_and_beep_fallback_should_keep_tags_aligned(void);
 static void test_wav_fallback_with_live_volume_changes_should_resume_cleanly(void);
 static void test_wav_fallback_soak_with_volume_and_mute_toggles(void);
+static void test_fallback_repeats_should_clear_debt_after_drain(void);
 #endif
 
 void run_audio_processor_tests(void)
@@ -398,6 +399,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_wav_and_beep_fallback_should_keep_tags_aligned);
     RUN_TEST(test_wav_fallback_with_live_volume_changes_should_resume_cleanly);
     RUN_TEST(test_wav_fallback_soak_with_volume_and_mute_toggles);
+    RUN_TEST(test_fallback_repeats_should_clear_debt_after_drain);
 #endif
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_wav_command);
@@ -885,6 +887,92 @@ static void test_wav_fallback_soak_with_volume_and_mute_toggles(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
     audio_source_tag_test_reset_buffer();
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_fallback_repeats_should_clear_debt_after_drain(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    const int cycles = 3;
+    uint8_t wav_chunk[512];
+    memset(wav_chunk, 0x61, sizeof(wav_chunk));
+    uint8_t read_buf[768];
+
+    for (int cycle = 0; cycle < cycles; ++cycle) {
+        size_t free_bytes = audio_processor_test_get_audio_free_bytes();
+        size_t target_bytes = free_bytes / 2U;
+        if (target_bytes < sizeof(wav_chunk)) {
+            target_bytes = sizeof(wav_chunk);
+        }
+
+        size_t queued = 0;
+        while ((queued + sizeof(wav_chunk)) <= target_bytes) {
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(wav_chunk, sizeof(wav_chunk)));
+            queued += sizeof(wav_chunk);
+        }
+        TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)queued);
+
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(600));
+
+        bool fallback_active = false;
+        for (int i = 0; i < 40; ++i) {
+            fallback_active = audio_processor_test_is_beep_fallback_active();
+            if (fallback_active) {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        TEST_ASSERT_TRUE_MESSAGE(fallback_active, "Fallback did not activate during repeated cycle");
+
+        for (int i = 0; i < 240 && audio_processor_test_is_beep_fallback_active(); ++i) {
+            size_t bytes_read = 0;
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(read_buf, sizeof(read_buf), &bytes_read));
+            TEST_ASSERT_TRUE(bytes_read > 0);
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+
+        if (audio_processor_test_is_beep_fallback_active()) {
+            /* Force a drain mid-stream to ensure cleanup clears fallback state. */
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+        }
+
+        TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+        TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
+        TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_fallback_tag_debt());
+
+        /* Let any remaining WAV data drain before the next cycle. */
+        for (int j = 0; j < 40; ++j) {
+            size_t bytes_read = 0;
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(read_buf, sizeof(read_buf), &bytes_read));
+            if (bytes_read == 0) {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(3));
+        }
+    }
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_fallback_tag_debt());
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
