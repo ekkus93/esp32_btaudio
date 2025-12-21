@@ -1,4 +1,9 @@
 ## Current Focus
+### Tag reset hysteresis tests (2025-12-20T01:25:00-08:00)
+- Added three device Unity cases covering tag reset hysteresis/backlog guards: recent reset skip, backlog-threshold skip, and drain after window expiry in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L855-L964).
+- Reran via full sweep; all device suites now green including the new hysteresis/backlog cases.
+### Full sweep green (2025-12-20T21:39:48-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; everything passed. Host 224/224. Device: test_app 60/60, test_app2 45/45, test_app_audio 50/50 (includes new tag-reset hysteresis/backlog tests), test_app3 14/14; aggregate device 169/169. Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json) with per-suite logs under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 ### WAV abort + tag reset tests (2025-12-20T00:00:00-08:00)
 - Added device Unity cases `test_wav_abort_mid_fallback_should_clear_debt_and_stay_tag_aligned` and `test_tag_reset_buffer_should_drop_backlog_and_skip_host_drain` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L818-L916) to cover WAV abort behavior during fallback and tag_reset_buffer backlog drops. Tests assert fallback tag debt clears, tag_miss stays stable, reads return zero post-abort, and tag reset avoids host drain tag_miss.
 - Tests not yet executed; pending hardware run via test_app_audio or full run_all_tests after code review.

@@ -8,5 +8,5 @@
             "packageManager": "ms-python.python:conda"
         }
     ],
-    "idf.pythonInstallPath": "/home/phil/miniforge3/bin/python"
+    "idf.pythonInstallPath": "/usr/bin/python3"
 }

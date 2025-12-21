@@ -871,6 +871,163 @@ static void test_host_tag_drain_should_skip_when_no_dequeue_with_tag_backlog(voi
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }
 
+static void test_tag_reset_hysteresis_should_skip_host_drain_after_recent_reset(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Reset tags to set the recent-reset window, then enqueue fresh audio + tags. */
+    audio_source_tag_test_reset_buffer();
+    uint8_t chunk[256];
+    memset(chunk, 0x35, sizeof(chunk));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(chunk, sizeof(chunk)));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(chunk, sizeof(chunk)));
+
+    /* First read consumes one tag and leaves residual plus queued data. */
+    uint8_t buf_small[128];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_small, sizeof(buf_small), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
+
+    /* Second read pulls only residual bytes (no dequeue), so host drain would run,
+     * but should skip because the last reset is still within the hysteresis window. */
+    uint8_t buf_resid[64];
+    bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_resid, sizeof(buf_resid), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    TEST_ASSERT_EQUAL_UINT32(tag_used_before, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_tag_reset_hysteresis_should_skip_when_backlog_exceeds_threshold(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Build a tag backlog greater than the drain threshold by injecting many small blocks. */
+    uint8_t chunk[96];
+    memset(chunk, 0x4a, sizeof(chunk));
+    const int pushes = 20;
+    for (int i = 0; i < pushes; ++i) {
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(chunk, sizeof(chunk)));
+    }
+
+    /* Consume part of the first block to create residual and leave many queued items. */
+    uint8_t buf_small[64];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_small, sizeof(buf_small), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_TRUE(tag_used_before > 16);
+
+    /* Residual-only read should leave backlog untouched because drain guard skips when
+     * backlog exceeds threshold. */
+    uint8_t buf_resid[48];
+    bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_resid, sizeof(buf_resid), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    TEST_ASSERT_EQUAL_UINT32(tag_used_before, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_tag_reset_hysteresis_allows_drain_after_window_expires(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    audio_source_tag_test_reset_buffer();
+
+    uint8_t chunk[192];
+    memset(chunk, 0x5c, sizeof(chunk));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(chunk, sizeof(chunk)));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(chunk, sizeof(chunk)));
+
+    uint8_t buf_small[96];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_small, sizeof(buf_small), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
+
+    vTaskDelay(pdMS_TO_TICKS(250));
+
+    /* Residual-only read after the hysteresis window should drain one tag. */
+    uint8_t buf_resid[64];
+    bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf_resid, sizeof(buf_resid), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)bytes_read);
+
+    TEST_ASSERT_EQUAL_UINT32(tag_used_before - 1U, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
 static void test_wav_abort_mid_fallback_should_clear_debt_and_stay_tag_aligned(void)
 {
     audio_processor_test_reset_tag_miss_count();
