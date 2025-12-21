@@ -1,4 +1,6 @@
 ## Current Focus
+### Full sweep green (2025-12-20T20:53:57-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; host 224/224 passed, device suites green: test_app 60/60, test_app2 45/45, test_app_audio 50/50 (includes new host-drain skip tests), test_app3 14/14. Aggregate device 169/169. Logs: tmp/run_all_tests_summary.json and per-suite one_run_unity.log files under esp_bt_audio_source/test/test_app*/build/.
 ### Host tag drain skip on dequeues (2025-12-20T07:50:00-08:00)
 - Updated host-only drain guard to **skip** tag consumption when audio/beep ringbuffers already dequeued data; now logs `HOST TAG DRAIN SKIP drained_from_rb` instead of draining, preventing double tag consumption on normal dequeues. Change in [esp_bt_audio_source/main/audio_processor.c#L3170-L3212](esp_bt_audio_source/main/audio_processor.c#L3170-L3212).
 - Reran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio`; result now **passes** (50/50, 0 failures). No non-skip host drains during idle; only SKIP logs remain at idle tail.

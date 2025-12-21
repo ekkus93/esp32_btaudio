@@ -791,6 +791,86 @@ static void test_wav_fallback_with_live_volume_changes_should_resume_cleanly(voi
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }
 
+static void test_host_tag_drain_should_skip_when_no_source(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Ensure the data path is empty: no WAV pending, empty ringbuffers, no beep data. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+
+    /* With no source data available, the host-only tag drain should skip and
+     * leave tag counts untouched. The read should return zero bytes without
+     * incrementing tag_miss. */
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, audio_processor_test_get_tag_miss_count());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)bytes_read);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_host_tag_drain_should_skip_when_no_dequeue_with_tag_backlog(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Synthesize tag backlog without delivering audio to force the host drain
+     * guard paths (no_dequeue + no_source) to remain in skip mode. */
+    audio_processor_test_wav_begin();
+    audio_processor_test_wav_add_pending(2048);
+
+    /* Do not enqueue audio into the ringbuffer; ensure buffers stay empty. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    /* Force a read; fallback/tag debt paths may produce bytes without any
+     * ringbuffer dequeues, so the host drain must skip. */
+    uint8_t buf[512];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+
+    TEST_ASSERT_EQUAL_UINT32(tag_used_before, audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
 static void test_wav_fallback_soak_with_volume_and_mute_toggles(void)
 {
     audio_processor_test_reset_tag_miss_count();
