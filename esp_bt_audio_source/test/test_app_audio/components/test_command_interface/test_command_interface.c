@@ -10,6 +10,25 @@
  * headers (which may live in the app's main/include directory). */
 extern esp_err_t audio_processor_play_wav(const char* path);
 
+static bool s_bt_connected = true;
+
+bool bt_manager_is_a2dp_connected(void)
+{
+    return s_bt_connected;
+}
+
+void bt_manager_mock_connection_closed(const char* mac)
+{
+    (void)mac;
+    s_bt_connected = false;
+}
+
+void bt_manager_mock_connection_opened(const char* mac)
+{
+    (void)mac;
+    s_bt_connected = true;
+}
+
 // Very small parser that only understands PLAY <filename>
 cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
 {
@@ -59,6 +78,13 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
         } else {
             snprintf(path, sizeof(path), "/spiffs/%s", p);
         }
+
+        if (!bt_manager_is_a2dp_connected()) {
+            ESP_LOGW("TEST_CMD_IF", "A2DP not connected; refusing PLAY for %s", path);
+            printf("DIAG-PLAY-RET: -1 A2DP_NOT_CONNECTED %s\n", path);
+            return CMD_ERROR_UNKNOWN;
+        }
+
         esp_err_t r = audio_processor_play_wav(path);
         if (r != ESP_OK) {
             /* Emit both ESP_LOG and a plain printf so the test monitor

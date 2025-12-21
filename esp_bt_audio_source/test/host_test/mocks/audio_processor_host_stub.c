@@ -19,6 +19,7 @@
 #include "esp_err.h"
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 typedef uint32_t TickType_t;
 
@@ -296,13 +297,22 @@ bool audio_processor_is_synth_mode_enabled(void)
  */
 esp_err_t audio_processor_play_wav(const char* path)
 {
-    (void)path;
+    s_beep_active = false;
+    if (path == NULL || path[0] == '\0')
+    {
+        return ESP_FAIL;
+    }
+
+    struct stat st = {0};
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+    {
+        return ESP_FAIL;
+    }
+
     const size_t chunk = 512;
     uint8_t buf[chunk];
     for (size_t i = 0; i < chunk; ++i) buf[i] = (uint8_t)((i * 17) & 0xFF);
     ring_append(buf, chunk);
-    /* ensure beep flag is not confused with wav playback */
-    s_beep_active = false;
     return ESP_OK;
 }
 

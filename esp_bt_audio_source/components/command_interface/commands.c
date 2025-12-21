@@ -900,16 +900,31 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             break;
         }
         /* Build file path: if caller provided an absolute path use it, otherwise
-         * assume files live under /spiffs/ as a convenience for test flows. */
+         * resolve against the SPIFFS root (host builds may override the root).
+         * Guard against overlong paths instead of silently truncating. */
         char path[256];
         const char *p = ctx->params[0];
+        const char *root_for_path = cmd_files_get_root();
+        if (root_for_path == NULL || root_for_path[0] == '\0')
+        {
+            root_for_path = "/spiffs";
+        }
+
+        int written = 0;
         if (p[0] == '/')
         {
-            cmd_safe_copy(path, sizeof(path), p);
+            written = snprintf(path, sizeof(path), "%s", p);
         }
         else
         {
-            snprintf(path, sizeof(path), "/spiffs/%s", p);
+            size_t root_len = strlen(root_for_path);
+            const char *sep = (root_len > 0 && root_for_path[root_len - 1] == '/') ? "" : "/";
+            written = snprintf(path, sizeof(path), "%s%s%s", root_for_path, sep, p);
+        }
+        if (written < 0 || (size_t)written >= sizeof(path))
+        {
+            cmd_send_response("ERR", "PLAY", "PATH_TOO_LONG", ctx->params[0]);
+            break;
         }
 
         esp_err_t mount_err = cmd_mount_spiffs_if_needed();
@@ -951,8 +966,38 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
 #else
         (void)mount_err;
-        (void)path;
-        if (audio_processor_play_wav(path) == ESP_OK)
+        /* Host build: honor the test-provided spiffs root so PLAY accesses
+         * the same files as FILE/FILES. Build a host_path that points at the
+         * real filesystem location but keep the original filename in the
+         * response so callers see the user-facing name. */
+        char host_path[sizeof(path)] = {0};
+        const char *root = cmd_files_get_root();
+        const char *play_path = path;
+
+        if (ctx->params[0][0] == '/')
+        {
+            cmd_safe_copy(host_path, sizeof(host_path), ctx->params[0]);
+            play_path = host_path;
+        }
+        else if (root != NULL && root[0] != '\0')
+        {
+            size_t root_len = strlen(root);
+            const char *sep = (root_len > 0 && root[root_len - 1] == '/') ? "" : "/";
+            int written = snprintf(host_path, sizeof(host_path), "%s%s%s", root, sep, ctx->params[0]);
+            if (written < 0 || (size_t)written >= sizeof(host_path))
+            {
+                cmd_send_response("ERR", "PLAY", "PATH_TOO_LONG", ctx->params[0]);
+                break;
+            }
+            play_path = host_path;
+        }
+        else
+        {
+            cmd_safe_copy(host_path, sizeof(host_path), path);
+            play_path = host_path;
+        }
+
+        if (audio_processor_play_wav(play_path) == ESP_OK)
             cmd_send_response("OK", "PLAY", "MOCK_ENQUEUED", ctx->params[0]);
         else
             cmd_send_response("ERR", "PLAY", "MOCK_FAILED", ctx->params[0]);

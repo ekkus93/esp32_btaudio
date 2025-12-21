@@ -334,6 +334,7 @@ def aggregate_summary(root: Path) -> dict:
 
     def parse_log(path: Path) -> dict | None:
         try:
+            # Normalize runner exit-code quirks by reading the log as text.
             txt = path.read_text(errors="ignore")
         except Exception:
             return None

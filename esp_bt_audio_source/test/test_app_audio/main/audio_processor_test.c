@@ -17,6 +17,10 @@
 
 static const char *TAG = "AUDIO_PROCESSOR_TEST";
 
+/* Local stubs provided by the test_command_interface component. */
+extern void bt_manager_mock_connection_closed(const char* mac);
+extern void bt_manager_mock_connection_opened(const char* mac);
+
 static void test_audio_processor_init(void)
 {
     audio_config_t config = {
@@ -367,6 +371,7 @@ static void test_audio_buffer_management(void)
 /* forward declarations so RUN_TEST can reference tests defined later */
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
+static void test_play_command_requires_a2dp_connection(void);
 static void test_beep_should_not_report_tag_miss(void);
 #ifdef CONFIG_BT_MOCK_TESTING
 static void test_audio_processor_idle_failures_should_not_enable_synth_with_beep(void);
@@ -404,6 +409,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_fallback_repeats_should_clear_debt_after_drain);
 #endif
     RUN_TEST(test_audio_processor_play_wav_api);
+    RUN_TEST(test_play_command_requires_a2dp_connection);
     RUN_TEST(test_play_wav_command);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
@@ -1499,6 +1505,8 @@ static void test_play_wav_command(void)
      * The project's SPIFFS image should contain /spiffs/worker_long_norm.wav. The
      * test issues the PLAY command (which prepends /spiffs/) and then attempts to
      * read some audio bytes to confirm playback was enqueued. */
+    bt_manager_mock_connection_opened(NULL);
+
     audio_config_t config = {
         .sample_rate = I2S_SAMPLE_RATE,
         .bit_depth = I2S_BIT_DEPTH,
@@ -1564,4 +1572,49 @@ static void test_play_wav_command(void)
 
     ret = audio_processor_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_play_command_requires_a2dp_connection(void)
+{
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    bt_manager_mock_connection_opened(NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_ringbuffer();
+
+    /* Explicitly mark BT as disconnected so PLAY should refuse to queue. */
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    int exec_status = cmd_execute(&ctx);
+    bt_manager_mock_connection_opened(NULL);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(CMD_SUCCESS, exec_status, "PLAY should fail when A2DP is disconnected");
+
+    /* Allow any unexpected worker activity to run, then confirm nothing was enqueued. */
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    uint8_t buf[64];
+    size_t bytes_read = 0;
+    esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    if (ret == ESP_OK) {
+        TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, bytes_read, "PLAY should not enqueue audio when A2DP is disconnected");
+    } else {
+        TEST_ASSERT_TRUE_MESSAGE(ret == ESP_FAIL || ret == ESP_ERR_INVALID_STATE, "Unexpected return from audio_processor_read");
+    }
+
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
 }

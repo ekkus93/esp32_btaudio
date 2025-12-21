@@ -21,6 +21,8 @@ static const size_t k_file_alpha_size = sizeof(k_file_alpha_data) - 1;
 static const char* k_file_beta_name = "beta.bin";
 static const unsigned char k_file_beta_data[] = {0x01, 0x02, 0x7F, 0xA0, 0x00, 0x55};
 static const size_t k_file_beta_size = sizeof(k_file_beta_data);
+static const char* k_file_worker_name = "worker_long_norm.wav";
+static const unsigned char k_file_worker_data[] = {0xDE, 0xAD, 0xBE, 0xEF};
 static const char* k_logs_dir_name = "logs";
 
 static void test_cleanup_spiffs_root(void)
@@ -32,6 +34,8 @@ static void test_cleanup_spiffs_root(void)
     snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_alpha_name);
     unlink(path);
     snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_beta_name);
+    unlink(path);
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_worker_name);
     unlink(path);
     snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_logs_dir_name);
     rmdir(path);
@@ -76,6 +80,13 @@ static void test_create_sample_spiffs(void)
     written = fwrite(k_file_beta_data, 1, k_file_beta_size, fb);
     TEST_ASSERT_EQUAL_UINT32((uint32_t)k_file_beta_size, (uint32_t)written);
     fclose(fb);
+
+    snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_file_worker_name);
+    FILE* fc = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(fc);
+    written = fwrite(k_file_worker_data, 1, sizeof(k_file_worker_data), fc);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)sizeof(k_file_worker_data), (uint32_t)written);
+    fclose(fc);
 
     snprintf(path, sizeof(path), "%s/%s", s_test_spiffs_root, k_logs_dir_name);
     TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
@@ -557,10 +568,16 @@ int main(void) {
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
     // Test PLAY command enqueues audio via host stub and makes data available
+    extern void test_play_command_missing_param_should_error(void);
+    extern void test_play_command_missing_file_should_error(void);
+    extern void test_play_command_path_too_long_should_error(void);
     extern void test_play_command(void);
     extern void test_file_command_found(void);
     extern void test_file_command_not_found(void);
     extern void test_file_command_not_file(void);
+    RUN_TEST(test_play_command_missing_param_should_error);
+    RUN_TEST(test_play_command_missing_file_should_error);
+    RUN_TEST(test_play_command_path_too_long_should_error);
     RUN_TEST(test_play_command);
     RUN_TEST(test_file_command_found);
     RUN_TEST(test_file_command_not_found);
@@ -916,6 +933,18 @@ void test_beep_command_connected(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.1f, 261.63f, (float)freq_hz);
 }
 
+void test_play_command_missing_param_should_error(void) {
+    mock_uart_reset_tx();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|MISSING_PARAM"));
+}
+
 // Test PLAY command: request playback of a spiffs asset (host-mode) and
 // verify the command emitted the mock-enqueued response and that the
 // host audio_processor stub appended audio data readable via
@@ -933,13 +962,17 @@ void test_play_command(void) {
     bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
 
     cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    char play_cmd[64];
+    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
     // Expect the mock enqueue response containing the original filename
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED|worker_long_norm.wav"));
+    char expected_resp[96];
+    snprintf(expected_resp, sizeof(expected_resp), "OK|PLAY|MOCK_ENQUEUED|%s", k_file_worker_name);
+    TEST_ASSERT_NOT_NULL(strstr(tx, expected_resp));
 
     // Read some data from the audio_processor ringbuffer to ensure playback
     uint8_t buf[1024]; size_t read = 0;
@@ -970,6 +1003,51 @@ void test_play_command(void) {
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT(1, s_spiffs_mount_hook_count);
+}
+
+void test_play_command_missing_file_should_error(void) {
+    mock_uart_reset_tx();
+
+    /* Use a non-existent asset so the WAV enqueue fails on host stub. */
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY missing_asset.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|MOCK_FAILED|missing_asset.wav"));
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+}
+
+void test_play_command_path_too_long_should_error(void) {
+    mock_uart_reset_tx();
+
+    /* Force the host SPIFFS root to be long enough that even a short
+     * filename exceeds the PLAY path buffer. Save/restore the real root
+     * so tearDown still cleans up the temp directory created in setUp. */
+    char saved_root[PATH_MAX];
+    memcpy(saved_root, s_test_spiffs_root, sizeof(saved_root));
+    int saved_ready = s_test_spiffs_root_ready;
+
+    size_t fill = (sizeof(s_test_spiffs_root) > 320) ? 320 : sizeof(s_test_spiffs_root) - 2;
+    memset(s_test_spiffs_root, 'b', fill);
+    s_test_spiffs_root[fill] = '\0';
+    s_test_spiffs_root_ready = 1;
+
+    const char* cmd = "PLAY short.wav";
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(cmd, &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    printf("PLAY path too long response: %s\n", tx ? tx : "<null>");
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|PATH_TOO_LONG"));
+
+    /* Restore the real root for tearDown cleanup. */
+    memcpy(s_test_spiffs_root, saved_root, sizeof(saved_root));
+    s_test_spiffs_root_ready = saved_ready;
 }
 
 void test_file_command_found(void) {
