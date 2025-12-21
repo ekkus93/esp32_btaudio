@@ -234,6 +234,9 @@ static uint16_t s_last_tag_id_taken = 0;
 static uint32_t s_tag_push_count = 0;
 static uint32_t s_tag_miss_count = 0;
 static TickType_t s_tag_recover_mute_until = 0;
+static TickType_t s_last_tag_reset_tick = 0;
+static uint32_t s_tag_reset_count = 0;
+static size_t s_last_tag_reset_used_before = 0;
 
 #ifdef UNIT_TEST
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
@@ -618,6 +621,11 @@ static void audio_source_tag_reset_buffer(void)
     if (dropped > 0 || used_before > 0) {
         ESP_LOGI(TAG, "audio_source_tag_reset_buffer: dropped %d tags (used %zu -> %zu)", dropped, used_before, used_after);
     }
+
+    /* Record reset timing/count so host drains can skip immediately after a bulk drop. */
+    s_last_tag_reset_tick = xTaskGetTickCount();
+    s_tag_reset_count++;
+    s_last_tag_reset_used_before = used_before;
 }
 
 /* Consume one metadata tag for fallback-generated audio. If no tag is
@@ -629,8 +637,15 @@ static void audio_source_tag_consume_for_fallback(void)
     uint16_t dequeued_id = 0;
 
     if (audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-        ESP_LOGI(TAG, "TAG-FALLBACK-CONSUME: debt=%zu took=%u id=%u", s_beep_fallback_tag_debt, (unsigned)dequeued_tag, (unsigned)dequeued_id);
-        return;
+        if (dequeued_tag == AUDIO_SOURCE_TAG_BEEP) {
+            ESP_LOGI(TAG, "TAG-FALLBACK-CONSUME: debt=%zu took=%u id=%u", s_beep_fallback_tag_debt, (unsigned)dequeued_tag, (unsigned)dequeued_id);
+            return;
+        }
+
+        /* Preserve non-beep tags (e.g., injected WAV data) by re-queuing them
+         * and covering the fallback emission with a synthetic beep tag. */
+        ESP_LOGW(TAG, "TAG-FALLBACK-SKIP: preserving tag=%u id=%u", (unsigned)dequeued_tag, (unsigned)dequeued_id);
+        (void)audio_source_tag_push(dequeued_tag);
     }
 
     if (audio_source_tag_push(AUDIO_SOURCE_TAG_BEEP) &&
@@ -2703,6 +2718,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     int channels = s_audio_config.channels;
     if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+    bool drained_from_rb = false;
     bool wav_override_beep = wav_playback_is_active();
     if (wav_override_beep && s_beep_remaining_bytes > 0) {
         ESP_LOGD(TAG, "audio_processor_read: WAV playback suppressing %zu pending beep bytes", s_beep_remaining_bytes);
@@ -3064,6 +3080,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         } else {
             AUDIO_DIAG_LOGI("audio_processor_read: audio dequeue len=%zu free_before=%zu", read_size, free_before);
             AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-DEQ: len=%lu free_before=%lu\n", (unsigned long)read_size, (unsigned long)free_before);
+            drained_from_rb = true;
         }
         if (item == NULL || read_size == 0) {
             break;
@@ -3154,18 +3171,43 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     /* Host tests expect one metadata tag per successful read chunk. If
      * previous paths have not already consumed a tag (e.g., fallback
      * synthesis), drain one here when available to keep host tag counts
-     * aligned with audio output. */
-    if (s_audio_source_buffer != NULL && bytes_written > 0) {
+     * aligned with audio output. Skip this drain while the fallback synth
+     * is active so we do not consume tags that belong to queued WAV data
+     * waiting behind the fallback tone. Also skip when the tag backlog is
+     * large or immediately after a bulk reset so we do not churn through
+     * pending WAV tags faster than audio is delivered. */
+    if (s_audio_source_buffer != NULL && bytes_written > 0 && !s_beep_fallback_active) {
+        /* Only drain an extra tag when this read produced bytes without
+         * pulling a ringbuffer item (e.g., fallback synthesis). If we already
+         * dequeued audio/beep data, the matching tag was consumed earlier. */
         size_t tag_used = audio_processor_test_get_tag_used();
-        if (tag_used > 0) {
-            printf("HOST TAG DRAIN bytes=%zu tags=%zu\n", bytes_written, tag_used);
-            audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
-            uint16_t dequeued_id = 0;
-            if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
-                audio_source_tag_recover_desync("audio_read_tail", true, false);
+        if (drained_from_rb) {
+            ESP_LOGI(TAG, "HOST TAG DRAIN SKIP drained_from_rb backlog=%zu bytes=%zu resets=%u last_drop=%zu", tag_used, bytes_written, (unsigned)s_tag_reset_count, s_last_tag_reset_used_before);
+        } else {
+            bool audio_rb_nonempty = (s_audio_buffer != NULL) && (xRingbufferGetCurFreeSize(s_audio_buffer) < AUDIO_BUFFER_SIZE);
+            bool beep_rb_nonempty = (s_beep_buffer != NULL) && (xRingbufferGetCurFreeSize(s_beep_buffer) < BEEP_BUFFER_SIZE);
+            if (!audio_rb_nonempty && !beep_rb_nonempty) {
+                ESP_LOGI(TAG, "HOST TAG DRAIN SKIP no_source backlog=%zu bytes=%zu resets=%u last_drop=%zu", tag_used, bytes_written, (unsigned)s_tag_reset_count, s_last_tag_reset_used_before);
+            } else {
+                TickType_t now = xTaskGetTickCount();
+                bool recently_reset = (s_last_tag_reset_tick != 0) && ((now - s_last_tag_reset_tick) < pdMS_TO_TICKS(200));
+                const size_t TAG_DRAIN_BACKLOG_MAX = 16;
+
+                if (tag_used > 0 && tag_used <= TAG_DRAIN_BACKLOG_MAX && !recently_reset) {
+                    printf("HOST TAG DRAIN bytes=%zu tags=%zu\n", bytes_written, tag_used);
+                    audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+                    uint16_t dequeued_id = 0;
+                    if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+                        audio_source_tag_recover_desync("audio_read_tail", true, false);
+                    }
+                    (void)dequeued_tag;
+                    (void)dequeued_id;
+                } else if (tag_used > TAG_DRAIN_BACKLOG_MAX) {
+                    ESP_LOGI(TAG, "HOST TAG DRAIN SKIP backlog=%zu bytes=%zu resets=%u last_drop=%zu", tag_used, bytes_written, (unsigned)s_tag_reset_count, s_last_tag_reset_used_before);
+                } else if (recently_reset) {
+                    ESP_LOGI(TAG, "HOST TAG DRAIN SKIP recent_reset backlog=%zu last_drop=%zu", tag_used, s_last_tag_reset_used_before);
+                }
             }
-            (void)dequeued_tag;
-            (void)dequeued_id;
         }
     }
 #endif
