@@ -427,6 +427,101 @@ void test_wav_and_fallback_partial_reads_should_keep_tags_aligned(void)
 }
 #endif
 
+#ifdef CONFIG_BT_MOCK_TESTING
+
+static audio_config_t make_basic_cfg(void)
+{
+    audio_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.sample_rate = AUDIO_SAMPLE_RATE_48K;
+    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+    cfg.volume = 80;
+    cfg.mute = false;
+    return cfg;
+}
+
+void test_wav_enqueue_should_align_to_full_frames(void)
+{
+    audio_config_t cfg = make_basic_cfg();
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+
+    /* Force a known frame size and enqueue a non-multiple length. */
+    audio_processor_test_force_wav_frame_bytes_dst(4);
+    uint8_t payload[13];
+    for (size_t i = 0; i < sizeof(payload); ++i) {
+        payload[i] = (uint8_t)(i + 1);
+    }
+
+    size_t sent = audio_processor_test_wav_try_enqueue(payload, sizeof(payload));
+
+    TEST_ASSERT_EQUAL_size_t((sizeof(payload) / 4U) * 4U, sent);
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    audio_processor_test_force_wav_frame_bytes_dst(0);
+    audio_processor_test_set_ringbuffer_max_item_override(0);
+    audio_processor_deinit();
+}
+
+void test_wav_enqueue_should_skip_when_max_item_smaller_than_frame(void)
+{
+    audio_config_t cfg = make_basic_cfg();
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+
+    audio_processor_test_force_wav_frame_bytes_dst(4);
+    audio_processor_test_set_ringbuffer_max_item_override(2);
+
+    uint8_t payload[8] = {0};
+    size_t sent = audio_processor_test_wav_try_enqueue(payload, sizeof(payload));
+
+    TEST_ASSERT_EQUAL_size_t(0, sent);
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    audio_processor_test_force_wav_frame_bytes_dst(0);
+    audio_processor_test_set_ringbuffer_max_item_override(0);
+    audio_processor_deinit();
+}
+
+void test_wav_residual_flush_should_wait_for_full_frame(void)
+{
+    audio_config_t cfg = make_basic_cfg();
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
+
+    audio_processor_test_force_wav_frame_bytes_dst(4);
+    audio_processor_test_set_ringbuffer_max_item_override(2);
+
+    uint8_t residual[8] = {0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44};
+    audio_processor_test_seed_wav_residual(residual, sizeof(residual));
+
+    bool pending = audio_processor_test_flush_wav_residual();
+    TEST_ASSERT_TRUE(pending);
+    TEST_ASSERT_EQUAL_size_t(sizeof(residual), audio_processor_test_get_wav_residual_remaining());
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
+
+    /* Clear override so a second flush can succeed and drain fully. */
+    audio_processor_test_set_ringbuffer_max_item_override(0);
+    pending = audio_processor_test_flush_wav_residual();
+    TEST_ASSERT_FALSE(pending);
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_wav_residual_remaining());
+    TEST_ASSERT_EQUAL_size_t(1, audio_processor_test_get_tag_used());
+
+    audio_processor_test_force_wav_frame_bytes_dst(0);
+    audio_processor_test_clear_wav_residual();
+    audio_processor_deinit();
+}
+
+#endif /* CONFIG_BT_MOCK_TESTING */
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -438,6 +533,9 @@ int main(void)
     RUN_TEST(test_beep_fallback_should_not_double_activate_when_tags_drained);
     RUN_TEST(test_fallback_then_wav_should_keep_tags_aligned);
     RUN_TEST(test_wav_and_fallback_partial_reads_should_keep_tags_aligned);
+    RUN_TEST(test_wav_enqueue_should_align_to_full_frames);
+    RUN_TEST(test_wav_enqueue_should_skip_when_max_item_smaller_than_frame);
+    RUN_TEST(test_wav_residual_flush_should_wait_for_full_frame);
 #endif
     return UNITY_END();
 }

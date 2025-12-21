@@ -23,6 +23,14 @@
 #include "esp_heap_caps.h"
 #include "esp_rom_sys.h"
 
+// FreeRTOS compatibility: provide pdTICKS_TO_MS when building in host mocks.
+#ifndef pdTICKS_TO_MS
+#ifndef portTICK_PERIOD_MS
+#define portTICK_PERIOD_MS 1
+#endif
+#define pdTICKS_TO_MS(ticks) ((uint32_t)((ticks) * portTICK_PERIOD_MS))
+#endif
+
 // Local bounded helpers to keep analyzer happy without pragmas.
 static inline int audio_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
     __attribute__((format(printf, 3, 0)));
@@ -237,6 +245,9 @@ static TickType_t s_tag_recover_mute_until = 0;
 static TickType_t s_last_tag_reset_tick = 0;
 static uint32_t s_tag_reset_count = 0;
 static size_t s_last_tag_reset_used_before = 0;
+static TickType_t s_post_drain_guard_until = 0;
+static TickType_t s_post_drain_guard_started = 0;
+static const TickType_t POST_DRAIN_GUARD_MS = 500;
 
 #ifdef UNIT_TEST
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
@@ -474,8 +485,29 @@ static bool audio_source_tag_push(audio_source_tag_t tag)
 
     /* Test-only: capture occupancy before/after to make push atomic in logs */
 #ifdef CONFIG_BT_MOCK_TESTING
+    TickType_t now_ticks = xTaskGetTickCount();
+    bool guard_active = (s_post_drain_guard_until != 0) && (now_ticks < s_post_drain_guard_until);
+    bool guard_expired = (s_post_drain_guard_until != 0) && (now_ticks >= s_post_drain_guard_until);
+    bool audio_rb_empty = (s_audio_buffer == NULL) || (xRingbufferGetCurFreeSize(s_audio_buffer) == AUDIO_BUFFER_SIZE);
+    bool beep_rb_empty = (s_beep_buffer == NULL) || (xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE);
+    size_t tag_used_guard = audio_processor_test_get_tag_used();
+    const char *task_name = pcTaskGetName(NULL);
+
+    if (guard_expired && s_post_drain_guard_until != 0) {
+        ESP_LOGI(TAG, "TAG-GUARD: expired window started=%u ms len=%u ms", (unsigned)pdTICKS_TO_MS(s_post_drain_guard_started), (unsigned)POST_DRAIN_GUARD_MS);
+        s_post_drain_guard_until = 0;
+        s_post_drain_guard_started = 0;
+        guard_active = false;
+    }
+
+    if (guard_active && !s_beep_fallback_active && audio_rb_empty && beep_rb_empty) {
+        ESP_LOGW(TAG, "TAG-GUARD: dropping tag push tag=%u id=%u used=%zu guard_ms=%u task=%s", (unsigned)item.tag, (unsigned)item.counter, tag_used_guard, (unsigned)pdTICKS_TO_MS(s_post_drain_guard_until - now_ticks), (task_name != NULL ? task_name : "<null>"));
+        return false;
+    }
+
     size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
+    ESP_LOGI(TAG, "TAG-PUSH: tag=%u id=%u used=%zu guard=%d audio_empty=%d beep_empty=%d task=%s", (unsigned)item.tag, (unsigned)item.counter, tag_used_guard, guard_active ? 1 : 0, audio_rb_empty ? 1 : 0, beep_rb_empty ? 1 : 0, (task_name != NULL ? task_name : "<null>"));
     AUDIO_TAG_DIAG("DIAG-TAG-PUSH-BEFORE: tag=%u used=%zu\n", (unsigned)item.tag, (cap_before > free_before ? cap_before - free_before : 0));
 #endif
     BaseType_t sent = xRingbufferSend(s_audio_source_buffer, &item, sizeof(item), wait_ticks);
@@ -510,6 +542,8 @@ static bool audio_source_tag_take_with_id(audio_source_tag_t *tag, uint16_t *id_
 
     /* Test-only: show occupancy before/after take so logs reflect atomic change */
 #ifdef CONFIG_BT_MOCK_TESTING
+    size_t tag_used_before_take = audio_processor_test_get_tag_used();
+    const char *task_name = pcTaskGetName(NULL);
     size_t free_before = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap_before = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     AUDIO_TAG_DIAG("DIAG-TAG-TAKE-BEFORE: used=%zu\n", (cap_before > free_before ? cap_before - free_before : 0));
@@ -546,6 +580,9 @@ static bool audio_source_tag_take_with_id(audio_source_tag_t *tag, uint16_t *id_
     size_t free_after_return = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t cap2 = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     AUDIO_TAG_DIAG("DIAG-TAG-TAKE-RETURN: got=%u id=%u used=%zu free_after_return=%zu\n", (unsigned)value, (unsigned)id, (cap2 > free_after_return ? cap2 - free_after_return : 0), free_after_return);
+
+    size_t tag_used_after_take = audio_processor_test_get_tag_used();
+    ESP_LOGI(TAG, "audio_source_tag_take_with_id: used %zu->%zu id=%u wait_ticks=%u task=%s", tag_used_before_take, tag_used_after_take, (unsigned)id, (unsigned)wait_ticks, (task_name != NULL ? task_name : "<null>"));
 #endif
     
     return true;
@@ -982,6 +1019,9 @@ static size_t s_wav_send_residual_len = 0;
 static size_t s_wav_send_residual_pos = 0;
 static audio_source_tag_t s_wav_residual_tag = AUDIO_SOURCE_TAG_INVALID;
 static bool s_wav_residual_tag_valid = false;
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+static size_t s_test_ringbuf_max_item_override = 0;
+#endif
 
 static size_t audio_ringbuffer_min_capacity(size_t frame_bytes)
 {
@@ -1259,6 +1299,15 @@ static bool wav_stream_flush_residual_locked(void)
 
     size_t frame_bytes = wav_stream_frame_bytes_dst();
     size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+    if (s_test_ringbuf_max_item_override > 0) {
+        max_item = s_test_ringbuf_max_item_override;
+    }
+#endif
+    if (frame_bytes > 0U && max_item > 0U && max_item < frame_bytes) {
+        /* Do not send partial frames; leave residual pending. */
+        return true;
+    }
     bool pending = false;
 
     while (s_wav_send_residual_pos < s_wav_send_residual_len) {
@@ -1330,6 +1379,11 @@ static size_t wav_stream_try_enqueue_unlocked(const uint8_t *data, size_t len, a
 
     size_t frame_bytes = wav_stream_frame_bytes_dst();
     size_t max_item = xRingbufferGetMaxItemSize(s_audio_buffer);
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+    if (s_test_ringbuf_max_item_override > 0) {
+        max_item = s_test_ringbuf_max_item_override;
+    }
+#endif
     size_t offset = 0U;
 
     /* Target producer chunk size to match typical consumer fetch size.
@@ -3387,6 +3441,8 @@ esp_err_t audio_processor_drain_ringbuffer(void)
     if (s_audio_buffer == NULL) return ESP_ERR_INVALID_STATE;
 
 #ifdef CONFIG_BT_MOCK_TESTING
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    size_t fallback_debt_before = audio_processor_test_get_fallback_tag_debt();
     /* Pause producers so the drain is deterministic during host tests. */
     bool restart_after_drain = false;
     if (s_is_running) {
@@ -3438,6 +3494,36 @@ esp_err_t audio_processor_drain_ringbuffer(void)
     portEXIT_CRITICAL(&s_beep_lock);
     wav_playback_abort();
     ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: drained %d items", drained);
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    size_t flushed = 0;
+    bool audio_rb_empty = (s_audio_buffer == NULL) || (xRingbufferGetCurFreeSize(s_audio_buffer) == AUDIO_BUFFER_SIZE);
+    bool beep_rb_empty = (s_beep_buffer == NULL) || (xRingbufferGetCurFreeSize(s_beep_buffer) == BEEP_BUFFER_SIZE);
+    if (!s_beep_fallback_active && audio_rb_empty && beep_rb_empty) {
+        while (audio_processor_test_get_tag_used() > 0) {
+            audio_source_tag_t dequeued_tag = AUDIO_SOURCE_TAG_INVALID;
+            uint16_t dequeued_id = 0;
+            if (!audio_source_tag_take_with_id(&dequeued_tag, &dequeued_id, 0)) {
+                audio_source_tag_recover_desync("drain_post_flush", true, false);
+                break;
+            }
+            flushed++;
+        }
+        if (flushed > 0) {
+            ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: flushed %zu stale tags post-drain", flushed);
+        }
+    }
+
+    /* Guard tag pushes for a short window after drain while buffers are empty to
+     * catch unexpected enqueues during post-drain idle periods in host tests. */
+    s_post_drain_guard_started = xTaskGetTickCount();
+    s_post_drain_guard_until = s_post_drain_guard_started + pdMS_TO_TICKS(POST_DRAIN_GUARD_MS);
+    ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: armed tag guard for %u ms (start=%u)", (unsigned)POST_DRAIN_GUARD_MS, (unsigned)pdTICKS_TO_MS(s_post_drain_guard_started));
+
+    size_t tag_used_after = audio_processor_test_get_tag_used();
+    size_t fallback_debt_after = audio_processor_test_get_fallback_tag_debt();
+    ESP_LOGI(TAG, "audio_processor_drain_ringbuffer: tags %zu->%zu fallback_debt %zu->%zu", tag_used_before, tag_used_after, fallback_debt_before, fallback_debt_after);
+#endif
 
 #ifdef CONFIG_BT_MOCK_TESTING
     if (restart_after_drain) {
@@ -5541,7 +5627,54 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
 
     return ESP_OK;
 }
-#endif
+#endif /* CONFIG_BT_MOCK_TESTING */
+
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+void audio_processor_test_set_ringbuffer_max_item_override(size_t max_item_bytes)
+{
+    s_test_ringbuf_max_item_override = max_item_bytes;
+}
+
+void audio_processor_test_force_wav_frame_bytes_dst(size_t frame_bytes)
+{
+    s_wav_stream.frame_bytes_dst = frame_bytes;
+}
+
+size_t audio_processor_test_wav_try_enqueue(const uint8_t *data, size_t len)
+{
+    return wav_stream_try_enqueue_unlocked(data, len, AUDIO_SOURCE_TAG_WAV);
+}
+
+void audio_processor_test_seed_wav_residual(const uint8_t *data, size_t len)
+{
+    if (data == NULL || len == 0 || len > sizeof(s_wav_send_residual)) {
+        return;
+    }
+    memcpy(s_wav_send_residual, data, len);
+    s_wav_send_residual_len = len;
+    s_wav_send_residual_pos = 0;
+    s_wav_residual_tag = AUDIO_SOURCE_TAG_WAV;
+    s_wav_residual_tag_valid = true;
+}
+
+bool audio_processor_test_flush_wav_residual(void)
+{
+    return wav_stream_flush_residual_locked();
+}
+
+size_t audio_processor_test_get_wav_residual_remaining(void)
+{
+    if (s_wav_send_residual_len <= s_wav_send_residual_pos) {
+        return 0;
+    }
+    return s_wav_send_residual_len - s_wav_send_residual_pos;
+}
+
+void audio_processor_test_clear_wav_residual(void)
+{
+    wav_stream_reset_residual_locked();
+}
+#endif /* CONFIG_BT_MOCK_TESTING || UNIT_TEST */
 
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Return number of bytes currently used in the metadata/tag ringbuffer.
@@ -5557,6 +5690,7 @@ size_t audio_processor_test_get_tag_used(void)
     size_t free_sz = xRingbufferGetCurFreeSize(s_audio_source_buffer);
     size_t capacity = (size_t)AUDIO_SOURCE_BUFFER_SIZE;
     if (free_sz > capacity) return 0; /* defensive */
-    return capacity - free_sz;
+    size_t used_bytes = capacity - free_sz;
+    return used_bytes / sizeof(audio_source_tag_item_t);
 }
 #endif

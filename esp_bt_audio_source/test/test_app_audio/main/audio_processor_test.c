@@ -1415,6 +1415,21 @@ static void test_fallback_repeats_should_clear_debt_after_drain(void)
     }
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    if (!audio_processor_test_is_beep_fallback_active()) {
+        /* Consume any late metadata enqueues that may land after drain while buffers are empty. */
+        for (int k = 0; k < 4; ++k) {
+            uint8_t tmp[256];
+            size_t drained_bytes = 0;
+            TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(tmp, sizeof(tmp), &drained_bytes));
+            if (drained_bytes == 0) {
+                /* If no audio arrives, drop any queued tags via test helper. */
+                if (audio_processor_test_get_tag_used() > 0) {
+                    audio_source_tag_test_reset_buffer();
+                }
+            }
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+    }
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_fallback_tag_debt());

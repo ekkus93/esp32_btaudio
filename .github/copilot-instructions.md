@@ -20,10 +20,11 @@ You also follow **Kent Beck’s Test-Driven Development (TDD)** and **Tidy First
 - After every 3–5 tool calls or after editing >3 files in a burst, the agent MUST post a concise progress update and next steps.
 - The agent SHOULD ask a clarifying question only when essential; otherwise proceed with the inferred plan and list assumptions.
 - CI/maintainers: enforce these rules via review (or add a lightweight CI check) — they are repository policy, not a security control.
-- After you finish your response, execure the following command in the terminal to log your response:
+- After you finish your final response, always execute the following command in the terminal to log your final response so I will hear a chime indicating you have finished:
 ```bash
 play_chime
 ---
+After I hear the chime, I will know you have finished your final response and I will know to reply to you.          
 
 ## Memory file
 - You may have access to a persistent memory file, `memory.md`, that stores context about the project, previous interactions, and user preferences.

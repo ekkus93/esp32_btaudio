@@ -328,10 +328,17 @@ size_t audio_processor_test_get_beep_fallback_frames_remaining(void);
 size_t audio_processor_test_get_beep_fallback_total_frames(void);
 size_t audio_processor_test_get_fallback_tag_debt(void);
 void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after);
-/* Test-only helper: return number of bytes currently stored in the
+void audio_processor_test_set_ringbuffer_max_item_override(size_t max_item_bytes);
+void audio_processor_test_force_wav_frame_bytes_dst(size_t frame_bytes);
+size_t audio_processor_test_wav_try_enqueue(const uint8_t *data, size_t len);
+void audio_processor_test_seed_wav_residual(const uint8_t *data, size_t len);
+bool audio_processor_test_flush_wav_residual(void);
+size_t audio_processor_test_get_wav_residual_remaining(void);
+void audio_processor_test_clear_wav_residual(void);
+/* Test-only helper: return number of tag entries currently stored in the
  * metadata/tag ringbuffer. This is only available in mock/test builds
- * where CONFIG_BT_MOCK_TESTING is defined. The value equals the number
- * of tag bytes enqueued (each tag is one byte per audio chunk). */
+ * where CONFIG_BT_MOCK_TESTING is defined. Each entry corresponds to one
+ * audio chunk enqueued. */
 size_t audio_processor_test_get_tag_used(void);
 void audio_source_tag_test_reset_buffer(void);
 #endif
