@@ -871,6 +871,124 @@ static void test_host_tag_drain_should_skip_when_no_dequeue_with_tag_backlog(voi
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }
 
+static void test_wav_abort_mid_fallback_should_clear_debt_and_stay_tag_aligned(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Simulate an in-flight WAV with pending bytes and then trigger the
+     * fallback synth. Abort the WAV mid-fallback and ensure tag debt clears
+     * without adding tag misses. */
+    audio_processor_test_wav_begin();
+    audio_processor_test_wav_add_pending(2048);
+    TEST_ASSERT_TRUE(audio_processor_test_wav_is_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(700));
+
+    bool fallback_active = false;
+    for (int i = 0; i < 30; ++i) {
+        fallback_active = audio_processor_test_is_beep_fallback_active();
+        if (fallback_active) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fallback_active, "Fallback did not activate before abort");
+
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    uint8_t buf[512];
+    for (int i = 0; i < 60 && audio_processor_test_is_beep_fallback_active(); ++i) {
+        size_t bytes_read = 0;
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+        TEST_ASSERT_TRUE(bytes_read > 0);
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+
+    TEST_ASSERT_TRUE(audio_processor_test_is_beep_fallback_active());
+
+    audio_processor_test_wav_abort();
+
+    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
+    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_fallback_frames_remaining());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_fallback_tag_debt());
+
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)bytes_read);
+
+    uint32_t tag_miss_after = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, tag_miss_after);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+    audio_source_tag_test_reset_buffer();
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
+static void test_tag_reset_buffer_should_drop_backlog_and_skip_host_drain(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    audio_source_tag_test_reset_buffer();
+    audio_processor_test_wav_reset_state();
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 90,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    uint8_t inject_buf[256];
+    memset(inject_buf, 0x47, sizeof(inject_buf));
+    for (int i = 0; i < 3; ++i) {
+        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(inject_buf, sizeof(inject_buf)));
+    }
+
+    size_t tag_used_before = audio_processor_test_get_tag_used();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
+
+    audio_source_tag_test_reset_buffer();
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_drain_ringbuffer());
+
+    uint32_t tag_miss_before = audio_processor_test_get_tag_miss_count();
+
+    uint8_t read_buf[512];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(read_buf, sizeof(read_buf), &bytes_read));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)bytes_read);
+
+    uint32_t tag_miss_after = audio_processor_test_get_tag_miss_count();
+    TEST_ASSERT_EQUAL_UINT32(tag_miss_before, tag_miss_after);
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+}
+
 static void test_wav_fallback_soak_with_volume_and_mute_toggles(void)
 {
     audio_processor_test_reset_tag_miss_count();

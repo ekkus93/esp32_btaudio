@@ -1,4 +1,11 @@
 ## Current Focus
+### WAV abort + tag reset tests (2025-12-20T00:00:00-08:00)
+- Added device Unity cases `test_wav_abort_mid_fallback_should_clear_debt_and_stay_tag_aligned` and `test_tag_reset_buffer_should_drop_backlog_and_skip_host_drain` in [esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c](esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c#L818-L916) to cover WAV abort behavior during fallback and tag_reset_buffer backlog drops. Tests assert fallback tag debt clears, tag_miss stays stable, reads return zero post-abort, and tag reset avoids host drain tag_miss.
+- Tests not yet executed; pending hardware run via test_app_audio or full run_all_tests after code review.
+### test_app_audio run (2025-12-20T00:10:00-08:00)
+- Ran `python esp_bt_audio_source/tools/run_unity.py -p /dev/ttyUSB0 -t 600 -r esp_bt_audio_source/test/test_app_audio`; suite passed. Log: [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log).
+### Full sweep green (2025-12-20T00:55:00-08:00)
+- Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; all suites passed. Host 224/224; device totals: test_app 60/60, test_app2 45/45, test_app_audio 50/50, test_app3 14/14 (device aggregate 169/169). Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json); per-suite logs refreshed under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 ### Full sweep green (2025-12-20T20:53:57-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600`; host 224/224 passed, device suites green: test_app 60/60, test_app2 45/45, test_app_audio 50/50 (includes new host-drain skip tests), test_app3 14/14. Aggregate device 169/169. Logs: tmp/run_all_tests_summary.json and per-suite one_run_unity.log files under esp_bt_audio_source/test/test_app*/build/.
 ### Host tag drain skip on dequeues (2025-12-20T07:50:00-08:00)
