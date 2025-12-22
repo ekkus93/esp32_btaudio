@@ -55,6 +55,11 @@
 - Reinstalled esptool~=4.11.dev1 into /home/phil/.espressif/python_env/idf5.5_py3.10_env after export check failed with esptool 5.1.0.
 - Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Results: host 230/230 pass; device suites test_app 60/60, test_app2 45/45, test_app_audio 56/56, test_app3 14/14 (aggregate device 175/175). Summary at tmp/run_all_tests_summary.json; per-suite logs under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
 
+### Commit/push (2025-12-22T15:30:00-08:00)
+- Committed and pushed `tune synth keepalive and beep levels` (3a77e669) to origin/master.
+- Changes adjust synth keepalive behavior when A2DP is disconnected, lower beep/fallback amplitudes to 15000 (16-bit) with scaled 32-bit equivalents, and update internal tone defaults.
+- Tests not rerun today; relying on the 2025-12-22 run_all_tests sweep above (host 230/230, device 175/175).
+
 ### Test run (2025-12-26T19:00:00-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Host 230/230 pass. Device totals: test_app 60/60, test_app2 45/45, test_app_audio 53/56 (3 fails), test_app3 14/14. Summary at tmp/run_all_tests_summary.json; exit code non-zero due to device failures.
 - Failing device cases (test_app_audio): `test_beep_fallback_should_align_and_drain` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204); `test_wav_and_beep_fallback_should_keep_tags_aligned` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491); `test_wav_fallback_soak_with_volume_and_mute_toggles` (tag miss count grew unexpectedly) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677).
