@@ -17,6 +17,19 @@
 - Guarded diagnostics-only locals in audio_source_tag_* helpers under CONFIG_AUDIO_TAG_DIAGNOSTICS and removed unused mock-only locals in i2s_reader_task.
 - Mock builds no longer warn about unused vars (tag push/take/reset, beep prefill now_ticks, last_i2s_ret). `idf.py build` in test_app_audio now completes cleanly with zero warnings.
 
+### Build and flash main app (2025-12-27T13:30:00-08:00)
+- Fixed duplicate-case build break when ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND == ESP_A2D_AUDIO_STATE_STOPPED by folding handling into the STOPPED branch with a guard check. File: esp_bt_audio_source/main/bt_connection_manager.c.
+- Wrapped post-drain tag guard diagnostics (POST_DRAIN_GUARD_* and drained_from_rb) under CONFIG_BT_MOCK_TESTING to silence production warnings. File: esp_bt_audio_source/main/audio_processor.c.
+- `idf.py build` now succeeds for esp_bt_audio_source; flashed successfully via `idf.py -p /dev/ttyUSB0 flash` to an ESP32-D0WD-V3 (rev v3.1).
+
+### Build warning check + full sweep (2025-12-27T14:20:00-08:00)
+- Re-ran `idf.py build` for esp_bt_audio_source; build is clean with no warnings or errors (Werror still enabled).
+- Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Results: host 230/230 pass; device suites: test_app 60/60, test_app2 45/45, test_app_audio 56/56, test_app3 14/14 (aggregate device 175/175). Summary stored at tmp/run_all_tests_summary.json.
+
+### Build + flash main app (2025-12-27T14:45:00-08:00)
+- Built latest esp_bt_audio_source via `idf.py build`; binary size 0x0e54d0 (47% of 0x1b0000 partition free).
+- Flashed to ESP32-D0WD-V3 on /dev/ttyUSB0 with `idf.py -p /dev/ttyUSB0 flash`; hashes verified and hard reset completed.
+
 ### Test run (2025-12-26T19:00:00-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Host 230/230 pass. Device totals: test_app 60/60, test_app2 45/45, test_app_audio 53/56 (3 fails), test_app3 14/14. Summary at tmp/run_all_tests_summary.json; exit code non-zero due to device failures.
 - Failing device cases (test_app_audio): `test_beep_fallback_should_align_and_drain` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204); `test_wav_and_beep_fallback_should_keep_tags_aligned` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491); `test_wav_fallback_soak_with_volume_and_mute_toggles` (tag miss count grew unexpectedly) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677).

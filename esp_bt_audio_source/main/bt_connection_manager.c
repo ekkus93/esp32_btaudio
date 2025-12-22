@@ -180,28 +180,32 @@ static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd
     s_a2d_audio_state = state;
     
     switch (state) {
+#if ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND != ESP_A2D_AUDIO_STATE_STOPPED
         case ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND:
             // Remote pause without full stop; keep connection but mark paused
             s_reconnect_delay_ms = BT_RECONNECT_DELAY_MS;
             update_streaming_state(BT_STREAMING_STATE_PAUSED);
             ESP_LOGI(TAG, "Audio streaming suspended by remote");
             break;
+#endif
 
-        case ESP_A2D_AUDIO_STATE_STOPPED:
-            // In ESP-IDF, ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND might be defined as the same value
-            // as ESP_A2D_AUDIO_STATE_STOPPED. We need to handle them differently based on context.
-            if (s_streaming_state == BT_STREAMING_STATE_STREAMING || 
-                s_streaming_state == BT_STREAMING_STATE_STARTING) {
-                // If we were streaming, this is likely a REMOTE_SUSPEND
+        case ESP_A2D_AUDIO_STATE_STOPPED: {
+            /* When the enum values are identical we still want the
+             * REMOTE_SUSPEND behavior. Treat STOPPED as a suspend if we
+             * were streaming or if the enum equals REMOTE_SUSPEND. */
+            bool remote_suspend = (state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) ||
+                                  (s_streaming_state == BT_STREAMING_STATE_STREAMING) ||
+                                  (s_streaming_state == BT_STREAMING_STATE_STARTING);
+            if (remote_suspend) {
                 s_reconnect_delay_ms = BT_RECONNECT_DELAY_MS;
                 update_streaming_state(BT_STREAMING_STATE_PAUSED);
                 ESP_LOGI(TAG, "Audio streaming suspended by remote");
             } else {
-                // Normal stop
                 update_streaming_state(BT_STREAMING_STATE_STOPPED);
                 ESP_LOGI(TAG, "Audio streaming stopped");
             }
             break;
+        }
             
         case ESP_A2D_AUDIO_STATE_STARTED:
             // When we first get started state, consider it as "starting"

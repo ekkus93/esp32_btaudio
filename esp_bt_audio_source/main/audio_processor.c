@@ -256,9 +256,11 @@ static TickType_t s_tag_recover_mute_until = 0;
 static TickType_t s_last_tag_reset_tick = 0;
 static uint32_t s_tag_reset_count = 0;
 static size_t s_last_tag_reset_used_before = 0;
+#ifdef CONFIG_BT_MOCK_TESTING
 static TickType_t s_post_drain_guard_until = 0;
 static TickType_t s_post_drain_guard_started = 0;
 static const TickType_t POST_DRAIN_GUARD_MS = 500;
+#endif
 
 #ifdef UNIT_TEST
 static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
@@ -2952,7 +2954,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     int channels = s_audio_config.channels;
     if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) channels = AUDIO_CHANNEL_STEREO;
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
+#ifdef CONFIG_BT_MOCK_TESTING
     bool drained_from_rb = false;
+#endif
     bool wav_override_beep = wav_playback_is_active();
     if (wav_override_beep && s_beep_remaining_bytes > 0) {
         ESP_LOGD(TAG, "audio_processor_read: WAV playback suppressing %zu pending beep bytes", s_beep_remaining_bytes);
@@ -3393,7 +3397,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         } else {
             AUDIO_DIAG_LOGI("audio_processor_read: audio dequeue len=%zu free_before=%zu", read_size, free_before);
             AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-DEQ: len=%lu free_before=%lu\n", (unsigned long)read_size, (unsigned long)free_before);
+#ifdef CONFIG_BT_MOCK_TESTING
             drained_from_rb = true;
+#endif
         }
         if (item == NULL || read_size == 0) {
             break;
