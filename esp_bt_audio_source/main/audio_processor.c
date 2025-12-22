@@ -1963,8 +1963,8 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
         return 0;
     }
 
-    /* Choose tone just below Nyquist with a small guard to reduce aliasing. */
-    int tone_hz = 19000;
+    /* Choose tone near the upper end of hearing with a small guard. */
+    int tone_hz = 20000;
     if (sample_rate > 0) {
         const int nyquist_guard = (sample_rate / 2) - 1000;
         if (tone_hz > nyquist_guard) {
@@ -2704,13 +2704,11 @@ esp_err_t audio_processor_start(void)
     /* Start with keepalive disarmed; successful playback will arm it. */
     s_keepalive_armed = false;
 
-    /* If A2DP is disconnected at start time, do not run the synth keepalive.
-     * Also avoid keepalive when we haven't yet armed it with a successful
-     * playback. */
+    /* If A2DP is disconnected at start, keep the synth alive to prevent
+     * I2S from hammering an absent source. When A2DP is connected we leave
+     * synth untouched so the caller’s setting is preserved. */
     if (!audio_processor_is_a2dp_connected()) {
-    }
-    if (!s_keepalive_armed) {
-        s_force_synth = false;
+        s_force_synth = true;
     }
 
     // Enable I2S RX
@@ -3133,7 +3131,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
                 if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
                     int16_t* out = (int16_t*)buffer;
-                    const double amp = 30000.0;
+                    const double amp = 15000.0;
                     const double two_pi = 2.0 * M_PI;
                     for (size_t f = 0; f < emit_frames; ++f) {
                         size_t gidx = frames_played + f; /* global index into total frames */
@@ -3158,7 +3156,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
                     }
                 } else {
                     int32_t* out32 = (int32_t*)buffer;
-                    const double amp32 = 30000.0 * (1 << 16);
+                    const double amp32 = 15000.0 * (1 << 16);
                     const double two_pi = 2.0 * M_PI;
                     for (size_t f = 0; f < emit_frames; ++f) {
                         size_t gidx = frames_played + f;
@@ -4043,7 +4041,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             if (out == NULL) {
                 return ESP_ERR_INVALID_STATE;
             }
-            const double amp = 20000.0; /* moderate level for audibility without hard clipping */
+            const double amp = 15000.0; /* lowered to reduce headroom-induced clipping */
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
                 size_t global_frame = frames_generated + f;
@@ -4070,7 +4068,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             if (out32 == NULL) {
                 return ESP_ERR_INVALID_STATE;
             }
-            const double amp32 = 20000.0 * (1 << 16);
+            const double amp32 = 15000.0 * (1 << 16);
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
                 size_t global_frame = frames_generated + f;
@@ -4584,6 +4582,8 @@ cleanup:
     if (status == ESP_OK) {
         /* Only arm the synth keepalive once real playback has succeeded. */
         s_keepalive_armed = true;
+        /* Disable synth once real playback is active. */
+        s_force_synth = false;
     }
 
     return status;
@@ -4718,6 +4718,9 @@ static void i2s_reader_task(void *pvParameters)
         }
 
         if (!have_frame) {
+            bool should_backoff_idle = (!audio_processor_is_a2dp_connected() || !s_keepalive_armed) &&
+                                       !s_force_synth &&
+                                       (s_i2s_consecutive_failures >= I2S_FAILURE_THRESHOLD);
 #ifndef CONFIG_BT_MOCK_TESTING
             if (last_i2s_ret != ESP_OK &&
                 (s_i2s_consecutive_failures - s_last_i2s_failure_log) >= I2S_FAILURE_LOG_THROTTLE) {
@@ -4731,6 +4734,12 @@ static void i2s_reader_task(void *pvParameters)
             audio_proc_mock_yield();
             if (s_force_synth) {
                 TickType_t delay_ticks = pdMS_TO_TICKS(1);
+                if (delay_ticks == 0) {
+                    delay_ticks = 1;
+                }
+                vTaskDelay(delay_ticks);
+            } else if (should_backoff_idle) {
+                TickType_t delay_ticks = pdMS_TO_TICKS(50);
                 if (delay_ticks == 0) {
                     delay_ticks = 1;
                 }

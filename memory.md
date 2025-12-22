@@ -30,6 +30,31 @@
 - Built latest esp_bt_audio_source via `idf.py build`; binary size 0x0e54d0 (47% of 0x1b0000 partition free).
 - Flashed to ESP32-D0WD-V3 on /dev/ttyUSB0 with `idf.py -p /dev/ttyUSB0 flash`; hashes verified and hard reset completed.
 
+### Commit/push (2025-12-27T15:00:00-08:00)
+- Committed build/flash and warning cleanups: `chore: build and flash main app` (13036091) and pushed to origin/master.
+
+### I2S idle backoff (2025-12-27T15:25:00-08:00)
+- Added A2DP/keepalive-aware backoff in i2s_reader_task so when A2DP is disconnected and keepalive is not armed (and synth disabled), the reader delays 50 ms after repeated I2S failures instead of busy-looping and tripping the watchdog. File: esp_bt_audio_source/main/audio_processor.c.
+- Build: `idf.py build` succeeds; binary size 0x0e5510 (~47% of 0x1b0000 partition).
+- Flash retry succeeded after freeing port: `idf.py -p /dev/ttyUSB0 flash` wrote 0xe5510 app, hashes verified, hard reset complete.
+
+### Synth auto-enable/disarm (2025-12-27T15:50:00-08:00)
+- On start: if A2DP is disconnected, auto-enable synth keepalive to avoid I2S hammering an absent source; keepalive remains disarmed until real playback. On successful playback (START/PLAY), arm keepalive and auto-disable synth to avoid mixing. File: esp_bt_audio_source/main/audio_processor.c.
+- Build: `idf.py build` OK, binary 0x0e5520 (~47% free).
+- Flash attempt failed: `/dev/ttyUSB0` busy (Errno 16). Need to retry flashing once port is free/monitor closed.
+
+### BEEP static report (2025-12-22T00:00:00-08:00)
+- User reports audible static during BEEP while PLAY output sounds clean; BEEP expected to be a pure sine (middle C). PLAY volume bump is on hold for now.
+- Suspect areas: fallback beep path (higher amplitude), buffer saturation triggering fallback, or clipping near full-scale. Next step: inspect beep enqueue/fallback logs for `ringbuffer full`/`TAG-FALLBACK` and optionally arm `audio_processor_enable_next_beep_diag()` to dump PCM.
+- No flash attempted for latest builds; pending user approval.
+
+### BEEP amplitude reduction (2025-12-22T00:00:00-08:00)
+- Lowered beep and fallback tone amplitudes from 20000/30000 to 15000 (16-bit) and scaled 32-bit equivalents to reduce clipping/static risk. File: esp_bt_audio_source/main/audio_processor.c.
+
+### Test sweep (2025-12-22T00:00:00-08:00)
+- Reinstalled esptool~=4.11.dev1 into /home/phil/.espressif/python_env/idf5.5_py3.10_env after export check failed with esptool 5.1.0.
+- Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Results: host 230/230 pass; device suites test_app 60/60, test_app2 45/45, test_app_audio 56/56, test_app3 14/14 (aggregate device 175/175). Summary at tmp/run_all_tests_summary.json; per-suite logs under esp_bt_audio_source/test/test_app*/build/one_run_unity.log.
+
 ### Test run (2025-12-26T19:00:00-08:00)
 - Ran `. $HOME/esp/esp-idf/export.sh && python3 tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root. Host 230/230 pass. Device totals: test_app 60/60, test_app2 45/45, test_app_audio 53/56 (3 fails), test_app3 14/14. Summary at tmp/run_all_tests_summary.json; exit code non-zero due to device failures.
 - Failing device cases (test_app_audio): `test_beep_fallback_should_align_and_drain` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L1204); `test_wav_and_beep_fallback_should_keep_tags_aligned` (Expected 0 Was 1) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L3491); `test_wav_fallback_soak_with_volume_and_mute_toggles` (tag miss count grew unexpectedly) at [esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677](esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log#L8677).
