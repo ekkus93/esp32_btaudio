@@ -7,6 +7,7 @@ idf_component_register(
         "audio_pipeline_test.c"
         "audio_processor_test.c"
         "audio_test_helpers.c"
+        "bt_manager_stub.c"
         "i2s_audio_test.c"
         "i2s_channel_test.c"
         "i2s_test.c"

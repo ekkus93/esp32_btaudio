@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "test_audio_queue.c"
+        "../../../main/audio_queue.c"
+    INCLUDE_DIRS
+        "."
+        "../../../main/include"
+    PRIV_REQUIRES
+        unity
+)

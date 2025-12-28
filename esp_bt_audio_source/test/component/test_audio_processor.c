@@ -323,6 +323,29 @@ void test_audio_processor_beep_busy_when_i2s_active(void)
     audio_processor_deinit();
 }
 
+void test_audio_processor_play_busy_when_i2s_active(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Model live I2S capture (keepalive disabled) and ensure PLAY rejects with BUSY. */
+    audio_processor_set_synth_mode(false);
+    esp_err_t ret = audio_processor_play_wav("/spiffs/does_not_exist.wav");
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, ret);
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
 void test_audio_processor_beep_busy_when_wav_active(void)
 {
     audio_config_t config = {
@@ -341,6 +364,87 @@ void test_audio_processor_beep_busy_when_wav_active(void)
     esp_err_t ret = audio_processor_beep_tone(50, 440.0);
     TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
     audio_processor_test_wav_abort();
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
+void test_audio_processor_start_preempts_beep_and_wav(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+
+    /* Seed active WAV + beep before starting I2S to ensure they are preempted. */
+    audio_processor_test_wav_reset_state();
+    audio_processor_test_wav_begin();
+    audio_processor_test_wav_add_pending(1024);
+    TEST_ASSERT_TRUE(audio_processor_test_wav_is_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(100, 440.0));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, audio_processor_test_get_beep_remaining_bytes());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_remaining_bytes());
+    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
+void test_audio_processor_beep_disables_synth_keepalive(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    audio_processor_set_synth_mode(true);
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 880.0));
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
+void test_audio_processor_play_disables_synth_keepalive(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    audio_processor_set_synth_mode(true);
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+
+    /* PLAY should drop synth even if file open fails. */
+    (void)audio_processor_play_wav("/spiffs/missing.wav");
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
 
     audio_processor_stop();
     audio_processor_deinit();
@@ -619,6 +723,12 @@ int app_main(void)
     RUN_TEST(test_audio_processor_beep_bypasses_mute);
     RUN_TEST(test_audio_processor_inject_pushes_and_consumes_tag);
     RUN_TEST(test_audio_processor_beep_no_tag_miss);
+    RUN_TEST(test_audio_processor_beep_busy_when_i2s_active);
+    RUN_TEST(test_audio_processor_play_busy_when_i2s_active);
+    RUN_TEST(test_audio_processor_beep_busy_when_wav_active);
+    RUN_TEST(test_audio_processor_start_preempts_beep_and_wav);
+    RUN_TEST(test_audio_processor_beep_disables_synth_keepalive);
+    RUN_TEST(test_audio_processor_play_disables_synth_keepalive);
 #ifdef CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_audio_processor_beep_prefill_releases_after_delay);
     RUN_TEST(test_audio_processor_wav_begin_tracks_state);

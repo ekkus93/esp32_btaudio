@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "audio_processor.h"
 #include "command_interface.h"
+#include "bt_manager.h"
 #include "driver/i2s_std.h"
 
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
@@ -20,6 +21,16 @@ static const char *TAG = "AUDIO_PROCESSOR_TEST";
 /* Local stubs provided by the test_command_interface component. */
 extern void bt_manager_mock_connection_closed(const char* mac);
 extern void bt_manager_mock_connection_opened(const char* mac);
+
+static void ensure_i2s_stopped(void)
+{
+    /* Mirrors the STOP command behaviour: stop A2DP/I2S path so BEEP is permitted. */
+    (void)bt_manager_stop_audio();
+    esp_err_t stop_ret = audio_processor_stop();
+    if (stop_ret != ESP_OK && stop_ret != ESP_ERR_INVALID_STATE) {
+        TEST_ASSERT_EQUAL(ESP_OK, stop_ret);
+    }
+}
 
 static void test_audio_processor_init(void)
 {
@@ -450,6 +461,8 @@ static void test_beep_should_not_report_tag_miss(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
 
+    ensure_i2s_stopped();
+
     /* Kick a short beep and ensure audio + metadata stay aligned. */
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(200));
 
@@ -490,10 +503,14 @@ static void test_beep_fallback_should_align_and_drain(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
 
+    ensure_i2s_stopped();
+
     /* Issue a long beep to saturate the small beep buffer so enqueue falls back
      * to on-the-fly synthesis. Keep the ringbuffer untouched so saturation is
      * guaranteed. */
     const uint32_t duration_ms = 800;
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(duration_ms));
 
     bool fallback_active = false;
@@ -587,6 +604,8 @@ static void test_wav_and_beep_fallback_should_keep_tags_aligned(void)
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
 
     /* Trigger a long beep so the beep buffer saturates and fallback activates while WAV data is queued. */
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(900));
 
     bool fallback_active = false;
@@ -667,6 +686,8 @@ static void test_wav_fallback_with_live_volume_changes_should_resume_cleanly(voi
         queued += sizeof(wav_chunk);
     }
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)queued);
+
+    ensure_i2s_stopped();
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(900));
 
@@ -985,6 +1006,8 @@ static void test_wav_abort_mid_fallback_should_clear_debt_and_stay_tag_aligned(v
     audio_processor_test_wav_add_pending(2048);
     TEST_ASSERT_TRUE(audio_processor_test_wav_is_active());
 
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(700));
 
     bool fallback_active = false;
@@ -1114,6 +1137,8 @@ static void test_wav_fallback_soak_with_volume_and_mute_toggles(void)
 
     const int cycles = 3;
     for (int cycle = 0; cycle < cycles; ++cycle) {
+        ensure_i2s_stopped();
+
         TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(750));
 
         bool fallback_active = false;
@@ -1200,6 +1225,8 @@ static void test_wav_injection_mid_fallback_should_resume_without_tag_loss(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
 
     /* Trigger fallback first, then inject WAV while fallback audio is active. */
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(800));
 
     bool fallback_active = false;
@@ -1307,6 +1334,8 @@ static void test_fallback_repeats_should_clear_debt_after_drain(void)
         }
         TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)queued);
 
+        ensure_i2s_stopped();
+
         TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(600));
 
         bool fallback_active = false;
@@ -1392,6 +1421,8 @@ static void test_fallback_drain_while_active_should_zero_debt_and_tags(void)
     /* Free a small window so fallback can push its tag even if audio buffers are tight. */
     (void)audio_processor_drain_ringbuffer();
 
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(720));
 
     bool fallback_active = false;
@@ -1454,6 +1485,8 @@ static void test_fallback_drain_then_restart_should_not_accumulate_tags(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
 
     for (int cycle = 0; cycle < 2; ++cycle) {
+        ensure_i2s_stopped();
+
         TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(640 + (cycle * 40)));
 
         bool fallback_active = false;
@@ -1515,6 +1548,8 @@ static void test_wav_abort_overlapping_drain_should_zero_debt_and_tags(void)
 
     /* Free a small window so fallback tag push has space before activation. */
     (void)audio_processor_drain_ringbuffer();
+
+    ensure_i2s_stopped();
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(760));
 
@@ -1582,6 +1617,8 @@ static void test_wav_abort_during_drain_should_not_raise_tag_miss(void)
     /* Free a small window so fallback tag push has space before activation. */
     (void)audio_processor_drain_ringbuffer();
 
+    ensure_i2s_stopped();
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(820));
 
     bool fallback_active = false;
@@ -1633,6 +1670,8 @@ static void test_fallback_drain_then_wav_restart_should_stay_aligned(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    ensure_i2s_stopped();
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(700));
 
