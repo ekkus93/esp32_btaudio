@@ -25,7 +25,20 @@ fi
 
 SYSROOT_BASE=${SYSROOT_BASE:-$HOME/.espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/esp32}
 RUNTIME_INCLUDE="$SYSROOT_BASE/include"
-CLANG_INCLUDE=$(cd "$CLANG_PREFIX/../lib/clang/18/include" && pwd)
+CLANG_INCLUDE=""
+CLANG_LIB_DIR=$(cd "$CLANG_PREFIX/../lib/clang" && pwd)
+if [ -d "$CLANG_LIB_DIR" ]; then
+    for ver in 19 18; do
+        if [ -d "$CLANG_LIB_DIR/$ver/include" ]; then
+            CLANG_INCLUDE="$CLANG_LIB_DIR/$ver/include"
+            break
+        fi
+    done
+fi
+if [ -z "$CLANG_INCLUDE" ]; then
+    echo "Missing clang include dir under $CLANG_PREFIX/../lib/clang (expected 19/ or 18/)" >&2
+    exit 1
+fi
 
 for dir in "$SYSROOT_BASE" "$RUNTIME_INCLUDE" "$CLANG_INCLUDE"; do
     if [ ! -d "$dir" ]; then
@@ -40,6 +53,9 @@ EXTRA_ARGS=(
     "-isystem$RUNTIME_INCLUDE"
     "-isystem$CLANG_INCLUDE"
     "-Qunused-arguments"
+    "-Wno-unused-command-line-argument"
+    "-Wno-unknown-warning-option"
+    "-U_POSIX_READER_WRITER_LOCKS"
 )
 
 CXX_INCLUDE="$SYSROOT_BASE/include/c++/v1"

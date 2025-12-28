@@ -260,3 +260,24 @@ void audio_processor_set_dram_only(bool enable)
     /* Test stub doesn't allocate differently; no-op */
 }
 
+/* Minimal diagnostic/probe stubs referenced by the command interface.
+ * These are no-ops in the test firmware but must be available at link-time.
+ */
+esp_err_t audio_processor_emit_diag_summary(void)
+{
+    AUDIO_PROC_STUB_LOG_ONCE();
+    return ESP_OK;
+}
+
+void audio_processor_arm_probe(size_t n_entries)
+{
+    AUDIO_PROC_STUB_LOG_ONCE();
+    (void)n_entries;
+}
+
+esp_err_t audio_processor_emit_probe(void)
+{
+    AUDIO_PROC_STUB_LOG_ONCE();
+    return ESP_OK;
+}
+

@@ -1,32 +1,23 @@
 // Minimal audio_processor stub for test_app2 to satisfy linker
-#include "esp_err.h"
-#include "esp_log.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
-#define AUDIO_PROC_STUB2_LOG_ONCE()                                                      \
-    do {                                                                                \
-        static bool _logged = false;                                                    \
-        if (!_logged) {                                                                 \
-            ESP_LOGI(TAG, "audio_processor (test_app2) entered %s", __func__);         \
-            _logged = true;                                                             \
-        }                                                                               \
+#include "audio_processor.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
+#define AUDIO_PROC_STUB2_LOG_ONCE()                         \
+    do {                                                    \
+        static bool _logged = false;                        \
+        if (!_logged) {                                     \
+            ESP_LOGI(TAG, "audio_processor (test_app2) entered %s", __func__); \
+            _logged = true;                                 \
+        }                                                   \
     } while (0)
 
 static const char *TAG = "AUDIO_PROC_STUB2";
-
-esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
-{
-    AUDIO_PROC_STUB2_LOG_ONCE();
-    (void)buffer;
-    (void)size;
-    if (bytes_read) *bytes_read = 0;
-    return ESP_OK;
-}
-#include "audio_processor.h"
-#include "esp_err.h"
-#include <string.h>
 
 /* Device test app stub for the audio processor API. The production build
  * provides a full implementation in `main/audio_processor.c`, but the unit
@@ -94,6 +85,17 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
     return ESP_OK;
 }
 
+esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    (void)buffer;
+    (void)size;
+    if (bytes_read) {
+        *bytes_read = 0;
+    }
+    return ESP_OK;
+}
+
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
@@ -145,6 +147,12 @@ bool audio_processor_is_diag_enabled(void)
     return s_audio_stub.diag_enabled;
 }
 
+bool audio_processor_is_synth_mode_enabled(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return false;
+}
+
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
@@ -162,4 +170,41 @@ void audio_processor_set_dram_only(bool dram_only)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     (void)dram_only;
+}
+
+/* Diagnostic/probe stubs required by command interface */
+esp_err_t audio_processor_emit_diag_summary(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return ESP_OK;
+}
+
+void audio_processor_arm_probe(size_t n_entries)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    (void)n_entries;
+}
+
+esp_err_t audio_processor_emit_probe(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return ESP_OK;
+}
+
+__attribute__((used)) bool audio_processor_is_i2s_active(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return false;
+}
+
+__attribute__((used)) bool audio_processor_is_beep_active(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return false;
+}
+
+__attribute__((used)) bool audio_processor_is_wav_active(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return false;
 }

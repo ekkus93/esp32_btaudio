@@ -833,11 +833,31 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #endif
 #endif
 
-        /* Play a 10s middle-C sine tone for an audible diagnostic. */
-        if (audio_processor_beep_tone(CMD_BEEP_DURATION_MS, CMD_BEEP_FREQ_HZ) == ESP_OK)
+        /* Play a 10s middle-C sine tone for an audible diagnostic.
+         * To guarantee audible output even when the tag/ringbuffer path
+         * is congested, temporarily enable the synth source for the
+         * duration of the request and restore the previous state. If
+         * the enqueue fails, dump a small tag snapshot to assist
+         * diagnostics. */
+#ifdef ESP_PLATFORM
+        bool _prev_synth = audio_processor_is_synth_mode_enabled();
+        audio_processor_set_synth_mode(true);
+#endif
+        esp_err_t _beep_res = audio_processor_beep_tone(CMD_BEEP_DURATION_MS, CMD_BEEP_FREQ_HZ);
+#ifdef ESP_PLATFORM
+        /* Restore previous synth setting only if we changed it. */
+        if (!_prev_synth) {
+            audio_processor_set_synth_mode(false);
+        }
+#endif
+        if (_beep_res == ESP_OK) {
             cmd_send_response("OK", "BEEP", "SENT", NULL);
-        else
+        } else {
+            ESP_LOGW(TAG, "BEEP: audio_processor_beep_tone() failed err=%d", (int)_beep_res);
+            /* Emit a brief tag-ring snapshot to help diagnose tag exhaustion. */
+            (void)audio_processor_dump_tag_ringbuffer(8, NULL);
             cmd_send_response("ERR", "BEEP", "FAILED", NULL);
+        }
     }
     break;
 
@@ -935,6 +955,15 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             break;
         }
 
+        if (audio_processor_is_i2s_active()) {
+            cmd_send_response("ERR", "PLAY", "BUSY", "I2S_ACTIVE");
+            break;
+        }
+        if (audio_processor_is_beep_active()) {
+            cmd_send_response("ERR", "PLAY", "BUSY", "BEEP_ACTIVE");
+            break;
+        }
+
         /* Require A2DP to be present for PLAY. If a device is connected but
          * not currently streaming, attempt to start A2DP and fail if the
          * start call does not succeed. This prevents silently falling back
@@ -966,6 +995,14 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
 #else
         (void)mount_err;
+        if (audio_processor_is_i2s_active()) {
+            cmd_send_response("ERR", "PLAY", "BUSY", "I2S_ACTIVE");
+            break;
+        }
+        if (audio_processor_is_beep_active()) {
+            cmd_send_response("ERR", "PLAY", "BUSY", "BEEP_ACTIVE");
+            break;
+        }
         /* Host build: honor the test-provided spiffs root so PLAY accesses
          * the same files as FILE/FILES. Build a host_path that points at the
          * real filesystem location but keep the original filename in the
@@ -1402,6 +1439,10 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         }
         if (ctx->param_count >= 2)
         {
+        if (audio_processor_is_i2s_active() || audio_processor_is_wav_active()) {
+            cmd_send_response("ERR", "BEEP", "BUSY", "I2S_OR_WAV");
+            break;
+        }
             pin_param = ctx->params[1];
         }
 #ifdef ESP_PLATFORM
@@ -1830,6 +1871,47 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                 {
                     cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_BAD_PARAM", p);
                 }
+            }
+#else
+            cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+        }
+        else if (strcasecmp(ctx->params[0], "AUDIO_DIAG_SUMMARY") == 0)
+        {
+#ifdef ESP_PLATFORM
+            /* Send an immediate ACK so the CLI client sees a short response
+               before the (potentially multi-line) diagnostic summary is emitted. */
+            cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_SUMMARY", NULL);
+            /* Emit the longer summary asynchronously (best-effort). */
+            if (audio_processor_emit_diag_summary() != ESP_OK)
+            {
+                ESP_LOGW(TAG, "audio_processor_emit_diag_summary() failed");
+            }
+#else
+            cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
+#endif
+        }
+        else if (strcasecmp(ctx->params[0], "AUDIO_DIAG_PROBE") == 0)
+        {
+#ifdef ESP_PLATFORM
+            if (ctx->param_count < 2) {
+                cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_PROBE_USAGE", NULL);
+            } else if (strcasecmp(ctx->params[1], "ARM") == 0) {
+                unsigned n = 0;
+                if (ctx->param_count >= 3) {
+                    n = (unsigned)strtoul(ctx->params[2], NULL, 10);
+                }
+                if (n == 0) n = 16; /* sensible default */
+                audio_processor_arm_probe((size_t)n);
+                cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_ARMED", (ctx->param_count >= 3) ? ctx->params[2] : "16");
+            } else if (strcasecmp(ctx->params[1], "DUMP") == 0) {
+                /* ACK then emit to avoid CLI parser hiding multi-line output */
+                cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_DUMP", NULL);
+                if (audio_processor_emit_probe() != ESP_OK) {
+                    ESP_LOGW(TAG, "audio_processor_emit_probe() failed");
+                }
+            } else {
+                cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_PROBE_BAD_PARAM", ctx->params[1]);
             }
 #else
             cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);

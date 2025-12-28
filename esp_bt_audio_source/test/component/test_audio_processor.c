@@ -300,6 +300,75 @@ void test_audio_processor_beep_pushes_tags(void)
     audio_source_tag_test_reset_buffer();
 }
 
+void test_audio_processor_beep_busy_when_i2s_active(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Disable synth keepalive to model live I2S capture being active. */
+    audio_processor_set_synth_mode(false);
+    esp_err_t ret = audio_processor_beep_tone(100, 440.0);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
+void test_audio_processor_beep_busy_when_wav_active(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    audio_processor_test_wav_begin();
+    esp_err_t ret = audio_processor_beep_tone(50, 440.0);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+    audio_processor_test_wav_abort();
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
+void test_audio_processor_play_busy_when_beep_active(void)
+{
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80
+    };
+
+    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* With synth keepalive active, enqueue a beep then ensure PLAY is busy. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(100, 440.0));
+    esp_err_t ret = audio_processor_play_wav("/spiffs/dummy.wav");
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+
+    audio_processor_stop();
+    audio_processor_deinit();
+}
+
 /* Ensure beeps do not produce TAG-MISS when enqueued and drained. */
 void test_audio_processor_beep_no_tag_miss(void)
 {

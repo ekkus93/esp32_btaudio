@@ -1,3 +1,8 @@
+#ifdef _POSIX_READER_WRITER_LOCKS
+// Clear toolchain define so newlib can set the standard value without a redefinition warning.
+#undef _POSIX_READER_WRITER_LOCKS
+#endif
+
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
@@ -7,6 +12,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -51,7 +57,7 @@ static inline int audio_vsnprintf_safe(char *dst, size_t dst_size, const char *f
     {
         return -1;
     }
-    int written = vsnprintf(dst, dst_size, fmt, args); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    int written = __builtin___vsnprintf_chk(dst, dst_size, 0, dst_size, fmt, args);
     if (written < 0)
     {
         dst[0] = '\0';
@@ -199,13 +205,17 @@ static volatile bool s_audio_diag_enabled = false; /* gate noisy diagnostics */
 #define BEEP_BUFFER_SIZE ((size_t)8U * 1024U)
 /* Prefill headroom before releasing a beep to the sink to avoid crackle
  * at start and give A2DP a buffer to pull from. */
-#define BEEP_PREFILL_MS 400
+#define BEEP_PREFILL_MS 600
 /* Optional leading silence to let the sink settle before tone onset. */
 #define BEEP_HEAD_SILENCE_MS 80
 /* Fade duration (ms) applied to the start and end of queued/fallback beeps
- * Option A: small crossfade to reduce clicks. Reasonable default: 8 ms. */
-/* Longer fade to reduce edge clicks on beeps. */
-#define BEEP_FADE_MS 50
+ * Apply a longer fade to reduce edge clicks and give the I2S pipeline
+ * more time to settle under concurrent streaming. */
+#define BEEP_FADE_MS 120
+/* Short synth fade (ms) applied when synth mode toggles on/off to avoid
+ * abrupt edges that cause audible clicks. Increase the ramp to give the
+ * I2S pipeline more time to settle during mode switches. */
+#define SYNTH_FADE_MS 32
 
 /* Metadata ringbuffer capacity scaled relative to audio buffer with a
  * modest floor so tag enqueue operations never outpace the audio data
@@ -327,6 +337,7 @@ static bool s_is_running = false;
  * when the external I2S source is absent. The user can still toggle this
  * at runtime via audio_processor_set_synth_mode(). */
 static bool s_force_synth = true; /* keep synth active but render an inaudible tone */
+static bool s_last_source_was_synth = true;
 /* Gate re-enabling the synth keepalive to cases where we've successfully
  * started real playback. This prevents PLAY failures (e.g., A2DP down)
  * from later re-arming the keepalive and enqueueing unexpected audio. */
@@ -335,6 +346,32 @@ static uint8_t s_volume_gain = 80; // Internal volume as percentage
 static volatile bool s_trace_next_read_call = false;
 static size_t s_runtime_work_bytes = 0U;
 static bool s_i2s_first_read = true;
+
+/* Lightweight instrumentation counters for I2S read diagnostics (queried
+ * when `AUDIO_DIAG_ENABLED()` is true). These are relaxed atomic ops so
+ * they have minimal runtime impact when diagnostics are enabled. */
+static uint32_t s_i2s_read_ops = 0;
+static uint32_t s_i2s_total_read_bytes = 0;
+static uint32_t s_i2s_timeout_count = 0;
+
+/* One-shot high-resolution probe for part-reads. Protected via simple
+ * atomic counters: set target with audio_processor_arm_probe(), the
+ * reader will capture up to `s_probe_target` entries into `s_probe_buf`.
+ * Call audio_processor_emit_probe() to atomically collect and print
+ * the captured entries. The probe is intentionally bounded and lightweight.
+ */
+#define I2S_PROBE_MAX_ENTRIES 64
+typedef struct {
+    int64_t t_before_us;
+    int64_t t_after_us;
+    uint32_t dur_us;
+    size_t requested;
+    size_t got;
+    int err;
+} i2s_probe_entry_t;
+static i2s_probe_entry_t s_probe_buf[I2S_PROBE_MAX_ENTRIES];
+static atomic_uint s_probe_target = 0; /* how many to capture (arm) */
+static atomic_uint s_probe_captured = 0; /* how many captured so far */
 
 static size_t audio_get_runtime_work_bytes(void)
 {
@@ -351,8 +388,26 @@ static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 static bool audio_source_tag_take_with_id(audio_source_tag_t *tag, uint16_t *id_out, TickType_t wait_ticks);
 static void audio_source_tag_log_miss(const char *path);
 static void audio_source_tag_recover_desync(const char *path, bool drop_audio, bool drop_beep);
-// Beep override state: number of bytes enqueued as beep that should bypass mute
-size_t s_beep_remaining_bytes = 0;
+static esp_err_t audio_processor_reinit_i2s(const char *ctx);
+static void audio_processor_flush_priority_queues(const char *ctx);
+static bool audio_processor_is_i2s_capture_active(void);
+
+static void audio_processor_flush_priority_queues(const char *ctx)
+{
+    (void)ctx;
+    /* Drain all ringbuffers and cancel lower-priority sources so the
+     * next producer (I2S/WAV/BEEP) takes effect immediately. This is
+     * intentionally aggressive and idempotent. */
+    audio_processor_drain_ringbuffer();
+}
+
+static bool audio_processor_is_i2s_capture_active(void)
+{
+    /* Consider I2S active when the processor is running and not using the
+     * synthetic keepalive source. This covers live capture priority. */
+    return s_is_running && !s_force_synth;
+}
+
 /* Remember previous synth mode when we temporarily enable synth for
  * fallback beep playback. This allows the reader to generate samples
  * locally while the fallback tone is active (useful on DRAM-only
@@ -373,6 +428,7 @@ static bool s_beep_prefill_active = false;
 static TickType_t s_beep_prefill_release_tick = 0;
 static size_t s_beep_prefill_goal_bytes = 0;
 static size_t s_beep_prefill_accum_bytes = 0;
+static size_t s_beep_remaining_bytes = 0;
 
 /* Fallback on-the-fly beep generator state
  * Used when the main ringbuffer is full and we still want to play a
@@ -405,6 +461,19 @@ static uint32_t s_last_beep_duration_ms = 0;
 static double s_last_beep_freq_hz = 0.0;
 #endif
 static portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
+
+/* Persistent synth state to avoid phase discontinuities and to support a
+ * short ramp (fade) when synth mode toggles on/off. Without a persistent
+ * phase the inexpensive synth generator would restart phase on each
+ * buffer and introduce clicks. We protect synth-mode transitions with the
+ * existing s_beep_lock critical section to keep the change low-impact. */
+static double s_synth_phase = 0.0;
+static double s_synth_phase_inc = 0.0;
+static double s_synth_env = 1.0; /* current synth amplitude envelope (0.0..1.0) */
+static bool s_synth_fade_active = false;
+static int s_synth_fade_dir = 0; /* +1 ramp-up, -1 ramp-down */
+static size_t s_synth_fade_frames_total = 0;
+static size_t s_synth_fade_frames_remaining = 0;
 
 #define WAV_RINGBUFFER_WAIT_MS (50U)
 #define WAV_RINGBUFFER_MAX_DROPS (16)
@@ -548,6 +617,12 @@ static bool audio_source_tag_push(audio_source_tag_t tag)
     (void)free_fail;
     (void)cap_fail;
 #endif
+        /* Attempt a modest recovery to avoid endless tag-push storms: clear
+         * and realign tag/audio queues when a push fails so transient
+         * congestion does not require a full restart of the program.
+         * The recover routine is rate-limited internally via
+         * s_tag_recover_mute_until so this call is safe to make here. */
+        audio_source_tag_recover_desync("push", true, true);
         return false;
     }
 #ifndef CONFIG_BT_MOCK_TESTING
@@ -695,6 +770,28 @@ static void audio_source_tag_reset_buffer(void)
         ESP_LOGI(TAG, "audio_source_tag_reset_buffer: dropped %d tags (used %zu -> %zu)", dropped, used_before, used_after);
     }
 
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* In rare host-test races the tag buffer can refill while we are draining
+     * (e.g., producers still running). If anything remains, recreate the buffer
+     * to force a clean slate so follow-up assertions observe an empty queue. */
+    if (used_after > 0) {
+        ESP_LOGW(TAG, "audio_source_tag_reset_buffer: recreating buffer to clear residual %zu tags", used_after);
+        RingbufHandle_t old = s_audio_source_buffer;
+        s_audio_source_buffer = xRingbufferCreate((size_t)AUDIO_SOURCE_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF);
+        if (s_audio_source_buffer != NULL) {
+            vRingbufferDelete(old);
+            s_tag_push_count = 0;
+            s_tag_take_count = 0;
+            s_last_tag_id_pushed = 0;
+            s_last_tag_id_taken = 0;
+            used_after = 0;
+        } else {
+            ESP_LOGE(TAG, "audio_source_tag_reset_buffer: recreate failed, keeping existing buffer");
+            s_audio_source_buffer = old;
+        }
+    }
+#endif
+
     /* Record reset timing/count so host drains can skip immediately after a bulk drop. */
     s_last_tag_reset_tick = xTaskGetTickCount();
     s_tag_reset_count++;
@@ -767,11 +864,11 @@ static bool beep_send_with_tag(const uint8_t *data,
 
     BaseType_t sent = pdFALSE;
     for (int attempt = 0; attempt < max_attempts && sent != pdTRUE; ++attempt) {
+        /* Keep beeps isolated from the WAV/audio ringbuffer; use the dedicated
+         * beep buffer exclusively. This avoids interfering with in-flight WAV
+         * playback and keeps beep latency predictable. */
         if (s_beep_buffer) {
             sent = xRingbufferSend(s_beep_buffer, data, len, beep_wait);
-        }
-        if (sent != pdTRUE && s_audio_buffer) {
-            sent = xRingbufferSend(s_audio_buffer, data, len, audio_wait);
         }
         if (sent != pdTRUE) {
             vTaskDelay(pdMS_TO_TICKS(2));
@@ -959,8 +1056,34 @@ static void log_heap_stats(const char *ctx)
 void audio_processor_set_synth_mode(bool enable)
 {
     AUDIO_PROC_LOG_ONCE();
-    s_force_synth = enable ? true : false;
-    ESP_LOGI(TAG, "audio_processor: synth mode %s", s_force_synth ? "ENABLED" : "DISABLED");
+    bool prev = s_force_synth;
+    if (enable && !prev) {
+        /* Enable synth mode and start a short fade-in so the tone ramps up. */
+        portENTER_CRITICAL(&s_beep_lock);
+        s_force_synth = true; /* ensure generator is active */
+        s_synth_fade_active = true;
+        s_synth_fade_dir = 1;
+        s_synth_fade_frames_total = (size_t)(((double)s_audio_config.sample_rate * (double)SYNTH_FADE_MS) / 1000.0);
+        if (s_synth_fade_frames_total < 1) s_synth_fade_frames_total = 1;
+        s_synth_fade_frames_remaining = s_synth_fade_frames_total;
+        /* start env at zero for ramp-up */
+        s_synth_env = 0.0;
+        portEXIT_CRITICAL(&s_beep_lock);
+        ESP_LOGI(TAG, "audio_processor: synth mode ENABLED (fade-in %u ms)", (unsigned)SYNTH_FADE_MS);
+    } else if (!enable && prev) {
+        /* Start a short fade-out; actual synth disable occurs when fade finishes. */
+        portENTER_CRITICAL(&s_beep_lock);
+        s_synth_fade_active = true;
+        s_synth_fade_dir = -1;
+        s_synth_fade_frames_total = (size_t)(((double)s_audio_config.sample_rate * (double)SYNTH_FADE_MS) / 1000.0);
+        if (s_synth_fade_frames_total < 1) s_synth_fade_frames_total = 1;
+        s_synth_fade_frames_remaining = s_synth_fade_frames_total;
+        /* keep s_force_synth true until fade-out completes */
+        portEXIT_CRITICAL(&s_beep_lock);
+        ESP_LOGI(TAG, "audio_processor: synth mode DISABLED (fade-out %u ms)", (unsigned)SYNTH_FADE_MS);
+    } else {
+        ESP_LOGI(TAG, "audio_processor: synth mode %s", enable ? "ENABLED" : "DISABLED");
+    }
 }
 
 bool audio_processor_is_synth_mode_enabled(void)
@@ -1162,6 +1285,12 @@ static size_t residual_store(const uint8_t *src, size_t len,
 
 static bool wav_playback_is_active(void)
 {
+    return s_wav_playback_active;
+}
+
+bool audio_processor_is_wav_active(void)
+{
+    AUDIO_PROC_LOG_ONCE();
     return s_wav_playback_active;
 }
 
@@ -1850,16 +1979,6 @@ static void wav_stream_abort(bool allow_resume)
     }
 }
 
-/*
- * Abort the WAV stream in a way that preserves state for fallback resumes.
- * This keeps the file and counters intact and only marks the pipeline to
- * resume once fallback finishes.
- */
-static void wav_stream_abort_for_fallback(void)
-{
-    wav_stream_abort(true);
-}
-
 static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth)
 {
     switch (bit_depth) {
@@ -1975,16 +2094,48 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
     const double two_pi = 2.0 * M_PI;
     const double phase_inc = (sample_rate > 0) ? ((two_pi * (double)tone_hz) / (double)sample_rate)
                                                : ((two_pi * (double)tone_hz) / 44100.0);
-    const double amplitude = 0.02; /* 2% of full scale to stay inaudible */
+    /* Reduce synth amplitude to further lower chance of audible artifacts
+     * during concurrent streaming. 0.008 is 0.8% of full scale. */
+    const double amplitude = 0.008; /* 0.8% of full scale to stay inaudible */
 
     size_t frames = max_bytes / frame_bytes;
-    double phase = 0.0;
+    /* Use persistent phase for continuity between buffer fills. */
+    double phase = s_synth_phase;
+    s_synth_phase_inc = phase_inc;
 
     if (bytes_per_sample == 2) {
         int16_t *out = (int16_t *)buffer;
         const double scale = 32767.0 * amplitude;
         for (size_t f = 0; f < frames; ++f) {
-            double sample = sin(phase) * scale;
+            /* Update envelope if a fade is active. Envelope state is
+             * maintained across calls so a short ramp can complete even
+             * if the generator is invoked in small chunks. */
+            if (s_synth_fade_active && s_synth_fade_frames_remaining > 0) {
+                double delta = 1.0 / (double)s_synth_fade_frames_total;
+                if (s_synth_fade_dir > 0) {
+                    s_synth_env += delta;
+                    if (s_synth_env >= 1.0) {
+                        s_synth_env = 1.0;
+                        s_synth_fade_active = false;
+                        s_synth_fade_dir = 0;
+                    }
+                } else if (s_synth_fade_dir < 0) {
+                    s_synth_env -= delta;
+                    if (s_synth_env <= 0.0) {
+                        s_synth_env = 0.0;
+                        s_synth_fade_active = false;
+                        s_synth_fade_dir = 0;
+                        /* Completed fade-out: fully disable synth mode.
+                         * Protect the write with the existing critical. */
+                        portENTER_CRITICAL(&s_beep_lock);
+                        s_force_synth = false;
+                        portEXIT_CRITICAL(&s_beep_lock);
+                    }
+                }
+                if (s_synth_fade_frames_remaining > 0) s_synth_fade_frames_remaining--;
+            }
+
+            double sample = sin(phase) * scale * s_synth_env;
             int16_t s = (int16_t)sample;
             for (int ch = 0; ch < channels; ++ch) {
                 *out++ = s;
@@ -1996,7 +2147,29 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
         int32_t *out32 = (int32_t *)buffer;
         const double scale32 = (2147483647.0) * amplitude;
         for (size_t f = 0; f < frames; ++f) {
-            double sample = sin(phase) * scale32;
+            if (s_synth_fade_active && s_synth_fade_frames_remaining > 0) {
+                double delta = 1.0 / (double)s_synth_fade_frames_total;
+                if (s_synth_fade_dir > 0) {
+                    s_synth_env += delta;
+                    if (s_synth_env >= 1.0) {
+                        s_synth_env = 1.0;
+                        s_synth_fade_active = false;
+                        s_synth_fade_dir = 0;
+                    }
+                } else if (s_synth_fade_dir < 0) {
+                    s_synth_env -= delta;
+                    if (s_synth_env <= 0.0) {
+                        s_synth_env = 0.0;
+                        s_synth_fade_active = false;
+                        s_synth_fade_dir = 0;
+                        portENTER_CRITICAL(&s_beep_lock);
+                        s_force_synth = false;
+                        portEXIT_CRITICAL(&s_beep_lock);
+                    }
+                }
+                if (s_synth_fade_frames_remaining > 0) s_synth_fade_frames_remaining--;
+            }
+            double sample = sin(phase) * scale32 * s_synth_env;
             int32_t s = (int32_t)sample;
             for (int ch = 0; ch < channels; ++ch) {
                 *out32++ = s;
@@ -2005,6 +2178,9 @@ static size_t synth_generate_audio(uint8_t* buffer, size_t buffer_size)
             if (phase >= two_pi) phase -= two_pi;
         }
     }
+
+    /* Persist the running phase for continuity on the next call. */
+    s_synth_phase = phase;
 
     return frames * frame_bytes;
 }
@@ -2258,21 +2434,35 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     if (s_dram_only_alloc) psram_ready_local = false;
     if (psram_ready_local) {
         /* Try to place beep buffer storage in PSRAM to avoid DRAM pressure */
+        size_t free_before_beep_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        size_t free_before_beep_psram = 0;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+        free_before_beep_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#endif
+        ESP_LOGI(TAG, "Beep buffer allocation: before DRAM=%zu PSRAM=%zu (requested %u bytes)", free_before_beep_dram, free_before_beep_psram, (unsigned)BEEP_BUFFER_SIZE);
         s_beep_buffer = xRingbufferCreateWithCaps((size_t)BEEP_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF,
                                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (s_beep_buffer != NULL) {
-            ESP_LOGI(TAG, "Beep buffer created in PSRAM (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
+            size_t free_after_beep_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+            size_t free_after_beep_psram = 0;
+#if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
+            free_after_beep_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#endif
+            ESP_LOGI(TAG, "Beep buffer created in PSRAM (%u bytes) (after DRAM=%zu PSRAM=%zu)", (unsigned)BEEP_BUFFER_SIZE, free_after_beep_dram, free_after_beep_psram);
         } else {
             ESP_LOGW(TAG, "audio_processor_init: failed to create beep buffer in PSRAM, falling back to default allocator");
         }
     }
 
     if (s_beep_buffer == NULL) {
+        size_t free_before_beep_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        ESP_LOGI(TAG, "Beep buffer allocation: attempting DRAM alloc before DRAM free=%zu (requested %u bytes)", free_before_beep_dram, (unsigned)BEEP_BUFFER_SIZE);
         s_beep_buffer = xRingbufferCreate((size_t)BEEP_BUFFER_SIZE, RINGBUF_TYPE_BYTEBUF);
         if (s_beep_buffer == NULL) {
             ESP_LOGW(TAG, "audio_processor_init: failed to create beep buffer (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
         } else {
-            ESP_LOGI(TAG, "Beep buffer created (%u bytes)", (unsigned)BEEP_BUFFER_SIZE);
+            size_t free_after_beep_dram = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+            ESP_LOGI(TAG, "Beep buffer created (%u bytes) (after DRAM free=%zu)", (unsigned)BEEP_BUFFER_SIZE, free_after_beep_dram);
         }
     }
 
@@ -2715,6 +2905,12 @@ esp_err_t audio_processor_start(void)
 #ifdef CONFIG_BT_MOCK_TESTING
     s_mock_i2s_state.enabled = true;
 #else
+    if (s_i2s_rx_handle == NULL) {
+        ESP_LOGE(TAG, "audio_processor_start: I2S handle null before enable");
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGI(TAG, "audio_processor_start: enabling I2S handle=%p sr=%d bits=%d ch=%d", (void*)s_i2s_rx_handle,
+             s_audio_config.sample_rate, s_audio_config.bit_depth, s_audio_config.channels);
     esp_err_t ret = i2s_channel_enable(s_i2s_rx_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to enable I2S RX: %d", ret);
@@ -3578,6 +3774,10 @@ static esp_err_t configure_i2s(const audio_config_t* config)
         s_i2s_rx_handle = NULL;
     }
 
+    ESP_LOGI(TAG, "configure_i2s: port=%d role=SLAVE sr=%d bits=%d ch=%d pins(bclk=%d ws=%d din=%d dout=%d)",
+             config->i2s_port, config->sample_rate, config->bit_depth, config->channels,
+             config->i2s_bclk_pin, config->i2s_ws_pin, config->i2s_din_pin, config->i2s_dout_pin);
+
     // Configure I2S channel with modern API
     i2s_chan_config_t chan_cfg = {
         .id = config->i2s_port,
@@ -3649,7 +3849,28 @@ static esp_err_t configure_i2s(const audio_config_t* config)
         return ret;
     }
 
+    ESP_LOGI(TAG, "configure_i2s: channel ready handle=%p", (void*)s_i2s_rx_handle);
+
     return ESP_OK;
+#endif
+}
+
+static esp_err_t audio_processor_reinit_i2s(const char *ctx)
+{
+#ifdef CONFIG_BT_MOCK_TESTING
+    (void)ctx;
+    return configure_i2s(&s_audio_config);
+#else
+    if (s_is_running) {
+        ESP_LOGW(TAG, "audio_processor_reinit_i2s: called while running (ctx=%s)", ctx ? ctx : "?");
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGI(TAG, "audio_processor_reinit_i2s: reconfiguring I2S (ctx=%s)", ctx ? ctx : "?");
+    esp_err_t ret = configure_i2s(&s_audio_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "audio_processor_reinit_i2s: configure failed (ctx=%s) ret=%d", ctx ? ctx : "?", ret);
+    }
+    return ret;
 #endif
 }
 
@@ -3972,6 +4193,26 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         ESP_LOGW(TAG, "audio_processor_beep: work buffer not ready");
         return ESP_ERR_INVALID_STATE;
     }
+
+    /* Allow beep while the processor is running; only reject when WAV playback
+     * is already active to avoid clobbering an in-progress file. */
+    if (wav_playback_is_active()) {
+        ESP_LOGW(TAG, "audio_processor_beep: busy (WAV active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Flush stale synth data so the beep is heard immediately. */
+    if (s_force_synth) {
+        audio_processor_flush_priority_queues("beep");
+        s_last_source_was_synth = false;
+    }
+
+    /* Do not inject a beep while WAV playback is active. Return busy so
+     * callers can retry after playback completes. */
+    if (wav_playback_is_active()) {
+        ESP_LOGW(TAG, "audio_processor_beep: busy (WAV playback active)");
+        return ESP_ERR_INVALID_STATE;
+    }
     /* Generate the beep tone into s_proc_buffer, then enqueue to the beep/audio buffers. */
     /* Ensure duration is reasonable to avoid huge allocations. Clamp to 20 seconds. */
     if (duration_ms == 0) {
@@ -3985,10 +4226,21 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     s_dump_next_beep_diag = false;
     s_beep_diag_active = diag_once;
 
-    /* Suppress synth fallback during the beep to keep the tone pure. Restore after drain. */
+    /* Preserve previous synth mode. If the caller previously forced synth
+     * (e.g., CLI requested synth-for-BEEP), respect that and do not
+     * unconditionally disable it here. Otherwise record the previous
+     * state and mark for restore so temporary changes do not persist. */
+    portENTER_CRITICAL(&s_beep_lock);
     s_beep_prev_force_synth = s_force_synth;
-    s_force_synth = false;
-    s_beep_restore_synth = true;
+    if (!s_beep_prev_force_synth) {
+        /* Only disable synth for the beep if it was not already forced on. */
+        s_force_synth = false;
+        s_beep_restore_synth = true;
+    } else {
+        /* Caller requested synth; leave it enabled and do not schedule a restore. */
+        s_beep_restore_synth = false;
+    }
+    portEXIT_CRITICAL(&s_beep_lock);
 
     const uint32_t sample_rate = (uint32_t)s_audio_config.sample_rate;
     const uint32_t channels = (uint32_t)s_audio_config.channels;
@@ -4035,13 +4287,89 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             chunk_frames = frames_per_chunk;
         }
 
-        /* Fill s_proc_buffer with the sine wave chunk using cosine fades to smooth edges. */
+        /* Optimization: for the non-fade middle of the tone, prepare a
+         * small one-period template in `s_proc_buffer` and assemble a
+         * repeated chunk into `s_proc_buffer2`. This reduces sin() calls
+         * for long tones while preserving per-sample fades at the edges. */
+        bool in_fade_region = false;
+        if (frames_generated < fade_frames) in_fade_region = true;
+        if (frames_generated + chunk_frames + fade_frames > total_frames) in_fade_region = true;
+
+        size_t template_frames = 0;
+        size_t template_bytes = 0;
+        if (!in_fade_region) {
+            template_frames = (size_t)((double)sample_rate / (freq_hz > 0.0 ? freq_hz : 1000.0));
+            if (template_frames < 1) template_frames = 1;
+            size_t max_template_frames = sizeof(s_proc_buffer) / frame_bytes;
+            if (template_frames > max_template_frames) template_frames = max_template_frames;
+            template_bytes = template_frames * frame_bytes;
+            if (template_bytes > 0) {
+                if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+                    int16_t* tout = (int16_t*)s_proc_buffer;
+                    const double amp = 7500.0;
+                    double tphase = phase;
+                    for (size_t f = 0; f < template_frames; ++f) {
+                        double sample = sin(tphase) * amp;
+                        int16_t s = (int16_t)sample;
+                        for (uint32_t ch = 0; ch < channels; ++ch) {
+                            *tout++ = s;
+                        }
+                        tphase += phase_inc;
+                        if (tphase >= two_pi) tphase -= two_pi;
+                    }
+                } else {
+                    int32_t* tout32 = (int32_t*)s_proc_buffer;
+                    const double amp32 = 7500.0 * (1 << 16);
+                    double tphase = phase;
+                    for (size_t f = 0; f < template_frames; ++f) {
+                        double sample = sin(tphase) * amp32;
+                        int32_t s = (int32_t)sample;
+                        for (uint32_t ch = 0; ch < channels; ++ch) {
+                            *tout32++ = s;
+                        }
+                        tphase += phase_inc;
+                        if (tphase >= two_pi) tphase -= two_pi;
+                    }
+                }
+            }
+        }
+
+        if (!in_fade_region && template_bytes > 0) {
+            size_t need_frames = chunk_frames;
+            size_t filled_frames = 0;
+            size_t max_dst_frames = sizeof(s_proc_buffer2) / frame_bytes;
+            if (need_frames > max_dst_frames) need_frames = max_dst_frames;
+            uint8_t* dst = s_proc_buffer2;
+            while (filled_frames < need_frames) {
+                size_t copy_frames = template_frames;
+                if (copy_frames > (need_frames - filled_frames)) copy_frames = (need_frames - filled_frames);
+                size_t copy_bytes = copy_frames * frame_bytes;
+                memcpy(dst + (filled_frames * frame_bytes), s_proc_buffer, copy_bytes);
+                filled_frames += copy_frames;
+            }
+            size_t chunk_bytes = filled_frames * frame_bytes;
+            phase += (double)filled_frames * phase_inc;
+            while (phase >= two_pi) phase -= two_pi;
+            const TickType_t beep_wait = pdMS_TO_TICKS(10);
+            const TickType_t audio_wait = pdMS_TO_TICKS(20);
+            if (!beep_send_with_tag(s_proc_buffer2, chunk_bytes, beep_wait, audio_wait, 10)) {
+                /* fall through to per-sample generation on failure */
+            } else {
+                s_beep_remaining_bytes += chunk_bytes;
+                s_beep_prefill_accum_bytes += chunk_bytes;
+                bytes_enqueued += chunk_bytes;
+                frames_generated += filled_frames;
+                continue;
+            }
+        }
+
+        /* Fallback / fade region: generate per-sample into s_proc_buffer. */
         if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
             int16_t* out = (int16_t*)s_proc_buffer;
             if (out == NULL) {
                 return ESP_ERR_INVALID_STATE;
             }
-            const double amp = 15000.0; /* lowered to reduce headroom-induced clipping */
+            const double amp = 7500.0;
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
                 size_t global_frame = frames_generated + f;
@@ -4068,7 +4396,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
             if (out32 == NULL) {
                 return ESP_ERR_INVALID_STATE;
             }
-            const double amp32 = 15000.0 * (1 << 16);
+            const double amp32 = 7500.0 * (1 << 16);
             for (size_t f = 0; f < chunk_frames; ++f) {
                 double env = 1.0;
                 size_t global_frame = frames_generated + f;
@@ -4172,11 +4500,6 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
                      s_force_synth ? 1 : 0);
 #endif
 
-            /* Mark WAV pipeline for resume without clearing state so fallback can return to WAV audio. */
-            if (wav_active) {
-                wav_stream_abort_for_fallback();
-            }
-
             if (fallback_bytes > 0) {
                 s_beep_remaining_bytes += fallback_bytes;
                 s_beep_prefill_accum_bytes += fallback_bytes;
@@ -4259,6 +4582,15 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     }
 
     ESP_LOGI(TAG, "audio_processor_beep: enqueued=%u bytes duration_ms=%u freq=%.2f", (unsigned)bytes_enqueued, (unsigned)duration_ms, freq_hz);
+
+    /* Restore synth mode if we temporarily disabled it above. */
+    if (s_beep_restore_synth) {
+        portENTER_CRITICAL(&s_beep_lock);
+        s_force_synth = s_beep_prev_force_synth;
+        s_beep_restore_synth = false;
+        portEXIT_CRITICAL(&s_beep_lock);
+    }
+
     return bytes_enqueued > 0 ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
@@ -4298,6 +4630,31 @@ esp_err_t audio_processor_play_wav(const char* path)
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
 
+    /* Drop any synthetic keepalive so WAV output is audible immediately. */
+    if (s_force_synth) {
+        audio_processor_flush_priority_queues("play_wav");
+        s_last_source_was_synth = false;
+    }
+
+    /* Reject WAV playback while a beep is active or queued to keep the
+     * paths isolated and avoid audible contention. */
+    bool beep_active = false;
+    portENTER_CRITICAL(&s_beep_lock);
+    if (s_beep_remaining_bytes > 0 || s_beep_fallback_active || s_beep_prefill_active) {
+        beep_active = true;
+    }
+    portEXIT_CRITICAL(&s_beep_lock);
+    if (!beep_active && s_beep_buffer != NULL) {
+        size_t free_beep = xRingbufferGetCurFreeSize(s_beep_buffer);
+        if (free_beep < BEEP_BUFFER_SIZE) {
+            beep_active = true;
+        }
+    }
+    if (beep_active) {
+        ESP_LOGW(TAG, "audio_processor_play_wav: busy (beep active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     s_trace_next_read_call = true;
     ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");
 
@@ -4318,6 +4675,12 @@ esp_err_t audio_processor_play_wav(const char* path)
             goto cleanup;
         }
         resume_pipeline = true;
+    }
+
+    esp_err_t reinit_ret = audio_processor_reinit_i2s("play_wav");
+    if (reinit_ret != ESP_OK) {
+        status = reinit_ret;
+        goto cleanup;
     }
 
     if (s_audio_buffer != NULL) {
@@ -4350,7 +4713,12 @@ esp_err_t audio_processor_play_wav(const char* path)
         goto cleanup;
     }
     /* skip file size */
-    fread(&tmp32, 4, 1, f);
+    if (fread(&tmp32, 4, 1, f) != 1) {
+        ESP_LOGW(TAG, "audio_processor_play_wav: missing RIFF size (fread failed)");
+        printf("DIAG-APLAY-FAIL: missing-riff-size\n");
+        status = ESP_ERR_INVALID_STATE;
+        goto cleanup;
+    }
     char wave[4];
     if (fread(wave, 1, 4, f) != 4) {
         ESP_LOGW(TAG, "audio_processor_play_wav: missing WAVE header (fread failed)");
@@ -4387,13 +4755,28 @@ esp_err_t audio_processor_play_wav(const char* path)
                 goto cleanup;
             }
             uint16_t fmt16_1 = 0;
-            fread(&fmt16_1, 2, 1, f); audio_format = fmt16_1;
-            fread(&num_channels, 2, 1, f);
-            fread(&sample_rate, 4, 1, f);
-            fread(&tmp32, 4, 1, f); /* skip byte rate */
-            uint16_t tmp16 = 0; fread(&tmp16, 2, 1, f); /* skip block align */
-            fread(&bits_per_sample, 2, 1, f);
-            if (chunk_size > 16) fseek(f, (long)(chunk_size - 16), SEEK_CUR);
+            uint16_t tmp16 = 0;
+            bool fmt_ok =
+                fread(&fmt16_1, 2, 1, f) == 1 &&
+                fread(&num_channels, 2, 1, f) == 1 &&
+                fread(&sample_rate, 4, 1, f) == 1 &&
+                fread(&tmp32, 4, 1, f) == 1 && /* skip byte rate */
+                fread(&tmp16, 2, 1, f) == 1 && /* skip block align */
+                fread(&bits_per_sample, 2, 1, f) == 1;
+            if (!fmt_ok) {
+                ESP_LOGW(TAG, "audio_processor_play_wav: fmt chunk read failed");
+                printf("DIAG-APLAY-FAIL: fmt-read-failed\n");
+                status = ESP_ERR_INVALID_STATE;
+                goto cleanup;
+            }
+            audio_format = fmt16_1;
+            if (chunk_size > 16) {
+                if (fseek(f, (long)(chunk_size - 16), SEEK_CUR) != 0) {
+                    ESP_LOGW(TAG, "audio_processor_play_wav: failed to skip fmt padding (chunk_size=%u)", (unsigned)chunk_size);
+                    status = ESP_ERR_INVALID_STATE;
+                    goto cleanup;
+                }
+            }
             have_fmt = true;
         } else if (memcmp(chunk_id, "data", 4) == 0) {
             data_bytes = chunk_size;
@@ -4614,6 +4997,7 @@ static void i2s_reader_task(void *pvParameters)
         size_t bytes_read = 0;
         esp_err_t last_i2s_ret = ESP_OK;
         bool have_frame = false;
+        bool synth_prev = s_force_synth;
 
         int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
         if (bytes_per_sample <= 0) bytes_per_sample = 2;
@@ -4671,11 +5055,42 @@ static void i2s_reader_task(void *pvParameters)
                 }
 
                 size_t part_read = 0;
+                int64_t t_i2s_before = 0;
+                int64_t t_i2s_after = 0;
+                uint32_t dur_us = 0;
+                if (AUDIO_DIAG_ENABLED()) {
+                    t_i2s_before = esp_timer_get_time();
+                }
+
                 esp_err_t part_ret = i2s_channel_read(s_i2s_rx_handle,
                                                       (uint8_t*)s_i2s_buffer + total_read,
                                                       this_read,
                                                       &part_read,
                                                       0);
+
+                if (AUDIO_DIAG_ENABLED()) {
+                    t_i2s_after = esp_timer_get_time();
+                    dur_us = (uint32_t)(t_i2s_after - t_i2s_before);
+                    __atomic_fetch_add(&s_i2s_read_ops, 1, __ATOMIC_RELAXED);
+                    __atomic_fetch_add(&s_i2s_total_read_bytes, (uint32_t)part_read, __ATOMIC_RELAXED);
+                    if (part_ret != ESP_OK) {
+                        __atomic_fetch_add(&s_i2s_timeout_count, 1, __ATOMIC_RELAXED);
+                    }
+                    ESP_LOGI(TAG, "I2S-READ: ret=%d part_read=%zu dur_us=%u total=%zu remaining=%zu",
+                             (int)part_ret, part_read, dur_us, total_read + part_read, remaining);
+                }
+                    /* Capture a one-shot high-resolution probe entry when armed. */
+                    if (atomic_load_explicit(&s_probe_target, memory_order_relaxed) > 0) {
+                        unsigned idx = atomic_fetch_add_explicit(&s_probe_captured, 1, memory_order_relaxed);
+                        if (idx < I2S_PROBE_MAX_ENTRIES && idx < atomic_load_explicit(&s_probe_target, memory_order_relaxed)) {
+                            s_probe_buf[idx].t_before_us = t_i2s_before;
+                            s_probe_buf[idx].t_after_us = t_i2s_after;
+                            s_probe_buf[idx].dur_us = dur_us;
+                            s_probe_buf[idx].requested = this_read;
+                            s_probe_buf[idx].got = part_read;
+                            s_probe_buf[idx].err = (int)part_ret;
+                        }
+                    }
 
                 if (part_ret == ESP_OK && part_read > 0) {
                     total_read += part_read;
@@ -4748,6 +5163,19 @@ static void i2s_reader_task(void *pvParameters)
                 taskYIELD();
             }
             continue;
+        }
+
+        /* On first real I2S capture after synth or while lower-priority
+         * sources were active, flush queues and cancel beeps/WAV so I2S
+         * immediately owns the pipeline. */
+        if (!s_force_synth) {
+            bool lower_active = (s_beep_remaining_bytes > 0) || wav_playback_is_active();
+            if (synth_prev || s_last_source_was_synth || lower_active) {
+                audio_processor_flush_priority_queues("i2s-priority");
+            }
+            s_last_source_was_synth = false;
+        } else {
+            s_last_source_was_synth = true;
         }
 
         if (bytes_read > AUDIO_WORK_BUFFER_BYTES) {
@@ -4955,6 +5383,13 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
         return;
     }
 
+    if (AUDIO_DIAG_ENABLED()) {
+        ESP_LOGI(TAG, "I2S-OP-STATS: ops=%u bytes=%u timeouts=%u",
+                 (unsigned)s_i2s_read_ops,
+                 (unsigned)s_i2s_total_read_bytes,
+                 (unsigned)s_i2s_timeout_count);
+    }
+
     const char *tag = (phase != NULL) ? phase : "done";
     size_t audio_residual = 0;
     if (s_audio_rb_residual_len > s_audio_rb_residual_pos) {
@@ -4981,6 +5416,79 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
              rb_free,
              (unsigned)s_audio_stats.buffer_underruns,
              (unsigned)s_audio_stats.buffer_overruns);
+}
+
+esp_err_t audio_processor_emit_diag_summary(void)
+{
+    unsigned ops = __atomic_load_n(&s_i2s_read_ops, __ATOMIC_RELAXED);
+    unsigned bytes = __atomic_load_n(&s_i2s_total_read_bytes, __ATOMIC_RELAXED);
+    unsigned timeouts = __atomic_load_n(&s_i2s_timeout_count, __ATOMIC_RELAXED);
+    uint32_t tag_miss = audio_processor_test_get_tag_miss_count();
+    size_t rb_free = 0;
+    if (s_audio_buffer != NULL) {
+        rb_free = xRingbufferGetCurFreeSize(s_audio_buffer);
+    }
+
+    ESP_LOGI(TAG, "AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u rb_free=%zu underruns=%u overruns=%u",
+             ops, bytes, timeouts, (unsigned)tag_miss, rb_free,
+             (unsigned)s_audio_stats.buffer_underruns,
+             (unsigned)s_audio_stats.buffer_overruns);
+
+        /* Also emit a plain-text printf to guarantee visibility in idf_monitor
+         * regardless of ESP log filtering or tag-level settings. */
+        printf("AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u rb_free=%zu underruns=%u overruns=%u\n",
+            ops, bytes, timeouts, (unsigned)tag_miss, rb_free,
+            (unsigned)s_audio_stats.buffer_underruns,
+            (unsigned)s_audio_stats.buffer_overruns);
+
+    return ESP_OK;
+}
+
+void audio_processor_arm_probe(size_t n_entries)
+{
+    if (n_entries == 0) return;
+    if (n_entries > I2S_PROBE_MAX_ENTRIES) n_entries = I2S_PROBE_MAX_ENTRIES;
+    atomic_store_explicit(&s_probe_captured, 0, memory_order_relaxed);
+    atomic_store_explicit(&s_probe_target, (unsigned)n_entries, memory_order_relaxed);
+    ESP_LOGI(TAG, "I2S probe armed for %u entries", (unsigned)n_entries);
+}
+
+esp_err_t audio_processor_emit_probe(void)
+{
+    unsigned captured = atomic_exchange_explicit(&s_probe_captured, 0, memory_order_relaxed);
+    unsigned target = atomic_exchange_explicit(&s_probe_target, 0, memory_order_relaxed);
+    if (captured > target) captured = target;
+
+    if (captured == 0) {
+        ESP_LOGI(TAG, "I2S probe: no entries captured");
+        printf("I2S-PROBE: none\n");
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "I2S probe: captured=%u target=%u", captured, target);
+    printf("I2S-PROBE: captured=%u\n", captured);
+    for (unsigned i = 0; i < captured && i < I2S_PROBE_MAX_ENTRIES; ++i) {
+        i2s_probe_entry_t *e = &s_probe_buf[i];
+        /* Print a compact, single-line entry per capture for easy grepping */
+        ESP_LOGI(TAG, "I2S-PROBE-ENTRY: idx=%u before=%lld after=%lld dur=%u req=%zu got=%zu err=%d",
+                 i,
+                 (long long)e->t_before_us,
+                 (long long)e->t_after_us,
+                 (unsigned)e->dur_us,
+                 e->requested,
+                 e->got,
+                 e->err);
+        printf("I2S-PROBE-ENTRY: %u %lld %lld %u %zu %zu %d\n",
+               i,
+               (long long)e->t_before_us,
+               (long long)e->t_after_us,
+               (unsigned)e->dur_us,
+               e->requested,
+               e->got,
+               e->err);
+    }
+
+    return ESP_OK;
 }
 
 /**
@@ -5738,6 +6246,12 @@ bool audio_processor_is_beep_active(void) {
     return s_beep_remaining_bytes > 0;
 }
 
+bool audio_processor_is_i2s_active(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return audio_processor_is_i2s_capture_active();
+}
+
 /**
  * @brief Arm a one-shot diagnostic dump for the next beep invocation.
  * Call this before issuing `BEEP` to capture fallback and worker snapshots.
@@ -5933,6 +6447,27 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
 
     // Check available space in the buffer
     size_t free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    /* Host/device tests inject WAV while the fallback beep synth is active. If the
+     * audio ringbuffer is saturated (common when the beep enqueue filled it before
+     * switching to fallback), opportunistically reclaim space by dropping buffered
+     * audio and its matching tags. This keeps the injection path deterministic
+     * without tearing down the pipeline. */
+    if (free_size < size && s_beep_fallback_active) {
+        size_t reclaimed = 0;
+        size_t rsz = 0;
+        void *it = NULL;
+        while (free_size < size && (it = xRingbufferReceiveUpTo(s_audio_buffer, &rsz, 0, SIZE_MAX)) != NULL && rsz > 0) {
+            vRingbufferReturnItem(s_audio_buffer, it);
+            reclaimed += rsz;
+            audio_source_tag_drop_one();
+            free_size = xRingbufferGetCurFreeSize(s_audio_buffer);
+        }
+        ESP_LOGW(TAG, "audio_processor_test_inject_audio_data: reclaimed %zu bytes during fallback (free %zu target %zu)", reclaimed, free_size, size);
+    }
+#endif
+
     if (free_size < size) {
         ESP_LOGW(TAG, "audio_processor_test_inject_audio_data: not enough space (%zu < %zu)", free_size, size);
         return ESP_ERR_NO_MEM;

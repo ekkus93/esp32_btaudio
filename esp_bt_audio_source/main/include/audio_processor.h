@@ -205,6 +205,17 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz);
  */
 bool audio_processor_is_beep_active(void);
 
+/**
+ * @brief Query whether WAV playback is currently active.
+ */
+bool audio_processor_is_wav_active(void);
+
+/**
+ * @brief Query whether the processor is currently consuming live I2S input
+ * (i.e., running with the real capture path instead of the synth source).
+ */
+bool audio_processor_is_i2s_active(void);
+
 #ifdef UNIT_TEST
 /**
  * @brief Retrieve the most recent beep request (for tests only).
@@ -218,6 +229,25 @@ void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_h
 void audio_processor_enable_next_beep_diag(void);
 void audio_processor_set_diag_enabled(bool enable);
 bool audio_processor_is_diag_enabled(void);
+esp_err_t audio_processor_emit_diag_summary(void);
+
+/**
+ * @brief Arm a one-shot high-resolution I2S probe for the next N part-reads.
+ *
+ * The probe captures per-chunk timestamps and read results. Use
+ * `audio_processor_emit_probe()` to retrieve and print the captured entries.
+ *
+ * @param n_entries Number of chunk-reads to capture (clamped internally)
+ */
+void audio_processor_arm_probe(size_t n_entries);
+
+/**
+ * @brief Emit the captured probe entries (if any) to the log/console.
+ *
+ * This prints a concise header followed by up to the captured number of
+ * probe entries. Returns ESP_OK even if no entries were captured.
+ */
+esp_err_t audio_processor_emit_probe(void);
 
 /**
  * @brief Emit a synchronous worker-like diagnostic snapshot.

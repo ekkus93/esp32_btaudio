@@ -16,6 +16,7 @@ project(esp_bt_audio_source_test)
 
 # Optionally add compile definitions for testing mode
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
+target_compile_definitions(${PROJECT_NAME}.elf PRIVATE ESP_PLATFORM)
 
 # Add bt_mock component to include directories
 idf_component_get_property(bt_mock_dir bt_mock COMPONENT_DIR)
@@ -46,7 +47,16 @@ target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_mock_lib} ${command_inter
 # on-device test images that don't include the full main application.
 idf_component_get_property(bt_test_stubs_lib bt_test_stubs COMPONENT_LIB)
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_test_stubs_lib})
+
 # Add device-side Unity test that exercises the real command parser.
 # The component's own CMakeLists already registers the `main/` sources. Do
 # not add them again here or the linker will see duplicate symbols.
+
+# For on-device Unity images we need some production implementation
+# symbols (audio processor) available so tests link. Add only the
+# specific source file rather than the entire `main/` tree to avoid
+# duplicate `app_main` and other entry symbols.
+target_sources(${PROJECT_NAME}.elf PRIVATE
+    "${CMAKE_SOURCE_DIR}/../../main/audio_processor.c"
+)
 

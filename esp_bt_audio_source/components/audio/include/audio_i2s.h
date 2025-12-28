@@ -36,8 +36,9 @@ typedef struct {
     .gpio_ws = GPIO_NUM_25,        \
     .gpio_din = GPIO_NUM_22,       \
     .gpio_mclk = -1,               \
-    .dma_buf_count = 8,            \
-    .dma_buf_len = 64              \
+    /* Increase DMA buffers to reduce underrun/timeout frequency on constrained boards */ \
+    .dma_buf_count = 12,           \
+    .dma_buf_len = 128             \
 }
 
 /**
