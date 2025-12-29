@@ -50,6 +50,9 @@ void audio_chunk_release_block(uint8_t *ptr);
 /* Enqueue a copy of `len` bytes (clamped to block size) with a source tag. */
 bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag_t tag);
 
+/* Enqueue `len` bytes with an explicit tag_id (diagnostic/flow tracking). */
+bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_source_tag_t tag, uint16_t tag_id);
+
 /* Dequeue a descriptor; fills out_chunk on success. wait_ticks bounds wait. */
 bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks);
 

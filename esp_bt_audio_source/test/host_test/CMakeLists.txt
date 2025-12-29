@@ -438,6 +438,21 @@ target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
 
+# Beep manager host unit tests
+add_executable(test_beep_manager test_beep_manager.c
+    ../../main/beep_manager.c
+    ../../main/audio_queue.c
+    mocks/fake_queue.c
+    mocks/fake_task.c
+    mocks/fake_semphr.c
+    mocks/fake_log.c
+    mocks/fake_debug_helpers.c)
+target_include_directories(test_beep_manager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_include_directories(test_beep_manager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_beep_manager unity m)
+add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

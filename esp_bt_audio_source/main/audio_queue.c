@@ -112,6 +112,38 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 	return true;
 }
 
+bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_source_tag_t tag, uint16_t tag_id)
+{
+	if (data == NULL || len == 0 || s_audio_queue == NULL) {
+		return false;
+	}
+
+	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
+	uint8_t *block = audio_chunk_alloc_block(wait_ticks);
+	if (block == NULL) {
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: no free blocks len=%u tag=%d id=%u", (unsigned)len, (int)tag, (unsigned)tag_id);
+		return false;
+	}
+
+	size_t copy_len = (len > AUDIO_CHUNK_BLOCK_BYTES) ? AUDIO_CHUNK_BLOCK_BYTES : len;
+	memcpy(block, data, copy_len);
+
+	audio_chunk_t chunk = {
+		.data = block,
+		.len = copy_len,
+		.tag = tag,
+		.tag_id = tag_id,
+	};
+
+	if (xQueueSend(s_audio_queue, &chunk, wait_ticks) != pdTRUE) {
+		audio_chunk_release_block(block);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: queue full len=%u tag=%d id=%u", (unsigned)copy_len, (int)tag, (unsigned)tag_id);
+		return false;
+	}
+
+	return true;
+}
+
 bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks)
 {
 	if (out_chunk == NULL || s_audio_queue == NULL) {
