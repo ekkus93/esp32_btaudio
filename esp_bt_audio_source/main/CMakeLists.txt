@@ -13,6 +13,8 @@ endif()
 idf_component_register(
     SRCS
         "audio_queue.c"
+        "audio_util.c"
+        "i2s_manager.c"
         "beep_manager.c"
         "play_manager.c"
         "audio_processor.c"

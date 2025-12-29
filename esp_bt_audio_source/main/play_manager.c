@@ -12,6 +12,7 @@
 #include "esp_log.h"
 
 #include "audio_queue.h"
+#include "audio_util.h"
 
 static const char *TAG = "play_manager";
 
@@ -260,6 +261,7 @@ esp_err_t play_manager_fill(void)
             .src_bit_depth = s_pm.src_bit,
             .dst_bit_depth = s_pm.out_cfg.bit_depth,
             .dst_size = &conv_size,
+            .work_bytes = s_pm.work_bytes,
         };
         ret = convert_audio_format(&conv_args);
         if (ret != ESP_OK) {
@@ -273,7 +275,10 @@ esp_err_t play_manager_fill(void)
             .src_size = conv_size,
             .src_rate = s_pm.src_rate,
             .dst_rate = s_pm.out_cfg.sample_rate,
+            .bit_depth = s_pm.out_cfg.bit_depth,
+            .channels = s_pm.out_cfg.channels,
             .dst_size = &res_size,
+            .work_bytes = s_pm.work_bytes,
         };
         ret = resample_audio(&res_args);
         if (ret != ESP_OK) {

@@ -13,6 +13,13 @@ const char* pcTaskGetName(TaskHandle_t xTaskToQuery);
 void taskYIELD(void);
 TickType_t xTaskGetTickCount(void);
 void mock_task_set_tick(uint32_t ticks);
+void mock_task_reset(void);
+unsigned mock_task_create_count(void);
+unsigned mock_task_delete_count(void);
+TaskHandle_t mock_task_last_handle(void);
+const char* mock_task_last_name(void);
+BaseType_t mock_task_last_result(void);
+void mock_task_set_create_result(BaseType_t result);
 void vTaskSuspendAll(void);
 BaseType_t xTaskResumeAll(void);
 

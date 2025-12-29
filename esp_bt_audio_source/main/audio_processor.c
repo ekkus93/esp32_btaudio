@@ -26,6 +26,7 @@
 #include "esp_debug_helpers.h"
 #include "audio_processor.h"
 #include "audio_queue.h"
+#include "audio_util.h"
 #include "nvs_storage.h"
 #include "esp_heap_caps.h"
 #include "esp_rom_sys.h"
@@ -48,383 +49,6 @@ static bool audio_processor_is_a2dp_connected(void)
 #endif
 #define pdTICKS_TO_MS(ticks) ((uint32_t)((ticks) * portTICK_PERIOD_MS))
 #endif
-
-// Local bounded helpers to keep analyzer happy without pragmas.
-static inline int audio_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
-        TickType_t wait_ticks = 0;
-        bool wav_active = wav_playback_is_active();
-        if (wav_active) {
-            wait_ticks = pdMS_TO_TICKS(50);
-        }
-        size_t wav_remaining_snapshot = 0;
-        bool wav_remaining_valid = false;
-        if (wav_active && s_wav_mutex != NULL && xSemaphoreTake(s_wav_mutex, 0) == pdTRUE) {
-            wav_remaining_snapshot = s_wav_stream.remaining_bytes;
-            wav_remaining_valid = true;
-            xSemaphoreGive(s_wav_mutex);
-        }
-
-        size_t q_used_before = audio_descriptor_used();
-        audio_chunk_t chunk = {0};
-        if (!audio_chunk_dequeue(&chunk, wait_ticks)) {
-            AUDIO_DIAG_LOGI("audio_processor_read: audio dequeue empty wav_pending=%zu", (size_t)s_wav_pending_bytes);
-            AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-DEQ: empty wav_pending=%lu\n", (unsigned long)s_wav_pending_bytes);
-            break;
-        }
-
-        AUDIO_DIAG_LOGI(
-              "DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu valid=%d",
-              chunk.data,
-              (unsigned long)chunk.len,
-              (unsigned long)wait_ticks,
-              wav_active ? 1 : 0,
-              (unsigned long)s_wav_pending_bytes,
-              (unsigned long)wav_remaining_snapshot,
-              wav_remaining_valid ? 1 : 0);
-        AUDIO_DIAG_PRINTF("DIAG-READ-AUDIO-ITEM: ptr=%p size=%lu wait_ticks=%lu wav_active=%d wav_pending=%lu wav_remaining=%lu wav_remaining_valid=%d\n",
-            chunk.data,
-            (unsigned long)chunk.len,
-            (unsigned long)wait_ticks,
-            wav_active ? 1 : 0,
-            (unsigned long)s_wav_pending_bytes,
-            (unsigned long)wav_remaining_snapshot,
-            wav_remaining_valid ? 1 : 0);
-
-        size_t read_size = chunk.len;
-static TaskHandle_t s_audio_task_handle = NULL; /* I2S reader task */
-static TaskHandle_t s_audio_worker_handle = NULL; /* Worker that performs convert/resample */
-typedef struct {
-    void* ptr;
-    size_t len;
-    size_t capacity;
-    bool synth_fill;
-    bool pooled_ptr;
-} i2s_block_t;
-
-/* Tag item stored in the metadata ringbuffer. Includes a small
- * monotonically-incrementing counter so we can detect replay/stalls
- * of metadata entries during diagnostics. The counter is relaxed-
- * atomically incremented on each enqueue. */
-typedef struct {
-    uint8_t tag;
-    uint16_t counter;
-} audio_source_tag_item_t;
-
-/* Monotonic counter for tag items. Relaxed atomic updates are
- * sufficient for diagnostics and avoid needing a mutex. Wrap-around
- * is allowed. */
-/* Monotonic counter for tag items. Use a full sequentially-consistent
- * atomic increment so diagnostics that later correlate tag ids with
- * other events observe a well-defined global order. Wrap-around is
- * allowed and expected for this diagnostic counter. */
-static uint16_t s_audio_source_tag_counter = 0;
-static uint16_t s_last_tag_id_pushed = 0;
-static uint16_t s_last_tag_id_taken = 0;
-static uint32_t s_tag_push_count = 0;
-static uint32_t s_tag_miss_count = 0;
-static TickType_t s_tag_recover_mute_until = 0;
-static TickType_t s_last_tag_reset_tick = 0;
-static uint32_t s_tag_reset_count = 0;
-static size_t s_last_tag_reset_used_before = 0;
-#ifdef CONFIG_BT_MOCK_TESTING
-static TickType_t s_post_drain_guard_until = 0;
-static TickType_t s_post_drain_guard_started = 0;
-static const TickType_t POST_DRAIN_GUARD_MS = 500;
-#endif
-
-#ifdef UNIT_TEST
-static inline bool beep_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
-{
-    return (now_ticks - last_ticks) >= cooldown_ticks;
-}
-
-bool audio_processor_test_autostart_due(TickType_t now_ticks, TickType_t last_ticks, TickType_t cooldown_ticks)
-{
-    return beep_autostart_due(now_ticks, last_ticks, cooldown_ticks);
-}
-#endif
-static uint32_t s_tag_take_count = 0;
-static TickType_t s_tag_diag_next_log = 0;
-
-static QueueHandle_t s_i2s_queue = NULL; /* Queue of i2s_block_t */
-static QueueHandle_t s_i2s_free_queue = NULL; /* Queue of free raw block pointers */
-static void **s_i2s_pool = NULL; /* Array of pointers for freeing at deinit */
-#define I2S_RAW_POOL_DEFAULT_COUNT 8U
-/* On DRAM-only devices reduce the small prealloc pool to avoid large
- * upfront DRAM consumption. Increase only if PSRAM is available. */
-#define I2S_RAW_POOL_DRAM_COUNT    1U
-/* Tunable I2S parameters to trade latency vs RAM. Lower per-read sizes
- * reduce blocking time in the reader; more descriptors give the DMA more
- * headroom without needing very large per-descriptor frames. Adjust if
- * you have PSRAM or different timing requirements. */
-#define I2S_DEFAULT_DMA_DESC_NUM 6U
-#define I2S_DEFAULT_DMA_FRAME_NUM 32U
-#define I2S_MAX_READ_BYTES ((size_t)4U * 1024U)
-#define SYNTH_MIN_HEADROOM_BYTES  (AUDIO_WORK_BUFFER_BYTES)
-#define SYNTH_THROTTLE_DELAY_MS   2
-
-// Legacy ringbuffers retained until descriptor queue fully replaces them
-static RingbufHandle_t s_audio_buffer = NULL;
-static RingbufHandle_t s_audio_source_buffer = NULL;
-
-// Small low-latency buffer for urgent beeps
-static RingbufHandle_t s_beep_buffer = NULL;
-
-// Audio configuration
-static audio_config_t s_audio_config = {
-    .sample_rate = AUDIO_SAMPLE_RATE_44K,
-    .bit_depth = AUDIO_BIT_DEPTH_16,
-    .channels = AUDIO_CHANNEL_STEREO,
-    .volume = 80,  // Default volume 80%
-    .mute = false,
-    .i2s_port = I2S_NUM_0,
-    .i2s_bclk_pin = GPIO_NUM_26,
-    .i2s_ws_pin = GPIO_NUM_25,
-    .i2s_din_pin = GPIO_NUM_22,
-    .i2s_dout_pin = GPIO_NUM_NC,
-};
-
-// Audio statistics
-static audio_stats_t s_audio_stats = {0};
-
-// I2S configuration
-static i2s_chan_handle_t s_i2s_rx_handle = NULL;
-
-// Processing state
-static bool s_is_initialized = false;
-static bool s_is_running = false;
-/* Force synthetic audio at runtime when requested by user. This forces the
- * audio path to use the built-in synth generator and avoids I2S timeouts
- * when the external I2S source is absent. The user can still toggle this
- * at runtime via audio_processor_set_synth_mode(). */
-static bool s_force_synth = true; /* keep synth active but render an inaudible tone */
-static bool s_last_source_was_synth = true;
-/* Gate re-enabling the synth keepalive to cases where we've successfully
- * started real playback. This prevents PLAY failures (e.g., A2DP down)
- * from later re-arming the keepalive and enqueueing unexpected audio. */
-static bool s_keepalive_armed = false;
-static uint8_t s_volume_gain = 80; // Internal volume as percentage
-static volatile bool s_trace_next_read_call = false;
-static size_t s_runtime_work_bytes = 0U;
-static bool s_i2s_first_read = true;
-
-/* Lightweight instrumentation counters for I2S read diagnostics (queried
- * when `AUDIO_DIAG_ENABLED()` is true). These are relaxed atomic ops so
- * they have minimal runtime impact when diagnostics are enabled. */
-static uint32_t s_i2s_read_ops = 0;
-static uint32_t s_i2s_total_read_bytes = 0;
-static uint32_t s_i2s_timeout_count = 0;
-
-/* One-shot high-resolution probe for part-reads. Protected via simple
- * atomic counters: set target with audio_processor_arm_probe(), the
- * reader will capture up to `s_probe_target` entries into `s_probe_buf`.
- * Call audio_processor_emit_probe() to atomically collect and print
- * the captured entries. The probe is intentionally bounded and lightweight.
- */
-#define I2S_PROBE_MAX_ENTRIES 64
-typedef struct {
-    int64_t t_before_us;
-    int64_t t_after_us;
-    uint32_t dur_us;
-    size_t requested;
-    size_t got;
-    int err;
-} i2s_probe_entry_t;
-static i2s_probe_entry_t s_probe_buf[I2S_PROBE_MAX_ENTRIES];
-static atomic_uint s_probe_target = 0; /* how many to capture (arm) */
-static atomic_uint s_probe_captured = 0; /* how many captured so far */
-
-static size_t audio_get_runtime_work_bytes(void)
-{
-    size_t bytes = s_runtime_work_bytes;
-    if (bytes == 0U) {
-        bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
-    }
-    return bytes;
-}
-
-static void log_read_summary(const char *phase, size_t requested, size_t produced);
-static void drain_beep_buffer(void);
-static inline int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
-static bool audio_source_tag_take_with_id(audio_source_tag_t *tag, uint16_t *id_out, TickType_t wait_ticks);
-static void audio_source_tag_log_miss(const char *path);
-static void audio_source_tag_recover_desync(const char *path, bool drop_audio, bool drop_beep);
-static esp_err_t audio_processor_reinit_i2s(const char *ctx);
-static void audio_processor_flush_priority_queues(const char *ctx);
-static bool audio_processor_is_i2s_capture_active(void);
-
-static void audio_processor_flush_priority_queues(const char *ctx)
-{
-    (void)ctx;
-    /* Drain all ringbuffers and cancel lower-priority sources so the
-     * next producer (I2S/WAV/BEEP) takes effect immediately. This is
-     * intentionally aggressive and idempotent. */
-    audio_processor_drain_ringbuffer();
-}
-
-static bool audio_processor_is_i2s_capture_active(void)
-{
-    /* Consider I2S active when the processor is running and not using the
-     * synthetic keepalive source. This covers live capture priority. */
-    return s_is_running && !s_force_synth;
-}
-
-/* Remember previous synth mode when we temporarily enable synth for
- * fallback beep playback. This allows the reader to generate samples
- * locally while the fallback tone is active (useful on DRAM-only
- * boards or when I2S reads time out). */
-static bool s_beep_prev_force_synth = false;
-static bool s_beep_restore_synth = false;
-/* Track consecutive I2S read failures across the reader task so other
- * code (like the fallback restore logic) can detect whether the I2S
- * path is healthy. This prevents restoring synth mode when I2S is
- * currently failing, which caused choppy audio. */
-static int s_i2s_consecutive_failures = 0;
-static const int I2S_FAILURE_THRESHOLD = 20;
-static const int I2S_FAILURE_LOG_THROTTLE = 200;
-static int s_last_i2s_failure_log = -I2S_FAILURE_LOG_THROTTLE;
-/* Delay releasing a freshly enqueued beep until a small headroom is built
- * and a short time elapses so the sink does not underrun on the first pull. */
-static bool s_beep_prefill_active = false;
-static TickType_t s_beep_prefill_release_tick = 0;
-static size_t s_beep_prefill_goal_bytes = 0;
-static size_t s_beep_prefill_accum_bytes = 0;
-static size_t s_beep_remaining_bytes = 0;
-
-/* Fallback on-the-fly beep generator state
- * Used when the main ringbuffer is full and we still want to play a
- * short beep. The reader will synthesize samples directly from this
- * state prior to pulling from the ringbuffer. Protected by a
- * simple portMUX critical section. */
-static bool s_beep_fallback_active = false;
-static size_t s_beep_fallback_frames_remaining = 0;
-/* Floating-point phase helpers for sine generation (used for nicer beep) */
-static double s_beep_fallback_phase = 0.0;
-static double s_beep_fallback_phase_inc = 0.0;
-/* Track total frames scheduled for the fallback so we can compute
- * envelope progress for fade-in/out. This accumulates when multiple
- * beeps are enabled while a previous fallback is active. */
-static size_t s_beep_fallback_total_frames = 0;
-/* Track how many fallback metadata tags still need to be consumed so we
- * only drain one tag per fallback activation instead of once per read. */
-static size_t s_beep_fallback_tag_debt = 0;
-/* Ensure we enqueue at most one fallback tag per activation to avoid debt growth. */
-static bool s_beep_fallback_tag_enqueued = false;
-/* Prevent repeated tag consumption while preserving visible debt for tests. */
-static bool s_beep_fallback_tag_consumed = false;
-/* One-shot diag flag to log tag_miss/tag_used on the first fallback read. */
-static bool s_beep_fallback_diag_armed = false;
-#if CONFIG_BT_MOCK_TESTING
-#define SHORT_FALLBACK_FRAMES (256U)
-#endif
-#ifdef UNIT_TEST
-static uint32_t s_last_beep_duration_ms = 0;
-static double s_last_beep_freq_hz = 0.0;
-#endif
-static portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
-
-/* Persistent synth state to avoid phase discontinuities and to support a
- * short ramp (fade) when synth mode toggles on/off. Without a persistent
- * phase the inexpensive synth generator would restart phase on each
- * buffer and introduce clicks. We protect synth-mode transitions with the
- * existing s_beep_lock critical section to keep the change low-impact. */
-static double s_synth_phase = 0.0;
-static double s_synth_phase_inc = 0.0;
-static double s_synth_env = 1.0; /* current synth amplitude envelope (0.0..1.0) */
-static bool s_synth_fade_active = false;
-static int s_synth_fade_dir = 0; /* +1 ramp-up, -1 ramp-down */
-static size_t s_synth_fade_frames_total = 0;
-static size_t s_synth_fade_frames_remaining = 0;
-
-#define WAV_RINGBUFFER_WAIT_MS (50U)
-#define WAV_RINGBUFFER_MAX_DROPS (16)
-/* Limit WAV ringbuffer writes to smaller slices to keep critical sections short. */
-#define WAV_RINGBUFFER_SUBCHUNK_BYTES (256U)
-
-// Diagnostics throttling state for high-frequency logging inside the
-// audio processing task. We emit the first log immediately and then
-// rate-limit updates to avoid starving the idle task and tripping the watchdog.
-static TickType_t s_diag_next_log_tick = 0;
-static size_t s_diag_last_conv_size = SIZE_MAX;
-static size_t s_diag_last_frame_bytes = SIZE_MAX;
-static int s_diag_last_src_rate = -1;
-static int s_diag_last_dst_rate = -1;
-
-typedef enum {
-    WORKER_DIAG_SOURCE_WORKER = 0,
-    WORKER_DIAG_SOURCE_WAV
-} worker_diag_source_t;
-
-typedef struct {
-    uint32_t dequeued_blocks;
-    uint32_t synth_blocks;
-    size_t bytes_sent;
-    size_t worker_bytes_sent;
-    size_t wav_bytes_sent;
-    uint32_t wav_chunks;
-    uint32_t ringbuffer_failures;
-    size_t last_enqueued_bytes;
-    BaseType_t last_send_result;
-    TickType_t last_report_tick;
-    worker_diag_source_t last_source;
-} worker_diag_state_t;
-
-static worker_diag_state_t s_worker_diag = {0};
-static const TickType_t WORKER_DIAG_INTERVAL_TICKS = pdMS_TO_TICKS(1000);
-
-
-typedef struct {
-    const void* src;
-    void* dst;
-    size_t src_size;
-    audio_bit_depth_t src_bit_depth;
-    audio_bit_depth_t dst_bit_depth;
-    size_t* dst_size;
-} audio_convert_args_t;
-
-typedef struct {
-    const void* src;
-    void* dst;
-    size_t src_size;
-    audio_sample_rate_t src_rate;
-    audio_sample_rate_t dst_rate;
-    size_t* dst_size;
-} audio_resample_args_t;
-
-static void log_read_summary(const char *phase, size_t requested, size_t produced);
-esp_err_t convert_audio_format(const audio_convert_args_t* args);
-esp_err_t resample_audio(const audio_resample_args_t* args);
-static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result);
-static bool audio_source_tag_push(audio_source_tag_t tag);
-#ifdef CONFIG_BT_MOCK_TESTING
-static bool audio_source_tag_take(audio_source_tag_t *tag, TickType_t wait_ticks);
-#endif
-static void audio_source_tag_drop_one(void);
-static void audio_source_tag_reset_buffer(void);
-static bool audio_source_tag_consume_for_fallback(void);
-static bool beep_send_with_tag(const uint8_t *data,
-                               size_t len,
-                               TickType_t beep_wait,
-                               TickType_t audio_wait,
-                               int max_attempts);
-static const char *audio_source_tag_label(audio_source_tag_t tag);
-
-static inline void audio_proc_mock_yield(void)
-{
-#ifdef CONFIG_BT_MOCK_TESTING
-    vTaskDelay(1);
-#endif
-}
-
-/* Diagnostic logging helper for tag lifecycle traces used during
- * investigation and unit testing. These are silent by default; to
- * enable the verbose tag diagnostics for a host test run define
- * CONFIG_AUDIO_TAG_DIAGNOSTICS in the test target. This avoids
- * producing large volumes of test output during normal runs while
- * allowing focused troubleshooting when explicitly requested. */
-#if defined(CONFIG_BT_MOCK_TESTING) && defined(CONFIG_AUDIO_TAG_DIAGNOSTICS)
-#define AUDIO_TAG_DIAG(...) printf(__VA_ARGS__)
-#else
 #define AUDIO_TAG_DIAG(...) do {} while (0)
 #endif
 
@@ -1286,6 +910,7 @@ static esp_err_t wav_stream_fill_locked(void)
             .src_bit_depth = s_wav_stream.src_bit_depth,
             .dst_bit_depth = s_audio_config.bit_depth,
             .dst_size = &conv_size,
+            .work_bytes = audio_get_runtime_work_bytes(),
         };
         esp_err_t conv_ret = convert_audio_format(&conv_args);
         if (conv_ret != ESP_OK) {
@@ -1299,7 +924,10 @@ static esp_err_t wav_stream_fill_locked(void)
             .src_size = conv_size,
             .src_rate = s_wav_stream.src_sample_rate,
             .dst_rate = s_audio_config.sample_rate,
+            .bit_depth = s_audio_config.bit_depth,
+            .channels = s_audio_config.channels,
             .dst_size = &res_size,
+            .work_bytes = audio_get_runtime_work_bytes(),
         };
         esp_err_t res_ret = resample_audio(&res_args);
         if (res_ret != ESP_OK) {
@@ -3494,6 +3122,7 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
         .src_bit_depth = s_audio_config.bit_depth,
         .dst_bit_depth = s_audio_config.bit_depth,
         .dst_size = &conv_size,
+        .work_bytes = audio_get_runtime_work_bytes(),
     };
     if (convert_audio_format(&conv_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
@@ -3506,7 +3135,10 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
         .src_size = conv_size,
         .src_rate = s_audio_config.sample_rate,
         .dst_rate = s_audio_config.sample_rate,
+        .bit_depth = s_audio_config.bit_depth,
+        .channels = s_audio_config.channels,
         .dst_size = &res_size,
+        .work_bytes = audio_get_runtime_work_bytes(),
     };
     if (resample_audio(&res_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
@@ -4924,6 +4556,7 @@ static void audio_worker_task(void *pvParameters)
             .src_bit_depth = s_audio_config.bit_depth,
             .dst_bit_depth = s_audio_config.bit_depth,
             .dst_size = &conv_size,
+            .work_bytes = audio_get_runtime_work_bytes(),
         };
         esp_err_t cret = convert_audio_format(&conv_args);
         if (cret != ESP_OK) {
@@ -4940,7 +4573,10 @@ static void audio_worker_task(void *pvParameters)
             .src_size = conv_size,
             .src_rate = s_audio_config.sample_rate,
             .dst_rate = s_audio_config.sample_rate,
+            .bit_depth = s_audio_config.bit_depth,
+            .channels = s_audio_config.channels,
             .dst_size = &res_size,
+            .work_bytes = audio_get_runtime_work_bytes(),
         };
         esp_err_t rret = resample_audio(&res_args);
         if (rret != ESP_OK) {
@@ -5152,338 +4788,6 @@ static void apply_volume(void* buffer, size_t size, uint8_t volume)
     }
 }
 
-/**
- * @brief Convert audio from one bit depth to another
- */
-esp_err_t convert_audio_format(const audio_convert_args_t* args)
-{
-    if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    const void* src = args->src;
-    void* dst = args->dst;
-    size_t src_size = args->src_size;
-    audio_bit_depth_t src_bit_depth = args->src_bit_depth;
-    audio_bit_depth_t dst_bit_depth = args->dst_bit_depth;
-    size_t* dst_size = args->dst_size;
-
-    size_t work_bytes = audio_get_runtime_work_bytes();
-    if (work_bytes == 0U) {
-        work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
-    }
-
-    if (src_bit_depth == dst_bit_depth) {
-        // Same format, just copy
-        size_t copy_size = src_size;
-        if (copy_size > work_bytes) {
-            ESP_LOGW(TAG, "convert_audio_format: copy truncated from %zu to %zu bytes", copy_size, work_bytes);
-            copy_size = work_bytes;
-            s_audio_stats.conversion_errors++;
-        }
-        memcpy(dst, src, copy_size);
-        *dst_size = copy_size;
-        return ESP_OK;
-    }
-
-    // Calculate sample counts
-    int src_bytes_per_sample = audio_bytes_per_sample(src_bit_depth);
-    int dst_bytes_per_sample = audio_bytes_per_sample(dst_bit_depth);
-    if (src_bytes_per_sample <= 0 || dst_bytes_per_sample <= 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    int src_sample_count = src_size / src_bytes_per_sample;
-    size_t calculated = (size_t)src_sample_count * (size_t)dst_bytes_per_sample;
-    if (calculated > work_bytes) {
-        ESP_LOGW(TAG, "convert_audio_format: dst size %zu exceeds buffer %zu, truncating", calculated, work_bytes);
-        calculated = work_bytes;
-        s_audio_stats.conversion_errors++;
-    }
-    *dst_size = calculated;
-
-    // Handle different conversion scenarios
-    if (src_bit_depth == AUDIO_BIT_DEPTH_16 && dst_bit_depth == AUDIO_BIT_DEPTH_32) {
-        // 16-bit to 32-bit
-        int16_t* src_samples = (int16_t*)src;
-        int32_t* dst_samples = (int32_t*)dst;
-        
-        for (int i = 0; i < src_sample_count; i++) {
-            size_t idx = (size_t)i;
-            if ((idx + 1) * sizeof(int32_t) > *dst_size) break;
-            // Scale up with proper bit shift (16 bits to 32 bits)
-            dst_samples[i] = ((int32_t)src_samples[i]) << 16;
-        }
-    }
-    else if (src_bit_depth == AUDIO_BIT_DEPTH_32 && dst_bit_depth == AUDIO_BIT_DEPTH_16) {
-        // 32-bit to 16-bit
-        int32_t* src_samples = (int32_t*)src;
-        int16_t* dst_samples = (int16_t*)dst;
-        
-        for (int i = 0; i < src_sample_count; i++) {
-            size_t idx = (size_t)i;
-            if ((idx + 1) * sizeof(int16_t) > *dst_size) break;
-            // Scale down with proper bit shift and dithering
-            dst_samples[i] = (int16_t)(src_samples[i] >> 16);
-        }
-    }
-    else if (src_bit_depth == AUDIO_BIT_DEPTH_24 && dst_bit_depth == AUDIO_BIT_DEPTH_16) {
-        // 24-bit to 16-bit (assuming 24-bit is stored in 32-bit containers)
-        int32_t* src_samples = (int32_t*)src;
-        int16_t* dst_samples = (int16_t*)dst;
-        
-        for (int i = 0; i < src_sample_count; i++) {
-            size_t idx = (size_t)i;
-            if ((idx + 1) * sizeof(int16_t) > *dst_size) break;
-            // Scale down with proper bit shift
-            dst_samples[i] = (int16_t)(src_samples[i] >> 8);
-        }
-    }
-    else if (src_bit_depth == AUDIO_BIT_DEPTH_16 && dst_bit_depth == AUDIO_BIT_DEPTH_24) {
-        // 16-bit to 24-bit (stored in 32-bit containers)
-        int16_t* src_samples = (int16_t*)src;
-        int32_t* dst_samples = (int32_t*)dst;
-        
-        for (int i = 0; i < src_sample_count; i++) {
-            size_t idx = (size_t)i;
-            if ((idx + 1) * sizeof(int32_t) > *dst_size) break;
-            // Scale up with proper bit shift
-            dst_samples[i] = ((int32_t)src_samples[i]) << 8;
-        }
-    }
-    else {
-        // Unsupported conversion
-        ESP_LOGE(TAG, "Unsupported format conversion: %d to %d", src_bit_depth, dst_bit_depth);
-        s_audio_stats.conversion_errors++;
-        return ESP_ERR_NOT_SUPPORTED;
-    }
-
-    return ESP_OK;
-}
-
-/**
- * @brief Simple resampling function
- *
- * Note: This is a basic linear interpolation resampler.
- * For production use, consider a higher quality algorithm like polyphase or FFT-based resampling.
- */
-esp_err_t resample_audio(const audio_resample_args_t* args)
-{
-    if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
-        ESP_LOGE(TAG, "resample_audio: invalid args src=%p dst=%p dst_size=%p", args ? args->src : NULL, args ? args->dst : NULL, args ? args->dst_size : NULL);
-        return ESP_ERR_INVALID_ARG;
-    }
-    const void* src = args->src;
-    void* dst = args->dst;
-    size_t src_size = args->src_size;
-    audio_sample_rate_t src_rate = args->src_rate;
-    audio_sample_rate_t dst_rate = args->dst_rate;
-    size_t* dst_size = args->dst_size;
-
-    *dst_size = 0;
-
-    if (src == NULL || dst == NULL) {
-        ESP_LOGE(TAG, "resample_audio: null buffer src=%p dst=%p src_size=%zu", src, dst, src_size);
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (src_size == 0) {
-        return ESP_OK;
-    }
-
-    size_t work_bytes = audio_get_runtime_work_bytes();
-    if (work_bytes == 0U) {
-        work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
-    }
-
-    // Sanity clamp: never write more than our work buffers
-    if (src_size > work_bytes) {
-        ESP_LOGW(TAG, "resample_audio: src_size (%zu) exceeds work buffer (%zu), truncating", src_size, work_bytes);
-        src_size = work_bytes;
-        s_audio_stats.conversion_errors++;
-    }
-
-    // (diagnostic logging will be emitted after validation of config and sizes)
-
-    if (src_rate <= 0 || dst_rate <= 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    int channels = s_audio_config.channels;
-    if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) {
-        channels = AUDIO_CHANNEL_STEREO;
-    }
-
-    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-    if (bytes_per_sample <= 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)channels;
-    if (frame_bytes == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (src_size > work_bytes) {
-        ESP_LOGW(TAG, "Resample input truncated from %zu to %zu bytes", src_size, work_bytes);
-        src_size = work_bytes;
-        s_audio_stats.conversion_errors++;
-    }
-
-    size_t src_sample_count = src_size / (size_t)bytes_per_sample;
-    if (src_sample_count < (size_t)channels) {
-        *dst_size = 0;
-        return ESP_OK;
-    }
-
-    size_t src_frame_count = src_sample_count / (size_t)channels;
-    if (src_frame_count < 2) {
-        if (src_size == 0) {
-            *dst_size = 0;
-            return ESP_OK;
-        }
-        if (dst == NULL || src == NULL) {
-            ESP_LOGE(TAG, "resample_audio: null src/dst on small-frame pass-through");
-            return ESP_ERR_INVALID_ARG;
-        }
-        if (src_size > work_bytes) {
-            ESP_LOGW(TAG, "resample_audio: pass-through truncated %zu -> %zu", src_size, work_bytes);
-            src_size = work_bytes;
-            s_audio_stats.conversion_errors++;
-        }
-        memmove(dst, src, src_size);
-        *dst_size = src_size;
-        return ESP_OK;
-    }
-
-    if (src_rate == dst_rate) {
-        if (src_size == 0) {
-            *dst_size = 0;
-            return ESP_OK;
-        }
-        if (dst == NULL || src == NULL) {
-            ESP_LOGE(TAG, "resample_audio: null src/dst on rate-equal copy");
-            return ESP_ERR_INVALID_ARG;
-        }
-        if (src_size > work_bytes) {
-            ESP_LOGW(TAG, "resample_audio: rate-equal copy truncated %zu -> %zu", src_size, work_bytes);
-            src_size = work_bytes;
-            s_audio_stats.conversion_errors++;
-        }
-        memmove(dst, src, src_size);
-        *dst_size = src_size;
-        return ESP_OK;
-    }
-
-    double ratio = (double)dst_rate / (double)src_rate;
-    if (!(ratio > 0.0) || !isfinite(ratio)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    size_t max_dst_frames = work_bytes / frame_bytes;
-    if (max_dst_frames == 0) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    size_t ideal_dst_frames = (size_t)floor((double)src_frame_count * ratio);
-    if (ideal_dst_frames == 0) {
-        ideal_dst_frames = 1;
-    }
-
-    bool truncated = false;
-    size_t dst_frame_count = ideal_dst_frames;
-    if (dst_frame_count > max_dst_frames) {
-        dst_frame_count = max_dst_frames;
-        truncated = true;
-    }
-
-    size_t dst_sample_count = dst_frame_count * (size_t)channels;
-    size_t dst_bytes = dst_sample_count * (size_t)bytes_per_sample;
-
-    if (dst_bytes > work_bytes) {
-        dst_frame_count = max_dst_frames;
-        dst_sample_count = dst_frame_count * (size_t)channels;
-        dst_bytes = dst_sample_count * (size_t)bytes_per_sample;
-        truncated = true;
-    }
-
-    if (dst_frame_count == 0) {
-        *dst_size = 0;
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    ESP_LOGI(TAG, "resample_audio DIAG: src=%p dst=%p src_size=%zu bytes_per_sample=%d channels=%d src_frames=%zu dst_frames=%zu ideal_dst_frames=%zu dst_bytes=%zu frame_bytes=%zu ratio=%.6f max_dst_frames=%zu",
-             src, dst, src_size, bytes_per_sample, channels, src_frame_count, dst_frame_count, ideal_dst_frames, dst_bytes, frame_bytes, ratio, max_dst_frames);
-
-    if (dst_bytes == 0) {
-        *dst_size = 0;
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    int dst_frames = (int)dst_frame_count;
-    int src_frames = (int)src_frame_count;
-
-    /* Use a mapping that spans [0, src_frames-1] so interpolation doesn't
-     * attempt to read src_frame+1 past the end. For dst_frame_count==1 we
-     * copy the first frame. For each dst frame compute a source position t in
-     * [0, src_frames-1] using (dst*(src_frames-1))/(dst_frames-1). If t hits
-     * the final source frame, emit the exact sample without interpolation. */
-
-    if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
-        int16_t* src_samples = (int16_t*)src;
-        int16_t* dst_samples = (int16_t*)dst;
-        /* Yield periodically while performing expensive resampling so the
-         * RTOS can service the watchdog and other tasks. Processing large
-         * buffers without yielding can trigger the task watchdog on idle
-         * cores. We yield every 64 destination frames. */
-        int yield_counter = 0;
-
-    for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
-            double t;
-            if (dst_frames > 1) {
-                t = (double)dstFrame * (double)(src_frames - 1) / (double)(dst_frames - 1);
-            } else {
-                t = 0.0;
-            }
-            int s0 = (int)floor(t);
-            double frac = t - s0;
-            int s1 = s0 + 1;
-            if (s0 >= src_frames - 1) {
-                s0 = src_frames - 1;
-                s1 = s0; /* will read only s0 */
-                frac = 0.0;
-            }
-
-            for (int ch = 0; ch < channels; ++ch) {
-                int src_idx1 = s0 * channels + ch;
-                int src_idx2 = s1 * channels + ch;
-                int dst_idx = dstFrame * channels + ch;
-
-                size_t dst_byte_off = (size_t)dst_idx * sizeof(int16_t);
-                size_t src_byte_off2 = (size_t)src_idx2 * sizeof(int16_t);
-                if (dst_byte_off + sizeof(int16_t) > dst_bytes || src_byte_off2 + sizeof(int16_t) > src_size) {
-                    /* If interpolation would read past src or write past dst,
-                     * fallback to copying the nearest available sample. */
-                    if ((size_t)src_idx1 * sizeof(int16_t) + sizeof(int16_t) <= src_size && dst_byte_off + sizeof(int16_t) <= dst_bytes) {
-                        dst_samples[dst_idx] = src_samples[src_idx1];
-                    }
-                    continue;
-                }
-
-                if (s1 == s0) {
-                    dst_samples[dst_idx] = src_samples[src_idx1];
-                } else {
-                    dst_samples[dst_idx] = (int16_t)((1.0 - frac) * src_samples[src_idx1] + frac * src_samples[src_idx2]);
-                }
-            }
-            /* Periodically yield to keep the scheduler responsive. */
-            if ((++yield_counter & 0x1) == 0) vTaskDelay(pdMS_TO_TICKS(1));
-        }
-    } else if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) {
-        int32_t* src_samples = (int32_t*)src;
-        int32_t* dst_samples = (int32_t*)dst;
-        int yield_counter = 0;
-
-    for (int dstFrame = 0; dstFrame < dst_frames; ++dstFrame) {
             double t;
             if (dst_frames > 1) {
                 t = (double)dstFrame * (double)(src_frames - 1) / (double)(dst_frames - 1);

@@ -11,6 +11,7 @@
 
 #include "esp_err.h"
 #include "audio_processor.h"  /* for audio_config_t, audio bit depths/rates */
+#include "audio_util.h"
 
 typedef struct {
 	uint8_t *proc_buf;   /* conversion buffer */
