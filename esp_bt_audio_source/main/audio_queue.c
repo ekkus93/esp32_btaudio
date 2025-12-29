@@ -155,6 +155,19 @@ bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks)
 	return true;
 }
 
+void audio_chunk_clear(void)
+{
+	if (s_audio_queue == NULL) {
+		return;
+	}
+
+	audio_chunk_t chunk = {0};
+	while (xQueueReceive(s_audio_queue, &chunk, 0) == pdTRUE) {
+		/* Return the associated block to the free pool. */
+		audio_chunk_release_block(chunk.data);
+	}
+}
+
 size_t audio_descriptor_used(void)
 {
 	if (s_audio_queue == NULL) {

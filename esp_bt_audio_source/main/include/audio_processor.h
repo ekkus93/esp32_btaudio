@@ -170,6 +170,28 @@ typedef struct {
     audio_channel_t channels;
 } audio_status_t;
 
+/* Shared audio conversion helpers (exposed so play_manager can reuse). */
+typedef struct {
+    const void* src;
+    void* dst;
+    size_t src_size;
+    audio_bit_depth_t src_bit_depth;
+    audio_bit_depth_t dst_bit_depth;
+    size_t* dst_size;
+} audio_convert_args_t;
+
+typedef struct {
+    const void* src;
+    void* dst;
+    size_t src_size;
+    audio_sample_rate_t src_rate;
+    audio_sample_rate_t dst_rate;
+    size_t* dst_size;
+} audio_resample_args_t;
+
+esp_err_t convert_audio_format(const audio_convert_args_t* args);
+esp_err_t resample_audio(const audio_resample_args_t* args);
+
 /**
  * @brief Get a compact runtime status of the audio processor
  */

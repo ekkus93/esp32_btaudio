@@ -1,3 +1,4 @@
+#include <string.h>
 #include "unity.h"
 #include "beep_manager.h"
 #include "audio_queue.h"
@@ -94,10 +95,37 @@ void test_beep_manager_tag_id_should_roll_across_plays(void)
     drain_queue_and_assert_tags(1);
 }
 
+void test_audio_queue_clear_should_empty_queue_and_reuse_blocks(void)
+{
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    uint8_t buf[32];
+    memset(buf, 0xA5, sizeof(buf));
+
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(buf, sizeof(buf), AUDIO_SOURCE_TAG_BEEP));
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(buf, sizeof(buf), AUDIO_SOURCE_TAG_BEEP));
+
+    size_t used_before = audio_descriptor_used();
+    TEST_ASSERT_GREATER_THAN_UINT(0, used_before);
+
+    audio_chunk_clear();
+    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+
+    /* Ensure blocks were returned: enqueue should still succeed. */
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(buf, sizeof(buf), AUDIO_SOURCE_TAG_BEEP));
+    TEST_ASSERT_EQUAL_UINT(1, audio_descriptor_used());
+
+    audio_chunk_t chunk = {0};
+    TEST_ASSERT_TRUE(audio_chunk_dequeue(&chunk, 0));
+    audio_chunk_release_block(chunk.data);
+    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_beep_manager_play_should_enqueue_and_callback);
     RUN_TEST(test_beep_manager_tag_id_should_roll_across_plays);
+    RUN_TEST(test_audio_queue_clear_should_empty_queue_and_reuse_blocks);
     return UNITY_END();
 }

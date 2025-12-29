@@ -392,8 +392,8 @@ typedef struct {
 } audio_resample_args_t;
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced);
-static esp_err_t convert_audio_format(const audio_convert_args_t* args);
-static esp_err_t resample_audio(const audio_resample_args_t* args);
+esp_err_t convert_audio_format(const audio_convert_args_t* args);
+esp_err_t resample_audio(const audio_resample_args_t* args);
 static void worker_diag_report(worker_diag_source_t source, size_t enqueued_bytes, BaseType_t send_result);
 static bool audio_source_tag_push(audio_source_tag_t tag);
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -5155,7 +5155,7 @@ static void apply_volume(void* buffer, size_t size, uint8_t volume)
 /**
  * @brief Convert audio from one bit depth to another
  */
-static esp_err_t convert_audio_format(const audio_convert_args_t* args)
+esp_err_t convert_audio_format(const audio_convert_args_t* args)
 {
     if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -5266,7 +5266,7 @@ static esp_err_t convert_audio_format(const audio_convert_args_t* args)
  * Note: This is a basic linear interpolation resampler.
  * For production use, consider a higher quality algorithm like polyphase or FFT-based resampling.
  */
-static esp_err_t resample_audio(const audio_resample_args_t* args)
+esp_err_t resample_audio(const audio_resample_args_t* args)
 {
     if (args == NULL || args->dst_size == NULL || args->dst == NULL || args->src == NULL) {
         ESP_LOGE(TAG, "resample_audio: invalid args src=%p dst=%p dst_size=%p", args ? args->src : NULL, args ? args->dst : NULL, args ? args->dst_size : NULL);

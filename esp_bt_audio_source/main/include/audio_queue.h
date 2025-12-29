@@ -56,5 +56,8 @@ bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_so
 /* Dequeue a descriptor; fills out_chunk on success. wait_ticks bounds wait. */
 bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks);
 
+/* Drain all queued descriptors and return their blocks to the free pool. */
+void audio_chunk_clear(void);
+
 /* Number of descriptors currently queued. */
 size_t audio_descriptor_used(void);
