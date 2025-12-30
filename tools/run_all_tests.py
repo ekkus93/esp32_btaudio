@@ -38,6 +38,29 @@ TMP_DIR = ROOT / "tmp"
 TMP_DIR.mkdir(exist_ok=True)
 
 
+def _unity_counts_from_output(stdout: str) -> dict:
+    match = re.search(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored", stdout)
+    if match:
+        return {
+            "tests": int(match.group(1)),
+            "failures": int(match.group(2)),
+            "ignored": int(match.group(3)),
+        }
+
+    # Fallback: count per-test PASS/FAIL/IGNORE tokens if the footer is missing.
+    try:
+        pass_count = len(re.findall(r":PASS\b", stdout))
+        fail_count = len(re.findall(r":FAIL\b", stdout))
+        ignore_count = len(re.findall(r":IGNORE\b", stdout))
+        total = pass_count + fail_count + ignore_count
+        if total > 0:
+            return {"tests": total, "failures": fail_count, "ignored": ignore_count}
+    except Exception:
+        pass
+
+    return {"tests": 0, "failures": 0, "ignored": 0}
+
+
 def _unlink_artifact(path: Path) -> bool:
     try:
         path.unlink()
@@ -202,15 +225,6 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     # After ctest completes, run each host test binary directly to capture Unity case counts
     # (ctest only reports test targets, not per-Unity test cases).
     # Look for executable files named test_* in the build directory.
-    def _unity_counts_from_output(stdout: str) -> dict:
-        m = re.search(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored", stdout)
-        if not m:
-            return {"tests": 0, "failures": 0, "ignored": 0}
-        tests = int(m.group(1))
-        failures = int(m.group(2))
-        ignored = int(m.group(3))
-        return {"tests": tests, "failures": failures, "ignored": ignored}
-
     per_binary = {}
     total_cases = 0
     total_failures = 0
@@ -244,6 +258,65 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
         "ignored": total_ignored,
         "per_binary": per_binary,
     }
+    return summary
+
+
+def run_cmake_unity_suite(root: Path, suite_rel_path: str, target_name: str, jobs: int = 0) -> dict:
+    suite_dir = root / suite_rel_path
+    build_dir = suite_dir / "build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = {
+        "configured": False,
+        "build": False,
+        "ctest_rc": None,
+        "ctest_output": None,
+        "binary_rc": None,
+        "binary_output": None,
+        "tests": 0,
+        "failures": 0,
+        "ignored": 0,
+    }
+
+    # configure
+    rc, out = run_cmd(["cmake", "-S", str(suite_dir), "-B", str(build_dir)])
+    summary["configured"] = (rc == 0)
+    summary["configure_output"] = out
+
+    # build
+    build_cmd = ["cmake", "--build", str(build_dir)]
+    if jobs and jobs > 1:
+        build_cmd += ["--", f"-j{jobs}"]
+    rc, out = run_cmd(build_cmd)
+    summary["build"] = (rc == 0)
+    summary["build_output"] = out
+
+    # run ctest
+    rc, out = run_cmd(["ctest", "--output-on-failure"], cwd=str(build_dir))
+    summary["ctest_rc"] = rc
+    summary["ctest_output"] = out
+
+    # persist ctest output for debugging
+    outpath = TMP_DIR / f"{target_name}_ctest_output.log"
+    outpath.write_text(out)
+    summary["ctest_log"] = str(outpath)
+
+    # run the Unity binary directly to get case counts if present
+    try:
+        binary = build_dir / target_name
+        if binary.exists() and os.access(binary, os.X_OK):
+            rc_bin, out_bin = run_cmd([str(binary)])
+            summary["binary_rc"] = rc_bin
+            summary["binary_output"] = out_bin
+            counts = _unity_counts_from_output(out_bin)
+            summary.update(counts)
+        else:
+            counts = _unity_counts_from_output(out)
+            summary.update(counts)
+    except Exception:
+        counts = _unity_counts_from_output(out)
+        summary.update(counts)
+
     return summary
 
 
@@ -373,7 +446,8 @@ def aggregate_summary(root: Path) -> dict:
     files = [root / "esp_bt_audio_source" / "test" / "test_app" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app2" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log"]
+             root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test" / "test_audio_queue" / "build" / "one_run_unity.log"]
 
     for f in files:
         if not f.exists():
@@ -483,6 +557,24 @@ def main(argv: list[str] | None = None):
                 overall_failed = True
         except Exception:
             pass
+
+        # Run standalone host Unity suites that live outside the host_test bundle
+        extra_host_suites = [
+            ("test_audio_util", "esp_bt_audio_source/test/test_audio_util", "test_audio_util"),
+            ("test_i2s_manager", "esp_bt_audio_source/test/test_i2s_manager", "test_i2s_manager"),
+            ("test_beep_manager", "esp_bt_audio_source/test/test_beep_manager", "test_beep_manager"),
+            ("test_play_manager", "esp_bt_audio_source/test/test_play_manager", "test_play_manager"),
+        ]
+        report["host_extra"] = {}
+        for name, rel_path, target in extra_host_suites:
+            print(f"\n-- Host suite: {name} --")
+            summary = run_cmake_unity_suite(ROOT, rel_path, target, jobs=args.jobs)
+            report["host_extra"][name] = summary
+            try:
+                if summary.get("ctest_rc") not in (None, 0) or int(summary.get("tests", 0)) == 0:
+                    overall_failed = True
+            except Exception:
+                pass
     else:
         print("Skipping host tests (--no-host)")
 
@@ -495,6 +587,7 @@ def main(argv: list[str] | None = None):
             ROOT / "esp_bt_audio_source" / "test" / "test_app2",
             ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
             ROOT / "esp_bt_audio_source" / "test" / "test_app3",
+            ROOT / "esp_bt_audio_source" / "test" / "test_audio_queue",
         ]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
         # runner can flash it before the monitor step. Prefer the canonical
@@ -771,6 +864,23 @@ def main(argv: list[str] | None = None):
                     # best-effort: print ctest summary header
                     print("Host tests: ctest run (see host_ctest_output.log)")
 
+        # Standalone host Unity suites
+        extra_host = report.get("host_extra", {}) or {}
+        if extra_host:
+            for name, summary in extra_host.items():
+                tests = int(summary.get("tests", 0) or 0)
+                failures = int(summary.get("failures", 0) or 0)
+                ignored = int(summary.get("ignored", 0) or 0)
+                passed = tests - failures - ignored
+                if passed < 0:
+                    passed = 0
+                ctest_rc = summary.get("ctest_rc")
+                rc_note = " (ctest failed)" if ctest_rc not in (None, 0) else ""
+                zero_note = " (CRITICAL: zero tests)" if tests == 0 else ""
+                if tests == 0:
+                    overall_failed = True
+                print(f"Host suite {name}: {tests} total, {passed} passed, {failures} failed, {ignored} ignored{rc_note}{zero_note}")
+
         # Device suites
         devices = report.get("devices", {}) or {}
         total_tests = 0
@@ -800,7 +910,7 @@ def main(argv: list[str] | None = None):
                                 tests = vals.get("tests", tests)
                                 failed_count = vals.get("failures", failed_count if failed_count is not None else 0)
                                 ignored = vals.get("ignored", ignored if ignored is not None else 0)
-                                passed = tests - failed - ignored
+                                passed = tests - failed_count - ignored
                     except Exception:
                         pass
 
