@@ -19,6 +19,11 @@ idf_component_register(
         "../../../main/audio_processor.c"
         "../../../main/audio_queue.c"
         "../../../main/audio_util.c"
+        "../../../main/mem_util.c"
+        "../../../main/play_manager.c"
+        "../../../main/i2s_manager.c"
+        "../../../main/beep_manager.c"
+        "../../../main/synth_manager.c"
     INCLUDE_DIRS
         "."
         "include"

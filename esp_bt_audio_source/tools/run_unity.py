@@ -193,9 +193,9 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     export_sh = find_export_sh()
 
     # Build the project first using the IDF-managed Python to avoid missing deps
-    idf_py_exe = env.get("PYTHON", shutil.which("python"))
+    # Use the idf.py launcher directly so the shebang selects the IDF-managed Python.
     idf_py_script = shutil.which("idf.py") or "idf.py"
-    build_args = [idf_py_exe, idf_py_script, 'build']
+    build_args = [idf_py_script, 'build']
     build_cmd = make_shell_cmd(build_args, export_sh=export_sh)
     with open(logfile, "ab", buffering=0) as fh:
         fh.write(b"\n=== idf.py build output ===\n")

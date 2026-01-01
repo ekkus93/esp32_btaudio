@@ -113,6 +113,8 @@ static bool s_keepalive_armed = false;
 static uint8_t s_volume_gain = 100;
 static audio_config_t s_audio_config = {0};
 static audio_stats_t s_audio_stats = {0};
+static _Atomic uint32_t s_tag_miss_count = 0;
+static int64_t s_tag_recover_mute_until = 0;
 static size_t s_runtime_work_bytes = 0;
 static uint8_t s_audio_rb_residual[AUDIO_WORK_BUFFER_BYTES] = {0};
 static size_t s_audio_rb_residual_len = 0;
@@ -137,6 +139,10 @@ static unsigned s_i2s_total_read_bytes = 0;
 static unsigned s_i2s_timeout_count = 0;
 static unsigned s_probe_captured = 0;
 static unsigned s_probe_target = 0;
+#ifdef CONFIG_BT_MOCK_TESTING
+static int s_i2s_consecutive_failures = 0;
+static int s_last_i2s_failure_log = 0;
+#endif
 static i2s_probe_entry_t s_probe_buf[I2S_PROBE_MAX_ENTRIES] = {0};
 
 #ifdef UNIT_TEST
@@ -1915,6 +1921,27 @@ size_t audio_processor_get_work_buffer_bytes(void)
     return s_runtime_work_bytes;
 }
 
+bool audio_processor_is_synth_mode_enabled(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    return s_force_synth;
+}
+
+uint32_t audio_processor_test_get_tag_miss_count(void)
+{
+    return __atomic_load_n(&s_tag_miss_count, __ATOMIC_RELAXED);
+}
+
+void audio_processor_test_reset_tag_miss_count(void)
+{
+    __atomic_store_n(&s_tag_miss_count, 0U, __ATOMIC_RELAXED);
+}
+
+void audio_processor_test_reset_tag_recover_window(void)
+{
+    s_tag_recover_mute_until = 0;
+}
+
 #ifdef CONFIG_BT_MOCK_TESTING
 size_t audio_processor_test_get_beep_remaining_bytes(void)
 {
@@ -2007,6 +2034,10 @@ size_t audio_processor_test_wav_pending_bytes(void)
     portENTER_CRITICAL(&s_wav_lock);
     pending = s_wav_pending_bytes;
     portEXIT_CRITICAL(&s_wav_lock);
+    return pending;
+}
+#endif /* CONFIG_BT_MOCK_TESTING */
+
 #if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
 void audio_processor_test_set_queue_block_override(size_t max_item_bytes)
 {

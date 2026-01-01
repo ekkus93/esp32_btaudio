@@ -17,7 +17,16 @@
 #endif
 
 #ifdef ESP_PLATFORM
+#include "driver/gpio.h"
 #include "driver/i2s_std.h"
+#ifdef CONFIG_BT_MOCK_TESTING
+#ifndef GPIO_NUM_NC
+#define GPIO_NUM_NC (-1)
+#endif
+#ifndef I2S_GPIO_UNUSED
+#define I2S_GPIO_UNUSED GPIO_NUM_NC
+#endif
+#endif
 #endif
 
 static const char *TAG = "i2s_manager";
@@ -46,18 +55,6 @@ typedef struct {
 } i2s_manager_state_t;
 
 static i2s_manager_state_t s_mgr = {0};
-
-static int bytes_per_sample(audio_bit_depth_t bit_depth)
-{
-	switch (bit_depth) {
-	case AUDIO_BIT_DEPTH_24:
-	case AUDIO_BIT_DEPTH_32:
-		return 4;
-	case AUDIO_BIT_DEPTH_16:
-	default:
-		return 2;
-	}
-}
 
 #ifdef ESP_PLATFORM
 static esp_err_t configure_i2s(const audio_config_t *cfg)
@@ -91,24 +88,32 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 	default: break;
 	}
 
-	i2s_std_config_t std_cfg = {
-		.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(cfg->sample_rate),
-		.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-			bit_width,
-			cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO),
-		.gpio_cfg = {
-			.mclk = GPIO_NUM_NC,
-			.bclk = cfg->i2s_bclk_pin,
-			.ws = cfg->i2s_ws_pin,
-			.din = cfg->i2s_din_pin,
-			.dout = cfg->i2s_dout_pin,
-			.invert_flags = {
-				.mclk_inv = false,
-				.bclk_inv = false,
-				.ws_inv = false,
-			},
-		},
-	};
+	i2s_std_config_t std_cfg = {0};
+#ifndef CONFIG_BT_MOCK_TESTING
+	std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(cfg->sample_rate);
+	std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+		bit_width,
+		cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO);
+#else
+	std_cfg.clk_cfg.sample_rate_hz = cfg->sample_rate;
+	std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
+	std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+	std_cfg.slot_cfg.data_bit_width = bit_width;
+	std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO;
+	std_cfg.slot_cfg.slot_mode = cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO;
+	std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
+	std_cfg.slot_cfg.ws_width = bit_width;
+	std_cfg.slot_cfg.ws_pol = false;
+	std_cfg.slot_cfg.bit_shift = true;
+#endif
+	std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
+	std_cfg.gpio_cfg.bclk = cfg->i2s_bclk_pin;
+	std_cfg.gpio_cfg.ws = cfg->i2s_ws_pin;
+	std_cfg.gpio_cfg.din = cfg->i2s_din_pin;
+	std_cfg.gpio_cfg.dout = cfg->i2s_dout_pin;
+	std_cfg.gpio_cfg.invert_flags.mclk_inv = false;
+	std_cfg.gpio_cfg.invert_flags.bclk_inv = false;
+	std_cfg.gpio_cfg.invert_flags.ws_inv = false;
 
 	ret = i2s_channel_init_std_mode(s_mgr.i2s_rx, &std_cfg);
 	if (ret != ESP_OK) {

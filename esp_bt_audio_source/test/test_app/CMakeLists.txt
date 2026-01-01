@@ -61,5 +61,10 @@ target_sources(${PROJECT_NAME}.elf PRIVATE
     # Minimal dependencies required by audio_processor.c
     "${CMAKE_SOURCE_DIR}/../../main/audio_queue.c"
     "${CMAKE_SOURCE_DIR}/../../main/audio_util.c"
+    "${CMAKE_SOURCE_DIR}/../../main/mem_util.c"
+    "${CMAKE_SOURCE_DIR}/../../main/play_manager.c"
+    "${CMAKE_SOURCE_DIR}/../../main/i2s_manager.c"
+    "${CMAKE_SOURCE_DIR}/../../main/beep_manager.c"
+    "${CMAKE_SOURCE_DIR}/../../main/synth_manager.c"
 )
 

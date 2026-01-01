@@ -1,3 +1,7 @@
+### 2026-01-01
+2026-01-01 04:08:21 Ran full host+device sweep via `python tools/run_all_tests.py`: host 270/270 passed; device suites all green (test_app 60/60, test_app2 45/45, test_app_audio 42/42, test_app3 11/11, test_audio_queue 5/5). Summaries at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json) and per-suite logs under esp_bt_audio_source/test/*/build/one_run_unity.log. Environment unchanged (esp-idf 5.5.1 with esptool 4.11.dev1 in IDF env).
+2026-01-01 03:37:26 Added mock-compat aliases for the I2S std shim (typedefs for *_config_t names, GPIO_NUM_NC fallback) in [esp_bt_audio_source/main/i2s_manager.c](esp_bt_audio_source/main/i2s_manager.c) and split std config init between production defaults and explicit mock assignments. Verified builds: test_app via `idf.py build` and test_app_audio via `ninja -C esp_bt_audio_source/test/test_app_audio/build all` now complete without I2S compile errors.
+
 ### 2025-12-31
 2025-12-31 20:53:58 Reran host bundle with the zero-test guard (`python3 tools/run_all_tests.py --no-device --jobs 0`): host 32/32 targets, 270/270 cases, zero_test_binaries=[]; guard stayed green. Summary at [tmp/run_all_tests_summary.json](tmp/run_all_tests_summary.json).
 2025-12-31 20:52:24 Added zero-test guard to [tools/run_all_tests.py](tools/run_all_tests.py): host run now records zero-test binaries and marks overall failure if any host binary reports zero Unity tests; quick summary surfaces a critical note listing the zero-test binaries.

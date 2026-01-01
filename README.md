@@ -27,6 +27,7 @@ The on-device Unity suites live in `esp_bt_audio_source/test_app` (command-inter
   ```bash
   . "$HOME/esp/esp-idf/export.sh"
   ```
+    - The ESP-IDF env pins `esptool~=4.11.dev1`; running `install.sh` or `export.sh` first ensures the correct version. Avoid upgrading `esptool` in this env via other tooling to prevent device build/monitor failures.
 2. Build the desired test firmware (example for `test_app`):
   ```bash
   cd esp_bt_audio_source/test_app
