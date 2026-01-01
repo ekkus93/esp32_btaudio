@@ -31,9 +31,9 @@ void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_h
     if (freq_hz) *freq_hz = s_last_beep_freq_hz;
 }
 
-// Tag-ringbuffer diagnostics are not exercised in test_app; provide a no-op
+// Tag queue diagnostics are not exercised in test_app; provide a no-op
 // stub so command_interface can link.
-esp_err_t audio_processor_dump_tag_ringbuffer(size_t max_items, size_t *captured_out)
+esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
 {
     (void)max_items;
     if (captured_out) {

@@ -185,6 +185,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 
 	uint8_t chunk[AUDIO_CHUNK_BLOCK_BYTES];
 	uint64_t frames_generated = 0;
+	bool enqueued_any = false;
 
 	while (frames_generated < total_frames) {
 		if (__atomic_load_n(&s_stop_requested, __ATOMIC_RELAXED)) {
@@ -227,6 +228,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 
 		frames_generated += frames_this;
 		taskYIELD();
+		enqueued_any = true;
 	}
 
 	BEEP_ENTER_CRITICAL();
@@ -238,7 +240,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 	}
 
 	__atomic_store_n(&s_stop_requested, false, __ATOMIC_RELAXED);
-	return ESP_OK;
+	return enqueued_any ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
 void beep_manager_stop(void)

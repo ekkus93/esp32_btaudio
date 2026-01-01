@@ -10,14 +10,8 @@
 // Mock for I2S functions
 #include "mock_i2s_std.h"
 
-/* Test-only hooks from audio_processor.c (enabled under CONFIG_BT_MOCK_TESTING) */
-extern bool audio_source_tag_test_init_buffer(size_t buf_size);
-extern void audio_source_tag_test_reset_buffer(void);
-extern bool audio_source_tag_test_push(int tag);
-extern size_t audio_processor_test_get_tag_used(void);
-extern uint32_t audio_processor_test_get_tag_miss_count(void);
-extern void audio_processor_test_reset_tag_miss_count(void);
 #ifdef CONFIG_BT_MOCK_TESTING
+/* Test-only hooks from audio_processor.c (enabled under CONFIG_BT_MOCK_TESTING) */
 extern size_t audio_processor_test_get_beep_remaining_bytes(void);
 #endif
 
@@ -240,66 +234,6 @@ void test_audio_processor_read_buffer_fill(void)
     TEST_ASSERT_EQUAL(0, bytes_read_empty);  // No data available
 }
 
-/* Ensure beep enqueues do not proceed when metadata tags cannot be pushed. */
-void test_audio_processor_beep_aborts_when_tag_buffer_full(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    /* Fill the tag buffer until pushes fail to force a tag-push failure. */
-    int pushes = 0;
-    while (audio_source_tag_test_push(0xAB)) {
-        pushes++;
-        if (pushes > 4096) break; /* defensive bound */
-    }
-
-    /* Beep should refuse to enqueue if it cannot push the tag. */
-    esp_err_t ret = audio_processor_beep_tone(100, 440.0);
-    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
-
-    /* And no audio should be readable. */
-    uint8_t buf[512] = {0};
-    size_t bytes_read = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)bytes_read);
-
-    audio_source_tag_test_reset_buffer();
-}
-
-/* Ensure beep enqueues tags alongside audio under normal conditions. */
-void test_audio_processor_beep_pushes_tags(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    size_t tags_before = audio_processor_test_get_tag_used();
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(100, 440.0));
-
-    size_t tags_after = audio_processor_test_get_tag_used();
-    TEST_ASSERT_TRUE(tags_after > tags_before);
-
-    audio_source_tag_test_reset_buffer();
-}
-
 void test_audio_processor_beep_busy_when_i2s_active(void)
 {
     audio_config_t config = {
@@ -395,7 +329,6 @@ void test_audio_processor_start_preempts_beep_and_wav(void)
 
     TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_remaining_bytes());
-    TEST_ASSERT_EQUAL_size_t(0, audio_processor_test_get_tag_used());
 
     audio_processor_stop();
     audio_processor_deinit();
@@ -471,82 +404,6 @@ void test_audio_processor_play_busy_when_beep_active(void)
 
     audio_processor_stop();
     audio_processor_deinit();
-}
-
-/* Ensure beeps do not produce TAG-MISS when enqueued and drained. */
-void test_audio_processor_beep_no_tag_miss(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    audio_source_tag_test_reset_buffer();
-    audio_processor_test_reset_tag_miss_count();
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(120, 440.0));
-
-    uint8_t buf[1024];
-    size_t bytes_read = 0;
-    int loops = 0;
-    do {
-        TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(buf, sizeof(buf), &bytes_read));
-        loops++;
-        if (loops > 64) break; /* safety bound */
-    } while (bytes_read > 0);
-
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, audio_processor_test_get_tag_miss_count(), "TAG-MISS occurred while draining beep audio");
-
-    audio_source_tag_test_reset_buffer();
-    audio_processor_test_reset_tag_miss_count();
-}
-
-/* Injected audio should carry a tag so consumer reads do not trigger TAG-MISS. */
-void test_audio_processor_inject_pushes_and_consumes_tag(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    audio_source_tag_test_reset_buffer();
-
-    const size_t data_size = 256;
-    uint8_t data[data_size];
-    for (size_t i = 0; i < data_size; ++i) {
-        data[i] = (uint8_t)(i & 0xFF);
-    }
-
-    size_t tags_before = audio_processor_test_get_tag_used();
-    TEST_ASSERT_EQUAL_size_t(0, tags_before);
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data(data, data_size));
-
-    size_t tags_after = audio_processor_test_get_tag_used();
-    TEST_ASSERT_TRUE(tags_after > tags_before);
-
-    uint8_t out[data_size];
-    size_t bytes_read = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
-    TEST_ASSERT_EQUAL_size_t(data_size, bytes_read);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(data, out, data_size);
-
-    size_t tags_final = audio_processor_test_get_tag_used();
-    TEST_ASSERT_EQUAL_size_t(0, tags_final);
 }
 
 // Test that a beep enqueued while muted still produces audible data in the
@@ -721,8 +578,6 @@ int app_main(void)
     RUN_TEST(test_audio_processor_volume_application);
     RUN_TEST(test_audio_processor_read_buffer_fill);
     RUN_TEST(test_audio_processor_beep_bypasses_mute);
-    RUN_TEST(test_audio_processor_inject_pushes_and_consumes_tag);
-    RUN_TEST(test_audio_processor_beep_no_tag_miss);
     RUN_TEST(test_audio_processor_beep_busy_when_i2s_active);
     RUN_TEST(test_audio_processor_play_busy_when_i2s_active);
     RUN_TEST(test_audio_processor_beep_busy_when_wav_active);

@@ -58,5 +58,8 @@ target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_test_stubs_lib})
 # duplicate `app_main` and other entry symbols.
 target_sources(${PROJECT_NAME}.elf PRIVATE
     "${CMAKE_SOURCE_DIR}/../../main/audio_processor.c"
+    # Minimal dependencies required by audio_processor.c
+    "${CMAKE_SOURCE_DIR}/../../main/audio_queue.c"
+    "${CMAKE_SOURCE_DIR}/../../main/audio_util.c"
 )
 

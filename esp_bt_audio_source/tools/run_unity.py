@@ -73,6 +73,14 @@ ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
 
 
 def find_export_sh():
+    # Prefer an explicit IDF_PATH from the environment so we don't silently
+    # fall back to an older checkout.
+    env_idf_path = os.environ.get("IDF_PATH")
+    if env_idf_path:
+        candidate = Path(env_idf_path) / "export.sh"
+        if candidate.is_file():
+            return str(candidate)
+
     candidate = os.path.expanduser('~/esp/esp-idf/export.sh')
     return candidate if os.path.isfile(candidate) else None
 
@@ -174,11 +182,13 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
             idf_py_bin = str(candidate)
         elif (root_path / "python").is_file():
             idf_py_bin = str(root_path)
-    if not idf_py_bin:
-        idf_py_bin = os.path.expanduser("~/.espressif/python_env/idf5.4_py3.10_env/bin")
     if idf_py_bin and os.path.isdir(idf_py_bin):
         env["PATH"] = f"{idf_py_bin}:{env.get('PATH','')}"
         env["PYTHON"] = os.path.join(idf_py_bin, "python")
+    else:
+        # Leave PATH untouched; rely on the caller's environment to select the
+        # correct IDF-managed Python instead of defaulting to an older toolchain.
+        pass
 
     export_sh = find_export_sh()
 

@@ -3,7 +3,6 @@
 #include <math.h>     // Add for sin() and M_PI
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/ringbuf.h" // Add for RingbufHandle_t
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -55,7 +54,7 @@ static bt_streaming_info_t s_streaming_info = {0};
 /* Audio buffer for streaming data */
 /* Use the shared audio processor for I2S capture and buffering.
  * bt_streaming_manager consumes audio via audio_processor_read() so
- * it does not maintain its own ringbuffer. */
+ * it does not maintain its own queue. */
 static uint32_t s_stream_start_time = 0;
 
 /* Callback function */
@@ -87,7 +86,7 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     }
 
     /* Read from shared audio_processor. audio_processor_read() will
-     * return available bytes up to 'len' from its internal ringbuffer. */
+     * return available bytes up to 'len' from its internal audio_queue. */
     size_t bytes_read = 0;
     esp_err_t r = audio_processor_read(data, (size_t)len, &bytes_read);
     if (r != ESP_OK) {

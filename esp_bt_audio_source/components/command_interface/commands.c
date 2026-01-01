@@ -334,6 +334,7 @@ int bt_manager_start_pair(const char *mac);
  * implementation defines UART_NUM_1 or provides compatible symbols. If the
  * mock doesn't provide CMD_UART_NUM, default to UART_NUM_1 so host tests
  * behave like the device default. */
+#define TAG "CMD_IF"
 #ifndef CMD_UART_NUM
 #define CMD_UART_NUM UART_NUM_1
 #endif
@@ -834,8 +835,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #endif
 
         /* Play a 10s middle-C sine tone for an audible diagnostic.
-         * To guarantee audible output even when the tag/ringbuffer path
-         * is congested, temporarily enable the synth source for the
+         * To guarantee audible output even when the tag queue path is
+         * congested, temporarily enable the synth source for the
          * duration of the request and restore the previous state. If
          * the enqueue fails, dump a small tag snapshot to assist
          * diagnostics. */
@@ -854,8 +855,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             cmd_send_response("OK", "BEEP", "SENT", NULL);
         } else {
             ESP_LOGW(TAG, "BEEP: audio_processor_beep_tone() failed err=%d", (int)_beep_res);
-            /* Emit a brief tag-ring snapshot to help diagnose tag exhaustion. */
-            (void)audio_processor_dump_tag_ringbuffer(8, NULL);
+            /* Emit a brief tag-queue snapshot to help diagnose tag exhaustion. */
+            (void)audio_processor_dump_tag_queue(8, NULL);
             cmd_send_response("ERR", "BEEP", "FAILED", NULL);
         }
     }
@@ -1955,13 +1956,13 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
         }
-        else if (strcasecmp(ctx->params[0], "DRAIN_RING") == 0)
+        else if (strcasecmp(ctx->params[0], "DRAIN_QUEUE") == 0 || strcasecmp(ctx->params[0], "DRAIN_RING") == 0)
         {
 #ifdef ESP_PLATFORM
-            if (audio_processor_drain_ringbuffer() == ESP_OK)
-                cmd_send_response("OK", "DEBUG", "DRAIN_RING_DONE", NULL);
+            if (audio_processor_drain_audio_queue() == ESP_OK)
+            cmd_send_response("OK", "DEBUG", "DRAIN_QUEUE_DONE", NULL);
             else
-                cmd_send_response("ERR", "DEBUG", "DRAIN_RING_FAILED", NULL);
+            cmd_send_response("ERR", "DEBUG", "DRAIN_QUEUE_FAILED", NULL);
 #else
             cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
@@ -1975,7 +1976,7 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
                 max_items = (size_t)strtoul(ctx->params[1], NULL, 10);
             }
             size_t captured = 0;
-            esp_err_t err = audio_processor_dump_tag_ringbuffer(max_items, &captured);
+            esp_err_t err = audio_processor_dump_tag_queue(max_items, &captured);
             char buf[32];
             snprintf(buf, sizeof(buf), "%zu", captured);
             if (err == ESP_OK)
@@ -2135,7 +2136,16 @@ void cmd_test_reset_cmd_process_state(void)
 #endif
 
 // Simple init/deinit for host tests
-cmd_status_t cmd_init(void) { return CMD_SUCCESS; }
+cmd_status_t cmd_init(void)
+{
+#if defined(UNIT_TEST) && !defined(ESP_PLATFORM)
+    /* Reset the lightweight audio_processor host stub so command tests
+     * start with no pending beep/WAV state between fixtures. */
+    audio_processor_deinit();
+    audio_processor_init(NULL);
+#endif
+    return CMD_SUCCESS;
+}
 cmd_status_t cmd_deinit(void) { return CMD_SUCCESS; }
 
 // Emit a structured response on the serial console.

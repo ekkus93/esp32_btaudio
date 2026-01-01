@@ -21,7 +21,6 @@ void bt_streaming_manager_set_callback_for_test(bt_stream_callback_t cb, void *u
 /* Helpers from mocks */
 void bt_manager_test_set_connection_state(int v);
 void bt_manager_test_reset_btstate_mock(void);
-void audio_source_tag_test_reset_buffer(void);
 void mock_task_set_tick(uint32_t ticks);
 
 typedef struct {
@@ -66,7 +65,6 @@ static void init_streaming_manager(void)
 {
     mock_a2dp_reset();
     bt_manager_test_reset_btstate_mock();
-    audio_source_tag_test_reset_buffer();
     bt_streaming_manager_reset_state_for_test();
     bt_streaming_manager_init();
 }

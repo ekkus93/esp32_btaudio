@@ -1548,15 +1548,59 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
     if (len <= 0 || buf == NULL) {
         return 0;
     }
-    // Attempt to pull data from the audio processor so A2DP sends live audio.
-    size_t bytes_read = 0;
-    if (audio_processor_read(buf, (size_t)len, &bytes_read) == ESP_OK && bytes_read > 0) {
-        return (int32_t)bytes_read;
+
+    static audio_chunk_t s_pending = {0};
+    static size_t s_pending_offset = 0;
+    static bool s_pending_valid = false;
+
+    size_t produced = 0;
+    while (produced < (size_t)len) {
+        audio_chunk_t *chunk = NULL;
+        if (s_pending_valid) {
+            chunk = &s_pending;
+        } else {
+            audio_chunk_t fresh = {0};
+            esp_err_t acq = audio_processor_acquire_chunk(&fresh, 0);
+            if (acq != ESP_OK) {
+                break;
+            }
+            s_pending = fresh;
+            s_pending_offset = 0;
+            s_pending_valid = true;
+            chunk = &s_pending;
+        }
+
+        size_t available = (chunk->len > s_pending_offset) ? (chunk->len - s_pending_offset) : 0;
+        if (available == 0) {
+            audio_processor_release_chunk(chunk);
+            s_pending_valid = false;
+            s_pending_offset = 0;
+            continue;
+        }
+
+        size_t to_copy = available;
+        if (to_copy > ((size_t)len - produced)) {
+            to_copy = (size_t)len - produced;
+        }
+
+        memcpy(buf + produced, chunk->data + s_pending_offset, to_copy);
+        produced += to_copy;
+        s_pending_offset += to_copy;
+
+        if (s_pending_offset >= chunk->len) {
+            audio_processor_release_chunk(chunk);
+            s_pending_valid = false;
+            s_pending_offset = 0;
+        }
     }
 
-    // Fallback: provide silence if no data available
-    safe_memset(buf, 0, (size_t)len);
-    return len;
+    if (produced == 0) {
+        // Fallback: provide silence if no data available
+        safe_memset(buf, 0, (size_t)len);
+        return len;
+    }
+
+    return (int32_t)produced;
 }
 #endif
 

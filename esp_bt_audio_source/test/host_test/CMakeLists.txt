@@ -119,63 +119,9 @@ target_include_directories(test_util_safe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
 target_link_libraries(test_util_safe unity util_safe_host)
 add_test(NAME test_util_safe COMMAND $<TARGET_FILE:test_util_safe>)
 
-## Real audio_processor host test: link production source with host mocks
-add_executable(test_audio_processor_real test_audio_processor_real.c
-    ../../main/audio_processor.c
-    mocks/esp_heap_caps_mock.c
-    mocks/mock_i2s.c
-    mocks/mock_gap.c
-    mocks/mock_audio_and_btstate.c
-    mocks/nvs_storage_mock.c)
-# Add foundational host-side RTOS and helper mocks so the production
-# audio_processor implementation can link in a host build.
-target_sources(test_audio_processor_real PRIVATE
-    mocks/fake_task.c
-    mocks/fake_queue.c
-    mocks/fake_semphr.c
-    mocks/fake_ringbuf.c
-    mocks/fake_timer.c
-    mocks/fake_esp_err.c)
-target_sources(test_audio_processor_real PRIVATE
-    mocks/fake_log.c
-    mocks/fake_debug_helpers.c)
-target_include_directories(test_audio_processor_real PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_audio_processor_real PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
-target_compile_definitions(test_audio_processor_real PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1)
-target_link_libraries(test_audio_processor_real unity m)
-add_test(NAME test_audio_processor_real COMMAND $<TARGET_FILE:test_audio_processor_real>)
-
-# Include the tag-alignment unit test in the real audio_processor host runner so
-# it runs alongside other audio processor integration tests.
-## The tag-alignment test is built as a separate native host test so it can
-## exercise the real production audio_processor implementation with a
-## focused test harness. This avoids colliding with the main runner's
-## Unity entrypoint which would cause duplicate `main`/`setUp` symbols.
-add_executable(test_audio_tag_alignment test_audio_tag_alignment.c
-    ../../main/audio_processor.c
-    mocks/esp_heap_caps_mock.c
-    mocks/mock_i2s.c
-    mocks/mock_gap.c
-    mocks/mock_audio_and_btstate.c
-    mocks/nvs_storage_mock.c)
-target_sources(test_audio_tag_alignment PRIVATE
-    mocks/fake_task.c
-    mocks/fake_queue.c
-    mocks/fake_semphr.c
-    mocks/fake_ringbuf.c
-    mocks/fake_timer.c
-    mocks/fake_esp_err.c
-    mocks/fake_log.c
-    mocks/fake_debug_helpers.c)
-target_include_directories(test_audio_tag_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_audio_tag_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
-target_compile_definitions(test_audio_tag_alignment PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1 CONFIG_AUDIO_TAG_DIAGNOSTICS)
-target_link_libraries(test_audio_tag_alignment unity m)
-add_test(NAME test_audio_tag_alignment COMMAND $<TARGET_FILE:test_audio_tag_alignment>)
-
 # Idle I2S failure recovery test (uses production audio_processor + mocks)
 add_executable(test_audio_processor_idle_i2s test_audio_processor_idle_i2s.c
-    ../../main/audio_processor.c
+    mocks/audio_processor_host_stub.c
     mocks/esp_heap_caps_mock.c
     mocks/mock_i2s.c
     mocks/mock_gap.c
@@ -438,20 +384,103 @@ target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
 
-# Beep manager host unit tests
-add_executable(test_beep_manager test_beep_manager.c
+# Beep manager host unit tests (moved under host_test/test_beep_manager)
+add_executable(test_beep_manager
+    test_beep_manager/test_beep_manager.c
+    test_beep_manager/shim_audio_queue.c
     ../../main/beep_manager.c
-    ../../main/audio_queue.c
     mocks/fake_queue.c
-    mocks/fake_task.c
     mocks/fake_semphr.c
+    mocks/fake_task.c
+    mocks/fake_timer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_beep_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_beep_manager unity m pthread)
+add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
+
+# I2S manager host unit tests
+add_executable(test_i2s_manager
+    test_i2s_manager/test_i2s_manager.c
+    test_i2s_manager/shim_audio_queue.c
+    ../../main/i2s_manager.c
+    ../../main/audio_util.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c
+    mocks/fake_task.c
+    mocks/fake_timer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_i2s_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_i2s_manager unity m)
+add_test(NAME test_i2s_manager COMMAND $<TARGET_FILE:test_i2s_manager>)
+
+# Audio util host unit tests
+add_executable(test_audio_util
+    test_audio_util/test_audio_util.c
+    ../../main/audio_util.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_audio_util PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_audio_util PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_util unity m)
+add_test(NAME test_audio_util COMMAND $<TARGET_FILE:test_audio_util>)
+
+# Play manager host unit tests
+add_executable(test_play_manager
+    test_play_manager/test_play_manager.c
+    test_play_manager/shim_play_manager_stubs.c
+    ../../main/play_manager.c
+    ../../main/audio_queue.c
+    mocks/esp_heap_caps_mock.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c
+    mocks/fake_task.c
+    mocks/fake_timer.c
+    mocks/fake_esp_err.c
     mocks/fake_log.c
     mocks/fake_debug_helpers.c)
-target_include_directories(test_beep_manager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_beep_manager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
-target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_beep_manager unity m)
-add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
+target_include_directories(test_play_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_play_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_play_manager unity m)
+add_test(NAME test_play_manager COMMAND $<TARGET_FILE:test_play_manager>)
+
+# Synth manager host unit tests (exercise CONFIG_AUDIO_USE_SYNTH_SOURCE path)
+add_executable(test_synth_manager
+    test_synth_manager/test_synth_manager.c
+    ../../main/synth_manager.c)
+target_include_directories(test_synth_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_compile_definitions(test_synth_manager PRIVATE CONFIG_AUDIO_USE_SYNTH_SOURCE UNIT_TEST)
+target_link_libraries(test_synth_manager unity m)
+add_test(NAME test_synth_manager COMMAND $<TARGET_FILE:test_synth_manager>)
+
+# mem_util host unit tests
+add_executable(test_mem_util
+    test_mem_util/test_mem_util.c
+    ../../main/mem_util.c)
+target_include_directories(test_mem_util PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_link_libraries(test_mem_util unity)
+add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 
 # Create a consolidated test runner
 add_custom_target(run_tests

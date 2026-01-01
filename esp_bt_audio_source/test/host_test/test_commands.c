@@ -955,7 +955,7 @@ void test_play_command(void) {
     reset_spiffs_mount_hook_counter();
 
     // Ensure ringbuffer empty before test
-    audio_processor_drain_ringbuffer();
+    audio_processor_drain_audio_queue();
     // Simulate a BT connection so PLAY will enqueue (new behavior: PLAY
     // requires an A2DP connection instead of falling back to I2S).
     extern void bt_manager_mock_connection_established(const char* mac, const char* name);

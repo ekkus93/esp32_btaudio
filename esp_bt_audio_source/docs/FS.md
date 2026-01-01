@@ -260,7 +260,6 @@ esp_err_t storage_get_default_pin(char out[8]);
 | --- | --- |
 | Deterministic command protocol | Host CTest suite `test_commands`, `test_command_parser`, plus targeted Unity tests in `test_app`. |
 | Audio continuity (I2S/WAV) | Unity suites `test_audio_processor_*`, `test_play_wav_command`; manual playback logs archived under `tmp/`. |
-| Metadata tag alignment | Host tests `test_audio_tag_alignment`; diagnostics inspected via trace parser. |
 | SPIFFS workflow | `tools/flash_and_verify_spiffs.py` smoke test + Unity tests referencing WAV assets. |
 | Pairing persistence | Unity tests in `test_app2` + on-device scripts storing logs to `build/pairing_e2_logs/`. |
 | Diagnostics availability | Run `tools/parse_traces.py` against latest `one_run_unity.log`; CI step ensures >1000 records.

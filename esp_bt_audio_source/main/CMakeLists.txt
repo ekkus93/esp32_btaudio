@@ -18,6 +18,8 @@ idf_component_register(
         "beep_manager.c"
         "play_manager.c"
         "audio_processor.c"
+        "mem_util.c"
+        "synth_manager.c"
         "bt_connection_manager.c"
         "bt_source_component.c"
         "bt_streaming_manager.c"

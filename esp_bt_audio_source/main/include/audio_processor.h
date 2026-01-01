@@ -6,6 +6,11 @@
 #include <stdbool.h>
 #include "esp_err.h"
 
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#endif
+#include "audio_queue.h"
+
 /* When building against ESP-IDF the platform headers provide i2s types.
  * Host/unit tests (and desktop builds) don't have those headers, so provide
  * lightweight fallbacks to allow compiling the public header for tests.
@@ -148,14 +153,43 @@ esp_err_t audio_processor_get_config(audio_config_t* config);
 esp_err_t audio_processor_get_stats(audio_stats_t* stats);
 
 /**
- * @brief Read processed audio data
- * 
+ * @brief Read processed audio data (copying wrapper; legacy compatibility)
+ *
+ * This API retains the previous copy-based behavior. New callers should use
+ * `audio_processor_acquire_chunk`/`audio_processor_release_chunk` for
+ * zero-copy access to audio_queue blocks.
+ *
  * @param buffer Buffer to store audio data
  * @param size Size of the buffer
  * @param bytes_read Number of bytes read
  * @return esp_err_t ESP_OK on success
  */
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read);
+
+/**
+ * @brief Acquire a processed audio chunk without copying.
+ *
+ * On success, `out_chunk` points into the audio_queue block pool. Call
+ * `audio_processor_release_chunk` when finished so the block is returned to
+ * the pool. Blocks are mutated in-place to honor mute/volume and bookkeeping
+ * (beep remaining, WAV consume, stats).
+ *
+ * @param out_chunk Filled with chunk metadata and data pointer on success.
+ * @param wait_ticks Max ticks to wait for a chunk (0 = non-blocking).
+ * @return ESP_OK on success; ESP_ERR_TIMEOUT if no chunk available; other
+ *         esp_err_t values on invalid state/args.
+ */
+esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks);
+
+/**
+ * @brief Release a previously acquired chunk back to the pool.
+ *
+ * This returns ownership of the block obtained via `audio_processor_acquire_chunk`.
+ *
+ * @param chunk Chunk previously acquired; only data pointer is used.
+ * @return ESP_OK on success.
+ */
+esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk);
 
 /**
  * @brief Simple audio runtime status
@@ -260,20 +294,20 @@ esp_err_t audio_processor_emit_probe(void);
 esp_err_t audio_processor_emit_sync_worker_diag(void);
 
 /**
- * @brief Snapshot the metadata tag ringbuffer and log its contents.
- *
+ * @brief Snapshot the metadata tag queue and log its contents.
+
  * This is a diagnostic-only helper. It temporarily pauses task scheduling,
  * copies up to `max_items` tag entries (tag type + monotonic counter) from
- * the metadata ringbuffer, re-queues them unchanged to preserve runtime
- * state, and emits an ESP_LOGI line per entry. The ringbuffer ordering and
- * counters are preserved; producers/consumers see the same contents after
- * the snapshot completes.
- *
+ * the metadata queue, re-queues them unchanged to preserve runtime state,
+ * and emits an ESP_LOGI line per entry. The queue ordering and counters are
+ * preserved; producers/consumers see the same contents after the snapshot
+ * completes.
+
  * @param max_items Maximum entries to log (clamped to a small internal cap)
  * @param captured_out Optional pointer to receive the number of entries logged
- * @return esp_err_t ESP_OK on success, ESP_ERR_INVALID_STATE if ringbuffer is missing
+ * @return esp_err_t ESP_OK on success, ESP_ERR_INVALID_STATE if queue is missing
  */
-esp_err_t audio_processor_dump_tag_ringbuffer(size_t max_items, size_t *captured_out);
+esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out);
 
 /**
  * @brief Convenience query for whether the audio processor is currently running
@@ -300,14 +334,14 @@ void audio_processor_set_synth_mode(bool enable);
 bool audio_processor_is_synth_mode_enabled(void);
 
 /**
- * @brief Drain (clear) the internal audio ring buffer of any queued items.
- *
+ * @brief Drain (clear) the internal audio queue of any queued items.
+
  * This is a debug/test helper to free any queued audio blocks so that
- * subsequent beeps will be enqueued into the ringbuffer instead of
- * triggering fallback due to saturation. Use sparingly and only from
- * diagnostic command paths.
+ * subsequent beeps will be enqueued into the queue even when prior data
+ * saturated the ring. Use sparingly and only from diagnostic command
+ * paths.
  */
-esp_err_t audio_processor_drain_ringbuffer(void);
+esp_err_t audio_processor_drain_audio_queue(void);
 
 /**
  * @brief Force audio allocations to use DRAM only (disable PSRAM usage)
@@ -353,24 +387,8 @@ bool audio_processor_test_wav_is_active(void);
 size_t audio_processor_test_wav_pending_bytes(void);
 size_t audio_processor_test_get_beep_remaining_bytes(void);
 size_t audio_processor_test_get_audio_free_bytes(void);
-bool audio_processor_test_is_beep_fallback_active(void);
-size_t audio_processor_test_get_beep_fallback_frames_remaining(void);
-size_t audio_processor_test_get_beep_fallback_total_frames(void);
-size_t audio_processor_test_get_fallback_tag_debt(void);
 void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after);
-void audio_processor_test_set_ringbuffer_max_item_override(size_t max_item_bytes);
-void audio_processor_test_force_wav_frame_bytes_dst(size_t frame_bytes);
-size_t audio_processor_test_wav_try_enqueue(const uint8_t *data, size_t len);
-void audio_processor_test_seed_wav_residual(const uint8_t *data, size_t len);
-bool audio_processor_test_flush_wav_residual(void);
-size_t audio_processor_test_get_wav_residual_remaining(void);
-void audio_processor_test_clear_wav_residual(void);
-/* Test-only helper: return number of tag entries currently stored in the
- * metadata/tag ringbuffer. This is only available in mock/test builds
- * where CONFIG_BT_MOCK_TESTING is defined. Each entry corresponds to one
- * audio chunk enqueued. */
-size_t audio_processor_test_get_tag_used(void);
-void audio_source_tag_test_reset_buffer(void);
+void audio_processor_test_set_queue_block_override(size_t max_item_bytes);
 #endif
 
 /* Diagnostic counter: number of times audio bytes were observed without a

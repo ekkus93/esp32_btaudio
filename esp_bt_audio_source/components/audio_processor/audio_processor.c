@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "../../main/include/audio_processor.h"
 #include "esp_err.h"
 
@@ -63,6 +64,7 @@ static uint8_t s_test_buffer[TEST_BUFFER_SIZE];
 static size_t s_test_buffer_write_pos = 0;
 static size_t s_test_buffer_read_pos = 0;
 static size_t s_test_buffer_count = 0;
+static uint16_t s_stub_tag_id = 0;
 
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
@@ -170,6 +172,63 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
     stats->cpu_load = 0.0f;
     stats->current_buffer_level = 0;
     stats->peak_buffer_level = 0;
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
+{
+    (void)wait_ticks;
+    AUDIO_PROC_HOST_LOG_ONCE();
+    if (out_chunk == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_test_buffer_count == 0) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    size_t to_read = s_test_buffer_count;
+    if (to_read > AUDIO_CHUNK_BLOCK_BYTES) {
+        to_read = AUDIO_CHUNK_BLOCK_BYTES;
+    }
+
+    uint8_t *buf = (uint8_t *)malloc(to_read);
+    if (buf == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    for (size_t i = 0; i < to_read; i++) {
+        buf[i] = s_test_buffer[s_test_buffer_read_pos];
+        s_test_buffer_read_pos = (s_test_buffer_read_pos + 1) % TEST_BUFFER_SIZE;
+    }
+    s_test_buffer_count -= to_read;
+
+    out_chunk->data = buf;
+    out_chunk->len = to_read;
+    out_chunk->tag = AUDIO_SOURCE_TAG_CAPTURE;
+    out_chunk->tag_id = s_stub_tag_id++;
+
+    if (s_config.mute && to_read > 0) {
+        memset(buf, 0, to_read);
+    } else if (!s_config.mute && s_config.volume != 100 && s_config.bit_depth == AUDIO_BIT_DEPTH_16) {
+        int16_t *samples = (int16_t *)buf;
+        size_t num_samples = to_read / 2;
+        for (size_t i = 0; i < num_samples; ++i) {
+            samples[i] = (int16_t)((int32_t)samples[i] * s_config.volume / 100);
+        }
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk)
+{
+    AUDIO_PROC_HOST_LOG_ONCE();
+    if (chunk == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (chunk->data != NULL) {
+        free(chunk->data);
+    }
     return ESP_OK;
 }
 

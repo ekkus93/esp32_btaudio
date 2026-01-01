@@ -26,6 +26,7 @@ set(TEST_SOURCES
     shim_play_manager_stubs.c
     ../../main/play_manager.c
     ../../main/audio_queue.c
+    ../host_test/mocks/esp_heap_caps_mock.c
     ../host_test/mocks/fake_queue.c
     ../host_test/mocks/fake_semphr.c
     ../host_test/mocks/fake_task.c

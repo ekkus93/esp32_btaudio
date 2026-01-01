@@ -229,6 +229,7 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     total_cases = 0
     total_failures = 0
     total_ignored = 0
+    zero_test_binaries = []
     try:
         for entry in build_dir.iterdir():
             if not entry.is_file():
@@ -246,6 +247,8 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
                 "failures": counts.get("failures", 0),
                 "ignored": counts.get("ignored", 0),
             }
+            if counts.get("tests", 0) == 0:
+                zero_test_binaries.append(entry.name)
             total_cases += counts.get("tests", 0)
             total_failures += counts.get("failures", 0)
             total_ignored += counts.get("ignored", 0)
@@ -257,6 +260,7 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
         "failures": total_failures,
         "ignored": total_ignored,
         "per_binary": per_binary,
+        "zero_test_binaries": zero_test_binaries,
     }
     return summary
 
@@ -558,23 +562,16 @@ def main(argv: list[str] | None = None):
         except Exception:
             pass
 
-        # Run standalone host Unity suites that live outside the host_test bundle
-        extra_host_suites = [
-            ("test_audio_util", "esp_bt_audio_source/test/test_audio_util", "test_audio_util"),
-            ("test_i2s_manager", "esp_bt_audio_source/test/test_i2s_manager", "test_i2s_manager"),
-            ("test_beep_manager", "esp_bt_audio_source/test/test_beep_manager", "test_beep_manager"),
-            ("test_play_manager", "esp_bt_audio_source/test/test_play_manager", "test_play_manager"),
-        ]
+        # Treat zero-test host binaries as a failure so silent suites are caught
+        try:
+            zero_bins = report["host"].get("case_counts", {}).get("zero_test_binaries", [])
+            if zero_bins:
+                overall_failed = True
+        except Exception:
+            pass
+
+        # All host suites now live under test/host_test and are exercised via ctest above
         report["host_extra"] = {}
-        for name, rel_path, target in extra_host_suites:
-            print(f"\n-- Host suite: {name} --")
-            summary = run_cmake_unity_suite(ROOT, rel_path, target, jobs=args.jobs)
-            report["host_extra"][name] = summary
-            try:
-                if summary.get("ctest_rc") not in (None, 0) or int(summary.get("tests", 0)) == 0:
-                    overall_failed = True
-            except Exception:
-                pass
     else:
         print("Skipping host tests (--no-host)")
 
@@ -852,7 +849,11 @@ def main(argv: list[str] | None = None):
             ignored_cases = int(case_counts.get("ignored", 0) or 0)
             passed_cases = total_cases - failed_cases - ignored_cases
             if total_cases > 0:
-                print(f"Host tests: {total_cases} total cases, {passed_cases} passed, {failed_cases} failed, {ignored_cases} ignored")
+                zero_bins = host.get("case_counts", {}).get("zero_test_binaries", [])
+                zero_note = " (CRITICAL: zero tests in " + ", ".join(zero_bins) + ")" if zero_bins else ""
+                if zero_bins:
+                    overall_failed = True
+                print(f"Host tests: {total_cases} total cases, {passed_cases} passed, {failed_cases} failed, {ignored_cases} ignored{zero_note}")
             else:
                 # try to extract target counts from the ctest output
                 ctest_out = host.get("ctest_output", "")

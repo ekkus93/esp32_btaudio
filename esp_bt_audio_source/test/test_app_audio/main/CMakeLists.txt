@@ -14,12 +14,15 @@ idf_component_register(
         "pcm_format_test.c"
         "i2s_test_stubs.c"
         "test_psram_integration.c"
-    "test_psram_fragmentation.c"
-    "test_psram_audio_stress.c"
-    "../../../main/audio_processor.c"
+        "test_psram_fragmentation.c"
+        "test_psram_audio_stress.c"
+        "../../../main/audio_processor.c"
+        "../../../main/audio_queue.c"
+        "../../../main/audio_util.c"
     INCLUDE_DIRS
         "."
         "include"
+        "../../../main/include"
     REQUIRES
         audio
         # driver component omitted for tests so we can provide test-only stubs

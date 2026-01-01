@@ -10,6 +10,7 @@ typedef void* SemaphoreHandle_t;
 SemaphoreHandle_t xSemaphoreCreateMutex(void);
 int xSemaphoreTake(SemaphoreHandle_t xSemaphore, unsigned xTicksToWait);
 int xSemaphoreGive(SemaphoreHandle_t xSemaphore);
+void vSemaphoreDelete(SemaphoreHandle_t xSemaphore);
 
 /* Critical section macros no-op in host tests */
 #define portENTER_CRITICAL(x)

@@ -17,3 +17,8 @@ int xSemaphoreGive(SemaphoreHandle_t xSemaphore)
 {
     (void)xSemaphore; return 1; /* pdTRUE */
 }
+
+void vSemaphoreDelete(SemaphoreHandle_t xSemaphore)
+{
+    free(xSemaphore);
+}

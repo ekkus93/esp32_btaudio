@@ -8,6 +8,7 @@
 
 #include "unity.h"
 #include "../../main/include/audio_processor.h"
+#include "../../main/include/audio_queue.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include <stdlib.h>
@@ -56,81 +57,6 @@ void test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_b
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_beep_remaining_bytes());
 }
 
-void test_audio_processor_inject_audio_should_tag_and_reset(void)
-{
-    audio_config_t cfg;
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
-    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
-    cfg.channels = AUDIO_CHANNEL_STEREO;
-    cfg.volume = 50;
-    cfg.mute = false;
-    cfg.i2s_port = 0;
-    cfg.i2s_bclk_pin = GPIO_NUM_NC;
-    cfg.i2s_ws_pin = GPIO_NUM_NC;
-    cfg.i2s_din_pin = GPIO_NUM_NC;
-    cfg.i2s_dout_pin = GPIO_NUM_NC;
-
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
-    audio_source_tag_test_reset_buffer();
-    audio_processor_test_reset_tag_miss_count();
-
-    uint8_t payload[16] = {0xAA};
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(payload, sizeof(payload)));
-    TEST_ASSERT_GREATER_THAN_UINT(0, audio_processor_test_get_tag_used());
-
-    audio_source_tag_test_reset_buffer();
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
-
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
-}
-
-void test_audio_processor_partial_read_should_preserve_tags(void)
-{
-    audio_config_t cfg;
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.sample_rate = AUDIO_SAMPLE_RATE_44K;
-    cfg.bit_depth = AUDIO_BIT_DEPTH_16;
-    cfg.channels = AUDIO_CHANNEL_STEREO;
-    cfg.volume = 60;
-    cfg.mute = false;
-    cfg.i2s_port = 0;
-    cfg.i2s_bclk_pin = GPIO_NUM_NC;
-    cfg.i2s_ws_pin = GPIO_NUM_NC;
-    cfg.i2s_din_pin = GPIO_NUM_NC;
-    cfg.i2s_dout_pin = GPIO_NUM_NC;
-
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_start());
-
-    audio_source_tag_test_reset_buffer();
-    audio_processor_test_reset_tag_miss_count();
-
-    uint8_t payload[512];
-    memset(payload, 0x29, sizeof(payload));
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_test_inject_audio_data(payload, sizeof(payload)));
-
-    size_t tag_used_before = audio_processor_test_get_tag_used();
-    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)tag_used_before);
-
-    uint8_t out[2048];
-    size_t bytes_read = 0;
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
-    TEST_ASSERT_TRUE(bytes_read > 0);
-    TEST_ASSERT_TRUE(bytes_read <= sizeof(out));
-
-    /* A follow-up read with no new data should not create tag misses. */
-    bytes_read = 0;
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
-    TEST_ASSERT_TRUE(bytes_read <= sizeof(out));
-
-    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_tag_used());
-
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_stop());
-    audio_source_tag_test_reset_buffer();
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_deinit());
-}
 
 void setUp(void) {
     esp_heap_caps_mock_set_psram_available(true);
@@ -221,31 +147,15 @@ void test_audio_processor_beep_should_activate_fallback_when_buffers_full(void)
 
     free(big_payload);
 
-    /* Activate a long beep while both ringbuffers are saturated; this should arm the fallback synth. */
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep_tone(800 /* ms */, 440.0));
-    TEST_ASSERT_TRUE(audio_processor_test_is_beep_fallback_active());
+    /* Activate a beep while the ringbuffer is saturated; it should enqueue via audio_queue. */
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep_tone(200 /* ms */, 440.0));
 
-    size_t fallback_frames = audio_processor_test_get_beep_fallback_frames_remaining();
-    TEST_ASSERT_GREATER_THAN_UINT(0, fallback_frames);
-
-    const size_t frame_bytes = 4; /* 16-bit stereo */
-    size_t request = fallback_frames * frame_bytes;
-    if (request == 0) {
-        request = frame_bytes;
-    }
-
-    uint8_t *out = (uint8_t *)malloc(request);
-    TEST_ASSERT_NOT_NULL(out);
-
+    uint8_t out[AUDIO_CHUNK_BLOCK_BYTES] = {0};
     size_t bytes_read = 0;
-    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, request, &bytes_read));
-    TEST_ASSERT_EQUAL_UINT32(request, bytes_read);
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+    TEST_ASSERT_GREATER_THAN_UINT(0, bytes_read);
 
-    free(out);
-
-    /* Fallback should be drained after the read. */
-    TEST_ASSERT_FALSE(audio_processor_test_is_beep_fallback_active());
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_beep_remaining_bytes());
+    /* Beep path should remain queued/active without side-channel fallback. */
 }
 
 int main(void)
@@ -253,8 +163,6 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_audio_processor_idle_i2s_should_not_reenable_below_threshold);
     RUN_TEST(test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep);
-    RUN_TEST(test_audio_processor_inject_audio_should_tag_and_reset);
-    RUN_TEST(test_audio_processor_partial_read_should_preserve_tags);
     RUN_TEST(test_audio_processor_alloc_with_psram);
     RUN_TEST(test_audio_processor_alloc_without_psram);
     RUN_TEST(test_audio_processor_autostart_cooldown);

@@ -15,10 +15,13 @@
 #include <stdbool.h>
 
 #include "freertos/FreeRTOS.h"
+#include "esp_err.h"
 
-/* Single audio descriptor queue backed by a fixed pool of 1 KiB blocks. */
+/* Single audio descriptor queue backed by a fixed pool of 1 KiB blocks. Keep
+ * the pool modest (32 blocks) so DRAM-only targets like ESP32-WROOM have
+ * headroom for stacks, Wi-Fi/BT, and audio processing. */
 #define AUDIO_CHUNK_BLOCK_BYTES 1024U
-#define AUDIO_CHUNK_POOL_BLOCKS 128U
+#define AUDIO_CHUNK_POOL_BLOCKS 32U
 
 typedef enum {
 	AUDIO_SOURCE_TAG_INVALID = 0,
@@ -61,3 +64,9 @@ void audio_chunk_clear(void);
 
 /* Number of descriptors currently queued. */
 size_t audio_descriptor_used(void);
+
+/* Snapshot queued descriptors without disturbing ordering. Copies up to
+ * max_items entries into `out` and leaves the queue intact. Returns
+ * ESP_OK on success, ESP_ERR_INVALID_STATE if the queue is uninitialized,
+ * or ESP_ERR_NO_MEM if a temporary queue cannot be allocated. */
+esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t *captured_out);
