@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "util_safe.h"
 
 static const char *TAG = "audio_util";
 
@@ -39,7 +40,7 @@ esp_err_t convert_audio_format(const audio_convert_args_t *args)
 
     if (src_bit_depth == dst_bit_depth) {
         size_t copy_size = (src_size > work_bytes) ? work_bytes : src_size;
-        memmove(dst, src, copy_size);
+        util_safe_memmove(dst, work_bytes, src, copy_size);
         *dst_size = copy_size;
         return ESP_OK;
     }
@@ -87,7 +88,7 @@ esp_err_t convert_audio_format(const audio_convert_args_t *args)
         }
     } else if (src_bit_depth == AUDIO_BIT_DEPTH_16 && dst_bit_depth == AUDIO_BIT_DEPTH_16) {
         size_t copy_size = (src_size > work_bytes) ? work_bytes : src_size;
-        memmove(dst, src, copy_size);
+        util_safe_memmove(dst, work_bytes, src, copy_size);
         *dst_size = copy_size;
     } else {
         ESP_LOGE(TAG, "Unsupported format conversion: %d -> %d", src_bit_depth, dst_bit_depth);
@@ -150,7 +151,7 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
     }
 
     if (src_rate == dst_rate) {
-        memmove(dst, src, src_size);
+        util_safe_memmove(dst, work_bytes, src, src_size);
         *dst_size = src_size;
         return ESP_OK;
     }

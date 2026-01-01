@@ -30,6 +30,32 @@ void util_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
     }
 }
 
+void util_safe_memmove(void *dst, size_t dst_size, const void *src, size_t len) {
+    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
+        return;
+    }
+    size_t to_copy = len;
+    if (to_copy > dst_size) {
+        to_copy = dst_size;
+    }
+
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    if (d == s) {
+        return;
+    }
+
+    if (d > s && d < (s + to_copy)) {
+        for (size_t i = to_copy; i > 0; --i) {
+            d[i - 1] = s[i - 1];
+        }
+    } else {
+        for (size_t i = 0; i < to_copy; ++i) {
+            d[i] = s[i];
+        }
+    }
+}
+
 void util_safe_copy_str(char *dst, size_t dst_size, const char *src) {
     if (dst == NULL || dst_size == 0) {
         return;

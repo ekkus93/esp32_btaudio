@@ -13,6 +13,7 @@
 
 #include "audio_queue.h"
 #include "audio_util.h"
+#include "util_safe.h"
 
 static const char *TAG = "play_manager";
 
@@ -132,7 +133,7 @@ esp_err_t play_manager_init(const audio_config_t *config,
         return ESP_OK;
     }
 
-    memset(&s_pm, 0, sizeof(s_pm));
+    util_safe_memset(&s_pm, 0, sizeof(s_pm));
     s_pm.out_cfg = *config;
     s_pm.proc_buf = buffers->proc_buf;
     s_pm.proc_buf2 = buffers->proc_buf2;
@@ -295,7 +296,7 @@ esp_err_t play_manager_fill(void)
             if (storable > sizeof(s_pm.residual)) {
                 storable = sizeof(s_pm.residual);
             }
-            memcpy(s_pm.residual, s_pm.proc_buf2, storable);
+            util_safe_memcpy(s_pm.residual, sizeof(s_pm.residual), s_pm.proc_buf2, storable);
             s_pm.residual_len = storable;
             s_pm.residual_pos = 0;
             ret = ESP_OK; /* not fatal; try again later */

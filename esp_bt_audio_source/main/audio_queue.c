@@ -7,6 +7,8 @@
 #include <stdatomic.h>
 #include <string.h>
 
+#include "util_safe.h"
+
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -17,7 +19,7 @@ static const char *TAG = "audio_queue";
 static QueueHandle_t s_audio_queue = NULL;          /* holds audio_chunk_t descriptors */
 static QueueHandle_t s_audio_block_free = NULL;     /* holds uint8_t* block pointers */
 static uint8_t *s_audio_block_pool = NULL;          /* contiguous heap buffer */
-static _Atomic uint16_t s_tag_counter = 0;
+static uint16_t s_tag_counter = 0;
 
 bool audio_chunk_pool_init(void)
 {
@@ -103,7 +105,7 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 	}
 
 	size_t copy_len = (len > AUDIO_CHUNK_BLOCK_BYTES) ? AUDIO_CHUNK_BLOCK_BYTES : len;
-	memcpy(block, data, copy_len);
+	util_safe_memcpy(block, AUDIO_CHUNK_BLOCK_BYTES, data, copy_len);
 
 	audio_chunk_t chunk = {
 		.data = block,
@@ -135,7 +137,7 @@ bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_so
 	}
 
 	size_t copy_len = (len > AUDIO_CHUNK_BLOCK_BYTES) ? AUDIO_CHUNK_BLOCK_BYTES : len;
-	memcpy(block, data, copy_len);
+	util_safe_memcpy(block, AUDIO_CHUNK_BLOCK_BYTES, data, copy_len);
 
 	audio_chunk_t chunk = {
 		.data = block,

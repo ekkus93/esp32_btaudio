@@ -1583,7 +1583,7 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
             to_copy = (size_t)len - produced;
         }
 
-        memcpy(buf + produced, chunk->data + s_pending_offset, to_copy);
+        util_safe_memcpy(buf + produced, (size_t)len - produced, chunk->data + s_pending_offset, to_copy);
         produced += to_copy;
         s_pending_offset += to_copy;
 

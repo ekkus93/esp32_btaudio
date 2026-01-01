@@ -35,8 +35,8 @@ static int s_lock = 0;
 #define BEEP_ENTER_CRITICAL() ((void)s_lock)
 #define BEEP_EXIT_CRITICAL() ((void)s_lock)
 #endif
-static _Atomic bool s_stop_requested = false;
-static _Atomic uint16_t s_tag_id = 0;
+static bool s_stop_requested = false;
+static uint16_t s_tag_id = 0;
 static beep_state_t s_state = BEEP_STATE_STOPPED;
 static bool s_initialized = false;
 static beep_done_cb_t s_done_cb = NULL;

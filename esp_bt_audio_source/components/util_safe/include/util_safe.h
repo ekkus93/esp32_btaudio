@@ -12,6 +12,7 @@ extern "C" {
 /* Bounded memory helpers */
 void util_safe_memset(void *dst, int value, size_t len);
 void util_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len);
+void util_safe_memmove(void *dst, size_t dst_size, const void *src, size_t len);
 void util_safe_copy_str(char *dst, size_t dst_size, const char *src);
 
 /* Bounded printf wrappers: return characters that would have been written, like snprintf. */

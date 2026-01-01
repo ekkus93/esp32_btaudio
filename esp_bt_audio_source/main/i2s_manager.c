@@ -6,6 +6,8 @@
 
 #include <string.h>
 
+#include "util_safe.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -90,8 +92,8 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 
 	i2s_std_config_t std_cfg = {0};
 #ifndef CONFIG_BT_MOCK_TESTING
-	std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(cfg->sample_rate);
-	std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+	std_cfg.clk_cfg = (i2s_std_clk_config_t)I2S_STD_CLK_DEFAULT_CONFIG(cfg->sample_rate);
+	std_cfg.slot_cfg = (i2s_std_slot_config_t)I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
 		bit_width,
 		cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO);
 #else
@@ -219,7 +221,7 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 		return ESP_ERR_NO_MEM;
 	}
 
-	memset(&s_mgr, 0, sizeof(s_mgr));
+	util_safe_memset(&s_mgr, 0, sizeof(s_mgr));
 	s_mgr.cfg = *config;
 	s_mgr.bufs = *buffers;
 
