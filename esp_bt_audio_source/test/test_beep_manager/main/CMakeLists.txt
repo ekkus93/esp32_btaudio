@@ -1,0 +1,14 @@
+idf_component_register(
+    SRCS
+        "test_beep_manager.c"
+        "../../../main/beep_manager.c"
+        "../../../main/audio_queue.c"
+    INCLUDE_DIRS
+        "."
+        "../../../main/include"
+    PRIV_REQUIRES
+        unity
+        driver
+        esp_timer
+        freertos
+)
