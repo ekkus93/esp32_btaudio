@@ -52,6 +52,17 @@ static size_t drain_queue(uint16_t *first_tag, uint16_t *last_tag)
     return count;
 }
 
+static audio_config_t make_cfg(audio_sample_rate_t rate, audio_bit_depth_t depth, audio_channel_t ch)
+{
+    audio_config_t cfg = {
+        .sample_rate = rate,
+        .bit_depth = depth,
+        .channels = ch,
+        .volume = 80,
+    };
+    return cfg;
+}
+
 TEST_CASE("beep_manager_play_enqueues_and_calls_done", "[beep_manager]")
 {
     reset_state();
@@ -135,6 +146,22 @@ TEST_CASE("beep_manager_rejects_invalid_args", "[beep_manager]")
 
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, beep_manager_play(NULL, &bad_cfg));
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, beep_manager_play(&req, &bad_cfg));
+}
+
+TEST_CASE("beep_manager_rejects_unsupported_bit_depth", "[beep_manager]")
+{
+    reset_state();
+
+    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_8K, AUDIO_BIT_DEPTH_24, AUDIO_CHANNEL_MONO);
+    beep_request_t req = {
+        .duration_ms = 10,
+        .freq_hz = 500.0,
+        .amplitude = 800,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, beep_manager_play(&req, &cfg));
+    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
 }
 
 typedef struct {
@@ -228,6 +255,72 @@ TEST_CASE("beep_manager_reports_busy_while_playing", "[beep_manager]")
     TEST_ASSERT(ctx.result == ESP_OK || ctx.result == ESP_ERR_NO_MEM);
 
     vSemaphoreDelete(ctx.done);
+    audio_chunk_pool_deinit();
+}
+
+TEST_CASE("beep_manager_stop_requests_terminate_and_invoke_done", "[beep_manager]")
+{
+    reset_state();
+    beep_manager_set_done_callback(done_cb, &s_done_called);
+
+    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_16K, AUDIO_BIT_DEPTH_16, AUDIO_CHANNEL_MONO);
+    beep_request_t req = {
+        .duration_ms = 500, /* long enough to stop mid-stream */
+        .freq_hz = 600.0,
+        .amplitude = 1200,
+    };
+
+    worker_ctx_t ctx = {
+        .done = xSemaphoreCreateBinary(),
+        .result = ESP_FAIL,
+    };
+    TEST_ASSERT_NOT_NULL(ctx.done);
+
+    TaskHandle_t handle = NULL;
+    BaseType_t created = xTaskCreate(beep_worker, "beep_worker_stop", 4096, &ctx, 5, &handle);
+    TEST_ASSERT_EQUAL(pdPASS, created);
+
+    /* Wait until playback begins, then stop */
+    (void)wait_for_state(BEEP_STATE_PLAYING, pdMS_TO_TICKS(200));
+    beep_manager_stop();
+
+    TEST_ASSERT_TRUE_MESSAGE(xSemaphoreTake(ctx.done, pdMS_TO_TICKS(1000)) == pdTRUE,
+                             "worker did not finish in time");
+
+    TEST_ASSERT_TRUE(s_done_called);
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
+
+    uint16_t first_tag = 0, last_tag = 0;
+    size_t drained = drain_queue(&first_tag, &last_tag);
+    if (drained > 0) {
+        TEST_ASSERT_EQUAL_UINT16(0, first_tag);
+    }
+    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+
+    vSemaphoreDelete(ctx.done);
+    audio_chunk_pool_deinit();
+}
+
+TEST_CASE("beep_manager_emits_consecutive_tags_within_long_beep", "[beep_manager]")
+{
+    reset_state();
+
+    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_16K, AUDIO_BIT_DEPTH_16, AUDIO_CHANNEL_MONO);
+    beep_request_t req = {
+        .duration_ms = 200, /* multiple chunks */
+        .freq_hz = 700.0,
+        .amplitude = 1800,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
+
+    uint16_t first_tag = 0, last_tag = 0;
+    size_t drained = drain_queue(&first_tag, &last_tag);
+    TEST_ASSERT_GREATER_THAN_UINT(1, drained); /* should span multiple chunks */
+    TEST_ASSERT_EQUAL_UINT16(drained - 1, last_tag);
+    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
+
     audio_chunk_pool_deinit();
 }
 
