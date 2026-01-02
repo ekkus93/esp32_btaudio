@@ -35,6 +35,7 @@
 #include "command_interface.h"
 #include "driver/uart.h"
 #include "audio_processor.h"
+#include "mem_util.h"
 /* Needed for pin fallbacks and i2s port constants when auto-initializing audio */
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
@@ -58,31 +59,6 @@ static int safe_snprintf(char *dst, size_t dst_size, const char *fmt, ...) {
     int written = safe_vsnprintf(dst, dst_size, fmt, args);
     va_end(args);
     return written;
-}
-
-static void safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
-    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
-        return;
-    }
-    size_t to_copy = len;
-    if (to_copy > dst_size) {
-        to_copy = dst_size;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    const uint8_t *s = (const uint8_t *)src;
-    for (size_t i = 0; i < to_copy; ++i) {
-        d[i] = s[i];
-    }
-}
-
-static void safe_memset(void *dst, int value, size_t len) {
-    if (dst == NULL || len == 0) {
-        return;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    for (size_t i = 0; i < len; ++i) {
-        d[i] = (uint8_t)value;
-    }
 }
 
 /* log tags */
@@ -493,7 +469,7 @@ static int32_t bt_app_a2d_data_cb(uint8_t *data, int32_t len)
     if (data == NULL || len < 0) {
         return 0;
     }
-    safe_memset(data, 0, (size_t)len);
+    safe_memset(data, (size_t)len, 0, (size_t)len);
     return len;
 }
 
