@@ -108,6 +108,7 @@ static esp_err_t parse_wav_header(FILE *f,
 
     if (!have_fmt || data_sz == 0) return ESP_ERR_INVALID_STATE;
     if (audio_format != 1) return ESP_ERR_NOT_SUPPORTED; /* PCM only */
+    if (num_channels != 1 && num_channels != 2) return ESP_ERR_INVALID_STATE;
 
     audio_bit_depth_t bit = AUDIO_BIT_DEPTH_16;
     if (bits_per_sample == 16) bit = AUDIO_BIT_DEPTH_16;
