@@ -13,34 +13,10 @@
 #include "esp_log.h"
 #include "bt_app_core.h"
 #include "osi/allocator.h"
+#include "mem_util.h"
 #include <stdarg.h>
 
 static const char *TAG = "BT_APP_CORE";
-
-static void safe_memset(void *dst, int value, size_t len) {
-    if (dst == NULL || len == 0) {
-        return;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    for (size_t i = 0; i < len; i++) {
-        d[i] = (uint8_t)value;
-    }
-}
-
-static void safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
-    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
-        return;
-    }
-    size_t to_copy = len;
-    if (to_copy > dst_size) {
-        to_copy = dst_size;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    const uint8_t *s = (const uint8_t *)src;
-    for (size_t i = 0; i < to_copy; i++) {
-        d[i] = s[i];
-    }
-}
 
 /* Ring buffer for app event queue */
 typedef struct {
@@ -61,7 +37,7 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
     ESP_LOGD(TAG, "%s event: 0x%x, param len: %d", __func__, event, param_len);
     
     bt_app_msg_t msg;
-    safe_memset(&msg, 0, sizeof(bt_app_msg_t));
+    safe_memset(&msg, sizeof(msg), 0, sizeof(msg));
 
     msg.sig = BT_APP_SIG_WORK_DISPATCH;
     msg.event = event;

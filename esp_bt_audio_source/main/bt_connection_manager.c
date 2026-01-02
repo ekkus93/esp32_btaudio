@@ -22,63 +22,6 @@ static const char *TAG = "BT_CONNECTION_MGR";
 #define safe_memset util_safe_memset
 #define safe_memcpy util_safe_memcpy
 
-static char to_hex(uint8_t v) {
-    return (char)((v < 10U) ? ('0' + v) : ('A' + (v - 10U)));
-}
-
-static void format_bd_addr(const uint8_t *addr, char *out, size_t out_len) {
-    if (addr == NULL || out == NULL || out_len < (size_t)(ESP_BD_ADDR_LEN * 3)) {
-        if (out && out_len) {
-            out[0] = '\0';
-        }
-        return;
-    }
-    size_t pos = 0;
-    for (size_t i = 0; i < ESP_BD_ADDR_LEN && (pos + 2) < out_len; i++) {
-        uint8_t byte = addr[i];
-        if ((pos + 3) > out_len) {
-            break;
-        }
-        out[pos++] = to_hex((uint8_t)((byte >> 4) & 0x0F));
-        out[pos++] = to_hex((uint8_t)(byte & 0x0F));
-        if (i + 1 < ESP_BD_ADDR_LEN && pos < out_len) {
-            out[pos++] = ':';
-        }
-    }
-    if (pos >= out_len) {
-        out[out_len - 1] = '\0';
-    } else {
-        out[pos] = '\0';
-    }
-}
-
-static bool parse_bd_addr(const char *str, uint8_t *addr_out) {
-    if (str == NULL || addr_out == NULL) {
-        return false;
-    }
-    for (size_t i = 0; i < ESP_BD_ADDR_LEN; i++) {
-        const char *p = str + (i * 3);
-        uint8_t high = 0;
-        uint8_t low = 0;
-        char c1 = p[0];
-        char c2 = p[1];
-        char c3 = p[2];
-        if (c1 == '\0' || c2 == '\0' || (i < ESP_BD_ADDR_LEN - 1 && c3 != ':')) {
-            return false;
-        }
-        if (c1 >= '0' && c1 <= '9') high = (uint8_t)(c1 - '0');
-        else if (c1 >= 'A' && c1 <= 'F') high = (uint8_t)(c1 - 'A' + 10U);
-        else if (c1 >= 'a' && c1 <= 'f') high = (uint8_t)(c1 - 'a' + 10U);
-        else return false;
-        if (c2 >= '0' && c2 <= '9') low = (uint8_t)(c2 - '0');
-        else if (c2 >= 'A' && c2 <= 'F') low = (uint8_t)(c2 - 'A' + 10U);
-        else if (c2 >= 'a' && c2 <= 'f') low = (uint8_t)(c2 - 'a' + 10U);
-        else return false;
-        addr_out[i] = (uint8_t)((high << 4) | low);
-    }
-    return true;
-}
-
 /* Static variables for connection management */
 static bt_connection_state_t s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
 static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
@@ -143,7 +86,7 @@ static void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd
             
         case ESP_A2D_CONNECTION_STATE_CONNECTED:
             ESP_LOGI(TAG, "Connected to device");
-            format_bd_addr(bd_addr, addr_str, sizeof(addr_str));
+            util_format_mac(bd_addr, addr_str, sizeof(addr_str));
             safe_memset(s_last_connected_addr, 0, sizeof(s_last_connected_addr));
             safe_memcpy(s_last_connected_addr, sizeof(s_last_connected_addr), addr_str, strlen(addr_str));
             safe_memset(s_connection_info.addr, 0, sizeof(s_connection_info.addr));
@@ -255,7 +198,7 @@ static void attempt_reconnection(void)
     
     /* Attempt reconnection */
     esp_bd_addr_t addr;
-    if (parse_bd_addr(s_last_connected_addr, addr)) {
+    if (util_parse_mac(s_last_connected_addr, addr)) {
         if (initiate_connection(addr) == ESP_OK) {
             s_reconnect_attempts++;
             update_connection_state(BT_CONNECTION_STATE_CONNECTING);

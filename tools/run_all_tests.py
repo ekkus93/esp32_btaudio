@@ -507,6 +507,22 @@ def parse_flash_time_from_log(path: Path) -> float:
     return best_duration
 
 
+def parse_ctest_duration(ctest_output: str) -> float:
+    """Parse the ctest real time summary ("Total Test time (real) =   1.20 sec").
+
+    Returns 0.0 on parse failure.
+    """
+    try:
+        import re
+
+        m = re.search(r"Total Test time \(real\) =\s*([0-9.]+)\s*sec", ctest_output)
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return 0.0
+
+
 def count_unity_results(path: Path) -> dict:
     """Count Unity per-test PASS/FAIL/IGNORE tokens as a last-resort fallback.
 
@@ -552,13 +568,22 @@ def main(argv: list[str] | None = None):
     # Host tests
     if not args.no_host:
         print("\n== Running host tests ==")
+        host_start = time.time()
         report["host"] = run_host_tests(ROOT, jobs=args.jobs)
+        host_end = time.time()
         # run_host_tests historically returned a wrapper dict {"host": {...}}
         # unwrap it if present so downstream code can treat report['host'] as
         # the host-summary dict directly.
         try:
             if isinstance(report["host"], dict) and "host" in report["host"] and isinstance(report["host"]["host"], dict):
                 report["host"] = report["host"]["host"]
+        except Exception:
+            pass
+        try:
+            report["host"]["start_epoch"] = host_start
+            report["host"]["end_epoch"] = host_end
+            report["host"]["duration_seconds"] = host_end - host_start
+            report["host"]["ctest_duration_seconds"] = parse_ctest_duration(report["host"].get("ctest_output", ""))
         except Exception:
             pass
         # Treat host test failures as critical
@@ -847,6 +872,12 @@ def main(argv: list[str] | None = None):
     outjson.write_text(json.dumps(report, indent=2))
     # Print a concise human-readable summary to stdout so callers get instant counts
     try:
+        def _fmt_secs(val):
+            try:
+                return f"{float(val):.2f}s"
+            except Exception:
+                return "n/a"
+
         print("\n=== Quick test summary ===")
         # Host summary (if present)
         host = report.get("host")
@@ -862,7 +893,12 @@ def main(argv: list[str] | None = None):
                 zero_note = " (CRITICAL: zero tests in " + ", ".join(zero_bins) + ")" if zero_bins else ""
                 if zero_bins:
                     overall_failed = True
-                print(f"Host tests: {total_cases} total cases, {passed_cases} passed, {failed_cases} failed, {ignored_cases} ignored{zero_note}")
+                wall = _fmt_secs(host.get("duration_seconds")) if host.get("duration_seconds") else None
+                ctest_dur = host.get("ctest_duration_seconds")
+                duration_note = ""
+                if wall or ctest_dur:
+                    duration_note = f" (wall {wall or 'n/a'}, ctest {_fmt_secs(ctest_dur) if ctest_dur else 'n/a'})"
+                print(f"Host tests: {total_cases} total cases, {passed_cases} passed, {failed_cases} failed, {ignored_cases} ignored{zero_note}{duration_note}")
             else:
                 # try to extract target counts from the ctest output
                 ctest_out = host.get("ctest_output", "")
@@ -950,7 +986,10 @@ def main(argv: list[str] | None = None):
                     overall_failed = True
                     print(f"{sname}: {int(tests)} total (CRITICAL: zero tests), {int(passed)} passed, {int(failed_count)} failed, {int(ignored)} ignored")
                 else:
-                    print(f"{sname}: {int(tests)} total, {int(passed)} passed, {int(failed_count)} failed, {int(ignored)} ignored")
+                    total_dur = _fmt_secs(dev.get("duration_seconds")) if dev.get("duration_seconds") is not None else "n/a"
+                    flash_dur = _fmt_secs(dev.get("flash_time_seconds")) if dev.get("flash_time_seconds") is not None else "n/a"
+                    test_dur = _fmt_secs(dev.get("test_run_seconds")) if dev.get("test_run_seconds") is not None else "n/a"
+                    print(f"{sname}: {int(tests)} total, {int(passed)} passed, {int(failed_count)} failed, {int(ignored)} ignored (total {total_dur}, flash {flash_dur}, tests {test_dur})")
 
         print(f"Aggregate device totals: {total_tests} total, {total_tests - total_failed - total_ignored} passed, {total_failed} failed, {total_ignored} ignored")
     except Exception as _:

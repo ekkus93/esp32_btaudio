@@ -325,6 +325,7 @@ add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connectio
 add_executable(test_bt_streaming_manager
     test_bt_streaming_manager.c
     ../../main/bt_streaming_manager.c
+    ../../main/mem_util.c
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c
     mocks/audio_processor_host_stub.c
