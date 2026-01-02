@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "test_i2s_manager.c"
+        "../../../main/i2s_manager.c"
+        "../../../main/audio_queue.c"
+        "../../../main/audio_util.c"
+    INCLUDE_DIRS
+        "."
+        "../../../main/include"
+    PRIV_REQUIRES
+        unity
+        freertos
+        driver
+        util_safe
+)
