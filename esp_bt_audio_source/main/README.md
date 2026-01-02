@@ -45,6 +45,8 @@ Tasks, timers, and concurrency
 Configuration and data formats
 ------------------------------
 - `audio_config_t` (see `include/audio_processor.h`) defines sample rate, bit depth (16/24/32), channel mode (mono/stereo), volume (0–100), mute flag, I2S port, and optional pin assignments. Pins can be updated at runtime via `audio_processor_set_i2s_pins()`; the processor restarts to apply changes.
+- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, WAV, beep, synth) are converted/resampled to this configured output before entering the queue.
+- Producers (beep_manager, i2s_manager, play_manager, synth_manager) always enqueue PCM in the current output format; by default that is 16-bit, 44.1 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
 - The queue uses fixed 1024-byte blocks. Producers align chunk sizes to frame boundaries when possible (see `play_manager.c`).
 
