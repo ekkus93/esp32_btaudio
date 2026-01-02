@@ -9,6 +9,7 @@
 #include "audio_processor.h"
 #include "command_interface.h"
 #include "bt_manager.h"
+#include "play_manager.h"
 #include "driver/i2s_std.h"
 
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
@@ -384,6 +385,8 @@ static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
 static void test_interleaved_play_stop_beep_sequence(void);
+static void test_play_wav_failure_restores_pipeline(void);
+static void test_drain_stops_play_manager_and_clears_queue(void);
 
 void run_audio_processor_tests(void)
 {
@@ -402,6 +405,8 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_play_command_requires_a2dp_connection);
     RUN_TEST(test_play_wav_command);
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
+    RUN_TEST(test_play_wav_failure_restores_pipeline);
+    RUN_TEST(test_drain_stops_play_manager_and_clears_queue);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -584,6 +589,93 @@ static void test_play_command_requires_a2dp_connection(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_play_wav_failure_restores_pipeline(void)
+{
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    ret = audio_processor_start();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    audio_status_t status_before = {0};
+    ret = audio_processor_get_status(&status_before);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_TRUE(status_before.running);
+
+    /* Force play_manager_play_wav to fail by using a missing file and verify
+     * the pipeline is restarted when the error path runs. */
+    ret = audio_processor_play_wav("/spiffs/does_not_exist.wav");
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, ret);
+
+    audio_status_t status_after = {0};
+    ret = audio_processor_get_status(&status_after);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_TRUE_MESSAGE(status_after.running, "Pipeline did not restart after PLAY failure");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+}
+
+static void test_drain_stops_play_manager_and_clears_queue(void)
+{
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    ret = audio_processor_start();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    (void)audio_processor_drain_audio_queue();
+
+    ret = audio_processor_play_wav("/spiffs/worker_long_norm.wav");
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Allow the play manager to enqueue initial WAV data before draining. */
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    TEST_ASSERT_TRUE_MESSAGE(play_manager_is_active(), "play_manager inactive after PLAY");
+    size_t pending_before = play_manager_pending_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "Expected pending bytes after PLAY");
+
+    ret = audio_processor_drain_audio_queue();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    size_t pending_after = play_manager_pending_bytes();
+    TEST_ASSERT_EQUAL(0, pending_after);
+    TEST_ASSERT_FALSE_MESSAGE(play_manager_is_active(), "play_manager still active after drain");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     bt_manager_mock_connection_opened(NULL);
 }
 
