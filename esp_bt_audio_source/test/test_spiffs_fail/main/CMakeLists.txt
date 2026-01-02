@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "test_spiffs_fail.c"
+    INCLUDE_DIRS
+        "."
+    PRIV_REQUIRES
+        unity
+        spiffs
+        vfs
+)

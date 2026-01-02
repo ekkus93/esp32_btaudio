@@ -100,6 +100,7 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
             root / "esp_bt_audio_source" / "test" / "test_beep_manager",
             root / "esp_bt_audio_source" / "test" / "test_i2s_manager",
             root / "esp_bt_audio_source" / "test" / "test_synth_manager",
+            root / "esp_bt_audio_source" / "test" / "test_spiffs_fail",
         ]
         for proj in unity_projects:
             _unlink_artifact(proj / "build" / "one_run_unity.log")
@@ -465,7 +466,8 @@ def aggregate_summary(root: Path) -> dict:
              root / "esp_bt_audio_source" / "test" / "test_audio_queue" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_beep_manager" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_i2s_manager" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_synth_manager" / "build" / "one_run_unity.log"]
+             root / "esp_bt_audio_source" / "test" / "test_synth_manager" / "build" / "one_run_unity.log",
+             root / "esp_bt_audio_source" / "test" / "test_spiffs_fail" / "build" / "one_run_unity.log"]
 
     for f in files:
         if not f.exists():
@@ -634,6 +636,7 @@ def main(argv: list[str] | None = None):
             ROOT / "esp_bt_audio_source" / "test" / "test_beep_manager",
             ROOT / "esp_bt_audio_source" / "test" / "test_i2s_manager",
             ROOT / "esp_bt_audio_source" / "test" / "test_synth_manager",
+            ROOT / "esp_bt_audio_source" / "test" / "test_spiffs_fail",
         ]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
         # runner can flash it before the monitor step. Prefer the canonical
@@ -676,14 +679,20 @@ def main(argv: list[str] | None = None):
             # record per-suite start/end epoch to measure execution time (higher resolution)
             start_epoch = time.time()
             print(f"START_EPOCH: {start_epoch:.3f}")
+            suite_spiffs_image = spiffs_image
+            suite_spiffs_offset = spiffs_offset
+            if s.name == "test_spiffs_fail":
+                # leave the SPIFFS partition blank so failure/recovery cases are exercised
+                suite_spiffs_image = None
+                suite_spiffs_offset = None
             report["devices"][s.name] = run_device_suite(
                 s,
                 runner_to_use,
                 args.port,
                 args.timeout,
                 args.source_idf,
-                spiffs_image=spiffs_image,
-                spiffs_offset=spiffs_offset,
+                spiffs_image=suite_spiffs_image,
+                spiffs_offset=suite_spiffs_offset,
                 force_spiffs=False,
             )
             end_epoch = time.time()
