@@ -387,6 +387,7 @@ static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
 static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
 static void test_keepalive_beep_then_play_recovers(void);
+static void test_wav_resumes_after_a2dp_reconnect(void);
 static void test_interleaved_play_stop_beep_sequence(void);
 static void test_play_wav_failure_restores_pipeline(void);
 static void test_drain_stops_play_manager_and_clears_queue(void);
@@ -409,6 +410,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_buffer_management);
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_command_requires_a2dp_connection);
+    RUN_TEST(test_wav_resumes_after_a2dp_reconnect);
     RUN_TEST(test_keepalive_read_suppressed_when_a2dp_disconnected);
     RUN_TEST(test_play_wav_command);
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
@@ -597,6 +599,74 @@ static void test_play_command_requires_a2dp_connection(void)
     }
 
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_wav_resumes_after_a2dp_reconnect(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_test_reset_tag_miss_count();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    vTaskDelay(pdMS_TO_TICKS(150));
+    size_t pending_before = play_manager_pending_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "WAV should enqueue data before disconnect");
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_TRUE_MESSAGE((ret == ESP_OK && bytes_read > 0) || (int)ret > 0, "Initial WAV read should produce data");
+
+    /* Simulate A2DP drop mid-stream and ensure data is preserved. */
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+
+    bytes_read = 0;
+    ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_FAIL,
+                             "audio_processor_read should fail while A2DP is disconnected");
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
+    size_t pending_during_disconnect = play_manager_pending_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_during_disconnect > 0, "WAV queue should remain intact during disconnect");
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    /* Reconnect and ensure playback resumes without tag loss or synth re-arm. */
+    bt_manager_mock_connection_opened(NULL);
+
+    bool saw_wav = false;
+    for (int attempt = 0; attempt < 8 && !saw_wav; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_wav = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "WAV did not resume after A2DP reconnect");
+    TEST_ASSERT_FALSE_MESSAGE(audio_processor_is_synth_mode_enabled(), "Synth keepalive should remain disabled after reconnect");
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());

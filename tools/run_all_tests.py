@@ -327,6 +327,14 @@ def run_cmake_unity_suite(root: Path, suite_rel_path: str, target_name: str, job
     return summary
 
 
+def ensure_esptool(version_spec: str, source_idf: str | None) -> tuple[int, str]:
+    """Ensure esptool matches the required version before device runs."""
+    if source_idf:
+        shell_cmd = f". {shlex.quote(source_idf)} >/dev/null 2>&1 && python -m pip install {shlex.quote(version_spec)}"
+        return run_cmd(shell_cmd, shell=True)
+    return run_cmd([sys.executable, "-m", "pip", "install", version_spec])
+
+
 def run_device_suite(project_root: Path, runner_script: Path, port: str, timeout: int, source_idf: str | None, spiffs_image: str | None = None, spiffs_offset: str | None = None, force_spiffs: bool = False) -> dict:
     # runner_script is a path to tools/run_unity.py inside the repo
     proj = project_root.resolve()
@@ -609,6 +617,13 @@ def main(argv: list[str] | None = None):
     # Device suites
     if not args.no_device:
         print("\n== Running on-device Unity suites ==")
+        rc_esptool, out_esptool = ensure_esptool("esptool~=4.11.dev1", args.source_idf)
+        if rc_esptool != 0:
+            print("WARNING: failed to install required esptool; device runs may fail")
+            try:
+                report.setdefault("devices", {})["esptool_install"] = {"rc": rc_esptool, "output": out_esptool}
+            except Exception:
+                pass
         runner = ROOT / "tools" / "run_unity.py"
         suites = [
             ROOT / "esp_bt_audio_source" / "test" / "test_app",
