@@ -3,14 +3,13 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "esp_spiffs.h"
 
 #include "audio_queue.h"
 #include "audio_util.h"
 #include "play_manager.h"
-
-#define TEST_ESP_OK(x) TEST_ASSERT_EQUAL_HEX32(ESP_OK, (x))
 
 static const char *k_spiffs_label = "spiffs";
 static const char *k_wav_path = "/spiffs/test_play_manager.wav";
@@ -103,6 +102,46 @@ static void cleanup_env(void)
     audio_chunk_pool_deinit();
     remove(k_wav_path);
     unmount_spiffs();
+}
+
+static bool write_custom_wav(const char *path, uint16_t audio_format, uint16_t bits_per_sample, bool short_fmt, bool omit_data)
+{
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        return false;
+    }
+
+    const uint32_t riff_size = 36u;
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+
+    uint32_t fmt_size = short_fmt ? 8u : 16u;
+    fwrite("fmt ", 1, 4, f);
+    fwrite(&fmt_size, 4, 1, f);
+    fwrite(&audio_format, 2, 1, f);
+    if (!short_fmt) {
+        uint16_t channels = 1;
+        uint32_t sample_rate = 44100;
+        uint32_t byte_rate = sample_rate * 2u;
+        uint16_t block_align = 2;
+        fwrite(&channels, 2, 1, f);
+        fwrite(&sample_rate, 4, 1, f);
+        fwrite(&byte_rate, 4, 1, f);
+        fwrite(&block_align, 2, 1, f);
+        fwrite(&bits_per_sample, 2, 1, f);
+    }
+
+    if (!omit_data) {
+        uint32_t data_size = 4u;
+        uint32_t zero = 0;
+        fwrite("data", 1, 4, f);
+        fwrite(&data_size, 4, 1, f);
+        fwrite(&zero, 1, sizeof(zero), f);
+    }
+
+    fclose(f);
+    return true;
 }
 
 TEST_CASE("play_manager_init_rejects_null_args", "[play_manager]")
@@ -208,6 +247,72 @@ TEST_CASE("play_manager_abort_clears_state", "[play_manager]")
 
     /* Clear any queued blocks from the pre-abort fill. */
     audio_chunk_clear();
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_rejects_short_fmt_chunk", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_custom_wav(k_wav_path, 1, 16, true, false));
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_rejects_non_pcm", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_custom_wav(k_wav_path, 3 /* IEEE float */, 16, false, false));
+
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_rejects_missing_data_chunk", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_custom_wav(k_wav_path, 1, 16, false, true));
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
 
     cleanup_env();
 }
