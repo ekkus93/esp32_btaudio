@@ -387,6 +387,8 @@ static void test_play_command_requires_a2dp_connection(void);
 static void test_interleaved_play_stop_beep_sequence(void);
 static void test_play_wav_failure_restores_pipeline(void);
 static void test_drain_stops_play_manager_and_clears_queue(void);
+static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void);
+static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void);
 
 void run_audio_processor_tests(void)
 {
@@ -407,6 +409,8 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
     RUN_TEST(test_drain_stops_play_manager_and_clears_queue);
+    RUN_TEST(test_stop_during_wav_to_beep_transition_keeps_tags_consistent);
+    RUN_TEST(test_synth_toggle_mid_wav_keeps_tag_counters_clean);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -738,5 +742,164 @@ static void test_interleaved_play_stop_beep_sequence(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_test_reset_tag_miss_count();
+    audio_processor_test_reset_tag_recover_window();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    vTaskDelay(pdMS_TO_TICKS(150));
+    TEST_ASSERT_TRUE(audio_processor_is_wav_active());
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    TEST_ASSERT_FALSE(audio_processor_is_wav_active());
+
+    /* Restart the pipeline and immediately transition to a beep. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    esp_err_t ret = audio_processor_beep(50);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    vTaskDelay(pdMS_TO_TICKS(80));
+
+    uint8_t buf[128];
+    size_t bytes_read = 0;
+    bool saw_data = false;
+    const int max_attempts = 5;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (ret == ESP_OK) {
+            if (bytes_read > 0) {
+                saw_data = true;
+                break;
+            }
+        } else if ((int)ret > 0) {
+            bytes_read = (size_t)ret;
+            if (bytes_read > 0) {
+                saw_data = true;
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(40));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_data, "beep after STOP did not produce data");
+
+    ret = audio_processor_drain_audio_queue();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+    TEST_ASSERT_FALSE(audio_processor_is_wav_active());
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_test_reset_tag_miss_count();
+    audio_processor_test_reset_tag_recover_window();
+    audio_processor_set_synth_mode(false);
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool saw_pre_toggle = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_pre_toggle = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_pre_toggle, "WAV did not enqueue before synth toggle");
+
+    audio_processor_set_synth_mode(true);
+    vTaskDelay(pdMS_TO_TICKS(80));
+
+    bool saw_post_toggle = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_post_toggle = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_post_toggle, "Audio did not continue after enabling synth mode");
+
+    audio_processor_set_synth_mode(false);
+    vTaskDelay(pdMS_TO_TICKS(80));
+
+    bool saw_after_restore = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_after_restore = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_after_restore, "Audio did not resume after disabling synth mode");
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    esp_err_t ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     bt_manager_mock_connection_opened(NULL);
 }
