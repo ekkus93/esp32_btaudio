@@ -60,3 +60,10 @@ void bt_app_param_free_cb(void *param);
  * @brief     Work dispatcher
  */
 bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback);
+
+#if UNIT_TEST
+/* Test-only helpers to observe and drain the queue in host/unit builds. */
+bool bt_app_core_process_once(void);
+size_t bt_app_core_queue_depth(void);
+size_t bt_app_core_drain(size_t max_iterations);
+#endif

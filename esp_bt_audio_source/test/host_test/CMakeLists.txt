@@ -197,6 +197,19 @@ target_include_directories(test_dispatch_copy_regression PRIVATE
 target_compile_definitions(test_dispatch_copy_regression PRIVATE UNIT_TEST)
 add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_copy_regression>)
 
+# Host harness for bt_app_core queue handling
+add_executable(test_bt_app_core_host
+    test_bt_app_core_host.c
+    ../../main/bt_app_core.c
+    ../../main/mem_util.c
+    mocks/fake_task.c
+    mocks/fake_queue.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_link_libraries(test_bt_app_core_host unity)
+target_compile_definitions(test_bt_app_core_host PRIVATE UNIT_TEST)
+add_test(NAME test_bt_app_core_host COMMAND $<TARGET_FILE:test_bt_app_core_host>)
+
 # Pairing reply flow tests
 add_executable(test_pairing_confirm test_pairing_confirm.c
     ../../components/command_interface/commands.c

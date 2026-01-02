@@ -187,3 +187,51 @@ void bt_app_param_free_cb(void *param)
         osi_free(param);
     }
 }
+
+#if UNIT_TEST
+/*
+ * Test-only helpers to drive the queue without the FreeRTOS task loop.
+ * These are no-ops in production builds.
+ */
+size_t bt_app_core_queue_depth(void)
+{
+    return s_bt_app_queue ? uxQueueMessagesWaiting(s_bt_app_queue) : 0;
+}
+
+bool bt_app_core_process_once(void)
+{
+    if (s_bt_app_queue == NULL) {
+        return false;
+    }
+
+    bt_app_evt_msg_t evt_msg;
+    if (xQueueReceive(s_bt_app_queue, &evt_msg, 0) != pdTRUE) {
+        return false;
+    }
+
+    switch (evt_msg.msg.sig) {
+    case BT_APP_SIG_WORK_DISPATCH:
+        if (evt_msg.msg.cb) {
+            evt_msg.msg.cb(evt_msg.msg.event, evt_msg.param);
+        }
+        break;
+    default:
+        break;
+    }
+
+    if (evt_msg.param && evt_msg.msg.param_free_cb) {
+        evt_msg.msg.param_free_cb(evt_msg.param);
+    }
+
+    return true;
+}
+
+size_t bt_app_core_drain(size_t max_iterations)
+{
+    size_t drained = 0;
+    while (drained < max_iterations && bt_app_core_process_once()) {
+        drained++;
+    }
+    return drained;
+}
+#endif
