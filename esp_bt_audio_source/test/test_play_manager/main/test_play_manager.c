@@ -144,6 +144,102 @@ static bool write_custom_wav(const char *path, uint16_t audio_format, uint16_t b
     return true;
 }
 
+static bool write_truncated_wav(const char *path, uint32_t declared_bytes, uint32_t actual_bytes)
+{
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        return false;
+    }
+
+    const uint32_t riff_size = 36u + declared_bytes;
+    const uint32_t fmt_chunk_size = 16u;
+    const uint16_t audio_format = 1u; /* PCM */
+    const uint16_t num_channels = 1u;
+    const uint32_t sample_rate = 16000u;
+    const uint32_t byte_rate = sample_rate * num_channels * 2u;
+    const uint16_t block_align = 2u;
+    const uint16_t bits_per_sample = 16u;
+
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    fwrite("fmt ", 1, 4, f);
+    fwrite(&fmt_chunk_size, 4, 1, f);
+    fwrite(&audio_format, 2, 1, f);
+    fwrite(&num_channels, 2, 1, f);
+    fwrite(&sample_rate, 4, 1, f);
+    fwrite(&byte_rate, 4, 1, f);
+    fwrite(&block_align, 2, 1, f);
+    fwrite(&bits_per_sample, 2, 1, f);
+    fwrite("data", 1, 4, f);
+    fwrite(&declared_bytes, 4, 1, f);
+
+    /* Write fewer bytes than declared to simulate truncation. */
+    for (uint32_t i = 0; i < actual_bytes; ++i) {
+        uint8_t zero = 0;
+        fwrite(&zero, 1, 1, f);
+    }
+
+    fclose(f);
+    return true;
+}
+
+static bool write_data_with_trailing_chunk(const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        return false;
+    }
+
+    const uint32_t data_bytes = 4u;
+    const uint32_t riff_size = 36u + data_bytes;
+    const uint32_t fmt_chunk_size = 16u;
+    const uint16_t audio_format = 1u;
+    const uint16_t num_channels = 1u;
+    const uint32_t sample_rate = 16000u;
+    const uint32_t byte_rate = sample_rate * num_channels * 2u;
+    const uint16_t block_align = 2u;
+    const uint16_t bits_per_sample = 16u;
+
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    fwrite("fmt ", 1, 4, f);
+    fwrite(&fmt_chunk_size, 4, 1, f);
+    fwrite(&audio_format, 2, 1, f);
+    fwrite(&num_channels, 2, 1, f);
+    fwrite(&sample_rate, 4, 1, f);
+    fwrite(&byte_rate, 4, 1, f);
+    fwrite(&block_align, 2, 1, f);
+    fwrite(&bits_per_sample, 2, 1, f);
+    fwrite("data", 1, 4, f);
+    fwrite(&data_bytes, 4, 1, f);
+    uint32_t zero = 0;
+    fwrite(&zero, 1, sizeof(zero), f);
+
+    /* Trailing chunk after data should be ignored by the parser. */
+    const uint32_t junk_size = 8u;
+    fwrite("JUNK", 1, 4, f);
+    fwrite(&junk_size, 4, 1, f);
+    for (uint32_t i = 0; i < junk_size; ++i) {
+        uint8_t pad = 0xAA;
+        fwrite(&pad, 1, 1, f);
+    }
+
+    fclose(f);
+    return true;
+}
+
+static size_t saturate_audio_queue(void)
+{
+    uint8_t dummy[16] = {0};
+    size_t count = 0;
+    while (audio_chunk_enqueue_bytes(dummy, sizeof(dummy), AUDIO_SOURCE_TAG_WAV)) {
+        ++count;
+    }
+    return count;
+}
+
 TEST_CASE("play_manager_init_rejects_null_args", "[play_manager]")
 {
     play_manager_buffers_t bufs = {
@@ -311,6 +407,138 @@ TEST_CASE("play_manager_rejects_missing_data_chunk", "[play_manager]")
     TEST_ASSERT_TRUE(write_custom_wav(k_wav_path, 1, 16, false, true));
 
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_handles_truncated_data_chunk", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_truncated_wav(k_wav_path, 16u, 4u));
+
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+
+    size_t consumed = 0;
+    bool drained = false;
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_ignores_trailing_chunks_after_data", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_data_with_trailing_chunk(k_wav_path));
+
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+
+    size_t consumed = 0;
+    bool drained = false;
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_backpressure_does_not_overcount_pending", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    const int16_t samples[] = {0, 0, 0, 0};
+    TEST_ASSERT_TRUE(write_pcm16_mono_wav(k_wav_path, samples, sizeof(samples) / sizeof(samples[0]), (uint32_t)AUDIO_SAMPLE_RATE_16K));
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    size_t prefilled = saturate_audio_queue();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)prefilled);
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+
+    /* Queue was full; pending_bytes should not increase. */
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+    TEST_ASSERT_TRUE(play_manager_is_active());
+
+    /* Drain the queue and allow fill to push data. */
+    audio_chunk_clear();
+    TEST_ESP_OK(play_manager_fill());
+
+    bool drained = false;
+    for (int i = 0; i < 4 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE(drained);
     TEST_ASSERT_FALSE(play_manager_is_active());
     TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
 
