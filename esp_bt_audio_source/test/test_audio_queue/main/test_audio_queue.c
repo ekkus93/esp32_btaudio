@@ -31,6 +31,17 @@ TEST_CASE("audio_queue_enqueue_and_dequeue_single", "[audio_queue]")
     audio_chunk_pool_deinit();
 }
 
+TEST_CASE("audio_queue_dequeue_times_out_when_empty", "[audio_queue]")
+{
+    reset_queue();
+
+    audio_chunk_t chunk = {0};
+    TEST_ASSERT_FALSE(audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(1)));
+    TEST_ASSERT_EQUAL(0, audio_descriptor_used());
+
+    audio_chunk_pool_deinit();
+}
+
 void app_main(void)
 {
     UNITY_BEGIN();
@@ -130,6 +141,61 @@ TEST_CASE("audio_queue_enqueue_fails_when_full", "[audio_queue]")
     }
 
     TEST_ASSERT_EQUAL(0, audio_descriptor_used());
+
+    audio_chunk_pool_deinit();
+}
+
+TEST_CASE("audio_queue_clear_returns_blocks", "[audio_queue]")
+{
+    reset_queue();
+
+    uint8_t payload[16] = {0xBB};
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(payload, sizeof(payload), AUDIO_SOURCE_TAG_WAV));
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(payload, sizeof(payload), AUDIO_SOURCE_TAG_BEEP));
+    TEST_ASSERT_EQUAL(2, audio_descriptor_used());
+
+    audio_chunk_clear();
+    TEST_ASSERT_EQUAL(0, audio_descriptor_used());
+
+    /* All blocks should be reusable after clear */
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(payload, sizeof(payload), AUDIO_SOURCE_TAG_SYNTH));
+    audio_chunk_t chunk = {0};
+    TEST_ASSERT_TRUE(audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(10)));
+    audio_chunk_release_block(chunk.data);
+    TEST_ASSERT_EQUAL(0, audio_descriptor_used());
+
+    audio_chunk_pool_deinit();
+}
+
+TEST_CASE("audio_descriptor_snapshot_validates_args_and_state", "[audio_queue]")
+{
+    audio_chunk_t snapshot[2] = {0};
+    size_t captured = 0;
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_descriptor_snapshot(NULL, 2, &captured));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_descriptor_snapshot(snapshot, 0, &captured));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_descriptor_snapshot(snapshot, 2, &captured));
+
+    reset_queue();
+
+    const uint8_t a[] = {0x11};
+    const uint8_t b[] = {0x22};
+    const uint8_t c[] = {0x33};
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(a, sizeof(a), AUDIO_SOURCE_TAG_WAV));
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(b, sizeof(b), AUDIO_SOURCE_TAG_BEEP));
+    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(c, sizeof(c), AUDIO_SOURCE_TAG_SYNTH));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_descriptor_snapshot(snapshot, 2, &captured));
+    TEST_ASSERT_EQUAL(2, captured);
+    TEST_ASSERT_EQUAL(AUDIO_SOURCE_TAG_WAV, snapshot[0].tag);
+    TEST_ASSERT_EQUAL(AUDIO_SOURCE_TAG_BEEP, snapshot[1].tag);
+    TEST_ASSERT_EQUAL(3, audio_descriptor_used());
+
+    /* Queue order should remain intact after snapshot */
+    audio_chunk_t chunk = {0};
+    TEST_ASSERT_TRUE(audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(10)));
+    TEST_ASSERT_EQUAL(AUDIO_SOURCE_TAG_WAV, chunk.tag);
+    audio_chunk_release_block(chunk.data);
 
     audio_chunk_pool_deinit();
 }

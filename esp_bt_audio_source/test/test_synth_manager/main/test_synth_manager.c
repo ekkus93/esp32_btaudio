@@ -83,6 +83,58 @@ TEST_CASE("synth_manager_writes_silence_with_zero_env", "[synth_manager]")
     }
 }
 
+TEST_CASE("synth_manager_returns_zero_if_buffer_smaller_than_frame", "[synth_manager]")
+{
+    audio_config_t cfg = default_config();
+    /* frame_bytes = 2 bytes mono; buffer length 1 => no full frame */
+    uint8_t buffer[1];
+    buffer[0] = 0x7E;
+
+    size_t written = synth_manager_generate_audio(buffer, sizeof(buffer), &cfg, NULL, NULL);
+    TEST_ASSERT_EQUAL_size_t(0, written);
+    TEST_ASSERT_EQUAL_UINT8(0x7E, buffer[0]);
+}
+
+TEST_CASE("synth_manager_falls_back_on_unknown_bit_depth", "[synth_manager]")
+{
+    audio_config_t cfg = default_config();
+    cfg.bit_depth = (audio_bit_depth_t)99; /* unsupported depth */
+    uint8_t buffer[16];
+    memset(buffer, 0x5A, sizeof(buffer));
+
+    size_t written = synth_manager_generate_audio(buffer, sizeof(buffer), &cfg, NULL, NULL);
+    TEST_ASSERT_EQUAL_size_t(sizeof(buffer), written);
+    for (size_t i = 0; i < written; ++i) {
+        TEST_ASSERT_EQUAL_UINT8(0x00, buffer[i]);
+    }
+}
+
+TEST_CASE("synth_manager_aligns_24bit_stereo_frames", "[synth_manager]")
+{
+    audio_config_t cfg = default_config();
+    cfg.bit_depth = AUDIO_BIT_DEPTH_24; /* stored as 32-bit */
+    cfg.channels = AUDIO_CHANNEL_STEREO;
+
+    uint8_t buffer[20];
+    fill_guard(buffer, sizeof(buffer), 0xA5);
+
+    /* frame_bytes = 4 bytes * 2 channels = 8; expect 2 frames -> 16 bytes */
+    size_t written = synth_manager_generate_audio(buffer, sizeof(buffer), &cfg, NULL, NULL);
+    TEST_ASSERT_EQUAL_size_t(16, written);
+    TEST_ASSERT_EQUAL_UINT8(0xA5, buffer[written]);
+}
+
+TEST_CASE("synth_manager_preserves_force_flag_when_env_zero", "[synth_manager]")
+{
+    audio_config_t cfg = default_config();
+    uint8_t buffer[32];
+    bool force_flag = true;
+
+    size_t written = synth_manager_generate_audio(buffer, sizeof(buffer), &cfg, &force_flag, NULL);
+    TEST_ASSERT_EQUAL_size_t(sizeof(buffer), written);
+    TEST_ASSERT_TRUE(force_flag);
+}
+
 void app_main(void)
 {
     UNITY_BEGIN();
