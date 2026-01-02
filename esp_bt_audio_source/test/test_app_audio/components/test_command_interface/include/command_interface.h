@@ -17,6 +17,8 @@ typedef enum {
 typedef enum {
     CMD_TYPE_UNKNOWN = -1,
     CMD_TYPE_PLAY = 0,
+    CMD_TYPE_STOP = 1,
+    CMD_TYPE_BEEP = 2,
 } cmd_type_t;
 
 #define CMD_MAX_PARAMS 5

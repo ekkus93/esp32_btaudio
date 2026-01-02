@@ -3,12 +3,19 @@
 #include <stdio.h>
 #include "esp_err.h"
 #include "esp_log.h"
-#include <stdio.h>
 
-/* Declare the minimal prototype used from the audio processor so this
- * test-only component does not need to include the application's public
- * headers (which may live in the app's main/include directory). */
-extern esp_err_t audio_processor_play_wav(const char* path);
+// Pull in the test app's forwarder to the production audio processor API so
+// this stub stays in sync with the real implementation used by the tests.
+#include "../../main/include/audio_processor.h"
+
+/* The forwarder above should bring in the real prototypes, but explicitly
+ * declare the small subset we use to guard against include path surprises
+ * during test builds.
+ */
+esp_err_t audio_processor_play_wav(const char* path);
+esp_err_t audio_processor_drain_audio_queue(void);
+esp_err_t audio_processor_stop(void);
+esp_err_t audio_processor_beep(uint32_t duration_ms);
 
 static bool s_bt_connected = true;
 
@@ -29,7 +36,7 @@ void bt_manager_mock_connection_opened(const char* mac)
     s_bt_connected = true;
 }
 
-// Very small parser that only understands PLAY <filename>
+// Very small parser that understands PLAY/STOP/BEEP commands used by the tests.
 cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
 {
     if (!cmd_str || !ctx) return CMD_ERROR_INVALID_PARAM;
@@ -59,6 +66,18 @@ cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx)
         } else {
             ctx->param_count = 0;
         }
+        return CMD_SUCCESS;
+    }
+
+    if (strcasecmp(token, "STOP") == 0) {
+        ctx->type = CMD_TYPE_STOP;
+        ctx->param_count = 0;
+        return CMD_SUCCESS;
+    }
+
+    if (strcasecmp(token, "BEEP") == 0) {
+        ctx->type = CMD_TYPE_BEEP;
+        ctx->param_count = 0;
         return CMD_SUCCESS;
     }
 
@@ -94,6 +113,31 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
             return CMD_ERROR_UNKNOWN;
         }
         return CMD_SUCCESS;
+    }
+
+    if (ctx->type == CMD_TYPE_STOP) {
+        /* Mirror STOP behavior enough for tests: drain queue and stop the processor. */
+        (void)audio_processor_drain_audio_queue();
+        esp_err_t stop_ret = audio_processor_stop();
+        if (stop_ret == ESP_OK || stop_ret == ESP_ERR_INVALID_STATE) {
+            return CMD_SUCCESS;
+        }
+        ESP_LOGW("TEST_CMD_IF", "audio_processor_stop returned %d (%s)", (int)stop_ret, esp_err_to_name(stop_ret));
+        return CMD_ERROR_UNKNOWN;
+    }
+
+    if (ctx->type == CMD_TYPE_BEEP) {
+        /* Keep parity with PLAY: only allow BEEP when connected. */
+        if (!bt_manager_is_a2dp_connected()) {
+            ESP_LOGW("TEST_CMD_IF", "BEEP rejected: A2DP not connected");
+            return CMD_ERROR_UNKNOWN;
+        }
+        esp_err_t bret = audio_processor_beep(10000);
+        if (bret == ESP_OK) {
+            return CMD_SUCCESS;
+        }
+        ESP_LOGW("TEST_CMD_IF", "audio_processor_beep returned %d (%s)", (int)bret, esp_err_to_name(bret));
+        return CMD_ERROR_UNKNOWN;
     }
     return CMD_ERROR_UNKNOWN;
 }

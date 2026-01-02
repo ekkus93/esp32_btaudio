@@ -565,13 +565,17 @@ int main(void) {
     // Tests for BEEP command
     extern void test_beep_command_not_connected(void);
     extern void test_beep_command_connected(void);
+    extern void test_beep_command_busy_when_wav_active(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
+    RUN_TEST(test_beep_command_busy_when_wav_active);
     // Test PLAY command enqueues audio via host stub and makes data available
     extern void test_play_command_missing_param_should_error(void);
     extern void test_play_command_missing_file_should_error(void);
     extern void test_play_command_path_too_long_should_error(void);
     extern void test_play_command(void);
+    extern void test_play_command_busy_when_beep_active(void);
+    extern void test_play_command_busy_when_i2s_active(void);
     extern void test_file_command_found(void);
     extern void test_file_command_not_found(void);
     extern void test_file_command_not_file(void);
@@ -579,6 +583,8 @@ int main(void) {
     RUN_TEST(test_play_command_missing_file_should_error);
     RUN_TEST(test_play_command_path_too_long_should_error);
     RUN_TEST(test_play_command);
+    RUN_TEST(test_play_command_busy_when_beep_active);
+    RUN_TEST(test_play_command_busy_when_i2s_active);
     RUN_TEST(test_file_command_found);
     RUN_TEST(test_file_command_not_found);
     RUN_TEST(test_file_command_not_file);
@@ -933,6 +939,42 @@ void test_beep_command_connected(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.1f, 261.63f, (float)freq_hz);
 }
 
+void test_beep_command_busy_when_wav_active(void) {
+    mock_uart_reset_tx();
+    TEST_ASSERT_TRUE_MESSAGE(s_test_spiffs_root_ready, "spiffs root not prepared in setUp");
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_16K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_MONO,
+        .volume = 60,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Seed a WAV playback to force audio_processor_beep_tone() to report busy. */
+    char wav_path[PATH_MAX];
+    snprintf(wav_path, sizeof(wav_path), "%s/%s", s_test_spiffs_root, k_file_worker_name);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_play_wav(wav_path));
+
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|BEEP|FAILED"));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
 void test_play_command_missing_param_should_error(void) {
     mock_uart_reset_tx();
 
@@ -1003,6 +1045,67 @@ void test_play_command(void) {
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT(1, s_spiffs_mount_hook_count);
+}
+
+void test_play_command_busy_when_beep_active(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_16K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_MONO,
+        .volume = 70,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 1000.0));
+
+    cmd_context_t ctx;
+    char play_cmd[64];
+    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|BUSY|BEEP_ACTIVE"));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
+void test_play_command_busy_when_i2s_active(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_16K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_MONO,
+        .volume = 70,
+        .mute = false,
+        .i2s_port = 0,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    audio_processor_set_synth_mode(false); /* simulate live I2S capture */
+
+    cmd_context_t ctx;
+    char play_cmd[64];
+    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|BUSY|I2S_ACTIVE"));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
 }
 
 void test_play_command_missing_file_should_error(void) {

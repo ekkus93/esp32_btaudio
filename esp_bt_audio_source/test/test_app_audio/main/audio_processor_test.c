@@ -383,6 +383,7 @@ static void test_audio_buffer_management(void)
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
+static void test_interleaved_play_stop_beep_sequence(void);
 
 void run_audio_processor_tests(void)
 {
@@ -400,6 +401,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_command_requires_a2dp_connection);
     RUN_TEST(test_play_wav_command);
+    RUN_TEST(test_interleaved_play_stop_beep_sequence);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -579,6 +581,68 @@ static void test_play_command_requires_a2dp_connection(void)
     }
 
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_interleaved_play_stop_beep_sequence(void)
+{
+    /* Exercise PLAY -> STOP -> BEEP -> PLAY to ensure tag and lock paths recover. */
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    vTaskDelay(pdMS_TO_TICKS(150));
+    TEST_ASSERT_TRUE(audio_processor_is_wav_active());
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    TEST_ASSERT_FALSE(audio_processor_is_wav_active());
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    /* Drain any beep data and ensure we can enqueue a new PLAY afterward. */
+    (void)audio_processor_drain_audio_queue();
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool ok = false;
+    const int max_attempts = 6;
+    for (int attempt = 0; attempt < max_attempts && !ok; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            ok = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(ok, "interleaved PLAY did not enqueue after BEEP");
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
