@@ -1063,6 +1063,20 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* When A2DP is disconnected, avoid emitting keepalive/capture audio. */
+    if (!audio_processor_is_a2dp_connected()) {
+        (void)audio_processor_drain_audio_queue();
+        *bytes_read = 0;
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* If no sources are active, treat the read as idle. */
+    if (!play_manager_is_active() && s_beep_remaining_bytes == 0 && !s_force_synth && !s_wav_playback_active) {
+        (void)audio_processor_drain_audio_queue();
+        *bytes_read = 0;
+        return ESP_OK;
+    }
+
     if (s_trace_next_read_call) {
         s_trace_next_read_call = false;
         const char *task_name = pcTaskGetName(NULL);
@@ -1485,6 +1499,13 @@ esp_err_t audio_processor_play_wav(const char* path)
     if (s_force_synth) {
         audio_processor_flush_priority_queues("play_wav");
         s_last_source_was_synth = false;
+    }
+
+    /* Reject PLAY while A2DP is disconnected to avoid queueing audio that
+     * cannot be consumed. */
+    if (!audio_processor_is_a2dp_connected()) {
+        ESP_LOGW(TAG, "audio_processor_play_wav: A2DP not connected; rejecting PLAY");
+        return ESP_ERR_INVALID_STATE;
     }
 
     /* Reject WAV playback while a beep is active or queued to keep the

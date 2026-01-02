@@ -7,4 +7,5 @@ idf_component_register(
         "../../../main/include"
     PRIV_REQUIRES
         unity
+        util_safe
 )

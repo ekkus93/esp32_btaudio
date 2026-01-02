@@ -183,11 +183,15 @@ static void i2s_manager_task(void *arg)
 {
 	(void)arg;
 	ESP_LOGI(TAG, "i2s_manager task started");
+	const TickType_t idle_wait = pdMS_TO_TICKS(20);
+	const uint32_t read_timeout_ms = 5;
 	while (s_mgr.running) {
+		bool did_work = false;
 #ifdef CONFIG_BT_MOCK_TESTING
 		mock_item_t item;
-		if (s_mgr.mock_queue != NULL && xQueueReceive(s_mgr.mock_queue, &item, pdMS_TO_TICKS(50)) == pdTRUE) {
+		if (s_mgr.mock_queue != NULL && xQueueReceive(s_mgr.mock_queue, &item, pdMS_TO_TICKS(10)) == pdTRUE) {
 			(void)process_frame(item.data, item.len, item.bit_depth, item.rate);
+			did_work = true;
 			continue;
 		}
 #endif
@@ -198,16 +202,31 @@ static void i2s_manager_task(void *arg)
 											 s_mgr.bufs.raw_buf,
 											 s_mgr.bufs.raw_buf_bytes,
 											 &read_bytes,
-											 pdMS_TO_TICKS(10));
+									 read_timeout_ms);
 			if (ret == ESP_OK && read_bytes > 0) {
 				(void)process_frame(s_mgr.bufs.raw_buf, read_bytes, s_mgr.cfg.bit_depth, s_mgr.cfg.sample_rate);
+				did_work = true;
+			} else if (ret == ESP_ERR_TIMEOUT) {
+				/* No samples available; pause a bit to keep idle tasks feeding the WDT. */
+				vTaskDelay(idle_wait);
 			}
 		}
 #else
 		vTaskDelay(pdMS_TO_TICKS(10));
+		did_work = true;
+		continue;
 #endif
+
+		if (!did_work) {
+			vTaskDelay(idle_wait);
+		}
+		else {
+			/* Even when work was done, yield briefly to keep the WDT fed. */
+			vTaskDelay(pdMS_TO_TICKS(1));
+		}
 	}
 	ESP_LOGI(TAG, "i2s_manager task exiting");
+	s_mgr.task = NULL;
 	vTaskDelete(NULL);
 }
 
@@ -242,10 +261,11 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 
 void i2s_manager_deinit(void)
 {
-	s_mgr.running = false;
-	if (s_mgr.task != NULL) {
-		vTaskDelay(pdMS_TO_TICKS(20));
+	if (!s_mgr.initialized) {
+		return;
 	}
+
+	(void)i2s_manager_stop();
 
 #ifdef CONFIG_BT_MOCK_TESTING
 	if (s_mgr.mock_queue) {
@@ -300,6 +320,13 @@ esp_err_t i2s_manager_stop(void)
 		i2s_channel_disable(s_mgr.i2s_rx);
 	}
 #endif
+	for (int i = 0; i < 5 && s_mgr.task != NULL; ++i) {
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+	if (s_mgr.task != NULL) {
+		vTaskDelete(s_mgr.task);
+		s_mgr.task = NULL;
+	}
 	return ESP_OK;
 }
 

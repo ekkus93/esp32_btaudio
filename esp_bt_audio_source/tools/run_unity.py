@@ -69,6 +69,7 @@ AUTORUN_COMPLETE_RE = re.compile(r"Auto-run of tests completed", re.IGNORECASE)
 # see a boot banner following test completion so CI/runners don't need to manually stop.
 # Include generic 'ets' (month varies), 'rst:', hard reset lines and the monitor header.
 BOOT_BANNER_RE = re.compile(r"(ESP-IDF|rst:|\bets\b|Chip is ESP32|Hard resetting via RTS|--- esp-idf-monitor)", re.IGNORECASE)
+WATCHDOG_RE = re.compile(r"(task[_ ]wdt|watchdog got triggered|Reset (?:\w+ )?due to WDT|WDT reset|WDT in task)", re.IGNORECASE)
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
 
 
@@ -104,7 +105,7 @@ def make_shell_cmd(args_list, export_sh=None):
         return args_list
 
 
-def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_event, boot_event, test_complete_event):
+def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_event, boot_event, test_complete_event, watchdog_event):
     """Read process stdout line-by-line, write to logfile, and signal when summary seen."""
     with open(logfile_path, "ab", buffering=0) as fh:
         while True:
@@ -154,6 +155,13 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
                 summary_event.set()
 
+            if WATCHDOG_RE.search(decoded):
+                print("[run_unity DEBUG] WATCHDOG pattern matched in monitor output", file=sys.stderr)
+                watchdog_event.set()
+                summary_event.set()
+                test_complete_event.set()
+                stop_event.set()
+
             elif UNITY_SUMMARY_RE.search(decoded):
                 print("[run_unity DEBUG] UNITY summary-ish line seen (not triggering completion)", file=sys.stderr)
 
@@ -167,6 +175,13 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
 def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None = None, spiffs_offset_arg: str | None = None, force_spiffs: bool = False):
     logfile = os.path.join(project_root, "build", "one_run_unity.log")
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
+    # Start with a clean logfile so stale watchdog strings from prior runs don't trigger detection.
+    try:
+        with open(logfile, "wb"):
+            pass
+    except OSError:
+        # best-effort; continue with append if truncate fails
+        pass
     env = os.environ.copy()
 
     # Prefer the ESP-IDF managed Python env over any outer conda/system python
@@ -366,10 +381,11 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     summary_event = threading.Event()
     boot_event = threading.Event()
     test_complete_event = threading.Event()
+    watchdog_event = threading.Event()
 
     t = threading.Thread(
         target=tail_process_output,
-        args=(proc, stdout_stream, logfile, stop_event, summary_event, boot_event, test_complete_event),
+        args=(proc, stdout_stream, logfile, stop_event, summary_event, boot_event, test_complete_event, watchdog_event),
         daemon=True,
     )
     t.start()
@@ -377,6 +393,24 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     start = time.time()
     try:
         while True:
+            if watchdog_event.is_set():
+                print("[run_unity DEBUG] Watchdog detected; stopping monitor", file=sys.stderr)
+                try:
+                    proc.send_signal(signal.SIGINT)
+                    for _ in range(10):
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.1)
+                    else:
+                        proc.terminate()
+                except Exception:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                stop_event.set()
+                break
+
             if summary_event.is_set():
                 if test_complete_event.is_set():
                     time.sleep(0.2)
@@ -480,6 +514,10 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
         with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
             text = fh.read()
         clean_text = ANSI_ESCAPE_RE.sub("", text)
+
+        if watchdog_event.is_set() or WATCHDOG_RE.search(clean_text):
+            print("[run_unity DEBUG] Watchdog pattern found in log; treating run as failure", file=sys.stderr)
+            return 1, logfile
 
         complete_matches = list(RUN_COMPLETE_RE.finditer(clean_text))
         if complete_matches:
