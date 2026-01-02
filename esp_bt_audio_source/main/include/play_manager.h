@@ -43,4 +43,5 @@ size_t play_manager_pending_bytes(void);
 /* Test hooks for visibility and small overrides. */
 void play_manager_test_set_frame_bytes_dst(size_t frame_bytes);
 size_t play_manager_test_residual_bytes(void);
+void play_manager_test_force_zero_resample(bool enable);
 #endif

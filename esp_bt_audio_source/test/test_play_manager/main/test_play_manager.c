@@ -96,6 +96,46 @@ static bool write_pcm16_mono_wav(const char *path, const int16_t *samples, size_
     return true;
 }
 
+static bool write_channels_wav(const char *path, uint16_t channels)
+{
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        return false;
+    }
+
+    const uint32_t payload_len = 8u;
+    const uint32_t riff_size = 36u + payload_len;
+    const uint32_t fmt_chunk_size = 16u;
+    const uint16_t audio_format = 1u; /* PCM */
+    const uint32_t sample_rate = 16000u;
+    const uint16_t bits_per_sample = 16u;
+    const uint16_t block_align = (uint16_t)(channels * (bits_per_sample / 8u));
+    const uint32_t byte_rate = sample_rate * block_align;
+
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    fwrite("fmt ", 1, 4, f);
+    fwrite(&fmt_chunk_size, 4, 1, f);
+    fwrite(&audio_format, 2, 1, f);
+    fwrite(&channels, 2, 1, f);
+    fwrite(&sample_rate, 4, 1, f);
+    fwrite(&byte_rate, 4, 1, f);
+    fwrite(&block_align, 2, 1, f);
+    fwrite(&bits_per_sample, 2, 1, f);
+
+    uint32_t data_size = payload_len;
+    fwrite("data", 1, 4, f);
+    fwrite(&data_size, 4, 1, f);
+    for (uint32_t i = 0; i < payload_len; ++i) {
+        uint8_t val = (uint8_t)i;
+        fwrite(&val, 1, 1, f);
+    }
+
+    fclose(f);
+    return true;
+}
+
 static void cleanup_env(void)
 {
     play_manager_deinit();
@@ -387,6 +427,94 @@ TEST_CASE("play_manager_rejects_non_pcm", "[play_manager]")
     TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, play_manager_play_wav(k_wav_path));
     TEST_ASSERT_FALSE(play_manager_is_active());
     TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_rejects_odd_channel_count", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_TRUE(write_channels_wav(k_wav_path, 3u));
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_handles_zero_length_resample_output", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    const int16_t samples[] = {0, 1, -1, 2, -2, 3};
+    TEST_ASSERT_TRUE(write_pcm16_mono_wav(k_wav_path, samples, sizeof(samples) / sizeof(samples[0]), (uint32_t)AUDIO_SAMPLE_RATE_16K));
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+#ifdef CONFIG_BT_MOCK_TESTING
+    play_manager_test_force_zero_resample(true);
+#endif
+
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_TRUE(play_manager_is_active());
+
+    TEST_ESP_OK(play_manager_fill());
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    TEST_ASSERT_TRUE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+
+    bool drained = play_manager_consume(0);
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_FALSE(play_manager_is_active());
+
+#ifdef CONFIG_BT_MOCK_TESTING
+    play_manager_test_force_zero_resample(false);
+#endif
+
+#else
+    TEST_ASSERT_TRUE(play_manager_is_active());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)play_manager_pending_bytes());
+
+    size_t consumed = 0;
+    bool drained = false;
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(drained, "play_manager should drain even without zero-resample hook");
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL(0, play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+#endif
 
     cleanup_env();
 }

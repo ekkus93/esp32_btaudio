@@ -35,6 +35,9 @@ typedef struct {
     size_t residual_len;
     size_t residual_pos;
     SemaphoreHandle_t mutex;
+#ifdef CONFIG_BT_MOCK_TESTING
+    bool test_zero_resample;
+#endif
 } play_manager_state_t;
 
 static play_manager_state_t s_pm = {0};
@@ -286,6 +289,11 @@ esp_err_t play_manager_fill(void)
         if (ret != ESP_OK) {
             break;
         }
+#ifdef CONFIG_BT_MOCK_TESTING
+        if (s_pm.test_zero_resample) {
+            res_size = 0;
+        }
+#endif
         if (res_size == 0) {
             continue;
         }
@@ -470,5 +478,15 @@ size_t play_manager_test_residual_bytes(void)
         }
     }
     return rem;
+}
+
+void play_manager_test_force_zero_resample(bool enable)
+{
+    if (s_pm.initialized && s_pm.mutex != NULL) {
+        if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) == pdTRUE) {
+            s_pm.test_zero_resample = enable;
+            xSemaphoreGive(s_pm.mutex);
+        }
+    }
 }
 #endif
