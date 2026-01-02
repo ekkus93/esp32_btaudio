@@ -1066,6 +1066,11 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     /* When A2DP is disconnected, avoid emitting keepalive/capture audio. */
     if (!audio_processor_is_a2dp_connected()) {
         (void)audio_processor_drain_audio_queue();
+        s_force_synth = false;           /* Suppress keepalive until real playback succeeds again. */
+        s_keepalive_armed = false;
+        s_beep_remaining_bytes = 0;
+        s_audio_rb_residual_len = 0;
+        s_audio_rb_residual_pos = 0;
         *bytes_read = 0;
         return ESP_ERR_INVALID_STATE;
     }

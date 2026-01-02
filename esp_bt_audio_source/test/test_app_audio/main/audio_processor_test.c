@@ -22,6 +22,7 @@ static const char *TAG = "AUDIO_PROCESSOR_TEST";
 /* Local stubs provided by the test_command_interface component. */
 extern void bt_manager_mock_connection_closed(const char* mac);
 extern void bt_manager_mock_connection_opened(const char* mac);
+extern bool bt_manager_is_a2dp_connected(void);
 
 static void ensure_i2s_stopped(void)
 {
@@ -384,9 +385,12 @@ static void test_audio_buffer_management(void)
 static void test_audio_processor_play_wav_api(void);
 static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
+static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
+static void test_keepalive_beep_then_play_recovers(void);
 static void test_interleaved_play_stop_beep_sequence(void);
 static void test_play_wav_failure_restores_pipeline(void);
 static void test_drain_stops_play_manager_and_clears_queue(void);
+static void test_fallback_stop_resume_preserves_tag_alignment(void);
 static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void);
 static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void);
 
@@ -405,10 +409,13 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_audio_buffer_management);
     RUN_TEST(test_audio_processor_play_wav_api);
     RUN_TEST(test_play_command_requires_a2dp_connection);
+    RUN_TEST(test_keepalive_read_suppressed_when_a2dp_disconnected);
     RUN_TEST(test_play_wav_command);
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
+    RUN_TEST(test_keepalive_beep_then_play_recovers);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
     RUN_TEST(test_drain_stops_play_manager_and_clears_queue);
+    RUN_TEST(test_fallback_stop_resume_preserves_tag_alignment);
     RUN_TEST(test_stop_during_wav_to_beep_transition_keeps_tags_consistent);
     RUN_TEST(test_synth_toggle_mid_wav_keeps_tag_counters_clean);
     /* On-device PSRAM integration tests */
@@ -596,6 +603,48 @@ static void test_play_command_requires_a2dp_connection(void)
     bt_manager_mock_connection_opened(NULL);
 }
 
+static void test_keepalive_read_suppressed_when_a2dp_disconnected(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_set_synth_mode(true);
+
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+    TEST_ASSERT_FALSE_MESSAGE(bt_manager_is_a2dp_connected(), "bt_manager_is_a2dp_connected should be false after mock close");
+
+    uint8_t buf[128];
+    size_t bytes_read = 0;
+    esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    printf("DIAG-KA-READ: ret=%d bytes=%u conn=%d\n", (int)ret, (unsigned)bytes_read, (int)bt_manager_is_a2dp_connected());
+    TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_FAIL,
+                             "audio_processor_read should fail when A2DP is disconnected");
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    bt_manager_mock_connection_opened(NULL);
+    bytes_read = 0;
+    ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
 static void test_play_wav_failure_restores_pipeline(void)
 {
     bt_manager_mock_connection_opened(NULL);
@@ -683,6 +732,60 @@ static void test_drain_stops_play_manager_and_clears_queue(void)
     bt_manager_mock_connection_opened(NULL);
 }
 
+static void test_fallback_stop_resume_preserves_tag_alignment(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_test_reset_tag_miss_count();
+
+    bool synth_after = false;
+    int failures_after = -1;
+    audio_processor_test_idle_i2s_failures(24, false, 0, &synth_after, &failures_after);
+    TEST_ASSERT_TRUE_MESSAGE(synth_after, "fallback should enable synth keepalive after repeated I2S failures");
+    TEST_ASSERT_EQUAL(0, failures_after);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool saw_wav = false;
+    for (int attempt = 0; attempt < 8 && !saw_wav; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_wav = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "PLAY did not enqueue after fallback stop/resume");
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
 static void test_interleaved_play_stop_beep_sequence(void)
 {
     /* Exercise PLAY -> STOP -> BEEP -> PLAY to ensure tag and lock paths recover. */
@@ -739,6 +842,70 @@ static void test_interleaved_play_stop_beep_sequence(void)
     }
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "interleaved PLAY did not enqueue after BEEP");
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_keepalive_beep_then_play_recovers(void)
+{
+    /* Simulate synth keepalive, then verify BEEP and PLAY both enqueue data and clear keepalive. */
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_set_synth_mode(true);
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool saw_beep = false;
+    for (int attempt = 0; attempt < 6 && !saw_beep; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_beep = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_beep, "BEEP under synth keepalive did not produce data");
+
+    (void)audio_processor_drain_audio_queue();
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    bool saw_wav = false;
+    for (int attempt = 0; attempt < 8 && !saw_wav; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_wav = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "PLAY did not enqueue after keepalive/beep sequence");
+    TEST_ASSERT_FALSE_MESSAGE(audio_processor_is_synth_mode_enabled(), "Synth keepalive should be cleared after PLAY success");
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
