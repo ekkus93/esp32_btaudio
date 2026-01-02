@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -109,7 +110,7 @@ static char *write_temp_wav(const uint8_t *payload, size_t payload_len)
     return strdup(tmpl);
 }
 
-static char *write_invalid_wav(void)
+static char *write_custom_wav(uint16_t audio_format, uint16_t bits_per_sample, bool short_fmt, bool omit_data)
 {
     char tmpl[] = "/tmp/pm_wav_badXXXXXX";
     int fd = mkstemp(tmpl);
@@ -122,8 +123,36 @@ static char *write_invalid_wav(void)
         unlink(tmpl);
         return NULL;
     }
-    /* Deliberately malformed header */
-    fwrite("BADA", 1, 4, f);
+    const uint32_t riff_size = 36U;
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+
+    uint32_t fmt_size = short_fmt ? 8 : 16;
+    fwrite("fmt ", 1, 4, f);
+    fwrite(&fmt_size, 4, 1, f);
+    fwrite(&audio_format, 2, 1, f);
+    uint16_t channels = 2;
+    uint32_t sample_rate = 44100;
+    uint16_t block_align = 4;
+    uint32_t byte_rate = sample_rate * block_align;
+    if (short_fmt) {
+        /* Leave the rest of fmt chunk missing intentionally */
+    } else {
+        fwrite(&channels, 2, 1, f);
+        fwrite(&sample_rate, 4, 1, f);
+        fwrite(&byte_rate, 4, 1, f);
+        fwrite(&block_align, 2, 1, f);
+        fwrite(&bits_per_sample, 2, 1, f);
+    }
+
+    if (!omit_data) {
+        uint32_t data_size = 4;
+        uint32_t zero = 0;
+        fwrite("data", 1, 4, f);
+        fwrite(&data_size, 4, 1, f);
+        fwrite(&zero, 1, sizeof(zero), f);
+    }
     fflush(f);
     fclose(f);
     return strdup(tmpl);
@@ -224,11 +253,48 @@ void test_play_wav_invalid_header_should_fail(void)
     audio_config_t cfg = make_config();
     play_manager_buffers_t bufs = make_buffers();
 
-    char *path = write_invalid_wav();
+    char *path = write_custom_wav(1, 16, true, false);
     TEST_ASSERT_NOT_NULL_MESSAGE(path, "failed to create invalid wav");
 
     TEST_ASSERT_EQUAL(ESP_OK, play_manager_init(&cfg, &bufs));
-    TEST_ASSERT_NOT_EQUAL(ESP_OK, play_manager_play_wav(path));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, play_manager_play_wav(path));
+
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+
+    remove_file(path);
+}
+
+void test_play_wav_non_pcm_should_fail_and_not_enqueue(void)
+{
+    audio_config_t cfg = make_config();
+    play_manager_buffers_t bufs = make_buffers();
+
+    char *path = write_custom_wav(3 /* IEEE float */, 16, false, false);
+    TEST_ASSERT_NOT_NULL_MESSAGE(path, "failed to create non-PCM wav");
+
+    TEST_ASSERT_EQUAL(ESP_OK, play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, play_manager_play_wav(path));
+
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+
+    remove_file(path);
+}
+
+void test_play_wav_unsupported_bit_depth_should_fail_and_not_enqueue(void)
+{
+    audio_config_t cfg = make_config();
+    play_manager_buffers_t bufs = make_buffers();
+
+    char *path = write_custom_wav(1 /* PCM */, 20 /* unsupported */, false, false);
+    TEST_ASSERT_NOT_NULL_MESSAGE(path, "failed to create unsupported bit depth wav");
+
+    TEST_ASSERT_EQUAL(ESP_OK, play_manager_init(&cfg, &bufs));
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, play_manager_play_wav(path));
+
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
 
     remove_file(path);
 }
@@ -261,6 +327,8 @@ int main(void)
     RUN_TEST(test_init_and_deinit_should_succeed_twice);
     RUN_TEST(test_play_wav_should_stream_and_drain);
     RUN_TEST(test_play_wav_invalid_header_should_fail);
+    RUN_TEST(test_play_wav_non_pcm_should_fail_and_not_enqueue);
+    RUN_TEST(test_play_wav_unsupported_bit_depth_should_fail_and_not_enqueue);
     RUN_TEST(test_abort_should_stop_active_stream);
     return UNITY_END();
 }
