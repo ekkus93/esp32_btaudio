@@ -545,6 +545,137 @@ TEST_CASE("play_manager_backpressure_does_not_overcount_pending", "[play_manager
     cleanup_env();
 }
 
+TEST_CASE("play_manager_recovers_when_initial_enqueue_fails", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    const int16_t samples[] = {1, -1, 1, -1};
+    TEST_ASSERT_TRUE(write_pcm16_mono_wav(k_wav_path, samples, sizeof(samples) / sizeof(samples[0]), (uint32_t)AUDIO_SAMPLE_RATE_16K));
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    size_t prefilled = saturate_audio_queue();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)prefilled);
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+
+    /* Initial fill should fail due to backpressure, leaving pending at zero but active true. */
+    TEST_ASSERT_TRUE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+
+    /* Free the queue so fill can retry using the stashed residual. */
+    audio_chunk_clear();
+    TEST_ESP_OK(play_manager_fill());
+
+    size_t consumed = 0;
+    bool drained = false;
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(drained, "play_manager should drain once queue recovers");
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+
+    cleanup_env();
+}
+
+TEST_CASE("play_manager_can_restart_after_enqueue_backpressure", "[play_manager]")
+{
+    mount_spiffs();
+    TEST_ASSERT_TRUE(audio_chunk_pool_init());
+
+    const int16_t samples[] = {10, 20, -30, 40, -50, 60};
+    TEST_ASSERT_TRUE(write_pcm16_mono_wav(k_wav_path, samples, sizeof(samples) / sizeof(samples[0]), (uint32_t)AUDIO_SAMPLE_RATE_16K));
+
+    play_manager_buffers_t bufs = {
+        .proc_buf = s_proc_buf,
+        .proc_buf2 = s_proc_buf2,
+        .work_bytes = sizeof(s_proc_buf),
+    };
+    audio_config_t cfg = test_audio_config();
+
+    size_t prefilled = saturate_audio_queue();
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)prefilled);
+
+    TEST_ESP_OK(play_manager_init(&cfg, &bufs));
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+
+    TEST_ASSERT_TRUE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+
+    audio_chunk_clear();
+    TEST_ESP_OK(play_manager_fill());
+
+    size_t consumed = 0;
+    bool drained = false;
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+
+    /* Playback should still be usable after recovering from backpressure. */
+    TEST_ESP_OK(play_manager_play_wav(k_wav_path));
+    TEST_ASSERT_TRUE(play_manager_is_active());
+
+    consumed = 0;
+    drained = false;
+    TEST_ESP_OK(play_manager_fill());
+
+    for (int i = 0; i < 8 && !drained; ++i) {
+        audio_chunk_t chunk = {0};
+        if (!audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50))) {
+            TEST_ESP_OK(play_manager_fill());
+            continue;
+        }
+        consumed += chunk.len;
+        drained = play_manager_consume(chunk.len);
+        audio_chunk_release_block(chunk.data);
+        if (!drained) {
+            TEST_ESP_OK(play_manager_fill());
+        }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(drained, "second playback should drain");
+    TEST_ASSERT_FALSE(play_manager_is_active());
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)play_manager_pending_bytes());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)consumed);
+
+    cleanup_env();
+}
+
 void app_main(void)
 {
     UNITY_BEGIN();
