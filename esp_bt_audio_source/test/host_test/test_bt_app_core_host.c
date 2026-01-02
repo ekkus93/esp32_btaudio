@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 // Minimal osi_allocator stubs to satisfy bt_app_core dependencies
 void *osi_malloc(size_t size) { return malloc(size); }
@@ -19,10 +20,23 @@ static unsigned s_cb_calls;
 static uint16_t s_last_event;
 static bool s_copy_called;
 static bool s_free_called;
+static void *s_last_param_ptr;
+static uint8_t s_last_param_value;
 
 static void dummy_cb(uint16_t event, void *param)
 {
     (void)param;
+    s_cb_calls++;
+    s_last_event = event;
+}
+
+static void param_capture_cb(uint16_t event, void *param)
+{
+    (void)event;
+    uint8_t *p = (uint8_t *)param;
+    TEST_ASSERT_NOT_NULL(p);
+    s_last_param_ptr = param;
+    s_last_param_value = *p;
     s_cb_calls++;
     s_last_event = event;
 }
@@ -61,6 +75,8 @@ void setUp(void)
     s_last_event = 0;
     s_copy_called = false;
     s_free_called = false;
+    s_last_param_ptr = NULL;
+    s_last_param_value = 0;
 }
 
 void tearDown(void)
@@ -149,6 +165,109 @@ void test_bt_app_core_process_once_drains_multiple_messages(void)
     TEST_ASSERT_EQUAL_UINT(0, bt_app_core_queue_depth());
 }
 
+void test_bt_app_core_default_copy_runs_when_copy_cb_is_null(void)
+{
+    bt_app_task_start_up();
+
+    uint8_t payload = 0xAA;
+    bool res = bt_app_work_dispatch(param_capture_cb, 0x390, &payload, sizeof(payload), NULL);
+    TEST_ASSERT_TRUE(res);
+    TEST_ASSERT_EQUAL_UINT(1, bt_app_core_queue_depth());
+
+    TEST_ASSERT_TRUE(bt_app_core_process_once());
+    TEST_ASSERT_EQUAL_UINT(1, s_cb_calls);
+    TEST_ASSERT_EQUAL_UINT(0x390, s_last_event);
+    TEST_ASSERT_NOT_NULL(s_last_param_ptr);
+    TEST_ASSERT_FALSE(s_last_param_ptr == &payload);
+    TEST_ASSERT_EQUAL_UINT8(payload, s_last_param_value);
+    TEST_ASSERT_EQUAL_UINT(0, bt_app_core_queue_depth());
+}
+
+void test_bt_app_core_start_stop_is_idempotent(void)
+{
+    bt_app_task_start_up();
+    TEST_ASSERT_EQUAL_UINT(1, mock_task_create_count());
+
+    // Second start should not create another task or queue
+    bt_app_task_start_up();
+    TEST_ASSERT_EQUAL_UINT(1, mock_task_create_count());
+
+    bt_app_task_shut_down();
+    TEST_ASSERT_EQUAL_UINT(1, mock_task_delete_count());
+
+    // Second shutdown should be a no-op
+    bt_app_task_shut_down();
+    TEST_ASSERT_EQUAL_UINT(1, mock_task_delete_count());
+
+    // Dispatch after shutdown should fail
+    bool res = bt_app_work_dispatch(dummy_cb, 0x3A0, NULL, 0, NULL);
+    TEST_ASSERT_FALSE(res);
+}
+
+void test_bt_app_core_queue_recovers_after_partial_drain(void)
+{
+    bt_app_task_start_up();
+
+    int payload = 0x77;
+    for (int i = 0; i < 20; ++i) {
+        TEST_ASSERT_TRUE(bt_app_work_dispatch(dummy_cb, (uint16_t)(0x3B0 + i), &payload, sizeof(payload), NULL));
+    }
+    TEST_ASSERT_EQUAL_UINT(20, bt_app_core_queue_depth());
+
+    // Drain half and ensure further dispatch succeeds
+    size_t drained = bt_app_core_drain(10);
+    TEST_ASSERT_EQUAL_UINT(10, drained);
+    TEST_ASSERT_EQUAL_UINT(10, bt_app_core_queue_depth());
+
+    TEST_ASSERT_TRUE(bt_app_work_dispatch(dummy_cb, 0x3BF, &payload, sizeof(payload), NULL));
+    TEST_ASSERT_EQUAL_UINT(11, bt_app_core_queue_depth());
+}
+
+void test_bt_app_core_queue_recovers_after_full_drain(void)
+{
+    bt_app_task_start_up();
+
+    int payload = 0x88;
+    for (int i = 0; i < 20; ++i) {
+        TEST_ASSERT_TRUE(bt_app_work_dispatch(dummy_cb, (uint16_t)(0x3C8 + i), &payload, sizeof(payload), NULL));
+    }
+    TEST_ASSERT_EQUAL_UINT(20, bt_app_core_queue_depth());
+
+    size_t drained = bt_app_core_drain(30);
+    TEST_ASSERT_EQUAL_UINT(20, drained);
+    TEST_ASSERT_EQUAL_UINT(0, bt_app_core_queue_depth());
+
+    // After full drain, the queue should accept new work
+    TEST_ASSERT_TRUE(bt_app_work_dispatch(dummy_cb, 0x3D0, &payload, sizeof(payload), NULL));
+    TEST_ASSERT_EQUAL_UINT(1, bt_app_core_queue_depth());
+}
+
+void test_bt_app_core_burst_dispatch_stress_with_periodic_drain(void)
+{
+    bt_app_task_start_up();
+
+    const unsigned total_msgs = 40;
+    unsigned sent = 0;
+    unsigned processed = 0;
+
+    for (unsigned i = 0; i < total_msgs; ++i) {
+        bool res = bt_app_work_dispatch(dummy_cb, (uint16_t)(0x3C0 + i), NULL, 0, NULL);
+        TEST_ASSERT_TRUE_MESSAGE(res, "dispatch should not fail under periodic draining");
+        sent++;
+
+        if (i % 5 == 4) {
+            processed += bt_app_core_drain(3);
+        }
+    }
+
+    processed += bt_app_core_drain(total_msgs);
+
+    TEST_ASSERT_EQUAL_UINT(total_msgs, sent);
+    TEST_ASSERT_EQUAL_UINT(total_msgs, processed);
+    TEST_ASSERT_EQUAL_UINT(total_msgs, s_cb_calls);
+    TEST_ASSERT_EQUAL_UINT(0, bt_app_core_queue_depth());
+}
+
 void test_bt_app_core_bounded_drain_stops_at_limit(void)
 {
     bt_app_task_start_up();
@@ -188,8 +307,13 @@ int main(void)
     RUN_TEST(test_bt_app_core_copy_callback_failure_should_not_enqueue);
     RUN_TEST(test_bt_app_core_shutdown_clears_handles_and_blocks_dispatch);
     RUN_TEST(test_bt_app_core_custom_copy_and_free_processed_via_helper);
+    RUN_TEST(test_bt_app_core_default_copy_runs_when_copy_cb_is_null);
     RUN_TEST(test_bt_app_core_process_once_drains_multiple_messages);
     RUN_TEST(test_bt_app_core_bounded_drain_stops_at_limit);
     RUN_TEST(test_bt_app_core_zero_drain_leaves_queue_intact);
+    RUN_TEST(test_bt_app_core_start_stop_is_idempotent);
+    RUN_TEST(test_bt_app_core_queue_recovers_after_partial_drain);
+    RUN_TEST(test_bt_app_core_queue_recovers_after_full_drain);
+    RUN_TEST(test_bt_app_core_burst_dispatch_stress_with_periodic_drain);
     return UNITY_END();
 }
