@@ -1948,6 +1948,13 @@ bool audio_processor_is_synth_mode_enabled(void)
     return s_force_synth;
 }
 
+void audio_processor_set_synth_mode(bool enable)
+{
+    AUDIO_PROC_LOG_ONCE();
+    s_force_synth = enable;
+    ESP_LOGI(TAG, "audio_processor: synth mode %s", enable ? "ENABLED" : "DISABLED");
+}
+
 uint32_t audio_processor_test_get_tag_miss_count(void)
 {
     return __atomic_load_n(&s_tag_miss_count, __ATOMIC_RELAXED);
