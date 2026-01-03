@@ -387,6 +387,7 @@ static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
 static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
 static void test_keepalive_beep_then_play_recovers(void);
+static void test_beep_synth_overlap_busy_and_recovers(void);
 static void test_wav_resumes_after_a2dp_reconnect(void);
 static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect(void);
 static void test_wav_pause_resume_after_disconnect_restarts_playback(void);
@@ -417,6 +418,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_play_wav_command);
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
     RUN_TEST(test_keepalive_beep_then_play_recovers);
+    RUN_TEST(test_beep_synth_overlap_busy_and_recovers);
     RUN_TEST(test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect);
     RUN_TEST(test_wav_pause_resume_after_disconnect_restarts_playback);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
@@ -983,6 +985,81 @@ static void test_keepalive_beep_then_play_recovers(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_beep_synth_overlap_busy_and_recovers(void)
+{
+    /* Beep should be busy while already playing even if synth mode toggles; subsequent beep should succeed. */
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_set_synth_mode(true);
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(80));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    /* Toggle synth mode during the beep to ensure coexistence does not hang. */
+    audio_processor_set_synth_mode(false);
+    vTaskDelay(pdMS_TO_TICKS(30));
+    audio_processor_set_synth_mode(true);
+
+    /* Second beep should return busy while the first beep is active. */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_processor_beep(60));
+
+    uint8_t buf[128];
+    size_t bytes_read = 0;
+    bool saw_beep = false;
+    const int max_attempts = 6;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_beep = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(40));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(saw_beep, "beep audio did not flow under synth toggles");
+
+    /* Allow the first beep to complete and verify busy clears. */
+    vTaskDelay(pdMS_TO_TICKS(120));
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_set_synth_mode(false);
+
+    esp_err_t ret = audio_processor_beep(40);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    bool saw_second = false;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_second = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(40));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(saw_second, "second beep did not enqueue after busy cleared");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
     bt_manager_mock_connection_opened(NULL);
 }
 

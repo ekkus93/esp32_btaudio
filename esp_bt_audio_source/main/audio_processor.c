@@ -1416,6 +1416,18 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* Reject overlapping beeps so the busy state matches test expectations. */
+    bool beep_active = (beep_manager_get_state() == BEEP_STATE_PLAYING);
+    portENTER_CRITICAL(&s_beep_lock);
+    if (!beep_active && s_beep_remaining_bytes > 0) {
+        beep_active = true;
+    }
+    portEXIT_CRITICAL(&s_beep_lock);
+    if (beep_active) {
+        ESP_LOGW(TAG, "audio_processor_beep: busy (beep active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     /* Clamp duration to a sane window. */
     if (duration_ms == 0) {
         duration_ms = 50;
