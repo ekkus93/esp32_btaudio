@@ -388,6 +388,8 @@ static void test_play_command_requires_a2dp_connection(void);
 static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
 static void test_keepalive_beep_then_play_recovers(void);
 static void test_wav_resumes_after_a2dp_reconnect(void);
+static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect(void);
+static void test_wav_pause_resume_after_disconnect_restarts_playback(void);
 static void test_interleaved_play_stop_beep_sequence(void);
 static void test_play_wav_failure_restores_pipeline(void);
 static void test_drain_stops_play_manager_and_clears_queue(void);
@@ -415,6 +417,8 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_play_wav_command);
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
     RUN_TEST(test_keepalive_beep_then_play_recovers);
+    RUN_TEST(test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect);
+    RUN_TEST(test_wav_pause_resume_after_disconnect_restarts_playback);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
     RUN_TEST(test_drain_stops_play_manager_and_clears_queue);
     RUN_TEST(test_fallback_stop_resume_preserves_tag_alignment);
@@ -1051,6 +1055,148 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
 
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
     TEST_ASSERT_FALSE(audio_processor_is_wav_active());
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect(void)
+{
+    /* Ensure synth keepalive disarms on disconnect and only re-arms after real playback succeeds. */
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+
+    /* Arm synth keepalive and confirm it is active. */
+    audio_processor_set_synth_mode(true);
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+
+    /* Disconnect A2DP: keepalive should be suppressed and reads should fail with zero bytes. */
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+
+    uint8_t buf[128];
+    size_t bytes_read = 0;
+    esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_FAIL,
+                             "read should fail while A2DP is disconnected");
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
+    TEST_ASSERT_FALSE_MESSAGE(audio_processor_is_synth_mode_enabled(), "Synth keepalive should be cleared on disconnect");
+
+    /* Reconnect and perform a BEEP to re-arm keepalive on success. */
+    bt_manager_mock_connection_opened(NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep(40));
+
+    bool saw_data = false;
+    const int max_attempts = 6;
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_data = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(saw_data, "BEEP after reconnect did not produce data");
+    /* Successful playback should re-arm keepalive (synth mode false but armed for future idle). */
+    TEST_ASSERT_FALSE_MESSAGE(audio_processor_is_synth_mode_enabled(), "Synth keepalive should remain disabled after real playback");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_wav_pause_resume_after_disconnect_restarts_playback(void)
+{
+    /* Simulate a pause (stop), disconnect, reconnect, and resume to ensure WAV restarts cleanly. */
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+    audio_processor_test_reset_tag_miss_count();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool saw_wav = false;
+    for (int attempt = 0; attempt < 6 && !saw_wav; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            saw_wav = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(saw_wav, "Initial WAV did not enqueue before pause/disconnect");
+
+    /* Pause the pipeline and simulate a disconnect while paused. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
+
+    /* Resume should not produce audio while disconnected. */
+    esp_err_t ret = audio_processor_start();
+    TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_OK,
+                             "start should not succeed in a disconnected state");
+
+    bytes_read = 0;
+    ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_FAIL,
+                             "read should fail while A2DP is disconnected");
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
+
+    /* Reconnect then resume and ensure playback restarts without tag loss. */
+    bt_manager_mock_connection_opened(NULL);
+    ret = audio_processor_start();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    bool resumed_wav = false;
+    for (int attempt = 0; attempt < 8 && !resumed_wav; ++attempt) {
+        bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if ((ret == ESP_OK && bytes_read > 0) || (int)ret > 0) {
+            resumed_wav = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(resumed_wav, "WAV did not resume after reconnect/start");
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
 
     ret = audio_processor_stop();
     TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);

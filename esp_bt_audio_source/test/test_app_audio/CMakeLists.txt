@@ -21,6 +21,14 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(esp_bt_audio_source_audio_test)
 
+# Stage only the WAV asset needed for the audio processor tests into a small
+# SPIFFS image so the partition fits in the test partition table.
+set(TEST_APP_AUDIO_SPIFFS_SRC "${CMAKE_CURRENT_LIST_DIR}/../../main/assets/spiffs/worker_long_norm.wav")
+set(TEST_APP_AUDIO_SPIFFS_DIR "${CMAKE_BINARY_DIR}/spiffs_image_src")
+file(MAKE_DIRECTORY "${TEST_APP_AUDIO_SPIFFS_DIR}")
+file(COPY "${TEST_APP_AUDIO_SPIFFS_SRC}" DESTINATION "${TEST_APP_AUDIO_SPIFFS_DIR}")
+spiffs_create_partition_image(spiffs "${TEST_APP_AUDIO_SPIFFS_DIR}" FLASH_IN_PROJECT)
+
 # The audio tests still rely on the mock-enabled build configuration so they can
 # run against the fake Bluetooth stack when necessary.
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
