@@ -105,6 +105,13 @@ add_executable(test_nvs_storage test_nvs_storage.c
 target_link_libraries(test_nvs_storage unity)
 add_test(NAME test_nvs_storage COMMAND $<TARGET_FILE:test_nvs_storage>)
 
+# Host NVS error-path coverage using real nvs_storage.c with injectable wrappers
+add_executable(test_nvs_storage_errors
+    test_nvs_storage_errors.c
+    ../../components/nvs_storage/nvs_storage.c)
+target_link_libraries(test_nvs_storage_errors unity util_safe_host)
+add_test(NAME test_nvs_storage_errors COMMAND $<TARGET_FILE:test_nvs_storage_errors>)
+
 # Simple host PSRAM unit tests (uses heap_caps mock)
 add_executable(test_psram test_psram.c
     mocks/esp_heap_caps_mock.c
@@ -512,6 +519,7 @@ add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 add_custom_target(run_tests
     COMMAND test_commands
     COMMAND test_bluetooth
+    COMMAND test_nvs_storage_errors
     COMMAND test_nvs_storage
-    DEPENDS test_commands test_bluetooth
+    DEPENDS test_commands test_bluetooth test_nvs_storage_errors test_nvs_storage
 )

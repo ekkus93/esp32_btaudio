@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "esp_heap_caps.h"
-#include "mocks/audio_alloc_host.h"
+#include "audio_alloc_host.h"
 
 void setUp(void) {
     /* Ensure PSRAM available by default for tests; individual tests
