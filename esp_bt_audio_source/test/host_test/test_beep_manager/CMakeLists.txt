@@ -6,7 +6,7 @@ add_compile_definitions(UNIT_TEST CONFIG_BT_MOCK_TESTING)
 add_compile_options(-UESP_PLATFORM)
 
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../host_test/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mocks/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
 )
 
@@ -23,7 +23,7 @@ endif()
 
 set(TEST_SOURCES
     test_beep_manager.c
-    shim_audio_queue.c
+    ../mocks/shim_audio_queue.c
     ../../main/beep_manager.c
     ../host_test/mocks/fake_queue.c
     ../host_test/mocks/fake_semphr.c

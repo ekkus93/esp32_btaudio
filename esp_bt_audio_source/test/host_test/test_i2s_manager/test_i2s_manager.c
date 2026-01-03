@@ -9,13 +9,7 @@
 #include "esp_err.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-
-/* Shim helpers exposed by shim_audio_queue.c */
-size_t audio_queue_last_len(void);
-audio_source_tag_t audio_queue_last_tag(void);
-uint16_t audio_queue_last_tag_id(void);
-const uint8_t *audio_queue_last_data(void);
-void audio_queue_set_fail_enqueue(bool fail);
+#include "shim_audio_queue.h"
 
 #ifdef CONFIG_BT_MOCK_TESTING
 typedef struct {

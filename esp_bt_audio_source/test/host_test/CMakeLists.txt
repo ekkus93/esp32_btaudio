@@ -413,7 +413,7 @@ target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
 # Beep manager host unit tests (moved under host_test/test_beep_manager)
 add_executable(test_beep_manager
     test_beep_manager/test_beep_manager.c
-    test_beep_manager/shim_audio_queue.c
+    mocks/shim_audio_queue.c
     ../../main/beep_manager.c
     mocks/fake_queue.c
     mocks/fake_semphr.c
@@ -432,7 +432,7 @@ add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
 # I2S manager host unit tests
 add_executable(test_i2s_manager
     test_i2s_manager/test_i2s_manager.c
-    test_i2s_manager/shim_audio_queue.c
+    mocks/shim_audio_queue.c
     ../../main/i2s_manager.c
     ../../main/audio_util.c
     mocks/fake_queue.c

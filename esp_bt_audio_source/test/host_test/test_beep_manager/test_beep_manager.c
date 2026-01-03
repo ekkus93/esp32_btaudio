@@ -6,14 +6,9 @@
 #include "beep_manager.h"
 #include "audio_queue.h"
 #include "freertos/task.h"
+#include "shim_audio_queue.h"
 
 #include <pthread.h>
-
-/* Shim helpers exposed by shim_audio_queue.c */
-size_t audio_queue_last_len(void);
-audio_source_tag_t audio_queue_last_tag(void);
-uint16_t audio_queue_last_tag_id(void);
-const uint8_t *audio_queue_last_data(void);
 
 static bool s_done_called = false;
 
