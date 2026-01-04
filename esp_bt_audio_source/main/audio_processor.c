@@ -1455,6 +1455,10 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         .amplitude = 0, /* let beep_manager apply its default */
     };
 
+    /* Ensure any queued priority audio (old beeps/keepalive) is dropped so the
+     * new beep can enqueue without being starved by prefilled priority data.
+     * Use a short, descriptive reason so logs show why the flush occurred. */
+    audio_processor_flush_priority_queues("beep");
     beep_manager_set_done_callback(audio_processor_beep_done_cb, NULL);
     esp_err_t ret = beep_manager_play(&req, &s_audio_config);
     if (ret != ESP_OK) {

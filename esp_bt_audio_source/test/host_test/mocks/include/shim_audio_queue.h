@@ -12,3 +12,8 @@ uint16_t audio_queue_last_tag_id(void);
 const uint8_t *audio_queue_last_data(void);
 void audio_queue_set_fail_enqueue(bool fail);
 void audio_queue_set_tag_counter(uint16_t start);
+/* Test helpers for dequeue observation */
+size_t audio_queue_get_dequeue_count(void);
+void audio_queue_reset_dequeue_count(void);
+/* Snapshot helper (host shim) */
+esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t *captured_out);

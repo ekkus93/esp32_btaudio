@@ -230,7 +230,24 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 		size_t chunk_bytes = frames_this * frame_bytes;
 		uint16_t tag_id = __atomic_fetch_add(&s_tag_id, 1, __ATOMIC_SEQ_CST);
 		if (!audio_chunk_enqueue_bytes_with_id(chunk, chunk_bytes, AUDIO_SOURCE_TAG_BEEP, tag_id)) {
-			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u", (unsigned)tag_id);
+			/* Diagnostic: show descriptor usage and a snapshot to aid debugging of
+			 * "no free blocks" enqueue failures. */
+			size_t used = audio_descriptor_used();
+			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u q_used=%u", (unsigned)tag_id, (unsigned)used);
+			{
+				audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
+				size_t captured = 0;
+				esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
+				if (sret == ESP_OK && captured > 0) {
+					for (size_t i = 0; i < captured; ++i) {
+						ESP_LOGI(TAG, "beep queued[%u] tag=%d id=%u len=%u", (unsigned)i, (int)snap[i].tag, (unsigned)snap[i].tag_id, (unsigned)snap[i].len);
+					}
+				} else if (sret != ESP_OK) {
+					ESP_LOGW(TAG, "beep: audio_descriptor_snapshot failed: %d", (int)sret);
+				} else {
+					ESP_LOGI(TAG, "beep: no queued descriptors captured (captured=0)");
+				}
+			}
 			break;
 		}
 

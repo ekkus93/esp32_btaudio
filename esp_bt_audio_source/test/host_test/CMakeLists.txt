@@ -321,6 +321,18 @@ add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
     mocks/mock_gap.c)
 target_link_libraries(test_pairing_seq_hardening unity util_safe_host)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
+
+# Ensure beep-flush behavior: host test
+add_executable(test_beep_flush test_beep_flush.c)
+target_sources(test_beep_flush PRIVATE
+    mocks/audio_processor_host_stub.c
+    mocks/shim_audio_queue.c
+    mocks/esp_heap_caps_mock.c
+    mocks/nvs_storage_mock.c)
+target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_link_libraries(test_beep_flush unity)
+add_test(NAME test_beep_flush COMMAND $<TARGET_FILE:test_beep_flush>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)

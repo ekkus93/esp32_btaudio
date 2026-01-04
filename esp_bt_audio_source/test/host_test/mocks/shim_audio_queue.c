@@ -9,6 +9,7 @@ static audio_source_tag_t s_last_tag = AUDIO_SOURCE_TAG_INVALID;
 static uint16_t s_last_tag_id = 0;
 static uint16_t s_tag_counter = 0;
 static bool s_fail_enqueue = false;
+static size_t s_dequeue_count = 0;
 
 bool audio_chunk_pool_init(void)
 {
@@ -77,6 +78,7 @@ bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks)
     out_chunk->tag_id = s_last_tag_id;
 
     s_last_len = 0;
+    ++s_dequeue_count;
     return true;
 }
 
@@ -100,3 +102,25 @@ uint16_t audio_queue_last_tag_id(void) { return s_last_tag_id; }
 const uint8_t *audio_queue_last_data(void) { return s_last_data; }
 void audio_queue_set_fail_enqueue(bool fail) { s_fail_enqueue = fail; }
 void audio_queue_set_tag_counter(uint16_t start) { s_tag_counter = start; }
+
+/* Test helpers for dequeue observation */
+size_t audio_queue_get_dequeue_count(void) { return s_dequeue_count; }
+void audio_queue_reset_dequeue_count(void) { s_dequeue_count = 0; }
+
+esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t *captured_out)
+{
+    if (out == NULL || captured_out == NULL || max_items == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_last_len == 0) {
+        *captured_out = 0;
+        return ESP_OK;
+    }
+    /* Return at most one snapshot in the host shim */
+    out[0].data = s_last_data;
+    out[0].len = s_last_len;
+    out[0].tag = s_last_tag;
+    out[0].tag_id = s_last_tag_id;
+    *captured_out = 1;
+    return ESP_OK;
+}

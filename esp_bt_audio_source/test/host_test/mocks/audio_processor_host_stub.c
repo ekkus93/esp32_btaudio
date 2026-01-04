@@ -343,6 +343,13 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
      * the generated beep rather than the idle synth source. */
     s_synth_mode = false;
 
+    /* Host stub: flush any queued priority audio so beep insertion mirrors
+     * production behavior where priority queues are dropped before beeps. */
+    audio_chunk_t _tmp;
+    while (audio_chunk_dequeue(&_tmp, 0)) {
+        audio_chunk_release_block(_tmp.data);
+    }
+
     s_last_beep_duration_ms = duration_ms;
     s_last_beep_freq_hz = freq_hz;
     /* Generate a short burst of non-zero sample bytes and append to ring.

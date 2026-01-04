@@ -847,9 +847,11 @@ def main(argv: list[str] | None = None):
                 dev["tests_ignored"] = ignored
                 print(f"Suite {sname}: {passed} passed, {failures} failed, {ignored} ignored (total {tests})")
             else:
-                # no canonical capture found for this suite
+                # no canonical capture found for this suite; don't mark overall failure
+                # yet — allow fallback counting from per-test entries or the
+                # runner-captured output file below before deciding the run
+                # should be considered a failure.
                 print(f"Suite {sname}: no canonical log found to extract test counts; check {dev.get('output_file')}")
-                overall_failed = True
         # Fallback: if any device still has zero counts, try deriving counts from
         # the per_test list by counting tests that reference that suite's file.
         try:
