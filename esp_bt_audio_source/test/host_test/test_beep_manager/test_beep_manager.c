@@ -7,6 +7,7 @@
 #include "audio_queue.h"
 #include "freertos/task.h"
 #include "shim_audio_queue.h"
+#include "esp_heap_caps.h"
 
 #include <pthread.h>
 
@@ -111,6 +112,19 @@ void test_tag_id_should_increase_across_plays(void)
     TEST_ASSERT_TRUE(second_tag > first_tag);
 }
 
+void test_play_should_return_no_mem_on_alloc_failure(void)
+{
+    audio_config_t cfg = make_cfg_16k_mono();
+    beep_request_t req = make_req_defaults();
+
+    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_init());
+    /* Force the very next heap allocation to fail to exercise error path */
+    esp_heap_caps_mock_force_next_alloc_fail(true);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, beep_manager_play(&req, &cfg));
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
+    TEST_ASSERT_EQUAL(0U, audio_queue_last_len());
+}
+
 void test_duration_should_clamp_to_max(void)
 {
     audio_config_t cfg = make_cfg_16k_mono();
@@ -206,6 +220,7 @@ int main(void)
     RUN_TEST(test_play_should_reject_invalid_args);
     RUN_TEST(test_play_should_reject_unsupported_bit_depth);
     RUN_TEST(test_tag_id_should_increase_across_plays);
+    RUN_TEST(test_play_should_return_no_mem_on_alloc_failure);
     RUN_TEST(test_duration_should_clamp_to_max);
     RUN_TEST(test_play_should_produce_stereo_32bit_and_keep_channels_equal);
     RUN_TEST(test_stop_should_interrupt_play_and_clear_flag_for_next_play);

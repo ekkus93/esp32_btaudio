@@ -427,7 +427,8 @@ add_executable(test_beep_manager
     mocks/fake_task.c
     mocks/fake_timer.c
     mocks/fake_log.c
-    mocks/fake_esp_err.c)
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
 target_include_directories(test_beep_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include

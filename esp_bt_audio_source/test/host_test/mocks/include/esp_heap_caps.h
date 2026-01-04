@@ -18,6 +18,7 @@ void heap_caps_free(void* ptr);
 size_t heap_caps_get_free_size(unsigned caps);
 
 void esp_heap_caps_mock_set_psram_available(bool available);
+void esp_heap_caps_mock_force_next_alloc_fail(bool force);
 /* Query helpers added for tests */
 bool esp_heap_caps_mock_was_allocated_from_spiram(void* ptr);
 size_t esp_heap_caps_mock_count_allocations_spiram(void);

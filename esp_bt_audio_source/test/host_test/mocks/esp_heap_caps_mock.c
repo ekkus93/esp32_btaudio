@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 static bool s_psram_available = true;
+static bool s_force_next_alloc_fail = false;
 
 /* Track allocations so tests can assert whether memory came from PSRAM or DRAM */
 typedef struct alloc_rec {
@@ -73,6 +74,15 @@ void esp_heap_caps_mock_set_psram_available(bool available)
     s_psram_available = available;
 }
 
+/* For tests: force the next heap_caps_malloc() call to return NULL. Useful to
+ * exercise allocation-failure paths in production code that request default
+ * caps (non-SPIRAM). The flag clears itself after one failure injection.
+ */
+void esp_heap_caps_mock_force_next_alloc_fail(bool force)
+{
+    s_force_next_alloc_fail = force;
+}
+
 /* Provide a host-side esp_psram_is_initialized() so production code that
  * queries runtime PSRAM state can be exercised in native unit tests. This
  * mirrors the real API and returns the mock-configured PSRAM availability.
@@ -85,6 +95,11 @@ bool esp_psram_is_initialized(void)
 void* heap_caps_malloc(size_t size, unsigned caps)
 {
     (void)caps;
+    /* If test forces next alloc to fail, consume flag and return NULL */
+    if (s_force_next_alloc_fail) {
+        s_force_next_alloc_fail = false;
+        return NULL;
+    }
     /* If PSRAM requested but mock is configured as unavailable, fail */
     bool spiram_requested = (caps & MALLOC_CAP_SPIRAM) != 0;
     if (spiram_requested && !s_psram_available) {

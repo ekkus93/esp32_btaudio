@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "audio_queue.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "beep_manager";
 
@@ -183,7 +184,14 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 		return ESP_ERR_INVALID_SIZE;
 	}
 
-	uint8_t chunk[AUDIO_CHUNK_BLOCK_BYTES];
+	uint8_t *chunk = heap_caps_malloc((size_t)AUDIO_CHUNK_BLOCK_BYTES, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
+	if (chunk == NULL) {
+		ESP_LOGW(TAG, "beep_manager_play: failed to allocate chunk buffer");
+		BEEP_ENTER_CRITICAL();
+		s_state = BEEP_STATE_STOPPED;
+		BEEP_EXIT_CRITICAL();
+		return ESP_ERR_NO_MEM;
+	}
 	uint64_t frames_generated = 0;
 	bool enqueued_any = false;
 
@@ -240,6 +248,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 	}
 
 	__atomic_store_n(&s_stop_requested, false, __ATOMIC_RELAXED);
+	heap_caps_free(chunk);
 	return enqueued_any ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
