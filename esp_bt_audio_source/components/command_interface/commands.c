@@ -341,6 +341,8 @@ int bt_manager_start_pair(const char *mac);
 #endif
 #endif
 
+__attribute__((weak)) void cmd_test_capture_response(const char *line);
+
 // Minimal BT-success macro for compatibility
 // Use esp_err_t / ESP_OK for result semantics instead of legacy BT_SUCCESS macro
 #include "esp_err.h"
@@ -2251,23 +2253,19 @@ cmd_status_t cmd_send_response(const char *status, const char *command, const ch
     const char *d = data ? data : "";
     int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n", status ? status : "", command ? command : "", result ? result : "", d);
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    /* For host/unit tests the mock UART maps UART_NUM_1 to a local buffer.
-     * Use CMD_UART_NUM so tests can override which port is used. */
+    /* Host/unit tests use the mock UART buffer; no stdout mirroring to keep output single-source. */
     uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
 #else
-    // On device, write to command UART (if available). If the UART driver
-    // hasn't been installed for the console UART (common for UART0 used
-    // as stdout), fall back to printf to avoid "uart driver error" logs.
+    // On device, emit only to the configured command UART. If the driver is absent, drop the line.
     if (uart_is_driver_installed(CMD_UART_NUM))
     {
         uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
     }
-    else
-    {
-        // Console is available via stdio; print the structured response there.
-        printf("%s", buf);
-    }
 #endif
+    if (cmd_test_capture_response)
+    {
+        cmd_test_capture_response(buf);
+    }
     return CMD_SUCCESS;
 }
 

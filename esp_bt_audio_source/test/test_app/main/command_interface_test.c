@@ -2,9 +2,35 @@
 #include "esp_err.h"
 #include "driver/uart.h"
 #include "command_interface.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 
 #define TEST_UART_PORT UART_NUM_1
+
+static char s_cmd_response_buf[4096];
+static size_t s_cmd_response_len;
+
+void cmd_test_capture_response(const char *line)
+{
+    if (!line)
+    {
+        return;
+    }
+    size_t space = sizeof(s_cmd_response_buf) - s_cmd_response_len - 1;
+    if (space == 0)
+    {
+        return;
+    }
+    size_t line_len = strlen(line);
+    if (line_len > space)
+    {
+        line_len = space;
+    }
+    memcpy(s_cmd_response_buf + s_cmd_response_len, line, line_len);
+    s_cmd_response_len += line_len;
+    s_cmd_response_buf[s_cmd_response_len] = '\0';
+}
 
 void test_uart_command_interface_setup(void)
 {
@@ -32,7 +58,26 @@ void test_uart_command_interface_setup(void)
     uart_driver_delete(TEST_UART_PORT);
 }
 
+void test_help_command_emits_on_cmd_uart(void)
+{
+    s_cmd_response_len = 0;
+    s_cmd_response_buf[0] = '\0';
+
+    /* Ensure command subsystem initialized so cmd_execute is valid. */
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_init());
+
+    cmd_context_t ctx = {0};
+    ctx.type = CMD_TYPE_HELP;
+    ctx.param_count = 0;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    /* Must include HELP summary and DONE marker to prove emission on the command interface. */
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(s_cmd_response_buf, "INFO|HELP|SUMMARY|"), "HELP summary missing on command UART");
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(s_cmd_response_buf, "OK|HELP|DONE|"), "HELP completion marker missing on command UART");
+}
+
 void run_command_interface_tests(void)
 {
     RUN_TEST(test_uart_command_interface_setup);
+    RUN_TEST(test_help_command_emits_on_cmd_uart);
 }

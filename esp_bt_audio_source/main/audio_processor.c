@@ -1435,20 +1435,6 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         duration_ms = 20000U;
     }
 
-    /* Estimate bytes so mute bypass stays active while the beep is queued/playing. */
-    const uint32_t sample_rate = (uint32_t)s_audio_config.sample_rate;
-    const uint32_t channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
-    size_t frame_bytes = (size_t)audio_bytes_per_sample(s_audio_config.bit_depth) * (size_t)channels;
-    if (frame_bytes == 0 || sample_rate == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    uint64_t total_frames = ((uint64_t)duration_ms * (uint64_t)sample_rate) / 1000ULL;
-    size_t est_bytes = 0;
-    if (total_frames > 0) {
-        uint64_t bytes64 = total_frames * (uint64_t)frame_bytes;
-        est_bytes = (bytes64 > SIZE_MAX) ? SIZE_MAX : (size_t)bytes64;
-    }
-
     beep_request_t req = {
         .duration_ms = duration_ms,
         .freq_hz = (freq_hz > 0.0) ? freq_hz : 1000.0,
