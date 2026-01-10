@@ -246,3 +246,17 @@ __attribute__((used)) bool audio_processor_is_wav_active(void)
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;
 }
+
+esp_err_t audio_processor_start(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    s_audio_stub.status.running = true;
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_stop(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    s_audio_stub.status.running = false;
+    return ESP_OK;
+}

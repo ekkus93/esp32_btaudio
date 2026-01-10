@@ -595,9 +595,13 @@ int main(void) {
     extern void test_beep_command_not_connected(void);
     extern void test_beep_command_connected(void);
     extern void test_beep_command_busy_when_wav_active(void);
+    extern void test_beep_command_busy_when_i2s_active(void);
+    extern void test_beep_command_busy_when_beep_active(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
     RUN_TEST(test_beep_command_busy_when_wav_active);
+    RUN_TEST(test_beep_command_busy_when_i2s_active);
+    RUN_TEST(test_beep_command_busy_when_beep_active);
     // Test PLAY command enqueues audio via host stub and makes data available
     extern void test_play_command_missing_param_should_error(void);
     extern void test_play_command_missing_file_should_error(void);
@@ -625,6 +629,9 @@ int main(void) {
     extern void test_synth_off_command(void);
     RUN_TEST(test_synth_on_command);
     RUN_TEST(test_synth_off_command);
+
+    extern void test_diag_i2s_stop_clears_i2s_flag(void);
+    RUN_TEST(test_diag_i2s_stop_clears_i2s_flag);
     
     return UNITY_END();
 }
@@ -997,9 +1004,78 @@ void test_beep_command_busy_when_wav_active(void) {
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|BEEP|FAILED"));
+    const char *expected = "ERR|BEEP|BUSY|I2S_ACTIVE";
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
+void test_beep_command_busy_when_i2s_active(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 50,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    /* Disable synth to model live I2S capture so the BEEP busy guard trips. */
+    audio_processor_set_synth_mode(false);
+    TEST_ASSERT_TRUE(audio_processor_is_i2s_active());
+
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    const char *expected = "ERR|BEEP|BUSY|I2S_ACTIVE";
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
+void test_beep_command_busy_when_beep_active(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 50,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    /* Seed an active beep so the subsequent BEEP command hits the busy guard. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(1000, 440.0));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    const char *expected = "ERR|BEEP|BUSY|BEEP_ACTIVE";
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
+
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
     (void)audio_processor_drain_audio_queue();
 }
@@ -1260,4 +1336,32 @@ void test_synth_off_command(void) {
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SYNTH|DISABLED"));
+}
+
+void test_diag_i2s_stop_clears_i2s_flag(void) {
+    mock_uart_reset_tx();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 50,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    audio_processor_set_synth_mode(false);
+    TEST_ASSERT_TRUE(audio_processor_is_i2s_active());
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG I2S_STOP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DIAG|I2S_STOPPED"));
+    TEST_ASSERT_FALSE(audio_processor_is_i2s_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
 }

@@ -778,6 +778,26 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 
             case CMD_TYPE_DIAG:
             {
+            if (ctx->param_count >= 1)
+            {
+                const char *sub = ctx->params[0];
+                if (strcasecmp(sub, "I2S_STOP") == 0 || strcasecmp(sub, "STOP_I2S") == 0)
+                {
+                    esp_err_t res = audio_processor_stop();
+                    if (res == ESP_OK)
+                    {
+                        cmd_send_response("OK", "DIAG", "I2S_STOPPED", NULL);
+                    }
+                    else
+                    {
+                        cmd_send_response("ERR", "DIAG", esp_err_to_name(res), "I2S_STOP");
+                    }
+                    break;
+                }
+                /* Unknown DIAG subcommand */
+                cmd_send_response("ERR", "DIAG", "BAD_PARAM", sub);
+                break;
+            }
             int conn = bt_get_connection_state();
             int streaming = bt_get_streaming_state_int();
             int mgr_conn = 0;
@@ -840,12 +860,32 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
             cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL);
             break;
         }
+        if (audio_processor_is_i2s_active())
+        {
+            cmd_send_response("ERR", "BEEP", "BUSY", "I2S_ACTIVE");
+            break;
+        }
+        if (audio_processor_is_beep_active())
+        {
+            cmd_send_response("ERR", "BEEP", "BUSY", "BEEP_ACTIVE");
+            break;
+        }
 #else
         /* Host/unit tests mock bt_get_connection_state(), so call it there.
          * For non-ESP host builds fall back to the simple connected check. */
         if (bt_get_connection_state() != 1)
         {
             cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL);
+            break;
+        }
+        if (audio_processor_is_i2s_active())
+        {
+            cmd_send_response("ERR", "BEEP", "BUSY", "I2S_ACTIVE");
+            break;
+        }
+        if (audio_processor_is_beep_active())
+        {
+            cmd_send_response("ERR", "BEEP", "BUSY", "BEEP_ACTIVE");
             break;
         }
 #endif
@@ -927,10 +967,20 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 
     case CMD_TYPE_START:
 #ifdef ESP_PLATFORM
-        if (bt_manager_start_audio() == ESP_OK)
-            cmd_send_response("OK", "START", "STARTED", NULL);
-        else
+        if (bt_manager_start_audio() != ESP_OK)
+        {
             cmd_send_response("ERR", "START", "FAILED", NULL);
+            break;
+        }
+        {
+            esp_err_t start_res = audio_processor_start();
+            if (start_res != ESP_OK && start_res != ESP_ERR_INVALID_STATE)
+            {
+                cmd_send_response("ERR", "START", esp_err_to_name(start_res), "AUDIO_START");
+                break;
+            }
+        }
+        cmd_send_response("OK", "START", "STARTED", NULL);
 #elif defined(UNIT_TEST)
         if (bt_manager_start_audio() == 0)
             cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
@@ -1073,10 +1123,18 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 
     case CMD_TYPE_STOP:
 #ifdef ESP_PLATFORM
-        if (bt_manager_stop_audio() == ESP_OK)
-            cmd_send_response("OK", "STOP", "STOPPED", NULL);
-        else
+        if (bt_manager_stop_audio() != ESP_OK)
+        {
             cmd_send_response("ERR", "STOP", "FAILED", NULL);
+            break;
+        }
+        esp_err_t stop_res = audio_processor_stop();
+        if (stop_res != ESP_OK)
+        {
+            cmd_send_response("ERR", "STOP", esp_err_to_name(stop_res), "AUDIO_STOP");
+            break;
+        }
+        cmd_send_response("OK", "STOP", "STOPPED", NULL);
 #elif defined(UNIT_TEST)
         if (bt_manager_stop_audio() == 0)
             cmd_send_response("OK", "STOP", "MOCK_STOPPED", NULL);
