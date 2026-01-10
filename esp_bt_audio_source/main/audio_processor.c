@@ -1460,26 +1460,25 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
      * Use a short, descriptive reason so logs show why the flush occurred. */
     audio_processor_flush_priority_queues("beep");
     beep_manager_set_done_callback(audio_processor_beep_done_cb, NULL);
-    esp_err_t ret = beep_manager_play(&req, &s_audio_config);
-    if (ret != ESP_OK) {
+    size_t bytes_enqueued = 0;
+    esp_err_t ret = beep_manager_play_with_bytes(&req, &s_audio_config, &bytes_enqueued);
+    if (ret != ESP_OK || bytes_enqueued == 0) {
         portENTER_CRITICAL(&s_beep_lock);
         s_beep_remaining_bytes = 0;
         portEXIT_CRITICAL(&s_beep_lock);
-        return ret;
+        return (ret == ESP_OK) ? ESP_ERR_NO_MEM : ret;
     }
 
-    if (est_bytes > 0) {
-        portENTER_CRITICAL(&s_beep_lock);
-        s_beep_remaining_bytes = est_bytes;
-        portEXIT_CRITICAL(&s_beep_lock);
-    }
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_remaining_bytes = bytes_enqueued;
+    portEXIT_CRITICAL(&s_beep_lock);
 
 #ifdef UNIT_TEST
     s_last_beep_duration_ms = duration_ms;
     s_last_beep_freq_hz = freq_hz;
 #endif
 
-    ESP_LOGI(TAG, "audio_processor_beep: queued duration_ms=%u freq=%.2f est_bytes=%zu", (unsigned)duration_ms, freq_hz, est_bytes);
+    ESP_LOGI(TAG, "audio_processor_beep: queued duration_ms=%u freq=%.2f bytes=%zu", (unsigned)duration_ms, freq_hz, bytes_enqueued);
     return ESP_OK;
 }
 

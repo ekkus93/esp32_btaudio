@@ -387,6 +387,7 @@ static void test_play_wav_command(void);
 static void test_play_command_requires_a2dp_connection(void);
 static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
 static void test_keepalive_beep_then_play_recovers(void);
+static void test_beep_command_clears_busy_after_draining(void);
 static void test_beep_synth_overlap_busy_and_recovers(void);
 static void test_wav_resumes_after_a2dp_reconnect(void);
 static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect(void);
@@ -419,6 +420,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_interleaved_play_stop_beep_sequence);
     RUN_TEST(test_keepalive_beep_then_play_recovers);
     RUN_TEST(test_beep_synth_overlap_busy_and_recovers);
+    RUN_TEST(test_beep_command_clears_busy_after_draining);
     RUN_TEST(test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect);
     RUN_TEST(test_wav_pause_resume_after_disconnect_restarts_playback);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
@@ -918,6 +920,70 @@ static void test_interleaved_play_stop_beep_sequence(void)
     }
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "interleaved PLAY did not enqueue after BEEP");
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_beep_command_clears_busy_after_draining(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 70,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    (void)audio_processor_drain_audio_queue();
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    uint8_t buf[256];
+    size_t bytes_read = 0;
+    bool drained = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (((ret == ESP_OK) && bytes_read > 0) || (int)ret > 0) {
+            drained = true;
+            if (!audio_processor_is_beep_active()) {
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(drained, "BEEP did not produce readable data");
+
+    /* Ensure the queue is drained so a follow-up BEEP can enqueue cleanly. */
+    (void)audio_processor_drain_audio_queue();
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    bool second_beep_enqueued = false;
+    for (int attempt = 0; attempt < 6 && !second_beep_enqueued; ++attempt) {
+        bytes_read = 0;
+        esp_err_t ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        if (((ret == ESP_OK) && bytes_read > 0) || (int)ret > 0) {
+            second_beep_enqueued = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(second_beep_enqueued, "Second BEEP should enqueue after prior drain");
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());

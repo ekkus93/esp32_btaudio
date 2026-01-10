@@ -891,15 +891,20 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
 #endif
 #endif
 #ifdef ESP_PLATFORM
-#ifdef CONFIG_BEEP_AUTOSTART_STREAMING
         /* If connected but not yet streaming, opportunistically kick off
-         * A2DP so the sink pulls audio and the beep is audible. */
+         * A2DP so the sink pulls audio and the beep is audible. Treat a
+         * start failure as a user-visible error so the host knows no
+         * audio will play. */
         if (streaming != 1)
         {
-            (void)bt_manager_start_audio();
-            /* Consider adding a simple throttle if allocator pressure appears. */
+            int start_res = bt_manager_start_audio();
+            if (start_res != 0)
+            {
+                ESP_LOGW(TAG, "BEEP: bt_manager_start_audio failed (%d)", start_res);
+                cmd_send_response("ERR", "BEEP", "FAILED", "START_AUDIO");
+                break;
+            }
         }
-#endif
 #endif
 
         /* Play a 10s middle-C sine tone for an audible diagnostic.

@@ -11,6 +11,8 @@ audio_source_tag_t audio_queue_last_tag(void);
 uint16_t audio_queue_last_tag_id(void);
 const uint8_t *audio_queue_last_data(void);
 void audio_queue_set_fail_enqueue(bool fail);
+void audio_queue_fail_after_enqueue(size_t allowed);
+void audio_queue_disable_fail_after(void);
 void audio_queue_set_tag_counter(uint16_t start);
 /* Test helpers for dequeue observation */
 size_t audio_queue_get_dequeue_count(void);

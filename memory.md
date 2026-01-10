@@ -1018,6 +1018,21 @@
 - Full `tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` now green: host 176/176, device suites test_app 52/52, test_app2 45/45, test_app_audio 40/40, test_app3 14/14.
 ### bt_manager callback coverage plan (2025-12-17T20:19:54-08:00)
 - GAP/A2DP callbacks live under ESP_PLATFORM; host tests cannot currently invoke them. Any host coverage of connect/disconnect/audio-state forwarding or GAP auth failures will need a UNIT_TEST-visible hook or shared handler to mirror the callback logic.
+
+### test_app_audio busy regression (2026-01-10 14:48:30)
+- Added forward declaration for `test_beep_command_clears_busy_after_draining`, removed stray duplicate declaration, and replaced mock UART expectations with direct queue-read assertions in test_app_audio/audio_processor_test.c.
+- Ensured second BEEP runs after a queue drain in the busy-clearing test to avoid enqueue starvation.
+- `python tools/run_all_tests.py --timeout 600 --port /dev/ttyUSB0` now passes: host 306/306; device suites test_app 60/60, test_app2 45/45, test_app_audio 55/55, test_app3 14/14, test_audio_queue 8/8, test_beep_manager 7/7, test_i2s_manager 8/8, test_synth_manager 7/7, test_spiffs_fail 6/6 (aggregate device 210/210).
+
+### BEEP regression report (2026-01-10T14:12:24-0800)
+- User reports BEEP was previously working but now responds BUSY/inaudible after recent changes; frustration about tests not catching the regression. Need rebuild/flash with latest BEEP handler change (auto-start A2DP on BEEP) and gather fresh logs, focusing on audio_queue warnings and start_audio failures. Consider adding Unity/device coverage for BEEP command paths after STOP/idle states and ensuring SPIFFS file availability is validated in tests.
+
+### BEEP queue length fix (2026-01-10T14:19:43-0800)
+- Updated beep_manager_play to report actual bytes enqueued; audio_processor now tracks beep remaining bytes using the real enqueued total rather than an estimate. This prevents BEEP_ACTIVE from sticking when the queue fills before the full 10s tone is generated. No test run yet; needs rebuild/flash and STOP→BEEP regression check.
+
+### BEEP regression tests added (2026-01-10T14:26:22-0800)
+- Host test `test_beep_command_partial_enqueue_clears_busy` simulates queue exhaustion by failing enqueues after one chunk (shim_audio_queue) to ensure BEEP clears and a second BEEP is allowed. Added enqueue-fail-after helper to shim_audio_queue.
+- Device test `test_beep_command_clears_busy_after_draining` issues BEEP, drains queued frames via audio_processor_read, and asserts a second BEEP isn’t blocked by BUSY. Both tests added without running full suites yet.
 - Pending work items tracked in the todo list: map bt_manager event gaps, design host tests for GAP/A2DP failure paths, then implement and run them with proper wiring.
 - Existing host helpers cover pairing pending flags and mock connection/audio state but do not exercise command_interface event emission or A2DP forwarding to bt_connection_manager.
 ### Test wiring diligence reminder (2025-12-17T13:31:36-08:00)
@@ -1805,4 +1820,10 @@ Action: Future work, tests, and design decisions should always keep this goal in
 - 2025-11-16: Built and flashed updated firmware with producer-chunking patch applied to `main/audio_processor.c` (limits WAV enqueue chunk size and adds bounded retries/yields).
 - 2025-11-16: Wrote SPIFFS image to 0x1C0000 and verified PARTS/FILES OK via `tools/flash_and_verify_spiffs.py` (serial output contained `OK|PARTS|SUMMARY` and `OK|FILES|SUMMARY`). Device autoconnected to paired headset 00:18:6b:76:d7:1c.
 - Next: run PLAY/BEEP functional test and capture serial to confirm audible output and that overruns/WDTs are eliminated.
+
+## Recent session notes (2026-01-10)
+
+- 2026-01-10 13:54:32: Relaxed `tools/flash_and_verify_spiffs.py` FILES parsing to handle `FILES|ITEM|<name>,<size>` entries and detect `.wav` names before the comma so the verification script no longer fails when sizes are present.
+- 2026-01-10 13:59:10: Re-ran `tools/flash_and_verify_spiffs.py --port /dev/ttyUSB0` with `IDF_PATH_FORCE=1` and `IDF_PATH=/home/phil/esp/esp-idf`; flash + SPIFFS write succeeded, FILES now reports `worker_long_norm.wav,88244` and script exits successfully.
+- 2026-01-10 14:09:15: Updated BEEP command to auto-start A2DP streaming when connected but idle (and surface start failures) so beeps get pulled by the sink even after STOP/suspend.
 

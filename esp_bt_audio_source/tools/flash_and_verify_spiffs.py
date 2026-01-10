@@ -106,8 +106,16 @@ def main():
     parts_ok = any(re.search(r"^OK\|PARTS\|SUMMARY\|COUNT=\d+", l) for l in parts_lines)
     files_ok = any(l.startswith('OK|FILES|SUMMARY') for l in files_lines)
 
-    if parts_ok and files_ok:
-        print("Verification SUCCESS: PARTS and FILES returned OK summaries")
+    # Parse FILES|ITEM|<name>,<size> lines and look for at least one .wav entry
+    file_items = []
+    for l in files_lines:
+        m = re.search(r"FILES\|ITEM\|([^,]+),(\d+)", l)
+        if m:
+            file_items.append(m.group(1).strip())
+    wav_present = any(name.lower().endswith('.wav') for name in file_items)
+
+    if parts_ok and files_ok and wav_present:
+        print("Verification SUCCESS: PARTS/FILES summaries OK and .wav present")
         return 0
     else:
         print("Verification FAILED:")
@@ -117,6 +125,11 @@ def main():
         if not files_ok:
             print(" - FILES did not return OK summary (captured lines):")
             print('\n'.join(files_lines))
+        if not wav_present:
+            if file_items:
+                print(f" - No .wav entries parsed from FILES items (parsed: {file_items})")
+            else:
+                print(" - No FILES|ITEM lines found to validate .wav presence")
         return 7
 
 

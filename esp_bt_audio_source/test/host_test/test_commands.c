@@ -9,6 +9,7 @@
 #include "command_interface.h"
 #include "bt_manager.h"
 #include "mock_uart.h"
+#include "shim_audio_queue.h"
 #include "nvs_storage.h"
 #include "audio_processor.h"
 #include "esp_log.h"
@@ -597,11 +598,13 @@ int main(void) {
     extern void test_beep_command_busy_when_wav_active(void);
     extern void test_beep_command_busy_when_i2s_active(void);
     extern void test_beep_command_busy_when_beep_active(void);
+    extern void test_beep_command_partial_enqueue_clears_busy(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
     RUN_TEST(test_beep_command_busy_when_wav_active);
     RUN_TEST(test_beep_command_busy_when_i2s_active);
     RUN_TEST(test_beep_command_busy_when_beep_active);
+    RUN_TEST(test_beep_command_partial_enqueue_clears_busy);
     // Test PLAY command enqueues audio via host stub and makes data available
     extern void test_play_command_missing_param_should_error(void);
     extern void test_play_command_missing_file_should_error(void);
@@ -1077,6 +1080,45 @@ void test_beep_command_busy_when_beep_active(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
+/* Regression: if the queue fills mid-beep, we must track only the bytes that
+ * actually enqueued so BEEP_ACTIVE clears after draining and a second BEEP is
+ * allowed. Simulate by failing enqueues after one chunk. */
+void test_beep_command_partial_enqueue_clears_busy(void) {
+    mock_uart_reset_tx();
+    audio_queue_reset_dequeue_count();
+    audio_queue_fail_after_enqueue(1); /* allow exactly one chunk */
+
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "ERR|BEEP|FAILED|START_AUDIO") == NULL);
+
+    /* Drain the enqueued chunk so the beep bookkeeping can clear. */
+    uint8_t buf[1024]; size_t read = 0;
+    int ret = audio_processor_read(buf, sizeof(buf), &read);
+    TEST_ASSERT_TRUE(((ret == ESP_OK) && read > 0) || ret > 0);
+
+    audio_queue_disable_fail_after();
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    /* A subsequent BEEP should succeed (not BUSY). */
+    mock_uart_reset_tx();
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_TRUE(strstr(tx, "BUSY") == NULL);
+
     (void)audio_processor_drain_audio_queue();
 }
 

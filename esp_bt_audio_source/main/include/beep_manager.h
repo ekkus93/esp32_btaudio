@@ -29,6 +29,13 @@ void beep_manager_deinit(void);
 void beep_manager_set_done_callback(beep_done_cb_t cb, void *ctx);
 
 /* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing. */
+/* Generate a beep and report how many bytes were actually enqueued. When
+ * out_bytes_enqueued is provided, it is set to the total bytes successfully
+ * queued so callers can track remaining playback and avoid overestimating
+ * duration if the queue fills. */
+esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_config_t *cfg, size_t *out_bytes_enqueued);
+
+/* Backward-compatible wrapper: old callers can omit the byte-count result. */
 esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg);
 
 /* Request the current beep to stop generating/enqueueing audio immediately. */

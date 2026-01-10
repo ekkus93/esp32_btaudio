@@ -9,6 +9,8 @@ static audio_source_tag_t s_last_tag = AUDIO_SOURCE_TAG_INVALID;
 static uint16_t s_last_tag_id = 0;
 static uint16_t s_tag_counter = 0;
 static bool s_fail_enqueue = false;
+static size_t s_enqueue_count = 0;
+static size_t s_fail_after = (size_t)-1;
 static size_t s_dequeue_count = 0;
 
 bool audio_chunk_pool_init(void)
@@ -38,6 +40,9 @@ static bool enqueue_common(const uint8_t *data, size_t len, audio_source_tag_t t
     if (s_fail_enqueue || !s_pool_inited || data == NULL || len == 0) {
         return false;
     }
+    if (s_fail_after != (size_t)-1 && s_enqueue_count >= s_fail_after) {
+        return false;
+    }
     if (len > sizeof(s_last_data)) {
         len = sizeof(s_last_data);
     }
@@ -51,6 +56,8 @@ static bool enqueue_common(const uint8_t *data, size_t len, audio_source_tag_t t
     if ((uint16_t)(tag_id + 1) > s_tag_counter) {
         s_tag_counter = (uint16_t)(tag_id + 1);
     }
+
+    ++s_enqueue_count;
 
     return true;
 }
@@ -88,6 +95,8 @@ void audio_chunk_clear(void)
     s_last_tag = AUDIO_SOURCE_TAG_INVALID;
     s_last_tag_id = 0;
     s_fail_enqueue = false;
+    s_fail_after = (size_t)-1;
+    s_enqueue_count = 0;
 }
 
 size_t audio_descriptor_used(void)
@@ -101,6 +110,17 @@ audio_source_tag_t audio_queue_last_tag(void) { return s_last_tag; }
 uint16_t audio_queue_last_tag_id(void) { return s_last_tag_id; }
 const uint8_t *audio_queue_last_data(void) { return s_last_data; }
 void audio_queue_set_fail_enqueue(bool fail) { s_fail_enqueue = fail; }
+void audio_queue_fail_after_enqueue(size_t allowed)
+{
+    s_fail_after = allowed;
+    s_enqueue_count = 0;
+    s_fail_enqueue = false;
+}
+
+void audio_queue_disable_fail_after(void)
+{
+    s_fail_after = (size_t)-1;
+}
 void audio_queue_set_tag_counter(uint16_t start) { s_tag_counter = start; }
 
 /* Test helpers for dequeue observation */

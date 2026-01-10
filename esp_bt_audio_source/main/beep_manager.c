@@ -109,10 +109,14 @@ void beep_manager_set_done_callback(beep_done_cb_t cb, void *ctx)
 	s_done_ctx = ctx;
 }
 
-esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg)
+esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_config_t *cfg, size_t *out_bytes_enqueued)
 {
 	if (req == NULL || cfg == NULL) {
 		return ESP_ERR_INVALID_ARG;
+	}
+
+	if (out_bytes_enqueued != NULL) {
+		*out_bytes_enqueued = 0;
 	}
 
 	if (!s_initialized) {
@@ -193,6 +197,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 		return ESP_ERR_NO_MEM;
 	}
 	uint64_t frames_generated = 0;
+	uint64_t bytes_enqueued = 0;
 	bool enqueued_any = false;
 
 	while (frames_generated < total_frames) {
@@ -252,6 +257,7 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 		}
 
 		frames_generated += frames_this;
+		bytes_enqueued += chunk_bytes;
 		taskYIELD();
 		enqueued_any = true;
 	}
@@ -265,8 +271,17 @@ esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg
 	}
 
 	__atomic_store_n(&s_stop_requested, false, __ATOMIC_RELAXED);
+	if (out_bytes_enqueued != NULL) {
+		*out_bytes_enqueued = (size_t)bytes_enqueued;
+	}
 	heap_caps_free(chunk);
 	return enqueued_any ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
+/* Backward compatibility shim: omit byte-count when caller doesn't care. */
+esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg)
+{
+	return beep_manager_play_with_bytes(req, cfg, NULL);
 }
 
 void beep_manager_stop(void)
