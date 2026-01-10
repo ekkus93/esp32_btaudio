@@ -223,6 +223,12 @@ esp_err_t audio_processor_emit_probe(void)
     return ESP_OK;
 }
 
+bool audio_processor_is_running(void)
+{
+    AUDIO_PROC_STUB2_LOG_ONCE();
+    return s_audio_stub.status.running;
+}
+
 __attribute__((used)) bool audio_processor_is_i2s_active(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();

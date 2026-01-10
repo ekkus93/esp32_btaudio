@@ -228,6 +228,13 @@ void test_parse_command_with_whitespace(void) {
     TEST_ASSERT_EQUAL_STRING("75", ctx.params[0]);
 }
 
+void test_parse_diag_command(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG", &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_DIAG, ctx.type);
+    TEST_ASSERT_EQUAL(0, ctx.param_count);
+}
+
 void test_parse_empty_command_should_error(void) {
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   \t   ", &ctx));
@@ -403,6 +410,26 @@ void test_version_command(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|TEST-HOST-VERSION|"));
 }
 
+void test_diag_command_reports_state(void) {
+    mock_uart_reset_tx();
+    bt_manager_test_set_connection_state(1);
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(NULL));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DIAG|STATE|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "CONN=1"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "I2S=1"));
+
+    (void)audio_processor_stop();
+    (void)audio_processor_deinit();
+}
+
 // Verify issuing SCAN triggers the manager start-scan path (unit-test builds)
 void test_scan_invokes_manager(void) {
     mock_uart_reset_tx();
@@ -501,6 +528,7 @@ int main(void) {
     RUN_TEST(test_parse_empty_command_should_error);
     RUN_TEST(test_parse_limits_param_count_and_truncates);
     RUN_TEST(test_parse_connect_name_preserves_spaces);
+    RUN_TEST(test_parse_diag_command);
     RUN_TEST(test_send_response);
     RUN_TEST(test_command_processing);
     RUN_TEST(test_cmd_process_handles_multiple_commands_in_one_read);
@@ -509,6 +537,7 @@ int main(void) {
     RUN_TEST(test_debug_log_sets_level_and_response);
     RUN_TEST(test_help_command);
     RUN_TEST(test_version_command);
+    RUN_TEST(test_diag_command_reports_state);
     RUN_TEST(test_scan_invokes_manager);
 
     // Pairing related tests

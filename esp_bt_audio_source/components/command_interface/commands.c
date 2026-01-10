@@ -282,6 +282,7 @@ int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
 int bt_manager_stop_audio(void);
 int bt_get_connection_state(void);
+int bt_get_streaming_state_int(void);
 /* start/scan wrapper used by tests/compatibility layer */
 int bt_manager_start_scan(void);
 /* pairing start wrapper used by tests/compatibility layer */
@@ -425,6 +426,7 @@ static const cmd_help_entry_t s_cmd_help_entries[] = {
     {"SAMPLE_RATE", "<Hz>", "Apply I2S sample rate"},
     {"SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)"},
     {"BEEP", NULL, "Play 10s middle-C tone when connected"},
+    {"DIAG", NULL, "Report connection/stream/I2S/beep state"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
     {"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"},
@@ -773,6 +775,32 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         }
     }
     break;
+
+            case CMD_TYPE_DIAG:
+            {
+            int conn = bt_get_connection_state();
+            int streaming = bt_get_streaming_state_int();
+            int mgr_conn = 0;
+        #ifdef ESP_PLATFORM
+            extern int bt_manager_is_connected(void);
+            mgr_conn = bt_manager_is_connected();
+        #else
+            mgr_conn = bt_manager_is_connected();
+        #endif
+            int i2s = audio_processor_is_i2s_active() ? 1 : 0;
+            /* Host/device parity: treat the synth keepalive as an active
+             * I2S stream so DIAG reports `I2S=1` after a start() that keeps
+             * synth_mode enabled. */
+            if (!i2s && audio_processor_is_running() && audio_processor_is_synth_mode_enabled())
+            {
+                i2s = 1;
+            }
+            int beep = audio_processor_is_beep_active() ? 1 : 0;
+            char data[96];
+            snprintf(data, sizeof(data), "CONN=%d,STREAM=%d,MGR=%d,I2S=%d,BEEP=%d", conn, streaming, mgr_conn, i2s, beep);
+            cmd_send_response("OK", "DIAG", "STATE", data);
+            }
+            break;
 
     case CMD_TYPE_BEEP:
     {
@@ -2143,6 +2171,11 @@ cmd_status_t cmd_init(void)
      * start with no pending beep/WAV state between fixtures. */
     audio_processor_deinit();
     audio_processor_init(NULL);
+    /* Ensure the bt_state mock starts disconnected so per-test setups
+     * observe a clean connection state and DIAG/BEEP responses reflect
+     * current fixtures instead of lingering state. */
+    extern void bt_manager_test_reset_btstate_mock(void);
+    bt_manager_test_reset_btstate_mock();
 #endif
     return CMD_SUCCESS;
 }
@@ -2337,6 +2370,8 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
         ctx->type = CMD_TYPE_FILES;
     else if (strcasecmp(token, "PARTS") == 0)
         ctx->type = CMD_TYPE_PARTS;
+    else if (strcasecmp(token, "DIAG") == 0)
+        ctx->type = CMD_TYPE_DIAG;
     else if (strcasecmp(token, "HELP") == 0)
         ctx->type = CMD_TYPE_HELP;
     else

@@ -49,6 +49,7 @@ target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_commands PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_commands PRIVATE mocks/fake_esp_err.c)
 target_link_libraries(test_commands unity util_safe_host)
 
@@ -95,9 +96,10 @@ target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_S
 # contains device-specific dependencies) and prevents duplicate symbol
 # collisions with other host mocks (e.g. mock_audio_and_btstate.c).
 target_sources(test_audio_processor PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_audio_processor PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_audio_processor PRIVATE mocks/nvs_storage_mock.c)
 target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_audio_processor unity m)
+target_link_libraries(test_audio_processor unity m util_safe_host)
 add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
 
 add_executable(test_nvs_storage test_nvs_storage.c
@@ -130,6 +132,7 @@ add_test(NAME test_util_safe COMMAND $<TARGET_FILE:test_util_safe>)
 # Idle I2S failure recovery test (uses production audio_processor + mocks)
 add_executable(test_audio_processor_idle_i2s test_audio_processor_idle_i2s.c
     mocks/audio_processor_host_stub.c
+    mocks/shim_audio_queue.c
     mocks/esp_heap_caps_mock.c
     mocks/mock_i2s.c
     mocks/mock_gap.c
@@ -147,7 +150,7 @@ target_sources(test_audio_processor_idle_i2s PRIVATE
 target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
 target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
 target_compile_definitions(test_audio_processor_idle_i2s PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1)
-target_link_libraries(test_audio_processor_idle_i2s unity m)
+target_link_libraries(test_audio_processor_idle_i2s unity m util_safe_host)
 add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_processor_idle_i2s>)
 
 # List ownership tests
@@ -228,6 +231,7 @@ target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manag
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_confirm PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_confirm PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_confirm PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
@@ -241,6 +245,7 @@ target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_connect_name unity util_safe_host)
 target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_connect_name PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_connect_name PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
 
@@ -254,6 +259,7 @@ target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_man
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_enter_pin PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
@@ -274,6 +280,7 @@ target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_ma
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
@@ -312,6 +319,7 @@ target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_event_stress PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_event_stress PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_event_stress PRIVATE mocks/fake_esp_err.c)
 
 # Pairing event sequence hardening stress test
@@ -331,7 +339,7 @@ target_sources(test_beep_flush PRIVATE
     mocks/nvs_storage_mock.c)
 target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
 target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
-target_link_libraries(test_beep_flush unity)
+target_link_libraries(test_beep_flush unity util_safe_host)
 add_test(NAME test_beep_flush COMMAND $<TARGET_FILE:test_beep_flush>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
@@ -340,6 +348,7 @@ target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
 
 add_executable(test_bt_connection_manager
@@ -361,6 +370,7 @@ add_executable(test_bt_streaming_manager
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c
     mocks/audio_processor_host_stub.c
+    mocks/shim_audio_queue.c
     mocks/fake_task.c
     mocks/fake_log.c
     mocks/fake_esp_err.c
@@ -398,6 +408,7 @@ target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
 target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(dump_event_stress_output PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(dump_event_stress_output PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(dump_event_stress_output PRIVATE mocks/shim_audio_queue.c)
 target_sources(dump_event_stress_output PRIVATE mocks/fake_esp_err.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
@@ -427,6 +438,7 @@ add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_ada
 target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
 
 # Beep manager host unit tests (moved under host_test/test_beep_manager)
