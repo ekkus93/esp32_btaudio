@@ -19,6 +19,7 @@ idf_component_register(
     REQUIRES
         util_safe
         nvs_storage
+        esp_driver_i2s
     PRIV_REQUIRES
         freertos
         driver

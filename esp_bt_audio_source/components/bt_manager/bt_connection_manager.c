@@ -57,6 +57,9 @@ static void attempt_reconnection(void);
 static esp_err_t initiate_connection(esp_bd_addr_t addr);
 static void update_connection_state(bt_connection_state_t new_state);
 static void update_streaming_state(bt_streaming_state_t new_state);
+#ifdef UNIT_TEST
+void bt_connection_manager_reset_state_for_test(void);
+#endif
 
 /*
  * A2DP connection state callback

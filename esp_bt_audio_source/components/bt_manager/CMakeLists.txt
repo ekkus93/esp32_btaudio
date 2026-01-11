@@ -1,6 +1,6 @@
 set(priv_requires
-    main
     nvs_flash
+    nvs_storage
     command_interface
     util_safe
     audio_processor)
@@ -10,7 +10,12 @@ if(CONFIG_APP_NO_BLOBS)
 endif()
 
 idf_component_register(
-    SRCS "bt_manager.c"
+    SRCS
+        "bt_manager.c"
+        "bt_app_core.c"
+        "bt_connection_manager.c"
+        "bt_source_component.c"
+        "bt_streaming_manager.c"
     INCLUDE_DIRS "include"
     REQUIRES bt
     PRIV_REQUIRES ${priv_requires}

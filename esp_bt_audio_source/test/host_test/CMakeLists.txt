@@ -21,7 +21,6 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
 )
 
 # util_safe helpers are needed by bt_manager/nvs_storage users in host builds
@@ -211,7 +210,7 @@ add_executable(test_dispatch_copy_regression test_dispatch_copy_regression.c
 target_link_libraries(test_dispatch_copy_regression unity m)
 target_include_directories(test_dispatch_copy_regression PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
 )
 target_compile_definitions(test_dispatch_copy_regression PRIVATE UNIT_TEST)
 add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_copy_regression>)
@@ -219,7 +218,7 @@ add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_
 # Host harness for bt_app_core queue handling
 add_executable(test_bt_app_core_host
     test_bt_app_core_host.c
-    ../../main/bt_app_core.c
+    ../../components/bt_manager/bt_app_core.c
     ../../components/audio_processor/mem_util.c
     mocks/fake_task.c
     mocks/fake_queue.c
@@ -362,19 +361,19 @@ target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
 
 add_executable(test_bt_connection_manager
     test_bt_connection_manager.c
-    ../../main/bt_connection_manager.c
+    ../../components/bt_manager/bt_connection_manager.c
     mocks/mock_a2dp.c
     mocks/mock_gap.c
 )
 target_include_directories(test_bt_connection_manager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
 )
 target_link_libraries(test_bt_connection_manager unity util_safe_host)
 add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connection_manager>)
 
 add_executable(test_bt_streaming_manager
     test_bt_streaming_manager.c
-    ../../main/bt_streaming_manager.c
+    ../../components/bt_manager/bt_streaming_manager.c
     ../../components/audio_processor/mem_util.c
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c

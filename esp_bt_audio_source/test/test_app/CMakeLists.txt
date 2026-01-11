@@ -35,7 +35,8 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 
 # Ensure components expose their unit-test hooks when building the Unity firmware.
 idf_component_get_property(bt_manager_lib bt_manager COMPONENT_LIB)
-target_compile_definitions(${bt_manager_lib} PRIVATE UNIT_TEST)
+# Enable test-only paths inside bt_manager when building the Unity firmware.
+target_compile_definitions(${bt_manager_lib} PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING)
 
 # Ensure linker pulls in the command_interface symbols when resolving
 # references from bt_mock by explicitly linking the component libraries
