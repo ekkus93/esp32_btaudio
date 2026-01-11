@@ -1,6 +1,5 @@
 #include <string.h>
 #include <inttypes.h> // Add for PRIu32 macros
-#include <math.h>     // Add for sin() and M_PI
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -14,13 +13,6 @@
 #include "mem_util.h"
 
 static const char *TAG = "BT_STREAM_MGR";
-
-/* Audio stream configuration */
-#define BT_AUDIO_SAMPLE_RATE     44100
-#define BT_AUDIO_BITS_PER_SAMPLE 16
-#define BT_AUDIO_CHANNELS        2
-#define BT_AUDIO_FRAME_SIZE      512 // In samples
-#define BT_AUDIO_BUFFER_SIZE     (BT_AUDIO_FRAME_SIZE * BT_AUDIO_CHANNELS * (BT_AUDIO_BITS_PER_SAMPLE/8) * 8)
 
 /* State tracking */
 static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;

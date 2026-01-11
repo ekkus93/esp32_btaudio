@@ -572,22 +572,15 @@ int bt_manager_is_connected(void) {
 
 // Connect to a device
  bt_err_t bt_connect(const char* mac) {
-    printf("TRACE: bt_connect called\n");
     if (!bt_ctx.initialized) {
-        printf("TRACE: bt_connect - bt_connect not initialized\n");
-        fflush(stdout);
         return ESP_FAIL;
     }
     
     if (mac == NULL) {
-        printf("TRACE: bt_connect - bt_connect invalid MAC\n");
-        fflush(stdout);
         return ESP_FAIL;
     }
     
     if (bt_ctx.connected) {
-        printf("TRACE: bt_connect - bt_connect already connected\n");
-        fflush(stdout);
         return ESP_FAIL;
     }
     
@@ -595,16 +588,12 @@ int bt_manager_is_connected(void) {
     // Convert MAC string to address
     esp_bd_addr_t bda;
     if (!parse_mac_bytes(mac, bda)) {
-        printf("TRACE: bt_connect invalid MAC format\n");
-        fflush(stdout);
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);
     return ESP_FAIL;
     }
     
     // Connect to device
     if (esp_a2d_source_connect(bda) != ESP_OK) {
-        printf("TRACE: bt_connect failed to connect\n");
-        fflush(stdout);
         ESP_LOGE(TAG, "Failed to connect to device: %s", mac);
     return ESP_FAIL;
     }
@@ -612,8 +601,6 @@ int bt_manager_is_connected(void) {
     ESP_LOGI(TAG, "Connecting to device: %s", mac);
     safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
 #endif
-    printf("TRACE: bt_connect success\n");
-    fflush(stdout);
     
     return ESP_OK;
 }
