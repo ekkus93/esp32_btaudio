@@ -28,6 +28,14 @@ add_library(util_safe_host OBJECT
     ../../components/util_safe/util_safe.c)
 target_include_directories(util_safe_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 
+# Shared command-interface handlers for host tests
+add_library(command_interface_host OBJECT
+    ../../components/command_interface/commands_helpers.c
+    ../../components/command_interface/cmd_handlers_system.c
+    ../../components/command_interface/cmd_handlers_audio.c
+    ../../components/command_interface/cmd_handlers_files.c
+    ../../components/command_interface/cmd_handlers_bt.c)
+
 # Find the unity package for unit testing
 find_package(unity QUIET)
 if(NOT unity_FOUND)
@@ -52,7 +60,7 @@ target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_commands PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_commands PRIVATE mocks/fake_esp_err.c)
-target_link_libraries(test_commands unity util_safe_host)
+target_link_libraries(test_commands unity util_safe_host command_interface_host)
 
 # Enable CTest and register the test executables so `ctest` can discover them
 enable_testing()
@@ -226,7 +234,7 @@ add_executable(test_pairing_confirm test_pairing_confirm.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_confirm unity util_safe_host)
+target_link_libraries(test_pairing_confirm unity util_safe_host command_interface_host)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
@@ -242,7 +250,7 @@ add_executable(test_connect_name test_connect_name.c
     mocks/mock_uart.c)
 target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
-target_link_libraries(test_connect_name unity util_safe_host)
+target_link_libraries(test_connect_name unity util_safe_host command_interface_host)
 target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_connect_name PRIVATE mocks/shim_audio_queue.c)
@@ -254,7 +262,7 @@ add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_enter_pin unity util_safe_host)
+target_link_libraries(test_pairing_enter_pin unity util_safe_host command_interface_host)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
@@ -275,7 +283,7 @@ add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
     mocks/mock_gap.c
     mocks/mock_uart.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
-target_link_libraries(test_pairing_edge_cases unity util_safe_host)
+target_link_libraries(test_pairing_edge_cases unity util_safe_host command_interface_host)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
@@ -309,7 +317,7 @@ add_executable(test_event_stress test_event_stress.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(test_event_stress unity util_safe_host)
+target_link_libraries(test_event_stress unity util_safe_host command_interface_host)
 add_test(NAME test_event_stress COMMAND $<TARGET_FILE:test_event_stress>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
@@ -327,7 +335,7 @@ add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(test_pairing_seq_hardening unity util_safe_host)
+target_link_libraries(test_pairing_seq_hardening unity util_safe_host command_interface_host)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
 
 # Ensure beep-flush behavior: host test
@@ -401,7 +409,7 @@ add_executable(dump_event_stress_output dump_event_stress_output.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
-target_link_libraries(dump_event_stress_output m util_safe_host)
+target_link_libraries(dump_event_stress_output m util_safe_host command_interface_host)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
 target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
@@ -432,7 +440,7 @@ target_sources(test_pairing_adapter_runner PRIVATE test_pairing_adapter_main.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_manager.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/bt_manager_test_hooks.c)
-target_link_libraries(test_pairing_adapter_runner unity util_safe_host)
+target_link_libraries(test_pairing_adapter_runner unity util_safe_host command_interface_host)
 add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_adapter_runner>)
 # Enable SEQ/TS emission for this runner so we can validate ordering/timestamps
 target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)

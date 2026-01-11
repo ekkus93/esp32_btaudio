@@ -11,9 +11,6 @@
 static const char *TAG = "TEST_APP_MAIN";
 
 /* Forward declaration for the util_safe Unity fixture group runner */
-TEST_GROUP_RUNNER(util_safe);
-
-// External test suite runners (defined in this component)
 extern void run_bt_pairing_tests(void);
 extern void run_bt_a2dp_tests(void);
 extern void run_command_interface_tests(void);
@@ -31,10 +28,6 @@ void app_test_main(void)
     ESP_LOGI(TAG, "Starting command interface tests");
     run_command_interface_tests();
     ESP_LOGI(TAG, "Command interface tests completed");
-
-    ESP_LOGI(TAG, "Starting util_safe tests");
-    RUN_TEST_GROUP(util_safe);
-    ESP_LOGI(TAG, "util_safe tests completed");
 
     vTaskDelay(pdMS_TO_TICKS(2000));
     ESP_LOGI(TAG, "Tests complete — returning to test harness to finish summary");

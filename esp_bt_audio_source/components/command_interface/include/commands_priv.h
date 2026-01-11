@@ -29,6 +29,7 @@
 #include "esp_partition.h"
 #else
 #include "esp_bt.h"
+#include "esp_log.h"
 #include "mock_uart.h"
 #include <dirent.h>
 #include <sys/stat.h>
