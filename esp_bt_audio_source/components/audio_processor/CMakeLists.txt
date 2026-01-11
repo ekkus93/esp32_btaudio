@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "audio_processor.c"
+        "audio_queue.c"
+        "audio_util.c"
+        "beep_manager.c"
+        "i2s_manager.c"
+        "play_manager.c"
+        "synth_manager.c"
+        "mem_util.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        util_safe
+        nvs_storage
+    PRIV_REQUIRES
+        freertos
+        driver
+        esp_timer
+)

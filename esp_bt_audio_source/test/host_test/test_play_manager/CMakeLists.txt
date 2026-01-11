@@ -7,7 +7,7 @@ add_compile_options(-UESP_PLATFORM)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../host_test/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
 )
 
 find_package(unity QUIET)
@@ -24,8 +24,8 @@ endif()
 set(TEST_SOURCES
     test_play_manager.c
     shim_play_manager_stubs.c
-    ../../main/play_manager.c
-    ../../main/audio_queue.c
+    ../../components/audio_processor/play_manager.c
+    ../../components/audio_processor/audio_queue.c
     ../host_test/mocks/esp_heap_caps_mock.c
     ../host_test/mocks/fake_queue.c
     ../host_test/mocks/fake_semphr.c

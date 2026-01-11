@@ -20,6 +20,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
 )
 
@@ -99,7 +100,7 @@ add_executable(test_audio_processor ../../test/component/test_audio_processor.c
     mocks/test_main_wrapper.c)
 target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component)
 # Ensure host test sees the same public headers as device builds
-target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 # Link in a dedicated host-only stub for the production audio_processor
 # implementation. This avoids pulling in the full production source (which
 # contains device-specific dependencies) and prevents duplicate symbol
@@ -157,7 +158,7 @@ target_sources(test_audio_processor_idle_i2s PRIVATE
     mocks/fake_log.c
     mocks/fake_debug_helpers.c)
 target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_include_directories(test_audio_processor_idle_i2s PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_audio_processor_idle_i2s PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST CONFIG_SPIRAM=1)
 target_link_libraries(test_audio_processor_idle_i2s unity m util_safe_host)
 add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_processor_idle_i2s>)
@@ -219,7 +220,7 @@ add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_
 add_executable(test_bt_app_core_host
     test_bt_app_core_host.c
     ../../main/bt_app_core.c
-    ../../main/mem_util.c
+    ../../components/audio_processor/mem_util.c
     mocks/fake_task.c
     mocks/fake_queue.c
     mocks/fake_log.c
@@ -346,7 +347,7 @@ target_sources(test_beep_flush PRIVATE
     mocks/esp_heap_caps_mock.c
     mocks/nvs_storage_mock.c)
 target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_link_libraries(test_beep_flush unity util_safe_host)
 add_test(NAME test_beep_flush COMMAND $<TARGET_FILE:test_beep_flush>)
 # Enable SEQ/TS emission in host-mode for this test target
@@ -374,7 +375,7 @@ add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connectio
 add_executable(test_bt_streaming_manager
     test_bt_streaming_manager.c
     ../../main/bt_streaming_manager.c
-    ../../main/mem_util.c
+    ../../components/audio_processor/mem_util.c
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c
     mocks/audio_processor_host_stub.c
@@ -384,7 +385,7 @@ add_executable(test_bt_streaming_manager
     mocks/fake_esp_err.c
 )
 target_include_directories(test_bt_streaming_manager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
 )
 target_compile_definitions(test_bt_streaming_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
@@ -453,7 +454,7 @@ target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
 add_executable(test_beep_manager
     test_beep_manager/test_beep_manager.c
     mocks/shim_audio_queue.c
-    ../../main/beep_manager.c
+    ../../components/audio_processor/beep_manager.c
     mocks/fake_queue.c
     mocks/fake_semphr.c
     mocks/fake_task.c
@@ -464,7 +465,7 @@ add_executable(test_beep_manager
 target_include_directories(test_beep_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_beep_manager unity m pthread)
 add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
@@ -473,8 +474,8 @@ add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
 add_executable(test_i2s_manager
     test_i2s_manager/test_i2s_manager.c
     mocks/shim_audio_queue.c
-    ../../main/i2s_manager.c
-    ../../main/audio_util.c
+    ../../components/audio_processor/i2s_manager.c
+    ../../components/audio_processor/audio_util.c
     mocks/fake_queue.c
     mocks/fake_semphr.c
     mocks/fake_task.c
@@ -484,7 +485,7 @@ add_executable(test_i2s_manager
 target_include_directories(test_i2s_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_i2s_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_i2s_manager unity m util_safe_host)
 add_test(NAME test_i2s_manager COMMAND $<TARGET_FILE:test_i2s_manager>)
@@ -492,13 +493,13 @@ add_test(NAME test_i2s_manager COMMAND $<TARGET_FILE:test_i2s_manager>)
 # Audio util host unit tests
 add_executable(test_audio_util
     test_audio_util/test_audio_util.c
-    ../../main/audio_util.c
+    ../../components/audio_processor/audio_util.c
     mocks/fake_log.c
     mocks/fake_esp_err.c)
 target_include_directories(test_audio_util PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_audio_util PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_util unity m util_safe_host)
 add_test(NAME test_audio_util COMMAND $<TARGET_FILE:test_audio_util>)
@@ -507,8 +508,8 @@ add_test(NAME test_audio_util COMMAND $<TARGET_FILE:test_audio_util>)
 add_executable(test_play_manager
     test_play_manager/test_play_manager.c
     test_play_manager/shim_play_manager_stubs.c
-    ../../main/play_manager.c
-    ../../main/audio_queue.c
+    ../../components/audio_processor/play_manager.c
+    ../../components/audio_processor/audio_queue.c
     mocks/esp_heap_caps_mock.c
     mocks/fake_queue.c
     mocks/fake_semphr.c
@@ -520,7 +521,7 @@ add_executable(test_play_manager
 target_include_directories(test_play_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_play_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_play_manager unity m util_safe_host)
 add_test(NAME test_play_manager COMMAND $<TARGET_FILE:test_play_manager>)
@@ -528,11 +529,11 @@ add_test(NAME test_play_manager COMMAND $<TARGET_FILE:test_play_manager>)
 # Synth manager host unit tests (exercise CONFIG_AUDIO_USE_SYNTH_SOURCE path)
 add_executable(test_synth_manager
     test_synth_manager/test_synth_manager.c
-    ../../main/synth_manager.c)
+    ../../components/audio_processor/synth_manager.c)
 target_include_directories(test_synth_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_synth_manager PRIVATE CONFIG_AUDIO_USE_SYNTH_SOURCE UNIT_TEST)
 target_link_libraries(test_synth_manager unity m)
 add_test(NAME test_synth_manager COMMAND $<TARGET_FILE:test_synth_manager>)
@@ -540,11 +541,11 @@ add_test(NAME test_synth_manager COMMAND $<TARGET_FILE:test_synth_manager>)
 # mem_util host unit tests
 add_executable(test_mem_util
     test_mem_util/test_mem_util.c
-    ../../main/mem_util.c)
+    ../../components/audio_processor/mem_util.c)
 target_include_directories(test_mem_util PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_link_libraries(test_mem_util unity)
 add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 

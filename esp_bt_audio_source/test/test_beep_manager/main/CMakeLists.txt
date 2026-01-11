@@ -1,11 +1,11 @@
 idf_component_register(
     SRCS
         "test_beep_manager.c"
-        "../../../main/beep_manager.c"
-        "../../../main/audio_queue.c"
+        "../../../components/audio_processor/beep_manager.c"
+        "../../../components/audio_processor/audio_queue.c"
     INCLUDE_DIRS
         "."
-        "../../../main/include"
+        "../../../components/audio_processor/include"
     PRIV_REQUIRES
         unity
         driver

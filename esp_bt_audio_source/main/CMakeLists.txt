@@ -12,14 +12,6 @@ endif()
 
 idf_component_register(
     SRCS
-        "audio_queue.c"
-        "audio_util.c"
-        "i2s_manager.c"
-        "beep_manager.c"
-        "play_manager.c"
-        "audio_processor.c"
-        "mem_util.c"
-        "synth_manager.c"
         "bt_connection_manager.c"
         "bt_source_component.c"
         "bt_streaming_manager.c"
@@ -33,4 +25,5 @@ idf_component_register(
     PRIV_REQUIRES
         bt_manager
         command_interface
+        audio_processor
 )

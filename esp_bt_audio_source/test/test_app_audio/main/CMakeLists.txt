@@ -16,18 +16,18 @@ idf_component_register(
         "test_psram_integration.c"
         "test_psram_fragmentation.c"
         "test_psram_audio_stress.c"
-        "../../../main/audio_processor.c"
-        "../../../main/audio_queue.c"
-        "../../../main/audio_util.c"
-        "../../../main/mem_util.c"
-        "../../../main/play_manager.c"
-        "../../../main/i2s_manager.c"
-        "../../../main/beep_manager.c"
-        "../../../main/synth_manager.c"
+        "../../../components/audio_processor/audio_processor.c"
+        "../../../components/audio_processor/audio_queue.c"
+        "../../../components/audio_processor/audio_util.c"
+        "../../../components/audio_processor/mem_util.c"
+        "../../../components/audio_processor/play_manager.c"
+        "../../../components/audio_processor/i2s_manager.c"
+        "../../../components/audio_processor/beep_manager.c"
+        "../../../components/audio_processor/synth_manager.c"
     INCLUDE_DIRS
         "."
         "include"
-        "../../../main/include"
+        "../../../components/audio_processor/include"
     REQUIRES
         audio
         # driver component omitted for tests so we can provide test-only stubs

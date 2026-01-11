@@ -7,6 +7,6 @@
 #ifndef TEST_APP_AUDIO_AUDIO_PROCESSOR_FORWARDER_H
 #define TEST_APP_AUDIO_AUDIO_PROCESSOR_FORWARDER_H
 
-#include "../../../main/include/audio_processor.h"
+#include "../../../../components/audio_processor/include/audio_processor.h"
 
 #endif /* TEST_APP_AUDIO_AUDIO_PROCESSOR_FORWARDER_H */

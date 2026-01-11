@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include "../../main/include/audio_processor.h"
+#include "../../components/audio_processor/include/audio_processor.h"
 
 /* Host-only stub for audio_processor used by native unit tests.
  * Provides a minimal, self-contained implementation of the public
@@ -15,7 +15,7 @@
  * full production implementation.
  */
 
-#include "../../main/include/audio_processor.h"
+#include "../../components/audio_processor/include/audio_processor.h"
 #include "esp_err.h"
 #include <string.h>
 #include <stdlib.h>

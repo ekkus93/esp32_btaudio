@@ -1,10 +1,15 @@
 set(priv_requires
     main
-    bt_manager
     bt
     driver
     esp_app_format
-    spiffs)
+    spiffs
+    util_safe)
+
+set(public_requires
+    audio_processor
+    bt_manager
+    nvs_storage)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND priv_requires bt_stack_stub)
@@ -20,6 +25,7 @@ idf_component_register(
         "cmd_handlers_files.c"
         "cmd_handlers_bt.c"
     INCLUDE_DIRS "include"
+    REQUIRES ${public_requires}
     PRIV_REQUIRES ${priv_requires}
     PRIV_INCLUDE_DIRS
 )

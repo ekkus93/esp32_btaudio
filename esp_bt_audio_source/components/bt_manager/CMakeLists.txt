@@ -2,7 +2,8 @@ set(priv_requires
     main
     nvs_flash
     command_interface
-    util_safe)
+    util_safe
+    audio_processor)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND priv_requires bt_stack_stub)

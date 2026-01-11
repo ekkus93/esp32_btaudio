@@ -1,4 +1,18 @@
 ## Current Focus
+### Full test sweep green after forwarder fix (2026-01-10T23:00:01-08:00)
+- Environment: ESP-IDF 5.5.1 export + conda python310. Command: `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 600` from repo root.
+- Updated `test_app`, `test_app2`, `test_app_audio` forwarder headers to include `components/audio_processor/include/audio_processor.h` (previous build blocker); no CMake REQUIRES changes needed.
+- Results: host 306/306 passed; device suites all green — test_app 46/46, test_app2 45/45, test_app_audio 55/55, test_app3 14/14, test_audio_queue 8/8, test_beep_manager 7/7, test_i2s_manager 8/8, test_synth_manager 7/7, test_spiffs_fail 6/6 (aggregate device 196/196). Artifacts: tmp/run_all_tests_summary.json and per-suite one_run_unity.log files.
+
+### IDF build after audio_processor wiring (2026-01-10 22:43:29)
+- Updated component deps: command_interface now REQUIRES audio_processor, bt_manager, nvs_storage and PRIV_REQUIRES util_safe; bt_manager PRIV_REQUIRES audio_processor.
+- `idf.py -C esp_bt_audio_source build` with ESP-IDF 5.5.1 succeeded after the dependency fix; binary size ~0xe2690 (48% free of 0x1b0000 partition).
+
+### audio_processor component wiring (2026-01-10 22:38:09)
+- Added components/audio_processor/CMakeLists.txt with audio_* and mem_util sources; REQUIRES util_safe, nvs_storage; PRIV_REQUIRES freertos, driver, esp_timer.
+- main/CMakeLists now depends on audio_processor instead of compiling audio_* and mem_util directly; mem_util.{c,h} moved into the component include/src.
+- Retargeted IDF tests (test_app, test_app_audio, test_* modules) and host tests to use components/audio_processor paths and headers; test_app links the component library instead of listing audio sources.
+- Updated host include paths to surface audio_processor headers; beep/i2s/play/synth manager host runners now build against component sources.
 ### Host command interface linkage fix (2026-01-10T21:50:31)
 - Environment: ESP-IDF 5.5.1 export via `. $HOME/esp/esp-idf/export.sh`, python3.10.14.
 - Linked new `command_interface_host` object library into all host command-interface targets in [esp_bt_audio_source/test/host_test/CMakeLists.txt](esp_bt_audio_source/test/host_test/CMakeLists.txt#L92-L381) to resolve undefined `cmd_handle_*` references.

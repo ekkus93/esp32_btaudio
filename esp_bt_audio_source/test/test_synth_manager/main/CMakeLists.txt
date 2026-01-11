@@ -1,10 +1,10 @@
 idf_component_register(
     SRCS
         "test_synth_manager.c"
-        "../../../main/synth_manager.c"
+        "../../../components/audio_processor/synth_manager.c"
     INCLUDE_DIRS
         "."
-        "../../../main/include"
+        "../../../components/audio_processor/include"
     PRIV_REQUIRES
         unity
         freertos

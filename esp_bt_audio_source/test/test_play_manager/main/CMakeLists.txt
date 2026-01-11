@@ -1,12 +1,12 @@
 idf_component_register(
     SRCS
         "test_play_manager.c"
-        "../../../main/play_manager.c"
-        "../../../main/audio_queue.c"
-        "../../../main/audio_util.c"
+        "../../../components/audio_processor/play_manager.c"
+        "../../../components/audio_processor/audio_queue.c"
+        "../../../components/audio_processor/audio_util.c"
     INCLUDE_DIRS
         "."
-        "../../../main/include"
+        "../../../components/audio_processor/include"
     PRIV_REQUIRES
         unity
         spiffs

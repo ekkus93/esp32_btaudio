@@ -9,7 +9,7 @@
 #include "esp_err.h"
 #include "bt_api.h"
 #include "esp_bt.h"
-#include "../../main/include/audio_processor.h"
+#include "../../components/audio_processor/include/audio_processor.h"
 
 // Track mock connection state for host tests. bt_manager mock code will call
 // bt_manager_test_set_connection_state() to update this when it simulates

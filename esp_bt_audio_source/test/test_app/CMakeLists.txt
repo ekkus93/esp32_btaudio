@@ -29,7 +29,7 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 # on-device Unity firmware. Host-only mock directories are intentionally
 # excluded here to prevent them from shadowing the real ESP-IDF headers.
 target_include_directories(${PROJECT_NAME}.elf PUBLIC
-    "${CMAKE_SOURCE_DIR}/../../main/include"
+    "${CMAKE_SOURCE_DIR}/../../components/audio_processor/include"
     "${CMAKE_SOURCE_DIR}/components/test_mocks/include"
 )
 
@@ -53,19 +53,8 @@ target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_test_stubs_lib})
 # The component's own CMakeLists already registers the `main/` sources. Do
 # not add them again here or the linker will see duplicate symbols.
 
-# For on-device Unity images we need some production implementation
-# symbols (audio processor) available so tests link. Add only the
-# specific source file rather than the entire `main/` tree to avoid
-# duplicate `app_main` and other entry symbols.
-target_sources(${PROJECT_NAME}.elf PRIVATE
-    "${CMAKE_SOURCE_DIR}/../../main/audio_processor.c"
-    # Minimal dependencies required by audio_processor.c
-    "${CMAKE_SOURCE_DIR}/../../main/audio_queue.c"
-    "${CMAKE_SOURCE_DIR}/../../main/audio_util.c"
-    "${CMAKE_SOURCE_DIR}/../../main/mem_util.c"
-    "${CMAKE_SOURCE_DIR}/../../main/play_manager.c"
-    "${CMAKE_SOURCE_DIR}/../../main/i2s_manager.c"
-    "${CMAKE_SOURCE_DIR}/../../main/beep_manager.c"
-    "${CMAKE_SOURCE_DIR}/../../main/synth_manager.c"
-)
+# Link the production audio_processor component so Unity images have the
+# required symbols without duplicating sources.
+idf_component_get_property(audio_processor_lib audio_processor COMPONENT_LIB)
+target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${audio_processor_lib})
 

@@ -1,5 +1,5 @@
 #include "unity.h"
-#include "../../main/include/audio_processor.h"
+#include "../../components/audio_processor/include/audio_processor.h"
 
 void setUp(void) {}
 void tearDown(void) {}

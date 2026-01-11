@@ -7,7 +7,7 @@ add_compile_options(-UESP_PLATFORM)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../host_test/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
 )
 
 find_package(unity QUIET)
@@ -23,7 +23,7 @@ endif()
 
 set(TEST_SOURCES
     test_audio_util.c
-    ../../main/audio_util.c
+    ../../components/audio_processor/audio_util.c
     ../host_test/mocks/fake_log.c
     ../host_test/mocks/fake_esp_err.c
 )

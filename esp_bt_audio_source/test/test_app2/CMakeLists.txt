@@ -28,7 +28,7 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 # on-device Unity firmware. Host-only mock directories are intentionally
 # excluded here to prevent them from shadowing the real ESP-IDF headers.
 target_include_directories(${PROJECT_NAME}.elf PUBLIC
-    "${CMAKE_SOURCE_DIR}/../../main/include"
+    "${CMAKE_SOURCE_DIR}/../../components/audio_processor/include"
     "${CMAKE_SOURCE_DIR}/components/test_mocks/include"
 )
 
