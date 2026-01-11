@@ -1038,6 +1038,18 @@
 
 ### BEEP regression tests added (2026-01-10T14:26:22-0800)
 - Host test `test_beep_command_partial_enqueue_clears_busy` simulates queue exhaustion by failing enqueues after one chunk (shim_audio_queue) to ensure BEEP clears and a second BEEP is allowed. Added enqueue-fail-after helper to shim_audio_queue.
+
+### Audio processor stub cleanup (2026-01-10 15:49:03)
+- Removed unused host stub duplicate under esp_bt_audio_source/components/audio_processor/ (CMakeLists.txt, audio_processor.c, .component_ignore) to avoid confusion with the production implementation and keep host tests using test/host_test/mocks/audio_processor_host_stub.c.
+
+### Audio processor stub removal confirmed (2026-01-10 15:51:01)
+- Deleted remaining files under esp_bt_audio_source/components/audio_processor/ so the directory is now empty; host builds continue to rely on test/host_test/mocks/audio_processor_host_stub.c.
+
+### Audio component relocated to test-only (2026-01-10 16:10:38)
+- Moved audio component from esp_bt_audio_source/components/audio to esp_bt_audio_source/test/component/audio, updated host/device test CMake to use the new path, and removed the unused component from the production build. Updated README to reflect test-only location. Ran full run_all_tests.py (host 306/306; device suites test_app 61/61, test_app2 45/45, test_app_audio 55/55, test_app3 14/14, test_audio_queue 8/8, test_beep_manager 7/7, test_i2s_manager 8/8, test_synth_manager 7/7, test_spiffs_fail 6/6) – all green.
+
+### Audio component relocated to test-only path (2026-01-10 16:00:51)
+- Moved esp_bt_audio_source/components/audio -> esp_bt_audio_source/test/component/audio to keep it out of the production component scan; updated device test app CMake (test_app, test_app_audio, test_app3), host test CMake, bridge sources, and README to point to the new path.
 - Device test `test_beep_command_clears_busy_after_draining` issues BEEP, drains queued frames via audio_processor_read, and asserts a second BEEP isn’t blocked by BUSY. Both tests added without running full suites yet.
 - Pending work items tracked in the todo list: map bt_manager event gaps, design host tests for GAP/A2DP failure paths, then implement and run them with proper wiring.
 - Existing host helpers cover pairing pending flags and mock connection/audio state but do not exercise command_interface event emission or A2DP forwarding to bt_connection_manager.

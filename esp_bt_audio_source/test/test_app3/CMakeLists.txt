@@ -6,11 +6,11 @@ cmake_minimum_required(VERSION 3.16)
 
 # Add only the audio component from the parent project so the audio tests can
 # link against the real audio sources without pulling unrelated components.
-set(EXTRA_COMPONENT_DIRS "${CMAKE_SOURCE_DIR}/components" "${CMAKE_SOURCE_DIR}/../../components/audio" "${CMAKE_SOURCE_DIR}/../../main")
+set(EXTRA_COMPONENT_DIRS "${CMAKE_SOURCE_DIR}/components" "${CMAKE_SOURCE_DIR}/../../test/component/audio" "${CMAKE_SOURCE_DIR}/../../main")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(test_app3)
 
 # The test flags are provided via test_app3/sdkconfig.defaults.
 # Add test main sources (this project will pick up component tests too)
-# The `components/audio/test` file is compiled by target's default component scanning
+# The `test/component/audio/test` file is compiled by target's default component scanning

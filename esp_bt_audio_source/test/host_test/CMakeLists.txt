@@ -164,9 +164,9 @@ add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
 # Host coverage for audio_i2s (std-channel API)
 add_executable(test_audio_i2s_host
     test_audio_i2s_host.c
-    ../../components/audio/audio_i2s.c
+    ../../test/component/audio/audio_i2s.c
     mocks/mock_i2s_std.c)
-target_include_directories(test_audio_i2s_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio/include)
+target_include_directories(test_audio_i2s_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component/audio/include)
 target_compile_definitions(test_audio_i2s_host PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_i2s_host unity)
 add_test(NAME test_audio_i2s_host COMMAND $<TARGET_FILE:test_audio_i2s_host>)
@@ -174,8 +174,8 @@ add_test(NAME test_audio_i2s_host COMMAND $<TARGET_FILE:test_audio_i2s_host>)
 # Host coverage for i2s_audio helpers (format/reconfig/convert)
 add_executable(test_i2s_audio_host
     test_i2s_audio_host.c
-    ../../components/audio/i2s_audio.c)
-target_include_directories(test_i2s_audio_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio/include)
+    ../../test/component/audio/i2s_audio.c)
+target_include_directories(test_i2s_audio_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component/audio/include)
 target_compile_definitions(test_i2s_audio_host PRIVATE UNIT_TEST)
 target_link_libraries(test_i2s_audio_host unity)
 add_test(NAME test_i2s_audio_host COMMAND $<TARGET_FILE:test_i2s_audio_host>)

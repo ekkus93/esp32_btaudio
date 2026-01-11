@@ -1128,7 +1128,7 @@ This project follows a modular architecture with several key components:
 
 The ESP32 Bluetooth Audio Source is organized into the following components:
 
-#### 1. Audio Component (`/components/audio`)
+#### 1. Audio Component (`/test/component/audio`)
 The audio component handles all audio processing functionality:
 - I2S driver configuration and initialization
 - Audio buffer management for receiving and processing data
