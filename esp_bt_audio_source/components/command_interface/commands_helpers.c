@@ -1,4 +1,5 @@
 #include "commands_priv.h"
+#include "util_safe.h"
 
 #if !defined(ESP_PLATFORM)
 int g_mock_log_level = ESP_LOG_INFO;
@@ -15,104 +16,39 @@ extern const char *cmd_version_host_override(void);
 
 int cmd_vsnprintf_safe(char *dst, size_t dst_size, const char *fmt, va_list args)
 {
-    if (dst == NULL || dst_size == 0 || fmt == NULL)
-    {
-        return -1;
-    }
-    int written = vsnprintf(dst, dst_size, fmt, args);
-    if (written < 0)
-    {
-        dst[0] = '\0';
-    }
-    else if ((size_t)written >= dst_size)
-    {
-        dst[dst_size - 1] = '\0';
-    }
-    return written;
+    return util_safe_vsnprintf(dst, dst_size, fmt, args);
 }
 
 int cmd_snprintf_safe(char *dst, size_t dst_size, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    int written = cmd_vsnprintf_safe(dst, dst_size, fmt, args);
+    int written = util_safe_vsnprintf(dst, dst_size, fmt, args);
     va_end(args);
     return written;
 }
 
 void *cmd_memcpy_safe(void *dst, const void *src, size_t len)
 {
-    if (dst == NULL || src == NULL || len == 0)
-    {
-        return dst;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    const uint8_t *s = (const uint8_t *)src;
-    for (size_t i = 0; i < len; i++)
-    {
-        d[i] = s[i];
-    }
+    util_safe_memcpy(dst, len, src, len);
     return dst;
 }
 
 void *cmd_memmove_safe(void *dst, const void *src, size_t len)
 {
-    if (dst == NULL || src == NULL || len == 0)
-    {
-        return dst;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    const uint8_t *s = (const uint8_t *)src;
-    if (d < s)
-    {
-        for (size_t i = 0; i < len; i++)
-        {
-            d[i] = s[i];
-        }
-    }
-    else if (d > s)
-    {
-        for (size_t i = len; i > 0; i--)
-        {
-            d[i - 1] = s[i - 1];
-        }
-    }
+    util_safe_memmove(dst, len, src, len);
     return dst;
 }
 
 void *cmd_memset_safe(void *dst, int value, size_t len)
 {
-    if (dst == NULL || len == 0)
-    {
-        return dst;
-    }
-    uint8_t *d = (uint8_t *)dst;
-    for (size_t i = 0; i < len; i++)
-    {
-        d[i] = (uint8_t)value;
-    }
+    util_safe_memset(dst, value, len);
     return dst;
 }
 
 void cmd_safe_copy(char *dst, size_t dst_size, const char *src)
 {
-    if (dst == NULL || dst_size == 0)
-    {
-        return;
-    }
-    if (src == NULL)
-    {
-        dst[0] = '\0';
-        return;
-    }
-
-    size_t i = 0;
-    while (i + 1 < dst_size && src[i] != '\0')
-    {
-        dst[i] = src[i];
-        ++i;
-    }
-    dst[i] = '\0';
+    util_safe_copy_str(dst, dst_size, src);
 }
 
 void cmd_safe_append(char *dst, size_t dst_size, const char *suffix)
