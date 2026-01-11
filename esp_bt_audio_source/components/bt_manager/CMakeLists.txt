@@ -14,7 +14,6 @@ idf_component_register(
         "bt_manager.c"
         "bt_app_core.c"
         "bt_connection_manager.c"
-        "bt_source_component.c"
         "bt_streaming_manager.c"
     INCLUDE_DIRS "include"
     REQUIRES bt
