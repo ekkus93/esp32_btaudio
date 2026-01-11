@@ -1,0 +1,154 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdatomic.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "esp_log.h"
+#include "audio_processor.h"
+#include "audio_queue.h"
+#include "beep_manager.h"
+#include "play_manager.h"
+#include "i2s_manager.h"
+#include "audio_util.h"
+#include "mem_util.h"
+#include "synth_manager.h"
+
+#define TAG "AUDIO_PROC"
+
+/* Diagnostics gate for noisy logging */
+extern volatile bool s_audio_diag_enabled;
+#define AUDIO_DIAG_ENABLED() (s_audio_diag_enabled)
+#define AUDIO_DIAG_PRINTF(...)            \
+    do {                                 \
+        if (AUDIO_DIAG_ENABLED()) {      \
+            printf(__VA_ARGS__);         \
+        }                                \
+    } while (0)
+#define AUDIO_PROC_LOG_ONCE()                                                 \
+    do {                                                                     \
+        static bool _logged = false;                                         \
+        if (!_logged) {                                                      \
+            ESP_LOGI(TAG, "audio_processor (main) entered %s", __func__);   \
+            _logged = true;                                                  \
+        }                                                                    \
+    } while (0)
+
+#define AUDIO_PROCESSING_STACK_SIZE  4096
+#define AUDIO_BLOCK_SIZE              128
+#ifdef CONFIG_BT_MOCK_TESTING
+#define AUDIO_RESAMPLE_MAX_RATIO      6
+#else
+#define AUDIO_RESAMPLE_MAX_RATIO      8
+#endif
+#define AUDIO_WORK_BUFFER_BYTES ((size_t)AUDIO_BLOCK_SIZE * 8U * (size_t)AUDIO_RESAMPLE_MAX_RATIO)
+#define BEEP_FADE_MS 50
+#define I2S_RAW_POOL_DEFAULT_COUNT 8U
+#define I2S_RAW_POOL_DRAM_COUNT    1U
+#define I2S_DEFAULT_DMA_DESC_NUM 6U
+#define I2S_DEFAULT_DMA_FRAME_NUM 32U
+#define I2S_MAX_READ_BYTES ((size_t)4U * 1024U)
+#define SYNTH_MIN_HEADROOM_BYTES  (AUDIO_WORK_BUFFER_BYTES)
+#define SYNTH_THROTTLE_DELAY_MS   2
+#define I2S_PROBE_MAX_ENTRIES 32U
+#define I2S_FAILURE_THRESHOLD 20
+#define I2S_FAILURE_LOG_THROTTLE 200
+#define DIAG_DUMP_BYTES 64U
+
+typedef struct {
+    int64_t t_before_us;
+    int64_t t_after_us;
+    uint32_t dur_us;
+    size_t requested;
+    size_t got;
+    int err;
+} i2s_probe_entry_t;
+
+/* Shared state (defined in audio_processor_state.c) */
+extern bool s_is_initialized;
+extern bool s_is_running;
+extern bool s_force_synth;
+extern bool s_keepalive_armed;
+extern uint8_t s_volume_gain;
+extern audio_config_t s_audio_config;
+extern audio_stats_t s_audio_stats;
+extern uint32_t s_tag_miss_count;
+extern int64_t s_tag_recover_mute_until;
+extern size_t s_runtime_work_bytes;
+extern uint8_t s_audio_rb_residual[AUDIO_WORK_BUFFER_BYTES];
+extern size_t s_audio_rb_residual_len;
+extern size_t s_audio_rb_residual_pos;
+extern uint8_t *s_work_block;
+extern uint8_t *s_capture_buffer;
+extern uint8_t *s_proc_buffer;
+extern uint8_t *s_proc_buffer2;
+extern TickType_t s_diag_next_log_tick;
+extern size_t s_diag_last_conv_size;
+extern size_t s_diag_last_frame_bytes;
+extern int s_diag_last_src_rate;
+extern int s_diag_last_dst_rate;
+extern bool s_beep_prefill_active;
+extern size_t s_beep_prefill_accum_bytes;
+extern size_t s_beep_prefill_goal_bytes;
+extern bool s_beep_restore_synth;
+extern bool s_trace_next_read_call;
+extern bool s_last_source_was_synth;
+extern unsigned s_i2s_read_ops;
+extern unsigned s_i2s_total_read_bytes;
+extern unsigned s_i2s_timeout_count;
+extern unsigned s_probe_captured;
+extern unsigned s_probe_target;
+extern bool s_dram_only_alloc;
+extern portMUX_TYPE s_wav_lock;
+extern volatile bool s_wav_playback_active;
+extern volatile size_t s_wav_pending_bytes;
+extern bool s_wav_prev_valid;
+extern bool s_wav_prev_force_synth;
+extern bool s_wav_resume_pipeline;
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+extern size_t s_test_queue_block_override;
+#endif
+extern portMUX_TYPE s_beep_lock;
+extern size_t s_beep_remaining_bytes;
+extern bool s_dump_next_beep_diag;
+#ifdef CONFIG_BT_MOCK_TESTING
+extern int s_i2s_consecutive_failures;
+extern int s_last_i2s_failure_log;
+#endif
+extern i2s_probe_entry_t s_probe_buf[I2S_PROBE_MAX_ENTRIES];
+#ifdef UNIT_TEST
+extern uint32_t s_last_beep_duration_ms;
+extern double s_last_beep_freq_hz;
+#endif
+
+/* Shared helpers */
+size_t audio_get_runtime_work_bytes(void);
+int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
+esp_err_t audio_processor_acquire_chunk_internal(audio_chunk_t *out_chunk, TickType_t wait_ticks);
+void apply_volume(void* buffer, size_t size, uint8_t volume);
+
+/* WAV helpers */
+bool wav_playback_is_active(void);
+void wav_playback_begin(void);
+bool wav_playback_consume(size_t bytes);
+void wav_playback_complete_if_idle(void);
+void wav_playback_abort(const char *caller);
+void wav_refill_from_manager(void);
+#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
+void wav_playback_add_pending(size_t bytes);
+#endif
+
+/* Beep helpers */
+void audio_processor_beep_reset(void);
+
+/* Priority queue helpers */
+void audio_processor_flush_priority_queues(const char* reason);
+size_t audio_processor_queue_free_bytes(void);
+
+/* Diagnostics */
+void diag_dump_bytes(const void* data, size_t len, const char* tag);
+
+/* External weak hook */
+bool bt_manager_is_a2dp_connected(void);
