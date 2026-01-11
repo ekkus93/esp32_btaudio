@@ -31,7 +31,6 @@ idf_component_register(
     REQUIRES
         ${main_requires}
     PRIV_REQUIRES
-        bluetooth
         bt_manager
         command_interface
 )

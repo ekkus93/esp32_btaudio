@@ -1,8 +1,6 @@
 set(priv_requires
     main
     nvs_flash
-    bt
-    bluetooth
     command_interface
     util_safe)
 
@@ -13,5 +11,6 @@ endif()
 idf_component_register(
     SRCS "bt_manager.c"
     INCLUDE_DIRS "include"
+    REQUIRES bt
     PRIV_REQUIRES ${priv_requires}
 )

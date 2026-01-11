@@ -6,7 +6,7 @@ idf_component_register(
         "include"
     REQUIRES
         "esp_common"
-        "bluetooth"
+        "bt_manager"
         "log"
         "util_safe"
     PRIV_REQUIRES

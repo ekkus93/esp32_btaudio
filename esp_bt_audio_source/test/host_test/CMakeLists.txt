@@ -21,7 +21,6 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bluetooth/include
 )
 
 # util_safe helpers are needed by bt_manager/nvs_storage users in host builds
@@ -204,7 +203,6 @@ target_link_libraries(test_dispatch_copy_regression unity m)
 target_include_directories(test_dispatch_copy_regression PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bluetooth/include
 )
 target_compile_definitions(test_dispatch_copy_regression PRIVATE UNIT_TEST)
 add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_copy_regression>)

@@ -35,7 +35,6 @@ idf_component_register(
         "include"
     REQUIRES 
         bt_mock
-        bluetooth
         bt_manager
         test_common
         command_interface
