@@ -11,7 +11,14 @@ if(CONFIG_APP_NO_BLOBS)
 endif()
 
 idf_component_register(
-    SRCS "command_interface.c" "commands.c"
+    SRCS
+        "command_interface.c"
+        "commands.c"
+        "commands_helpers.c"
+        "cmd_handlers_system.c"
+        "cmd_handlers_audio.c"
+        "cmd_handlers_files.c"
+        "cmd_handlers_bt.c"
     INCLUDE_DIRS "include"
     PRIV_REQUIRES ${priv_requires}
     PRIV_INCLUDE_DIRS

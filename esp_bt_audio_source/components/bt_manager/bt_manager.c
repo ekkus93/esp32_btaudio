@@ -30,6 +30,15 @@
 #define TAG "BT_MGR"
 #endif
 
+/*
+ * Weak test hooks used by host tests to inject failures. Production builds
+ * fall back to these no-op implementations so linking succeeds when the test
+ * overrides are absent.
+ */
+__attribute__((weak)) int bt_manager_forced_disconnect_failure(void) { return 0; }
+__attribute__((weak)) int bt_manager_forced_start_failure(void) { return 0; }
+__attribute__((weak)) int bt_manager_forced_stop_failure(void) { return 0; }
+
 // Private data
 static struct {
     bool initialized;
