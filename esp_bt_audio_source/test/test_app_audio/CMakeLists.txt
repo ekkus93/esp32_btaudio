@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.16)
 # we still expose the existing mock helpers that ship with the audio tests.
 set(EXTRA_COMPONENT_DIRS
     "../../test/component/audio"
+    "../../test/component/test_common"
     "../../components/nvs_storage"
     "../../components/util_safe"
     "../test_app/components"

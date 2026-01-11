@@ -13,6 +13,8 @@ add_compile_options(-UESP_PLATFORM)
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../component/bt_mock/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../component/test_common/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include
