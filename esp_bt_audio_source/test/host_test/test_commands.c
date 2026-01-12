@@ -1223,6 +1223,43 @@ void test_play_command_busy_when_beep_active(void) {
     (void)audio_processor_drain_audio_queue();
 }
 
+void test_play_command_after_stop_clears_beep_busy(void) {
+    mock_uart_reset_tx();
+    reset_spiffs_mount_hook_counter();
+
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_16K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_MONO,
+        .volume = 70,
+        .mute = false,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 1000.0));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+
+    /* STOP should now drain beep/audio queues and clear the busy flag. */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    char play_cmd[64];
+    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NULL(strstr(tx, "BUSY"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED"));
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    (void)audio_processor_drain_audio_queue();
+}
+
 void test_play_command_busy_when_i2s_active(void) {
     mock_uart_reset_tx();
     reset_spiffs_mount_hook_counter();

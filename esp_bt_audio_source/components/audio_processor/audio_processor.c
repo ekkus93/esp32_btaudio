@@ -224,6 +224,7 @@ esp_err_t audio_processor_stop(void)
 
     i2s_manager_stop();
     s_is_running = false;
+    (void)audio_processor_drain_audio_queue();
     return ESP_OK;
 }
 

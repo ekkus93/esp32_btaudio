@@ -6,6 +6,8 @@ static void audio_processor_beep_done_cb(void *ctx)
     portENTER_CRITICAL(&s_beep_lock);
     s_beep_remaining_bytes = 0;
     portEXIT_CRITICAL(&s_beep_lock);
+    ESP_LOGI(TAG, "audio_processor_beep: completed");
+    printf("DIAG-BEEP-DONE\n");
 }
 
 static void drain_beep_buffer(void)
