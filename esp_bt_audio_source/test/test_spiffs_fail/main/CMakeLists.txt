@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "test_spiffs_fail.c"
+        "spiffs_test.c"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES

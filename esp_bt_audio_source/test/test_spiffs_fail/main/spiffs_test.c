@@ -1,6 +1,7 @@
-/* Simple SPIFFS mount test for main app
- * Mounts partition labeled "spiffs" at /spiffs, tries to open
- * /spiffs/worker_long_norm.wav and logs its size.
+/* Manual SPIFFS mount/read smoke for the spiffs_fail test app.
+ * Mounts partition labeled "spiffs" at /spiffs, attempts to open
+ * /spiffs/worker_long_norm.wav, logs presence/size, then unmounts.
+ * This helper is optional and can be invoked from app_main when needed.
  */
 
 #include <stdio.h>
@@ -12,7 +13,7 @@
 
 static const char *TAG = "spiffs_test";
 
-void spiffs_test_task(void *arg)
+static void spiffs_test_task(void *arg)
 {
     (void)arg;
     esp_vfs_spiffs_conf_t conf = {
@@ -44,7 +45,6 @@ void spiffs_test_task(void *arg)
         }
     }
 
-    // optional: unmount
     esp_vfs_spiffs_unregister(conf.partition_label);
     ESP_LOGI(TAG, "SPIFFS unmounted");
     vTaskDelete(NULL);
@@ -52,6 +52,6 @@ void spiffs_test_task(void *arg)
 
 void app_main_spiffs_test_register(void)
 {
-    // run the test in a short-lived task so we don't block app_main
+    /* Run the smoke test in a short-lived task so it does not block app_main. */
     xTaskCreate(spiffs_test_task, "spiffs_test", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
 }
