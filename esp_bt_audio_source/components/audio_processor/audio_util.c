@@ -1,6 +1,7 @@
 #include "audio_util.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -32,11 +33,7 @@ esp_err_t convert_audio_format(const audio_convert_args_t *args)
     const audio_bit_depth_t src_bit_depth = args->src_bit_depth;
     const audio_bit_depth_t dst_bit_depth = args->dst_bit_depth;
     size_t *dst_size = args->dst_size;
-    size_t work_bytes = args->work_bytes;
-
-    if (work_bytes == 0 || work_bytes > src_size) {
-        work_bytes = src_size;
-    }
+    size_t work_bytes = args->work_bytes ? args->work_bytes : SIZE_MAX;
 
     if (src_bit_depth == dst_bit_depth) {
         size_t copy_size = (src_size > work_bytes) ? work_bytes : src_size;

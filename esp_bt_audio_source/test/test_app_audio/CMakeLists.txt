@@ -6,10 +6,9 @@ cmake_minimum_required(VERSION 3.16)
 # build. The production audio component lives alongside the main firmware, and
 # we still expose the existing mock helpers that ship with the audio tests.
 set(EXTRA_COMPONENT_DIRS
-    "../../test/component/audio"
-    "../../test/component/test_common"
-    "../../components/nvs_storage"
+    "../../components/audio_processor"
     "../../components/util_safe"
+    "../../components/nvs_storage"
     "../test_app/components"
     "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )

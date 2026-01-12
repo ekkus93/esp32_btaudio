@@ -4,12 +4,13 @@ cmake_minimum_required(VERSION 3.16)
 # includes the audio component tests. This mirrors existing test_app
 # layout and enables `CONFIG_BT_MOCK_TESTING` for test-only wrappers.
 
-# Add only the audio and shared test_common components from the parent project
-# so the audio tests can link against the real audio sources without pulling
-# unrelated components (e.g., bt_mock with its Bluetooth dependency).
+# Use the production audio stack and utility components from the parent project
+# (audio_processor pulls in audio_queue/audio_util). Keep the dependency set
+# minimal to avoid dragging the Bluetooth stack into this test image.
 set(EXTRA_COMPONENT_DIRS
-	"${CMAKE_SOURCE_DIR}/../../test/component/audio"
-	"${CMAKE_SOURCE_DIR}/../../test/component/test_common"
+	"${CMAKE_SOURCE_DIR}/../../components/audio_processor"
+	"${CMAKE_SOURCE_DIR}/../../components/util_safe"
+	"${CMAKE_SOURCE_DIR}/../../components/nvs_storage"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

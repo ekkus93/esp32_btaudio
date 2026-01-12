@@ -25,10 +25,10 @@ void test_convert_16_to_32_should_shift_left(void)
     };
 
     TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&args));
-    TEST_ASSERT_EQUAL(sizeof(src), dst_size);
+    TEST_ASSERT_EQUAL(sizeof(dst), dst_size);
     TEST_ASSERT_EQUAL_INT32(0x12340000, dst[0]);
-    TEST_ASSERT_EQUAL_INT32(0, dst[1]);
-    TEST_ASSERT_EQUAL_INT32(0, dst[2]);
+    TEST_ASSERT_EQUAL_INT32((int32_t)(-0x1234) << 16, dst[1]);
+    TEST_ASSERT_EQUAL_INT32(0x7fff0000, dst[2]);
 }
 
 void test_convert_should_truncate_to_work_bytes(void)

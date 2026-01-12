@@ -6,13 +6,16 @@ idf_component_register(
         "audio_test_main.c"
         "audio_pipeline_test.c"
         "audio_processor_test.c"
+        "audio_i2s.c"
         "audio_test_helpers.c"
         "bt_manager_stub.c"
+        "i2s_audio.c"
         "i2s_audio_test.c"
         "i2s_channel_test.c"
         "i2s_test.c"
         "pcm_format_test.c"
         "i2s_test_stubs.c"
+        "pcm_processing.c"
         "test_psram_integration.c"
         "test_psram_fragmentation.c"
         "test_psram_audio_stress.c"
@@ -35,7 +38,6 @@ idf_component_register(
         "include"
         "../../../components/audio_processor/include"
     REQUIRES
-        audio
         # driver component omitted for tests so we can provide test-only stubs
         nvs_storage
         esp_ringbuf
@@ -47,6 +49,15 @@ idf_component_register(
         test_command_interface
         esp_psram
 )
+
+# Provide access to driver headers for test-only stubs without linking against
+# the full driver component (the stubs replace the runtime implementation).
+idf_component_get_property(driver_dir driver COMPONENT_DIR)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${driver_dir}/include")
+idf_component_get_property(esp_driver_i2s_dir esp_driver_i2s COMPONENT_DIR)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${esp_driver_i2s_dir}/include")
+idf_component_get_property(esp_driver_gpio_dir esp_driver_gpio COMPONENT_DIR)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${esp_driver_gpio_dir}/include")
 
 # Audio-focused tests still rely on the mock-enabled build to avoid accessing
 # physical peripherals on the DUT. Reuse the CONFIG_BT_MOCK_TESTING define so
