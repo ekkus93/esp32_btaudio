@@ -234,7 +234,7 @@ void test_audio_processor_read_buffer_fill(void)
     TEST_ASSERT_EQUAL(0, bytes_read_empty);  // No data available
 }
 
-void test_audio_processor_beep_busy_when_i2s_active(void)
+void test_audio_processor_beep_allows_when_i2s_active(void)
 {
     audio_config_t config = {
         .sample_rate = AUDIO_SAMPLE_RATE_44K,
@@ -251,13 +251,13 @@ void test_audio_processor_beep_busy_when_i2s_active(void)
     /* Disable synth keepalive to model live I2S capture being active. */
     audio_processor_set_synth_mode(false);
     esp_err_t ret = audio_processor_beep_tone(100, 440.0);
-    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     audio_processor_stop();
     audio_processor_deinit();
 }
 
-void test_audio_processor_play_busy_when_i2s_active(void)
+void test_audio_processor_play_allows_when_i2s_active(void)
 {
     audio_config_t config = {
         .sample_rate = AUDIO_SAMPLE_RATE_44K,
@@ -274,7 +274,8 @@ void test_audio_processor_play_busy_when_i2s_active(void)
     /* Model live I2S capture (keepalive disabled) and ensure PLAY rejects with BUSY. */
     audio_processor_set_synth_mode(false);
     esp_err_t ret = audio_processor_play_wav("/spiffs/does_not_exist.wav");
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, ret);
+    /* With live capture allowed, PLAY should attempt and fail only due to missing file. */
+    TEST_ASSERT_EQUAL(ESP_FAIL, ret);
 
     audio_processor_stop();
     audio_processor_deinit();
@@ -653,8 +654,8 @@ int app_main(void)
     RUN_TEST(test_audio_processor_volume_application);
     RUN_TEST(test_audio_processor_read_buffer_fill);
     RUN_TEST(test_audio_processor_beep_bypasses_mute);
-    RUN_TEST(test_audio_processor_beep_busy_when_i2s_active);
-    RUN_TEST(test_audio_processor_play_busy_when_i2s_active);
+    RUN_TEST(test_audio_processor_beep_allows_when_i2s_active);
+    RUN_TEST(test_audio_processor_play_allows_when_i2s_active);
     RUN_TEST(test_audio_processor_beep_busy_when_wav_active);
     RUN_TEST(test_audio_processor_start_preempts_beep_and_wav);
     RUN_TEST(test_audio_processor_beep_disables_synth_keepalive);

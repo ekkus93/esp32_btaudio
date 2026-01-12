@@ -101,14 +101,14 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL);
         return CMD_SUCCESS;
     }
-    if (audio_processor_is_i2s_active())
-    {
-        cmd_send_response("ERR", "BEEP", "BUSY", "I2S_ACTIVE");
-        return CMD_SUCCESS;
-    }
     if (audio_processor_is_beep_active())
     {
         cmd_send_response("ERR", "BEEP", "BUSY", "BEEP_ACTIVE");
+        return CMD_SUCCESS;
+    }
+    if (audio_processor_is_wav_active())
+    {
+        cmd_send_response("ERR", "BEEP", "BUSY", "WAV_ACTIVE");
         return CMD_SUCCESS;
     }
 #else
@@ -117,14 +117,14 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         cmd_send_response("ERR", "BEEP", "NOT_CONNECTED", NULL);
         return CMD_SUCCESS;
     }
-    if (audio_processor_is_i2s_active())
-    {
-        cmd_send_response("ERR", "BEEP", "BUSY", "I2S_ACTIVE");
-        return CMD_SUCCESS;
-    }
     if (audio_processor_is_beep_active())
     {
         cmd_send_response("ERR", "BEEP", "BUSY", "BEEP_ACTIVE");
+        return CMD_SUCCESS;
+    }
+    if (audio_processor_is_wav_active())
+    {
+        cmd_send_response("ERR", "BEEP", "BUSY", "WAV_ACTIVE");
         return CMD_SUCCESS;
     }
 #endif
@@ -228,12 +228,12 @@ cmd_status_t cmd_handle_play(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 
-    if (audio_processor_is_i2s_active()) {
-        cmd_send_response("ERR", "PLAY", "BUSY", "I2S_ACTIVE");
-        return CMD_SUCCESS;
-    }
     if (audio_processor_is_beep_active()) {
         cmd_send_response("ERR", "PLAY", "BUSY", "BEEP_ACTIVE");
+        return CMD_SUCCESS;
+    }
+    if (audio_processor_is_wav_active()) {
+        cmd_send_response("ERR", "PLAY", "BUSY", "WAV_ACTIVE");
         return CMD_SUCCESS;
     }
 
@@ -260,12 +260,12 @@ cmd_status_t cmd_handle_play(const cmd_context_t *ctx)
         cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
 #else
     (void)mount_err;
-    if (audio_processor_is_i2s_active()) {
-        cmd_send_response("ERR", "PLAY", "BUSY", "I2S_ACTIVE");
-        return CMD_SUCCESS;
-    }
     if (audio_processor_is_beep_active()) {
         cmd_send_response("ERR", "PLAY", "BUSY", "BEEP_ACTIVE");
+        return CMD_SUCCESS;
+    }
+    if (audio_processor_is_wav_active()) {
+        cmd_send_response("ERR", "PLAY", "BUSY", "WAV_ACTIVE");
         return CMD_SUCCESS;
     }
     char host_path[sizeof(path)] = {0};

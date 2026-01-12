@@ -18,10 +18,13 @@
 #include "esp_err.h"
 
 /* Single audio descriptor queue backed by a fixed pool of 1 KiB blocks. Keep
- * the pool modest (32 blocks) so DRAM-only targets like ESP32-WROOM have
- * headroom for stacks, Wi-Fi/BT, and audio processing. */
+ * the pool modest (64 blocks) so DRAM-only targets like ESP32-WROOM still
+ * have headroom for stacks, Wi-Fi/BT, and audio processing while giving
+ * A2DP-only output extra headroom. */
 #define AUDIO_CHUNK_BLOCK_BYTES 1024U
-#define AUDIO_CHUNK_POOL_BLOCKS 32U
+/* Increased to 64 blocks to provide more headroom when A2DP is the sole
+ * consumer and capture/playback producers share the queue. */
+#define AUDIO_CHUNK_POOL_BLOCKS 64U
 
 typedef enum {
 	AUDIO_SOURCE_TAG_INVALID = 0,

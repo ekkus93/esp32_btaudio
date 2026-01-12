@@ -332,11 +332,8 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         s_initialized = true;
         s_synth_mode = true;
     }
-    /* Reject when live I2S capture is active (keepalive disabled) or a WAV is
-     * mid-playback while running. Allow pre-start WAV priming for the
-     * preemption test path. */
-    bool live_i2s_active = s_running && !s_synth_mode;
-    if (live_i2s_active) return ESP_ERR_INVALID_STATE;
+    /* Reject when a WAV is mid-playback while running. Allow capture to
+     * continue because playback now routes exclusively through A2DP. */
     if (s_running && s_wav_active) return ESP_ERR_INVALID_STATE;
 
     /* Beep should disable the synth keepalive so subsequent reads come from
@@ -424,12 +421,8 @@ esp_err_t audio_processor_play_wav(const char* path)
         s_beep_active = false;
     }
 
-    bool live_i2s_active = s_running && !s_synth_mode;
     /* PLAY should disable synth keepalive regardless of outcome. */
     s_synth_mode = false;
-    if (live_i2s_active) {
-        return ESP_ERR_INVALID_STATE;
-    }
     if (s_running && (s_wav_active || s_beep_active)) {
         return ESP_ERR_INVALID_STATE;
     }

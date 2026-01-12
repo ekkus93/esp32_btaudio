@@ -596,13 +596,13 @@ int main(void) {
     extern void test_beep_command_not_connected(void);
     extern void test_beep_command_connected(void);
     extern void test_beep_command_busy_when_wav_active(void);
-    extern void test_beep_command_busy_when_i2s_active(void);
+    extern void test_beep_command_allows_when_i2s_active(void);
     extern void test_beep_command_busy_when_beep_active(void);
     extern void test_beep_command_partial_enqueue_clears_busy(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
     RUN_TEST(test_beep_command_busy_when_wav_active);
-    RUN_TEST(test_beep_command_busy_when_i2s_active);
+    RUN_TEST(test_beep_command_allows_when_i2s_active);
     RUN_TEST(test_beep_command_busy_when_beep_active);
     RUN_TEST(test_beep_command_partial_enqueue_clears_busy);
     // Test PLAY command enqueues audio via host stub and makes data available
@@ -611,7 +611,7 @@ int main(void) {
     extern void test_play_command_path_too_long_should_error(void);
     extern void test_play_command(void);
     extern void test_play_command_busy_when_beep_active(void);
-    extern void test_play_command_busy_when_i2s_active(void);
+    extern void test_play_command_allows_when_i2s_active(void);
     extern void test_file_command_found(void);
     extern void test_file_command_not_found(void);
     extern void test_file_command_not_file(void);
@@ -620,7 +620,7 @@ int main(void) {
     RUN_TEST(test_play_command_path_too_long_should_error);
     RUN_TEST(test_play_command);
     RUN_TEST(test_play_command_busy_when_beep_active);
-    RUN_TEST(test_play_command_busy_when_i2s_active);
+    RUN_TEST(test_play_command_allows_when_i2s_active);
     RUN_TEST(test_file_command_found);
     RUN_TEST(test_file_command_not_found);
     RUN_TEST(test_file_command_not_file);
@@ -1007,7 +1007,7 @@ void test_beep_command_busy_when_wav_active(void) {
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    const char *expected = "ERR|BEEP|BUSY|I2S_ACTIVE";
+    const char *expected = "ERR|BEEP|BUSY|WAV_ACTIVE";
     TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
@@ -1015,7 +1015,7 @@ void test_beep_command_busy_when_wav_active(void) {
     (void)audio_processor_drain_audio_queue();
 }
 
-void test_beep_command_busy_when_i2s_active(void) {
+void test_beep_command_allows_when_i2s_active(void) {
     mock_uart_reset_tx();
     reset_spiffs_mount_hook_counter();
 
@@ -1042,8 +1042,7 @@ void test_beep_command_busy_when_i2s_active(void) {
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    const char *expected = "ERR|BEEP|BUSY|I2S_ACTIVE";
-    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, "OK|BEEP|SENT"), tx);
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
@@ -1260,7 +1259,7 @@ void test_play_command_after_stop_clears_beep_busy(void) {
     (void)audio_processor_drain_audio_queue();
 }
 
-void test_play_command_busy_when_i2s_active(void) {
+void test_play_command_allows_when_i2s_active(void) {
     mock_uart_reset_tx();
     reset_spiffs_mount_hook_counter();
 
@@ -1285,7 +1284,7 @@ void test_play_command_busy_when_i2s_active(void) {
 
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|BUSY|I2S_ACTIVE"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED"));
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
