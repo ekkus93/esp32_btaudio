@@ -60,7 +60,8 @@ static void start_beep_drain_task(void)
         return;
     }
     s_beep_drain_stop = false;
-    BaseType_t ok = xTaskCreate(beep_drain_task, "beep_drain", 2048, NULL, tskIDLE_PRIORITY + 1, &s_beep_drain_task);
+    /* Heap/log churn in audio_processor_read + WAV abort logging needs more stack headroom. */
+    BaseType_t ok = xTaskCreate(beep_drain_task, "beep_drain", 4096, NULL, tskIDLE_PRIORITY + 1, &s_beep_drain_task);
     if (ok != pdPASS) {
         s_beep_drain_task = NULL;
     }

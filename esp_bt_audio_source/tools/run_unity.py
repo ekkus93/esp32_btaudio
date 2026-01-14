@@ -105,8 +105,10 @@ def make_shell_cmd(args_list, export_sh=None):
         return args_list
 
 
-def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_event, boot_event, test_complete_event, watchdog_event):
+def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_event, boot_event, test_complete_event, watchdog_event, reboot_event):
     """Read process stdout line-by-line, write to logfile, and signal when summary seen."""
+    tests_started = False
+    boot_after_start = 0
     with open(logfile_path, "ab", buffering=0) as fh:
         while True:
             try:
@@ -126,9 +128,11 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
                 decoded = line.decode('utf-8', errors='replace')
             except Exception:
                 decoded = str(line)
+            if UNITY_START_RE.search(decoded):
+                tests_started = True
+
             # If we see an explicit run-complete marker, set the summary flag.
             if RUN_COMPLETE_RE.search(decoded):
-                # Debug: log that we saw the completion marker
                 print("[run_unity DEBUG] RUN_COMPLETE_RE matched in monitor output", file=sys.stderr)
                 summary_event.set()
 
@@ -143,13 +147,16 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
             # loop can short-circuit the usual boot/wait logic and stop quickly.
             if UNITY_RESULT_RE.search(decoded) or re.search(r"^\s*OK\s*$", decoded, re.MULTILINE):
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
+                tests_started = True
                 summary_event.set()
             elif AUTORUN_COMPLETE_RE.search(decoded):
                 print("[run_unity DEBUG] AUTORUN_COMPLETE marker matched in monitor output", file=sys.stderr)
+                tests_started = True
                 summary_event.set()
                 test_complete_event.set()
             elif TEST_RUN_COMPLETE_RE.search(decoded):
                 print("[run_unity DEBUG] TEST_RUN_COMPLETE marker matched in monitor output", file=sys.stderr)
+                tests_started = True
                 summary_event.set()
                 test_complete_event.set()
                 print("[run_unity DEBUG] UNITY summary/result line matched in monitor output", file=sys.stderr)
@@ -168,6 +175,14 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
             if BOOT_BANNER_RE.search(decoded):
                 print("[run_unity DEBUG] BOOT_BANNER_RE matched in monitor output", file=sys.stderr)
                 boot_event.set()
+                if tests_started and not summary_event.is_set():
+                    boot_after_start += 1
+                    print(f"[run_unity DEBUG] BOOT_BANNER after tests started (count={boot_after_start})", file=sys.stderr)
+                    if boot_after_start >= 1:
+                        reboot_event.set()
+                        summary_event.set()
+                        test_complete_event.set()
+                        stop_event.set()
             if stop_event.is_set():
                 break
 
@@ -382,10 +397,11 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
     boot_event = threading.Event()
     test_complete_event = threading.Event()
     watchdog_event = threading.Event()
+    reboot_event = threading.Event()
 
     t = threading.Thread(
         target=tail_process_output,
-        args=(proc, stdout_stream, logfile, stop_event, summary_event, boot_event, test_complete_event, watchdog_event),
+        args=(proc, stdout_stream, logfile, stop_event, summary_event, boot_event, test_complete_event, watchdog_event, reboot_event),
         daemon=True,
     )
     t.start()
@@ -395,6 +411,24 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
         while True:
             if watchdog_event.is_set():
                 print("[run_unity DEBUG] Watchdog detected; stopping monitor", file=sys.stderr)
+                try:
+                    proc.send_signal(signal.SIGINT)
+                    for _ in range(10):
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.1)
+                    else:
+                        proc.terminate()
+                except Exception:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                stop_event.set()
+                break
+
+            if reboot_event.is_set():
+                print("[run_unity DEBUG] Reboot detected after tests started; stopping monitor", file=sys.stderr)
                 try:
                     proc.send_signal(signal.SIGINT)
                     for _ in range(10):

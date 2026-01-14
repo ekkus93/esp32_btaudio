@@ -45,7 +45,6 @@ volatile bool s_wav_playback_active = false;
 volatile size_t s_wav_pending_bytes = 0;
 bool s_wav_prev_valid = false;
 bool s_wav_prev_force_synth = false;
-bool s_wav_resume_pipeline = false;
 #if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
 size_t s_test_queue_block_override = 0;
 #endif

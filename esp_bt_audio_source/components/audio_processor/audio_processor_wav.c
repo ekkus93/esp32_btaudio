@@ -14,7 +14,6 @@ void wav_playback_begin(void)
     s_wav_prev_valid = true;
     s_wav_pending_bytes = 0;
     s_wav_playback_active = true;
-    s_wav_resume_pipeline = false;
     portEXIT_CRITICAL(&s_wav_lock);
     ESP_LOGI(TAG, "audio_processor: WAV playback begin (prev synth=%s)", prev ? "ENABLED" : "DISABLED");
 }
@@ -25,8 +24,6 @@ void wav_playback_add_pending(size_t bytes)
     if (bytes == 0) {
         return;
     }
-
-    s_wav_resume_pipeline = false;
 
     size_t pending = 0;
 
@@ -106,7 +103,6 @@ void wav_playback_abort(const char *caller)
 #endif
         s_wav_pending_bytes = 0;
         s_wav_playback_active = false;
-        s_wav_resume_pipeline = false;
         if (s_wav_prev_valid) {
             s_force_synth = false;
             synth_mode = s_force_synth;
@@ -142,14 +138,11 @@ void wav_playback_complete_if_idle(void)
     bool synth_mode = false;
     size_t pending = play_manager_pending_bytes();
     bool pm_active = play_manager_is_active();
-    bool restart_needed = false;
 
     portENTER_CRITICAL(&s_wav_lock);
     s_wav_pending_bytes = pending;
     if (s_wav_playback_active && !pm_active && pending == 0) {
         s_wav_playback_active = false;
-        restart_needed = s_wav_resume_pipeline;
-        s_wav_resume_pipeline = false;
         if (s_wav_prev_valid) {
             s_force_synth = false;
             synth_mode = s_force_synth;
@@ -168,8 +161,6 @@ void wav_playback_complete_if_idle(void)
     ESP_LOGI(TAG, "audio_processor: wav_playback_complete_if_idle -> s_force_synth=%s s_beep_remaining=%zu",
              s_force_synth ? "ENABLED" : "DISABLED",
              s_beep_remaining_bytes);
-
-    (void)restart_needed;
 }
 
 void wav_refill_from_manager(void)
@@ -189,7 +180,6 @@ void wav_refill_from_manager(void)
         ESP_LOGE(TAG, "wav_refill_from_manager: fill failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));
         play_manager_abort(false);
         wav_playback_abort(__func__);
-        s_wav_resume_pipeline = false;
     }
 }
 

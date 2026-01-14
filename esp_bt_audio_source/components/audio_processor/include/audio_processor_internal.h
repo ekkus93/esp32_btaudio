@@ -106,7 +106,6 @@ extern volatile bool s_wav_playback_active;
 extern volatile size_t s_wav_pending_bytes;
 extern bool s_wav_prev_valid;
 extern bool s_wav_prev_force_synth;
-extern bool s_wav_resume_pipeline;
 #if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
 extern size_t s_test_queue_block_override;
 #endif

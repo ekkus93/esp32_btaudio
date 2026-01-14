@@ -64,6 +64,11 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
+    if (i2s_manager_is_running()) {
+        ESP_LOGW(TAG, "audio_processor_beep: busy (I2S active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     /* Do not allow beep while WAV/PLAY is active. PLAY owns its path and must
      * not be interrupted by BEEP. */
     if (play_manager_is_active()) {

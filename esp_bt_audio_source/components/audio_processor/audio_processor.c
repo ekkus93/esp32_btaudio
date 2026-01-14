@@ -228,6 +228,8 @@ esp_err_t audio_processor_stop(void)
 
     i2s_manager_stop();
     s_is_running = false;
+    s_keepalive_armed = false;
+    s_force_synth = false;
     (void)audio_processor_drain_audio_queue();
     return ESP_OK;
 }
@@ -281,7 +283,6 @@ esp_err_t audio_processor_deinit(void)
     s_wav_playback_active = false;
     s_wav_prev_valid = false;
     s_wav_prev_force_synth = false;
-    s_wav_resume_pipeline = false;
     s_trace_next_read_call = false;
     s_diag_next_log_tick = 0;
     s_diag_last_conv_size = SIZE_MAX;
@@ -730,6 +731,11 @@ esp_err_t audio_processor_play_wav(const char* path)
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
 
+    if (i2s_manager_is_running()) {
+        ESP_LOGW(TAG, "audio_processor_play_wav: busy (I2S active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     /* PLAY is permitted even if the I2S manager is running; clear queues
      * below to avoid stale capture/beep data contaminating output. */
 
@@ -764,13 +770,11 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     esp_err_t status = ESP_OK;
 
-    /* Do not stop/restart the I2S/capture pipeline for PLAY. PLAY runs on its
-     * own path; just clear existing queue content and beep state. */
+    /* Clear queues/beep state before enqueuing WAV data. */
     (void)audio_processor_drain_audio_queue();
     audio_processor_beep_reset();
 
     wav_playback_begin();
-    s_wav_resume_pipeline = false;
 
     status = play_manager_play_wav(path);
     if (status != ESP_OK) {
@@ -973,7 +977,6 @@ void audio_processor_test_wav_reset_state(void)
     s_wav_pending_bytes = 0;
     s_wav_prev_valid = false;
     s_wav_prev_force_synth = false;
-    s_wav_resume_pipeline = false;
     portEXIT_CRITICAL(&s_wav_lock);
 }
 

@@ -220,6 +220,18 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
             break;
         }
 
+        /* Enforce BEEP/PLAY exclusivity: if a beep chunk slips through while
+         * WAV playback is active, discard it and clear any lingering beep
+         * state so PLAY output is not contaminated. */
+        if ((chunk.tag == AUDIO_SOURCE_TAG_BEEP) && wav_playback_is_active()) {
+            audio_chunk_release_block(chunk.data);
+            portENTER_CRITICAL(&s_beep_lock);
+            s_beep_remaining_bytes = 0;
+            portEXIT_CRITICAL(&s_beep_lock);
+            ESP_LOGW(TAG, "audio_processor_read: dropped beep chunk during WAV");
+            continue;
+        }
+
         size_t write_offset = bytes_written;
         size_t to_copy = chunk.len;
         if (to_copy > (size - bytes_written)) {
