@@ -6,6 +6,10 @@ BUILD_DIR=${BUILD_DIR:-esp_bt_audio_source/build_clang_tidy}
 DB_DIR="$ROOT_DIR/$BUILD_DIR"
 DB_PATH="$DB_DIR/compile_commands.json"
 
+STRIP_FLAGS=(-fno-shrink-wrap -fno-tree-switch-conversion -fstrict-volatile-bitfields)
+SANITIZED_DB_DIR="$DB_DIR/clangtidy_db"
+SANITIZED_DB_PATH="$SANITIZED_DB_DIR/compile_commands.json"
+
 if [ ! -f "$DB_PATH" ]; then
     echo "compile_commands.json not found at $DB_PATH" >&2
     exit 1
@@ -47,6 +51,37 @@ for dir in "$SYSROOT_BASE" "$RUNTIME_INCLUDE" "$CLANG_INCLUDE"; do
     fi
 done
 
+mkdir -p "$SANITIZED_DB_DIR"
+STRIP_FLAGS_CSV=$(IFS=,; echo "${STRIP_FLAGS[*]}")
+DB_IN="$DB_PATH" DB_OUT="$SANITIZED_DB_PATH" STRIP_FLAGS="$STRIP_FLAGS_CSV" python3 - <<'PY'
+import json
+import os
+import sys
+
+db_in = os.environ["DB_IN"]
+db_out = os.environ["DB_OUT"]
+strip_flags = [f for f in os.environ.get("STRIP_FLAGS", "").split(",") if f]
+
+try:
+    with open(db_in, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+except Exception as exc:  # pragma: no cover - guard for malformed DB
+    sys.stderr.write(f"Failed to load {db_in}: {exc}\n")
+    sys.exit(1)
+
+for entry in entries:
+    if "arguments" in entry:
+        entry["arguments"] = [arg for arg in entry["arguments"] if arg not in strip_flags]
+    if "command" in entry:
+        parts = entry["command"].split()
+        entry["command"] = " ".join(part for part in parts if part not in strip_flags)
+
+with open(db_out, "w", encoding="utf-8") as f:
+    json.dump(entries, f, indent=2)
+PY
+
+DB_DIR_EFFECTIVE="$SANITIZED_DB_DIR"
+
 EXTRA_ARGS=(
     "--target=xtensa-esp32-elf"
     "--sysroot=$SYSROOT_BASE"
@@ -71,6 +106,6 @@ done
 "$RUN_CLANG_TIDY" \
     -clang-tidy-binary "$CLANG_TIDY" \
     -quiet \
-    -p "$DB_DIR" \
+    -p "$DB_DIR_EFFECTIVE" \
     "${PREFIXED_ARGS[@]}" \
     "$@"

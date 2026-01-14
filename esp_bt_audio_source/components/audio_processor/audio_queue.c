@@ -123,6 +123,29 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 	return true;
 }
 
+bool audio_chunk_enqueue_block(uint8_t *block, size_t len, audio_source_tag_t tag)
+{
+	if (block == NULL || len == 0 || s_audio_queue == NULL) {
+		return false;
+	}
+
+	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
+	audio_chunk_t chunk = {
+		.data = block,
+		.len = (len > AUDIO_CHUNK_BLOCK_BYTES) ? AUDIO_CHUNK_BLOCK_BYTES : len,
+		.tag = tag,
+		.tag_id = __atomic_fetch_add(&s_tag_counter, 1, __ATOMIC_SEQ_CST),
+	};
+
+	if (xQueueSend(s_audio_queue, &chunk, wait_ticks) != pdTRUE) {
+		audio_chunk_release_block(block);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_block: queue full len=%u tag=%d", (unsigned)chunk.len, (int)tag);
+		return false;
+	}
+
+	return true;
+}
+
 bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_source_tag_t tag, uint16_t tag_id)
 {
 	if (data == NULL || len == 0 || s_audio_queue == NULL) {

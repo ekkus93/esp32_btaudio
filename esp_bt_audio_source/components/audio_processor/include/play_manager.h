@@ -14,9 +14,7 @@
 #include "audio_util.h"
 
 typedef struct {
-	uint8_t *proc_buf;   /* conversion buffer */
-	uint8_t *proc_buf2;  /* resample/output buffer */
-	size_t work_bytes;   /* size of each buffer */
+	size_t work_bytes;   /* optional workspace sizing hint */
 } play_manager_buffers_t;
 
 esp_err_t play_manager_init(const audio_config_t *config,
@@ -42,6 +40,5 @@ size_t play_manager_pending_bytes(void);
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Test hooks for visibility and small overrides. */
 void play_manager_test_set_frame_bytes_dst(size_t frame_bytes);
-size_t play_manager_test_residual_bytes(void);
 void play_manager_test_force_zero_resample(bool enable);
 #endif

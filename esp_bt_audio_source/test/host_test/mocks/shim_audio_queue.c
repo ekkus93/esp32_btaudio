@@ -72,6 +72,11 @@ bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_so
     return enqueue_common(data, len, tag, tag_id);
 }
 
+bool audio_chunk_enqueue_block(uint8_t *block, size_t len, audio_source_tag_t tag)
+{
+    return enqueue_common(block, len, tag, s_tag_counter++);
+}
+
 bool audio_chunk_dequeue(audio_chunk_t *out_chunk, TickType_t wait_ticks)
 {
     (void)wait_ticks;

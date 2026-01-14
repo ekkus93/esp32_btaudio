@@ -155,8 +155,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     }
 
     play_manager_buffers_t pm_bufs = {
-        .proc_buf = s_proc_buffer,
-        .proc_buf2 = s_proc_buffer2,
         .work_bytes = s_runtime_work_bytes,
     };
     ret = play_manager_init(&s_audio_config, &pm_bufs);
@@ -202,8 +200,11 @@ esp_err_t audio_processor_start(void)
         return ESP_OK;
     }
 
-    /* I2S capture has highest priority. Stop any ongoing WAV/BEED playback
+    /* I2S capture has highest priority. Stop any ongoing WAV/BEEP playback
      * and clear queued audio so capture owns the pipeline. */
+    wav_playback_abort(__func__);
+    audio_processor_beep_reset();
+    play_manager_abort(false);
     (void)audio_processor_drain_audio_queue();
 
     esp_err_t ret = i2s_manager_start();
@@ -339,8 +340,6 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 
     play_manager_deinit();
     play_manager_buffers_t pm_bufs = {
-        .proc_buf = s_proc_buffer,
-        .proc_buf2 = s_proc_buffer2,
         .work_bytes = s_runtime_work_bytes,
     };
     esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);
@@ -500,25 +499,6 @@ static esp_err_t configure_i2s(const audio_config_t* config)
     };
 
     return i2s_manager_init(config, &bufs);
-}
-
-static esp_err_t audio_processor_reinit_i2s(const char *ctx)
-{
-#ifdef CONFIG_BT_MOCK_TESTING
-    (void)ctx;
-    return configure_i2s(&s_audio_config);
-#else
-    if (s_is_running) {
-        ESP_LOGW(TAG, "audio_processor_reinit_i2s: called while running (ctx=%s)", ctx ? ctx : "?");
-        return ESP_ERR_INVALID_STATE;
-    }
-    ESP_LOGI(TAG, "audio_processor_reinit_i2s: reconfiguring I2S (ctx=%s)", ctx ? ctx : "?");
-    esp_err_t ret = configure_i2s(&s_audio_config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_reinit_i2s: configure failed (ctx=%s) ret=%d", ctx ? ctx : "?", ret);
-    }
-    return ret;
-#endif
 }
 
 esp_err_t audio_processor_get_status(audio_status_t* status)
@@ -731,14 +711,6 @@ esp_err_t audio_processor_play_wav(const char* path)
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
 
-    if (i2s_manager_is_running()) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: busy (I2S active)");
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    /* PLAY is permitted even if the I2S manager is running; clear queues
-     * below to avoid stale capture/beep data contaminating output. */
-
     /* Drop any synthetic keepalive so WAV output is audible immediately. */
     if (s_force_synth) {
         audio_processor_flush_priority_queues("play_wav");
@@ -749,6 +721,12 @@ esp_err_t audio_processor_play_wav(const char* path)
      * cannot be consumed. */
     if (!audio_processor_is_a2dp_connected()) {
         ESP_LOGW(TAG, "audio_processor_play_wav: A2DP not connected; rejecting PLAY");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* I2S capture has priority over PLAY; reject when capture is active. */
+    if (i2s_manager_is_running()) {
+        ESP_LOGW(TAG, "audio_processor_play_wav: I2S running; rejecting PLAY");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -833,8 +811,6 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 
     play_manager_deinit();
     play_manager_buffers_t pm_bufs = {
-        .proc_buf = s_proc_buffer,
-        .proc_buf2 = s_proc_buffer2,
         .work_bytes = s_runtime_work_bytes,
     };
     esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);

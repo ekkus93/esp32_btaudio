@@ -33,12 +33,7 @@ typedef struct {
     FILE *file;
     size_t remaining_bytes;
     size_t pending_bytes;
-    uint8_t *proc_buf;
-    uint8_t *proc_buf2;
     size_t work_bytes;
-    uint8_t residual[AUDIO_CHUNK_BLOCK_BYTES];
-    size_t residual_len;
-    size_t residual_pos;
     SemaphoreHandle_t mutex;
 #ifdef CONFIG_BT_MOCK_TESTING
     bool test_zero_resample;
@@ -134,7 +129,7 @@ static esp_err_t parse_wav_header(FILE *f,
 esp_err_t play_manager_init(const audio_config_t *config,
                             const play_manager_buffers_t *buffers)
 {
-    if (config == NULL || buffers == NULL || buffers->proc_buf == NULL || buffers->proc_buf2 == NULL || buffers->work_bytes == 0) {
+    if (config == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -144,9 +139,7 @@ esp_err_t play_manager_init(const audio_config_t *config,
 
     util_safe_memset(&s_pm, 0, sizeof(s_pm));
     s_pm.out_cfg = *config;
-    s_pm.proc_buf = buffers->proc_buf;
-    s_pm.proc_buf2 = buffers->proc_buf2;
-    s_pm.work_bytes = buffers->work_bytes;
+    s_pm.work_bytes = (buffers && buffers->work_bytes > 0) ? buffers->work_bytes : AUDIO_CHUNK_BLOCK_BYTES;
     s_pm.mutex = xSemaphoreCreateMutex();
     if (s_pm.mutex == NULL) {
         return ESP_ERR_NO_MEM;
@@ -171,8 +164,6 @@ void play_manager_deinit(void)
             s_pm.active = false;
             s_pm.remaining_bytes = 0;
             s_pm.pending_bytes = 0;
-            s_pm.residual_len = 0;
-            s_pm.residual_pos = 0;
             xSemaphoreGive(s_pm.mutex);
         }
         vSemaphoreDelete(s_pm.mutex);
@@ -184,44 +175,6 @@ void play_manager_deinit(void)
 bool play_manager_is_active(void)
 {
     return s_pm.active;
-}
-
-static esp_err_t enqueue_buffer(const uint8_t *buf, size_t len, audio_source_tag_t tag, size_t frame_bytes)
-{
-    size_t offset = 0;
-    const TickType_t start_ticks = xTaskGetTickCount();
-    const TickType_t max_wait_ticks = pdMS_TO_TICKS(PLAY_ENQUEUE_TIMEOUT_MS);
-    TickType_t retry_delay_ticks = pdMS_TO_TICKS(PLAY_WAIT_FOR_FREE_MS);
-    if (retry_delay_ticks == 0) {
-        retry_delay_ticks = 1;
-    }
-
-    while (offset < len) {
-        size_t chunk = len - offset;
-        if (chunk > AUDIO_CHUNK_BLOCK_BYTES) {
-            chunk = AUDIO_CHUNK_BLOCK_BYTES;
-        }
-        if (frame_bytes > 0) {
-            size_t aligned = (chunk / frame_bytes) * frame_bytes;
-            if (aligned == 0) aligned = frame_bytes;
-            if (aligned > chunk) aligned = chunk;
-            chunk = aligned;
-        }
-        if (chunk == 0) break;
-        while (audio_descriptor_used() >= (AUDIO_CHUNK_POOL_BLOCKS * PLAY_HIGH_WATER_PCT) / 100U) {
-            TickType_t elapsed = xTaskGetTickCount() - start_ticks;
-            if (elapsed >= max_wait_ticks) {
-                break;
-            }
-            vTaskDelay(retry_delay_ticks);
-        }
-
-        if (!audio_chunk_enqueue_bytes(buf + offset, chunk, tag)) {
-            return (offset > 0) ? ESP_OK : ESP_FAIL;
-        }
-        offset += chunk;
-    }
-    return ESP_OK;
 }
 
 esp_err_t play_manager_fill(void)
@@ -243,23 +196,17 @@ esp_err_t play_manager_fill(void)
         return ESP_ERR_TIMEOUT;
     }
 
-    /* Flush any residual first */
-    if (s_pm.residual_len > s_pm.residual_pos) {
-        size_t pending = s_pm.residual_len - s_pm.residual_pos;
-        if (enqueue_buffer(s_pm.residual + s_pm.residual_pos, pending, AUDIO_SOURCE_TAG_WAV, s_pm.frame_bytes_dst) == ESP_OK) {
-            s_pm.pending_bytes += pending;
-            s_pm.residual_len = 0;
-            s_pm.residual_pos = 0;
-        } else {
-            xSemaphoreGive(s_pm.mutex);
-            return ESP_OK; /* queue full; try later */
-        }
-    }
-
     const int max_iters = 4;
     for (int iter = 0; iter < max_iters && s_pm.remaining_bytes > 0; ++iter) {
+        /* Acquire a source block and read aligned PCM frames into it. */
+        uint8_t *src_block = audio_chunk_alloc_block(pdMS_TO_TICKS(5));
+        if (src_block == NULL) {
+            ret = ESP_OK;
+            break;
+        }
+
         size_t frame_src = (s_pm.frame_bytes_src != 0) ? s_pm.frame_bytes_src : 1U;
-        size_t to_read = s_pm.work_bytes;
+        size_t to_read = AUDIO_CHUNK_BLOCK_BYTES;
         to_read = (to_read / frame_src) * frame_src;
         if (to_read == 0) {
             to_read = frame_src;
@@ -267,8 +214,10 @@ esp_err_t play_manager_fill(void)
         if (to_read > s_pm.remaining_bytes) {
             to_read = s_pm.remaining_bytes;
         }
-        size_t got = fread(s_pm.proc_buf, 1, to_read, s_pm.file);
+
+        size_t got = fread(src_block, 1, to_read, s_pm.file);
         if (got == 0) {
+            audio_chunk_release_block(src_block);
             s_pm.remaining_bytes = 0;
             break;
         }
@@ -280,8 +229,8 @@ esp_err_t play_manager_fill(void)
 
         size_t conv_size = 0;
         audio_convert_args_t conv_args = {
-            .src = s_pm.proc_buf,
-            .dst = s_pm.proc_buf,
+            .src = src_block,
+            .dst = src_block,
             .src_size = got,
             .src_bit_depth = s_pm.src_bit,
             .dst_bit_depth = s_pm.out_cfg.bit_depth,
@@ -290,13 +239,21 @@ esp_err_t play_manager_fill(void)
         };
         ret = convert_audio_format(&conv_args);
         if (ret != ESP_OK) {
+            audio_chunk_release_block(src_block);
+            break;
+        }
+
+        uint8_t *dst_block = audio_chunk_alloc_block(pdMS_TO_TICKS(5));
+        if (dst_block == NULL) {
+            audio_chunk_release_block(src_block);
+            ret = ESP_OK;
             break;
         }
 
         size_t res_size = 0;
         audio_resample_args_t res_args = {
-            .src = s_pm.proc_buf,
-            .dst = s_pm.proc_buf2,
+            .src = src_block,
+            .dst = dst_block,
             .src_size = conv_size,
             .src_rate = s_pm.src_rate,
             .dst_rate = s_pm.out_cfg.sample_rate,
@@ -306,7 +263,9 @@ esp_err_t play_manager_fill(void)
             .work_bytes = s_pm.work_bytes,
         };
         ret = resample_audio(&res_args);
+        audio_chunk_release_block(src_block);
         if (ret != ESP_OK) {
+            audio_chunk_release_block(dst_block);
             break;
         }
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -315,20 +274,14 @@ esp_err_t play_manager_fill(void)
         }
 #endif
         if (res_size == 0) {
+            audio_chunk_release_block(dst_block);
             continue;
         }
 
-        esp_err_t enq_ret = enqueue_buffer(s_pm.proc_buf2, res_size, AUDIO_SOURCE_TAG_WAV, s_pm.frame_bytes_dst);
-        if (enq_ret != ESP_OK) {
-            /* If queue was full, stash the remainder for next time. */
-            size_t storable = res_size;
-            if (storable > sizeof(s_pm.residual)) {
-                storable = sizeof(s_pm.residual);
-            }
-            util_safe_memcpy(s_pm.residual, sizeof(s_pm.residual), s_pm.proc_buf2, storable);
-            s_pm.residual_len = storable;
-            s_pm.residual_pos = 0;
-            ret = ESP_OK; /* not fatal; try again later */
+        if (!audio_chunk_enqueue_block(dst_block, res_size, AUDIO_SOURCE_TAG_WAV)) {
+            /* queue full: drop this block and let caller retry later */
+            audio_chunk_release_block(dst_block);
+            ret = ESP_OK;
             break;
         }
         s_pm.pending_bytes += res_size;
@@ -397,8 +350,6 @@ esp_err_t play_manager_play_wav(const char *path)
     s_pm.file = f;
     s_pm.remaining_bytes = data_bytes;
     s_pm.pending_bytes = 0;
-    s_pm.residual_len = 0;
-    s_pm.residual_pos = 0;
     s_pm.active = true;
 
     xSemaphoreGive(s_pm.mutex);
@@ -432,8 +383,6 @@ void play_manager_abort(bool allow_resume)
         s_pm.active = false;
         s_pm.remaining_bytes = 0;
         s_pm.pending_bytes = 0;
-        s_pm.residual_len = 0;
-        s_pm.residual_pos = 0;
         xSemaphoreGive(s_pm.mutex);
     }
 }
@@ -450,7 +399,7 @@ bool play_manager_consume(size_t bytes)
         } else {
             s_pm.pending_bytes -= bytes;
         }
-        if (s_pm.pending_bytes == 0 && s_pm.remaining_bytes == 0 && s_pm.residual_len == 0) {
+        if (s_pm.pending_bytes == 0 && s_pm.remaining_bytes == 0) {
             if (s_pm.file) {
                 fclose(s_pm.file);
                 s_pm.file = NULL;
@@ -484,20 +433,6 @@ void play_manager_test_set_frame_bytes_dst(size_t frame_bytes)
             xSemaphoreGive(s_pm.mutex);
         }
     }
-}
-
-size_t play_manager_test_residual_bytes(void)
-{
-    size_t rem = 0;
-    if (s_pm.initialized && s_pm.mutex != NULL) {
-        if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) == pdTRUE) {
-            if (s_pm.residual_len > s_pm.residual_pos) {
-                rem = s_pm.residual_len - s_pm.residual_pos;
-            }
-            xSemaphoreGive(s_pm.mutex);
-        }
-    }
-    return rem;
 }
 
 void play_manager_test_force_zero_resample(bool enable)

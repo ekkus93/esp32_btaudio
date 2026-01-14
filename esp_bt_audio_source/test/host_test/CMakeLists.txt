@@ -187,6 +187,27 @@ target_include_directories(test_audio_queue_host PRIVATE
 target_compile_definitions(test_audio_queue_host PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_queue_host unity util_safe_host)
 add_test(NAME test_audio_queue_host COMMAND $<TARGET_FILE:test_audio_queue_host>)
+
+# Host coverage for play_manager enqueue path (ensures WAVs use queue-owned blocks)
+add_executable(test_play_manager_host
+    test_play_manager_host.c
+    ../../components/audio_processor/play_manager.c
+    ../../components/audio_processor/audio_queue.c
+    ../../components/audio_processor/audio_util.c
+    mocks/fake_queue.c
+    mocks/fake_task.c
+    mocks/fake_timer.c
+    mocks/fake_semphr.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_play_manager_host PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_play_manager_host PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING)
+target_link_libraries(test_play_manager_host unity util_safe_host m)
+add_test(NAME test_play_manager_host COMMAND $<TARGET_FILE:test_play_manager_host>)
 # allocator.c and list.c depend on bt_common.h which lives in the bt common include path
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
