@@ -1,4 +1,5 @@
 #include "cmd_handlers.h"
+#include "play_manager.h"
 
 static const char *TAG = "cmd";
 
@@ -111,6 +112,11 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         cmd_send_response("ERR", "BEEP", "BUSY", "WAV_ACTIVE");
         return CMD_SUCCESS;
     }
+    if (play_manager_is_active())
+    {
+        cmd_send_response("ERR", "BEEP", "BUSY", "PLAY_ACTIVE");
+        return CMD_SUCCESS;
+    }
 #else
     if (bt_get_connection_state() != 1)
     {
@@ -125,6 +131,11 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
     if (audio_processor_is_wav_active())
     {
         cmd_send_response("ERR", "BEEP", "BUSY", "WAV_ACTIVE");
+        return CMD_SUCCESS;
+    }
+    if (play_manager_is_active())
+    {
+        cmd_send_response("ERR", "BEEP", "BUSY", "PLAY_ACTIVE");
         return CMD_SUCCESS;
     }
 #endif

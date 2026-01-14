@@ -110,6 +110,7 @@ extern void bt_manager_test_set_force_unpair_failure(int v);
 extern void bt_manager_test_set_force_unpair_all_failure(int v);
 extern int bt_manager_test_get_unpair_all_removed(void);
 extern int bt_manager_test_get_unpair_all_cleared_before(void);
+extern void play_manager_test_set_active(bool active);
 
 // Test fixture
 void setUp(void) {
@@ -1013,6 +1014,28 @@ void test_beep_command_busy_when_wav_active(void) {
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
     (void)audio_processor_drain_audio_queue();
+}
+
+void test_beep_command_busy_when_play_active(void) {
+    mock_uart_reset_tx();
+
+    /* Simulate an active PLAY so the busy guard fires. */
+    play_manager_test_set_active(true);
+
+    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
+    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
+
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    const char *expected = "ERR|BEEP|BUSY|PLAY_ACTIVE";
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
+
+    /* Reset for subsequent tests. */
+    play_manager_test_set_active(false);
 }
 
 void test_beep_command_allows_when_i2s_active(void) {

@@ -10,6 +10,7 @@
 #include "command_interface.h"
 #include "bt_manager.h"
 #include "play_manager.h"
+#include "audio_queue.h"
 #include "driver/i2s_std.h"
 
 /* Internal state needed for stale-beep regression checks. */
@@ -423,6 +424,8 @@ static void test_drain_stops_play_manager_and_clears_queue(void);
 static void test_fallback_stop_resume_preserves_tag_alignment(void);
 static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void);
 static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void);
+static void test_wav_prefill_produces_initial_audio(void);
+static void test_beep_then_play_streams_full_wav(void);
 
 void run_audio_processor_tests(void)
 {
@@ -454,6 +457,8 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_fallback_stop_resume_preserves_tag_alignment);
     RUN_TEST(test_stop_during_wav_to_beep_transition_keeps_tags_consistent);
     RUN_TEST(test_synth_toggle_mid_wav_keeps_tag_counters_clean);
+    RUN_TEST(test_wav_prefill_produces_initial_audio);
+    RUN_TEST(test_beep_then_play_streams_full_wav);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -788,6 +793,99 @@ static void test_play_wav_failure_restores_pipeline(void)
 
     ret = audio_processor_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
+}
+
+static size_t get_file_size(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        return 0;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return 0;
+    }
+    long sz = ftell(f);
+    fclose(f);
+    if (sz < 0) {
+        return 0;
+    }
+    return (size_t)sz;
+}
+
+static void start_pipeline_default(void)
+{
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    ESP_ERROR_CHECK(audio_processor_init(&config));
+    ESP_ERROR_CHECK(audio_processor_start());
+}
+
+static void stop_pipeline_default(void)
+{
+    (void)audio_processor_stop();
+    (void)audio_processor_deinit();
+}
+
+static void test_wav_prefill_produces_initial_audio(void)
+{
+    const char *path = "/spiffs/worker_long_norm.wav";
+    start_pipeline_default();
+
+    (void)audio_processor_drain_audio_queue();
+    ESP_ERROR_CHECK(audio_processor_play_wav(path));
+
+    uint8_t buf[2048];
+    size_t bytes_read = 0;
+    esp_err_t r = audio_processor_read(buf, sizeof(buf), &bytes_read);
+    TEST_ASSERT_EQUAL(ESP_OK, r);
+    TEST_ASSERT_TRUE(bytes_read > 0);
+
+    stop_pipeline_default();
+}
+
+static void test_beep_then_play_streams_full_wav(void)
+{
+    const char *path = "/spiffs/worker_long_norm.wav";
+    const size_t wav_size = get_file_size(path);
+    TEST_ASSERT_TRUE_MESSAGE(wav_size > 0, "wav file missing");
+
+    start_pipeline_default();
+    (void)audio_processor_drain_audio_queue();
+
+    /* Issue a short beep to exercise the post-beep recovery path. */
+    ESP_ERROR_CHECK(audio_processor_beep(200));
+    test_delay_ms(300);
+
+    ESP_ERROR_CHECK(audio_processor_play_wav(path));
+
+    uint8_t buf[2048];
+    size_t total_read = 0;
+    size_t bytes_read = 0;
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t max_ticks = pdMS_TO_TICKS(15000);
+
+    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+        bytes_read = 0;
+        esp_err_t r = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        TEST_ASSERT_EQUAL(ESP_OK, r);
+        total_read += bytes_read;
+        if ((xTaskGetTickCount() - start) > max_ticks) {
+            break;
+        }
+        test_delay_ms(50);
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(total_read >= wav_size, "WAV playback truncated after beep");
+
+    stop_pipeline_default();
 }
 
 static void test_drain_stops_play_manager_and_clears_queue(void)

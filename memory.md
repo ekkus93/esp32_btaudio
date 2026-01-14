@@ -1,3 +1,8 @@
+- 2026-01-14 04:23:07: Added host guard for play_manager active in command_interface BEEP handler plus mock setter and test_beep_command_busy_when_play_active; rebuilt esp_bt_audio_source/test/host_test/build_host and ran ./test_commands (62 PASS). ctest in build_host reported "No tests were found" so binary was executed directly.
+- 2026-01-14 04:55:23: Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 900` after BEEP PLAY_ACTIVE guard/test change; all suites green. Host 308/308. Device totals 4268/4268 (test_app 46, test_app2 45, test_app_audio 4135 via timeout fallback counts, test_app3 6, test_audio_queue 8, test_beep_manager 7, test_i2s_manager 8, test_synth_manager 7, test_spiffs_fail 6). Summary at tmp/run_all_tests_summary.json.
+- 2026-01-14 04:15:23: Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 900` with ESP-IDF 5.5.1 + python310; all suites green. Host ctest 308/308 passed. Device totals 4268/4268 via unity summary (test_app 46, test_app2 45, test_app_audio 4135 with timeout fallback counts, test_app3 6, test_audio_queue 8, test_beep_manager 7, test_i2s_manager 8, test_synth_manager 7, test_spiffs_fail 6). Aggregated summary refreshed at tmp/run_all_tests_summary.json; per-suite one_run_unity.log files updated.
+- 2026-01-14 03:52:22: Fixed PLAY/BEEP mutual-exclusion build issues by clearing s_wav_resume_pipeline in audio_processor_play_wav (no resume flag now) and including play_manager.h in cmd_handlers_audio for the PLAY_ACTIVE busy guard. `idf.py -C esp_bt_audio_source build` succeeds (app ~0x0e2010, warning: unused audio_processor_reinit_i2s). Quick checks: `pytest -q esp_bt_audio_source/tools` passes (one experimental API warning) and host C tests in esp_bt_audio_source/test/host_test (ctest 34/34) all pass.
+- 2026-01-14 02:09:33: Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 900` after WAV prefill/high-water pacing and new device tests; all suites green (host ctest 19/19, device: test_app 37/37, test_app2 45/45, test_app_audio 12/12). Artifacts: tmp/run_all_tests_summary.csv, tmp/run_all_tests_full.log, per-suite one_run_unity.log files.
 - 2026-01-14 01:41:24: Committed and pushed `chore: sync audio processor changes` (dad2865b) to origin/master, covering audio_processor/beep/test updates and memory.md.
 - 2026-01-14 01:53:28: Guarded i2s_manager_stop from disabling a channel that was never enabled (suppresses benign driver warning); built esp_bt_audio_source (app 0x0e2230, ~48% free).
 - 2026-01-14 02:00:23: Added high-water pacing to play_manager enqueue (waits below ~90% before chunk enqueue, bounded by 500ms) to keep WAV fills from blasting the queue; built and flashed esp_bt_audio_source (app 0x0e2260, ~48% free).
@@ -109,6 +114,14 @@
 - Added device Unity coverage for reconnect retries/backoff in test_app (bt_a2dp_test.c): failure-only path asserts retry_count/state FAILED; delay test measures configured backoff across multiple attempts using bt_conn_test hooks.
 - bt_source_mock now supports bt_conn_test_set_reconnect_results/delay/reset, tracks reconnect attempts and retry_count, and applies per-attempt delays with failure-state reporting; reset integrates with bt_reset_for_test.
 - bt_source.h exposes test-hook prototypes behind CONFIG_BT_MOCK_TESTING.
+### Host play_manager ctest fix (2026-01-14T02:37:46)
+- Added freertos/task.h include to play_manager so host builds see the mocked vTaskDelay inline; removed duplicate vTaskDelay body from fake_task.c to avoid redefinition.
+- Rebuilt esp_bt_audio_source/test/host_test/build_host_tests and ran ctest --output-on-failure: all 34/34 host tests now pass (test_play_manager links and runs).
+
+### Full test sweep (2026-01-14T02:58:51)
+- Ran `python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 900` with python310 + ESP-IDF export; all host and device suites passed.
+- Host: ctest 34/34, 308/308 cases, rc=0. Device totals: 5099/5099 (test_app 46, test_app2 45, test_app_audio 4966 via timeout fallback counts, test_app3 6, test_audio_queue 8, test_beep_manager 7, test_i2s_manager 8, test_synth_manager 7, test_spiffs_fail 6).
+
 ### bt_connection_manager reconnect hooks repair (2025-12-18T01:27:00-08:00)
 - Rebuilt `bt_connection_manager.c` tail after corruption: restored connection handler logic (formatted addr buffer, proper CONNECTED handling), public API exports, INIT, and test hook placement.
 - Re-added UNIT_TEST reset helpers to clear reconnect delay and callbacks; CONFIG_BT_MOCK_TESTING reconnect override remains intact.

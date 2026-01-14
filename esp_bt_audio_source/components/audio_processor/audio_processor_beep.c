@@ -64,6 +64,13 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* Do not allow beep while WAV/PLAY is active. PLAY owns its path and must
+     * not be interrupted by BEEP. */
+    if (play_manager_is_active()) {
+        ESP_LOGW(TAG, "audio_processor_beep: busy (play active)");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (wav_playback_is_active()) {
         ESP_LOGW(TAG, "audio_processor_beep: busy (WAV active)");
         return ESP_ERR_INVALID_STATE;

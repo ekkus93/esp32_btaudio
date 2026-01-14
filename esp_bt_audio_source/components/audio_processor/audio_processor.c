@@ -756,29 +756,14 @@ esp_err_t audio_processor_play_wav(const char* path)
     ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");
 
     esp_err_t status = ESP_OK;
-    bool resume_pipeline = false;
 
-    if (s_is_running) {
-        status = audio_processor_stop();
-        if (status != ESP_OK) {
-            ESP_LOGE(TAG, "audio_processor_play_wav: stop failed (%d %s)", (int)status, esp_err_to_name(status));
-            printf("DIAG-APLAY-FAIL: stop-failed %d\n", (int)status);
-            goto cleanup;
-        }
-        resume_pipeline = true;
-    }
-
-    esp_err_t reinit_ret = audio_processor_reinit_i2s("play_wav");
-    if (reinit_ret != ESP_OK) {
-        status = reinit_ret;
-        goto cleanup;
-    }
-
+    /* Do not stop/restart the I2S/capture pipeline for PLAY. PLAY runs on its
+     * own path; just clear existing queue content and beep state. */
     (void)audio_processor_drain_audio_queue();
     audio_processor_beep_reset();
 
     wav_playback_begin();
-    s_wav_resume_pipeline = resume_pipeline;
+    s_wav_resume_pipeline = false;
 
     status = play_manager_play_wav(path);
     if (status != ESP_OK) {
@@ -798,17 +783,6 @@ esp_err_t audio_processor_play_wav(const char* path)
     status = ESP_OK;
 
 cleanup:
-    if (status != ESP_OK && resume_pipeline) {
-        esp_err_t restart_ret = audio_processor_start();
-        if (restart_ret != ESP_OK) {
-            ESP_LOGE(TAG, "audio_processor_play_wav: failed to restart pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
-            if (status == ESP_OK) {
-                status = restart_ret;
-            }
-        }
-        s_wav_resume_pipeline = false;
-    }
-
     if (status == ESP_OK) {
         /* Only arm the synth keepalive once real playback has succeeded. */
         s_keepalive_armed = true;
