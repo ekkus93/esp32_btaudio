@@ -169,12 +169,7 @@ void wav_playback_complete_if_idle(void)
              s_force_synth ? "ENABLED" : "DISABLED",
              s_beep_remaining_bytes);
 
-    if (restart_needed && s_is_initialized) {
-        esp_err_t restart_ret = audio_processor_start();
-        if (restart_ret != ESP_OK) {
-            ESP_LOGE(TAG, "wav_playback_complete_if_idle: failed to resume pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
-        }
-    }
+    (void)restart_needed;
 }
 
 void wav_refill_from_manager(void)
@@ -194,13 +189,7 @@ void wav_refill_from_manager(void)
         ESP_LOGE(TAG, "wav_refill_from_manager: fill failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));
         play_manager_abort(false);
         wav_playback_abort(__func__);
-        if (s_wav_resume_pipeline && s_is_initialized) {
-            esp_err_t restart_ret = audio_processor_start();
-            if (restart_ret != ESP_OK) {
-                ESP_LOGE(TAG, "wav_refill_from_manager: failed to resume pipeline (%d %s)", (int)restart_ret, esp_err_to_name(restart_ret));
-            }
-            s_wav_resume_pipeline = false;
-        }
+        s_wav_resume_pipeline = false;
     }
 }
 

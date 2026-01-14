@@ -76,6 +76,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* Allow BEEP even when the I2S manager is running; any stale capture
+     * content will be drained when the beep is enqueued. */
+
     bool beep_active = (beep_manager_get_state() == BEEP_STATE_PLAYING);
     portENTER_CRITICAL(&s_beep_lock);
     if (!beep_active && s_beep_remaining_bytes > 0) {

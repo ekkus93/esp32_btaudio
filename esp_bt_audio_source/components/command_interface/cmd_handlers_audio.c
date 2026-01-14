@@ -189,10 +189,16 @@ cmd_status_t cmd_handle_start(const cmd_context_t *ctx)
     }
     cmd_send_response("OK", "START", "STARTED", NULL);
 #elif defined(UNIT_TEST)
-    if (bt_manager_start_audio() == 0)
+    esp_err_t start_res = audio_processor_start();
+    int bt_res = bt_manager_start_audio();
+    if (bt_res == 0 && (start_res == ESP_OK || start_res == ESP_ERR_INVALID_STATE)) {
         cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
-    else
-        cmd_send_response("ERR", "START", "FAILED", NULL);
+    } else {
+        const char *err = (start_res != ESP_OK && start_res != ESP_ERR_INVALID_STATE)
+                              ? esp_err_to_name(start_res)
+                              : "FAILED";
+        cmd_send_response("ERR", "START", err, NULL);
+    }
 #else
     cmd_send_response("OK", "START", "MOCK_STARTED", NULL);
 #endif

@@ -420,6 +420,7 @@ def aggregate_summary(root: Path) -> dict:
     alt_run_pat = re.compile(r"Tests\s*run\s*:\s*(\d+)", re.IGNORECASE)
     alt_failed_pat = re.compile(r"Tests\s*failed\s*:\s*(\d+)", re.IGNORECASE)
     alt_passed_pat = re.compile(r"Tests\s*passed\s*:\s*(\d+)", re.IGNORECASE)
+    unity_start_pat = re.compile(r"-----\s*UNITY(?:\s+TEST)?(?:\s+START)?", re.IGNORECASE)
 
     def parse_log(path: Path) -> dict | None:
         try:
@@ -427,6 +428,15 @@ def aggregate_summary(root: Path) -> dict:
             txt = path.read_text(errors="ignore")
         except Exception:
             return None
+
+        try:
+            # If a log captures multiple test restarts, only parse the last Unity block
+            # to avoid inflating PASS/FAIL counts from earlier attempts.
+            starts = list(unity_start_pat.finditer(txt))
+            if starts:
+                txt = txt[starts[-1].start():]
+        except Exception:
+            pass
 
         m = canonical_pat.search(txt)
         if m:

@@ -202,6 +202,10 @@ esp_err_t audio_processor_start(void)
         return ESP_OK;
     }
 
+    /* I2S capture has highest priority. Stop any ongoing WAV/BEED playback
+     * and clear queued audio so capture owns the pipeline. */
+    (void)audio_processor_drain_audio_queue();
+
     esp_err_t ret = i2s_manager_start();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);
@@ -725,6 +729,9 @@ esp_err_t audio_processor_play_wav(const char* path)
             (int)s_is_initialized, (int)s_is_running, queue_free, path ? path : "(null)");
     if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
     if (!path) return ESP_ERR_INVALID_ARG;
+
+    /* PLAY is permitted even if the I2S manager is running; clear queues
+     * below to avoid stale capture/beep data contaminating output. */
 
     /* Drop any synthetic keepalive so WAV output is audible immediately. */
     if (s_force_synth) {
