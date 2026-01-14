@@ -17,6 +17,10 @@
 
 static const char *TAG = "play_manager";
 
+#define PLAY_HIGH_WATER_PCT       90U
+#define PLAY_WAIT_FOR_FREE_MS     5U
+#define PLAY_ENQUEUE_TIMEOUT_MS   500U
+
 typedef struct {
     bool initialized;
     bool active;
@@ -184,6 +188,13 @@ bool play_manager_is_active(void)
 static esp_err_t enqueue_buffer(const uint8_t *buf, size_t len, audio_source_tag_t tag, size_t frame_bytes)
 {
     size_t offset = 0;
+    const TickType_t start_ticks = xTaskGetTickCount();
+    const TickType_t max_wait_ticks = pdMS_TO_TICKS(PLAY_ENQUEUE_TIMEOUT_MS);
+    TickType_t retry_delay_ticks = pdMS_TO_TICKS(PLAY_WAIT_FOR_FREE_MS);
+    if (retry_delay_ticks == 0) {
+        retry_delay_ticks = 1;
+    }
+
     while (offset < len) {
         size_t chunk = len - offset;
         if (chunk > AUDIO_CHUNK_BLOCK_BYTES) {
@@ -196,6 +207,14 @@ static esp_err_t enqueue_buffer(const uint8_t *buf, size_t len, audio_source_tag
             chunk = aligned;
         }
         if (chunk == 0) break;
+        while (audio_descriptor_used() >= (AUDIO_CHUNK_POOL_BLOCKS * PLAY_HIGH_WATER_PCT) / 100U) {
+            TickType_t elapsed = xTaskGetTickCount() - start_ticks;
+            if (elapsed >= max_wait_ticks) {
+                break;
+            }
+            vTaskDelay(retry_delay_ticks);
+        }
+
         if (!audio_chunk_enqueue_bytes(buf + offset, chunk, tag)) {
             return (offset > 0) ? ESP_OK : ESP_FAIL;
         }

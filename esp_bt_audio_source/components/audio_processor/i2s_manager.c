@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
 	bool initialized;
 	bool running;
+	bool i2s_enabled;
 	audio_config_t cfg;
 	i2s_manager_buffers_t bufs;
 #ifdef ESP_PLATFORM
@@ -67,6 +68,7 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 		i2s_channel_disable(s_mgr.i2s_rx);
 		i2s_del_channel(s_mgr.i2s_rx);
 		s_mgr.i2s_rx = NULL;
+		s_mgr.i2s_enabled = false;
 	}
 
 	i2s_chan_config_t chan_cfg = {
@@ -297,6 +299,7 @@ esp_err_t i2s_manager_start(void)
 #ifdef ESP_PLATFORM
 	if (s_mgr.i2s_rx != NULL) {
 		ESP_RETURN_ON_ERROR(i2s_channel_enable(s_mgr.i2s_rx), TAG, "i2s_channel_enable failed");
+		s_mgr.i2s_enabled = true;
 	}
 #endif
 
@@ -316,8 +319,9 @@ esp_err_t i2s_manager_stop(void)
 	if (!s_mgr.initialized) return ESP_ERR_INVALID_STATE;
 	s_mgr.running = false;
 #ifdef ESP_PLATFORM
-	if (s_mgr.i2s_rx != NULL) {
+	if (s_mgr.i2s_rx != NULL && s_mgr.i2s_enabled) {
 		i2s_channel_disable(s_mgr.i2s_rx);
+		s_mgr.i2s_enabled = false;
 	}
 #endif
 	for (int i = 0; i < 5 && s_mgr.task != NULL; ++i) {

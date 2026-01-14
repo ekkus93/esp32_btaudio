@@ -147,6 +147,12 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         printf("DIAG-BEEP-DONE\n");
     }
 
+    /* If a WAV is pending but nothing is queued yet, try to prefill before the
+     * BT stack pulls and underruns. */
+    if (play_manager_pending_bytes() > 0 && audio_descriptor_used() == 0) {
+        wav_refill_from_manager();
+    }
+
     if (!bt_manager_is_a2dp_connected()) {
         bool wav_active = play_manager_is_active() || play_manager_pending_bytes() > 0 || s_wav_playback_active;
         s_force_synth = false;
@@ -187,6 +193,13 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         if (acq != ESP_OK) {
             /* Keepalive synth: when armed and queue is empty, generate audio
              * directly into the caller's buffer until the request is filled. */
+            if (play_manager_pending_bytes() > 0 && audio_descriptor_used() == 0) {
+                wav_refill_from_manager();
+                acq = audio_processor_acquire_chunk_internal(&chunk, pdMS_TO_TICKS(10));
+                if (acq == ESP_OK) {
+                    /* fall through to normal copy path */
+                }
+            }
             if (s_keepalive_armed && bytes_written < size) {
                 s_force_synth = true;
                 size_t remaining = size - bytes_written;
