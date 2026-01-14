@@ -109,6 +109,10 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 
     /* Producer pacing is handled inside beep_manager; we no longer reject
      * requests just because the queue is currently full. */
+    /* Guarantee a clean slate for the tone: drop any queued audio before
+     * enqueueing the beep so it always starts from an empty queue. */
+    (void)audio_processor_drain_audio_queue();
+
     uint32_t channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
     uint32_t sample_bytes = (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) ? 4U : 2U;
     uint64_t bytes_per_ms = ((uint64_t)s_audio_config.sample_rate * (uint64_t)channels * (uint64_t)sample_bytes) / 1000ULL;
