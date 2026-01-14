@@ -90,10 +90,15 @@ esp_err_t audio_processor_acquire_chunk_internal(audio_chunk_t *out_chunk, TickT
     size_t to_copy = out_chunk->len;
     bool is_beep = (out_chunk->tag == AUDIO_SOURCE_TAG_BEEP);
     if (is_beep) {
+        bool was_active = (s_beep_remaining_bytes > 0);
         if (s_beep_remaining_bytes > to_copy) {
             s_beep_remaining_bytes -= to_copy;
         } else {
             s_beep_remaining_bytes = 0;
+        }
+        if (was_active && s_beep_remaining_bytes == 0) {
+            ESP_LOGI(TAG, "audio_processor_beep: completed (drained)");
+            printf("DIAG-BEEP-DONE\n");
         }
     } else {
         if (s_audio_config.mute) {
@@ -134,6 +139,14 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (s_beep_remaining_bytes > 0 && audio_descriptor_used() == 0) {
+        /* Failsafe: if the queue is empty but the counter never drained, clear
+         * the beep state and emit completion so commands unblock. */
+        s_beep_remaining_bytes = 0;
+        ESP_LOGI(TAG, "audio_processor_beep: completed (queue empty)");
+        printf("DIAG-BEEP-DONE\n");
+    }
+
     if (!bt_manager_is_a2dp_connected()) {
         bool wav_active = play_manager_is_active() || play_manager_pending_bytes() > 0 || s_wav_playback_active;
         s_force_synth = false;
@@ -170,8 +183,27 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 
     while (bytes_written < size) {
         audio_chunk_t chunk = {0};
-        esp_err_t acq = audio_processor_acquire_chunk_internal(&chunk, 0);
+        esp_err_t acq = audio_processor_acquire_chunk_internal(&chunk, pdMS_TO_TICKS(25));
         if (acq != ESP_OK) {
+            /* Keepalive synth: when armed and queue is empty, generate audio
+             * directly into the caller's buffer until the request is filled. */
+            if (s_keepalive_armed && bytes_written < size) {
+                s_force_synth = true;
+                size_t remaining = size - bytes_written;
+                size_t gen = synth_manager_generate_audio(buffer + bytes_written,
+                                                         remaining,
+                                                         &s_audio_config,
+                                                         &s_force_synth,
+                                                         &s_beep_lock);
+                if (gen > remaining) {
+                    gen = remaining;
+                }
+                bytes_written += gen;
+                if (bytes_written < size) {
+                    /* Loop to top and try to fill more (either synth or queue). */
+                    continue;
+                }
+            }
             break;
         }
 
@@ -195,6 +227,21 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         bytes_written += to_copy;
 
         audio_processor_release_chunk(&chunk);
+    }
+
+    /* If still short and keepalive armed, synthesize the remainder directly. */
+    if (bytes_written < size && s_keepalive_armed) {
+        s_force_synth = true;
+        size_t remaining = size - bytes_written;
+        size_t gen = synth_manager_generate_audio(buffer + bytes_written,
+                                                 remaining,
+                                                 &s_audio_config,
+                                                 &s_force_synth,
+                                                 &s_beep_lock);
+        if (gen > remaining) {
+            gen = remaining;
+        }
+        bytes_written += gen;
     }
 
     *bytes_read = bytes_written;

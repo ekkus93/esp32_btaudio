@@ -12,10 +12,34 @@
 #include "play_manager.h"
 #include "driver/i2s_std.h"
 
+/* Internal state needed for stale-beep regression checks. */
+extern size_t s_beep_remaining_bytes;
+
 #define I2S_SAMPLE_RATE AUDIO_SAMPLE_RATE_44K
 #define I2S_BIT_DEPTH   AUDIO_BIT_DEPTH_16
 #define I2S_CHANNELS    AUDIO_CHANNEL_STEREO
 #define I2S_PORT        I2S_NUM_0
+
+/* Optional speed-run scaling for test delays. Override by defining
+ * TEST_APP_AUDIO_WAIT_DIV>1 to divide wait durations (ceil-divide). */
+#ifndef TEST_APP_AUDIO_WAIT_DIV
+#define TEST_APP_AUDIO_WAIT_DIV 1U
+#endif
+
+static TickType_t test_wait_ticks(uint32_t ms)
+{
+    uint32_t div = TEST_APP_AUDIO_WAIT_DIV ? TEST_APP_AUDIO_WAIT_DIV : 1U;
+    uint32_t scaled = (ms + div - 1U) / div;
+    if (scaled == 0U) {
+        scaled = 1U;
+    }
+    return pdMS_TO_TICKS(scaled);
+}
+
+static void test_delay_ms(uint32_t ms)
+{
+    vTaskDelay(test_wait_ticks(ms));
+}
 
 static const char *TAG = "AUDIO_PROCESSOR_TEST";
 
@@ -185,7 +209,7 @@ static void test_audio_start_stop(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    test_delay_ms(100);
 
     ret = audio_processor_stop();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -211,7 +235,7 @@ static void test_audio_read(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    test_delay_ms(500);
 
     uint8_t buffer[1024];
     size_t bytes_read = 0;
@@ -243,7 +267,7 @@ static void test_audio_stats(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    test_delay_ms(500);
 
     audio_stats_t stats;
     ret = audio_processor_get_stats(&stats);
@@ -333,7 +357,7 @@ static void test_audio_i2s_config(void)
         ret = audio_processor_start();
         TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        test_delay_ms(100);
 
         ret = audio_processor_stop();
         TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -360,7 +384,7 @@ static void test_audio_buffer_management(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    test_delay_ms(500);
 
     audio_stats_t stats;
     ret = audio_processor_get_stats(&stats);
@@ -371,7 +395,7 @@ static void test_audio_buffer_management(void)
     for (int i = 0; i < 5; ++i) {
         ret = audio_processor_read(buffer, sizeof(buffer), &bytes_read);
         TEST_ASSERT_EQUAL(ESP_OK, ret);
-        vTaskDelay(pdMS_TO_TICKS(10));
+        test_delay_ms(10);
     }
 
     ret = audio_processor_stop();
@@ -388,6 +412,7 @@ static void test_play_command_requires_a2dp_connection(void);
 static void test_keepalive_read_suppressed_when_a2dp_disconnected(void);
 static void test_keepalive_beep_then_play_recovers(void);
 static void test_beep_command_clears_busy_after_draining(void);
+static void test_beep_busy_clears_when_manager_stopped_and_queue_empty(void);
 static void test_beep_synth_overlap_busy_and_recovers(void);
 static void test_wav_resumes_after_a2dp_reconnect(void);
 static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect(void);
@@ -421,6 +446,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_keepalive_beep_then_play_recovers);
     RUN_TEST(test_beep_synth_overlap_busy_and_recovers);
     RUN_TEST(test_beep_command_clears_busy_after_draining);
+    RUN_TEST(test_beep_busy_clears_when_manager_stopped_and_queue_empty);
     RUN_TEST(test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconnect);
     RUN_TEST(test_wav_pause_resume_after_disconnect_restarts_playback);
     RUN_TEST(test_play_wav_failure_restores_pipeline);
@@ -480,7 +506,7 @@ static void test_audio_processor_play_wav_api(void)
                 break;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(150));
+        test_delay_ms(150);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "audio_processor_play_wav did not enqueue data");
@@ -555,7 +581,7 @@ static void test_play_wav_command(void)
             ESP_LOGW(TAG, "test_play_wav_command: audio_processor_read returned %d (attempt %d)", (int)ret, attempt);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(150));
+        test_delay_ms(150);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "PLAY did not produce audio bytes within timeout");
@@ -595,7 +621,7 @@ static void test_play_command_requires_a2dp_connection(void)
     TEST_ASSERT_NOT_EQUAL_MESSAGE(CMD_SUCCESS, exec_status, "PLAY should fail when A2DP is disconnected");
 
     /* Allow any unexpected worker activity to run, then confirm nothing was enqueued. */
-    vTaskDelay(pdMS_TO_TICKS(100));
+    test_delay_ms(100);
 
     uint8_t buf[64];
     size_t bytes_read = 0;
@@ -636,7 +662,7 @@ static void test_wav_resumes_after_a2dp_reconnect(void)
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
-    vTaskDelay(pdMS_TO_TICKS(150));
+    test_delay_ms(150);
     size_t pending_before = play_manager_pending_bytes();
     TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "WAV should enqueue data before disconnect");
 
@@ -669,7 +695,7 @@ static void test_wav_resumes_after_a2dp_reconnect(void)
             saw_wav = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(120));
+        test_delay_ms(120);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_wav, "WAV did not resume after A2DP reconnect");
@@ -789,7 +815,7 @@ static void test_drain_stops_play_manager_and_clears_queue(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     /* Allow the play manager to enqueue initial WAV data before draining. */
-    vTaskDelay(pdMS_TO_TICKS(50));
+    test_delay_ms(50);
 
     TEST_ASSERT_TRUE_MESSAGE(play_manager_is_active(), "play_manager inactive after PLAY");
     size_t pending_before = play_manager_pending_bytes();
@@ -853,7 +879,7 @@ static void test_fallback_stop_resume_preserves_tag_alignment(void)
             saw_wav = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(120));
+        test_delay_ms(120);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_wav, "PLAY did not enqueue after fallback stop/resume");
@@ -887,13 +913,13 @@ static void test_interleaved_play_stop_beep_sequence(void)
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
-    vTaskDelay(pdMS_TO_TICKS(150));
+    test_delay_ms(150);
     TEST_ASSERT_TRUE(audio_processor_is_wav_active());
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
 
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    vTaskDelay(pdMS_TO_TICKS(50));
+    test_delay_ms(50);
     TEST_ASSERT_FALSE(audio_processor_is_wav_active());
 
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
@@ -916,7 +942,7 @@ static void test_interleaved_play_stop_beep_sequence(void)
             ok = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(120));
+        test_delay_ms(120);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "interleaved PLAY did not enqueue after BEEP");
@@ -960,7 +986,7 @@ static void test_beep_command_clears_busy_after_draining(void)
                 break;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(60));
+        test_delay_ms(60);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(drained, "BEEP did not produce readable data");
@@ -980,10 +1006,39 @@ static void test_beep_command_clears_busy_after_draining(void)
             second_beep_enqueued = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(60));
+        test_delay_ms(60);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(second_beep_enqueued, "Second BEEP should enqueue after prior drain");
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
+    bt_manager_mock_connection_opened(NULL);
+}
+
+static void test_beep_busy_clears_when_manager_stopped_and_queue_empty(void)
+{
+    ensure_i2s_stopped();
+    bt_manager_mock_connection_opened(NULL);
+
+    audio_config_t config = {
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 70,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
+
+    /* Simulate a stale beep counter with an empty queue and no active beep. */
+    (void)audio_processor_drain_audio_queue();
+    s_beep_remaining_bytes = 128;
+
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+    TEST_ASSERT_EQUAL_UINT32(0U, (uint32_t)s_beep_remaining_bytes);
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
@@ -1025,7 +1080,7 @@ static void test_keepalive_beep_then_play_recovers(void)
             saw_beep = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_beep, "BEEP under synth keepalive did not produce data");
@@ -1043,7 +1098,7 @@ static void test_keepalive_beep_then_play_recovers(void)
             saw_wav = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(120));
+        test_delay_ms(120);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_wav, "PLAY did not enqueue after keepalive/beep sequence");
@@ -1080,7 +1135,7 @@ static void test_beep_synth_overlap_busy_and_recovers(void)
 
     /* Toggle synth mode during the beep to ensure coexistence does not hang. */
     audio_processor_set_synth_mode(false);
-    vTaskDelay(pdMS_TO_TICKS(30));
+    test_delay_ms(30);
     audio_processor_set_synth_mode(true);
 
     /* Second beep should return busy while the first beep is active. */
@@ -1097,12 +1152,12 @@ static void test_beep_synth_overlap_busy_and_recovers(void)
             saw_beep = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(40));
+        test_delay_ms(40);
     }
     TEST_ASSERT_TRUE_MESSAGE(saw_beep, "beep audio did not flow under synth toggles");
 
     /* Allow the first beep to complete and verify busy clears. */
-    vTaskDelay(pdMS_TO_TICKS(120));
+    test_delay_ms(120);
     (void)audio_processor_drain_audio_queue();
     audio_processor_set_synth_mode(false);
 
@@ -1117,7 +1172,7 @@ static void test_beep_synth_overlap_busy_and_recovers(void)
             saw_second = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(40));
+        test_delay_ms(40);
     }
     TEST_ASSERT_TRUE_MESSAGE(saw_second, "second beep did not enqueue after busy cleared");
 
@@ -1153,12 +1208,12 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
-    vTaskDelay(pdMS_TO_TICKS(150));
+    test_delay_ms(150);
     TEST_ASSERT_TRUE(audio_processor_is_wav_active());
 
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    vTaskDelay(pdMS_TO_TICKS(50));
+    test_delay_ms(50);
     TEST_ASSERT_FALSE(audio_processor_is_wav_active());
 
     /* Restart the pipeline and immediately transition to a beep. */
@@ -1167,7 +1222,7 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
     esp_err_t ret = audio_processor_beep(50);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    vTaskDelay(pdMS_TO_TICKS(80));
+    test_delay_ms(80);
 
     uint8_t buf[128];
     size_t bytes_read = 0;
@@ -1188,7 +1243,7 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
                 break;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(40));
+        test_delay_ms(40);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_data, "beep after STOP did not produce data");
@@ -1254,7 +1309,7 @@ static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconn
             saw_data = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_data, "BEEP after reconnect did not produce data");
@@ -1303,7 +1358,7 @@ static void test_wav_pause_resume_after_disconnect_restarts_playback(void)
             saw_wav = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
     TEST_ASSERT_TRUE_MESSAGE(saw_wav, "Initial WAV did not enqueue before pause/disconnect");
 
@@ -1335,7 +1390,7 @@ static void test_wav_pause_resume_after_disconnect_restarts_playback(void)
             resumed_wav = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(120));
+        test_delay_ms(120);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(resumed_wav, "WAV did not resume after reconnect/start");
@@ -1384,13 +1439,13 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
             saw_pre_toggle = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_pre_toggle, "WAV did not enqueue before synth toggle");
 
     audio_processor_set_synth_mode(true);
-    vTaskDelay(pdMS_TO_TICKS(80));
+    test_delay_ms(80);
 
     bool saw_post_toggle = false;
     for (int attempt = 0; attempt < 6; ++attempt) {
@@ -1400,13 +1455,13 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
             saw_post_toggle = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_post_toggle, "Audio did not continue after enabling synth mode");
 
     audio_processor_set_synth_mode(false);
-    vTaskDelay(pdMS_TO_TICKS(80));
+    test_delay_ms(80);
 
     bool saw_after_restore = false;
     for (int attempt = 0; attempt < 6; ++attempt) {
@@ -1416,7 +1471,7 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
             saw_after_restore = true;
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        test_delay_ms(80);
     }
 
     TEST_ASSERT_TRUE_MESSAGE(saw_after_restore, "Audio did not resume after disabling synth mode");

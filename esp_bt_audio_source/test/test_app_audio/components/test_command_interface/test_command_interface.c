@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include "esp_err.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "audio_queue.h"
 
 // Pull in the test app's forwarder to the production audio processor API so
 // this stub stays in sync with the real implementation used by the tests.
@@ -18,6 +21,61 @@ esp_err_t audio_processor_stop(void);
 esp_err_t audio_processor_beep(uint32_t duration_ms);
 
 static bool s_bt_connected = true;
+static TaskHandle_t s_beep_drain_task = NULL;
+static volatile bool s_beep_drain_stop = false;
+
+static void beep_drain_task(void *arg)
+{
+    (void)arg;
+    uint8_t buf[256];
+    const size_t high_water = (AUDIO_CHUNK_POOL_BLOCKS * 85U) / 100U;
+    TickType_t idle_since = xTaskGetTickCount();
+
+    while (!s_beep_drain_stop) {
+        size_t used = audio_descriptor_used();
+        bool beep_active = audio_processor_is_beep_active();
+
+        if (used >= high_water || beep_active) {
+            size_t bytes_read = 0;
+            (void)audio_processor_read(buf, sizeof(buf), &bytes_read);
+            idle_since = xTaskGetTickCount();
+            vTaskDelay(pdMS_TO_TICKS(2));
+            continue;
+        }
+
+        if ((xTaskGetTickCount() - idle_since) > pdMS_TO_TICKS(200)) {
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+
+    s_beep_drain_task = NULL;
+    vTaskDelete(NULL);
+}
+
+static void start_beep_drain_task(void)
+{
+    if (s_beep_drain_task != NULL) {
+        return;
+    }
+    s_beep_drain_stop = false;
+    BaseType_t ok = xTaskCreate(beep_drain_task, "beep_drain", 2048, NULL, tskIDLE_PRIORITY + 1, &s_beep_drain_task);
+    if (ok != pdPASS) {
+        s_beep_drain_task = NULL;
+    }
+}
+
+static void stop_beep_drain_task(void)
+{
+    if (s_beep_drain_task == NULL) {
+        return;
+    }
+    s_beep_drain_stop = true;
+    for (int i = 0; i < 5 && s_beep_drain_task != NULL; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
 
 bool bt_manager_is_a2dp_connected(void)
 {
@@ -132,7 +190,14 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
             ESP_LOGW("TEST_CMD_IF", "BEEP rejected: A2DP not connected");
             return CMD_ERROR_UNKNOWN;
         }
+        /* Ensure the pipeline is ready to consume the long (10s) test tone so
+         * the enqueue path does not fail on a full queue when the app is idle.
+         * This mirrors production, where the pipeline is normally running. */
+        (void)audio_processor_drain_audio_queue();
+        (void)audio_processor_start();
+        start_beep_drain_task();
         esp_err_t bret = audio_processor_beep(10000);
+        stop_beep_drain_task();
         if (bret == ESP_OK) {
             return CMD_SUCCESS;
         }

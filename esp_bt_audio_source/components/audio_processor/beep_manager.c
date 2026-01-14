@@ -26,6 +26,9 @@ static const char *TAG = "beep_manager";
 #define BEEP_FADE_MS             10U
 #define BEEP_DEFAULT_FREQ_HZ     1000.0
 #define BEEP_DEFAULT_AMPLITUDE   7500U
+#define BEEP_HIGH_WATER_PCT      90U
+#define BEEP_WAIT_FOR_FREE_MS    5U
+#define BEEP_ENQUEUE_TIMEOUT_MARGIN_MS 500U
 
 #ifdef ESP_PLATFORM
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -73,6 +76,21 @@ static double fade_env(size_t frame_idx, size_t total_frames, size_t fade_frames
 	}
 
 	return 1.0;
+}
+
+static size_t descriptor_free_count(void)
+{
+	size_t used = audio_descriptor_used();
+	if (used >= AUDIO_CHUNK_POOL_BLOCKS) {
+		return 0;
+	}
+	return AUDIO_CHUNK_POOL_BLOCKS - used;
+}
+
+static bool descriptor_above_high_water(void)
+{
+	const size_t high_water = (AUDIO_CHUNK_POOL_BLOCKS * BEEP_HIGH_WATER_PCT) / 100U;
+	return audio_descriptor_used() >= high_water;
 }
 
 esp_err_t beep_manager_init(void)
@@ -158,6 +176,15 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 	uint16_t amplitude_16 = (req->amplitude > 0U) ? req->amplitude : BEEP_DEFAULT_AMPLITUDE;
 	uint32_t amplitude_32 = ((uint32_t)amplitude_16) << 16;
 
+	/* Pace generation so we don't overrun the queue: wait for free descriptors
+	 * before each enqueue, bounded by a deadline slightly longer than the tone. */
+	const TickType_t start_ticks = xTaskGetTickCount();
+	TickType_t retry_delay_ticks = pdMS_TO_TICKS(BEEP_WAIT_FOR_FREE_MS);
+	if (retry_delay_ticks == 0) {
+		retry_delay_ticks = 1;
+	}
+	const TickType_t max_wait_ticks = pdMS_TO_TICKS(duration_ms + BEEP_ENQUEUE_TIMEOUT_MARGIN_MS);
+
 	const uint32_t sample_rate = (uint32_t)cfg->sample_rate;
 	if (sample_rate == 0U) {
 		ESP_LOGW(TAG, "invalid sample rate");
@@ -199,6 +226,7 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 	uint64_t frames_generated = 0;
 	uint64_t bytes_enqueued = 0;
 	bool enqueued_any = false;
+	bool enqueue_failed = false;
 
 	while (frames_generated < total_frames) {
 		if (__atomic_load_n(&s_stop_requested, __ATOMIC_RELAXED)) {
@@ -234,25 +262,55 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 
 		size_t chunk_bytes = frames_this * frame_bytes;
 		uint16_t tag_id = __atomic_fetch_add(&s_tag_id, 1, __ATOMIC_SEQ_CST);
-		if (!audio_chunk_enqueue_bytes_with_id(chunk, chunk_bytes, AUDIO_SOURCE_TAG_BEEP, tag_id)) {
+		/* Wait until the queue drops below the high-water mark, then attempt
+		 * enqueue; if it still fails, retry until deadline/stop. */
+		bool enqueued = false;
+		while (!enqueued) {
+			while (descriptor_free_count() == 0 || descriptor_above_high_water()) {
+				if (__atomic_load_n(&s_stop_requested, __ATOMIC_RELAXED)) {
+					break;
+				}
+				TickType_t elapsed = xTaskGetTickCount() - start_ticks;
+				if (elapsed >= max_wait_ticks) {
+					break;
+				}
+				vTaskDelay(retry_delay_ticks);
+			}
+
+			if (__atomic_load_n(&s_stop_requested, __ATOMIC_RELAXED)) {
+				break;
+			}
+
+			enqueued = audio_chunk_enqueue_bytes_with_id(chunk, chunk_bytes, AUDIO_SOURCE_TAG_BEEP, tag_id);
+			if (enqueued) {
+				break;
+			}
+
+			TickType_t elapsed = xTaskGetTickCount() - start_ticks;
+			if (elapsed >= max_wait_ticks) {
+				break;
+			}
+			vTaskDelay(retry_delay_ticks);
+		}
+
+		if (!enqueued) {
 			/* Diagnostic: show descriptor usage and a snapshot to aid debugging of
 			 * "no free blocks" enqueue failures. */
 			size_t used = audio_descriptor_used();
-			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u q_used=%u", (unsigned)tag_id, (unsigned)used);
-			{
-				audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
-				size_t captured = 0;
-				esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
-				if (sret == ESP_OK && captured > 0) {
-					for (size_t i = 0; i < captured; ++i) {
-						ESP_LOGI(TAG, "beep queued[%u] tag=%d id=%u len=%u", (unsigned)i, (int)snap[i].tag, (unsigned)snap[i].tag_id, (unsigned)snap[i].len);
-					}
-				} else if (sret != ESP_OK) {
-					ESP_LOGW(TAG, "beep: audio_descriptor_snapshot failed: %d", (int)sret);
-				} else {
-					ESP_LOGI(TAG, "beep: no queued descriptors captured (captured=0)");
+			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u q_used=%u (timed out)", (unsigned)tag_id, (unsigned)used);
+			audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
+			size_t captured = 0;
+			esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
+			if (sret == ESP_OK && captured > 0) {
+				for (size_t i = 0; i < captured; ++i) {
+					ESP_LOGI(TAG, "beep queued[%u] tag=%d id=%u len=%u", (unsigned)i, (int)snap[i].tag, (unsigned)snap[i].tag_id, (unsigned)snap[i].len);
 				}
+			} else if (sret != ESP_OK) {
+				ESP_LOGW(TAG, "beep: audio_descriptor_snapshot failed: %d", (int)sret);
+			} else {
+				ESP_LOGI(TAG, "beep: no queued descriptors captured (captured=0)");
 			}
+			enqueue_failed = true;
 			break;
 		}
 
@@ -275,6 +333,9 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 		*out_bytes_enqueued = (size_t)bytes_enqueued;
 	}
 	heap_caps_free(chunk);
+	if (enqueue_failed) {
+		return ESP_ERR_NO_MEM;
+	}
 	return enqueued_any ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
