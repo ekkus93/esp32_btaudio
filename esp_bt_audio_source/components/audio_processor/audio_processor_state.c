@@ -33,6 +33,7 @@ size_t s_beep_prefill_accum_bytes = 0;
 size_t s_beep_prefill_goal_bytes = 0;
 bool s_beep_restore_synth = false;
 bool s_trace_next_read_call = false;
+bool s_trace_read_until_beep_done = false;
 bool s_last_source_was_synth = false;
 unsigned s_i2s_read_ops = 0;
 unsigned s_i2s_total_read_bytes = 0;

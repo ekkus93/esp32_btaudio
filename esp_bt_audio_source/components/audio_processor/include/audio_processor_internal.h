@@ -94,6 +94,7 @@ extern size_t s_beep_prefill_accum_bytes;
 extern size_t s_beep_prefill_goal_bytes;
 extern bool s_beep_restore_synth;
 extern bool s_trace_next_read_call;
+extern bool s_trace_read_until_beep_done;
 extern bool s_last_source_was_synth;
 extern unsigned s_i2s_read_ops;
 extern unsigned s_i2s_total_read_bytes;

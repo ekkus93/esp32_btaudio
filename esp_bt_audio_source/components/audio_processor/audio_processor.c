@@ -285,6 +285,7 @@ esp_err_t audio_processor_deinit(void)
     s_wav_prev_valid = false;
     s_wav_prev_force_synth = false;
     s_trace_next_read_call = false;
+    s_trace_read_until_beep_done = false;
     s_diag_next_log_tick = 0;
     s_diag_last_conv_size = SIZE_MAX;
     s_diag_last_frame_bytes = SIZE_MAX;
