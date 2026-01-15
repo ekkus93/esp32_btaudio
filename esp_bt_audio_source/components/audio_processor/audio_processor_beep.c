@@ -56,6 +56,60 @@ static void drain_beep_buffer(void)
     beep_manager_stop();
 }
 
+/* Snapshot queue content when beep prep or enqueue fails to identify which
+ * producers are occupying the descriptors. Logged only on failure paths. */
+static void log_queue_snapshot_on_beep_failure(const char *reason)
+{
+    audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
+    size_t captured = 0;
+    esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
+    if (sret != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "audio_processor_beep: snapshot failed reason=%s err=%s used=%u",
+                 reason,
+                 esp_err_to_name(sret),
+                 (unsigned)audio_descriptor_used());
+        return;
+    }
+
+    size_t wav = 0, capture = 0, synth = 0, beep = 0, invalid = 0, other = 0;
+    for (size_t i = 0; i < captured; ++i) {
+        switch (snap[i].tag) {
+        case AUDIO_SOURCE_TAG_WAV:
+            ++wav;
+            break;
+        case AUDIO_SOURCE_TAG_CAPTURE:
+            ++capture;
+            break;
+        case AUDIO_SOURCE_TAG_SYNTH:
+            ++synth;
+            break;
+        case AUDIO_SOURCE_TAG_BEEP:
+            ++beep;
+            break;
+        case AUDIO_SOURCE_TAG_INVALID:
+            ++invalid;
+            break;
+        default:
+            ++other;
+            break;
+        }
+    }
+
+    ESP_LOGW(TAG,
+             "audio_processor_beep: queue snapshot reason=%s used=%u captured=%u tags"
+             " {wav=%u cap=%u synth=%u beep=%u invalid=%u other=%u}",
+             reason,
+             (unsigned)audio_descriptor_used(),
+             (unsigned)captured,
+             (unsigned)wav,
+             (unsigned)capture,
+             (unsigned)synth,
+             (unsigned)beep,
+             (unsigned)invalid,
+             (unsigned)other);
+}
+
 /* Ensure the audio queue is actually empty before enqueueing a beep. The
  * normal drain clears descriptors, but guard against any immediate refills
  * by waiting until the used count drops to zero or we hit the deadline. */
@@ -134,6 +188,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     (void)audio_processor_drain_audio_queue();
     bool queue_empty = wait_for_queue_empty(pdMS_TO_TICKS(200));
     if (!queue_empty && audio_descriptor_used() > 0) {
+        log_queue_snapshot_on_beep_failure("pre_beep_queue_not_empty");
         audio_queue_beep_exclusive_end();
         ESP_LOGW(TAG, "audio_processor_beep: queue not empty after wait (used=%u)", (unsigned)audio_descriptor_used());
         return ESP_ERR_TIMEOUT;
@@ -157,13 +212,16 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     beep_manager_set_done_callback(audio_processor_beep_done_cb, NULL);
     size_t bytes_enqueued = 0;
     esp_err_t ret = beep_manager_play_with_bytes(&req, &s_audio_config, &bytes_enqueued);
-    audio_queue_beep_exclusive_end();
     if (ret != ESP_OK || bytes_enqueued == 0) {
+        log_queue_snapshot_on_beep_failure("beep_play_failed");
+        audio_queue_beep_exclusive_end();
         portENTER_CRITICAL(&s_beep_lock);
         s_beep_remaining_bytes = 0;
         portEXIT_CRITICAL(&s_beep_lock);
         return (ret == ESP_OK) ? ESP_ERR_NO_MEM : ret;
     }
+
+    audio_queue_beep_exclusive_end();
 
     portENTER_CRITICAL(&s_beep_lock);
     s_beep_remaining_bytes = bytes_enqueued;

@@ -27,7 +27,10 @@ static const char *TAG = "beep_manager";
 #define BEEP_DEFAULT_FREQ_HZ     1000.0
 #define BEEP_DEFAULT_AMPLITUDE   7500U
 #define BEEP_HIGH_WATER_PCT      90U
+#define BEEP_LOW_WATER_PCT       70U
 #define BEEP_WAIT_FOR_FREE_MS    5U
+#define BEEP_POST_ENQ_MIN_DELAY_MS 2U
+#define BEEP_POST_ENQ_MAX_DELAY_MS 5U
 #define BEEP_ENQUEUE_TIMEOUT_MARGIN_MS 500U
 
 #ifdef ESP_PLATFORM
@@ -91,6 +94,12 @@ static bool descriptor_above_high_water(void)
 {
 	const size_t high_water = (AUDIO_CHUNK_POOL_BLOCKS * BEEP_HIGH_WATER_PCT) / 100U;
 	return audio_descriptor_used() >= high_water;
+}
+
+static bool descriptor_above_low_water(void)
+{
+	const size_t low_water = (AUDIO_CHUNK_POOL_BLOCKS * BEEP_LOW_WATER_PCT) / 100U;
+	return audio_descriptor_used() > low_water;
 }
 
 esp_err_t beep_manager_init(void)
@@ -316,6 +325,23 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 
 		frames_generated += frames_this;
 		bytes_enqueued += chunk_bytes;
+
+		/* Post-enqueue pacing: give A2DP a chance to drain and wait until the
+		 * queue drops below a low watermark or we hit a short delay budget. */
+		TickType_t pace_start = xTaskGetTickCount();
+		const TickType_t min_delay = pdMS_TO_TICKS(BEEP_POST_ENQ_MIN_DELAY_MS);
+		const TickType_t max_delay = pdMS_TO_TICKS(BEEP_POST_ENQ_MAX_DELAY_MS);
+		if (min_delay > 0) {
+			vTaskDelay(min_delay);
+		}
+		while (descriptor_above_low_water()) {
+			TickType_t elapsed = xTaskGetTickCount() - pace_start;
+			if (elapsed >= max_delay) {
+				break;
+			}
+			vTaskDelay(pdMS_TO_TICKS(1));
+		}
+
 		taskYIELD();
 		enqueued_any = true;
 	}
