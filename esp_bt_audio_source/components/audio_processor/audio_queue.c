@@ -20,6 +20,7 @@ static QueueHandle_t s_audio_queue = NULL;          /* holds audio_chunk_t descr
 static QueueHandle_t s_audio_block_free = NULL;     /* holds uint8_t* block pointers */
 static uint8_t *s_audio_block_pool = NULL;          /* contiguous heap buffer */
 static uint16_t s_tag_counter = 0;
+static _Atomic bool s_beep_exclusive = false;
 
 bool audio_chunk_pool_init(void)
 {
@@ -97,6 +98,10 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 		return false;
 	}
 
+	if (__atomic_load_n(&s_beep_exclusive, __ATOMIC_RELAXED) && tag != AUDIO_SOURCE_TAG_BEEP) {
+		return false;
+	}
+
 	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
 	uint8_t *block = audio_chunk_alloc_block(wait_ticks);
 	if (block == NULL) {
@@ -129,6 +134,10 @@ bool audio_chunk_enqueue_block(uint8_t *block, size_t len, audio_source_tag_t ta
 		return false;
 	}
 
+	if (__atomic_load_n(&s_beep_exclusive, __ATOMIC_RELAXED) && tag != AUDIO_SOURCE_TAG_BEEP) {
+		return false;
+	}
+
 	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
 	audio_chunk_t chunk = {
 		.data = block,
@@ -149,6 +158,10 @@ bool audio_chunk_enqueue_block(uint8_t *block, size_t len, audio_source_tag_t ta
 bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_source_tag_t tag, uint16_t tag_id)
 {
 	if (data == NULL || len == 0 || s_audio_queue == NULL) {
+		return false;
+	}
+
+	if (__atomic_load_n(&s_beep_exclusive, __ATOMIC_RELAXED) && tag != AUDIO_SOURCE_TAG_BEEP) {
 		return false;
 	}
 
@@ -261,4 +274,14 @@ esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t
 		*captured_out = captured;
 	}
 	return ESP_OK;
+}
+
+void audio_queue_beep_exclusive_begin(void)
+{
+	__atomic_store_n(&s_beep_exclusive, true, __ATOMIC_RELAXED);
+}
+
+void audio_queue_beep_exclusive_end(void)
+{
+	__atomic_store_n(&s_beep_exclusive, false, __ATOMIC_RELAXED);
 }

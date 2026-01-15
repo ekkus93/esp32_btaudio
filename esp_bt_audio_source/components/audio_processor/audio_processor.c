@@ -119,7 +119,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
      * audio processor. If allocations fail (common on DRAM-only boards) try
      * progressively smaller buffer sizes for all three work buffers so the
      * system can boot with reduced capability. */
-    size_t try_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
+        size_t try_work_bytes = (size_t)AUDIO_WORK_BUFFER_BYTES;
     s_runtime_work_bytes = 0U;
     /* Lower work buffer sizing on DRAM-only systems to reduce resident
      * DRAM usage (we'll still try progressively smaller sizes). */

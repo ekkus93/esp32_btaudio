@@ -3,6 +3,8 @@
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
+#include "audio_processor_internal.h"
+#undef TAG
 #include "command_interface.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1545,6 +1547,16 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
         return 0;
     }
 
+    if (s_trace_read_until_beep_done) {
+        size_t queue_used = audio_descriptor_used();
+        size_t queue_free = audio_processor_queue_free_bytes();
+         printf("TRACE-A2DP-CB: req=%ld queue_used=%zu queue_free=%zu beep_remaining=%zu\n",
+             (long)len,
+               queue_used,
+               queue_free,
+               s_beep_remaining_bytes);
+    }
+
     static audio_chunk_t s_pending = {0};
     static size_t s_pending_offset = 0;
     static bool s_pending_valid = false;
@@ -1594,6 +1606,10 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
         // Fallback: provide silence if no data available
         safe_memset(buf, 0, (size_t)len);
         return len;
+    }
+
+    if (s_trace_read_until_beep_done) {
+        printf("TRACE-A2DP-CB-RET: produced=%zu\n", produced);
     }
 
     return (int32_t)produced;

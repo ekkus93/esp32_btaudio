@@ -56,6 +56,23 @@ static void drain_beep_buffer(void)
     beep_manager_stop();
 }
 
+/* Ensure the audio queue is actually empty before enqueueing a beep. The
+ * normal drain clears descriptors, but guard against any immediate refills
+ * by waiting until the used count drops to zero or we hit the deadline. */
+static bool wait_for_queue_empty(TickType_t max_wait_ticks)
+{
+    const TickType_t start = xTaskGetTickCount();
+    while (audio_descriptor_used() > 0) {
+        audio_chunk_clear();
+        if ((xTaskGetTickCount() - start) >= max_wait_ticks) {
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+
+    return true;
+}
+
 esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 {
     AUDIO_PROC_LOG_ONCE();
@@ -109,9 +126,18 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 
     /* Producer pacing is handled inside beep_manager; we no longer reject
      * requests just because the queue is currently full. */
-    /* Guarantee a clean slate for the tone: drop any queued audio before
-     * enqueueing the beep so it always starts from an empty queue. */
+    /* Guarantee a clean slate for the tone: block other producers, clear
+     * queued audio, and wait until the queue is empty before enqueueing. */
+    audio_queue_beep_exclusive_begin();
+    s_force_synth = false;
+    s_keepalive_armed = false;
     (void)audio_processor_drain_audio_queue();
+    bool queue_empty = wait_for_queue_empty(pdMS_TO_TICKS(200));
+    if (!queue_empty && audio_descriptor_used() > 0) {
+        audio_queue_beep_exclusive_end();
+        ESP_LOGW(TAG, "audio_processor_beep: queue not empty after wait (used=%u)", (unsigned)audio_descriptor_used());
+        return ESP_ERR_TIMEOUT;
+    }
 
     uint32_t channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
     uint32_t sample_bytes = (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) ? 4U : 2U;
@@ -131,6 +157,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     beep_manager_set_done_callback(audio_processor_beep_done_cb, NULL);
     size_t bytes_enqueued = 0;
     esp_err_t ret = beep_manager_play_with_bytes(&req, &s_audio_config, &bytes_enqueued);
+    audio_queue_beep_exclusive_end();
     if (ret != ESP_OK || bytes_enqueued == 0) {
         portENTER_CRITICAL(&s_beep_lock);
         s_beep_remaining_bytes = 0;
@@ -202,6 +229,8 @@ void audio_processor_enable_next_beep_diag(void)
 {
     AUDIO_PROC_LOG_ONCE();
     s_dump_next_beep_diag = true;
+    s_trace_read_until_beep_done = true;
+    s_trace_next_read_call = true;
     ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");
 }
 

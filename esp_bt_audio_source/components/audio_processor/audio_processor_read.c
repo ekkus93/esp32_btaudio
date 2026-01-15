@@ -43,6 +43,29 @@ static size_t residual_store(const uint8_t *src, size_t len,
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced)
 {
+    const char *tag = (phase != NULL) ? phase : "done";
+    size_t audio_residual = 0;
+    if (s_audio_rb_residual_len > s_audio_rb_residual_pos) {
+        audio_residual = s_audio_rb_residual_len - s_audio_rb_residual_pos;
+    }
+    size_t free_bytes = audio_processor_queue_free_bytes();
+
+    if (s_trace_read_until_beep_done) {
+        /* Emit an explicit trace line so monitor logs clearly show reader activity during a beep. */
+        printf("TRACE-READ: phase=%s req=%zu produced=%zu beep_remaining=%zu queue_free=%zu underruns=%u overruns=%u\n",
+               tag,
+               requested,
+               produced,
+               s_beep_remaining_bytes,
+               free_bytes,
+               (unsigned)s_audio_stats.buffer_underruns,
+               (unsigned)s_audio_stats.buffer_overruns);
+
+        if (s_beep_remaining_bytes == 0) {
+            s_trace_read_until_beep_done = false;
+        }
+    }
+
     if (esp_log_level_get(TAG) < ESP_LOG_INFO) {
         return;
     }
@@ -53,13 +76,6 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
                  (unsigned)s_i2s_total_read_bytes,
                  (unsigned)s_i2s_timeout_count);
     }
-
-    const char *tag = (phase != NULL) ? phase : "done";
-    size_t audio_residual = 0;
-    if (s_audio_rb_residual_len > s_audio_rb_residual_pos) {
-        audio_residual = s_audio_rb_residual_len - s_audio_rb_residual_pos;
-    }
-    size_t free_bytes = audio_processor_queue_free_bytes();
 
     ESP_LOGI(TAG,
              "audio_processor_read[%s]: req=%zu produced=%zu mute=%d beep_remaining=%zu audio_residual=%zu queue_free=%zu underruns=%u overruns=%u",
@@ -137,6 +153,16 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     if (buffer == NULL || bytes_read == NULL) {
         ESP_LOGE(TAG, "Invalid parameters");
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_trace_read_until_beep_done) {
+        size_t queue_used = audio_descriptor_used();
+        size_t queue_free = audio_processor_queue_free_bytes();
+        printf("TRACE-READ-ENTRY: request_size=%zu queue_used=%zu queue_free=%zu beep_remaining=%zu\n",
+               size,
+               queue_used,
+               queue_free,
+               s_beep_remaining_bytes);
     }
 
     if (s_beep_remaining_bytes > 0 && audio_descriptor_used() == 0) {

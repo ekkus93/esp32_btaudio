@@ -69,6 +69,10 @@ void audio_chunk_clear(void);
 /* Number of descriptors currently queued. */
 size_t audio_descriptor_used(void);
 
+/* Temporarily block non-beep enqueues so a beep can own the queue. */
+void audio_queue_beep_exclusive_begin(void);
+void audio_queue_beep_exclusive_end(void);
+
 /* Snapshot queued descriptors without disturbing ordering. Copies up to
  * max_items entries into `out` and leaves the queue intact. Returns
  * ESP_OK on success, ESP_ERR_INVALID_STATE if the queue is uninitialized,
