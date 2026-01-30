@@ -109,17 +109,52 @@
 - **Status:** None of these are referenced by app_main() or any active code path
 - **Action:** All marked for removal in Phase 3 (Commit A)
 
-### Task 1.2: Identify legacy enums and defines (lines ~71-106)
-- [ ] AVRCP transaction labels (lines 71-78) → **REMOVE**
-- [ ] Legacy app event enums (lines 89-106) → **REMOVE**
-- [ ] `BT_RC_CT_TAG` define (line 66) → **REMOVE**
-- [ ] `BT_AV_TAG` define (line 65) → **KEEP** (used by app_main)
-- [ ] `LOCAL_DEVICE_NAME` define (line 69) → **KEEP** (used by app_main)
+### Task 1.2: Identify legacy enums and defines (lines ~71-106) ✅ COMPLETE
+- [x] AVRCP transaction labels (lines 72-73) → **REMOVE**
+  - [x] `APP_RC_CT_TL_GET_CAPS` (line 72) → **REMOVE** (AVRCP transaction label for get capabilities)
+  - [x] `APP_RC_CT_TL_RN_VOLUME_CHANGE` (line 73) → **REMOVE** (AVRCP transaction label for volume change)
+- [x] Legacy app event enums (lines 75-78, 90-106) → **REMOVE**
+  - [x] `BT_APP_STACK_UP_EVT` (line 76) → **REMOVE** (event for stack up)
+  - [x] `BT_APP_HEART_BEAT_EVT` (line 77) → **REMOVE** (event for heart beat)
+  - [x] A2DP state enum (lines 90-97) → **REMOVE** (APP_AV_STATE_IDLE, DISCOVERING, DISCOVERED, UNCONNECTED, CONNECTING, CONNECTED, DISCONNECTING)
+  - [x] A2DP media state enum (lines 100-105) → **REMOVE** (APP_AV_MEDIA_STATE_IDLE, STARTING, STARTED, STOPPING)
+- [x] `BT_RC_CT_TAG` define (line 66) → **REMOVE** (AVRCP remote control tag)
+- [x] `BT_AV_TAG` define (line 65) → **KEEP** (used by app_main for logging)
+- [x] `LOCAL_DEVICE_NAME` define (line 69) → **KEEP** (used by app_main: "ESP_A2DP_SRC")
 
-### Task 1.3: Identify legacy static function declarations (lines ~112-143)
-- [ ] List all forward declarations that are only for legacy callbacks
-- [ ] Verify each is part of the orphaned state machine
-- [ ] Mark all for **REMOVE**
+**Inventory Summary:**
+- **Total legacy defines/enums found:** 10 items (2 AVRCP transaction labels + 2 app event enums + 7 A2DP state enums + 1 log tag)
+- **Lines 65-105:** Mix of legacy (REMOVE) and active (KEEP) definitions
+- **KEEP items:** `BT_AV_TAG` (line 65) and `LOCAL_DEVICE_NAME` (line 69) - both used by app_main()
+- **REMOVE items:** All AVRCP transaction labels, legacy event enums, A2DP state machine enums, and `BT_RC_CT_TAG`
+- **Action:** Remove items marked for deletion in Phase 3 (Commit A)
+
+### Task 1.3: Identify legacy static function declarations (lines ~112-143) ✅ COMPLETE
+- [x] List all forward declarations that are only for legacy callbacks
+- [x] Verify each is part of the orphaned state machine
+- [x] Mark all for **REMOVE**
+
+**Forward Declarations Found:**
+- [x] `bt_av_hdl_stack_evt` (line 113) → **REMOVE** (handler for bluetooth stack enabled events)
+- [x] `bt_av_hdl_avrc_ct_evt` (line 116) → **REMOVE** (avrc controller event handler)
+- [x] `bt_app_gap_cb` (line 119) → **REMOVE** (GAP callback function)
+- [x] `bt_app_a2d_cb` (line 122) → **REMOVE** (callback function for A2DP source)
+- [x] `bt_app_a2d_data_cb` (line 125) → **REMOVE** (callback function for A2DP source audio data stream)
+- [x] `bt_app_rc_ct_cb` (line 128) → **REMOVE** (callback function for AVRCP controller)
+- [x] `bt_app_a2d_heart_beat` (line 131) → **REMOVE** (handler for heart beat timer)
+- [x] `bt_app_av_sm_hdlr` (line 134) → **REMOVE** (A2DP application state machine)
+- [x] `bda2str` (line 137) → **REMOVE** (utils for transfer Bluetooth Device Address into string form)
+- [x] `bt_app_av_state_unconnected_hdlr` (line 140) → **REMOVE** (A2DP state machine handler)
+- [x] `bt_app_av_state_connecting_hdlr` (line 141) → **REMOVE** (A2DP state machine handler)
+- [x] `bt_app_av_state_connected_hdlr` (line 142) → **REMOVE** (A2DP state machine handler)
+- [x] `bt_app_av_state_disconnecting_hdlr` (line 143) → **REMOVE** (A2DP state machine handler)
+
+**Inventory Summary:**
+- **Total legacy forward declarations found:** 13 items
+- **Lines 107-143:** All forward declarations in this section are for the orphaned legacy BT state machine
+- **Status:** None of these functions are called by app_main() or any active code path
+- **Note:** `bt_av_hdl_stack_evt` is marked `__attribute__((unused))` - clear sign it's dead code
+- **Action:** All 13 forward declarations marked for removal in Phase 3 (Commit A)
 
 ### Task 1.4: Identify legacy callback implementations (lines ~212-833)
 - [ ] `get_name_from_eir` (212-242) → **REMOVE**
