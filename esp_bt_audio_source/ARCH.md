@@ -122,20 +122,53 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 
 ## Software Architecture on ESP32 #1 (Bluetooth)
 
-### Bluetooth Core
-- A2DP Source profile
-- AVRCP profile for remote control
-- Device discovery and pairing
+### main.c Bootstrap (lines 1-226)
+- **Purpose:** Clean entry point for ESP32 firmware
+- **Responsibilities:**
+  - Early boot diagnostics and UART initialization
+  - NVS (Non-Volatile Storage) flash initialization
+  - Memory optimization (`esp_bt_controller_mem_release` for BLE)
+  - Delegate ALL Bluetooth initialization to `bt_manager`
+  - Initialize command interface and audio processor
+  - Auto-configure I2S pins from NVS storage
+- **What main.c MUST NOT contain:**
+  - Direct Bluetooth API calls (esp_a2d_*, esp_avrc_*, esp_bt_gap_*, esp_bluedroid_*)
+  - Bluetooth state machines or callbacks
+  - Device-specific BT logic
+- **Policy:** ALL Bluetooth logic lives in the `bt_manager` component (enforced by CI)
 
-### I2S Audio Interface
-- I2S slave configuration
-- Audio buffer management
-- Sample rate conversion if needed
+### bt_manager Component (Single Source of Truth for BT)
+- **Purpose:** Centralized Bluetooth lifecycle management
+- **Responsibilities:**
+  - Initialize Bluetooth controller and Bluedroid stack
+  - Register ALL Bluetooth callbacks (A2DP, AVRCP, GAP)
+  - Manage Bluetooth state machines (connection, pairing, streaming)
+  - Handle device discovery and pairing
+  - Coordinate with audio_processor for streaming
+- **Sub-components:**
+  - A2DP Source profile implementation
+  - AVRCP profile for remote control
+  - GAP for device discovery and pairing
+  - Connection manager for device lifecycle
+  - Streaming manager for audio data flow
 
-### UART Command Interface
-- Command parser
-- Status reporting
-- Error handling
+### Audio Processor Component
+- **Purpose:** Audio pipeline orchestration
+- **Responsibilities:**
+  - I2S slave configuration and management
+  - Audio buffer management and ring buffer
+  - Audio queue for multiple sources (I2S, WAV, beep, synth)
+  - Coordinate with bt_manager for A2DP streaming
+  - Generate keepalive tones and beeps
+  - WAV file playback from SPIFFS
+
+### Command Interface Component
+- **Purpose:** UART-based control protocol
+- **Responsibilities:**
+  - Command parser and dispatcher
+  - Status reporting to ESP32 #2
+  - Error handling and validation
+  - Command processing task (polls every 20ms)
 
 ## Software Architecture on ESP32 #2 (WiFi)
 
