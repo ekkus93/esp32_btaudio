@@ -228,16 +228,63 @@
 
 ## Phase 2: Prove Unused 🔍 (30 min)
 
-### Task 2.1: Search for references to legacy symbols
-- [ ] Run ripgrep for each legacy function name:
+### Task 2.1: Search for references to legacy symbols ✅ COMPLETE
+- [x] Run ripgrep for each legacy function name:
   ```bash
   cd esp_bt_audio_source
   rg -n "get_name_from_eir|filter_inquiry_scan_result|bt_app_gap_cb|bt_av_hdl_stack_evt" .
   rg -n "bt_app_a2d_cb|bt_app_a2d_data_cb|bt_app_av_sm_hdlr|bt_app_av_state_" .
   rg -n "bt_app_rc_ct_cb|bt_av_volume_changed|bt_av_notify_evt_handler|bt_av_hdl_avrc_ct_evt" .
   ```
-- [ ] Document findings: expect **zero** references outside main.c
-- [ ] If references found outside main.c → **STOP** and reassess
+- [x] Document findings: expect **zero** references outside main.c
+- [x] If references found outside main.c → **STOP** and reassess
+
+**Search Results Summary:**
+
+**Group 1: EIR/scan helpers and GAP/stack callbacks**
+- `get_name_from_eir`: ✅ Only in main.c (definition line 213, called at 284)
+- `filter_inquiry_scan_result`: ✅ Only in main.c (definition line 246, called at 319)
+- `bt_app_gap_cb`: ✅ Only in main.c (forward decl 119, definition 313, registered at 423 - inside orphaned bt_av_hdl_stack_evt)
+- `bt_av_hdl_stack_evt`: ✅ Only in main.c (forward decl 113, definition 414, both marked `__attribute__((unused))`)
+- Additional refs: tutorial/Example_A2DP_Source.md (documentation only), CODE_REVIEW1.md/CODE_REVIEW1_TODO.md (inventory only)
+
+**Group 2: A2DP callbacks and state machine**
+- `bt_app_a2d_cb`: ✅ Only in main.c (forward decl 122, definition 461, registered at 433 - inside orphaned bt_av_hdl_stack_evt)
+- `bt_app_a2d_data_cb`: ✅ Only in main.c (forward decl 125, definition 467, registered at 434 - inside orphaned bt_av_hdl_stack_evt)
+- `bt_app_av_sm_hdlr`: ✅ Only in main.c (forward decl 134, definition 481, called from 463, 478)
+- `bt_app_av_state_*` handlers: ✅ Only in main.c (all 4 state handlers called only from bt_app_av_sm_hdlr)
+- Additional refs: test/test_app/device-serial.log (runtime log from PAST test run), main/README.md (documentation only)
+
+**Group 3: AVRCP controller callbacks**
+- `bt_app_rc_ct_cb`: ✅ Only in main.c (forward decl 128, definition 724, registered at 426 - inside orphaned bt_av_hdl_stack_evt)
+- `bt_av_volume_changed`: ✅ Only in main.c (definition 744, called at 760, 818)
+- `bt_av_notify_evt_handler`: ✅ Only in main.c (definition 752, called at 804)
+- `bt_av_hdl_avrc_ct_evt`: ✅ Only in main.c (forward decl 116, definition 770, marked `__attribute__((unused))`)
+
+**Legacy global variables:**
+- All 9 state variables (s_peer_bda, s_peer_bdname, s_a2d_state, s_media_state, s_intv_cnt, s_connecting_intv, s_pkt_cnt, s_avrc_peer_rn_cap, s_tmr): ✅ Only in main.c
+- False positives in components/lwip (unrelated timer variables like `dns_tmr`, `ip_reass_tmr` - different context)
+
+**Legacy helper functions:**
+- `safe_vsnprintf` / `safe_snprintf` in main.c: ✅ Only used by main.c's bda2str (line 208)
+- ⚠️ **NOTE:** Project has refactored versions: `util_safe_vsnprintf` / `util_safe_snprintf` in components/util_safe/ 
+  - These are the ACTIVE versions used by bt_manager, nvs_storage, command_interface, bt_mock, etc.
+  - The versions in main.c (lines 45-62) are LEGACY duplicates that only serve bda2str
+- `bda2str`: ✅ Only in main.c (forward decl 137, definition 202, called at 255)
+- `_main_suppress_unused`: ✅ Only in main.c (line 159)
+- `_main_remote_name_used`: ✅ Only in main.c (line 164)
+
+**CRITICAL FINDING:**
+✅ **ALL legacy symbols are confined to main.c**
+✅ **ZERO references from active code paths** (bt_manager, components, tests using active code)
+✅ **All callback registrations happen inside orphaned bt_av_hdl_stack_evt** which is:
+   - Marked `__attribute__((unused))`
+   - Never called by app_main()
+   - Not registered in active boot path
+
+**Gate Checkpoint Status:** ✅ PASS
+- Legacy code is completely orphaned
+- Safe to proceed with removal in Phase 3-5
 
 ### Task 2.2: Check callback registration points
 - [ ] Search for dual registration (main.c AND bt_manager):
