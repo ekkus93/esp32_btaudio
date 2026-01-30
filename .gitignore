@@ -76,3 +76,6 @@ dkms.conf
 build*/
 tmp/
 
+**/__pycache__/
+**/*.pyc
+**/*.pyo
