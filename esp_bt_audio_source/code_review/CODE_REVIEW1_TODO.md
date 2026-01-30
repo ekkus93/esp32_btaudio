@@ -156,31 +156,48 @@
 - **Note:** `bt_av_hdl_stack_evt` is marked `__attribute__((unused))` - clear sign it's dead code
 - **Action:** All 13 forward declarations marked for removal in Phase 3 (Commit A)
 
-### Task 1.4: Identify legacy callback implementations (lines ~212-833)
-- [ ] `get_name_from_eir` (212-242) → **REMOVE**
-- [ ] `filter_inquiry_scan_result` (245-309) → **REMOVE**
-- [ ] `bt_app_gap_cb` (312-412) → **REMOVE**
-- [ ] `bt_av_hdl_stack_evt` (414-459) → **REMOVE**
-- [ ] `bt_app_a2d_cb` (461-465) → **REMOVE**
-- [ ] `bt_app_a2d_data_cb` (467-474) → **REMOVE**
-- [ ] `bt_app_a2d_heart_beat` (475-479) → **REMOVE**
-- [ ] `bt_app_av_sm_hdlr` (480-505) → **REMOVE**
-- [ ] `bt_app_av_state_unconnected_hdlr` (507-536) → **REMOVE**
-- [ ] `bt_app_av_state_connecting_hdlr` (538-578) → **REMOVE**
-- [ ] `bt_app_av_media_proc` (580-648) → **REMOVE**
-- [ ] `bt_app_av_state_connected_hdlr` (650-689) → **REMOVE**
-- [ ] `bt_app_av_state_disconnecting_hdlr` (691-722) → **REMOVE**
-- [ ] `bt_app_rc_ct_cb` (724-741) → **REMOVE**
-- [ ] `bt_av_volume_changed` (743-749) → **REMOVE**
-- [ ] `bt_av_notify_evt_handler` (751-767) → **REMOVE**
-- [ ] `bt_av_hdl_avrc_ct_evt` (770-833) → **REMOVE**
-- [ ] `bt_log_allocator_snapshot` (166-190, under `#if HEAP_MEMORY_DEBUG`) → **REMOVE**
+### Task 1.4: Identify legacy callback implementations (lines ~166-833) ✅ COMPLETE
+- [x] `bt_log_allocator_snapshot` (166-190, under `#if HEAP_MEMORY_DEBUG`) → **REMOVE** (heap debug diagnostic for legacy code)
+- [x] `bda2str` (192-210) → **REMOVE** (Bluetooth address to string conversion helper)
+- [x] `get_name_from_eir` (212-242) → **REMOVE** (extract device name from EIR data)
+- [x] `filter_inquiry_scan_result` (245-309) → **REMOVE** (filter discovered devices by name/class)
+- [x] `bt_app_gap_cb` (312-412) → **REMOVE** (GAP callback: discovery, auth, pairing events)
+- [x] `bt_av_hdl_stack_evt` (414-459) → **REMOVE** (legacy stack init handler, marked `__attribute__((unused))`)
+- [x] `bt_app_a2d_cb` (461-465) → **REMOVE** (A2DP callback dispatcher)
+- [x] `bt_app_a2d_data_cb` (467-474) → **REMOVE** (A2DP data callback - fills silence)
+- [x] `bt_app_a2d_heart_beat` (475-479) → **REMOVE** (heart beat timer callback)
+- [x] `bt_app_av_sm_hdlr` (480-505) → **REMOVE** (A2DP state machine dispatcher)
+- [x] `bt_app_av_state_unconnected_hdlr` (507-536) → **REMOVE** (state machine: unconnected state)
+- [x] `bt_app_av_state_connecting_hdlr` (538-578) → **REMOVE** (state machine: connecting state)
+- [x] `bt_app_av_media_proc` (580-648) → **REMOVE** (media control state machine)
+- [x] `bt_app_av_state_connected_hdlr` (650-689) → **REMOVE** (state machine: connected state)
+- [x] `bt_app_av_state_disconnecting_hdlr` (691-722) → **REMOVE** (state machine: disconnecting state)
+- [x] `bt_app_rc_ct_cb` (724-741) → **REMOVE** (AVRCP controller callback dispatcher)
+- [x] `bt_av_volume_changed` (743-749) → **REMOVE** (AVRCP volume change handler)
+- [x] `bt_av_notify_evt_handler` (751-767) → **REMOVE** (AVRCP notification event handler)
+- [x] `bt_av_hdl_avrc_ct_evt` (770-833) → **REMOVE** (AVRCP controller event handler, marked `__attribute__((unused))`)
 
-### Task 1.5: Identify helper functions to remove (lines ~44-62, 158-164)
-- [ ] `safe_vsnprintf` (45-53) → **REMOVE** (only used by legacy EIR parsing)
-- [ ] `safe_snprintf` (55-62) → **REMOVE** (only used by legacy code)
-- [ ] `_main_suppress_unused` (158-159) → **REMOVE**
-- [ ] `_main_remote_name_used` (161-164) → **REMOVE**
+**Inventory Summary:**
+- **Total legacy callback implementations found:** 18 functions (~667 lines)
+- **Lines 166-833:** All are part of the orphaned legacy ESP-IDF A2DP/AVRCP example code
+- **Status:** None are called by app_main() or registered in active boot path
+- **Key observation:** Two functions marked `__attribute__((unused))` - compiler already knows they're dead code
+- **Note:** Legacy comment at lines 834-839 references removed `bt_init()` function
+- **Action:** All 18 implementations marked for removal in Phase 4 (Commit B)
+
+### Task 1.5: Identify helper functions to remove (lines ~44-62, 158-164) ✅ COMPLETE
+- [x] `safe_vsnprintf` (45-53) → **REMOVE** (safe wrapper for vsnprintf, only used by safe_snprintf)
+- [x] `safe_snprintf` (55-62) → **REMOVE** (safe wrapper for snprintf, only used by legacy bda2str function)
+- [x] `_main_suppress_unused` (158-159) → **REMOVE** (suppresses s_tmr unused warning for legacy code)
+- [x] `_main_remote_name_used` (163-164) → **REMOVE** (suppresses remote_device_name unused warning for legacy code)
+
+**Inventory Summary:**
+- **Total legacy helper functions found:** 4 items (~13 lines)
+- **safe_vsnprintf/safe_snprintf (45-62):** Used only by legacy bda2str() function for BDA formatting
+- **_main_suppress_unused (158-159):** Attribute-marked function to silence unused s_tmr warning
+- **_main_remote_name_used (163-164):** Attribute-marked function to silence unused remote_device_name warning
+- **Status:** All 4 helper functions exist solely to support legacy code
+- **Action:** All 4 helpers marked for removal in Phase 5 (Commit C)
 
 ### Task 1.6: Keep list (critical - don't accidentally delete)
 - [ ] `cmd_process_task` (81-87) → **KEEP**
