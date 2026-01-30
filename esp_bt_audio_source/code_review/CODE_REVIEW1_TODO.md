@@ -351,109 +351,117 @@
 
 ---
 
-## Phase 3: COMMIT A - Remove Declarations/Enums/Globals 🗑️ (45 min)
+## Phase 3: COMMIT A - Remove Declarations/Enums/Globals 🗑️ (45 min) ✅ COMPLETE
 
 **Goal:** Remove all dead declarations and state variables. This is LOW RISK because we're only removing unused definitions, not runtime code.
 
-### Task 3.1: Create feature branch
-- [ ] `git checkout -b refactor/cleanup-main-legacy-code`
-- [ ] `git status` to confirm clean working tree
+**Note:** Phase 3 + Phase 4 were combined into single atomic commit due to coupling between declarations and implementations.
 
-### Task 3.2: Remove legacy enums (lines 71-78, 89-106)
-- [ ] Delete AVRCP transaction label defines (lines 71-78)
-- [ ] Delete legacy app event enums (lines 89-106)
-- [ ] Delete `BT_RC_CT_TAG` define (line 66)
-- [ ] **KEEP** `BT_AV_TAG` and `LOCAL_DEVICE_NAME`
+### Task 3.1: Create feature branch ⏭️ SKIPPED
+- [x] User chose to work directly on master branch (no feature branch needed)
+- [x] `git status` confirmed clean working tree
 
-### Task 3.3: Remove legacy static function declarations (lines 112-143)
-- [ ] Delete ALL forward declarations for legacy callbacks
-- [ ] Preserve any declarations for `cmd_process_task` if present
+### Task 3.2: Remove legacy enums (lines 71-78, 89-106) ✅ COMPLETE
+- [x] Delete AVRCP transaction label defines (lines 71-78)
+- [x] Delete legacy app event enums (lines 89-106)
+- [x] Delete `BT_RC_CT_TAG` define (line 66)
+- [x] **KEPT** `BT_AV_TAG` and `LOCAL_DEVICE_NAME`
 
-### Task 3.4: Remove legacy global state variables (lines 149-157, 161-164)
-- [ ] Delete `s_peer_bda`, `s_peer_bdname`, `s_a2d_state`, `s_media_state`
-- [ ] Delete `s_intv_cnt`, `s_connecting_intv`, `s_pkt_cnt`
-- [ ] Delete `s_avrc_peer_rn_cap`, `s_tmr`
-- [ ] Delete `remote_device_name` and `_main_remote_name_used`
-- [ ] Delete `_main_suppress_unused`
+### Task 3.3: Remove legacy static function declarations (lines 112-143) ✅ COMPLETE
+- [x] Deleted ALL 13 forward declarations for legacy callbacks
+- [x] Preserved `cmd_process_task` declaration
 
-### Task 3.5: Remove heap debug helper (lines 166-190)
-- [ ] Delete `bt_log_allocator_snapshot` function and its `#if HEAP_MEMORY_DEBUG` block
+### Task 3.4: Remove legacy global state variables (lines 149-157, 161-164) ✅ COMPLETE
+- [x] Deleted all 12 legacy global variables:
+- [x] `s_peer_bda`, `s_peer_bdname`, `s_a2d_state`, `s_media_state`
+- [x] `s_intv_cnt`, `s_connecting_intv`, `s_pkt_cnt`
+- [x] `s_avrc_peer_rn_cap`, `s_tmr`
+- [x] `remote_device_name` and `_main_remote_name_used`
+- [x] `_main_suppress_unused`
 
-### Task 3.6: Build and verify Commit A
-- [ ] `cd esp_bt_audio_source && idf.py build`
-- [ ] Expect: **BUILD SUCCESS** (no link errors, no undefined symbols)
-- [ ] Expect: Possibly fewer warnings
-- [ ] **GATE CHECKPOINT:** Clean build after removing declarations/globals
+### Task 3.5: Remove heap debug helper (lines 166-190) ✅ COMPLETE
+- [x] Deleted `bt_log_allocator_snapshot` function and its `#if HEAP_MEMORY_DEBUG` block
 
-### Task 3.7: Commit A
-- [ ] `git add main/main.c`
-- [ ] `git commit -m "refactor(main): remove legacy BT declarations and global state"`
-- [ ] Update memory.md with timestamp and commit hash
+### Task 3.6: Build and verify Commit A ✅ COMPLETE
+- [x] `cd esp_bt_audio_source && idf.py build`
+- [x] Result: **BUILD SUCCESS** (combined with Phase 4 removal)
+- [x] Binary: 0xe2670 bytes (927 KB), 48% partition free
+- [x] Warnings: Only 1 harmless warning (unused safe_snprintf)
+- [x] **GATE CHECKPOINT:** ✅ PASSED - Clean build after all removals
+
+### Task 3.7: Commit A ✅ COMPLETE (Combined with Phase 4 as single commit)
+- [x] `git add main/main.c`
+- [x] Commit: 0c0e2577 "refactor(main): remove legacy BT declarations, globals, and implementations (~757 lines)"
+- [x] Updated memory.md with timestamp 2026-01-30 12:24:06 and commit hash
 
 ---
 
-## Phase 4: COMMIT B - Remove Legacy Functions 🗑️🗑️ (1 hour)
+## Phase 4: COMMIT B - Remove Legacy Functions 🗑️🗑️ (1 hour) ✅ COMPLETE
 
 **Goal:** Remove all legacy callback implementations and state machine code (~600 lines). This is the BIG cleanup.
 
-### Task 4.1: Remove EIR/scan helper functions (lines 212-309)
-- [ ] Delete `get_name_from_eir` (212-242)
-- [ ] Delete `filter_inquiry_scan_result` (245-309)
+**Note:** Phase 4 was combined with Phase 3 into single atomic commit (0c0e2577) to avoid build breakage from orphaned implementations.
 
-### Task 4.2: Remove legacy GAP callback (lines 312-412)
-- [ ] Delete entire `bt_app_gap_cb` function
-- [ ] Verify bt_manager has its own GAP callback
+### Task 4.1: Remove EIR/scan helper functions (lines 212-309) ✅ COMPLETE
+- [x] Deleted `get_name_from_eir` (212-242)
+- [x] Deleted `filter_inquiry_scan_result` (245-309)
 
-### Task 4.3: Remove legacy stack event handler (lines 414-459)
-- [ ] Delete `bt_av_hdl_stack_evt`
-- [ ] This was the old init path; verify bt_manager_init replaces it
+### Task 4.2: Remove legacy GAP callback (lines 312-412) ✅ COMPLETE
+- [x] Deleted entire `bt_app_gap_cb` function
+- [x] Verified bt_manager has its own GAP callback (active path)
 
-### Task 4.4: Remove legacy A2DP callbacks (lines 461-479)
-- [ ] Delete `bt_app_a2d_cb`
-- [ ] Delete `bt_app_a2d_data_cb`
-- [ ] Delete `bt_app_a2d_heart_beat`
+### Task 4.3: Remove legacy stack event handler (lines 414-459) ✅ COMPLETE
+- [x] Deleted `bt_av_hdl_stack_evt` (marked __attribute__((unused)))
+- [x] Verified bt_manager_init replaces this init path
 
-### Task 4.5: Remove A2DP state machine handlers (lines 480-722)
-- [ ] Delete `bt_app_av_sm_hdlr` (state machine dispatcher)
-- [ ] Delete `bt_app_av_state_unconnected_hdlr`
-- [ ] Delete `bt_app_av_state_connecting_hdlr`
-- [ ] Delete `bt_app_av_media_proc`
-- [ ] Delete `bt_app_av_state_connected_hdlr`
-- [ ] Delete `bt_app_av_state_disconnecting_hdlr`
+### Task 4.4: Remove legacy A2DP callbacks (lines 461-479) ✅ COMPLETE
+- [x] Deleted `bt_app_a2d_cb`
+- [x] Deleted `bt_app_a2d_data_cb`
+- [x] Deleted `bt_app_a2d_heart_beat`
 
-### Task 4.6: Remove AVRCP controller callbacks (lines 724-833)
-- [ ] Delete `bt_app_rc_ct_cb`
-- [ ] Delete `bt_av_volume_changed`
-- [ ] Delete `bt_av_notify_evt_handler`
-- [ ] Delete `bt_av_hdl_avrc_ct_evt`
+### Task 4.5: Remove A2DP state machine handlers (lines 480-722) ✅ COMPLETE
+- [x] Deleted `bt_app_av_sm_hdlr` (state machine dispatcher)
+- [x] Deleted `bt_app_av_state_unconnected_hdlr`
+- [x] Deleted `bt_app_av_state_connecting_hdlr`
+- [x] Deleted `bt_app_av_media_proc`
+- [x] Deleted `bt_app_av_state_connected_hdlr`
+- [x] Deleted `bt_app_av_state_disconnecting_hdlr`
 
-### Task 4.7: Remove legacy init comment block (lines 834-839)
-- [ ] Delete the comment block about old `bt_init()` removal
-- [ ] No longer needed once all legacy code is gone
+### Task 4.6: Remove AVRCP controller callbacks (lines 724-833) ✅ COMPLETE
+- [x] Deleted `bt_app_rc_ct_cb`
+- [x] Deleted `bt_av_volume_changed`
+- [x] Deleted `bt_av_notify_evt_handler`
+- [x] Deleted `bt_av_hdl_avrc_ct_evt` (marked __attribute__((unused)))
 
-### Task 4.8: Build and verify Commit B
-- [ ] `cd esp_bt_audio_source && idf.py build`
-- [ ] Expect: **BUILD SUCCESS**
-- [ ] Check binary size: should be notably smaller than baseline
-- [ ] Check warning count: should be same or fewer
-- [ ] **GATE CHECKPOINT:** Clean build after removing all legacy functions
+### Task 4.7: Remove legacy init comment block (lines 834-839) ✅ COMPLETE
+- [x] Deleted the comment block about old `bt_init()` removal
 
-### Task 4.9: Runtime smoke test
+### Task 4.8: Build and verify Commit B ✅ COMPLETE
+- [x] `cd esp_bt_audio_source && idf.py build`
+- [x] Result: **BUILD SUCCESS**
+- [x] Binary size: 0xe2670 bytes (927 KB) - reduced from baseline
+- [x] Warnings: Only 1 (unused safe_snprintf - will remove in Phase 5)
+- [x] **GATE CHECKPOINT:** ✅ PASSED - Clean build after removing all 18 legacy functions
+
+### Task 4.9: Runtime smoke test ⏭️ DEFERRED
 - [ ] Flash device: `idf.py -p /dev/ttyUSB0 flash monitor`
 - [ ] Verify boot sequence identical to baseline
 - [ ] Test basic commands: STATUS, SCAN
-- [ ] **GATE CHECKPOINT:** Runtime behavior unchanged
+- [ ] **GATE CHECKPOINT:** Will verify in Phase 7 comprehensive testing
 
-### Task 4.10: Commit B
-- [ ] `git add main/main.c`
-- [ ] `git commit -m "refactor(main): remove legacy BT state machine and callbacks (~600 lines)"`
-- [ ] Update memory.md with timestamp and commit hash
+### Task 4.10: Commit B ✅ COMPLETE (Combined with Phase 3)
+- [x] `git add main/main.c`
+- [x] Commit 0c0e2577: "refactor(main): remove legacy BT declarations, globals, and implementations (~757 lines)"
+- [x] Combined Phase 3 + Phase 4 into single atomic commit
+- [x] Updated memory.md with timestamp and commit hash
 
 ---
 
-## Phase 5: COMMIT C - Remove Unused Helpers and Prune Includes 🧹 (45 min)
+## Phase 5: COMMIT C - Remove Unused Helpers and Prune Includes 🧹 (45 min) ⏭️ NEXT
 
 **Goal:** Final cleanup of now-unused helper functions and unnecessary includes.
+
+**Current Status:** main.c reduced from 1019 to 262 lines. Next step: remove unused includes and safe_snprintf to reach ~200-line target.
 
 ### Task 5.1: Remove safe_snprintf helpers (lines 44-62)
 - [ ] Delete `safe_vsnprintf` (45-53)
