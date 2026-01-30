@@ -126,7 +126,7 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 - **Purpose:** Clean entry point for ESP32 firmware
 - **Responsibilities:**
   - Early boot diagnostics and UART initialization
-  - NVS (Non-Volatile Storage) flash initialization
+  - **NVS (Non-Volatile Storage) initialization** - SINGLE call to `nvs_storage_init()` early in boot
   - Memory optimization (`esp_bt_controller_mem_release` for BLE)
   - Delegate ALL Bluetooth initialization to `bt_manager`
   - Initialize command interface and audio processor
@@ -169,6 +169,35 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
   - Status reporting to ESP32 #2
   - Error handling and validation
   - Command processing task (polls every 20ms)
+
+## Initialization Ownership and Layering
+
+### NVS (Non-Volatile Storage) Ownership
+**Decision:** main.c owns NVS initialization (Option A)
+
+**Rationale:**
+- NVS is a **platform service** (like memory, filesystems) - it should be initialized once at boot
+- Multiple components use NVS (bt_manager, audio_processor, nvs_storage abstraction)
+- **Single ownership** prevents redundant init calls and race conditions
+- Early initialization ensures NVS is ready before any component needs it
+- Follows ESP-IDF best practice: platform services initialized in app_main()
+
+**Implementation:**
+- main.c calls `nvs_storage_init()` **once** early in app_main() (after BLE mem release, before BT init)
+- `nvs_storage_init()` handles version mismatch and erase-on-error internally
+- bt_manager, audio_processor, and other components **assume NVS is already initialized**
+- Components call nvs_storage_get/set_* functions directly without re-initializing
+
+**What NOT to do:**
+- ❌ bt_manager must NOT call `nvs_flash_init()` or `nvs_storage_init()`
+- ❌ No component should redundantly initialize NVS "just in case"
+- ❌ No lazy initialization - NVS must be ready before subsystems start
+
+**Benefits:**
+- Clear ownership (main.c owns platform, components own logic)
+- Prevents duplicate initialization
+- Easier to reason about boot sequence
+- Supports future two-ESP32 architecture (each ESP32's main.c initializes its own NVS)
 
 ## Software Architecture on ESP32 #2 (WiFi)
 

@@ -364,15 +364,11 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     safe_memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
     
 #ifdef ESP_PLATFORM
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // NVS is initialized by main.c before calling bt_manager_init.
+    // bt_manager assumes NVS is ready and uses nvs_storage_* functions.
 
     // Initialize Bluetooth controller
+    esp_err_t ret;
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
     ret = esp_bt_controller_init(&bt_cfg);
@@ -419,31 +415,29 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     
     ESP_LOGI(TAG, "Bluetooth manager initialized with name: %s", config->device_name);
     
-    // Initialize app NVS wrappers and load persisted paired devices
-    if (nvs_storage_init() == ESP_OK) {
-        int count = 0;
-        if (nvs_storage_get_paired_count(&count) == ESP_OK && count > 0) {
-            for (int i = 0; i < count && bt_ctx.paired_devices.count < 20; i++) {
-                char mac[32] = {0};
-                char name[32] = {0};
-                /* Some build configurations may not use 'name' visibly
-                 * (e.g., stripped logging). Mark as used to avoid
-                 * -Wunused-variable warnings while preserving logic.
-                 */
-                (void)name;
-                if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
-                    int idx = bt_ctx.paired_devices.count;
-                    safe_copy_str(bt_ctx.paired_devices.devices[idx].mac,
-                                  sizeof(bt_ctx.paired_devices.devices[idx].mac), mac);
-                    if (name[0]) {
-                        safe_copy_str(bt_ctx.paired_devices.devices[idx].name,
-                                      sizeof(bt_ctx.paired_devices.devices[idx].name), name);
-                    }
-                    bt_ctx.paired_devices.count++;
+    // Load persisted paired devices from NVS (NVS already initialized by main.c)
+    int count = 0;
+    if (nvs_storage_get_paired_count(&count) == ESP_OK && count > 0) {
+        for (int i = 0; i < count && bt_ctx.paired_devices.count < 20; i++) {
+            char mac[32] = {0};
+            char name[32] = {0};
+            /* Some build configurations may not use 'name' visibly
+             * (e.g., stripped logging). Mark as used to avoid
+             * -Wunused-variable warnings while preserving logic.
+             */
+            (void)name;
+            if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
+                int idx = bt_ctx.paired_devices.count;
+                safe_copy_str(bt_ctx.paired_devices.devices[idx].mac,
+                              sizeof(bt_ctx.paired_devices.devices[idx].mac), mac);
+                if (name[0]) {
+                    safe_copy_str(bt_ctx.paired_devices.devices[idx].name,
+                                  sizeof(bt_ctx.paired_devices.devices[idx].name), name);
                 }
+                bt_ctx.paired_devices.count++;
             }
-            ESP_LOGI(TAG, "Loaded %d persisted paired devices", bt_ctx.paired_devices.count);
         }
+        ESP_LOGI(TAG, "Loaded %d persisted paired devices", bt_ctx.paired_devices.count);
     }
 #endif
     

@@ -101,13 +101,11 @@ void app_main(void)
     }
 #endif
     
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // Initialize NVS flash storage (platform service owned by main.c).
+    // This must be called once before any component uses NVS (bt_manager,
+    // audio_processor, etc.). nvs_storage_init() handles version mismatch
+    // and erase-on-error internally.
+    ESP_ERROR_CHECK(nvs_storage_init());
     
     // Initialize and start Bluetooth via bt_manager so the command interface
     // and other components using the manager APIs are ready for SCAN/PAIR.

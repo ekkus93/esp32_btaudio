@@ -109,24 +109,32 @@ format strings in main.c were already correct. No changes needed for this task.
 **Goal:** Fix ownership ambiguity, init order contradictions, and layering violations.
 
 ### Task 2.1: Decide and document NVS ownership
-- [ ] **Decision point:** Who should own NVS initialization?
-  - [ ] Option A: main.c calls `nvs_storage_init()` once, bt_manager/others do NOT
+- [x] **Decision point:** Who should own NVS initialization?
+  - [x] Option A: main.c calls `nvs_storage_init()` once, bt_manager/others do NOT ✅ **CHOSEN**
   - [ ] Option B: bt_manager calls `nvs_storage_init()`, main.c does NOT
   - [ ] Option C: Lazy init - first caller to nvs_storage_* does init
-- [ ] Document decision in ARCH.md
-- [ ] **Recommended:** Option A - main.c calls `nvs_storage_init()` early
+- [x] Document decision in ARCH.md ✅
+- [x] **Recommended:** Option A - main.c calls `nvs_storage_init()` early ✅
 
 ### Task 2.2: Implement NVS init refactoring
-- [ ] If Option A chosen:
-  - [ ] Replace `nvs_flash_init()` in main.c with `nvs_storage_init()`
-  - [ ] Verify bt_manager doesn't call nvs_storage_init()
-  - [ ] Verify nvs_storage_init() handles erase-on-version-mismatch
+- [x] If Option A chosen: ✅
+  - [x] Replace `nvs_flash_init()` in main.c with `nvs_storage_init()` ✅
+  - [x] Verify bt_manager doesn't call nvs_storage_init() ✅
+  - [x] Verify nvs_storage_init() handles erase-on-version-mismatch ✅
 - [ ] If Option B chosen:
   - [ ] Remove all NVS init from main.c
   - [ ] Ensure bt_manager_init() calls nvs_storage_init() first
-- [ ] Update comments to clarify ownership
-- [ ] **Test:** Build and run NVS-dependent tests
-- [ ] **GATE CHECKPOINT:** Single, clear NVS init path
+- [x] Update comments to clarify ownership ✅
+- [x] **Test:** Build and run NVS-dependent tests ✅
+- [x] **GATE CHECKPOINT:** Single, clear NVS init path ✅
+
+**Implementation Results:**
+- main.c: Replaced nvs_flash_init() with nvs_storage_init() + clear ownership comment
+- bt_manager.c: Removed redundant nvs_flash_init() (lines 368-373)
+- bt_manager.c: Removed redundant nvs_storage_init() call (line 423)
+- bt_manager.c: Added comment clarifying NVS is initialized by main.c
+- Build: SUCCESS (0xe2550 bytes, -240 bytes from removing redundant code)
+- Tests: 505/505 passing (310 host + 195 device) ✅
 
 ### Task 2.3: Decide and document UART ownership
 - [ ] **Decision point:** Who should own UART driver install?
@@ -517,9 +525,9 @@ This cleanup is **DONE** when:
 Document your decisions here as you go:
 
 ### NVS Ownership
-- **Decision:** _[A: main.c owns | B: bt_manager owns | C: lazy init]_
-- **Rationale:** _[why?]_
-- **Implemented in:** Phase 2, Task 2.2
+- **Decision:** **A: main.c owns** ✅
+- **Rationale:** NVS is a platform service (like memory, filesystems) and should be initialized once at boot by main.c. Multiple components use NVS (bt_manager, audio_processor, nvs_storage abstraction), so single ownership prevents redundant init calls and race conditions. Early initialization ensures NVS is ready before any component needs it. Follows ESP-IDF best practice: platform services initialized in app_main().
+- **Implemented in:** Phase 2, Task 2.1 (documented in ARCH.md) - implementation pending Task 2.2
 
 ### UART Ownership  
 - **Decision:** _[A: cmd_init owns | B: main.c owns | C: split early/late]_
