@@ -59,7 +59,7 @@ void app_main(void)
      * avoid racing the device boot sequence. Use both printf and the
      * ROM-level esp_rom_printf when available. */
     printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
-#ifdef esp_rom_printf
+#ifdef CONFIG_IDF_TARGET_ESP32
     esp_rom_printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
 #endif
 
@@ -88,7 +88,7 @@ void app_main(void)
     (void)uart_driver_delete(console_uart);
     esp_err_t r = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
     printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
-#ifdef esp_rom_printf
+#ifdef CONFIG_IDF_TARGET_ESP32
     esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
 #endif
     if (uart_is_driver_installed(console_uart)) {
@@ -150,9 +150,6 @@ void app_main(void)
     printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
     /* duplicate as ROM-level immediate output to reduce race with host capture */
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
-#endif
-#ifdef esp_rom_printf
     esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
 #endif
 
