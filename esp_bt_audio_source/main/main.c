@@ -7,59 +7,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
-#include <stdarg.h>
-#include <math.h>  // For sinf()
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/timers.h"
-#include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_system.h"
 #include "esp_log.h"
 
-#if HEAP_MEMORY_DEBUG
-#include "esp_heap_caps.h"
-#include "osi/allocator.h"
-#endif
-
 /* Bluetooth includes */
 #include "esp_bt.h"
-#include "bt_app_core.h"
-#include "esp_bt_main.h"
-#include "esp_bt_device.h"
-#include "esp_gap_bt_api.h"
-#include "esp_a2dp_api.h"
-#include "esp_avrc_api.h"
 #include "command_interface.h"
 #include "driver/uart.h"
 #include "audio_processor.h"
-#include "mem_util.h"
 /* Needed for pin fallbacks and i2s port constants when auto-initializing audio */
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "nvs_storage.h"
 #include "bt_manager.h"
-
-static int safe_vsnprintf(char *dst, size_t dst_size, const char *fmt, va_list args) {
-    if (dst == NULL || dst_size == 0 || fmt == NULL) {
-        return 0;
-    }
-    int written = vsnprintf(dst, dst_size, fmt, args); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
-    if (written < 0 || (size_t)written >= dst_size) {
-        dst[dst_size - 1] = '\0';
-    }
-    return written;
-}
-
-static int safe_snprintf(char *dst, size_t dst_size, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    int written = safe_vsnprintf(dst, dst_size, fmt, args);
-    va_end(args);
-    return written;
-}
 
 /* log tags */
 #define BT_AV_TAG             "BT_AV"
