@@ -457,71 +457,72 @@
 
 ---
 
-## Phase 5: COMMIT C - Remove Unused Helpers and Prune Includes 🧹 (45 min) ⏭️ NEXT
+## Phase 5: COMMIT C - Remove Unused Helpers and Prune Includes 🧹 (45 min) ✅ COMPLETE
 
 **Goal:** Final cleanup of now-unused helper functions and unnecessary includes.
 
-**Current Status:** main.c reduced from 1019 to 262 lines. Next step: remove unused includes and safe_snprintf to reach ~200-line target.
+**Final Result:** main.c reduced from 1019 to 226 lines (78% reduction). Removed 36 lines (helpers + 13 unused includes + heap debug block). Build SUCCESS with zero warnings.
 
-### Task 5.1: Remove safe_snprintf helpers (lines 44-62)
-- [ ] Delete `safe_vsnprintf` (45-53)
-- [ ] Delete `safe_snprintf` (55-62)
-- [ ] These were only used by legacy EIR parsing
+### Task 5.1: Remove safe_snprintf helpers (lines 44-62) ✅ COMPLETE
+- [x] Delete `safe_vsnprintf` (45-53)
+- [x] Delete `safe_snprintf` (55-62)
+- [x] These were only used by legacy EIR parsing
 
-### Task 5.2: Remove unused includes
-- [ ] Remove `#include <inttypes.h>` (line 10) - likely unused after legacy removal
-- [ ] Remove `#include <stdarg.h>` (line 11) - used only by safe_snprintf
-- [ ] Remove `#include <math.h>` (line 12) - used only by legacy tone generation
-- [ ] Remove `#include "freertos/timers.h"` (line 16) - used only by heart-beat timer
-- [ ] Remove `#include "nvs.h"` (line 17) - bt_manager owns NVS
-- [ ] Remove `#include "nvs_flash.h"` (line 18) - bt_manager owns NVS
-- [ ] Remove `#include "bt_app_core.h"` (line 29) - legacy only
-- [ ] Remove `#include "esp_bt_main.h"` (line 30) - legacy only
-- [ ] Remove `#include "esp_bt_device.h"` (line 31) - legacy only
-- [ ] Remove `#include "esp_gap_bt_api.h"` (line 32) - legacy only
-- [ ] Remove `#include "esp_a2dp_api.h"` (line 33) - legacy only
-- [ ] Remove `#include "esp_avrc_api.h"` (line 34) - legacy only
+### Task 5.2: Remove unused includes ✅ COMPLETE
+- [x] Remove `#include <inttypes.h>` (line 10) - likely unused after legacy removal
+- [x] Remove `#include <stdarg.h>` (line 11) - used only by safe_snprintf
+- [x] Remove `#include <math.h>` (line 12) - used only by legacy tone generation
+- [x] Remove `#include "freertos/timers.h"` (line 16) - used only by heart-beat timer
+- [x] Remove `#include "nvs.h"` (line 17) - bt_manager owns NVS
+- [x] Remove `#include "bt_app_core.h"` (line 29) - legacy only
+- [x] Remove `#include "esp_bt_main.h"` (line 30) - legacy only
+- [x] Remove `#include "esp_bt_device.h"` (line 31) - legacy only
+- [x] Remove `#include "esp_gap_bt_api.h"` (line 32) - legacy only
+- [x] Remove `#include "esp_a2dp_api.h"` (line 33) - legacy only
+- [x] Remove `#include "esp_avrc_api.h"` (line 34) - legacy only
+- [x] Remove `#include "mem_util.h"` - legacy only
+- [x] **KEPT** `#include "nvs_flash.h"` - needed for nvs_flash_init/erase in app_main
 
-### Task 5.3: Remove HEAP_MEMORY_DEBUG include block (lines 22-25)
-- [ ] Remove entire `#if HEAP_MEMORY_DEBUG ... #endif` block
-- [ ] Only needed for the now-deleted `bt_log_allocator_snapshot`
+### Task 5.3: Remove HEAP_MEMORY_DEBUG include block (lines 22-25) ✅ COMPLETE
+- [x] Remove entire `#if HEAP_MEMORY_DEBUG ... #endif` block
+- [x] Only needed for the now-deleted `bt_log_allocator_snapshot`
 
-### Task 5.4: Keep these includes (essential for app_main)
-- [ ] `#include "esp_bt.h"` → needed for `esp_bt_controller_mem_release`
-- [ ] `#include "command_interface.h"` → needed for `cmd_init`, `cmd_process`
-- [ ] `#include "driver/uart.h"` → needed for early UART install
-- [ ] `#include "audio_processor.h"` → needed for audio config
-- [ ] `#include "driver/gpio.h"` → needed for GPIO pin numbers
-- [ ] `#include "driver/i2s_std.h"` → needed for I2S_NUM_0
-- [ ] `#include "nvs_storage.h"` → needed for `nvs_storage_get_i2s_pins`
-- [ ] `#include "bt_manager.h"` → needed for `bt_manager_init`
+### Task 5.4: Keep these includes (essential for app_main) ✅ COMPLETE
+- [x] `#include "esp_bt.h"` → needed for `esp_bt_controller_mem_release`
+- [x] `#include "command_interface.h"` → needed for `cmd_init`, `cmd_process`
+- [x] `#include "driver/uart.h"` → needed for early UART install
+- [x] `#include "audio_processor.h"` → needed for audio config
+- [x] `#include "driver/gpio.h"` → needed for GPIO pin numbers
+- [x] `#include "driver/i2s_std.h"` → needed for I2S_NUM_0
+- [x] `#include "nvs_storage.h"` → needed for `nvs_storage_get_i2s_pins`
+- [x] `#include "bt_manager.h"` → needed for `bt_manager_init`
+- [x] `#include "nvs_flash.h"` → needed for nvs_flash_init/erase
 
-### Task 5.5: Fix corrupted UART install printf (line ~882)
-- [ ] Find: `printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\...\n", ...)`
-- [ ] Fix to: `printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", ...)`
-- [ ] The `\...\n` is a botched escape sequence
+### Task 5.5: Fix corrupted UART install printf (line ~882) ⏭️ SKIPPED
+- [x] No corrupted printf found - this was already correct
 
-### Task 5.6: Build and verify Commit C
-- [ ] `cd esp_bt_audio_source && idf.py build`
-- [ ] Expect: **BUILD SUCCESS**
-- [ ] Expect: Fewer compiler warnings (unused includes gone)
-- [ ] Check binary size: should be slightly smaller
-- [ ] **GATE CHECKPOINT:** Clean build with minimal includes
+### Task 5.6: Build and verify Commit C ✅ COMPLETE
+- [x] `cd esp_bt_audio_source && idf.py build`
+- [x] Result: **BUILD SUCCESS**
+- [x] Binary: 0xe2670 bytes (927 KB), 48% partition free (same as Phase 4)
+- [x] Warnings: **ZERO** (improved from 1 warning in Phase 4)
+- [x] **GATE CHECKPOINT:** ✅ PASSED - Clean build with minimal includes
 
-### Task 5.7: Runtime verification
-- [ ] Flash and monitor
-- [ ] Verify boot diagnostics clean
-- [ ] Test basic commands
-- [ ] **GATE CHECKPOINT:** Behavior still unchanged
+### Task 5.7: Runtime verification ✅ COMPLETE ✅ COMPLETE
+- [x] Full test suite run: `python tools/run_all_tests.py`
+- [x] Result: **ALL 505 TESTS PASSED** (310 host + 195 device)
+- [x] Zero regressions detected
+- [x] **GATE CHECKPOINT:** ✅ PASSED - Behavior unchanged
 
-### Task 5.8: Commit C
-- [ ] `git add main/main.c`
-- [ ] `git commit -m "refactor(main): remove unused helpers and prune includes"`
-- [ ] Update memory.md with timestamp and commit hash
+### Task 5.8: Commit C ✅ COMPLETE
+- [x] `git add main/main.c memory.md`
+- [x] Commit 589273c7: "refactor(main): remove unused helpers and prune includes (Phase 5)"
+- [x] Updated memory.md with timestamp 2026-01-30 12:36:52 and commit hash
+- [x] Total cleanup: 1019→226 lines (793 lines removed, 78% reduction)
 
 ---
 
-## Phase 6: Enforce "No Legacy BT in main.c" Going Forward 🚨 (30 min)
+## Phase 6: Enforce "No Legacy BT in main.c" Going Forward 🚨 (30 min) ⏭️ NEXT
 
 **Goal:** Add CI/lint checks to prevent regression.
 
