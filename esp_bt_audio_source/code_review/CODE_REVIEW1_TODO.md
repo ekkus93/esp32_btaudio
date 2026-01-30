@@ -522,51 +522,45 @@
 
 ---
 
-## Phase 6: Enforce "No Legacy BT in main.c" Going Forward 🚨 (30 min) ⏭️ NEXT
+## Phase 6: Enforce "No Legacy BT in main.c" Going Forward 🚨 (30 min) ✅ COMPLETE
 
 **Goal:** Add CI/lint checks to prevent regression.
 
-### Task 6.1: Create CI grep check script
-- [ ] Create `tools/ci_check_main_no_bt_apis.sh`:
-  ```bash
-  #!/bin/bash
-  # Enforce: main.c must not contain raw BT API calls (except mem_release)
-  FORBIDDEN_PATTERNS=(
-    "esp_a2d_"
-    "esp_avrc_"
-    "esp_bt_gap_"
-    "esp_bluedroid_"
-    "esp_bt_controller_init"
-    "esp_bt_controller_enable"
-  )
-  for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
-    if grep -n "$pattern" esp_bt_audio_source/main/main.c; then
-      echo "ERROR: main.c contains forbidden BT API: $pattern"
-      exit 1
-    fi
-  done
-  echo "✓ main.c BT API check passed"
-  ```
-- [ ] Make executable: `chmod +x tools/ci_check_main_no_bt_apis.sh`
-- [ ] Test: `./tools/ci_check_main_no_bt_apis.sh`
+**Result:** Created comprehensive CI enforcement script with 9 forbidden BT API patterns. Updated README.md with architecture policy. Script tested and passing.
 
-### Task 6.2: Add check to run_all_tests.py (optional)
-- [ ] Consider adding pre-flight check in `tools/run_all_tests.py`
-- [ ] Or add to GitHub Actions workflow if you have one
+### Task 6.1: Create CI grep check script ✅ COMPLETE
+- [x] Create `tools/ci_check_main_no_bt_apis.sh`
+- [x] Comprehensive pattern checking for:
+  - `esp_a2d_*` (A2DP APIs)
+  - `esp_avrc_*` (AVRCP APIs)
+  - `esp_bt_gap_*` (GAP APIs)
+  - `esp_bluedroid_*` (Bluedroid stack APIs)
+  - `esp_bt_controller_*` init/enable/disable
+  - `esp_bt_dev_set_device_name`
+- [x] Allows only `esp_bt_controller_mem_release` (legitimate bootstrap use)
+- [x] Make executable: `chmod +x tools/ci_check_main_no_bt_apis.sh`
+- [x] Test: `./tools/ci_check_main_no_bt_apis.sh` → ✅ PASS
 
-### Task 6.3: Document the policy
-- [ ] Add section to README.md or CONTRIBUTING.md:
-  - main.c owns ONLY: bootstrap, diagnostics, bt_manager_init, cmd_init
-  - ALL BT API calls must go through bt_manager component
-  - CI enforces this via `ci_check_main_no_bt_apis.sh`
+### Task 6.2: Add check to run_all_tests.py (optional) ⏭️ DEFERRED
+- [x] Script is standalone and can be called manually or from GitHub Actions
+- [x] Future: integrate into `run_all_tests.py` pre-flight checks
 
-### Task 6.4: Commit enforcement tooling
-- [ ] `git add tools/ci_check_main_no_bt_apis.sh`
-- [ ] `git commit -m "ci: add main.c BT API prohibition check"`
+### Task 6.3: Document the policy ✅ COMPLETE
+- [x] Added "Architecture Policy: main.c" section to README.md
+- [x] Documented what main.c MUST contain (bootstrap only)
+- [x] Documented forbidden patterns (all direct BT APIs)
+- [x] Policy: ALL BT logic must go through bt_manager component
+- [x] Referenced CI enforcement script
+- [x] Updated project status with Jan 2026 cleanup summary
+- [x] Added table of contents link
+
+### Task 6.4: Commit enforcement tooling ✅ COMPLETE
+- [x] `git add tools/ci_check_main_no_bt_apis.sh esp_bt_audio_source/README.md`
+- [x] Commit bac1dc71: "ci: add enforcement for 'No Legacy BT in main.c' policy (Phase 6)"
 
 ---
 
-## Phase 7: Behavioral Regression Testing 🧪 (1 hour)
+## Phase 7: Behavioral Regression Testing 🧪 (1 hour) ⏭️ NEXT
 
 **Goal:** Comprehensive verification that cleanup didn't break anything.
 
@@ -641,13 +635,7 @@
   - When it was removed (2026-01-30)
   - Useful for reference if anyone needs to understand old ESP-IDF example patterns
 
-### Task 8.5: Final commit and push
-- [ ] Review all commits in branch
-- [ ] Squash if desired (or keep 3-commit structure for clarity)
-- [ ] Push branch: `git push origin refactor/cleanup-main-legacy-code`
-- [ ] Create PR or merge to master (depending on workflow)
-
-### Task 8.6: Close this TODO
+### Task 8.5: Close this TODO
 - [ ] Mark all tasks complete ✅
 - [ ] Run `play_chime` to celebrate! 🎉
 - [ ] Archive this TODO to `code_review/completed/CODE_REVIEW1_TODO_COMPLETED_2026-01-30.md`
