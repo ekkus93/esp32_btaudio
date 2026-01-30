@@ -199,11 +199,30 @@
 - **Status:** All 4 helper functions exist solely to support legacy code
 - **Action:** All 4 helpers marked for removal in Phase 5 (Commit C)
 
-### Task 1.6: Keep list (critical - don't accidentally delete)
-- [ ] `cmd_process_task` (81-87) → **KEEP**
-- [ ] `app_main` (entire function starting ~841) → **KEEP**
-- [ ] `BT_AV_TAG` define → **KEEP**
-- [ ] `LOCAL_DEVICE_NAME` define → **KEEP**
+### Task 1.6: Keep list (critical - don't accidentally delete) ✅ COMPLETE
+- [x] `cmd_process_task` (81-87) → **KEEP** - Active FreeRTOS task that polls command interface every 20ms
+- [x] `app_main` (entire function starting line 844) → **KEEP** - Main entry point with active boot flow
+- [x] `BT_AV_TAG` define (line 65) → **KEEP** - Used by ESP_LOGI at line 858: "ESP32 Bluetooth Audio Source starting"
+- [x] `LOCAL_DEVICE_NAME` define (line 69) → **KEEP** - Device name "ESP_A2DP_SRC" used by bt_manager
+
+**Keep List Verification:**
+- **cmd_process_task (lines 81-87):** Essential active task created by cmd_init() at line 936-957
+  - Polls `cmd_process()` every 20ms in infinite loop
+  - Part of command interface subsystem (not legacy code)
+- **app_main (lines 844-1010):** The entire application entry point
+  - 9-step boot sequence documented in Task 0.1
+  - Only active code path: bt_manager_init() + cmd_init() + audio setup
+  - Must preserve completely
+- **BT_AV_TAG (line 65):** Active log tag used in app_main
+  - Referenced at line 858: `ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting")`
+  - Essential for boot diagnostics
+- **LOCAL_DEVICE_NAME (line 69):** Device name constant
+  - Value: "ESP_A2DP_SRC"
+  - Used by bt_manager to set Bluetooth device name
+  - Critical for device identification
+
+**Status:** All 4 keep-list items verified as essential to active code path
+**Action:** Preserve these items during all cleanup phases (Phases 3-5)
 
 ---
 
