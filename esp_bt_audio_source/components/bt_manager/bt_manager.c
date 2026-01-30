@@ -265,8 +265,10 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 // Callback declarations
 static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+static void bt_app_avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
 // esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
+static esp_err_t bt_manager_init_profiles(void);
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
 #endif
@@ -408,22 +410,8 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     // Register GAP callback
     esp_bt_gap_register_callback(bt_app_gap_callback);
 
-    // Initialize A2DP source
-    if ((ret = esp_a2d_source_init()) != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));
-        return ESP_FAIL;
-    }
-
-    // Register A2DP source callback
-    if ((ret = esp_a2d_register_callback(bt_app_a2d_callback)) != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));
-    return ESP_FAIL;
-    }
-
-    // Register data callback
-    if ((ret = esp_a2d_source_register_data_callback(bt_app_a2d_data_callback)) != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));
-        return ESP_FAIL;
+    if ((ret = bt_manager_init_profiles()) != ESP_OK) {
+        return ret;
     }
 
     // Set device discoverable and connectable
@@ -1540,6 +1528,78 @@ static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *pa
             break;
     }
 }
+
+// Minimal AVRCP controller callback: log connection state and ignore others
+static void bt_app_avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param)
+{
+    if (param == NULL) {
+        return;
+    }
+
+    switch (event) {
+        case ESP_AVRC_CT_CONNECTION_STATE_EVT: {
+            /* IDF provides 'connected' bool in conn_stat; avoid accessing
+             * non-existent fields on older/newer headers. */
+            bool connected = false;
+#if defined(ESP_AVRC_CT_CONNECTION_STATE_EVT)
+            connected = param->conn_stat.connected;
+#endif
+            ESP_LOGI(TAG, "AVRCP connection state: %d", connected ? 1 : 0);
+            break;
+        }
+        case ESP_AVRC_CT_PASSTHROUGH_RSP_EVT:
+            ESP_LOGD(TAG, "AVRCP passthrough rsp key=%d state=%d", param->psth_rsp.key_code, param->psth_rsp.key_state);
+            break;
+        case ESP_AVRC_CT_REMOTE_FEATURES_EVT:
+            ESP_LOGD(TAG, "AVRCP remote features: 0x%x", (unsigned int)param->rmt_feats.feat_mask);
+            break;
+        default:
+            ESP_LOGD(TAG, "AVRCP event: %d", event);
+            break;
+    }
+}
+
+static esp_err_t bt_manager_init_profiles(void)
+{
+    esp_err_t ret = esp_avrc_ct_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize AVRCP controller failed: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    ret = esp_avrc_ct_register_callback(bt_app_avrc_ct_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    ret = esp_a2d_source_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    ret = esp_a2d_register_callback(bt_app_a2d_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    ret = esp_a2d_source_register_data_callback(bt_app_a2d_data_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+#ifdef UNIT_TEST
+esp_err_t bt_manager_test_init_profiles(void)
+{
+    return bt_manager_init_profiles();
+}
+#endif
 
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {

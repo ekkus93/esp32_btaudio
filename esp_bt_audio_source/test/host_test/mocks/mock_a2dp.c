@@ -29,6 +29,11 @@ static struct {
     .last_media_ctrl = ESP_A2D_MEDIA_CTRL_STOP,
 };
 
+// Optional test hook to record call order; weak so other tests unaffected
+__attribute__((weak)) void mock_bt_call_log(const char* tag) {
+    (void)tag;
+}
+
 static void format_mac(const esp_bd_addr_t addr, char *out)
 {
     if (!out) {
@@ -139,6 +144,7 @@ esp_a2d_source_data_cb_t mock_a2dp_get_registered_data_callback(void)
 esp_bt_status_t esp_a2d_source_init(void)
 {
     s_a2dp_state.init_called = true;
+    mock_bt_call_log("esp_a2d_source_init");
     return s_a2dp_state.init_result;
 }
 
@@ -172,11 +178,13 @@ esp_bt_status_t esp_a2d_media_ctrl(esp_a2d_media_ctrl_t ctrl)
 esp_bt_status_t esp_a2d_register_callback(esp_a2d_cb_t callback)
 {
     s_a2dp_state.registered_cb = callback;
+    mock_bt_call_log("esp_a2d_register_callback");
     return ESP_BT_STATUS_SUCCESS;
 }
 
 esp_bt_status_t esp_a2d_source_register_data_callback(esp_a2d_source_data_cb_t callback)
 {
     s_a2dp_state.registered_data_cb = callback;
+    mock_bt_call_log("esp_a2d_source_register_data_callback");
     return ESP_BT_STATUS_SUCCESS;
 }

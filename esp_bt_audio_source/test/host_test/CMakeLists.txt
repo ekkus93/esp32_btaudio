@@ -78,6 +78,18 @@ target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_bluetooth PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
+# AVRCP/A2DP init order test for bt_manager (uses test-only profile init hook)
+add_executable(test_bt_manager_profiles
+    test_bt_manager_profiles.c
+    ../../components/bt_manager/bt_manager.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c)
+target_sources(test_bt_manager_profiles PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_bt_manager_profiles unity util_safe_host)
+add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_profiles>)
+
 ## Audio processor test is intentionally a device/component Unity test only.
 ## The test file lives under `test/component/` and is picked up by the
 ## on-device test runner. Building it as a native host executable links the
