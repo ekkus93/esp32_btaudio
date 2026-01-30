@@ -6,6 +6,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 
 - [Features](#features)
 - [Project status — November 2025](#project-status--november-2025)
+- [Architecture Policy: main.c](#architecture-policy)
 - [Hardware Configuration](#hardware-configuration)
 - [Implementation Tasks](#implementation-tasks)
 - [Developer tools / Diagnostics](#developer-tools-diagnostics)
@@ -25,6 +26,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 <a id="project-status--november-2025"></a>
 ## Project status — recent (finalized run)
 
+- **main.c cleanup (Jan 2026):** Removed ~800 lines of orphaned legacy ESP-IDF A2DP/AVRCP example code from main.c (78% reduction: 1019→226 lines). main.c is now a clean bootstrap that delegates all Bluetooth initialization to the bt_manager component. CI enforcement added via `tools/ci_check_main_no_bt_apis.sh` to prevent regression. All 505 tests passing, zero behavioral changes.
 - Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer.
 - The Unity runner and orchestrator were hardened to run non-interactively: `tools/run_unity.py` (and the helper `tools/flash_and_watch.py`) now run `idf.py flash monitor` inside a pseudo-TTY, detect canonical Unity summary markers reliably, and the aggregator consumes those canonical logs for CI-friendly summaries.
 - Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
@@ -58,6 +60,30 @@ Key recent completions:
 
 - **Build warnings present (note date):**
    - Crystal frequency divergence: detected 41.01MHz vs the expected 40MHz on the current hardware; this is informational but should be documented before release.
+
+<a id="architecture-policy"></a>
+## Architecture Policy: main.c
+
+**Policy enforced as of Jan 2026:**
+
+`main/main.c` serves **ONLY** as a clean bootstrap entry point. It must contain:
+- Early diagnostics and initialization orchestration
+- `bt_manager_init()` call (NOT direct ESP-IDF BT API calls)
+- `cmd_init()` call
+- Audio processor setup
+- Allowed exception: `esp_bt_controller_mem_release()` for BLE memory optimization
+
+**Forbidden in main.c:**
+- Direct ESP-IDF Bluetooth API calls: `esp_a2d_*`, `esp_avrc_*`, `esp_bt_gap_*`, `esp_bluedroid_*`
+- Bluetooth callback registrations
+- Bluetooth state machines
+- Any legacy ESP-IDF example code patterns
+
+**ALL Bluetooth logic lives in the `bt_manager` component.**
+
+This policy is enforced by CI check: `tools/ci_check_main_no_bt_apis.sh`
+
+---
 
 <a id="hardware-configuration"></a>
 ## Hardware Configuration
