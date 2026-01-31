@@ -84,8 +84,10 @@ void app_main(void)
 #else
     int console_uart = UART_NUM_0;
 #endif
-    /* Best-effort delete then install to ensure a clean state */
-    (void)uart_driver_delete(console_uart);
+    /* UART Ownership: main.c installs UART driver once for early diagnostics
+     * (unbuffered uart_write_bytes). cmd_init() and other components assume
+     * UART is already operational. Do NOT delete the driver after install - 
+     * this breaks esp-console, logging, and the cmd layer. Single install only. */
     esp_err_t r = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
     printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
 #ifdef CONFIG_IDF_TARGET_ESP32

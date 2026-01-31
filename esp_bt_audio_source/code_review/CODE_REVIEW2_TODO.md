@@ -144,17 +144,17 @@ format strings in main.c were already correct. No changes needed for this task.
 - [x] Document decision in ARCH.md ✅
 - [x] **Rationale:** Early boot diagnostics are critical for test harness; printf/esp_rom_printf insufficient (buffered). UART driver required for unbuffered uart_write_bytes() diagnostic output. Single install at boot avoids reinstall complexity. ✅
 
-### Task 2.4: Remove aggressive UART driver delete
-- [ ] Locate `uart_driver_delete(console_uart)` in main.c
-- [ ] **Decision:** Remove this dangerous call
-- [ ] **Rationale:** 
-  - [ ] Breaks other subsystems (esp-console, logging)
-  - [ ] Creates intermittent hard-to-diagnose issues
-  - [ ] UART ownership should be single-owner (cmd_init)
-- [ ] Remove the delete call
-- [ ] If early UART diagnostics needed:
-  - [ ] Use `printf()` or `esp_rom_printf()` (don't require driver install)
-  - [ ] Or: add `cmd_init_early()` that just installs UART, called before BT init
+### Task 2.4: Remove aggressive UART driver delete ✅ COMPLETE
+- [x] Locate `uart_driver_delete(console_uart)` in main.c ✅
+- [x] **Decision:** Remove this dangerous call ✅
+- [x] **Rationale:** ✅
+  - [x] Breaks other subsystems (esp-console, logging) ✅
+  - [x] Creates intermittent hard-to-diagnose issues ✅
+  - [x] UART ownership is split early/late per Task 2.3 Option C ✅
+- [x] Remove the delete call ✅
+- [x] Updated comment to clarify UART ownership: "main.c installs UART driver once for early diagnostics; cmd_init() and other components assume UART is already operational. Do NOT delete the driver after install - this breaks esp-console, logging, and the cmd layer. Single install only." ✅
+- Build: SUCCESS (0xe2550 bytes, unchanged)
+- Tests: 310/310 host tests passing ✅
 
 ### Task 2.5: Refactor UART initialization
 - [ ] Option A (recommended): Let cmd_init() own UART
