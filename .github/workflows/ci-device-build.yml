@@ -27,8 +27,11 @@ jobs:
         run: |
           # Clone ESP-IDF at the pinned release used by local builds
           git clone --depth 1 --branch v5.5.1 https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf
-          # ESP-IDF v5.5.x uses tools/requirements/ instead of root requirements.txt
-          python3 -m pip install --user -r $HOME/esp/esp-idf/tools/requirements/requirements.core.txt
+          # Install ESP-IDF (sets up Python venv and installs toolchain)
+          cd $HOME/esp/esp-idf
+          ./install.sh esp32
+          # Install additional Python requirements
+          python3 -m pip install --user -r tools/requirements/requirements.core.txt
 
       - name: Install build deps
         run: |
