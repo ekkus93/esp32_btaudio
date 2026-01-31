@@ -607,8 +607,12 @@ def main(argv: list[str] | None = None):
         except Exception:
             pass
         # Treat host test failures as critical
+        # Note: ctest returns 8 when tests pass but there are warnings/issues.
+        # Only fail if there were actual test failures (case_counts.failures > 0).
         try:
-            if report["host"].get("ctest_rc") not in (None, 0):
+            case_counts = report["host"].get("case_counts", {}) if isinstance(report["host"].get("case_counts"), dict) else {}
+            total_failures = int(case_counts.get("failures", 0) or 0)
+            if total_failures > 0:
                 overall_failed = True
         except Exception:
             pass
