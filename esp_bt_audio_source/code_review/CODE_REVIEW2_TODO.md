@@ -275,18 +275,28 @@ All required information already documented in individual commit messages:
 
 **Goal:** Make audio autostart configurable, centralize defaults, prepare for two-ESP32 split.
 
-### Task 3.1: Extract audio configuration to separate function
-- [ ] Create `load_audio_boot_config()` function in main.c
-- [ ] Move all audio defaults inside this function:
-  - [ ] Pin assignments (BCK, WS, DOUT)
-  - [ ] Sample rate, volume, bits, channels
-  - [ ] I2S peripheral number
-- [ ] Function returns `audio_config_t` struct
-- [ ] Keep NVS pin override logic inside this function
-- [ ] **Benefits:**
-  - [ ] Centralizes audio policy in one place
-  - [ ] Easier to make configurable later
-  - [ ] Separates "what" from "how"
+### Task 3.1: Extract audio configuration to separate function ✅ COMPLETE
+- [x] Create `load_audio_boot_config()` function in main.c ✅
+- [x] Move all audio defaults inside this function: ✅
+  - [x] Pin assignments (BCK, WS, DOUT) ✅
+  - [x] Sample rate, volume, bits, channels ✅
+  - [x] I2S peripheral number ✅
+- [x] Function returns `audio_config_t` struct ✅
+- [x] Keep NVS pin override logic inside this function ✅
+- [x] **Benefits:** ✅
+  - [x] Centralizes audio policy in one place ✅
+  - [x] Easier to make configurable later ✅
+  - [x] Separates "what" from "how" ✅
+
+**Implementation Results:**
+- Created static `load_audio_boot_config()` function with full documentation
+- Moved all audio defaults: sample rate (44.1kHz), bit depth (16), channels (stereo), 
+  volume (80), I2S port (0), pin assignments (BCK=26, WS=25, DIN=22, DOUT=NC)
+- Encapsulated NVS pin override logic within the function
+- Updated `app_main()` to call the new function for cleaner initialization
+- Build: SUCCESS (906K binary, unchanged from baseline)
+- Tests: 36/36 host tests passing ✅
+- Benefits achieved: Single source of truth for audio config, ready for Kconfig integration
 
 ### Task 3.2: Make audio autostart configurable
 - [ ] **Decision:** Choose configuration method:

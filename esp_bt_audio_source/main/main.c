@@ -45,6 +45,52 @@ static void cmd_process_task(void* arg) {
 // Stack size settings for better stability
 #define BT_APP_TASK_STACK_SIZE    8192     // Increased from default 4096
 
+/**
+ * @brief Load audio configuration for boot-time initialization
+ * 
+ * Centralizes all audio policy decisions (pin assignments, sample rate,
+ * volume, etc.) in one place. Checks NVS for persisted pin overrides
+ * and falls back to compile-time defaults if not found.
+ * 
+ * @return audio_config_t Fully-populated audio configuration ready for
+ *                        audio_processor_init()
+ * 
+ * Benefits:
+ * - Single source of truth for audio boot policy
+ * - Easy to make configurable via Kconfig in the future
+ * - Separates "what" (policy) from "how" (initialization)
+ * - NVS override logic encapsulated here rather than scattered
+ */
+static audio_config_t load_audio_boot_config(void)
+{
+    audio_config_t aconf = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_NUM_0,
+        /* Fallback pin assignments match internal defaults in audio_processor.c
+         * to ensure consistent behavior across boot paths */
+        .i2s_bclk_pin = GPIO_NUM_26,
+        .i2s_ws_pin = GPIO_NUM_25,
+        .i2s_din_pin = GPIO_NUM_22,
+        .i2s_dout_pin = GPIO_NUM_NC,
+    };
+
+    /* Best-effort NVS override: if user has stored custom I2S pins, use them.
+     * This allows runtime pin configuration without recompiling. */
+    int bclk = -1, ws = -1, din = -1, dout = -1;
+    if (nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout) == ESP_OK) {
+        if (bclk >= 0) aconf.i2s_bclk_pin = bclk;
+        if (ws >= 0) aconf.i2s_ws_pin = ws;
+        if (din >= 0) aconf.i2s_din_pin = din;
+        if (dout >= 0) aconf.i2s_dout_pin = dout;
+    }
+
+    return aconf;
+}
+
 /*********************************
  * MAIN ENTRY POINT
  ********************************/
@@ -161,40 +207,16 @@ void app_main(void)
     }
 
     /* ========== Audio Initialization ==========
-     * Auto-initialize and start audio/I2S at boot.
-     * Behavior: attempt to read persisted I2S pin overrides from NVS and
-     * fall back to the component defaults. On success the audio pipeline
-     * will be initialized and the I2S RX channel enabled so downstream
-     * consumers (A2DP source) can immediately stream live audio.
-     *
-     * Note: this intentionally changes the previous deferred-init behavior
-     * to enable I2S at boot. If you prefer deferred init revert this block
-     * to the prior diagnostic-only query.
+     * Auto-initialize and start audio/I2S at boot using centralized config.
+     * The load_audio_boot_config() function encapsulates all audio policy
+     * decisions (pins, sample rate, volume) and NVS override logic.
+     * On success the audio pipeline will be initialized and the I2S RX
+     * channel enabled so downstream consumers (A2DP source) can immediately
+     * stream live audio.
      */
 #ifdef ESP_PLATFORM
     {
-        audio_config_t aconf = {
-            .sample_rate = AUDIO_SAMPLE_RATE_44K,
-            .bit_depth = AUDIO_BIT_DEPTH_16,
-            .channels = AUDIO_CHANNEL_STEREO,
-            .volume = 80,
-            .mute = false,
-            .i2s_port = I2S_NUM_0,
-            /* fallbacks chosen to match internal defaults in audio_processor.c */
-            .i2s_bclk_pin = GPIO_NUM_26,
-            .i2s_ws_pin = GPIO_NUM_25,
-            .i2s_din_pin = GPIO_NUM_22,
-            .i2s_dout_pin = GPIO_NUM_NC,
-        };
-
-        int bclk = -1, ws = -1, din = -1, dout = -1;
-        /* Best-effort: if NVS has stored pins use them */
-        if (nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout) == ESP_OK) {
-            if (bclk >= 0) aconf.i2s_bclk_pin = bclk;
-            if (ws >= 0) aconf.i2s_ws_pin = ws;
-            if (din >= 0) aconf.i2s_din_pin = din;
-            if (dout >= 0) aconf.i2s_dout_pin = dout;
-        }
+        audio_config_t aconf = load_audio_boot_config();
 
         esp_err_t aerr = audio_processor_init(&aconf);
         if (aerr != ESP_OK) {
