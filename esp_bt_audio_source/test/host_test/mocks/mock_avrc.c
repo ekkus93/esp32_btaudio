@@ -1,6 +1,7 @@
 #include "esp_avrc_api.h"
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 static struct {
     bool init_called;
