@@ -199,6 +199,43 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 - Easier to reason about boot sequence
 - Supports future two-ESP32 architecture (each ESP32's main.c initializes its own NVS)
 
+### UART (Console) Ownership
+**Decision:** Option C - Split ownership: main.c installs early for diagnostics, cmd_init assumes ready
+
+**Rationale:**
+- Early boot diagnostics are **critical** for programmatic test harness and host injectors
+- Diagnostic markers (DIAG|BOOT|EARLY_BOOT_MARKER, DIAG|BOOT|UART_READY_FOR_CMD_LAYER) must appear before subsystem init
+- printf() and esp_rom_printf() alone are **insufficient** - they are buffered/unreliable for host capture
+- UART driver installation is required for unbuffered uart_write_bytes() diagnostic output
+- cmd_init() and other components need UART already operational for synchronous I/O
+- **Single install** at boot avoids driver reinstall complexity and state confusion
+
+**Implementation:**
+- main.c installs UART driver **once** early in app_main() (after early boot markers, before NVS)
+- Installation is **best-effort** with error checking but continues on failure
+- main.c uses uart_write_bytes() for critical diagnostic markers before subsystems init
+- cmd_init() and command_interface **assume UART is already installed** - no reinstall
+- command_interface checks `uart_is_driver_installed()` before writes (defensive but not required)
+
+**What NOT to do:**
+- ❌ main.c must NOT call `uart_driver_delete()` after install (breaks logging, esp-console, cmd layer)
+- ❌ cmd_init() must NOT reinstall UART driver (causes state reset, double-init)
+- ❌ No component should assume UART is uninstalled and try to install it
+
+**Boot sequence:**
+1. Very early: printf/esp_rom_printf for EARLY_BOOT_MARKER (before driver)
+2. Early: main.c installs UART driver for unbuffered diagnostics
+3. Early: main.c writes UART_READY_FOR_CMD_LAYER via uart_write_bytes()
+4. Platform init: NVS, BT manager (all emit diagnostic markers)
+5. cmd_init: command interface ready (assumes UART operational)
+
+**Benefits:**
+- Early diagnostics reliable and visible to test harness
+- UART installed exactly once - no reinstall complexity
+- cmd_init can immediately read/write without driver setup
+- Clear contract: main.c owns platform UART, cmd_init owns command protocol
+- Supports test injection and automated capture from first boot moment
+
 ## Software Architecture on ESP32 #2 (WiFi)
 
 ### WiFi Core

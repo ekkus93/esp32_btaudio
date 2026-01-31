@@ -137,12 +137,12 @@ format strings in main.c were already correct. No changes needed for this task.
 - Tests: 505/505 passing (310 host + 195 device) ✅
 
 ### Task 2.3: Decide and document UART ownership
-- [ ] **Decision point:** Who should own UART driver install?
+- [x] **Decision point:** Who should own UART driver install? ✅
   - [ ] Option A: cmd_init() owns UART, main.c does NOT touch it
   - [ ] Option B: main.c installs UART, cmd_init() assumes it exists
-  - [ ] Option C: Early boot needs UART for diagnostics, then cmd_init() takes over
-- [ ] Document decision in ARCH.md
-- [ ] **Recommended:** Option A - cmd_init() owns UART lifecycle
+  - [x] Option C: Early boot needs UART for diagnostics, then cmd_init() takes over ✅ **CHOSEN**
+- [x] Document decision in ARCH.md ✅
+- [x] **Rationale:** Early boot diagnostics are critical for test harness; printf/esp_rom_printf insufficient (buffered). UART driver required for unbuffered uart_write_bytes() diagnostic output. Single install at boot avoids reinstall complexity. ✅
 
 ### Task 2.4: Remove aggressive UART driver delete
 - [ ] Locate `uart_driver_delete(console_uart)` in main.c
@@ -530,9 +530,9 @@ Document your decisions here as you go:
 - **Implemented in:** Phase 2, Task 2.1 (documented in ARCH.md) - implementation pending Task 2.2
 
 ### UART Ownership  
-- **Decision:** _[A: cmd_init owns | B: main.c owns | C: split early/late]_
-- **Rationale:** _[why?]_
-- **Implemented in:** Phase 2, Task 2.4-2.5
+- **Decision:** **C: Split ownership - main.c installs early for diagnostics, cmd_init assumes ready** ✅
+- **Rationale:** Early boot diagnostics are **critical** for programmatic test harness and host injectors. Diagnostic markers (DIAG|BOOT|EARLY_BOOT_MARKER, DIAG|BOOT|UART_READY_FOR_CMD_LAYER) must appear before subsystem init. printf() and esp_rom_printf() alone are **insufficient** - they are buffered/unreliable for host capture. UART driver installation is required for unbuffered uart_write_bytes() diagnostic output. cmd_init() and other components need UART already operational for synchronous I/O. **Single install** at boot avoids driver reinstall complexity and state confusion. Boot sequence: (1) Very early printf/ROM markers, (2) main.c installs UART driver, (3) main.c writes UART_READY_FOR_CMD_LAYER, (4) Platform init (NVS, BT), (5) cmd_init assumes UART ready. **Critical:** main.c must NOT call uart_driver_delete() after install (breaks everything).
+- **Implemented in:** Phase 2, Task 2.3 (documented in ARCH.md) - implementation pending Task 2.4-2.5
 
 ### Audio Autostart Configuration
 - **Decision:** _[A: NVS only | B: Kconfig only | C: both]_
