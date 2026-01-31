@@ -23,11 +23,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install ESP-IDF v5.4.1
+      - name: Install ESP-IDF v5.5.1
         run: |
           # Clone ESP-IDF at the pinned release used by local builds
-          git clone --depth 1 --branch v5.4.1 https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf
-          python3 -m pip install --user -r $HOME/esp/esp-idf/requirements.txt
+          git clone --depth 1 --branch v5.5.1 https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf
+          # ESP-IDF v5.5.x uses tools/requirements/ instead of root requirements.txt
+          python3 -m pip install --user -r $HOME/esp/esp-idf/tools/requirements/requirements.core.txt
 
       - name: Install build deps
         run: |
