@@ -49,25 +49,39 @@ static void cmd_process_task(void* arg) {
  * @brief Load audio configuration for boot-time initialization
  * 
  * Centralizes all audio policy decisions (pin assignments, sample rate,
- * volume, etc.) in one place. Checks NVS for persisted pin overrides
- * and falls back to compile-time defaults if not found.
+ * volume, etc.) in one place. Uses Kconfig compile-time defaults which
+ * can be overridden via menuconfig, and checks NVS for persisted pin
+ * overrides that take precedence at runtime.
  * 
  * @return audio_config_t Fully-populated audio configuration ready for
  *                        audio_processor_init()
  * 
+ * Configuration hierarchy (highest precedence first):
+ * 1. NVS runtime overrides (I2S pins only for now)
+ * 2. Kconfig compile-time defaults (sample rate, volume, bit depth, autostart)
+ * 
  * Benefits:
  * - Single source of truth for audio boot policy
- * - Easy to make configurable via Kconfig in the future
+ * - Configurable via menuconfig (idf.py menuconfig)
+ * - Runtime NVS overrides for field customization
  * - Separates "what" (policy) from "how" (initialization)
- * - NVS override logic encapsulated here rather than scattered
  */
 static audio_config_t load_audio_boot_config(void)
 {
     audio_config_t aconf = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
+        /* Use Kconfig defaults - configurable via menuconfig */
+        .sample_rate = (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 44100) ? AUDIO_SAMPLE_RATE_44K :
+                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 48000) ? AUDIO_SAMPLE_RATE_48K :
+                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 32000) ? AUDIO_SAMPLE_RATE_32K :
+                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 22050) ? AUDIO_SAMPLE_RATE_22K :
+                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 16000) ? AUDIO_SAMPLE_RATE_16K :
+                       AUDIO_SAMPLE_RATE_44K, /* fallback if custom value */
+        .bit_depth = (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 16) ? AUDIO_BIT_DEPTH_16 :
+                     (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 24) ? AUDIO_BIT_DEPTH_24 :
+                     (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 32) ? AUDIO_BIT_DEPTH_32 :
+                     AUDIO_BIT_DEPTH_16, /* fallback */
         .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80,
+        .volume = CONFIG_AUDIO_DEFAULT_VOLUME,
         .mute = false,
         .i2s_port = I2S_NUM_0,
         /* Fallback pin assignments match internal defaults in audio_processor.c
@@ -212,17 +226,20 @@ void app_main(void)
      * init until explicitly commanded. This allows systems that don't need
      * audio at boot to save resources or control initialization timing.
      * 
-     * Default: enabled (autostart=true) if not set in NVS.
+     * Configuration hierarchy (highest precedence first):
+     * 1. NVS runtime setting (if configured)
+     * 2. Kconfig compile-time default (CONFIG_AUDIO_AUTOSTART_DEFAULT)
+     * 
      * The load_audio_boot_config() function encapsulates all audio policy
      * decisions (pins, sample rate, volume) and NVS override logic.
      */
 #ifdef ESP_PLATFORM
     {
-        uint8_t autostart = 1; /* default to enabled */
+        uint8_t autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Kconfig default */
         esp_err_t autostart_err = nvs_storage_get_audio_autostart(&autostart);
         if (autostart_err == ESP_ERR_NOT_FOUND) {
-            /* Not set in NVS, use default (enabled) */
-            autostart = 1;
+            /* Not set in NVS, use Kconfig default */
+            autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0;
         }
 
         if (autostart) {
