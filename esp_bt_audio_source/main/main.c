@@ -68,38 +68,43 @@ void app_main(void)
      * drowned out during diagnostics. Raise as needed when deep-diving.
      */
     esp_log_level_set("AUDIO_PROC", ESP_LOG_WARN);
-    /* Ensure the console UART driver is installed early so command layer
-     * can synchronously read/write without racing with other subsystems.
-     * This mirrors the conservative install performed in the command
-     * interface but moves it earlier in startup to reduce races. */
+
+    /* ========== UART Driver Initialization (Early Boot) ==========
+     * 
+     * OWNERSHIP: main.c owns UART driver installation for early diagnostics.
+     * cmd_init() and all other components assume UART is already operational.
+     * 
+     * RATIONALE: Early boot diagnostics require unbuffered uart_write_bytes()
+     * before subsystems initialize. printf/esp_rom_printf are insufficient
+     * (buffered/unreliable for programmatic test harness captures).
+     * 
+     * CONTRACT: Single install only - NEVER call uart_driver_delete() after
+     * install as it breaks esp-console, logging, and the cmd layer.
+     */
 #ifdef ESP_PLATFORM
-    {
     const int uart_rx_buf = 1024;
     const int uart_tx_buf = 1024;
-    /* Resolve the console UART number from config when available; fall
-     * back to UART_NUM_0 which is commonly the primary UART on ESP32.
-     */
+    
 #ifdef CONFIG_ESP_CONSOLE_UART_NUM
-    int console_uart = CONFIG_ESP_CONSOLE_UART_NUM;
+    const int console_uart = CONFIG_ESP_CONSOLE_UART_NUM;
 #else
-    int console_uart = UART_NUM_0;
+    const int console_uart = UART_NUM_0;
 #endif
-    /* UART Ownership: main.c installs UART driver once for early diagnostics
-     * (unbuffered uart_write_bytes). cmd_init() and other components assume
-     * UART is already operational. Do NOT delete the driver after install - 
-     * this breaks esp-console, logging, and the cmd layer. Single install only. */
+
     esp_err_t r = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
-    printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+    printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
+           (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+    esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
+                   (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
 #endif
+
+    /* Emit critical marker for test harness: UART driver is ready, cmd layer
+     * can now perform synchronous I/O without driver installation races. */
     if (uart_is_driver_installed(console_uart)) {
         const char ready[] = "DIAG|BOOT|UART_READY_FOR_CMD_LAYER\r\n";
         uart_write_bytes(console_uart, ready, sizeof(ready)-1);
-        /* Ensure the ready string is transmitted before proceeding so host
-         * injectors that watch for this marker don't miss it due to buffering. */
-        (void)uart_wait_tx_done(console_uart, pdMS_TO_TICKS(50));
-    }
+        uart_wait_tx_done(console_uart, pdMS_TO_TICKS(50));
     }
 #endif
     
@@ -153,9 +158,10 @@ void app_main(void)
     esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
 #endif
 
-    /* Runtime diagnostic: print whether the UART driver is installed for the command UART */
-    int uart_installed = uart_is_driver_installed(CONFIG_ESP_CONSOLE_UART_NUM);
-    printf("DIAG|CMD_IF|UART_DRIVER_INSTALLED|uart=%d|installed=%d\r\n", CONFIG_ESP_CONSOLE_UART_NUM, uart_installed);
+    /* Runtime diagnostic: verify UART driver is still installed (should always be true) */
+    int uart_installed = uart_is_driver_installed(console_uart);
+    printf("DIAG|CMD_IF|UART_DRIVER_INSTALLED|uart=%d|installed=%d\r\n", 
+           console_uart, uart_installed);
 #ifdef ESP_PLATFORM
     /* Auto-initialize and start audio/I2S at boot.
      * Behavior: attempt to read persisted I2S pin overrides from NVS and
