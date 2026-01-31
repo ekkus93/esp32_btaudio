@@ -108,14 +108,46 @@ void app_main(void)
     }
 #endif
     
-    // Initialize NVS flash storage (platform service owned by main.c).
-    // This must be called once before any component uses NVS (bt_manager,
-    // audio_processor, etc.). nvs_storage_init() handles version mismatch
-    // and erase-on-error internally.
+    /* ========== Platform Services Initialization ==========
+     * Initialize NVS flash storage (platform service owned by main.c).
+     * This must be called once before any component uses NVS (bt_manager,
+     * audio_processor, etc.). nvs_storage_init() handles version mismatch
+     * and erase-on-error internally.
+     */
     ESP_ERROR_CHECK(nvs_storage_init());
     
-    // Initialize and start Bluetooth via bt_manager so the command interface
-    // and other components using the manager APIs are ready for SCAN/PAIR.
+    /* ========== Command Interface Initialization ==========
+     * Initialize command interface BEFORE subsystems (BT, Audio) so that
+     * commands are available immediately when subsystems become ready.
+     * This allows SCAN/PAIR/PLAY commands to work as soon as BT initializes.
+     * 
+     * RATIONALE: Command interface should be the "control plane" that's
+     * ready before the "data plane" (BT, Audio) initializes. This prevents
+     * the confusing situation where BT is ready but commands aren't yet
+     * available to control it.
+     */
+#ifdef ESP_PLATFORM
+    if (cmd_init() != CMD_SUCCESS) {
+        ESP_LOGW(BT_AV_TAG, "cmd_init() failed or already initialized");
+    }
+    printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+    esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+#endif
+
+    // Create command processing task - this starts the command interface
+    // event loop so commands can be processed as soon as they arrive.
+    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+    printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#endif
+#endif
+
+    /* ========== Bluetooth Initialization ==========
+     * Initialize BT manager now that command interface is ready.
+     * Users can immediately issue SCAN/PAIR commands via the command interface.
+     */
     bt_manager_init_t bt_cfg = {
         .device_name = LOCAL_DEVICE_NAME,
         .connected_cb = NULL,
@@ -125,45 +157,11 @@ void app_main(void)
     if (bt_manager_init(&bt_cfg) != ESP_OK) {
         ESP_LOGE(BT_AV_TAG, "bt_manager_init failed");
     } else {
-        ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized");
+        ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized - SCAN/PAIR commands ready");
     }
 
-    // Initialize command interface for serial commands and events
-    // This will create the UART driver and prepare the command parser.
-    // The cmd_process() function must be called regularly; create a
-    // small FreeRTOS task to poll for incoming command lines.
-#ifdef ESP_PLATFORM
-    if (cmd_init() != CMD_SUCCESS) {
-        ESP_LOGW(BT_AV_TAG, "cmd_init() failed or already initialized");
-    }
-    /* Unconditional boot-time diagnostic: print a plain-text marker so
-     * non-interactive captures can reliably detect that command
-     * initialization has completed and which UART is in use. Use printf
-     * to ensure the message appears on the console even if the UART driver
-     * isn't fully installed yet. */
-    printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
-    /* Also emit an unbuffered ROM-level print so host captures see this even if stdio is buffered */
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
-#endif
-
-    // Create a tiny task dedicated to processing command input
-    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
-    /* One-time diagnostic to indicate the command processing task was created
-     * and should be running. This helps programmatic captures detect that the
-     * task is active even when the UART driver installation may be delayed. */
-    printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
-    /* duplicate as ROM-level immediate output to reduce race with host capture */
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
-#endif
-
-    /* Runtime diagnostic: verify UART driver is still installed (should always be true) */
-    int uart_installed = uart_is_driver_installed(console_uart);
-    printf("DIAG|CMD_IF|UART_DRIVER_INSTALLED|uart=%d|installed=%d\r\n", 
-           console_uart, uart_installed);
-#ifdef ESP_PLATFORM
-    /* Auto-initialize and start audio/I2S at boot.
+    /* ========== Audio Initialization ==========
+     * Auto-initialize and start audio/I2S at boot.
      * Behavior: attempt to read persisted I2S pin overrides from NVS and
      * fall back to the component defaults. On success the audio pipeline
      * will be initialized and the I2S RX channel enabled so downstream
@@ -173,6 +171,7 @@ void app_main(void)
      * to enable I2S at boot. If you prefer deferred init revert this block
      * to the prior diagnostic-only query.
      */
+#ifdef ESP_PLATFORM
     {
         audio_config_t aconf = {
             .sample_rate = AUDIO_SAMPLE_RATE_44K,
@@ -214,7 +213,6 @@ void app_main(void)
             }
         }
     }
-#endif
 #endif
     
     ESP_LOGI(BT_AV_TAG, "====================================================");
