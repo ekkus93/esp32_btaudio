@@ -1588,13 +1588,6 @@ static esp_err_t bt_manager_init_profiles(void)
     return ESP_OK;
 }
 
-#ifdef UNIT_TEST
-esp_err_t bt_manager_test_init_profiles(void)
-{
-    return bt_manager_init_profiles();
-}
-#endif
-
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
     if (len <= 0 || buf == NULL) {
@@ -1861,6 +1854,18 @@ void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_para
         default:
             break;
     }
+}
+#endif
+
+#ifdef UNIT_TEST
+esp_err_t bt_manager_test_init_profiles(void)
+{
+#ifdef ESP_PLATFORM
+    return bt_manager_init_profiles();
+#else
+    /* Host test build: return success without calling ESP-IDF APIs */
+    return ESP_OK;
+#endif
 }
 #endif
 

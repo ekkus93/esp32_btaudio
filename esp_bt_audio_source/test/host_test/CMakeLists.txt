@@ -84,9 +84,12 @@ add_executable(test_bt_manager_profiles
     ../../components/bt_manager/bt_manager.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
     mocks/fake_esp_err.c
     mocks/fake_log.c)
-target_sources(test_bt_manager_profiles PRIVATE mocks/bt_manager_test_hooks.c)
+target_compile_definitions(test_bt_manager_profiles PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_manager_profiles unity util_safe_host)
 add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_profiles>)
 
