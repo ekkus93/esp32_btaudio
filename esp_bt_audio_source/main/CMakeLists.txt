@@ -14,7 +14,6 @@ idf_component_register(
     SRCS
         "main.c"
     INCLUDE_DIRS
-        "include"
         "../components/components/unity/unity/extras/memory/src"
     REQUIRES
         ${main_requires}
