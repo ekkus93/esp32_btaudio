@@ -450,3 +450,65 @@ cmd_status_t cmd_handle_sample_rate(const cmd_context_t *ctx)
 #endif
     return CMD_SUCCESS;
 }
+cmd_status_t cmd_handle_audio_autostart(const cmd_context_t *ctx)
+{
+    /* AUDIO_AUTOSTART [on|off|get]
+     * Set or query audio autostart configuration in NVS.
+     * When enabled (default), audio initializes automatically at boot.
+     * When disabled, audio init is deferred until manual START command.
+     */
+    if (ctx->param_count < 1)
+    {
+        cmd_send_response("ERR", "AUDIO_AUTOSTART", "MISSING_PARAM", "Usage: AUDIO_AUTOSTART [on|off|get]");
+        return CMD_SUCCESS;
+    }
+
+    const char *action = ctx->params[0];
+
+    if (strcasecmp(action, "get") == 0)
+    {
+        /* Query current setting */
+        uint8_t autostart = 1; /* default */
+        esp_err_t err = nvs_storage_get_audio_autostart(&autostart);
+        if (err == ESP_ERR_NOT_FOUND)
+        {
+            autostart = 1; /* default to enabled if not set */
+        }
+        const char *status = autostart ? "enabled" : "disabled";
+        cmd_send_response("OK", "AUDIO_AUTOSTART", "STATUS", status);
+        return CMD_SUCCESS;
+    }
+    else if (strcasecmp(action, "on") == 0 || strcasecmp(action, "1") == 0)
+    {
+        /* Enable autostart */
+        esp_err_t err = nvs_storage_set_audio_autostart(1);
+        if (err == ESP_OK)
+        {
+            cmd_send_response("OK", "AUDIO_AUTOSTART", "ENABLED", "Restart required to apply");
+        }
+        else
+        {
+            cmd_send_response("ERR", "AUDIO_AUTOSTART", "WRITE_FAILED", NULL);
+        }
+        return CMD_SUCCESS;
+    }
+    else if (strcasecmp(action, "off") == 0 || strcasecmp(action, "0") == 0)
+    {
+        /* Disable autostart */
+        esp_err_t err = nvs_storage_set_audio_autostart(0);
+        if (err == ESP_OK)
+        {
+            cmd_send_response("OK", "AUDIO_AUTOSTART", "DISABLED", "Restart required to apply");
+        }
+        else
+        {
+            cmd_send_response("ERR", "AUDIO_AUTOSTART", "WRITE_FAILED", NULL);
+        }
+        return CMD_SUCCESS;
+    }
+    else
+    {
+        cmd_send_response("ERR", "AUDIO_AUTOSTART", "INVALID_PARAM", "Use: on|off|get");
+        return CMD_SUCCESS;
+    }
+}

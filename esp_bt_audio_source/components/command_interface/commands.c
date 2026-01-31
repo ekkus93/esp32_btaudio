@@ -198,6 +198,8 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
         ctx->type = CMD_TYPE_FILES;
     else if (strcasecmp(token, "PARTS") == 0)
         ctx->type = CMD_TYPE_PARTS;
+    else if (strcasecmp(token, "AUDIO_AUTOSTART") == 0)
+        ctx->type = CMD_TYPE_AUDIO_AUTOSTART;
     else if (strcasecmp(token, "DIAG") == 0)
         ctx->type = CMD_TYPE_DIAG;
     else if (strcasecmp(token, "HELP") == 0)
@@ -365,6 +367,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_volume(ctx);
     case CMD_TYPE_I2S_CONFIG:
         return cmd_handle_i2s_config(ctx);
+    case CMD_TYPE_AUDIO_AUTOSTART:
+        return cmd_handle_audio_autostart(ctx);
     case CMD_TYPE_PAIR:
         return cmd_handle_pair(ctx);
     case CMD_TYPE_PAIRED:

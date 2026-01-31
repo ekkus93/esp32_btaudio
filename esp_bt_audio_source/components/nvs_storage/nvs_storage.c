@@ -159,6 +159,34 @@ esp_err_t nvs_storage_set_default_pin(const char* pin)
     return err;
 }
 
+esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
+{
+    if (!autostart) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    if (err != ESP_OK) return err;
+    int32_t v = 0;
+    err = nvs_storage_get_i32(h, "audio_autostart", &v);
+    if (err == ESP_OK) {
+        *autostart = (v != 0) ? 1 : 0;
+    }
+    nvs_storage_close(h);
+    /* If not found, caller should default to enabled (true) */
+    return err;
+}
+
+esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    int32_t v = autostart ? 1 : 0;
+    err = nvs_storage_set_i32(h, "audio_autostart", v);
+    if (err == ESP_OK) err = nvs_storage_commit(h);
+    nvs_storage_close(h);
+    return err;
+}
+
 // Simple paired devices persistence: store count and entries by index
 #define PAIRED_COUNT_KEY "paired_count"
 #define PAIRED_MAC_KEY_FMT "paired_mac_%d"

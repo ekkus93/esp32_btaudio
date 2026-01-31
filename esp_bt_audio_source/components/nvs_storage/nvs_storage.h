@@ -22,6 +22,12 @@ esp_err_t nvs_storage_set_device_name(const char* name);
 esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len);
 esp_err_t nvs_storage_set_default_pin(const char* pin);
 
+// Audio autostart configuration
+// Returns ESP_OK if value is set, ESP_ERR_NOT_FOUND if not set (defaults to true)
+// autostart: receives 1 for enabled, 0 for disabled
+esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart);
+esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart);
+
 // Paired devices persistence (simple indexed list stored in NVS)
 // count: number of stored paired devices
 esp_err_t nvs_storage_get_paired_count(int* count);

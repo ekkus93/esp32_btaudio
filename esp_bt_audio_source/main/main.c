@@ -207,32 +207,46 @@ void app_main(void)
     }
 
     /* ========== Audio Initialization ==========
-     * Auto-initialize and start audio/I2S at boot using centralized config.
+     * Initialize and start audio/I2S at boot if autostart is enabled.
+     * Autostart can be disabled via NVS (audio_autostart=0) to defer audio
+     * init until explicitly commanded. This allows systems that don't need
+     * audio at boot to save resources or control initialization timing.
+     * 
+     * Default: enabled (autostart=true) if not set in NVS.
      * The load_audio_boot_config() function encapsulates all audio policy
      * decisions (pins, sample rate, volume) and NVS override logic.
-     * On success the audio pipeline will be initialized and the I2S RX
-     * channel enabled so downstream consumers (A2DP source) can immediately
-     * stream live audio.
      */
 #ifdef ESP_PLATFORM
     {
-        audio_config_t aconf = load_audio_boot_config();
+        uint8_t autostart = 1; /* default to enabled */
+        esp_err_t autostart_err = nvs_storage_get_audio_autostart(&autostart);
+        if (autostart_err == ESP_ERR_NOT_FOUND) {
+            /* Not set in NVS, use default (enabled) */
+            autostart = 1;
+        }
 
-        esp_err_t aerr = audio_processor_init(&aconf);
-        if (aerr != ESP_OK) {
-            printf("DIAG|AUDIO|STATUS|init_failed|err=%s\r\n", esp_err_to_name(aerr));
-        } else {
-            aerr = audio_processor_start();
+        if (autostart) {
+            audio_config_t aconf = load_audio_boot_config();
+
+            esp_err_t aerr = audio_processor_init(&aconf);
             if (aerr != ESP_OK) {
-                printf("DIAG|AUDIO|STATUS|start_failed|err=%s\r\n", esp_err_to_name(aerr));
+                printf("DIAG|AUDIO|STATUS|init_failed|err=%s\r\n", esp_err_to_name(aerr));
             } else {
-                printf("DIAG|AUDIO|STATUS|initialized=1|running=1|volume=%u|mute=%d|rate=%d|bits=%d|ch=%d\r\n",
-                       (unsigned)aconf.volume,
-                       aconf.mute ? 1 : 0,
-                       (int)aconf.sample_rate,
-                       (int)aconf.bit_depth,
-                       (int)aconf.channels);
+                aerr = audio_processor_start();
+                if (aerr != ESP_OK) {
+                    printf("DIAG|AUDIO|STATUS|start_failed|err=%s\r\n", esp_err_to_name(aerr));
+                } else {
+                    printf("DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=%u|mute=%d|rate=%d|bits=%d|ch=%d\r\n",
+                           (unsigned)aconf.volume,
+                           aconf.mute ? 1 : 0,
+                           (int)aconf.sample_rate,
+                           (int)aconf.bit_depth,
+                           (int)aconf.channels);
+                }
             }
+        } else {
+            printf("DIAG|AUDIO|STATUS|autostart=0|deferred=1\r\n");
+            ESP_LOGI(BT_AV_TAG, "Audio autostart disabled - audio initialization deferred");
         }
     }
 #endif
