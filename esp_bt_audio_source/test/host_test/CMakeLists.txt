@@ -60,6 +60,8 @@ target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_commands PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_commands PRIVATE mocks/fake_esp_err.c)
+target_sources(test_commands PRIVATE mocks/mock_a2dp.c)
+target_sources(test_commands PRIVATE mocks/mock_avrc.c)
 target_link_libraries(test_commands unity util_safe_host command_interface_host)
 
 # Enable CTest and register the test executables so `ctest` can discover them
@@ -76,6 +78,8 @@ target_link_libraries(test_bluetooth unity m util_safe_host)
 target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_bluetooth PRIVATE mocks/fake_esp_err.c)
+target_sources(test_bluetooth PRIVATE mocks/mock_a2dp.c)
+target_sources(test_bluetooth PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 # AVRCP/A2DP init order test for bt_manager (uses test-only profile init hook)
@@ -276,6 +280,8 @@ target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_confirm PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_pairing_confirm PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_confirm PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_confirm PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_confirm PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
 add_executable(test_connect_name test_connect_name.c
@@ -290,6 +296,8 @@ target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_connect_name PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_connect_name PRIVATE mocks/fake_esp_err.c)
+target_sources(test_connect_name PRIVATE mocks/mock_a2dp.c)
+target_sources(test_connect_name PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
 
 add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
@@ -304,6 +312,8 @@ target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_enter_pin PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_enter_pin PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
 add_executable(test_pairing_negative test_pairing_negative.c
@@ -325,6 +335,8 @@ target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_edge_cases PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
 # Pending-state tracking tests for pairing flows
@@ -335,6 +347,8 @@ target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_pending unity util_safe_host)
 target_sources(test_pairing_pending PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_pending PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_pending PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
 
 # Pairing event emission tests using test hook (no UART dependency)
@@ -345,6 +359,8 @@ target_sources(test_pairing_event_notifications PRIVATE mocks/mock_audio_and_bts
 target_sources(test_pairing_event_notifications PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_event_notifications unity util_safe_host)
 target_sources(test_pairing_event_notifications PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_event_notifications COMMAND $<TARGET_FILE:test_pairing_event_notifications>)
 
 # Event stress test: validates ordering and basic rate-limiting instrumentation
@@ -364,6 +380,8 @@ target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_event_stress PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_event_stress PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_event_stress PRIVATE mocks/fake_esp_err.c)
+target_sources(test_event_stress PRIVATE mocks/mock_a2dp.c)
+target_sources(test_event_stress PRIVATE mocks/mock_avrc.c)
 
 # Pairing event sequence hardening stress test
 add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
@@ -371,6 +389,15 @@ add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
 target_link_libraries(test_pairing_seq_hardening unity util_safe_host command_interface_host)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/shim_audio_queue.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
 
 # Ensure beep-flush behavior: host test
@@ -431,7 +458,9 @@ add_test(NAME test_bt_streaming_manager COMMAND $<TARGET_FILE:test_bt_streaming_
 # getter (bt_get_connection_state) reflects the changes.
 add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
     ../../components/bt_manager/bt_manager.c
-    mocks/mock_audio_and_btstate.c)
+    mocks/mock_audio_and_btstate.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
 # Provide test hooks used by bt_manager wrappers (forced-failure hooks)
 target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_mock_connection_helpers PRIVATE mocks/nvs_storage_mock.c)
@@ -443,7 +472,9 @@ add_test(NAME test_mock_connection_helpers COMMAND $<TARGET_FILE:test_mock_conne
 add_executable(dump_event_stress_output dump_event_stress_output.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
-    mocks/mock_gap.c)
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
 target_link_libraries(dump_event_stress_output m util_safe_host command_interface_host)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
@@ -483,6 +514,8 @@ target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_a2dp.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_avrc.c)
 
 # Beep manager host unit tests (moved under host_test/test_beep_manager)
 add_executable(test_beep_manager

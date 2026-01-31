@@ -225,12 +225,8 @@ static void remove_file(char *path)
 /* ---- Unity fixtures ------------------------------------------------------ */
 static play_manager_buffers_t make_buffers(void)
 {
-    static uint8_t proc_buf[2048];
-    static uint8_t proc_buf2[2048];
     play_manager_buffers_t bufs = {
-        .proc_buf = proc_buf,
-        .proc_buf2 = proc_buf2,
-        .work_bytes = sizeof(proc_buf),
+        .work_bytes = 2048,
     };
     return bufs;
 }
@@ -256,8 +252,10 @@ void test_init_should_reject_invalid_args(void)
     play_manager_buffers_t bufs = {0};
     audio_config_t cfg = make_config();
 
+    // Only NULL config is invalid; buffers is now optional (uses default if NULL)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, play_manager_init(NULL, &bufs));
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, play_manager_init(&cfg, NULL));
+    // buffers can be NULL, it will use default work_bytes
+    TEST_ASSERT_EQUAL(ESP_OK, play_manager_init(&cfg, NULL));
 }
 
 void test_init_and_deinit_should_succeed_twice(void)

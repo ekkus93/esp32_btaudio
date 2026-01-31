@@ -29,6 +29,8 @@
 #define TAG "BT_MGR"
 #else
 #include "esp_log.h"
+#include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
 #define TAG "BT_MGR"
 #endif
 
@@ -1863,7 +1865,34 @@ esp_err_t bt_manager_test_init_profiles(void)
 #ifdef ESP_PLATFORM
     return bt_manager_init_profiles();
 #else
-    /* Host test build: return success without calling ESP-IDF APIs */
+    /* Host test build: call mock functions in the same order as ESP build */
+    esp_err_t ret;
+    
+    ret = esp_avrc_ct_init();
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ret = esp_avrc_ct_register_callback(NULL);
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ret = esp_a2d_source_init();
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ret = esp_a2d_register_callback(NULL);
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    ret = esp_a2d_source_register_data_callback(NULL);
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
     return ESP_OK;
 #endif
 }
