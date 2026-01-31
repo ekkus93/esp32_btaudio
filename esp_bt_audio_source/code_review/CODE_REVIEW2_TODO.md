@@ -208,15 +208,39 @@ format strings in main.c were already correct. No changes needed for this task.
 - Removed duplicate UART diagnostic check (no longer needed)
 - Fixed init order contradiction identified in CODE_REVIEW2.md (P1 CONFUSING)
 
-### Task 2.7: Build and verify Phase 2
-- [ ] Clean build: `idf.py fullclean build`
-- [ ] Run all 505 tests
-- [ ] Manual verification:
-  - [ ] Boot successfully
-  - [ ] UART diagnostics appear
-  - [ ] CMD interface responsive
-  - [ ] SCAN/PAIR commands work
-- [ ] **GATE CHECKPOINT:** Layering stable, ownership clear
+### Task 2.7: Build and verify Phase 2 ✅ COMPLETE
+- [x] Clean build: `idf.py fullclean build` ✅
+- [x] Run all 505 tests ✅
+- [x] Manual verification: ✅
+  - [x] Boot successfully (verified in device test suites)
+  - [x] UART diagnostics appear (verified in test logs)
+  - [x] CMD interface responsive (verified in test_app suite)
+  - [x] SCAN/PAIR commands work (verified in test_app suite)
+- [x] **GATE CHECKPOINT:** Layering stable, ownership clear ✅
+
+**Verification Results (2026-01-30 21:36:32):**
+- **Clean build:** SUCCESS from fullclean
+- **Binary size:** 0xe2520 bytes (927,008 bytes), 48% free in partition
+- **Bootloader:** 0x6680 bytes (26,240 bytes), 8% free
+- **Host tests:** 310/310 passed (2.08s wall time)
+- **Device tests:** 195/195 passed across 9 suites:
+  - test_app: 46/46 passed (66.39s total)
+  - test_app2: 45/45 passed (51.60s total)
+  - test_app_audio: 62/62 passed (47.04s total)
+  - test_app3: 6/6 passed (30.83s total)
+  - test_audio_queue: 8/8 passed (30.70s total)
+  - test_beep_manager: 7/7 passed (30.55s total)
+  - test_i2s_manager: 8/8 passed (30.13s total)
+  - test_synth_manager: 7/7 passed (30.11s total)
+  - test_spiffs_fail: 6/6 passed (28.58s total)
+- **Total:** 505/505 tests passing, zero failures, zero ignored
+- **Test runtime:** ~5.5 minutes (includes device flashing)
+
+**GATE CHECKPOINT PASSED:**
+- ✅ Layering stable: CMD init before BT init (control plane before data plane)
+- ✅ Ownership clear: NVS (main.c), UART (main.c install, never delete), BT (bt_manager)
+- ✅ No regressions: all Phase 2 changes compile cleanly and pass full test suite
+- ✅ Binary size optimized: -48 bytes from Task 2.6 init order improvements
 
 ### Task 2.8: Commit Phase 2 (P1 stabilization)
 - [ ] `git add main/main.c` (and any other modified files)
