@@ -1,3 +1,46 @@
+## 2026-02-01 05:37:15 — CODE_REVIEW2 Phase 6 Task 6.2: Manual Testing Checklist Created
+
+**Context:** Task 6.2 requires physical device for on-device verification. Created comprehensive manual testing checklist for use when hardware is available.
+
+**Task 6.2: Manual On-Device Testing (Deferred - Requires Hardware)**
+
+**What:** Created `code_review/MANUAL_TEST_CHECKLIST.md` - comprehensive 8-section manual test plan covering all Phase 0-5 changes.
+
+**Checklist Sections:**
+1. **Boot Sequence Verification** - DIAG markers, early UART init, no corruption
+2. **Initialization Order** - Platform → Control → Data → Media planes (UART→NVS→CMD→BT→Audio)
+3. **Command Interface** - STATUS, SCAN, PAIR commands functional
+4. **Audio Configuration** - Autostart toggle (on/off/get), persistence across reboots, PLAY command
+5. **NVS Pin Overrides** - SET_I2S_PINS, reboot verification, CLEAR_I2S_PINS
+6. **Error Handling** - Platform fail-fast (NVS ESP_ERROR_CHECK), subsystem graceful degradation
+7. **Regression Checks** - UART never deleted, preprocessor guards fixed, CMD always available
+8. **Performance** - Boot time, command latency, heap usage spot checks
+
+**Test Coverage by Phase:**
+- Phase 0: DIAG markers visible
+- Phase 1: Preprocessor guards (esp_rom_printf fix)
+- Phase 2: Init order (CMD before BT), UART ownership (never deleted), NVS ownership
+- Phase 3: Autostart NVS flag, Kconfig defaults, I2S pin overrides
+- Phase 4: Error handling policy (fail-fast vs graceful), WHY comments visible in behavior
+- Phase 5: All documented behaviors match reality
+
+**Checklist Features:**
+- Pass/Fail checkboxes for each test
+- Expected outcomes clearly stated
+- WHY rationale linking to CODE_REVIEW2 phases
+- Test commands reference appendix
+- Expected boot log sequence
+- Session metadata (tester, date, device MAC, firmware version)
+- Final gate checkpoint sign-off section
+
+**Status:** Manual testing deferred until device available. Checklist ready for execution.
+
+**Impact:** Enables systematic on-device validation of all architectural changes without requiring agent presence.
+
+**Next:** Task 6.3 (performance/resource validation - can be done via logs/automated tools) or Task 6.4 (code quality checks - automated).
+
+---
+
 ## 2026-02-01 05:14:27 — CODE_REVIEW2 Phase 6 Started: Testing & Validation (Task 6.1)
 
 **Context:** Beginning comprehensive testing and validation of all CODE_REVIEW2 changes (Phases 0-5, 44 commits).
