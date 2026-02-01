@@ -122,7 +122,42 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 
 ## Software Architecture on ESP32 #1 (Bluetooth)
 
-### main.c Bootstrap (lines 1-226)
+### main.c Responsibilities
+
+**Purpose:** Bootstrap policy layer - orchestrates subsystem initialization in correct order
+
+**Core Responsibilities:**
+1. **Early boot diagnostics:** DIAG markers for test harness synchronization (EARLY_BOOT_MARKER, UART_READY_FOR_CMD_LAYER)
+2. **Platform services initialization:**
+   - BLE memory release (A2DP-only optimization)
+   - UART driver install (single install, never delete)
+   - NVS initialization (single call to `nvs_storage_init()`)
+3. **Subsystem composition:**
+   - Command interface (control plane)
+   - Bluetooth manager (data plane)
+   - Audio processor (media plane)
+4. **Configuration policy:**
+   - Load audio boot config (sample rate, volume, pins)
+   - Check autostart flags (NVS overrides Kconfig)
+   - Apply runtime customization
+
+**What main.c IS:**
+- **Bootstrap orchestrator** - "when to initialize what"
+- **Policy layer** - decisions about init order, defaults, autostart
+- **Diagnostic gateway** - early boot markers for test automation
+- **Configuration loader** - centralized config policy (Kconfig + NVS)
+
+**What main.c IS NOT:**
+- ❌ **Not** a Bluetooth implementation (no esp_a2d_*, esp_avrc_*, esp_bt_gap_*, esp_bluedroid_* calls)
+- ❌ **Not** a command processor (delegates to cmd_handlers)
+- ❌ **Not** an audio engine (delegates to audio_processor)
+- ❌ **Not** a state machine (delegates to bt_manager)
+
+**Line Budget:** ~320 lines (Feb 2026) - kept small by delegating all logic to components
+
+**Architectural Principle:** main.c is **thin orchestration** - it knows WHEN to call what, but components know HOW to do it.
+
+### main.c Bootstrap (current size: ~319 lines)
 - **Purpose:** Clean entry point for ESP32 firmware
 - **Responsibilities:**
   - Early boot diagnostics and UART initialization
@@ -131,10 +166,14 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
   - Delegate ALL Bluetooth initialization to `bt_manager`
   - Initialize command interface and audio processor
   - Auto-configure I2S pins from NVS storage
+  - Load audio boot config with Kconfig defaults + NVS overrides
+  - Check autostart flag before initializing audio
 - **What main.c MUST NOT contain:**
   - Direct Bluetooth API calls (esp_a2d_*, esp_avrc_*, esp_bt_gap_*, esp_bluedroid_*)
   - Bluetooth state machines or callbacks
   - Device-specific BT logic
+  - Command processing logic (delegates to cmd_handlers)
+  - Audio pipeline logic (delegates to audio_processor)
 - **Policy:** ALL Bluetooth logic lives in the `bt_manager` component (enforced by CI)
 
 ### bt_manager Component (Single Source of Truth for BT)
@@ -235,6 +274,136 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 - cmd_init can immediately read/write without driver setup
 - Clear contract: main.c owns platform UART, cmd_init owns command protocol
 - Supports test injection and automated capture from first boot moment
+
+### Initialization Order and Rationale
+
+**Actual init sequence (as of Jan 2026, Phase 2 Task 2.6):**
+```
+1. Early diagnostics (UART install)
+2. NVS init (platform service)
+3. CMD init (control plane ready)
+4. CMD task start (command interface processing)
+5. BT manager init (data plane ready - NOW commands work!)
+6. Audio init/start (if autostart enabled)
+```
+
+**Key Architectural Principle: Control Plane → Data Plane**
+
+**Why CMD before BT?**
+- **Control plane availability:** CMD interface must be ready BEFORE subsystems initialize
+- **Command interface ready early:** Allows immediate SCAN/PAIR commands when BT becomes ready
+- **Prevents confusion:** BT "ready" with no way to control it is misleading
+- **Separation of concerns:** Communication infrastructure (CMD) separate from business logic (BT, audio)
+- **Test harness friendly:** Commands available from earliest possible moment
+- **Human debugging:** If BT init fails, commands still work for diagnostics
+
+**Why NVS before everything?**
+- **Platform dependency:** ALL subsystems need NVS (BT pairing data, audio config, command settings)
+- **Fail-fast on critical errors:** NVS failure indicates corrupted flash/partition - nothing will work anyway
+- **Single initialization:** Avoids race conditions, prevents redundant init calls
+- **Configuration loading:** BT and audio need NVS data during their init
+
+**Why Audio last?**
+- **Optional subsystem:** Audio can be disabled via autostart flag (BT/CMD remain functional)
+- **Resource intensive:** DMA buffers, GPIO pins, interrupts - only allocate if needed
+- **Depends on BT:** Streaming audio requires BT connection (though audio can work standalone for test tones)
+- **Deployment flexibility:** Headless mode (no audio), diagnostic mode (BT + CMD only), full mode
+
+**Init Order Contradiction Fixed (Phase 2, Task 2.6):**
+- **OLD (incorrect):** NVS → **BT** → CMD → Audio
+  - Problem: Comment said "BT ready for SCAN/PAIR via commands" but CMD not ready yet - CONFUSING
+  - Impact: Misleading state, potential race conditions if BT events trigger before CMD ready
+- **NEW (correct):** NVS → **CMD** → BT → Audio
+  - Benefit: Control plane available before data plane, clear layering, no race conditions
+
+**Error Handling Philosophy:**
+- **Platform services (NVS, UART):** Fail-fast with ESP_ERROR_CHECK
+  - Rationale: System cannot operate without these - partial state is worse than clean abort
+- **Subsystems (BT, Audio):** Graceful degradation with error logging
+  - Rationale: Device still useful for diagnostics, testing, partial functionality
+  - Example: BT fails → audio test tones still work, CMD interface available for diagnosis
+
+### Policy vs Platform Separation
+
+**Platform Layer (owned by main.c):**
+- **What:** Core ESP32 services that ALL components depend on
+- **Responsibilities:**
+  - Memory management (heap, PSRAM, BLE mem release)
+  - Flash storage (NVS initialization)
+  - Console I/O (UART driver install)
+  - Early diagnostics (DIAG markers for test automation)
+- **Characteristics:**
+  - Initialized ONCE at boot
+  - Fail-fast on errors (ESP_ERROR_CHECK)
+  - No retry logic (hardware/partition issues don't self-heal)
+  - Owned by main.c app_main()
+- **Examples:**
+  - `esp_bt_controller_mem_release(ESP_BT_MODE_BLE)` - platform memory optimization
+  - `uart_driver_install()` - platform I/O service
+  - `nvs_storage_init()` - platform persistence service
+
+**Policy Layer (orchestrated by main.c):**
+- **What:** Business decisions about WHEN and HOW to initialize subsystems
+- **Responsibilities:**
+  - Init order sequencing (control plane → data plane)
+  - Configuration loading (Kconfig defaults + NVS overrides)
+  - Autostart decisions (should audio start at boot?)
+  - Resource allocation defaults (sample rate, volume, pins)
+- **Characteristics:**
+  - Configurable at compile-time (Kconfig) and runtime (NVS)
+  - Documents architecture intent (WHY this order?)
+  - Thin orchestration (delegates HOW to components)
+  - Owned by main.c app_main()
+- **Examples:**
+  - `load_audio_boot_config()` - centralized audio policy
+  - `nvs_storage_get_audio_autostart()` - runtime policy check
+  - CMD before BT init - architectural policy decision
+
+**Application Layer (implemented by components):**
+- **What:** Actual business logic and subsystem implementations
+- **Responsibilities:**
+  - Bluetooth lifecycle (bt_manager)
+  - Audio pipeline (audio_processor)
+  - Command protocol (cmd_handlers)
+  - Device-specific logic
+- **Characteristics:**
+  - Stateful (maintains internal state machines)
+  - Complex (hundreds of lines per component)
+  - Testable in isolation (unit tests, mocked dependencies)
+  - Assumes platform services are ready
+  - Graceful degradation on errors (log + continue)
+- **Examples:**
+  - `bt_manager_init()` - BT stack initialization, state machines, callbacks
+  - `audio_processor_init()` - I2S config, DMA buffers, audio queues
+  - `cmd_init()` - command parser, dispatcher, task spawning
+
+**Why This Separation Matters:**
+1. **Clarity:** Each layer has clear responsibilities - no "God objects"
+2. **Testability:** Application layer can be tested with mocked platform
+3. **Portability:** Platform layer is ESP32-specific, application layer could be ported
+4. **Maintainability:** New developers understand what goes where
+5. **Future architecture:** Two-ESP32 split will have separate platform layers, shared application logic
+6. **Prevents drift:** Clear rules prevent mixing platform and application code in main.c
+
+**Anti-pattern to Avoid:**
+- ❌ **Mixing layers in main.c:**
+  - DO NOT put Bluetooth state machines in main.c (application logic → bt_manager)
+  - DO NOT put command parsing in main.c (application logic → cmd_handlers)
+  - DO NOT put I2S management in main.c (application logic → audio_processor)
+- ❌ **Platform calls in application components:**
+  - DO NOT call `nvs_flash_init()` in bt_manager (platform → main.c owns)
+  - DO NOT reinstall UART in cmd_init (platform → main.c owns)
+- ❌ **Policy decisions in platform code:**
+  - DO NOT hard-code audio defaults in audio_processor (policy → main.c config)
+  - DO NOT decide init order in components (policy → main.c orchestration)
+
+**Enforcement:**
+- Code reviews check for layering violations
+- CI checks prevent direct BT API calls in main.c
+- Comments in main.c explain WHY each init step happens
+- ARCH.md documents the separation for new contributors
+
+
 
 ## Software Architecture on ESP32 #2 (WiFi)
 

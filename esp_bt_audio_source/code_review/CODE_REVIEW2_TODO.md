@@ -825,19 +825,32 @@ All required information already documented in individual commit messages.
 
 ## Phase 5: Documentation and Architecture Updates (30 min)
 
-### Task 5.1: Update ARCH.md
-- [ ] Add "main.c Responsibilities" section:
-  - [ ] Bootstrap policy (what gets initialized, in what order)
-  - [ ] Early diagnostics (DIAG markers)
-  - [ ] NVS initialization (single call to nvs_storage_init)
-  - [ ] Subsystem composition (BT, CMD, Audio)
-- [ ] Add "Initialization Ownership" section:
-  - [ ] NVS: main.c owns (via nvs_storage_init)
-  - [ ] UART: cmd_init owns (or early cmd_init_early if needed)
-  - [ ] BT stack: bt_manager owns
-  - [ ] Audio: audio_processor owns, main.c just configures
-- [ ] Add "Initialization Order" section with rationale
-- [ ] Document "Policy vs Platform" separation
+### Task 5.1: Update ARCH.md ✅ COMPLETE
+- [x] Add "main.c Responsibilities" section: ✅
+  - [x] Bootstrap policy (what gets initialized, in what order) ✅
+  - [x] Early diagnostics (DIAG markers) ✅
+  - [x] NVS initialization (single call to nvs_storage_init) ✅
+  - [x] Subsystem composition (BT, CMD, Audio) ✅
+- [x] Add "Initialization Ownership" section: ✅
+  - [x] NVS: main.c owns (via nvs_storage_init) ✅
+  - [x] UART: main.c installs early for diagnostics, cmd_init assumes ready ✅
+  - [x] BT stack: bt_manager owns ✅
+  - [x] Audio: audio_processor owns, main.c just configures ✅
+- [x] Add "Initialization Order" section with rationale ✅
+- [x] Document "Policy vs Platform" separation ✅
+
+**Implementation Results:**
+- **New Sections Added:**
+  1. **main.c Responsibilities**: Documents bootstrap orchestrator role, policy layer decisions, diagnostic gateway, and configuration loader. Clarifies what main.c IS (thin orchestration, policy) vs IS NOT (implementation, state machines).
+  2. **Updated main.c Bootstrap**: Enhanced with current responsibilities including audio config loading and autostart checking.
+  3. **Initialization Order and Rationale**: Documents actual sequence (UART → NVS → CMD → BT → Audio) with control plane → data plane principle. Explains WHY each decision made, documents Phase 2 Task 2.6 init order fix, details error handling philosophy.
+  4. **Policy vs Platform Separation**: Three-layer architecture (Platform/Policy/Application), clear responsibilities per layer, anti-patterns to avoid, enforcement mechanisms.
+
+- **Documentation Quality**: All sections explain WHY (rationale-driven), not just WHAT. Documents actual Phases 1-4 implementation. Clear guidance for contributors.
+
+- **Files Changed**: esp_bt_audio_source/ARCH.md (+~150 lines)
+
+- **Commit**: a07132a7 "docs(arch): add comprehensive main.c architecture documentation (Phase 5, Task 5.1)"
 
 ### Task 5.2: Update README.md
 - [ ] Add to "Project Status" section:
