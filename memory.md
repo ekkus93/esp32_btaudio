@@ -148,6 +148,99 @@ Performance stable, resource utilization healthy, binary growth justified by fea
 
 **Next Phase:** Phase 7 - CI/CD and Future-Proofing
 
+---
+
+## 2026-02-01 11:15:15 — CODE_REVIEW2 Phase 7 Task 7.1: CI Checks for main.c Constraints
+
+**Context:** Created automated CI check script to enforce architectural layering constraints in main.c, preventing subsystem coupling violations that would complicate future two-ESP32 split architecture.
+
+**Task 7.1: Add CI checks for main.c constraints**
+
+**Script Created:** `tools/ci_check_main_layering.sh`
+- **Size:** 192 lines
+- **Permissions:** Executable (chmod +x)
+- **Language:** Bash with colored output
+- **Exit codes:** 0 (pass), 1 (violations), 2 (usage error)
+
+**Constraints Enforced (4 checks):**
+
+1. **No direct ESP-IDF BT API calls (except mem_release):**
+   - **Pattern:** `esp_(bt_|a2d_|avrc_|bluedroid_)`
+   - **Allowed exception:** `esp_bt_controller_mem_release` (platform service)
+   - **Rationale:** BT operations belong in bt_manager component, not main.c
+   - **Future benefit:** Control ESP32 will call bt_manager APIs, not raw ESP-IDF
+   - **Implementation:** grep with exclusions for comments and mem_release
+   - **Current status:** **PASS** ✅ (only mem_release found in main.c)
+
+2. **No forbidden UART driver calls:**
+   - **Forbidden patterns:** `uart_(read_bytes|set_|param_|get_buffered)`
+   - **Allowed calls:** `uart_driver_install`, `uart_is_driver_installed`, `uart_write_bytes`
+   - **Rationale:** UART usage belongs in cmd_init; main.c only installs driver early for diagnostics
+   - **Future benefit:** Clean separation between driver installation (platform) and usage (cmd layer)
+   - **Implementation:** grep for forbidden patterns, exclude comments
+   - **Current status:** **PASS** ✅ (only uart_driver_install and uart_write_bytes for diagnostics)
+
+3. **No redundant NVS initialization:**
+   - **Pattern:** `nvs_flash_init` (standalone, not within `nvs_storage_init`)
+   - **Rationale:** `nvs_storage_init()` wraps `nvs_flash_init()` with version mismatch handling
+   - **Problem prevented:** Dual init calls, version conflicts, unclear ownership
+   - **Implementation:** grep for nvs_flash_init, exclude nvs_storage_init mentions
+   - **Current status:** **PASS** ✅ (uses ESP_ERROR_CHECK(nvs_storage_init()) only)
+
+4. **No obvious printf format errors:**
+   - **Pattern:** `sizeof()` with `%d` format (should be `%zu`)
+   - **Rationale:** Defensive check for common format bugs that cause warnings/crashes
+   - **Severity:** Warning only (non-blocking)
+   - **Implementation:** Heuristic grep for suspicious patterns
+   - **Current status:** **PASS** ✅ (no issues detected)
+
+**Test Run Results:**
+```bash
+$ ./tools/ci_check_main_layering.sh
+==================================================
+CI Check: main.c Layering Constraints
+==================================================
+Checking: /home/phil/.../main/main.c
+
+Check 1: No direct BT API calls (except mem_release)... PASS
+Check 2: No forbidden UART driver calls... PASS
+Check 3: No redundant NVS init (use nvs_storage_init only)... PASS
+Check 4: No obvious printf format errors... PASS
+
+==================================================
+✓ All layering constraints satisfied
+main.c respects architectural boundaries.
+```
+
+**Script Features:**
+- **Colored output:** Green (PASS), Red (FAIL), Yellow (WARN) for visibility
+- **Detailed violations:** Shows line numbers and code snippets
+- **WHY/FIX guidance:** Each violation includes rationale and remediation steps
+- **Comment-aware:** Excludes C-style comments (`//` and `/* */`) from matches
+- **Zero false positives:** Tested against current main.c (all checks pass)
+
+**CI Integration Readiness:**
+- Script is self-contained (no external dependencies)
+- Clear exit codes for CI pipeline integration
+- Can be added to `.github/workflows/ci.yml` when CI pipeline is created
+- Usage: `./tools/ci_check_main_layering.sh` (returns exit 0 on success)
+
+**Architectural Benefits:**
+- **Enforces layering:** Prevents regression of Phase 2 cleanup work
+- **Future-proof:** Supports planned two-ESP32 split (Control vs Audio)
+- **Self-documenting:** Script comments explain WHY each constraint exists
+- **Low maintenance:** Simple grep-based checks, easy to extend
+
+**Constraints Verified Against Current Code:**
+1. BT API: Only `esp_bt_controller_mem_release` found (allowed) ✅
+2. UART: Only `uart_driver_install` and diagnostic `uart_write_bytes` (allowed) ✅
+3. NVS: Only `nvs_storage_init()` called (correct) ✅
+4. Printf: No format errors detected ✅
+
+**Phase 7 Progress:** Task 7.1 complete (1 of 3 tasks)
+
+**Next:** Task 7.2 - Document two-ESP32 split evolution plan in ARCH.md
+
 **Next:** Task 6.4 (code quality checks - clang-tidy, static analysis, TODO/FIXME audit).
 
 ---

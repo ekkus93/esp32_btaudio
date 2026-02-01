@@ -1149,14 +1149,64 @@ All required information already documented in individual commit messages.
 
 ## Phase 7: CI/CD and Future-Proofing (30 min)
 
-### Task 7.1: Add CI checks for main.c constraints
-- [ ] Create `tools/ci_check_main_layering.sh`:
-  - [ ] No direct ESP-IDF BT API calls (except mem_release)
-  - [ ] No direct UART driver calls (if cmd_init owns it)
-  - [ ] No redundant NVS init (single call)
-  - [ ] No invalid printf format specifiers
-- [ ] Make executable and test
-- [ ] Add to CI pipeline (if using GitHub Actions)
+### Task 7.1: Add CI checks for main.c constraints ✅ COMPLETE
+- [x] Create `tools/ci_check_main_layering.sh` ✅
+  - [x] No direct ESP-IDF BT API calls (except mem_release) ✅
+  - [x] No direct UART driver calls (if cmd_init owns it) ✅
+  - [x] No redundant NVS init (single call) ✅
+  - [x] No invalid printf format specifiers ✅
+- [x] Make executable and test ✅
+- [ ] Add to CI pipeline (if using GitHub Actions) ⏭️ (deferred - no CI pipeline yet)
+
+**Script Created:** `tools/ci_check_main_layering.sh` (192 lines, executable)
+
+**Constraints Enforced:**
+
+1. **No direct BT API calls (except mem_release):**
+   - Searches for: `esp_(bt_|a2d_|avrc_|bluedroid_)`
+   - Allows: `esp_bt_controller_mem_release` (platform service)
+   - Rationale: BT operations belong in bt_manager, not main.c
+   - Current status: **PASS** ✅ (only mem_release found)
+
+2. **No forbidden UART driver calls:**
+   - Searches for: `uart_(read_bytes|set_|param_|get_buffered)`
+   - Allows: `uart_driver_install`, `uart_is_driver_installed`, `uart_write_bytes` (diagnostics)
+   - Rationale: UART usage belongs in cmd_init; main.c only installs driver
+   - Current status: **PASS** ✅ (only allowed calls found)
+
+3. **No redundant NVS init:**
+   - Searches for: `nvs_flash_init` without `nvs_storage_init`
+   - Rationale: `nvs_storage_init()` wraps `nvs_flash_init()` with version handling
+   - Current status: **PASS** ✅ (uses nvs_storage_init only)
+
+4. **No obvious printf format errors:**
+   - Checks for: `sizeof()` with `%d` (should be `%zu`)
+   - Rationale: Defensive check for common formatting bugs
+   - Current status: **PASS** ✅ (no issues found)
+
+**Test Results:**
+```
+Check 1: No direct BT API calls (except mem_release)... PASS
+Check 2: No forbidden UART driver calls... PASS
+Check 3: No redundant NVS init (use nvs_storage_init only)... PASS
+Check 4: No obvious printf format errors... PASS
+✓ All layering constraints satisfied
+```
+
+**Usage:**
+```bash
+./tools/ci_check_main_layering.sh
+```
+
+**Exit codes:**
+- 0 = All checks passed
+- 1 = One or more violations found
+- 2 = Script usage error
+
+**Future CI Integration:**
+- Script ready for GitHub Actions workflow
+- Can be added to `.github/workflows/ci.yml` when CI pipeline is created
+- Provides clear violation messages with WHY/FIX guidance
 
 ### Task 7.2: Document evolution plan for two-ESP32 split
 - [ ] In ARCH.md, add section on future architecture:
