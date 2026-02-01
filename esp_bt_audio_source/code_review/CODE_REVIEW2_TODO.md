@@ -479,11 +479,29 @@ All required information already documented in individual commit messages:
 
 **Goal:** Remove unused code, fix minor issues, improve code quality.
 
-### Task 4.1: Remove unused BT_APP_TASK_STACK_SIZE
-- [ ] Search for all uses of `BT_APP_TASK_STACK_SIZE`
-- [ ] Confirm it's defined but never used
-- [ ] Remove the #define
-- [ ] **Note:** If it WAS used for cmd_process_task, verify correct stack size
+### Task 4.1: Remove unused BT_APP_TASK_STACK_SIZE ✅ COMPLETE
+- [x] Search for all uses of `BT_APP_TASK_STACK_SIZE` ✅
+- [x] Confirm it's defined but never used ✅
+- [x] Remove the #define ✅
+- [x] **Note:** Verified cmd_process_task uses hard-coded 4096, not the 8192 define ✅
+
+**Implementation:**
+- Located BT_APP_TASK_STACK_SIZE defined on line 46 of main.c as 8192
+- Confirmed it's completely unused: cmd_process_task xTaskCreate uses hard-coded 4096
+- Removed 4 lines: blank line, comment, #define, blank line
+- File reduced from 281 to 277 lines
+
+**Testing:**
+- Build: SUCCESS (907K binary, unchanged)
+- Host tests: 36/36 passing (100%, 1.23 sec)
+- Zero warnings/errors
+
+**Rationale:**
+- Dead code from legacy cleanup (Phase 0)
+- cmd_process_task has been using 4096 stack size (sufficient for command processing)
+- Removing clutter improves code clarity
+
+**Impact:** Resolved P3 CLEANUP issue from CODE_REVIEW2
 
 ### Task 4.2: Remove unnecessary while(1) at end of app_main
 - [ ] Locate infinite loop at end of app_main()

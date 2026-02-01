@@ -42,9 +42,6 @@ static void cmd_process_task(void* arg) {
 
 /* keepalive output remains silent to avoid audible beeps */
 
-// Stack size settings for better stability
-#define BT_APP_TASK_STACK_SIZE    8192     // Increased from default 4096
-
 /**
  * @brief Load audio configuration for boot-time initialization
  * 
