@@ -566,11 +566,41 @@ uart_is_driver_installed(console_uart)  // ✅ Portable!
 
 **Impact:** P3 PORTABILITY issue from CODE_REVIEW2 already resolved in Phase 2
 
-### Task 4.4: Review and improve comments
-- [ ] Ensure all major init steps have clear comments
-- [ ] Explain WHY, not just WHAT
-- [ ] Update any comments that contradict actual code
-- [ ] Add comment about init order rationale
+### Task 4.4: Review and improve comments ✅ COMPLETE
+- [x] Ensure all major init steps have clear comments ✅
+- [x] Explain WHY, not just WHAT ✅
+- [x] Update any comments that contradict actual code ✅
+- [x] Add comment about init order rationale ✅
+
+**Implementation:**
+- **BLE memory release:** Added rationale about ESP32 memory constraints and A2DP-only usage
+- **Early boot markers:** Explained WHY test harness synchronization is critical
+- **Platform services:** Clarified single-ownership architecture prevents race conditions
+- **Command interface:** Enhanced with control plane vs data plane concept, clear init order rationale
+- **Bluetooth init:** Explained timing dependencies and why it comes after CMD but before audio
+- **Audio init:** Added resource implications (DMA buffers, pins, interrupts) and deployment scenarios
+- **app_main return:** Explained WHY it's safe (FreeRTOS tasks keep running)
+- **Final boot message:** Updated to reflect modern command-driven architecture (removed outdated auto-scan text)
+
+**Key Improvements:**
+1. **WHY over WHAT:** Every major section now explains rationale, not just actions
+2. **Init order justification:** Clear explanation of control plane → data plane architecture
+3. **Dependencies documented:** Each init step explains what it depends on and why timing matters
+4. **Resource implications:** Audio init explains DMA/interrupt/pin allocation
+5. **Architecture context:** Platform services ownership model clearly explained
+6. **FreeRTOS clarity:** Final comment explains task lifecycle and scheduler behavior
+
+**Testing:**
+- Build: SUCCESS (0xe28b0 bytes / 927KB, unchanged from Task 4.3)
+- Host tests: 36/36 passing (100%, 1.19 sec)
+- Line count: 274→309 lines (+35 lines of high-quality documentation)
+- Zero errors, zero warnings
+
+**Benefits:**
+- New developers can understand WHY design decisions were made
+- Init order rationale prevents future refactoring mistakes
+- Test harness requirements documented for maintainability
+- Architecture principles (control/data plane) explicitly stated
 
 ### Task 4.5: Consider adding init failure handling
 - [ ] Review all init calls (bt_manager_init, cmd_init, audio_processor_init)

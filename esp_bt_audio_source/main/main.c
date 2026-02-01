@@ -108,13 +108,20 @@ static audio_config_t load_audio_boot_config(void)
 
 void app_main(void)
 {
-    // Free BLE controller memory to give Classic BT more DRAM
+    /* Free BLE controller memory to give Classic BT more DRAM.
+     * WHY: This application uses only Bluetooth Classic (A2DP), not BLE.
+     * ESP32 memory is limited; releasing unused BLE controller memory (21KB+)
+     * reduces Classic BT stack pressure and prevents out-of-memory errors
+     * during streaming. Must be called before esp_bt_controller_init(). */
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_BLE));    
 
-    /* Very early unbuffered boot marker for programmatic captures. This
-     * appears before most initialization and helps external injectors
-     * avoid racing the device boot sequence. Use both printf and the
-     * ROM-level esp_rom_printf when available. */
+    /* Very early unbuffered boot marker for programmatic test harness.
+     * WHY: External test tools need a synchronization point to know when the
+     * device has actually booted (vs. bootloader output or previous session).
+     * This marker appears BEFORE subsystem init to prevent test scripts from
+     * sending commands before the device is ready to process them.
+     * Use both printf and ROM-level esp_rom_printf when available for maximum
+     * reliability across different console configurations. */
     printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
     esp_rom_printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
@@ -166,22 +173,33 @@ void app_main(void)
 #endif
     
     /* ========== Platform Services Initialization ==========
-     * Initialize NVS flash storage (platform service owned by main.c).
-     * This must be called once before any component uses NVS (bt_manager,
-     * audio_processor, etc.). nvs_storage_init() handles version mismatch
-     * and erase-on-error internally.
+     * WHY: Platform services (NVS, UART) are foundational resources that
+     * multiple subsystems depend on. main.c owns these to ensure single
+     * initialization and clear ownership - prevents race conditions and
+     * redundant init calls that could cause errors.
+     * 
+     * NVS (Non-Volatile Storage) must be initialized ONCE before any
+     * component accesses persistent config (bt_manager for pairing info,
+     * audio_processor for pin overrides, etc.). nvs_storage_init() handles
+     * version mismatch and partition erase internally.
      */
     ESP_ERROR_CHECK(nvs_storage_init());
     
     /* ========== Command Interface Initialization ==========
-     * Initialize command interface BEFORE subsystems (BT, Audio) so that
-     * commands are available immediately when subsystems become ready.
-     * This allows SCAN/PAIR/PLAY commands to work as soon as BT initializes.
+     * WHY INIT ORDER MATTERS: Command interface is the "control plane" and
+     * must be ready BEFORE the "data plane" (BT/Audio subsystems) starts.
      * 
-     * RATIONALE: Command interface should be the "control plane" that's
-     * ready before the "data plane" (BT, Audio) initializes. This prevents
-     * the confusing situation where BT is ready but commands aren't yet
-     * available to control it.
+     * Problem if reversed: BT manager would initialize and be ready to accept
+     * connections, but commands like SCAN/PAIR/VOLUME wouldn't work yet.
+     * Test harness and users would see confusing failures.
+     * 
+     * Correct order (control → data):
+     *   1. cmd_init() - command parser ready
+     *   2. cmd_process_task - command processing loop starts
+     *   3. bt_manager_init() - BT subsystem can now be controlled
+     *   4. audio_processor_init() - audio can now be controlled
+     * 
+     * This ensures commands are always available when subsystems need them.
      */
 #ifdef ESP_PLATFORM
     if (cmd_init() != CMD_SUCCESS) {
@@ -202,8 +220,14 @@ void app_main(void)
 #endif
 
     /* ========== Bluetooth Initialization ==========
-     * Initialize BT manager now that command interface is ready.
-     * Users can immediately issue SCAN/PAIR commands via the command interface.
+     * WHY NOW: Command interface is ready (control plane), so BT can safely
+     * initialize knowing that users/tests can immediately control it via
+     * SCAN/PAIR/CONNECT commands. BT stack initialization is slow (~1-2 sec)
+     * and would block if done earlier.
+     * 
+     * WHY BEFORE AUDIO: BT manager owns the A2DP connection state. Audio
+     * streaming can't start until BT is ready. If audio init fails, BT can
+     * still be useful for diagnostics and manual pairing.
      */
     bt_manager_init_t bt_cfg = {
         .device_name = LOCAL_DEVICE_NAME,
@@ -218,17 +242,23 @@ void app_main(void)
     }
 
     /* ========== Audio Initialization ==========
-     * Initialize and start audio/I2S at boot if autostart is enabled.
-     * Autostart can be disabled via NVS (audio_autostart=0) to defer audio
-     * init until explicitly commanded. This allows systems that don't need
-     * audio at boot to save resources or control initialization timing.
+     * WHY CONFIGURABLE AUTOSTART: Audio/I2S initialization allocates DMA
+     * buffers, configures hardware pins, and starts interrupt handlers.
+     * Not all deployments need audio immediately at boot:
+     *   - Test harnesses may want to control init timing
+     *   - Battery-powered devices may defer until actually needed
+     *   - Multi-function devices may use BT for other purposes first
+     * 
+     * WHY LAST: Audio depends on both BT (for streaming) and CMD (for control).
+     * Initializing audio before its dependencies would require complex
+     * synchronization. Init order: Platform → Control → BT → Audio ensures
+     * each layer has what it needs.
      * 
      * Configuration hierarchy (highest precedence first):
-     * 1. NVS runtime setting (if configured)
-     * 2. Kconfig compile-time default (CONFIG_AUDIO_AUTOSTART_DEFAULT)
+     * 1. NVS runtime setting - user can toggle via AUDIO_AUTOSTART command
+     * 2. Kconfig compile-time default - project-wide default via menuconfig
      * 
-     * The load_audio_boot_config() function encapsulates all audio policy
-     * decisions (pins, sample rate, volume) and NVS override logic.
+     * load_audio_boot_config() encapsulates all policy (pins/rate/volume).
      */
 #ifdef ESP_PLATFORM
     {
@@ -266,9 +296,14 @@ void app_main(void)
 #endif
     
     ESP_LOGI(BT_AV_TAG, "====================================================");
-    ESP_LOGI(BT_AV_TAG, "Bluetooth will scan for and connect to audio devices");
-    ESP_LOGI(BT_AV_TAG, "Will play a short beep once per minute");
+    ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");
+    ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");
+    ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");
     ESP_LOGI(BT_AV_TAG, "====================================================");
     
-    // app_main returns; FreeRTOS scheduler keeps running
+    /* app_main() returns to FreeRTOS scheduler.
+     * WHY THIS IS SAFE: FreeRTOS tasks (cmd_process_task, BT stack tasks,
+     * audio I2S tasks) have already been created and are running. The
+     * scheduler keeps them alive. An infinite loop here would waste CPU
+     * cycles and stack space for no benefit. */
 }
