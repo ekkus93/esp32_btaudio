@@ -26,7 +26,12 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 <a id="project-status--november-2025"></a>
 ## Project status — recent (finalized run)
 
-- **main.c cleanup (Jan 2026):** Removed ~800 lines of orphaned legacy ESP-IDF A2DP/AVRCP example code from main.c (78% reduction: 1019→226 lines). main.c is now a clean bootstrap that delegates all Bluetooth initialization to the bt_manager component. CI enforcement added via `tools/ci_check_main_no_bt_apis.sh` to prevent regression. All 505 tests passing, zero behavioral changes.
+- **Architecture cleanup and stabilization (Jan-Feb 2026):**
+  - **Critical bug fixes (Phase 1):** Fixed invalid preprocessor guards in main.c that caused undefined behavior on different ESP32 targets. Changed `#ifdef esp_rom_printf` (invalid - functions can't be used as preprocessor tokens) to `#ifdef CONFIG_IDF_TARGET_ESP32` (correct target detection). All 505 tests passing after fixes.
+  - **Initialization layering stabilization (Phase 2):** Clarified NVS and UART ownership - main.c owns platform service initialization (NVS via `nvs_storage_init()`, UART driver install for early diagnostics). Removed dangerous `uart_driver_delete()` call that was breaking esp-console and logging. Fixed init order contradiction: moved CMD init BEFORE BT init (control plane before data plane) so SCAN/PAIR commands are available immediately when Bluetooth becomes ready. All ownership contracts documented in ARCH.md.
+  - **Audio configuration productization (Phase 3):** Centralized audio boot config in `load_audio_boot_config()` function. Made audio autostart runtime-configurable via NVS with `AUDIO_AUTOSTART on|off|get` command. Added Kconfig compile-time defaults for sample rate (8-96kHz), volume (0-100), bit depth (16/24/32), and autostart (bool). Three-level configuration hierarchy: NVS runtime overrides → Kconfig compile-time defaults → hard-coded fallbacks.
+  - **Code cleanup and documentation (Phase 4):** Removed unused defines (BT_APP_TASK_STACK_SIZE), unnecessary while(1) loop in app_main. Fixed clang-tidy warnings in application code (variable naming, declarations, braces, nested conditionals). Added comprehensive WHY comments throughout main.c explaining architectural decisions. Documented error handling policy (platform fail-fast, subsystems graceful degradation). Binary size: 927KB (+21KB from Phase 3 features, 48% partition space free).
+- **main.c cleanup (Jan 2026):** Removed ~800 lines of orphaned legacy ESP-IDF A2DP/AVRCP example code from main.c (78% reduction: 1019→226 lines, later grew to ~319 lines with documentation). main.c is now a clean bootstrap that delegates all Bluetooth initialization to the bt_manager component. CI enforcement added via `tools/ci_check_main_no_bt_apis.sh` to prevent regression. All 505 tests passing, zero behavioral changes.
 - Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer.
 - The Unity runner and orchestrator were hardened to run non-interactively: `tools/run_unity.py` (and the helper `tools/flash_and_watch.py`) now run `idf.py flash monitor` inside a pseudo-TTY, detect canonical Unity summary markers reliably, and the aggregator consumes those canonical logs for CI-friendly summaries.
 - Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
@@ -329,6 +334,39 @@ Next steps to finish these flows on-device:
 |---------|-------------|------------|----------|---------|
 | `SAMPLE_RATE` | Set I2S sample rate | Rate in Hz | `OK\|SAMPLE_RATE\|SET\|<RATE>` | `SAMPLE_RATE 44100` |
 | `I2S_CONFIG` | Configure I2S pins | BCLK,WCLK,DOUT,DIN | `OK\|I2S_CONFIG\|SUCCESS` | `I2S_CONFIG 26,25,22,21` |
+| `AUDIO_AUTOSTART` | Enable/disable audio autostart at boot | on\|off\|get | `OK\|AUDIO_AUTOSTART\|<STATE>` | `AUDIO_AUTOSTART on` |
+
+## Audio Configuration
+
+Audio behavior can be configured at compile-time (via Kconfig) and runtime (via NVS):
+
+**Compile-time Configuration (menuconfig):**
+
+Run `idf.py menuconfig` and navigate to "A2DP Example Configuration" → "Audio Configuration Defaults":
+
+- `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE`: Sample rate in Hz (8000-96000, default 44100)
+  - Common rates: 44100, 48000, 32000, 22050, 16000, 8000
+- `CONFIG_AUDIO_DEFAULT_VOLUME`: Initial volume (0-100, default 80)
+- `CONFIG_AUDIO_DEFAULT_BIT_DEPTH`: Bit depth (16/24/32, default 16)
+- `CONFIG_AUDIO_AUTOSTART_DEFAULT`: Auto-start audio at boot (bool, default yes)
+
+**Runtime Configuration (NVS overrides):**
+
+- **I2S pins:** Use `I2S_CONFIG` command to override default pins. Persisted to NVS, applied on next boot.
+- **Audio autostart:** Use `AUDIO_AUTOSTART on|off` to enable/disable audio initialization at boot. Requires reboot to take effect. Query current setting with `AUDIO_AUTOSTART get`.
+
+**Configuration Hierarchy (highest precedence first):**
+
+1. **NVS runtime overrides** - For I2S pins and autostart flag
+2. **Kconfig compile-time defaults** - Sample rate, volume, bit depth, autostart default
+3. **Hard-coded fallbacks** - Only if Kconfig value is invalid
+
+**Benefits:**
+
+- **Field customization:** NVS allows runtime changes without recompiling firmware
+- **Project defaults:** Kconfig enables project-wide configuration via sdkconfig
+- **Resource management:** Disable audio autostart to save resources or defer initialization
+- **Headless mode:** BT+CMD remain functional even if audio is disabled
 
 ### Events
 
@@ -370,6 +408,57 @@ In addition to command responses, the ESP32 may send unsolicited event messages:
 > CONNECT 11:22:33:44:55:66
 < OK|CONNECT|CONNECTED|11:22:33:44:55:66
 ```
+
+## Architecture Principles
+
+This project follows clear architectural principles established during the Jan-Feb 2026 cleanup:
+
+**1. Single Ownership**
+
+Each resource has ONE owner:
+
+- **NVS (Non-Volatile Storage):** Owned by main.c via `nvs_storage_init()` early in boot. All components assume NVS is already initialized. NO component should call `nvs_flash_init()` or `nvs_storage_init()` - main.c handles this once.
+
+- **UART (Console):** Owned by main.c via `uart_driver_install()` early in boot for diagnostic markers. cmd_init() and command_interface assume UART is operational. NEVER call `uart_driver_delete()` - this breaks logging, esp-console, and the command layer.
+
+- **Bluetooth Stack:** Owned by bt_manager component. main.c calls `bt_manager_init()` but does NOT make direct ESP-IDF Bluetooth API calls. ALL Bluetooth logic (A2DP, AVRCP, GAP, state machines, callbacks) lives in bt_manager.
+
+- **Audio Pipeline:** Owned by audio_processor component. main.c calls `audio_processor_init()` with configuration but does NOT manage I2S, DMA, or audio queues directly.
+
+**2. Fail-Fast for Critical Errors**
+
+- **Platform services** (NVS, UART, BLE memory release): Use `ESP_ERROR_CHECK` to abort on failure. Rationale: System cannot operate without these - partial state is worse than clean abort. These are one-time boot initializations that indicate hardware/partition issues if they fail.
+
+- **Application subsystems** (BT, Audio, CMD): Degrade gracefully with error logging. Rationale: Device still useful for diagnostics, testing, partial functionality. Example: If BT init fails, audio test tones still work and CMD interface available for diagnosis.
+
+**3. Configurable Behavior (NVS + Kconfig)**
+
+Avoid hard-coded behavior - make it configurable:
+
+- **Compile-time defaults:** Use Kconfig for project-wide settings (sample rate, volume, bit depth, autostart default). Accessible via `idf.py menuconfig`.
+
+- **Runtime overrides:** Use NVS for field customization (I2S pins, autostart toggle). Allows changes without recompiling firmware.
+
+- **Clear hierarchy:** NVS overrides Kconfig, Kconfig overrides hard-coded fallbacks. Configuration precedence is documented and tested.
+
+**4. Control Plane → Data Plane Initialization**
+
+Init order matters:
+
+1. **Platform services** (UART, NVS) - Core ESP32 infrastructure
+2. **Control plane** (CMD interface) - Communication ready first
+3. **Data plane** (BT manager) - Business logic after control available
+4. **Media plane** (Audio processor) - Optional, resource-intensive, last
+
+Rationale: CMD interface must be ready BEFORE subsystems so commands work immediately. Prevents confusing states where BT is "ready" but no way to control it.
+
+**5. Policy vs Platform vs Application Separation**
+
+- **Platform Layer** (main.c owns): Memory, NVS, UART, diagnostics - fail-fast, once at boot
+- **Policy Layer** (main.c orchestrates): Init order, config loading, autostart decisions - configurable
+- **Application Layer** (components implement): bt_manager, audio_processor, cmd_handlers - stateful, complex, graceful degradation
+
+See ARCH.md for detailed documentation of these principles and their implementation.
 
 Notes about commands and responses
 

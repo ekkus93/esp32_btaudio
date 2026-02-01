@@ -852,16 +852,40 @@ All required information already documented in individual commit messages.
 
 - **Commit**: a07132a7 "docs(arch): add comprehensive main.c architecture documentation (Phase 5, Task 5.1)"
 
-### Task 5.2: Update README.md
-- [ ] Add to "Project Status" section:
-  - [ ] "Jan 2026: Fixed critical main.c bugs (invalid printf formats, preprocessor guards)"
-  - [ ] "Jan 2026: Stabilized init layering (clear NVS/UART ownership, correct init order)"
-  - [ ] "Jan 2026: Made audio config centralized and runtime-configurable"
-- [ ] Update "Configuration" section with new audio config options
-- [ ] Add "Architecture Principles" section:
-  - [ ] Single ownership (each resource has ONE owner)
-  - [ ] Fail-fast for critical errors
-  - [ ] Configurable behavior (NVS + Kconfig)
+### Task 5.2: Update README.md ✅ COMPLETE
+- [x] Add to "Project Status" section: ✅
+  - [x] "Jan 2026: Fixed critical main.c bugs (invalid printf formats, preprocessor guards)" ✅
+  - [x] "Jan 2026: Stabilized init layering (clear NVS/UART ownership, correct init order)" ✅
+  - [x] "Jan 2026: Made audio config centralized and runtime-configurable" ✅
+- [x] Update "Configuration" section with new audio config options ✅
+- [x] Add "Architecture Principles" section: ✅
+  - [x] Single ownership (each resource has ONE owner) ✅
+  - [x] Fail-fast for critical errors ✅
+  - [x] Configurable behavior (NVS + Kconfig) ✅
+
+**Implementation Results:**
+- **Project Status Updates:** Added comprehensive summary of Jan-Feb 2026 cleanup organized by phase:
+  - Phase 1: Critical bug fixes (preprocessor guards, 505 tests passing)
+  - Phase 2: Init layering (NVS/UART ownership, init order fix, ARCH.md contracts)
+  - Phase 3: Audio config (centralized, NVS autostart, Kconfig defaults, hierarchy)
+  - Phase 4: Code cleanup (removed cruft, clang-tidy fixes, WHY comments, error policy, 927KB binary)
+
+- **Audio Configuration Section (new):** Documents compile-time Kconfig options, runtime NVS overrides, configuration hierarchy, and benefits (field customization, resource management, headless mode)
+
+- **Architecture Principles Section (new):** Documents 5 core principles:
+  1. Single Ownership (NVS=main.c, UART=main.c, BT=bt_manager, Audio=audio_processor)
+  2. Fail-Fast for Critical Errors (platform=ESP_ERROR_CHECK, subsystems=graceful)
+  3. Configurable Behavior (Kconfig + NVS hierarchy)
+  4. Control Plane → Data Plane Init (4-stage boot sequence)
+  5. Policy vs Platform vs Application Separation (3-layer architecture)
+
+- **Configuration Commands Table:** Added AUDIO_AUTOSTART command with parameters and examples
+
+- **Files Changed:** esp_bt_audio_source/README.md (~100 lines added)
+
+- **Documentation Quality:** Actionable for users (how to configure, how to use commands), explains WHY decisions matter, references ARCH.md for technical details
+
+- **Commit:** 60b7440d "docs(readme): update project status, configuration, and architecture principles (Phase 5, Task 5.2)"
 
 ### Task 5.3: Update memory.md
 - [ ] Add entry for CODE_REVIEW2 cleanup
