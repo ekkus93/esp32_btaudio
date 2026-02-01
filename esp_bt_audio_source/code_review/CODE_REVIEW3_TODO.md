@@ -312,71 +312,123 @@ Smallest app partition is 0x1b0000 bytes.
 
 ## Phase 2: P1 Cleanup - Code Hygiene
 
-### Task 2.1: Remove unused nvs_flash.h include
+### Task 2.1: Remove unused nvs_flash.h include ✅
+**Completed:** 2026-02-01 12:52:39
 
 **Issue:** main.c includes nvs_flash.h but doesn't use it (uses nvs_storage.h instead).
 
-**Current (line ~13):**
-```c
-#include "nvs_flash.h"
-```
+**Investigation:**
+- **Line 13:** `#include "nvs_flash.h"` - included but never used
+- **Line 24:** `#include "nvs_storage.h"` - this is what main.c actually uses
+- **Verified:** No nvs_flash functions called in main.c (grep search confirmed)
+- **Root cause:** Cleanup leftover from earlier layering refactor where nvs_storage abstraction replaced direct nvs_flash calls
 
-**Subtasks:**
-- [ ] Remove line: `#include "nvs_flash.h"`
-- [ ] Verify main.c still compiles
-- [ ] Check if any #ifdef code paths depend on nvs_flash.h
-  - Unlikely, but verify
-- [ ] Build and test
+**Changes Made:**
+- **Removed:** Line 13 `#include "nvs_flash.h"`
+- **Impact:** No functional change - nvs_storage.h provides all needed NVS functionality
+
+**Validation:**
+- [x] Build successful ✓ (0 errors, 0 warnings)
+- [x] Binary size: **907KB** (unchanged from baseline)
+- [x] Host tests: **36/36 passing** (1.22 sec)
+- [x] No functional change ✓
 
 **Acceptance:**
-- [ ] nvs_flash.h removed
-- [ ] Build successful
-- [ ] No functional change
+- [x] nvs_flash.h removed ✓
+- [x] Build successful ✓
+- [x] No functional change ✓
 
 ---
 
-### Task 2.2: Guard ESP-specific includes (optional)
+### Task 2.2: Guard ESP-specific includes (optional) ✅
+**Completed:** 2026-02-01 12:53:56
 
 **Issue:** esp_rom_sys.h included unconditionally, used conditionally.
 
-**Current:**
+**Current usage:**
 ```c
-#include "esp_rom_sys.h"  // unconditional
+#include "esp_rom_sys.h"  // unconditional (line 9)
 ...
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf(...);
+    esp_rom_printf(...);  // conditional usage
 #endif
 ```
 
-**Decision needed:** Is main.c ever built in non-ESP contexts?
-- If ESP_PLATFORM only: current approach is fine
-- If main.c could be host-tested: guard the include
+**Analysis:**
+- **Line 9:** Unconditional include of esp_rom_sys.h
+- **Usage:** esp_rom_printf() called 8 times, all guarded with `#ifdef CONFIG_IDF_TARGET_ESP32`
+- **Purpose:** CONFIG_IDF_TARGET_ESP32 guards are for ESP32 vs other ESP targets (ESP32-S3, ESP32-C3), not ESP vs non-ESP
+- **Context:** main.c is ESP32 firmware entry point - never built outside ESP-IDF
 
-**Subtasks:**
-- [ ] **DECIDE:** Guard esp_rom_sys.h include?
-- [ ] If yes:
-  ```c
-  #ifdef CONFIG_IDF_TARGET_ESP32
-  #include "esp_rom_sys.h"
-  #endif
-  ```
-- [ ] If no: document that main.c is ESP_PLATFORM only
-- [ ] Build and verify
+**Decision 5: Keep unconditional include**
+- **Date:** 2026-02-01 12:53:56
+- **Chosen:** **NO GUARD** - Document that main.c is ESP_PLATFORM only
+- **Rationale:**
+  - main.c is ESP-IDF application entry point - never built in non-ESP contexts
+  - All ESP targets (ESP32, ESP32-S3, ESP32-C3, etc.) have esp_rom_sys.h available
+  - Conditional usage is for ESP32 vs other ESP chip targets, not ESP vs non-ESP platforms
+  - Guarding the include adds complexity without practical benefit
+  - esp_rom_sys.h is harmless when included but not used (other ESP targets)
+- **Impact:**
+  - ✅ Simpler, cleaner code (no unnecessary guards)
+  - ✅ Explicit documentation that main.c is ESP_PLATFORM only
+  - ✅ Include pattern matches actual usage (always ESP, sometimes ESP32-specific)
+
+**Changes Made:**
+- **No code changes** - unconditional include is appropriate
+- **Documented:** main.c is ESP_PLATFORM only (never host-tested, never non-ESP)
 
 **Acceptance:**
-- [ ] Decision documented
-- [ ] Include guards match usage
-- [ ] Build successful
+- [x] Decision documented ✓ (Decision 5: Keep unconditional include)
+- [x] Include guards match usage ✓ (N/A - no guards needed)
+- [x] Build successful ✓ (no changes made)
 
 ---
 
-### Task 2.3: Build and validate Phase 2
+### Task 2.3: Build and validate Phase 2 ✅
+**Completed:** 2026-02-01 13:02:44
 
-- [ ] Build: `idf.py build`
-- [ ] Run tests (no functional changes expected)
-- [ ] Verify warnings.txt clean (if tracked)
+- [x] Build: `idf.py build` ✓
+  - **Zero errors** ✓
+  - **Zero warnings** (2 pre-existing in test_commands.c, not from Phase 2) ✓
+- [x] Binary size check ✓
+  - Baseline (after Phase 1): 927,968 bytes (907KB)
+  - Phase 2: **927,968 bytes** (907KB)
+  - **Delta: 0 bytes** - unchanged (only include removed, no code changes)
+- [x] Run host tests: `cd test/host_test && make test` ✓
+  - **36/36 tests passing** (1.19 sec total)
+  - No regressions (same pass rate as Phase 1)
+- [x] Run full test suite: `python3 tools/run_all_tests.py --no-device` ✓
+  - **253/253 host test cases passing** (wall 2.73s, ctest 1.21s)
+  - Includes both CTest suite (36 tests) and direct Unity test cases (217 additional)
+  - Zero failures, zero ignored tests
+  - No regressions across full test matrix
+- [x] Clang-tidy: **PASSED** ✅
+  - Successfully ran with `tools/run_clang_tidy_xtensa.sh 'main/main\.c$'`
+  - **Zero warnings** in main.c
+  - Note: Had to regenerate compile_commands.json with `idf.py clang-check`
+  - Wrapper script handles GCC-only flags and xtensa sysroot properly
+- [x] Verify warnings clean ✓
+  - Same 2 pre-existing warnings in test_commands.c (not from our changes)
+  - Zero new warnings from Phase 2
 
-**GATE CHECKPOINT:** Code hygiene improved, no regressions
+**Phase 2 Changes Summary:**
+- Task 2.1: Removed unused nvs_flash.h include from main.c
+- Task 2.2: Decided to keep unconditional esp_rom_sys.h include (no code changes, Decision 5)
+
+**Validation Summary:**
+- ✅ Clean build (0 errors, 0 new warnings)
+- ✅ Binary size unchanged (0 bytes delta - as expected for include-only change)
+- ✅ All host tests passing (36/36 CTest, 253/253 total cases)
+- ✅ Full test suite: 253 test cases, 0 failures, 0 ignored
+- ✅ Clang-tidy: Zero warnings in main.c (verified with wrapper script)
+- ✅ No regressions introduced
+- ✅ Code hygiene improved (unused include removed)
+
+**Commit:** a334e7f4 - "refactor(main): remove unused includes (P1)"
+**Pushed:** 2026-02-01 13:13:03 to origin/master
+
+**GATE CHECKPOINT PASSED:** Code hygiene improved, comprehensive testing confirms no regressions
 
 ---
 
@@ -853,6 +905,23 @@ Document key decisions here as you make them:
 - **Options:** Mock tests vs Manual vs Document only
 - **Chosen:** ___
 - **Rationale:** ___
+
+### Decision 5: ESP-Specific Include Guards
+- **Date:** 2026-02-01 12:53:56
+- **Options:** Guard esp_rom_sys.h include vs Document ESP_PLATFORM only
+- **Chosen:** **NO GUARD** - Document ESP_PLATFORM only
+- **Rationale:**
+  - main.c is ESP-IDF firmware entry point (app_main function)
+  - Never built outside ESP-IDF/ESP_PLATFORM context
+  - Conditional usage (`#ifdef CONFIG_IDF_TARGET_ESP32`) is for ESP32 vs other ESP targets (ESP32-S3, ESP32-C3), not ESP vs non-ESP
+  - All ESP targets have esp_rom_sys.h available in SDK
+  - Guarding the include adds code complexity without practical benefit
+  - Include is harmless on ESP targets that don't use esp_rom_printf
+- **Impact:**
+  - ✅ Cleaner code (no unnecessary conditional includes)
+  - ✅ Matches actual usage pattern (always ESP, sometimes ESP32-specific features)
+  - ✅ Explicit documentation prevents confusion
+  - ✅ No build or functional changes needed
 
 ---
 

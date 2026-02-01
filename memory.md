@@ -324,6 +324,76 @@ New failures: 0
 
 ---
 
+## 2026-02-01 12:52:39 — CODE_REVIEW3: Phase 2 Task 2.1 Complete (Remove Unused Include)
+
+**Task 2.1: Remove unused nvs_flash.h include - COMPLETE**
+
+**Issue:** Cleanup leftover from earlier layering refactor where nvs_storage abstraction replaced direct nvs_flash calls.
+
+**Changes:**
+- **Removed:** Line 13 `#include "nvs_flash.h"` from main/main.c
+- **Reason:** main.c uses nvs_storage.h (line 24), not nvs_flash.h directly
+- **Verified:** No nvs_flash functions called in main.c (grep confirmed)
+
+**Validation:**
+```
+Build: SUCCESS
+Errors: 0
+Warnings: 0
+Binary size: 907KB (unchanged)
+Host tests: 36/36 passing (1.22 sec)
+Functional change: None
+```
+
+**Impact:**
+- ✅ Cleaner include list (removed unused dependency)
+- ✅ No functional change
+- ✅ No build or test regressions
+- ✅ Binary size unchanged
+
+**Next:** Task 2.2 - Guard ESP-specific includes (decision needed)
+
+---
+
+## 2026-02-01 12:53:56 — CODE_REVIEW3: Phase 2 Task 2.2 Complete (ESP-Specific Includes)
+
+**Task 2.2: Guard ESP-specific includes - COMPLETE (No changes needed)**
+
+**Decision 5: Keep unconditional esp_rom_sys.h include**
+
+**Analysis:**
+- **Current:** esp_rom_sys.h included unconditionally (line 9)
+- **Usage:** esp_rom_printf() called 8 times, all guarded with `#ifdef CONFIG_IDF_TARGET_ESP32`
+- **Question:** Should include be guarded to match usage?
+
+**Decision: NO GUARD - Document ESP_PLATFORM only**
+
+**Rationale:**
+1. **main.c is ESP-IDF entry point** - never built outside ESP-IDF/ESP_PLATFORM
+2. **All ESP targets have esp_rom_sys.h** - ESP32, ESP32-S3, ESP32-C3, etc.
+3. **Conditional usage is chip-specific, not platform-specific:**
+   - `#ifdef CONFIG_IDF_TARGET_ESP32` differentiates ESP32 vs other ESP chips
+   - NOT differentiating ESP vs non-ESP platforms
+4. **Guarding adds complexity without benefit:**
+   - Include is harmless on non-ESP32 ESP targets
+   - No host-test context exists for main.c
+5. **Simpler is better** - unconditional include matches ESP_PLATFORM-only reality
+
+**Impact:**
+- ✅ No code changes needed (current pattern is correct)
+- ✅ Explicit documentation prevents future confusion
+- ✅ Matches actual usage: always ESP, sometimes ESP32-specific
+- ✅ Cleaner than conditional include directives
+
+**Validation:**
+- No build needed (no changes)
+- Decision documented in CODE_REVIEW3_TODO.md
+- Pattern: unconditional include + conditional usage = appropriate for ESP_PLATFORM-only code
+
+**Next:** Task 2.3 - Build and validate Phase 2
+
+---
+
 ## 2026-02-01 11:59:24 — CI Parity Checks: Preventing Future Mock Failures
 
 **Context:** After fixing the nvs_storage mock CI failure, implemented comprehensive prevention measures to ensure this never happens again.
@@ -2622,3 +2692,76 @@ Action: Future work, tests, and design decisions should always keep this goal in
 2026-01-11 01:54:58 bt_manager cleanup commit: committed and pushed "chore: clean bt manager dead code" removing dead bt_* wrapper TU, unused streaming macros, and TRACE stdout logs; reran full `python tools/run_all_tests.py` with device suites—host 306/306, device 196/196 all passing. Remote: origin/master.
 2026-01-11 01:57:04 bt_manager: removed unused bt_source_component.c entirely and dropped it from bt_manager CMake SRCS. Tests not rerun (previous full suite at 01:54:58 was green).
 2026-01-11 02:04:14 full test sweep: `python tools/run_all_tests.py` (IDF 5.5.1, python310) — host 306/306 pass; device suites all green: test_app 46/46, test_app2 45/45, test_app_audio 55/55, test_app3 14/14, test_audio_queue 8/8, test_beep_manager 7/7, test_i2s_manager 8/8, test_synth_manager 7/7, test_spiffs_fail 6/6 (aggregate device 196/196). Artifacts: tmp/run_all_tests_summary.json and per-suite one_run_unity.log files.
+
+---
+
+## 2026-02-01 12:53:56 — CODE_REVIEW3 Phase 2: Task 2.2 Complete (ESP-Specific Includes)
+
+**Task:** Guard ESP-specific includes (optional cleanup)
+
+**Analysis:**
+- Current: `#include "esp_rom_sys.h"` unconditional (line 9)
+- Usage: `esp_rom_printf()` called 8 times, all with `#ifdef CONFIG_IDF_TARGET_ESP32`
+- Purpose: Conditional usage is for ESP32 vs other ESP targets (ESP32-S3, ESP32-C3), not ESP vs non-ESP
+
+**Decision 5: Keep unconditional include**
+- main.c is ESP-IDF firmware entry point (app_main) - never built outside ESP_PLATFORM
+- All ESP targets (ESP32, ESP32-S3, ESP32-C3) have esp_rom_sys.h available
+- Conditional usage guards are for chip-specific features, not platform portability
+- Guarding the include would add unnecessary complexity
+- Include is harmless when not used (on non-ESP32 targets)
+
+**Changes Made:**
+- No code changes - unconditional include is appropriate
+- Documented that main.c is ESP_PLATFORM only
+
+**Impact:**
+- Cleaner code (no unnecessary conditional includes)
+- Pattern matches actual usage (always ESP, sometimes ESP32-specific)
+- Explicit documentation prevents future confusion
+
+---
+
+## 2026-02-01 13:13:03 — CODE_REVIEW3 Phase 2: P1 Cleanup Complete
+
+**Phase 2 Summary:**
+- Task 2.1: Removed unused nvs_flash.h include (code change)
+- Task 2.2: Kept unconditional esp_rom_sys.h include (decision-only, no code change)
+- Task 2.3: Validated Phase 2 changes with comprehensive testing
+
+**Build Results:**
+- Command: `idf.py build`
+- Errors: 0
+- Warnings: 0 new (2 pre-existing in test_commands.c)
+- Binary size: 927,968 bytes (907KB) - unchanged from Phase 1
+- Delta: 0 bytes (expected - only include removed, no functional change)
+
+**Test Results:**
+- CTest suite: `cd test/host_test && make test` - 36/36 passing (1.19 sec)
+- Full suite: `python3 tools/run_all_tests.py --no-device`
+  - **253/253 host test cases passing**
+  - Wall time: 2.73s, CTest time: 1.21s
+  - 0 failures, 0 ignored tests
+  - Includes CTest suite (36 tests) + direct Unity cases (217 additional)
+- Regressions: None
+- All tests green across full test matrix
+
+**Code Quality:**
+- Clang-tidy: **Zero warnings in main.c** ✅
+  - Verified with `tools/run_clang_tidy_xtensa.sh 'main/main\.c$'`
+  - Note: Wrapper script handles GCC-only flags and xtensa sysroot properly
+  - Had to regenerate compile_commands.json with `idf.py clang-check`
+
+**Phase 2 Changes:**
+- main.c line 13: Removed `#include "nvs_flash.h"` (unused)
+- Decision 5: Document ESP_PLATFORM context, keep unconditional includes
+
+**Commit:** a334e7f4 - "refactor(main): remove unused includes (P1)"
+**Pushed:** origin/master (2026-02-01 13:13:03)
+
+**Impact:**
+- Code hygiene improved (cleanup leftover include)
+- No functional changes
+- Comprehensive testing confirms no regressions (253 test cases)
+- Lint validation successful (zero warnings)
+- Phase 2 complete and committed
