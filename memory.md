@@ -1,3 +1,82 @@
+## 2026-02-01 11:59:24 — CI Parity Checks: Preventing Future Mock Failures
+
+**Context:** After fixing the nvs_storage mock CI failure, implemented comprehensive prevention measures to ensure this never happens again.
+
+**Problem:** v0.2.0 release added audio autostart functions but didn't update host test mocks. Incremental builds passed locally, but CI failed with linker errors. Need systematic prevention.
+
+**Solution: Three-Layer Defense**
+
+**1. run_all_tests.py Enhancement**
+- Added `run_standalone_host_tests()` function
+- Runs by default (unless --no-standalone flag)
+- Clean build from scratch in test/host_test/build_host_tests
+- Matches GitHub Actions CI workflow exactly
+- Catches missing mocks and linker errors immediately
+- Reports clear pass/fail with test counts
+- Integration: Runs after regular host tests for CI parity validation
+
+**2. Makefile for Convenience**
+- Location: esp_bt_audio_source/test/host_test/Makefile
+- Targets:
+  - `make test` (default) - clean build + run tests
+  - `make build` - clean build only
+  - `make run` - run tests (requires build)
+  - `make clean` - remove build directory
+  - `make help` - show usage
+- Easy command: `cd esp_bt_audio_source/test/host_test && make test`
+- Exactly matches CI workflow
+
+**3. Pre-Push Git Hook**
+- Location: tools/hooks/pre-push
+- Automatically runs standalone tests before every push
+- Blocks pushes that would break CI
+- Clear error messages with fix guidance
+- Installation: `cp tools/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`
+- Bypass option: `git push --no-verify` (for emergencies)
+- Prevents accidental CI-breaking commits
+
+**4. Documentation Updates**
+- README_TESTS.md: Added comprehensive pre-commit testing checklist
+- CI parity testing explanation
+- Mock update guidelines
+- Clear installation and usage instructions
+- Explains why standalone tests are critical
+
+**Testing Results:**
+- ✅ Makefile: all targets work correctly (clean, build, run, test)
+- ✅ run_all_tests.py: standalone tests run by default, --no-standalone works
+- ✅ All 36 host tests pass in standalone build (1.21s)
+- ✅ Pre-push hook structure correct (not installed by default, user choice)
+
+**Files Changed:**
+- [tools/run_all_tests.py](../tools/run_all_tests.py) - Added run_standalone_host_tests() function
+- [esp_bt_audio_source/test/host_test/Makefile](esp_bt_audio_source/test/host_test/Makefile) - New file
+- [tools/hooks/pre-push](../tools/hooks/pre-push) - New file (executable)
+- [esp_bt_audio_source/README_TESTS.md](esp_bt_audio_source/README_TESTS.md) - Expanded testing section
+
+**Commit:**
+- Hash: cb186da8
+- Message: "ci: add CI parity checks to prevent missing mocks"
+- Changes: +484/-2 lines (5 files)
+
+**Key Benefits:**
+1. **Catches errors early**: Before push, not in CI
+2. **Matches CI exactly**: No incremental build hiding issues
+3. **Multiple safety nets**: Hook (automatic), script (default), Makefile (convenient)
+4. **Clear guidance**: README explains why and how
+5. **User choice**: Hook not auto-installed, can be disabled
+
+**Impact:**
+- Future production code changes that add new functions will be caught
+- Missing mock implementations detected immediately
+- Linker errors surface before push
+- CI becomes validation, not discovery
+- Saves time and prevents broken builds on GitHub
+
+**Lesson:** Incremental builds can hide missing symbols. Always validate with clean builds that match CI workflow.
+
+---
+
 ## 2026-02-01 11:52:25 — GitHub Actions CI Fix: Missing NVS Storage Mocks
 
 **Issue:** GitHub Actions host tests failing with linker errors after CODE_REVIEW2 completion.
