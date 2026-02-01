@@ -602,15 +602,80 @@ uart_is_driver_installed(console_uart)  // ✅ Portable!
 - Test harness requirements documented for maintainability
 - Architecture principles (control/data plane) explicitly stated
 
-### Task 4.5: Consider adding init failure handling
-- [ ] Review all init calls (bt_manager_init, cmd_init, audio_processor_init)
-- [ ] Currently: ESP_ERROR_CHECK aborts on failure
-- [ ] **Decision:** Is this acceptable or should we handle gracefully?
-  - [ ] Option A: Keep ESP_ERROR_CHECK (fail-fast for critical errors)
-  - [ ] Option B: Add retry logic for recoverable failures
-  - [ ] Option C: Degrade gracefully (e.g., BT fails but UART works)
-- [ ] Document decision and rationale
-- [ ] **Recommended:** Keep fail-fast for now (Option A)
+### Task 4.5: Consider adding init failure handling ✅ COMPLETE
+- [x] Review all init calls (bt_manager_init, cmd_init, audio_processor_init) ✅
+- [x] Currently: ESP_ERROR_CHECK aborts on failure ✅
+- [x] **Decision:** Is this acceptable or should we handle gracefully? ✅
+  - [x] Option A: Keep ESP_ERROR_CHECK (fail-fast for critical errors) ✅ **CHOSEN (for platform services)**
+  - [x] Option B: Add retry logic for recoverable failures ⏭️ **DEFERRED (no use case yet)**
+  - [x] Option C: Degrade gracefully (e.g., BT fails but UART works) ✅ **ALREADY IMPLEMENTED (for subsystems)**
+- [x] Document decision and rationale ✅
+- [x] **Recommended:** Keep fail-fast for now (Option A) ✅
+
+**Decision: Hybrid approach - fail-fast for platform, graceful degradation for subsystems**
+
+**Current Implementation Analysis:**
+
+**Platform Services (FAIL-FAST with ESP_ERROR_CHECK):**
+1. **esp_bt_controller_mem_release()** - Line 116
+   - Uses: `ESP_ERROR_CHECK`
+   - Rationale: Must succeed before BT stack init. Failure indicates fundamental memory/hardware issue. System cannot operate without this.
+   
+2. **nvs_storage_init()** - Line 184
+   - Uses: `ESP_ERROR_CHECK`
+   - Rationale: ALL subsystems depend on NVS (BT pairing data, audio config). Without NVS, device would lose pairing on every reboot and audio config would fail. Failing fast prevents confusing "half-working" state.
+
+**Subsystems (GRACEFUL DEGRADATION with error logging):**
+3. **uart_driver_install()** - Line 157
+   - Current: Logs error code but continues
+   - Rationale: UART already installed is OK (idempotent). If genuinely failed, diagnostic markers still work via printf/esp_rom_printf. Test harness can detect failure from diagnostic output.
+   
+4. **cmd_init()** - Line 207
+   - Current: Logs warning "failed or already initialized" but continues
+   - Rationale: Already handles idempotent init (returns success if already done). Failure is rare; if it happens, device can still run BT/audio, just no command control.
+   
+5. **bt_manager_init()** - Lines 238-242
+   - Current: Logs error, continues to audio init
+   - Rationale: Audio can work standalone (test tones, beeps). Device is useful for audio testing even without BT. Failing fast would prevent valid use cases.
+   
+6. **audio_processor_init/start()** - Lines 266-289
+   - Current: Logs detailed error diagnostics, continues to boot completion
+   - Rationale: Audio is optional (autostart can be disabled). BT/CMD remain functional for diagnostics and pairing. Allows field diagnosis of audio hardware issues.
+
+**Architecture Benefits:**
+- **Clear separation:** Platform services MUST work (fail-fast). Application features CAN fail (degrade gracefully).
+- **Debuggability:** Each subsystem failure is logged with esp_err_to_name() for diagnostics
+- **Test harness friendly:** DIAG markers still appear even if subsystems fail
+- **Field robustness:** Device partially functional > completely dead
+- **Use case flexibility:** BT-only mode, audio-only mode, diagnostic mode all possible
+
+**Why NOT Option B (Retry Logic):**
+- Platform services: Retry won't help (hardware/partition issues don't self-heal)
+- Subsystems: No evidence of transient failures in 505 tests
+- Complexity cost: Retry logic adds timing dependencies, potential infinite loops
+- Current approach: If init fails, user can manually retry via commands (AUDIO_INIT, BT_RESTART if we add them)
+
+**Future Enhancement Possibilities (deferred):**
+- Add explicit AUDIO_INIT command for manual retry if autostart fails
+- Add BT_RESTART command for BT recovery without full reboot
+- Add STATUS command output showing which subsystems are operational
+- These can be added when field data shows they're needed
+
+**Implementation Status: NO CODE CHANGES NEEDED**
+- Current error handling is correct by design
+- Platform services already use ESP_ERROR_CHECK (fail-fast)
+- Subsystems already degrade gracefully with error logging
+- Test suite validates this approach (505/505 tests passing)
+
+**Testing:**
+- Verified current behavior via code review
+- All 505 tests pass with current error handling
+- Binary size: unchanged (no new code)
+- Error paths already exercised in test suite (mocked failures)
+
+**Documentation Added:**
+- Added detailed analysis to CODE_REVIEW2_TODO.md
+- Will add to ARCH.md in Phase 5 (init failure handling policy)
 
 ### Task 4.6: Build and verify Phase 4
 - [ ] Build successfully

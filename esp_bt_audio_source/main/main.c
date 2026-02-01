@@ -104,6 +104,16 @@ static audio_config_t load_audio_boot_config(void)
 
 /*********************************
  * MAIN ENTRY POINT
+ * 
+ * Error Handling Policy:
+ * - Platform services (NVS, BLE mem release): ESP_ERROR_CHECK (fail-fast)
+ *   Rationale: System cannot function without these. Failing fast prevents
+ *   confusing "half-working" states and makes issues immediately visible.
+ * 
+ * - Subsystems (BT, Audio, CMD): Log errors but continue (graceful degradation)
+ *   Rationale: Partial functionality > completely dead. Device remains useful
+ *   for diagnostics even if one subsystem fails. Enables BT-only mode,
+ *   audio-only mode, etc. Field robustness over brittleness.
  ********************************/
 
 void app_main(void)
