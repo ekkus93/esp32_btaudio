@@ -63,20 +63,36 @@ static void cmd_process_task(void* arg) {
  * - Runtime NVS overrides for field customization
  * - Separates "what" (policy) from "how" (initialization)
  */
+/* Helper to map Kconfig sample rate to enum without nested conditionals */
+static audio_sample_rate_t map_sample_rate_from_kconfig(void)
+{
+    switch (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE) {
+        case 44100: return AUDIO_SAMPLE_RATE_44K;
+        case 48000: return AUDIO_SAMPLE_RATE_48K;
+        case 32000: return AUDIO_SAMPLE_RATE_32K;
+        case 22050: return AUDIO_SAMPLE_RATE_22K;
+        case 16000: return AUDIO_SAMPLE_RATE_16K;
+        default:    return AUDIO_SAMPLE_RATE_44K;  /* fallback if custom value */
+    }
+}
+
+/* Helper to map Kconfig bit depth to enum without nested conditionals */
+static audio_bit_depth_t map_bit_depth_from_kconfig(void)
+{
+    switch (CONFIG_AUDIO_DEFAULT_BIT_DEPTH) {
+        case 16: return AUDIO_BIT_DEPTH_16;
+        case 24: return AUDIO_BIT_DEPTH_24;
+        case 32: return AUDIO_BIT_DEPTH_32;
+        default: return AUDIO_BIT_DEPTH_16;  /* fallback */
+    }
+}
+
 static audio_config_t load_audio_boot_config(void)
 {
     audio_config_t aconf = {
         /* Use Kconfig defaults - configurable via menuconfig */
-        .sample_rate = (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 44100) ? AUDIO_SAMPLE_RATE_44K :
-                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 48000) ? AUDIO_SAMPLE_RATE_48K :
-                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 32000) ? AUDIO_SAMPLE_RATE_32K :
-                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 22050) ? AUDIO_SAMPLE_RATE_22K :
-                       (CONFIG_AUDIO_DEFAULT_SAMPLE_RATE == 16000) ? AUDIO_SAMPLE_RATE_16K :
-                       AUDIO_SAMPLE_RATE_44K, /* fallback if custom value */
-        .bit_depth = (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 16) ? AUDIO_BIT_DEPTH_16 :
-                     (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 24) ? AUDIO_BIT_DEPTH_24 :
-                     (CONFIG_AUDIO_DEFAULT_BIT_DEPTH == 32) ? AUDIO_BIT_DEPTH_32 :
-                     AUDIO_BIT_DEPTH_16, /* fallback */
+        .sample_rate = map_sample_rate_from_kconfig(),
+        .bit_depth = map_bit_depth_from_kconfig(),
         .channels = AUDIO_CHANNEL_STEREO,
         .volume = CONFIG_AUDIO_DEFAULT_VOLUME,
         .mute = false,
@@ -91,12 +107,23 @@ static audio_config_t load_audio_boot_config(void)
 
     /* Best-effort NVS override: if user has stored custom I2S pins, use them.
      * This allows runtime pin configuration without recompiling. */
-    int bclk = -1, ws = -1, din = -1, dout = -1;
-    if (nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout) == ESP_OK) {
-        if (bclk >= 0) aconf.i2s_bclk_pin = bclk;
-        if (ws >= 0) aconf.i2s_ws_pin = ws;
-        if (din >= 0) aconf.i2s_din_pin = din;
-        if (dout >= 0) aconf.i2s_dout_pin = dout;
+    int bclk = -1;
+    int word_select = -1;
+    int din = -1;
+    int dout = -1;
+    if (nvs_storage_get_i2s_pins(&bclk, &word_select, &din, &dout) == ESP_OK) {
+        if (bclk >= 0) {
+            aconf.i2s_bclk_pin = bclk;
+        }
+        if (word_select >= 0) {
+            aconf.i2s_ws_pin = word_select;
+        }
+        if (din >= 0) {
+            aconf.i2s_din_pin = din;
+        }
+        if (dout >= 0) {
+            aconf.i2s_dout_pin = dout;
+        }
     }
 
     return aconf;
@@ -165,12 +192,12 @@ void app_main(void)
     const int console_uart = UART_NUM_0;
 #endif
 
-    esp_err_t r = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
+    esp_err_t ret = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
     printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
-           (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+           (int)ret, uart_is_driver_installed(console_uart) ? 1 : 0);
 #ifdef CONFIG_IDF_TARGET_ESP32
     esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
-                   (int)r, uart_is_driver_installed(console_uart) ? 1 : 0);
+                   (int)ret, uart_is_driver_installed(console_uart) ? 1 : 0);
 #endif
 
     /* Emit critical marker for test harness: UART driver is ready, cmd layer
