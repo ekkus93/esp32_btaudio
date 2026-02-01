@@ -1270,11 +1270,69 @@ Check 4: No obvious printf format errors... PASS
 4. Future-proof for WiFi + advanced audio
 5. Independently testable
 
-### Task 7.3: Create upgrade/migration notes
-- [ ] Document any NVS schema changes
-- [ ] Document any command interface changes
-- [ ] Note any breaking changes for users
-- [ ] Update version number if appropriate
+### Task 7.3: Create upgrade/migration notes ✅ COMPLETE
+- [x] Document any NVS schema changes ✅
+- [x] Document any command interface changes ✅
+- [x] Note any breaking changes for users ✅
+- [x] Update version number if appropriate ✅
+
+**Documentation Created:** `MIGRATION.md` (~380 lines)
+
+**Version Documented:** v0.2.0 (February 2026) - CODE_REVIEW2 Release
+
+**Breaking Changes:** **NONE** ✅
+- Backward compatible with v0.1.0
+- Existing NVS data preserved (pairing database, pin overrides)
+- All existing commands remain functional
+- Default behavior unchanged (autostart enabled)
+
+**NVS Schema Changes:**
+- **New key added:** `audio_autostart` (int32_t, namespace `bt_audio_cfg`)
+  - Values: 0 = disabled, 1 = enabled
+  - Default: `CONFIG_AUDIO_AUTOSTART_DEFAULT` (defaults to 1/enabled)
+  - **Non-breaking:** If key doesn't exist, uses Kconfig default
+- **Existing keys unchanged:** Pairing database, I2S pin overrides remain compatible
+
+**Command Interface Changes:**
+- **New command:** `AUDIO_AUTOSTART get|on|off`
+  - `get` - Query current autostart setting
+  - `on` - Enable autostart (persists to NVS, requires reboot)
+  - `off` - Disable autostart (persists to NVS, requires reboot)
+  - Response: `OK|AUDIO_AUTOSTART|<on|off>`
+- **All existing commands unchanged:** SCAN, PAIR, CONNECT, PLAY, VOLUME, etc. remain functional
+
+**New Kconfig Options (compile-time defaults):**
+- `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE` (default: 44100 Hz)
+- `CONFIG_AUDIO_DEFAULT_VOLUME` (default: 80, range 0-100)
+- `CONFIG_AUDIO_DEFAULT_BIT_DEPTH` (default: 16-bit)
+- `CONFIG_AUDIO_AUTOSTART_DEFAULT` (default: yes)
+
+**Bug Fixes Documented:**
+- Phase 1: Invalid preprocessor guards, init order contradiction
+- Phase 2: Dangerous uart_driver_delete, redundant NVS init
+
+**New Features Documented:**
+1. Audio autostart control (runtime NVS toggle + command)
+2. Kconfig compile-time defaults (menuconfig customization)
+3. Enhanced documentation (ARCH.md diagrams, manual test checklist)
+4. CI enforcement tools (ci_check_main_layering.sh)
+
+**Upgrade Instructions:**
+- No special steps required (backward compatible)
+- Flash new firmware: `idf.py build flash monitor`
+- Existing NVS data preserved
+- Optional: Customize Kconfig defaults via menuconfig
+- Optional: Runtime autostart control via AUDIO_AUTOSTART command
+
+**Version Designation:** v0.2.0
+- Previous: v0.1.0 (November 2025 - Initial stable release)
+- Current: v0.2.0 (February 2026 - CODE_REVIEW2 cleanup release)
+- Binary: 927,920 bytes (+21KB from v0.1.0, +2.4% growth)
+
+**Future Compatibility:**
+- Architecture ready for dual-ESP32 split (Q2-Q4 2026)
+- Component boundaries clean, migration will be low-risk
+- See ARCH.md for evolution plan
 
 ---
 

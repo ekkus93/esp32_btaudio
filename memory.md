@@ -388,6 +388,186 @@ Documented comparison showing value of current architectural work:
 
 **Next:** Task 7.3 - Create upgrade/migration notes
 
+---
+
+## 2026-02-01 11:22:02 — CODE_REVIEW2 Phase 7 Task 7.3: Migration Notes and Version Documentation
+
+**Context:** Created comprehensive migration guide documenting all CODE_REVIEW2 changes, version designation, and upgrade procedures. Confirmed backward compatibility with v0.1.0.
+
+**Task 7.3: Create upgrade/migration notes**
+
+**File Created:** `MIGRATION.md` (~380 lines)
+
+**Version Documented:** **v0.2.0 (February 2026) - CODE_REVIEW2 Release**
+- Previous version: v0.1.0 (November 2025 - Initial stable release)
+- Binary size: 927,920 bytes (+21,920 bytes from v0.1.0, +2.4% growth)
+- Test coverage: 385/385 passing (190 host + 195 device)
+
+**Breaking Changes Analysis:** **NONE** ✅
+
+Verified complete backward compatibility:
+1. **NVS schema:** Existing data preserved
+   - Pairing database unchanged
+   - I2S pin overrides unchanged
+   - New `audio_autostart` key optional (uses Kconfig default if missing)
+2. **Command interface:** All existing commands functional
+   - SCAN, PAIR, CONNECT, PLAY, VOLUME, etc. unchanged
+   - Only addition: new AUDIO_AUTOSTART command (opt-in feature)
+3. **Default behavior:** Unchanged
+   - Audio autostart still enabled by default
+   - Sample rate, volume, bit depth use previous defaults
+
+**NVS Schema Changes Documented:**
+
+**New key:** `audio_autostart`
+- **Namespace:** `bt_audio_cfg`
+- **Type:** `int32_t`
+- **Values:** 0 = disabled, 1 = enabled
+- **Default:** `CONFIG_AUDIO_AUTOSTART_DEFAULT` (1/enabled)
+- **Compatibility:** Non-breaking - if key doesn't exist, uses Kconfig default
+- **Added in:** Phase 3, Task 3.2 (commit 18e772fd)
+
+**Existing keys (unchanged, fully compatible):**
+- Pairing database (namespace varies by implementation)
+- I2S pins: `i2s_bclk_pin`, `i2s_word_select_pin`, `i2s_din_pin`, `i2s_dout_pin`
+
+**Command Interface Changes Documented:**
+
+**New command:** `AUDIO_AUTOSTART get|on|off`
+- **Purpose:** Runtime control of audio initialization at boot
+- **Parameters:**
+  - `get` - Query current autostart setting
+  - `on` - Enable autostart (persists to NVS, requires reboot)
+  - `off` - Disable autostart (persists to NVS, requires reboot)
+- **Response:** `OK|AUDIO_AUTOSTART|<on|off>`
+- **Use cases:**
+  - Battery-powered: Disable autostart to save power
+  - Test harnesses: Control init timing
+  - Field customization: Change boot behavior without recompiling
+- **Added in:** Phase 3, Task 3.2 (commit 18e772fd)
+
+**Existing commands (all unchanged, fully compatible):**
+- Bluetooth: SCAN, PAIR, CONNECT, DISCONNECT, UNPAIR, BT_STATUS
+- Audio: PLAY, STOP, BEEP, VOLUME, DIAG
+- Configuration: I2S_PINS, STATUS
+- System: REBOOT, HELP
+
+**New Kconfig Options (compile-time defaults):**
+
+1. `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE` (default: 44100 Hz)
+   - Options: 8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000
+2. `CONFIG_AUDIO_DEFAULT_VOLUME` (default: 80, range 0-100)
+3. `CONFIG_AUDIO_DEFAULT_BIT_DEPTH` (default: 16-bit)
+   - Options: 16, 24, 32
+4. `CONFIG_AUDIO_AUTOSTART_DEFAULT` (default: yes)
+
+**Configuration hierarchy (highest precedence):**
+1. NVS runtime overrides (I2S pins, autostart)
+2. Kconfig compile-time defaults (menuconfig)
+3. Hard-coded fallbacks (audio_processor.c)
+
+**Bug Fixes Documented (by phase):**
+
+**Phase 1: Critical Fixes**
+1. Invalid preprocessor guards (P0)
+   - Issue: `#ifdef esp_rom_printf` (function, not token)
+   - Fix: `#ifdef CONFIG_IDF_TARGET_ESP32`
+   - Commit: ea7f0a40
+2. Init order contradiction (P0)
+   - Issue: BT before CMD, commands unavailable
+   - Fix: CMD before BT (control before data)
+   - Commit: 26b3eccd
+
+**Phase 2: Layering Stabilization**
+3. Dangerous uart_driver_delete (P1)
+   - Issue: Breaking esp-console and logging
+   - Fix: Removed delete, main.c owns single install
+   - Commit: 1e06d7ed
+4. Redundant NVS init (P1)
+   - Issue: Dual init, unclear ownership
+   - Fix: main.c owns single nvs_storage_init()
+   - Commit: 1e06d7ed
+
+**New Features Documented:**
+
+1. **Audio autostart control** (Phase 3)
+   - NVS toggle + AUDIO_AUTOSTART command
+   - Runtime configuration without recompiling
+
+2. **Kconfig compile-time defaults** (Phase 3)
+   - Menuconfig customization for audio parameters
+   - Three-level config hierarchy
+
+3. **Enhanced documentation** (Phase 5)
+   - ARCH.md: Comprehensive diagrams
+   - MANUAL_TEST_CHECKLIST.md: 8 sections, ~405 lines
+   - MIGRATION.md: Version tracking, upgrade notes
+
+4. **CI enforcement tools** (Phase 7)
+   - ci_check_main_layering.sh: Architectural constraints
+   - 4 checks: BT APIs, UART calls, NVS init, printf formats
+
+**Code Quality Improvements Documented:**
+
+**Phase 4: Cleanup**
+- Removed unused defines, unnecessary loops
+- Fixed all clang-tidy warnings (0 remaining)
+- Added comprehensive WHY comments
+- Documented error handling policy
+
+**Phase 6: Testing**
+- 385/385 tests passing (100%)
+- Performance validation (binary +2.4%)
+- Manual test checklist created
+- Zero TODO/FIXME in production code
+
+**Upgrade Instructions:**
+
+**From v0.1.0 to v0.2.0 (simple):**
+```bash
+cd esp_bt_audio_source
+git pull origin master
+idf.py build flash monitor
+```
+
+**NVS data:** Preserved automatically (backward compatible)
+
+**Optional customization:**
+1. Kconfig defaults: `idf.py menuconfig` → Audio Configuration
+2. Runtime autostart: `AUDIO_AUTOSTART on|off|get`
+3. Verify: Check `DIAG|AUDIO|STATUS` output after boot
+
+**Known Issues:** None affecting core functionality
+- Crystal frequency divergence (informational, 41.01MHz vs 40MHz)
+- ESP-IDF duplicate definition warning (harmless)
+
+**Deprecation Notices:** None - all APIs remain supported
+
+**Future Compatibility:**
+- Architecture ready for dual-ESP32 split (Q2-Q4 2026)
+- Component boundaries clean → low-risk migration
+- See ARCH.md for detailed evolution plan
+
+**Documentation Structure:**
+- Version overview (binary size, test coverage)
+- Breaking changes (none)
+- New features (4 major additions)
+- Bug fixes (4 critical/layering issues)
+- Code quality improvements
+- Upgrade instructions
+- Known issues
+- Future compatibility
+- v0.1.0 baseline for comparison
+
+**Phase 7 Progress:** Task 7.3 complete (3 of 3 tasks)
+
+**Phase 7 (CI/CD and Future-Proofing): COMPLETE** ✅
+- Task 7.1: CI checks for main.c layering ✅
+- Task 7.2: Two-ESP32 split evolution plan ✅
+- Task 7.3: Migration notes and version documentation ✅
+
+**Next:** Phase 8 - Final Review and Sign-off
+
 **Next:** Task 6.4 (code quality checks - clang-tidy, static analysis, TODO/FIXME audit).
 
 ---
