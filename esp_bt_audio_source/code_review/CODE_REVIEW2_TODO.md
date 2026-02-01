@@ -503,11 +503,31 @@ All required information already documented in individual commit messages:
 
 **Impact:** Resolved P3 CLEANUP issue from CODE_REVIEW2
 
-### Task 4.2: Remove unnecessary while(1) at end of app_main
-- [ ] Locate infinite loop at end of app_main()
-- [ ] Verify it's truly unnecessary (FreeRTOS keeps system alive)
-- [ ] Remove it
-- [ ] Add comment: "// app_main returns; FreeRTOS scheduler keeps running"
+### Task 4.2: Remove unnecessary while(1) at end of app_main ✅ COMPLETE
+- [x] Locate infinite loop at end of app_main() ✅
+- [x] Verify it's truly unnecessary (FreeRTOS keeps system alive) ✅
+- [x] Remove it ✅
+- [x] Add comment: "// app_main returns; FreeRTOS scheduler keeps running" ✅
+
+**Implementation:**
+- Located while(1) loop at end of app_main (lines 274-277)
+- Confirmed unnecessary: FreeRTOS tasks already created (cmd_process_task running)
+- Removed 4 lines: comment, while(1), vTaskDelay, closing brace
+- Added clearer comment explaining app_main can return
+- File reduced from 277 to 274 lines
+
+**Testing:**
+- Build: SUCCESS (907K binary, unchanged)
+- Host tests: 36/36 passing (100%, 1.23 sec)
+- Zero warnings/errors
+
+**Rationale:**
+- FreeRTOS scheduler is already running before app_main completes
+- Tasks created by xTaskCreate (cmd_process_task, etc.) keep system alive
+- app_main can safely return; no infinite loop needed
+- Original comment acknowledged it was "not needed"
+
+**Impact:** Resolved P3 CLEANUP issue from CODE_REVIEW2, simplified main.c
 
 ### Task 4.3: Fix uart_is_driver_installed portability
 - [ ] Locate `uart_is_driver_installed(CONFIG_ESP_CONSOLE_UART_NUM)`

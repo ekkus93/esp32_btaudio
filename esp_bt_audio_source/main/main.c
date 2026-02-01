@@ -270,8 +270,5 @@ void app_main(void)
     ESP_LOGI(BT_AV_TAG, "Will play a short beep once per minute");
     ESP_LOGI(BT_AV_TAG, "====================================================");
     
-    // Main loop - not needed as FreeRTOS tasks are now running
-    while (1) {
-        vTaskDelay(10000 / portTICK_PERIOD_MS);  // Just a background task
-    }
+    // app_main returns; FreeRTOS scheduler keeps running
 }
