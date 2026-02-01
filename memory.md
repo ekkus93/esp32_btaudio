@@ -2765,3 +2765,89 @@ Action: Future work, tests, and design decisions should always keep this goal in
 - Comprehensive testing confirms no regressions (253 test cases)
 - Lint validation successful (zero warnings)
 - Phase 2 complete and committed
+---
+
+## 2026-02-01 13:34:41 — CODE_REVIEW3 Phase 3: Clang-Tidy Sysroot Fix
+
+**Context:** Phase 3 clang-tidy validation initially failed with stdio.h not found error. Root cause was incorrect sysroot path - using GCC toolchain sysroot instead of Clang's own runtime.
+
+**The Problem:**
+- Error: `stdio.h:10:15: error: 'stdio.h' file not found [clang-diagnostic-error]`
+- Cause: `#include_next <stdio.h>` in ESP-IDF's stdio.h wrapper couldn't find system stdio.h
+- Wrong path: `/home/phil/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf` (GCC sysroot)
+- Issue: Clang needs its own clang-runtimes, not the GCC cross-compiler sysroot
+
+**The Fix:**
+- ✅ **Correct sysroot:** `/home/phil/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/esp32`
+- This is esp-clang's own runtime library with proper xtensa-esp32-elf target headers
+- Contains: stdio.h, stdlib.h, and all standard C library headers built for xtensa target
+
+**Correct Command:**
+```bash
+CLANG_PREFIX=/home/phil/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin \
+SYSROOT_BASE=/home/phil/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/esp32 \
+bash tools/run_clang_tidy_xtensa.sh 'main/main\.c$|components/command_interface/command_interface\.c$'
+```
+
+**Result:**
+- ✅ **Zero warnings** in main.c
+- ✅ **Zero warnings** in command_interface.c  
+- ✅ Phase 3 code validated with clang-tidy
+- ✅ No stdio.h errors
+
+**Key Learning:**
+- ESP-IDF clang toolchain (esp-clang) provides its own clang-runtimes
+- Don't mix GCC toolchain sysroot (xtensa-esp-elf) with clang
+- The wrapper script defaults to old esp-clang 18.1.2; override with current version paths
+- Toolchain layout: `esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/{esp32,esp32s3,etc.}`
+
+**Updated Documentation:**
+- CODE_REVIEW3_TODO.md Task 3.1: Added clang-tidy validation with correct sysroot
+- CODE_REVIEW3_TODO.md Task 3.3: Documented zero warnings with proper toolchain setup
+
+---
+
+## 2026-02-01 13:36:46 — CODE_REVIEW3 Phase 3: P2 Observability Complete
+
+**Context:** Phase 3 implemented human-readable error codes and impact fields for better field diagnostics. All changes validated with comprehensive testing and clang-tidy.
+
+**Changes Made:**
+
+**1. Created cmd_status_to_name() helper function:**
+- Location: components/command_interface/include/command_interface.h (declaration)
+- Location: components/command_interface/command_interface.c (implementation)
+- Purpose: Convert cmd_status_t enum values to human-readable strings
+- Pattern: Similar to ESP-IDF's esp_err_to_name()
+- Coverage: All cmd_status_t values (CMD_SUCCESS, CMD_ERROR_INIT_FAILED, etc.)
+
+**2. Updated error markers in main/main.c:**
+- Task 3.1: Replaced numeric codes with string names
+  - Before: `ERROR|CMD_IF|INIT_FAILED|code=1`
+  - After: `ERROR|CMD_IF|INIT_FAILED|code=CMD_ERROR_INIT_FAILED`
+- Task 3.2: Added impact fields
+  - cmd_init failure: `|impact=NO_CMD_IF`
+  - task creation failure: `|impact=NO_CMD_PROCESSING`
+- Final format: `ERROR|CMD_IF|INIT_FAILED|code=CMD_ERROR_INIT_FAILED|impact=NO_CMD_IF`
+
+**Validation Results:**
+- Build: Clean (0 errors, 0 warnings)
+- Tests: 253/253 passing (0 failures, 0 ignored)
+- Clang-tidy: **Zero warnings** in main.c and command_interface.c
+  - Fixed sysroot path issue (see previous entry)
+  - Correct command: `CLANG_PREFIX=...esp-clang/bin SYSROOT_BASE=...clang-runtimes/xtensa-esp-unknown-elf/esp32`
+- Binary size: 928,896 bytes (+960 bytes from Phase 2)
+  - Task 3.1: +864 bytes (cmd_status_to_name string table)
+  - Task 3.2: +96 bytes (impact field strings)
+
+**Impact Documentation:**
+- **NO_CMD_IF:** Command interface initialization failed; no cmd subsystem at all
+- **NO_CMD_PROCESSING:** Command interface initialized but task creation failed; rare heap exhaustion case
+
+**Commit:** 43a465e7 - "improve(main): better error diagnostics (P2)"
+**Pushed:** origin/master (2026-02-01 13:36:46)
+
+**Impact:**
+- Improved field diagnostics (human-readable error codes)
+- Clear failure impact communication (impact fields)
+- No test harness updates needed (no parsers exist for these markers)
+- All validation passed (build, tests, clang-tidy)
