@@ -133,9 +133,10 @@ static audio_config_t load_audio_boot_config(void)
  * MAIN ENTRY POINT
  * 
  * Error Handling Policy:
- * - Platform services (NVS, BLE mem release): ESP_ERROR_CHECK (fail-fast)
+ * - Platform services (NVS, UART, BLE mem release): ESP_ERROR_CHECK (fail-fast)
  *   Rationale: System cannot function without these. Failing fast prevents
  *   confusing "half-working" states and makes issues immediately visible.
+ *   UART is foundational - cmd interface and all diagnostics depend on it.
  * 
  * - Subsystems (BT, Audio, CMD): Log errors but continue (graceful degradation)
  *   Rationale: Partial functionality > completely dead. Device remains useful
@@ -181,6 +182,10 @@ void app_main(void)
      * 
      * CONTRACT: Single install only - NEVER call uart_driver_delete() after
      * install as it breaks esp-console, logging, and the cmd layer.
+     * 
+     * ERROR HANDLING: UART is a platform service (fail-fast). If UART driver
+     * installation fails, the device cannot function (cmd interface dead,
+     * no control/diagnostics). ESP_ERROR_CHECK enforces this contract.
      */
 #ifdef ESP_PLATFORM
     const int uart_rx_buf = 1024;
@@ -192,21 +197,19 @@ void app_main(void)
     const int console_uart = UART_NUM_0;
 #endif
 
-    esp_err_t ret = uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0);
-    printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
-           (int)ret, uart_is_driver_installed(console_uart) ? 1 : 0);
+    ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0));
+    
+    /* Success markers for test harness: UART driver installed successfully */
+    printf("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1\r\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("DIAG|BOOT|EARLY_UART_INSTALL|ret=%d,installed=%d\r\n", 
-                   (int)ret, uart_is_driver_installed(console_uart) ? 1 : 0);
+    esp_rom_printf("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1\r\n");
 #endif
 
     /* Emit critical marker for test harness: UART driver is ready, cmd layer
      * can now perform synchronous I/O without driver installation races. */
-    if (uart_is_driver_installed(console_uart)) {
-        const char ready[] = "DIAG|BOOT|UART_READY_FOR_CMD_LAYER\r\n";
-        uart_write_bytes(console_uart, ready, sizeof(ready)-1);
-        uart_wait_tx_done(console_uart, pdMS_TO_TICKS(50));
-    }
+    const char ready[] = "DIAG|BOOT|UART_READY_FOR_CMD_LAYER\r\n";
+    uart_write_bytes(console_uart, ready, sizeof(ready)-1);
+    uart_wait_tx_done(console_uart, pdMS_TO_TICKS(50));
 #endif
     
     /* ========== Platform Services Initialization ==========
@@ -237,23 +240,50 @@ void app_main(void)
      *   4. audio_processor_init() - audio can now be controlled
      * 
      * This ensures commands are always available when subsystems need them.
+     * 
+     * ERROR HANDLING: cmd_init() is a subsystem (graceful degrade). If it
+     * fails, we skip task creation and continue boot - device will function
+     * without command interface (BT/Audio can still work). Failure is rare
+     * (cmd_init() currently has no failure paths), but we check defensively.
      */
 #ifdef ESP_PLATFORM
-    if (cmd_init() != CMD_SUCCESS) {
-        ESP_LOGW(BT_AV_TAG, "cmd_init() failed or already initialized");
-    }
-    printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+    cmd_status_t cmd_result = cmd_init();
+    if (cmd_result != CMD_SUCCESS) {
+        ESP_LOGE(BT_AV_TAG, "cmd_init() failed (code=%d) - command interface unavailable", cmd_result);
+        printf("ERROR|CMD_IF|INIT_FAILED|code=%d\r\n", cmd_result);
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_CALLED\r\n");
+        esp_rom_printf("ERROR|CMD_IF|INIT_FAILED|code=%d\r\n", cmd_result);
+#endif
+        ESP_LOGW(BT_AV_TAG, "Device will boot without command interface - BT/Audio may still function");
+        // Skip cmd task creation - device continues but cmd interface dead
+    } else {
+        // cmd_init() succeeded - proceed with task creation
+        printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_SUCCESS\r\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+        esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_SUCCESS\r\n");
 #endif
 
-    // Create command processing task - this starts the command interface
-    // event loop so commands can be processed as soon as they arrive.
-    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
-    printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+        // Create command processing task - this starts the command interface
+        // event loop so commands can be processed as soon as they arrive.
+        // ERROR HANDLING: Task creation can fail (heap/stack exhausted). Check
+        // return value and emit diagnostics. Device continues boot (graceful
+        // degrade) but cmd processing unavailable.
+        BaseType_t task_created = xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+        if (task_created != pdPASS) {
+            ESP_LOGE(BT_AV_TAG, "Failed to create cmd_process_task - heap/stack exhausted?");
+            printf("ERROR|CMD_IF|TASK_CREATE_FAILED\r\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+            esp_rom_printf("ERROR|CMD_IF|TASK_CREATE_FAILED\r\n");
 #endif
+            ESP_LOGW(BT_AV_TAG, "Device will boot without cmd processing - BT/Audio may still function");
+        } else {
+            // Task created successfully - emit success markers
+            printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#ifdef CONFIG_IDF_TARGET_ESP32
+            esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
+#endif
+        }
+    }
 #endif
 
     /* ========== Bluetooth Initialization ==========
