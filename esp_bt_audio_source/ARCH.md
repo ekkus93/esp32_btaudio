@@ -431,3 +431,202 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 - Display driver (if display is used)
 - Button/encoder handling
 - User feedback (LEDs, display)
+
+---
+
+## Future Evolution: Single-ESP32 to Dual-ESP32 Architecture
+
+### Current State (Single ESP32)
+
+The current codebase runs all functionality on a single ESP32:
+- **Bluetooth Classic** (A2DP source for audio streaming)
+- **Command interface** (UART-based control and diagnostics)
+- **Audio processor** (I2S management, WAV playback, tone generation)
+- **NVS storage** (configuration persistence)
+
+This single-ESP32 architecture is functional but has limitations:
+- **Cannot run WiFi + Bluetooth Classic simultaneously** (ESP32 hardware constraint)
+- **Limited CPU/memory** for advanced audio processing + network features
+- **Single point of failure** - any subsystem crash affects entire device
+
+### Future Architecture: Dual-ESP32 Split
+
+The architecture is designed to support future migration to two cooperating ESP32 devices for enhanced capabilities:
+
+#### Control ESP32 (Primary)
+**Responsibilities:**
+- **Command interface** (UART control from host or user interface)
+- **Minimal Bluetooth** (device discovery, pairing, connection management only)
+- **NVS storage** (configuration, pairing database)
+- **Inter-ESP32 communication** (command relay, status aggregation)
+- **Optional: WiFi stack** (web UI, network streaming, OTA updates)
+
+**Components migrated from current main.c:**
+- `cmd_init()` + `cmd_process_task()` - Full command layer
+- `bt_manager_init()` - Connection management only (no audio streaming)
+- `nvs_storage_init()` - Configuration persistence
+- UART driver installation - Early diagnostics and control
+
+**Components NOT on Control ESP32:**
+- Audio processing (delegated to Audio ESP32)
+- A2DP audio streaming (delegated to Audio ESP32)
+
+#### Audio ESP32 (Secondary)
+**Responsibilities:**
+- **A2DP audio streaming** (high-bandwidth Bluetooth audio to speakers/headphones)
+- **Audio processing** (I2S, WAV playback, tone generation, effects)
+- **Real-time audio** (low-latency DMA, interrupt-driven I2S)
+- **Receives commands from Control ESP32** (play, stop, volume, etc.)
+- **Sends status to Control ESP32** (playback state, errors)
+
+**Components migrated from current main.c:**
+- `audio_processor_init()` + `audio_processor_start()` - Full audio stack
+- `bt_manager_start_audio()` - A2DP streaming only (no pairing/discovery)
+- I2S driver - Audio I/O hardware
+
+**Components NOT on Audio ESP32:**
+- User command interface (handled by Control ESP32)
+- WiFi stack (if needed, runs on Control ESP32)
+- Configuration storage (Control ESP32 is source of truth)
+
+### Communication Protocol (Inter-ESP32)
+
+#### Physical Interface
+**UART** (high-speed serial, 921600 baud recommended):
+```
+Control ESP32          Audio ESP32
+-------------          -----------
+TX (GPIO17)  -------> RX (GPIO16)
+RX (GPIO16)  <------- TX (GPIO17)
+GND          -------> GND
+```
+
+**Optional I2S** (for audio data from Control ESP32 → Audio ESP32):
+```
+Control ESP32 (I2S Master)    Audio ESP32 (I2S Slave)
+--------------------------    -----------------------
+I2S_BCK (GPIO26)  ---------> I2S_BCK (GPIO26)
+I2S_WS (GPIO25)   ---------> I2S_WS (GPIO25)
+I2S_DO (GPIO22)   ---------> I2S_DI (GPIO22)
+GND               ---------> GND
+```
+
+#### Command Protocol (Control → Audio ESP32)
+
+**Format:** Same as current command interface (newline-terminated text)
+
+**Examples:**
+```
+AUDIO_START\n
+AUDIO_STOP\n
+VOLUME 80\n
+PLAY /spiffs/beep.wav\n
+BEEP 440 500\n
+```
+
+**Rationale:** Reuse existing command parser on Audio ESP32 for consistency. Control ESP32 becomes a command relay.
+
+#### Status Protocol (Audio → Control ESP32)
+
+**Format:** Structured status messages (same as current DIAG output)
+
+**Examples:**
+```
+DIAG|AUDIO|STATUS|running=1|volume=80\n
+DIAG|AUDIO|PLAYBACK|file=/spiffs/beep.wav|playing=1\n
+DIAG|BT|AUDIO_STATE|STARTED\n
+```
+
+**Rationale:** Control ESP32 aggregates status from Audio ESP32 and exposes to host/UI.
+
+### Migration Path from Current Single-ESP32
+
+The current codebase is architected to support this split with **minimal changes**:
+
+#### Phase 1: Current State (Single ESP32)
+- ✅ **Already done:** Clean layering (main.c → bt_manager/audio_processor/cmd_interface)
+- ✅ **Already done:** Clear component ownership (no cross-layer violations)
+- ✅ **Already done:** Command-driven architecture (all operations via cmd interface)
+
+#### Phase 2: Preparation (Still Single ESP32)
+- Create `inter_esp_comm` component (UART protocol abstraction)
+- Add command relay mode to `cmd_interface` (forward vs execute locally)
+- Add status aggregation to `cmd_interface` (merge local + remote status)
+- **No behavioral changes** - still single ESP32, but components are relay-ready
+
+#### Phase 3: Physical Split (Dual ESP32)
+- **Control ESP32 firmware:**
+  - `main.c` calls: `cmd_init()`, `bt_manager_init()` (discovery only), `nvs_storage_init()`
+  - Relay audio commands to Audio ESP32 via UART
+  - Aggregate status from Audio ESP32 + local BT manager
+  
+- **Audio ESP32 firmware:**
+  - `main.c` calls: `audio_processor_init()`, `cmd_init()` (receive mode)
+  - Execute audio commands locally
+  - Send status updates to Control ESP32 via UART
+
+- **Shared code:** Same component libraries (bt_manager, audio_processor, cmd_interface)
+  - Configuration at build time (e.g., `CONFIG_ESP_ROLE_CONTROL` vs `CONFIG_ESP_ROLE_AUDIO`)
+
+#### Phase 4: Enhanced Features (Post-Split)
+- Add WiFi to Control ESP32 (web UI, network streaming)
+- Add advanced audio processing to Audio ESP32 (effects, EQ)
+- Add OTA updates via Control ESP32 (update both ESP32s)
+
+### Why Clean Layering Matters NOW
+
+The **current single-ESP32 architecture** enforces clear ownership:
+
+| Component | Owner | Rationale |
+|-----------|-------|-----------|
+| UART driver install | `main.c` | Platform service - needed for early diagnostics |
+| UART usage (read/write) | `cmd_interface` | Control plane - all commands flow through here |
+| BT controller init | `bt_manager` | Subsystem - encapsulates all BT operations |
+| Audio I2S init | `audio_processor` | Subsystem - encapsulates all audio operations |
+| NVS init | `main.c` via `nvs_storage` | Platform service - single source of truth |
+
+**Without this layering**, the dual-ESP32 split would require:
+- ❌ Untangling spaghetti code (BT calls in main.c, UART in audio, etc.)
+- ❌ Rewriting command parsing (different on each ESP32)
+- ❌ Debugging ownership conflicts (who owns what hardware?)
+
+**With clean layering**, the dual-ESP32 split is:
+- ✅ **Straightforward** - Each component already knows its boundaries
+- ✅ **Low-risk** - No major refactoring, just configuration changes
+- ✅ **Testable** - Same components, different deployment topology
+
+### Main.c Component Migration Table
+
+This table shows where each current `main.c` initialization call will move in the dual-ESP32 architecture:
+
+| Current main.c Call | Control ESP32 | Audio ESP32 | Notes |
+|---------------------|---------------|-------------|-------|
+| `esp_bt_controller_mem_release(BLE)` | ✅ Yes | ✅ Yes | Both need Classic BT, not BLE |
+| `uart_driver_install()` | ✅ Yes | ✅ Yes | Both need UART (host control / inter-ESP32 comm) |
+| `nvs_storage_init()` | ✅ Yes | ❌ No | Control ESP32 is source of truth for config |
+| `cmd_init()` | ✅ Yes (host mode) | ✅ Yes (relay mode) | Control receives host cmds; Audio receives relay cmds |
+| `cmd_process_task()` | ✅ Yes | ✅ Yes | Both process commands (different sources) |
+| `bt_manager_init()` | ✅ Yes (discovery/pair) | ⚠️ Partial (audio only) | Split BT manager into control + audio aspects |
+| `audio_processor_init()` | ❌ No | ✅ Yes | Audio ESP32 owns all audio operations |
+| `audio_processor_start()` | ❌ No | ✅ Yes | Audio ESP32 owns all audio operations |
+| `load_audio_boot_config()` | ⚠️ Fetch from NVS | ⚠️ Receive from Control | Control ESP32 sends config to Audio ESP32 at boot |
+
+**Legend:**
+- ✅ Yes = Component runs on this ESP32
+- ❌ No = Component does NOT run on this ESP32
+- ⚠️ Partial = Component is split or adapted for this ESP32
+
+### Benefits of This Evolution Plan
+
+1. **Preserves Investment:** Current code remains usable (shared components)
+2. **Incremental Migration:** Can develop/test dual-ESP32 without breaking single-ESP32
+3. **Clear Boundaries:** Each ESP32 has well-defined responsibilities
+4. **Future-Proof:** Architecture supports adding more features (WiFi, advanced audio)
+5. **Testable:** Can test Control ESP32 and Audio ESP32 independently with mocks
+
+### Timeline
+
+- **Now (Phase 1):** ✅ Clean layering complete (CODE_REVIEW2 work)
+- **Q2 2026 (Phase 2):** Create `inter_esp_comm` component, add relay modes
+- **Q3 2026 (Phase 3):** Physical split, dual-ESP32 firmware variants
+- **Q4 2026 (Phase 4):** Enhanced features (WiFi on Control, advanced audio processing)

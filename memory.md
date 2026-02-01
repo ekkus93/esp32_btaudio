@@ -241,6 +241,153 @@ main.c respects architectural boundaries.
 
 **Next:** Task 7.2 - Document two-ESP32 split evolution plan in ARCH.md
 
+---
+
+## 2026-02-01 11:18:24 — CODE_REVIEW2 Phase 7 Task 7.2: Two-ESP32 Split Evolution Plan
+
+**Context:** Documented comprehensive architecture evolution plan for future migration from single ESP32 to dual-ESP32 topology, preserving current code investment while enabling WiFi + advanced features.
+
+**Task 7.2: Document evolution plan for two-ESP32 split**
+
+**File Modified:** `ARCH.md`
+- **Section added:** "Future Evolution: Single-ESP32 to Dual-ESP32 Architecture"
+- **Size:** ~260 lines of comprehensive documentation
+- **Location:** End of ARCH.md (after existing dual-ESP32 WiFi architecture)
+
+**Architecture Design:**
+
+**Control ESP32 (Primary Device):**
+- **Role:** User interface, configuration, coordination
+- **Components from current main.c:**
+  - ✅ `cmd_init()` + `cmd_process_task()` - Full command layer (host mode)
+  - ✅ `bt_manager_init()` - Discovery, pairing, connection management only
+  - ✅ `nvs_storage_init()` - Configuration source of truth
+  - ✅ UART driver - Host control interface
+- **Optional future components:**
+  - WiFi stack (web UI, network streaming, OTA updates)
+  - Display/UI (buttons, encoders, status LEDs)
+- **Does NOT include:**
+  - ❌ Audio processing (delegated to Audio ESP32)
+  - ❌ A2DP streaming (delegated to Audio ESP32)
+
+**Audio ESP32 (Secondary Device):**
+- **Role:** Real-time audio processing and Bluetooth streaming
+- **Components from current main.c:**
+  - ✅ `audio_processor_init()` + `audio_processor_start()` - Full audio stack
+  - ✅ `cmd_init()` - Command receiver (relay mode from Control ESP32)
+  - ✅ `bt_manager` (partial) - A2DP streaming only
+  - ✅ I2S driver - Audio hardware
+- **Future enhancements:**
+  - Advanced audio effects (EQ, reverb, compression)
+  - Multi-codec support (SBC, AAC, aptX)
+- **Does NOT include:**
+  - ❌ User interface (handled by Control ESP32)
+  - ❌ WiFi (runs on Control ESP32 if needed)
+  - ❌ Configuration storage (Control ESP32 is source)
+
+**Inter-ESP32 Communication:**
+
+**Physical interfaces:**
+1. **UART (Commands & Status):**
+   - Baud: 921600 (high-speed)
+   - Format: Newline-terminated text (same as current cmd protocol)
+   - Control TX (GPIO17) → Audio RX (GPIO16)
+   - Control RX (GPIO16) ← Audio TX (GPIO17)
+
+2. **Optional I2S (Audio Data):**
+   - Control ESP32 as I2S Master (if generating audio)
+   - Audio ESP32 as I2S Slave (receives audio for BT streaming)
+   - Pins: BCK(26), WS(25), DO(22) → DI(22)
+
+**Protocol design:**
+- **Commands (Control → Audio):** Reuse existing cmd_interface
+  - `AUDIO_START`, `VOLUME 80`, `PLAY /spiffs/file.wav`, `BEEP 440 500`
+  - Rationale: Audio ESP32 uses same command parser, Control becomes relay
+- **Status (Audio → Control):** Structured DIAG messages
+  - `DIAG|AUDIO|STATUS|running=1|volume=80`
+  - `DIAG|BT|AUDIO_STATE|STARTED`
+  - Rationale: Control ESP32 aggregates status for host/UI
+
+**Migration Path (4 Phases):**
+
+**Phase 1 (Current - DONE ✅):**
+- Clean component layering (main.c → subsystems)
+- Clear ownership (no cross-layer violations)
+- Command-driven architecture (all ops via cmd_interface)
+- **Result:** CODE_REVIEW2 complete, architecture split-ready
+
+**Phase 2 (Q2 2026 - Preparation):**
+- Create `inter_esp_comm` component (UART protocol abstraction)
+- Add relay mode to `cmd_interface` (forward vs execute)
+- Add status aggregation (merge local + remote)
+- **Still single ESP32** - no behavioral changes, just relay-ready components
+
+**Phase 3 (Q3 2026 - Physical Split):**
+- **Control ESP32 firmware:**
+  - Calls: `cmd_init()`, `bt_manager_init()` (discovery), `nvs_storage_init()`
+  - Relays audio commands to Audio ESP32 via UART
+  - Aggregates status from Audio + local BT
+- **Audio ESP32 firmware:**
+  - Calls: `audio_processor_init()`, `cmd_init()` (receive mode)
+  - Executes audio commands locally
+  - Sends status to Control ESP32 via UART
+- **Shared code:** Same component libraries, build-time config differentiates roles
+
+**Phase 4 (Q4 2026 - Enhanced Features):**
+- Add WiFi to Control ESP32 (web UI, streaming)
+- Add advanced audio to Audio ESP32 (effects, EQ)
+- Add OTA updates (Control ESP32 updates both devices)
+
+**Main.c Component Migration Table:**
+
+Documented where each current `main.c` initialization call will run in dual-ESP32 architecture:
+
+| Call | Control ESP32 | Audio ESP32 | Notes |
+|------|---------------|-------------|-------|
+| `esp_bt_controller_mem_release(BLE)` | ✅ Yes | ✅ Yes | Both need Classic BT |
+| `uart_driver_install()` | ✅ Yes | ✅ Yes | Host ctrl / inter-ESP32 |
+| `nvs_storage_init()` | ✅ Yes | ❌ No | Control is config source |
+| `cmd_init()` | ✅ Yes (host) | ✅ Yes (relay) | Different cmd sources |
+| `cmd_process_task()` | ✅ Yes | ✅ Yes | Both process commands |
+| `bt_manager_init()` | ✅ Yes (pair) | ⚠️ Partial (stream) | Split BT responsibilities |
+| `audio_processor_init()` | ❌ No | ✅ Yes | Audio ESP32 only |
+| `audio_processor_start()` | ❌ No | ✅ Yes | Audio ESP32 only |
+| `load_audio_boot_config()` | ⚠️ Fetch NVS | ⚠️ Receive relay | Control sends config |
+
+**Why Clean Layering Matters NOW:**
+
+Documented comparison showing value of current architectural work:
+
+**Without clean layering (hypothetical mess):**
+- ❌ Untangle spaghetti code (BT in main.c, UART in audio, etc.)
+- ❌ Rewrite command parsing (different on each ESP32)
+- ❌ Debug ownership conflicts (who owns hardware?)
+- ❌ High-risk migration, months of refactoring
+
+**With clean layering (current state):**
+- ✅ Straightforward split - components know boundaries
+- ✅ Low-risk migration - just configuration changes
+- ✅ Testable - same components, different topology
+- ✅ Weeks to implement (vs months of untangling)
+
+**Benefits of Evolution Plan:**
+1. **Preserves investment:** Current code remains usable (shared components)
+2. **Incremental migration:** Can develop/test dual without breaking single
+3. **Clear boundaries:** Each ESP32 has well-defined responsibilities  
+4. **Future-proof:** Supports WiFi, advanced audio, more features
+5. **Independently testable:** Mock inter-ESP32 comm for unit tests
+
+**Documentation Quality:**
+- Comprehensive tables (component migration, protocol specs)
+- Clear phase timeline with quarters
+- Rationale for each decision
+- Benefits section explaining value
+- Connects current work (CODE_REVIEW2) to future vision
+
+**Phase 7 Progress:** Task 7.2 complete (2 of 3 tasks)
+
+**Next:** Task 7.3 - Create upgrade/migration notes
+
 **Next:** Task 6.4 (code quality checks - clang-tidy, static analysis, TODO/FIXME audit).
 
 ---

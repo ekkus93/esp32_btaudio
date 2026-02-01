@@ -1208,13 +1208,67 @@ Check 4: No obvious printf format errors... PASS
 - Can be added to `.github/workflows/ci.yml` when CI pipeline is created
 - Provides clear violation messages with WHY/FIX guidance
 
-### Task 7.2: Document evolution plan for two-ESP32 split
-- [ ] In ARCH.md, add section on future architecture:
-  - [ ] "Control ESP32" will run cmd_init + minimal BT
-  - [ ] "Audio ESP32" will run audio_processor + streaming BT
-  - [ ] Communication protocol between ESPs
-- [ ] Note which parts of current main.c will move where
-- [ ] This informs why we need clear ownership NOW
+### Task 7.2: Document evolution plan for two-ESP32 split ✅ COMPLETE
+- [x] In ARCH.md, add section on future architecture ✅
+  - [x] "Control ESP32" will run cmd_init + minimal BT ✅
+  - [x] "Audio ESP32" will run audio_processor + streaming BT ✅
+  - [x] Communication protocol between ESPs ✅
+- [x] Note which parts of current main.c will move where ✅
+- [x] This informs why we need clear ownership NOW ✅
+
+**Documentation Added:** ARCH.md new section "Future Evolution: Single-ESP32 to Dual-ESP32 Architecture" (~260 lines)
+
+**Architecture Overview:**
+
+**Control ESP32 (Primary):**
+- Command interface (UART from host/UI)
+- Minimal Bluetooth (discovery, pairing, connection mgmt)
+- NVS storage (config persistence)
+- Inter-ESP32 communication (command relay)
+- Optional WiFi (web UI, network streaming, OTA)
+
+**Audio ESP32 (Secondary):**
+- A2DP audio streaming (Bluetooth to speakers)
+- Audio processing (I2S, WAV, tones, effects)
+- Real-time audio (DMA, low-latency)
+- Receives commands from Control ESP32
+- Sends status to Control ESP32
+
+**Communication Protocol:**
+- **UART:** 921600 baud, newline-terminated commands/status
+- **Optional I2S:** Audio data Control → Audio ESP32
+- **Commands:** Reuse current cmd_interface protocol (AUDIO_START, VOLUME, PLAY, etc.)
+- **Status:** Structured DIAG messages (same as current)
+
+**Migration Path (4 Phases):**
+1. **Phase 1 (Current):** ✅ Clean layering complete (CODE_REVIEW2)
+2. **Phase 2 (Q2 2026):** Create inter_esp_comm component, add relay modes
+3. **Phase 3 (Q3 2026):** Physical split, dual-ESP32 firmware variants
+4. **Phase 4 (Q4 2026):** Enhanced features (WiFi, advanced audio)
+
+**Main.c Component Migration Table:**
+
+| Current main.c Call | Control ESP32 | Audio ESP32 |
+|---------------------|---------------|-------------|
+| `esp_bt_controller_mem_release()` | ✅ Yes | ✅ Yes |
+| `uart_driver_install()` | ✅ Yes | ✅ Yes |
+| `nvs_storage_init()` | ✅ Yes | ❌ No |
+| `cmd_init()` | ✅ Yes (host) | ✅ Yes (relay) |
+| `bt_manager_init()` | ✅ Yes (control) | ⚠️ Partial (audio) |
+| `audio_processor_init()` | ❌ No | ✅ Yes |
+| `audio_processor_start()` | ❌ No | ✅ Yes |
+
+**Why Clean Layering Matters:**
+- ✅ Without layering: Untangle spaghetti, rewrite parsers, debug ownership conflicts
+- ✅ With layering: Straightforward split, low-risk, testable components
+- ✅ Current architecture: Components already know boundaries, just change deployment
+
+**Benefits:**
+1. Preserves code investment (shared components)
+2. Incremental migration (no big-bang rewrite)
+3. Clear responsibilities per ESP32
+4. Future-proof for WiFi + advanced audio
+5. Independently testable
 
 ### Task 7.3: Create upgrade/migration notes
 - [ ] Document any NVS schema changes
