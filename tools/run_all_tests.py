@@ -269,6 +269,81 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     return summary
 
 
+def run_standalone_host_tests(root: Path, jobs: int = 0) -> dict:
+    """Run standalone host tests (matches CI build exactly).
+    
+    This performs a clean build from scratch in test/host_test/build_host_tests,
+    exactly matching the GitHub Actions CI workflow. This catches linking errors
+    that incremental builds might miss.
+    
+    Returns a summary dict with build and test results.
+    """
+    host_dir = root / "esp_bt_audio_source" / "test" / "host_test"
+    build_dir = host_dir / "build_host_tests"
+    
+    summary = {
+        "configured": False,
+        "build": False,
+        "ctest_rc": None,
+        "ctest_output": None,
+        "total_tests": 0,
+        "failures": 0,
+    }
+    
+    print(f"  Standalone build dir: {build_dir}")
+    
+    # Clean build (like CI)
+    if build_dir.exists():
+        import shutil
+        print(f"  Removing existing build dir...")
+        shutil.rmtree(build_dir)
+    
+    build_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Configure
+    print(f"  Running cmake...")
+    rc, out = run_cmd(["cmake", ".."], cwd=str(build_dir))
+    summary["configured"] = (rc == 0)
+    summary["configure_output"] = out
+    
+    if rc != 0:
+        print(f"  ❌ Configure FAILED")
+        return summary
+    
+    # Build
+    print(f"  Building with cmake --build...")
+    build_cmd = ["cmake", "--build", "."]
+    if jobs and jobs > 1:
+        build_cmd += ["--", f"-j{jobs}"]
+    rc, out = run_cmd(build_cmd, cwd=str(build_dir))
+    summary["build"] = (rc == 0)
+    summary["build_output"] = out
+    
+    if rc != 0:
+        print(f"  ❌ Build FAILED")
+        return summary
+    
+    # Run ctest
+    print(f"  Running ctest...")
+    rc, out = run_cmd(["ctest", "--output-on-failure"], cwd=str(build_dir))
+    summary["ctest_rc"] = rc
+    summary["ctest_output"] = out
+    
+    # Parse test counts from ctest output
+    # Look for pattern like: "100% tests passed, 0 tests failed out of 36"
+    match = re.search(r"(\d+)%\s+tests\s+passed,\s+(\d+)\s+tests\s+failed\s+out\s+of\s+(\d+)", out)
+    if match:
+        summary["failures"] = int(match.group(2))
+        summary["total_tests"] = int(match.group(3))
+    
+    if rc == 0:
+        print(f"  ✅ Standalone tests PASSED ({summary['total_tests']} tests)")
+    else:
+        print(f"  ❌ Standalone tests FAILED ({summary['failures']}/{summary['total_tests']} failures)")
+    
+    return summary
+
+
 def run_cmake_unity_suite(root: Path, suite_rel_path: str, target_name: str, jobs: int = 0) -> dict:
     suite_dir = root / suite_rel_path
     build_dir = suite_dir / "build"
@@ -573,11 +648,12 @@ def main(argv: list[str] | None = None):
     p.add_argument("--timeout", type=int, default=300, help="Timeout per device suite in seconds")
     p.add_argument("--no-host", action="store_true", help="Skip host CTest run")
     p.add_argument("--no-device", action="store_true", help="Skip device Unity runs")
+    p.add_argument("--no-standalone", action="store_true", help="Skip standalone host test build (CI parity check)")
     p.add_argument("--source-idf", help="Path to ESP-IDF export.sh to source before device commands")
     p.add_argument("--jobs", type=int, default=0, help="Parallel jobs for host build (passed to cmake --build)")
     args = p.parse_args(argv)
 
-    report = {"host": None, "devices": {}, "aggregate": None}
+    report = {"host": None, "standalone_host": None, "devices": {}, "aggregate": None}
     overall_failed = False
 
     cleanup_previous_artifacts(ROOT, remove_host=not args.no_host, remove_device=not args.no_device)
@@ -629,6 +705,34 @@ def main(argv: list[str] | None = None):
         report["host_extra"] = {}
     else:
         print("Skipping host tests (--no-host)")
+
+    # Standalone host tests (CI parity check)
+    if not args.no_standalone and not args.no_host:
+        print("\n== Running standalone host tests (CI parity check) ==")
+        standalone_start = time.time()
+        report["standalone_host"] = run_standalone_host_tests(ROOT, jobs=args.jobs)
+        standalone_end = time.time()
+        try:
+            report["standalone_host"]["start_epoch"] = standalone_start
+            report["standalone_host"]["end_epoch"] = standalone_end
+            report["standalone_host"]["duration_seconds"] = standalone_end - standalone_start
+        except Exception:
+            pass
+        # Treat standalone build/test failures as critical
+        try:
+            if not report["standalone_host"].get("build", False):
+                overall_failed = True
+                print("❌ STANDALONE BUILD FAILED - this would break CI!")
+            elif report["standalone_host"].get("failures", 0) > 0:
+                overall_failed = True
+                print(f"❌ STANDALONE TESTS FAILED ({report['standalone_host']['failures']} failures) - this would break CI!")
+        except Exception:
+            pass
+    else:
+        if args.no_standalone:
+            print("Skipping standalone host tests (--no-standalone)")
+        else:
+            print("Skipping standalone host tests (host tests disabled)")
 
     # Device suites
     if not args.no_device:

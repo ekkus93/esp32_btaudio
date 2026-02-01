@@ -35,7 +35,18 @@ These tests are in `esp_bt_audio_source/test/host_test` and are built with
 CMake. They are host-executable unit tests (Unity) that don't require flashing
 or an ESP device.
 
-Steps:
+### Quick start (using Makefile - RECOMMENDED)
+
+```bash
+# from repo root
+cd esp_bt_audio_source/test/host_test
+make test
+```
+
+This performs a **clean build** from scratch and runs all tests, exactly matching
+the GitHub Actions CI workflow. This is the recommended way to test before pushing.
+
+### Manual build steps
 
 ```bash
 # from repo root
@@ -45,6 +56,84 @@ cmake --build build_host_tests -- -j$(nproc)
 cd build_host_tests
 ctest --output-on-failure
 ```
+
+### Complete test suite (using run_all_tests.py)
+
+The main test runner at `tools/run_all_tests.py` now includes standalone host tests
+by default. This provides CI parity checking:
+
+```bash
+# from repo root
+python3 tools/run_all_tests.py --no-device
+```
+
+This will run:
+1. Regular host tests (incremental build)
+2. **Standalone host tests** (clean build, matches CI exactly)
+
+To skip standalone tests:
+```bash
+python3 tools/run_all_tests.py --no-device --no-standalone
+```
+
+## Pre-commit testing checklist
+
+**IMPORTANT:** Before committing changes that touch production code, follow this
+checklist to avoid CI failures:
+
+### 1. Run standalone host tests (CI parity check)
+
+```bash
+cd esp_bt_audio_source/test/host_test
+make test
+```
+
+**Why?** This catches missing mock implementations and linker errors that incremental
+builds might miss. It runs exactly as GitHub Actions CI does.
+
+### 2. Check for new functions requiring mocks
+
+If you added new functions to components (e.g., `nvs_storage`, `bt_manager`),
+check if they're called by code that gets linked into host tests:
+
+```bash
+# Find functions in production code
+grep -r "nvs_storage_.*(" esp_bt_audio_source/components/nvs_storage/nvs_storage.h
+
+# Check if corresponding mocks exist
+ls -la esp_bt_audio_source/test/host_test/mocks/*mock*.c
+```
+
+Common mocks that need updates:
+- `test/host_test/mocks/nvs_storage_mock.c` - NVS storage functions
+- `test/host_test/mocks/mock_*.c` - Various ESP-IDF peripherals
+
+### 3. Install pre-push hook (RECOMMENDED)
+
+Automatically run standalone tests before every push:
+
+```bash
+# from repo root
+cp tools/hooks/pre-push .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```
+
+This will block pushes that would break CI. To bypass temporarily (use sparingly):
+```bash
+git push --no-verify
+```
+
+## CI parity testing
+
+The standalone host test build exactly matches GitHub Actions CI:
+- **Clean build** from scratch (no incremental state)
+- Strict linker checking (catches missing symbols immediately)  
+- Tests all mock implementations are complete
+
+**Key lesson from v0.2.0 release:** The audio autostart feature added two new
+NVS functions (`nvs_storage_get_audio_autostart`, `nvs_storage_set_audio_autostart`)
+that weren't mocked. Incremental builds didn't catch this, but CI did. The
+standalone build now prevents this class of error.
 
 What I changed to make host builds work
 - `main/include/audio_processor.h` now guards ESP-IDF-only includes with
