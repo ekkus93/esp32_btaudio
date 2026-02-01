@@ -774,10 +774,52 @@ uart_is_driver_installed(console_uart)  // ✅ Portable!
 5. **Maintainability:** New developers can understand design intent
 6. **Test coverage:** All changes verified, zero regressions
 
-### Task 4.7: Commit Phase 4 (P3 polish)
-- [ ] `git add main/main.c`
-- [ ] Commit: "refactor(main): remove unused code and improve clarity (P3)"
-- [ ] List all cleanup items in commit message
+### Task 4.6b: Run clang-tidy and fix warnings ✅ COMPLETE
+- [x] Ran clang-tidy on **our project code** (main/, components/) ✅
+- [x] Identified all fixable warnings in main.c ✅
+- [x] Fixed all issues in our code: ✅
+  - [x] Renamed variable 'r' → 'ret' for clarity
+  - [x] Separated multiple variable declarations  
+  - [x] Renamed 'ws' → 'word_select' (3-char minimum)
+  - [x] Added braces around single-line if statements
+  - [x] Eliminated nested conditionals with helper functions
+- [x] Build: SUCCESS (927 KB, unchanged) ✅
+- [x] Tests: 36/36 passing (100%) ✅
+- [x] Committed: c116c839 ✅
+
+**Clang-tidy Results (our code only):**
+- main.c warnings in our code: 5 → **0** ✅
+- Remaining 13 warnings: ESP-IDF macro expansions within our files (unavoidable when using ESP_LOGI/ESP_LOGW)
+- Note: ESP-IDF framework files not analyzed (not our code to fix)
+- Created `.clang-tidy` config to suppress ESP-IDF framework warnings in future runs
+
+**Benefits:**
+- Improved code readability
+- Better maintainability
+- Easier debugging
+- Industry best practices
+- All warnings in OUR code fixed
+- Future lint runs will only show issues in our application code (framework warnings suppressed)
+
+### Task 4.7: Commit Phase 4 (P3 polish) ✅ COMPLETE (REDUNDANT)
+- [x] `git add main/main.c` ✅ N/A
+- [x] Commit: "refactor(main): remove unused code and improve clarity (P3)" ✅ N/A
+- [x] List all cleanup items in commit message ✅ N/A
+
+**Task 4.7 Redundant - Already Complete:**
+All Phase 4 changes were committed individually during execution:
+- **98800bfc** (Task 4.1): Remove unused BT_APP_TASK_STACK_SIZE
+- **01345bc6** (Task 4.2): Remove unnecessary while(1) loop
+- **ff646faa** (Task 4.3): Document redundant task (already fixed Phase 2)
+- **010cebe6** (Task 4.4): Improve comments (WHY over WHAT)
+- **7341a775** (Task 4.5): Document error handling policy
+- **60b7440d** (Task 4.6): Comprehensive Phase 4 verification
+- **c116c839** (Task 4.6b): Fix clang-tidy warnings
+
+All required information already documented in individual commit messages.
+**Git status:** Working tree clean
+**Phase 4 status:** COMPLETE - all P3 tasks resolved and committed (7 commits total)
+**Next action:** Proceed to Phase 5 (Documentation updates)
 
 ---
 
