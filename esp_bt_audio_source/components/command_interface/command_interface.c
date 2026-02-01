@@ -1,5 +1,17 @@
 #include "command_interface.h"
 
+const char* cmd_status_to_name(cmd_status_t status) {
+    switch (status) {
+        case CMD_SUCCESS:                return "CMD_SUCCESS";
+        case CMD_ERROR_INIT_FAILED:      return "CMD_ERROR_INIT_FAILED";
+        case CMD_ERROR_INVALID_PARAM:    return "CMD_ERROR_INVALID_PARAM";
+        case CMD_ERROR_UNKNOWN:          return "CMD_ERROR_UNKNOWN";
+        case CMD_ERROR_NOT_INITIALIZED:  return "CMD_ERROR_NOT_INITIALIZED";
+        case CMD_ERROR_TOO_MANY_PARAMS:  return "CMD_ERROR_TOO_MANY_PARAMS";
+        default:                         return "CMD_ERROR_UNKNOWN_CODE";
+    }
+}
+
 /* Host/unit-test builds (ESP_PLATFORM undefined) may not link the full
  * command implementation. Provide weak stubs in that environment so unit
  * tests can supply their own mocks without requiring every platform

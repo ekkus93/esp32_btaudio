@@ -18,6 +18,14 @@ typedef enum {
     CMD_ERROR_TOO_MANY_PARAMS
 } cmd_status_t;
 
+/**
+ * Convert cmd_status_t to human-readable string
+ * 
+ * @param status Status code to convert
+ * @return String representation (e.g., "CMD_SUCCESS", "CMD_ERROR_INIT_FAILED")
+ */
+const char* cmd_status_to_name(cmd_status_t status);
+
 // Command types
 typedef enum {
     CMD_TYPE_SCAN = 0,

@@ -248,10 +248,10 @@ void app_main(void)
 #ifdef ESP_PLATFORM
     cmd_status_t cmd_result = cmd_init();
     if (cmd_result != CMD_SUCCESS) {
-        ESP_LOGE(BT_AV_TAG, "cmd_init() failed (code=%d) - command interface unavailable", cmd_result);
-        printf("ERROR|CMD_IF|INIT_FAILED|code=%d\r\n", cmd_result);
+        ESP_LOGE(BT_AV_TAG, "cmd_init() failed (%s) - command interface unavailable", cmd_status_to_name(cmd_result));
+        printf("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF\r\n", cmd_status_to_name(cmd_result));
 #ifdef CONFIG_IDF_TARGET_ESP32
-        esp_rom_printf("ERROR|CMD_IF|INIT_FAILED|code=%d\r\n", cmd_result);
+        esp_rom_printf("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF\r\n", cmd_status_to_name(cmd_result));
 #endif
         ESP_LOGW(BT_AV_TAG, "Device will boot without command interface - BT/Audio may still function");
         // Skip cmd task creation - device continues but cmd interface dead
@@ -270,9 +270,9 @@ void app_main(void)
         BaseType_t task_created = xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
         if (task_created != pdPASS) {
             ESP_LOGE(BT_AV_TAG, "Failed to create cmd_process_task - heap/stack exhausted?");
-            printf("ERROR|CMD_IF|TASK_CREATE_FAILED\r\n");
+            printf("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING\r\n");
 #ifdef CONFIG_IDF_TARGET_ESP32
-            esp_rom_printf("ERROR|CMD_IF|TASK_CREATE_FAILED\r\n");
+            esp_rom_printf("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING\r\n");
 #endif
             ESP_LOGW(BT_AV_TAG, "Device will boot without cmd processing - BT/Audio may still function");
         } else {
