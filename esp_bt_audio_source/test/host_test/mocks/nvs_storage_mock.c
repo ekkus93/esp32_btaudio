@@ -11,6 +11,7 @@ static char s_default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
 static esp_err_t s_init_result = ESP_OK;
 static esp_err_t s_get_count_result = ESP_OK;
 static esp_err_t s_get_device_result = ESP_OK;
+static uint8_t s_audio_autostart = 1; // default enabled
 
 // In-memory paired devices mock (simulates binary blob storage)
 #define MOCK_MAX_PAIRED 20
@@ -59,6 +60,7 @@ void nvs_storage_mock_reset(void)
     s_init_result = ESP_OK;
     s_get_count_result = ESP_OK;
     s_get_device_result = ESP_OK;
+    s_audio_autostart = 1; // reset to default enabled
 }
 
 esp_err_t nvs_storage_set_default_pin(const char* pin)
@@ -178,5 +180,18 @@ esp_err_t nvs_storage_set_volume(uint8_t vol)
 esp_err_t nvs_storage_set_i2s_pins(int bclk, int ws, int din, int dout)
 {
     (void)bclk; (void)ws; (void)din; (void)dout;
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
+{
+    if (!autostart) return ESP_ERR_INVALID_ARG;
+    *autostart = s_audio_autostart;
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
+{
+    s_audio_autostart = autostart ? 1 : 0;
     return ESP_OK;
 }
