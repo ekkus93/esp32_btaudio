@@ -1,5 +1,47 @@
 /**
  * WAV playback manager using audio_queue for zero-copy handoff.
+ * 
+ * DATA LOSS PREVENTION STRATEGY (CODE_REVIEW4 Phase 1):
+ * 
+ * This module implements a robust WAV playback system with lossless guarantees
+ * even under memory pressure or queue backpressure conditions. Key mechanisms:
+ * 
+ * 1. FILE REWIND ON ENQUEUE FAILURE (Task 1.2):
+ *    - When audio_chunk_enqueue_block() fails (queue full, no memory), we
+ *      rewind the file pointer by the number of bytes we just read
+ *    - This allows next play_manager_fill() call to re-read the same data
+ *    - Zero data loss: Every byte from WAV file eventually reaches the queue
+ *    - Instrumentation: s_enqueue_fail_count tracks retries (normal under load)
+ * 
+ * 2. FRAME ALIGNMENT (Task 1.5):
+ *    - Always read frame-aligned chunks (multiples of frame_bytes_src)
+ *    - Prevents partial frames that could cause glitches or corruption
+ *    - Alignment preserved through convert/resample pipeline
+ * 
+ * 3. CHUNK PADDING HANDLING (Task 1.4):
+ *    - WAV chunks are word-aligned: odd-sized chunks have 1 padding byte
+ *    - fmt chunk can be >16 bytes (extended format) - skip extra bytes correctly
+ *    - Prevents file pointer drift that would corrupt subsequent reads
+ * 
+ * 4. INSTRUMENTATION (Task 0.2, 6.1):
+ *    - s_bytes_read_from_file_total: Cumulative bytes read (with retries)
+ *    - s_bytes_enqueued_total: Cumulative bytes successfully enqueued
+ *    - s_expected_data_bytes: Total WAV data chunk size from header
+ *    - s_enqueue_fail_count: Number of queue-full retries
+ *    - s_dst_block_null_count: Memory allocation failures
+ *    - Exposed via play_manager_get_instrumentation() for validation
+ *    - Logged on completion to detect truncation regressions
+ * 
+ * 5. ERROR PROPAGATION:
+ *    - process_audio_block() returns ESP_ERR_NO_MEM on enqueue failure
+ *    - play_manager_fill() stops filling but returns ESP_OK (retry later)
+ *    - Real errors (file read, format conversion) propagate immediately
+ * 
+ * CORRECTNESS INVARIANTS:
+ * - s_bytes_read_from_file_total == s_expected_data_bytes (when complete)
+ * - Data loss % = 0% for properly functioning queue/memory subsystems
+ * - Retries are normal and transparent to caller
+ * - Rewind accounting prevents double-counting of retried reads
  */
 
 #include "play_manager.h"
@@ -120,7 +162,28 @@ static esp_err_t parse_fmt_chunk(FILE *file, uint32_t chunk_size,
     return ESP_OK;
 }
 
-/* Helper: Skip unknown chunk with padding */
+/* Helper: Skip unknown chunk with word-aligned padding (DATA INTEGRITY)
+ * 
+ * WHY PADDING MATTERS: WAV/RIFF specification requires all chunks to be word-aligned
+ * (even byte offset). When a chunk has an odd size (e.g., 1007 bytes), the file
+ * contains 1 padding byte after the chunk data to maintain word alignment for the
+ * next chunk. Without accounting for this padding, our file pointer drifts and we
+ * misinterpret chunk headers as audio data (corruption).
+ * 
+ * HOW IT WORKS:
+ * - skip = chunk_size + (chunk_size & 1)   // Add 1 if odd, 0 if even
+ * - fseek forward by skip bytes (skips data + padding)
+ * 
+ * EXAMPLES:
+ * - chunk_size=100 (even): skip=100+0=100 bytes
+ * - chunk_size=101 (odd):  skip=101+1=102 bytes (includes 1-byte pad)
+ * 
+ * CORRECTNESS: chunk_size & 1 is 1 when odd, 0 when even. This handles alignment
+ * transparently for both cases. Failure to skip padding causes subsequent chunk
+ * headers to be misaligned, leading to parse errors or data corruption.
+ * 
+ * This is CODE_REVIEW4 Task 1.4 - ensures accurate WAV file parsing.
+ */
 static void skip_wav_chunk(FILE *file, uint32_t chunk_size)
 {
     /* WAV chunks are word-aligned: odd-sized chunks have 1 padding byte */
@@ -286,7 +349,27 @@ static esp_err_t allocate_audio_blocks(uint8_t **src_block, uint8_t **dst_block)
     return ESP_OK;
 }
 
-/* Helper: Calculate aligned read size */
+/* Helper: Calculate frame-aligned read size (DATA LOSS PREVENTION)
+ * 
+ * WHY FRAME ALIGNMENT: Reading partial frames causes glitches, corruption, and
+ * misaligned samples in Bluetooth audio. Every read must deliver complete frames
+ * (e.g., 4 bytes for stereo 16-bit) to maintain audio integrity downstream.
+ * 
+ * HOW IT WORKS (two-step alignment):
+ * 1. CLAMP to remaining_bytes FIRST (Task 1.5) - prevents read-past-EOF
+ * 2. ALIGN DOWN to frame boundary - ensures complete frames only
+ * 
+ * Edge cases:
+ * - If aligned result is 0 (rare: to_read < frame_bytes), return one frame minimum
+ * - Last chunk may be smaller than AUDIO_CHUNK_BLOCK_BYTES but still frame-aligned
+ * - frame_bytes=0 treated as 1 (safety: avoid divide-by-zero, though shouldn't occur)
+ * 
+ * CORRECTNESS: Order matters. Clamping before alignment ensures we never align
+ * down past EOF (which would create a short read and require rewind). Alignment
+ * after clamping ensures we respect file boundaries while maintaining frames.
+ * 
+ * This is CODE_REVIEW4 Task 1.5 - prevents partial frames and guarantees clean audio.
+ */
 static size_t calculate_read_size(size_t frame_bytes, size_t remaining_bytes)
 {
     size_t to_read = AUDIO_CHUNK_BLOCK_BYTES;
@@ -358,10 +441,30 @@ static esp_err_t resample_audio_block(const uint8_t *src_block, uint8_t *dst_blo
     return resample_audio(&res_args);
 }
 
-/* Helper: Rewind file after enqueue failure */
+/* Helper: Rewind file after enqueue failure (DATA LOSS PREVENTION)
+ * 
+ * WHY REWIND: When audio_chunk_enqueue_block() fails (queue full, OOM), the
+ * bytes we just read from the file haven't been queued. Without rewinding,
+ * those bytes would be lost forever when we advance to the next read.
+ * 
+ * HOW IT WORKS:
+ * 1. fseek backwards by bytes_to_rewind (the amount we just read)
+ * 2. Restore s_pm.remaining_bytes so next fill iteration re-reads same data
+ * 3. Decrement s_bytes_read_from_file_total to prevent double-counting
+ * 4. Increment s_enqueue_fail_count for instrumentation (retries are normal)
+ * 
+ * CORRECTNESS: bytes_to_rewind is always <= bytes we just read in current
+ * iteration, and we only rewind on enqueue failure (not read/convert errors).
+ * File position perfectly tracks queued data, not just read data.
+ * 
+ * ROBUSTNESS: Rewind failure is logged but doesn't crash. Worst case: some
+ * bytes lost (degraded mode). Normal case: rewind succeeds, zero data loss.
+ * 
+ * This is CODE_REVIEW4 Task 1.2 - the core of lossless WAV playback.
+ */
 static void rewind_after_enqueue_failure(size_t bytes_to_rewind)
 {
-    /* Rewind file (CODE_REVIEW4 Task 1.2) */
+    /* Rewind file pointer to re-read this data on next fill */
     if (fseek(s_pm.file, -(long)bytes_to_rewind, SEEK_CUR) != 0) {
         ESP_LOGW(TAG, "Failed to rewind file after enqueue failure");  // NOLINT(bugprone-branch-clone)
     }

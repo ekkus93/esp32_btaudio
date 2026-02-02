@@ -1584,26 +1584,71 @@ All error handling improvements successfully implemented:
 
 ## Phase 7: Documentation & Review
 
-### Task 7.1: Update code comments
+### Task 7.1: Update code comments ✅ COMPLETE
 **Goal:** Ensure comments match new code
 
-- [ ] main.c:
-  - [ ] UART ownership documented
-  - [ ] Subsystem status tracking explained
-  - [ ] Banner logic documented
-- [ ] play_manager.c:
-  - [ ] Data loss prevention strategy documented
-  - [ ] Rewind/retry logic explained
-  - [ ] Frame alignment fix documented
-- [ ] audio_processor_read.c:
-  - [ ] Residual flush ordering explained
-- [ ] audio_processor_wav.c:
-  - [ ] Chunk padding handling documented
+- [x] main.c:
+  - [x] UART ownership documented (already comprehensive from Task 2.3)
+  - [x] Subsystem status tracking explained (already comprehensive from Task 3.1)
+  - [x] Banner logic documented (already comprehensive from Task 3.2)
+- [x] play_manager.c:
+  - [x] Data loss prevention strategy documented (44-line module header added)
+  - [x] Rewind/retry logic explained (20-line detailed comment added)
+  - [x] Frame alignment fix documented (22-line WHY/HOW/CORRECTNESS added)
+  - [x] Chunk padding handling documented (22-line detailed comment added)
+- [x] audio_processor_read.c:
+  - [x] Residual flush ordering explained (26-line detailed comment added)
+
+**Implementation Details:**
+1. **play_manager.c module header** (lines 1-48):
+   - Added comprehensive DATA LOSS PREVENTION STRATEGY documentation
+   - Explains 5 mechanisms: file rewind, frame alignment, chunk padding, instrumentation, error propagation
+   - Lists correctness invariants
+   - Cross-references Tasks 0.2, 1.2, 1.4, 1.5, 6.1
+
+2. **rewind_after_enqueue_failure()** (lines 379-397):
+   - Enhanced from 1-line to 20-line detailed explanation
+   - WHY REWIND: Prevents data loss when enqueue fails
+   - HOW IT WORKS: 4-step process breakdown
+   - CORRECTNESS: Invariants about bytes_to_rewind
+   - ROBUSTNESS: Error handling philosophy
+   - Explicit Task 1.2 reference with context
+
+3. **calculate_read_size()** (lines 331-349):
+   - Enhanced from 1-line to 22-line detailed explanation
+   - WHY FRAME ALIGNMENT: Prevents glitches, corruption, misaligned samples
+   - HOW IT WORKS: Two-step alignment (clamp then align)
+   - Edge cases: Last chunk, zero-byte scenarios
+   - CORRECTNESS: Order matters (clamp before align)
+   - Explicit Task 1.5 reference
+
+4. **skip_wav_chunk()** (lines 165-187):
+   - Enhanced from 1-line to 22-line detailed explanation
+   - WHY PADDING MATTERS: WAV spec word-alignment requirement
+   - HOW IT WORKS: skip = chunk_size + (chunk_size & 1)
+   - EXAMPLES: Even/odd chunk sizes
+   - CORRECTNESS: Prevents file pointer drift and corruption
+   - Explicit Task 1.4 reference
+
+5. **audio_processor_read.c residual flush** (lines 196-224):
+   - Enhanced from 3-line to 26-line detailed explanation
+   - WHY FLUSH BEFORE EARLY RETURN: Prevents tail truncation
+   - HOW IT WORKS: 4-step logic breakdown
+   - CORRECTNESS GUARANTEE: residual_remaining check in early-return condition
+   - ALTERNATIVE REJECTED: Explains why Option B chosen over Option A
+   - Explicit Task 1.3 (Option B) reference
+
+**Verification:**
+- main.c: Reviewed - already comprehensive, no changes needed
+- All enhanced comments follow WHY/HOW/CORRECTNESS/ROBUSTNESS pattern
+- All comments reference specific CODE_REVIEW4 tasks for traceability
+- No outdated TODOs remain
+- Fix rationales clearly explained
 
 **Acceptance:**
-- [ ] Comments accurate
-- [ ] No outdated TODOs
-- [ ] Fix rationales clear
+- [x] Comments accurate
+- [x] No outdated TODOs
+- [x] Fix rationales clear
 
 ---
 

@@ -194,9 +194,29 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     }
 
     /* 
-     * Check if audio sources are inactive AND residual buffer is empty.
-     * Must flush residual buffer before early-return to prevent tail truncation.
-     * (CODE_REVIEW4 Task 1.3 - Option B)
+     * RESIDUAL FLUSH ORDERING (DATA LOSS PREVENTION)
+     * 
+     * WHY FLUSH BEFORE EARLY RETURN: The residual buffer holds leftover bytes from
+     * previous read operations that didn't fill a complete output buffer. If we
+     * early-return when all sources are inactive WITHOUT checking residual first,
+     * those tail bytes are lost forever (truncation).
+     * 
+     * HOW IT WORKS:
+     * 1. Calculate residual_remaining bytes (len - pos)
+     * 2. Check if ALL sources inactive: !play_manager, !beep, !force_synth, !wav
+     * 3. Check if residual buffer is empty: residual_remaining == 0
+     * 4. Only THEN safe to early-return (drain queue + zero bytes)
+     * 
+     * CORRECTNESS GUARANTEE: residual_remaining check MUST be part of early-return
+     * condition. Order of checks doesn't matter (boolean AND), but all must be false
+     * before we can safely skip reading. If residual has data, we stay in main loop
+     * and flush it to output buffer.
+     * 
+     * ALTERNATIVE REJECTED (Task 1.3 Option A): Always flush residual in separate
+     * pass before checking sources. Chosen Option B is simpler: check residual state
+     * in early-return condition, let main loop handle flush naturally.
+     * 
+     * This is CODE_REVIEW4 Task 1.3 (Option B) - prevents tail truncation in WAV playback.
      */
     size_t residual_remaining = (s_audio_rb_residual_len > s_audio_rb_residual_pos) 
                                ? (s_audio_rb_residual_len - s_audio_rb_residual_pos) 
