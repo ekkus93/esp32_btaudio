@@ -319,9 +319,10 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
 **Error Handling Philosophy:**
 - **Platform services (NVS, UART):** Fail-fast with ESP_ERROR_CHECK
   - Rationale: System cannot operate without these - partial state is worse than clean abort
-- **Subsystems (BT, Audio):** Graceful degradation with error logging
+- **Subsystems (BT, Audio, CMD):** Graceful degradation with error logging
   - Rationale: Device still useful for diagnostics, testing, partial functionality
   - Example: BT fails → audio test tones still work, CMD interface available for diagnosis
+  - Example: CMD fails → device continues boot, BT/Audio may still function for auto-connect scenarios
 
 ### Policy vs Platform Separation
 

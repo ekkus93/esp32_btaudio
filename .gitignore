@@ -76,6 +76,9 @@ dkms.conf
 build*/
 tmp/
 
+# Clang-tidy output
+**/warnings.txt
+
 **/__pycache__/
 **/*.pyc
 **/*.pyo

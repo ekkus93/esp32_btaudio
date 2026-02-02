@@ -2851,3 +2851,193 @@ bash tools/run_clang_tidy_xtensa.sh 'main/main\.c$|components/command_interface/
 - Clear failure impact communication (impact fields)
 - No test harness updates needed (no parsers exist for these markers)
 - All validation passed (build, tests, clang-tidy)
+---
+
+## 2026-02-01 13:50:00 — CODE_REVIEW3: Complete Summary (All Phases)
+
+**Context:** ChatGPT 5.2 code review identified P0/P1/P2 error handling gaps in main.c bootstrap sequence. Three critical issues allowed "boots but broken" states. Comprehensive fix implemented across 3 phases with full validation.
+
+**Executive Summary:**
+
+**Issues Fixed:**
+- ✅ P0: UART install failure ignored (contract violation - platform service not fail-fast)
+- ✅ P0: cmd_init() failure handling too soft (always creates task, even on failure)
+- ✅ P0: xTaskCreate return value unchecked (silent task creation failures)
+- ✅ P1: Unused nvs_flash.h include (code hygiene)
+- ✅ P2: Numeric error codes in markers (observability - hard to interpret)
+
+**Strategy:** Fix in priority order (P0→P1→P2), validate each phase, commit incrementally.
+
+---
+
+**Phase 1: P0 Critical Fixes (Error Handling)**
+
+**Commits:**
+- 0e1275cd - "fix(main): enforce error handling contracts (P0)" - 2026-02-01 12:45:00
+- Pushed to origin/master 2026-02-01 12:50:00
+
+**Task 1.1: UART Fail-Fast**
+- **Decision:** FAIL-FAST (ESP_ERROR_CHECK) - UART is platform service
+- **Changes:**
+  - Before: `esp_err_t ret = uart_driver_install(...); printf("ret=%d", ret);`
+  - After: `ESP_ERROR_CHECK(uart_driver_install(...));`
+  - Removed conditional UART_READY marker (now unconditional - guaranteed success)
+  - Updated policy comment to include UART in platform services list
+- **Rationale:** cmd_init() and all components assume UART operational; device useless without cmd interface
+- **Impact:** Device aborts boot if UART fails (correct behavior - prevents "boots but broken")
+
+**Task 1.2: cmd_init() Graceful Degrade**
+- **Decision:** GRACEFUL DEGRADE - cmd is subsystem tier, not platform
+- **Changes:**
+  - Store return value: `cmd_status_t cmd_result = cmd_init();`
+  - Conditional task creation: only if `cmd_result == CMD_SUCCESS`
+  - Error path: ESP_LOGE, error marker, skip task, continue boot
+  - Success path: emit marker, create task
+- **Rationale:** Device can function without cmd (BT/Audio independent); defensive checking for future
+- **Impact:** Task only created on success; no "running but broken" cmd task
+
+**Task 1.3: xTaskCreate Return Check**
+- **Decision:** GRACEFUL DEGRADE - consistent with subsystem tier
+- **Changes:**
+  - Store return: `BaseType_t task_created = xTaskCreate(...);`
+  - Check: `if (task_created != pdPASS) { error handling }`
+  - Move success markers inside success block
+- **Rationale:** Heap exhaustion at boot extremely rare; partial functionality > complete failure
+- **Impact:** Task creation failure detected and logged; device continues boot
+
+**Validation:**
+- Build: Clean (0 errors, 0 warnings)
+- Binary size: 927,968 bytes (+48 bytes from baseline - negligible)
+- Tests: 36/36 passing, no regressions
+- All P0 error handling enforced in code
+
+---
+
+**Phase 2: P1 Cleanup (Code Hygiene)**
+
+**Commits:**
+- a334e7f4 - "refactor(main): remove unused includes (P1)" - 2026-02-01 13:02:00
+- Pushed to origin/master 2026-02-01 13:13:03
+
+**Task 2.1: Remove Unused Include**
+- **Change:** Removed `#include "nvs_flash.h"` (line 13)
+- **Rationale:** nvs_storage.h provides all needed NVS functionality
+- **Impact:** No functional change, cleanup from earlier refactor
+
+**Task 2.2: ESP-Specific Includes**
+- **Decision:** Keep unconditional `#include "esp_rom_sys.h"`
+- **Rationale:** main.c is ESP_PLATFORM only, never built outside ESP-IDF
+- **Impact:** Cleaner code, no unnecessary guards
+
+**Validation:**
+- Build: Clean (0 errors, 0 warnings)
+- Binary size: 927,968 bytes (0 byte delta - include-only change)
+- Tests: 253/253 passing (full test suite, 0 failures, 0 ignored)
+- Clang-tidy: Zero warnings in main.c
+- No regressions
+
+---
+
+**Phase 3: P2 Observability (Better Error Messages)**
+
+**Commits:**
+- 43a465e7 - "improve(main): better error diagnostics (P2)" - 2026-02-01 13:35:00
+- 8f1347a4 - "docs: update CODE_REVIEW3 Phase 3 completion" - 2026-02-01 13:36:46
+- Pushed to origin/master 2026-02-01 13:36:46
+
+**Task 3.1: cmd_status_to_name() Helper**
+- **Created:** components/command_interface/command_interface.c
+- **Pattern:** Similar to esp_err_to_name() for cmd_status_t enum
+- **Usage:** main.c error markers now use human-readable strings
+- **Before:** `ERROR|CMD_IF|INIT_FAILED|code=1`
+- **After:** `ERROR|CMD_IF|INIT_FAILED|code=CMD_ERROR_INIT_FAILED`
+
+**Task 3.2: Impact Fields**
+- **Added:** `|impact=...` fields to error markers
+- **Values:**
+  - `NO_CMD_IF` - cmd_init() failed; no command interface at all
+  - `NO_CMD_PROCESSING` - cmd_init succeeded but task creation failed
+- **Final format:** `ERROR|CMD_IF|INIT_FAILED|code=CMD_ERROR_INIT_FAILED|impact=NO_CMD_IF`
+
+**Clang-Tidy Sysroot Fix (Task 3.1):**
+- **Issue:** stdio.h errors with wrong sysroot path
+- **Root cause:** Used GCC toolchain sysroot instead of Clang runtime
+- **Fix:** Use esp-clang's clang-runtimes sysroot
+  - Wrong: `/home/phil/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf`
+  - Correct: `/home/phil/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/esp32`
+- **Result:** Zero warnings achieved
+
+**Validation:**
+- Build: Clean (0 errors, 0 warnings)
+- Binary size: 928,896 bytes (+960 bytes - string tables)
+- Tests: 253/253 passing (0 failures, 0 ignored)
+- Clang-tidy: Zero warnings (main.c, command_interface.c)
+- Improved observability
+
+---
+
+**Phase 5: Documentation (Tasks 5.1-5.2 Complete)**
+
+**Task 5.1: main.c Comments**
+- **Review:** All comments accurate, match Phase 1-3 changes
+- **Finding:** Error handling policy clearly documented
+- **Result:** No changes needed - comments already excellent
+
+**Task 5.2: ARCH.md**
+- **Update:** Added CMD to subsystems list
+- **Before:** "Subsystems (BT, Audio): Graceful degradation..."
+- **After:** "Subsystems (BT, Audio, CMD): Graceful degradation..."
+- **Added:** Example for CMD failure scenario
+- **Result:** ARCH.md reflects Phase 1-3 graceful degrade implementation
+
+---
+
+**Final State:**
+
+**All Commits:**
+1. 0e1275cd - "fix(main): enforce error handling contracts (P0)"
+2. a334e7f4 - "refactor(main): remove unused includes (P1)"
+3. 43a465e7 - "improve(main): better error diagnostics (P2)"
+4. 8f1347a4 - "docs: update CODE_REVIEW3 Phase 3 completion"
+
+**All pushed to origin/master** ✅
+
+**Binary Size Progression:**
+- Baseline: 927,920 bytes (Task 0.1)
+- Phase 1: 927,968 bytes (+48 bytes)
+- Phase 2: 927,968 bytes (0 bytes delta)
+- Phase 3: 928,896 bytes (+960 bytes)
+- **Total delta: +976 bytes (0.1%)**
+
+**Test Results:**
+- Host tests: 36/36 passing (CTest suite)
+- Full suite: 253/253 passing (all test cases)
+- Clang-tidy: Zero warnings
+- No regressions detected
+
+**Decisions Made:**
+1. **UART:** Fail-fast (platform service)
+2. **cmd_init():** Graceful degrade (subsystem)
+3. **xTaskCreate:** Graceful degrade (subsystem)
+4. **ESP includes:** Keep unconditional (ESP_PLATFORM only)
+
+**Deferred:**
+- Phase 4: Error path testing (mock complexity vs value trade-off)
+  - Error paths defensively checked but not mock-tested
+  - Manual device testing deferred (no device available)
+  - Rely on code review + comprehensive test suite (253 tests)
+
+**Impact:**
+- ✅ Enforces documented contracts (fail-fast for platform, graceful for subsystems)
+- ✅ No silent boot failures (all error paths checked and logged)
+- ✅ Better diagnostics (human-readable error codes, impact fields)
+- ✅ Code hygiene improved (unused includes removed)
+- ✅ Documentation complete (main.c, ARCH.md, memory.md)
+- ✅ All changes validated (build, tests, clang-tidy)
+- ✅ Minimal binary size impact (+976 bytes for error handling + observability)
+
+**Next Steps:**
+- Task 5.4: Self-review checklist
+- Phase 6: Already committed and pushed (incremental commits during phases)
+- Phase 7: Verify CI (GitHub Actions)
+- Close CODE_REVIEW3

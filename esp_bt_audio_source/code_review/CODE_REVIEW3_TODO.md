@@ -634,104 +634,212 @@ Smallest app partition is 0x1b0000 bytes.
 
 ## Phase 5: Documentation & Review
 
-### Task 5.1: Update main.c comments
+### Task 5.1: Update main.c comments ✅
+**Completed:** 2026-02-01 13:45:00
 
-**Ensure comments match new behavior:**
+**Review Results:**
 
-- [ ] Error handling policy comment (lines ~135-145)
-  - Reflects actual fail-fast/degrade choices
-  - Lists which services are platform vs subsystem
-- [ ] UART install section comments
-  - Explains chosen error handling (fail-fast or degrade)
-  - Documents contract enforcement
-- [ ] cmd_init section comments
-  - Explains CMD_SUCCESS semantics
-  - Documents why task creation is conditional
-- [ ] Overall architecture comments
-  - Still accurate after changes
+- [x] Error handling policy comment (lines 133-145) ✅
+  - **ACCURATE** - Lists UART in platform services
+  - **ACCURATE** - Explains fail-fast for platform, graceful degrade for subsystems
+  - No changes needed
+  
+- [x] UART install section comments (lines 172-189) ✅
+  - **ACCURATE** - Documents UART as platform service (fail-fast)
+  - **ACCURATE** - Explains ESP_ERROR_CHECK enforcement
+  - **ACCURATE** - Notes cmd layer dependency on UART
+  - No changes needed
+  
+- [x] cmd_init section comments (lines 225-248) ✅
+  - **ACCURATE** - Documents subsystem tier (graceful degrade)
+  - **ACCURATE** - Explains conditional task creation
+  - **ACCURATE** - Notes defensive checking despite no current failure paths
+  - No changes needed
+  
+- [x] Task creation error handling comments (lines 267-270) ✅
+  - **ACCURATE** - Documents heap/stack exhaustion possibility
+  - **ACCURATE** - Explains graceful degrade decision
+  - No changes needed
+  
+- [x] Overall architecture comments ✅
+  - **ACCURATE** - Init order rationale clear
+  - **ACCURATE** - Ownership and dependencies documented
+  - No changes needed
+
+**Findings:**
+- All comments accurately reflect Phase 1-3 code changes
+- Error handling policy clearly documented throughout
+- No outdated TODOs or FIXMEs found
+- Comments added during Phase 1-3 match implementation
 
 **Acceptance:**
-- [ ] Comments match code
-- [ ] No outdated "TODO" or "FIXME" without tracking
+- [x] Comments match code ✅
+- [x] No outdated "TODO" or "FIXME" without tracking ✅
 
 ---
 
-### Task 5.2: Update ARCH.md (if needed)
+### Task 5.2: Update ARCH.md ✅
+**Completed:** 2026-02-01 13:48:00
 
-**Check if architecture doc needs updates:**
+**Review Results:**
 
-- [ ] Read current ARCH.md error handling section
-- [ ] Does it mention main.c error handling?
-- [ ] If yes: update to reflect new behavior
-- [ ] If no: consider adding section on boot error handling
-- [ ] Document fail-fast vs graceful degrade policy
+- [x] Read current ARCH.md error handling section ✅
+  - Found existing "Error Handling Philosophy" section (lines 319-325)
+  - Already documents fail-fast for platform services (NVS, UART)
+  - Already documents graceful degradation for subsystems
+  
+- [x] Check if main.c error handling is mentioned ✅
+  - Platform services section lists UART driver install as platform (line 333)
+  - Policy vs Platform section clearly documents ownership (lines 326-350)
+  - Error handling philosophy accurately reflects Phase 1-3 implementation
+
+- [x] Update to reflect new behavior ✅
+  - **Change:** Added CMD to subsystems list
+  - **Before:** "Subsystems (BT, Audio): Graceful degradation..."
+  - **After:** "Subsystems (BT, Audio, CMD): Graceful degradation..."
+  - **Added:** Second example documenting CMD failure scenario
+  - **Rationale:** Phase 1 implemented graceful degradation for cmd_init and task creation
+
+- [x] Document fail-fast vs graceful degrade policy ✅
+  - Already well-documented in ARCH.md
+  - Platform services (NVS, UART): Fail-fast with ESP_ERROR_CHECK
+  - Subsystems (BT, Audio, CMD): Graceful degradation with error logging
+  - Examples clarify partial functionality scenarios
+
+**Changes Made:**
+- Updated line 322: Added "CMD" to subsystems list
+- Added line 325: New example for CMD failure scenario
+- Clarifies that CMD subsystem uses graceful degradation (not fail-fast)
 
 **Acceptance:**
-- [ ] ARCH.md reflects current reality
-- [ ] Error handling policy documented
+- [x] ARCH.md reflects current reality ✅
+- [x] Error handling policy documented ✅
+- [x] CMD subsystem graceful degradation documented ✅
 
 ---
 
-### Task 5.3: Update memory.md
+### Task 5.3: Update memory.md ✅
+**Completed:** 2026-02-01 13:50:00
 
-**Document CODE_REVIEW3 work:**
+**Entry Added:**
+- **Timestamp:** 2026-02-01 13:50:00
+- **Title:** "CODE_REVIEW3: Complete Summary (All Phases)"
+- **Location:** End of memory.md (after Phase 3 entry)
 
-- [ ] Add entry with timestamp
-- [ ] Summarize issues fixed
-- [ ] Document decisions made (fail-fast vs degrade)
-- [ ] Note any deferred work (test implementation)
-- [ ] List commits
+**Content Summary:**
+- [x] Context and executive summary ✓
+- [x] All issues fixed (P0, P1, P2) ✓
+- [x] Phase 1: P0 Critical Fixes (UART, cmd_init, xTaskCreate) ✓
+- [x] Phase 2: P1 Cleanup (unused includes) ✓
+- [x] Phase 3: P2 Observability (error codes, impact fields) ✓
+- [x] Phase 5: Documentation (main.c comments, ARCH.md) ✓
+- [x] All decisions documented (UART fail-fast, cmd graceful degrade) ✓
+- [x] All commits listed with hashes and timestamps ✓
+- [x] Binary size progression tracked ✓
+- [x] Test results documented ✓
+- [x] Deferred work noted (Phase 4 error path testing) ✓
+- [x] Impact summary ✓
+- [x] Next steps outlined ✓
 
-**Template:**
-```markdown
-## 2026-02-01 HH:MM:SS — CODE_REVIEW3: main.c Error Handling Fixes
+**Decisions Documented:**
+1. **Decision 1:** UART fail-fast (platform service) - ESP_ERROR_CHECK
+2. **Decision 2:** cmd_init() graceful degrade (subsystem tier)
+3. **Decision 3:** xTaskCreate graceful degrade (subsystem tier)
+4. **Decision 5:** Keep unconditional ESP includes (ESP_PLATFORM only)
 
-**Context:** ChatGPT 5.2 code review identified P0 error handling gaps.
+**Commits Documented:**
+1. 0e1275cd - Phase 1 P0 fixes
+2. a334e7f4 - Phase 2 P1 cleanup
+3. 43a465e7 - Phase 3 P2 observability (code)
+4. 8f1347a4 - Phase 3 documentation
 
-**Issues Fixed:**
-- P0: UART install failure now enforced (choice: fail-fast/degrade)
-- P0: cmd_init() failure handling hardened
-- P0: xTaskCreate return value checked
-- P1: Removed unused nvs_flash.h include
-- P2: Error markers use esp_err_to_name()
+**Testing Summary:**
+- Build: Clean (0 errors, 0 warnings)
+- Tests: 253/253 passing (0 failures, 0 ignored)
+- Clang-tidy: Zero warnings
+- Binary size: +976 bytes total (0.1% increase)
+- No regressions
 
-**Decisions:**
-- UART: [fail-fast/graceful degrade] - rationale...
-- cmd_init: [approach chosen] - rationale...
-- Task creation: [fail-fast/continue] - rationale...
+**Deferred Work:**
+- Phase 4 error path testing: Documented rationale (mock complexity vs value)
+- Manual device testing: Deferred (no device available)
+- Relying on: Code review + comprehensive test suite
 
-**Testing:**
-- Host tests: 36/36 passing
-- Error paths: [tested/documented/deferred]
-
-**Commits:**
-- [hash] - commit message
-...
-
-**Deferred:**
-- Error path mock testing (complexity vs value)
-
-**Impact:**
-- Enforces documented contracts
-- No silent boot failures
-- Better diagnostics
-```
+**Acceptance:**
+- [x] Entry added with timestamp ✓
+- [x] Issues fixed summarized ✓
+- [x] Decisions documented with rationales ✓
+- [x] Deferred work noted ✓
+- [x] All commits listed ✓
+- [x] Impact clearly stated ✓
 
 ---
 
-### Task 5.4: Self-review checklist
+### Task 5.4: Self-review checklist ✅
+**Completed:** 2026-02-01 13:55:00
 
-- [ ] All P0 issues addressed
-- [ ] All P1 issues addressed (or documented as skipped)
-- [ ] All P2 issues addressed (or documented as deferred)
-- [ ] Code matches comments
-- [ ] Comments match code
-- [ ] Tests pass
-- [ ] No new warnings
-- [ ] Binary size acceptable
-- [ ] memory.md updated
+**Verification Results:**
 
-**GATE CHECKPOINT:** Ready to commit
+- [x] All P0 issues addressed ✅
+  - **UART install:** Fail-fast with ESP_ERROR_CHECK (Task 1.1) ✓
+  - **cmd_init() failure:** Graceful degrade, conditional task creation (Task 1.2) ✓
+  - **xTaskCreate return:** Checked and handled (Task 1.3) ✓
+  
+- [x] All P1 issues addressed ✅
+  - **Unused include:** nvs_flash.h removed (Task 2.1) ✓
+  - **ESP-specific includes:** Decision made, documented (Task 2.2) ✓
+  
+- [x] All P2 issues addressed ✅
+  - **Error codes:** cmd_status_to_name() implemented (Task 3.1) ✓
+  - **Impact fields:** Added to all error markers (Task 3.2) ✓
+  
+- [x] Code matches comments ✅
+  - **main.c:** Policy comment lists UART in platform services ✓
+  - **UART section:** Documents fail-fast with ESP_ERROR_CHECK ✓
+  - **cmd_init section:** Documents graceful degrade, conditional task ✓
+  - **xTaskCreate section:** Documents heap exhaustion check ✓
+  - Verified in Task 5.1 - all comments accurate
+  
+- [x] Comments match code ✅
+  - **Error handling policy:** Accurately reflects implementation ✓
+  - **Platform services:** NVS, UART, BLE mem (fail-fast) ✓
+  - **Subsystems:** BT, Audio, CMD (graceful degrade) ✓
+  - No outdated TODOs or FIXMEs found
+  
+- [x] Tests pass ✅
+  - **Host tests:** 36/36 passing (1.21 sec) ✓
+  - **Full test suite:** 253/253 passing (verified in Phase 2-3) ✓
+  - **No regressions:** All tests maintained green status ✓
+  
+- [x] No new warnings ✅
+  - **Build:** Clean (0 errors, 0 warnings) ✓
+  - **Clang-tidy:** Zero warnings in main.c and command_interface.c ✓
+  - **Pre-existing:** 2 warnings in test_commands.c (not from our changes) ✓
+  
+- [x] Binary size acceptable ✅
+  - **Current:** 928,896 bytes (908KB) ✓
+  - **Baseline:** 927,920 bytes (907KB from Task 0.1) ✓
+  - **Delta:** +976 bytes (0.1% increase) ✓
+  - **Justification:** Error handling improvements + human-readable strings ✓
+  - **Free space:** 48% partition free (0xcd380 bytes) ✓
+  
+- [x] memory.md updated ✅
+  - **Entry:** "CODE_REVIEW3: Complete Summary (All Phases)" ✓
+  - **Timestamp:** 2026-02-01 13:50:00 ✓
+  - **Content:** All phases, decisions, commits documented ✓
+  - **Deferred work:** Phase 4 error path testing rationale ✓
+  - Verified in Task 5.3
+
+**Outstanding Documentation Changes:**
+- Modified: ARCH.md (CMD added to subsystems list)
+- Modified: CODE_REVIEW3_TODO.md (this file)
+- Modified: memory.md (complete summary added)
+- Modified: .gitignore (warnings.txt pattern added)
+- Modified: CODE_REVIEW2_TODO.md (unrelated - can ignore)
+
+**Next Step:** Commit documentation changes (Phase 6 partially complete - code already pushed)
+
+**GATE CHECKPOINT PASSED:** ✅ All criteria met - Ready for final documentation commit
 
 ---
 
@@ -771,36 +879,34 @@ Fixes CODE_REVIEW3 P0 issues (ChatGPT 5.2 + Copilot review).
 "
 ```
 
-### Task 6.2: Commit Phase 2 (P1 cleanup)
+### Task 6.2: Commit Phase 2 (P1 cleanup) ✅
+**Completed:** 2026-02-01 13:13:03
 
-```bash
-git add main/main.c
-git commit -m "refactor(main): remove unused includes (P1)
+**Commit:** a334e7f4 - "refactor(main): remove unused includes (P1)"
+**Pushed:** 2026-02-01 13:13:03 to origin/master
 
-Remove nvs_flash.h - not used by main.c (uses nvs_storage.h).
+**Changes:**
+- Removed unused nvs_flash.h include from main/main.c
+- No functional change (cleanup from layering refactor)
 
-Cleanup from earlier layering refactor where nvs_storage
-abstraction replaced direct nvs_flash calls.
+**Status:** ✅ Already committed and pushed during Phase 2 validation (Task 2.3)
 
-No functional change.
-"
-```
+### Task 6.3: Commit Phase 3 (P2 observability) ✅
+**Completed:** 2026-02-01 13:36:46
 
-### Task 6.3: Commit Phase 3 (P2 observability)
+**Commits:**
+1. **43a465e7** - "improve(main): better error diagnostics (P2)"
+2. **8f1347a4** - "docs: update CODE_REVIEW3 Phase 3 completion"
 
-```bash
-git add main/main.c
-git commit -m "improve(main): better error diagnostics (P2)
+**Pushed:** 2026-02-01 13:36:46 to origin/master
 
-Use esp_err_to_name() in error markers instead of numeric codes.
-Add impact information to error markers for field diagnostics.
+**Changes:**
+- Created cmd_status_to_name() helper function
+- Updated error markers to use human-readable strings
+- Added impact fields to error markers (NO_CMD_IF, NO_CMD_PROCESSING)
+- Binary size: +960 bytes (expected for string table)
 
-Before: ret=%d
-After: ret=ESP_ERR_INVALID_ARG|impact=NO_CMD_IF
-
-Makes boot failures easier to diagnose remotely.
-"
-```
+**Status:** ✅ Already committed and pushed during Phase 3 validation (Task 3.3)
 
 ### Task 6.4: Commit documentation
 
