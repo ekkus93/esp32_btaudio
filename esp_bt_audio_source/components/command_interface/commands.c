@@ -82,7 +82,7 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
     }
 
     char buf[512];
-    int n = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", payload);
+    int chars_written = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", payload);
     cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", payload);
 
 #ifdef ESP_PLATFORM
@@ -97,8 +97,8 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
 #else
     extern void test_push_event(const char *event);
 #endif
-    printf("HOOK-DEBUG: about to call test_push_event (len=%d)\n", n);
-    if (n > 0 && test_push_event)
+    printf("HOOK-DEBUG: about to call test_push_event (len=%d)\n", chars_written);
+    if (chars_written > 0 && test_push_event)
     {
         printf("HOOK-DEBUG: test_push_event symbol present, forwarding event\n");
         test_push_event(buf);
@@ -314,9 +314,9 @@ cmd_status_t cmd_process(void)
     char *start = s_cmd_line_buf;
     while (true)
     {
-        char *nl = (char *)memchr(start, '\n', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
-        char *cr = (char *)memchr(start, '\r', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
-        char *term = nl ? nl : cr;
+        char *newline_pos = (char *)memchr(start, '\n', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
+        char *cr_pos = (char *)memchr(start, '\r', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
+        char *term = newline_pos ? newline_pos : cr_pos;
         if (!term) {
             break;
         }
