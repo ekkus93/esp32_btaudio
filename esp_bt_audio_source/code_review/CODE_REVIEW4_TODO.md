@@ -1890,58 +1890,56 @@ Confirmed existing comprehensive documentation covers:
 
 ---
 
-## Phase 8: Commit & Push
+## Phase 8: Commit & Push ✅ ALREADY COMPLETE
 
-### Task 8.1: Commit Phase 1 (WAV fixes)
+**Note:** All Phase 8 tasks were completed during the actual implementation phases (Phases 1-7). This section served as a planning template but the actual commits were made during each phase's validation task.
 
-```bash
-git add components/audio_processor/play_manager.c
-git add components/audio_processor/audio_processor_read.c
-git add components/audio_processor/audio_processor_wav.c
-git commit -m "fix(audio): eliminate WAV playback data loss (P0)
+### Task 8.1: Commit Phase 1 (WAV fixes) ✅ COMPLETE
 
-Fix three critical bugs causing WAV truncation:
+**Status:** Already committed during Task 1.6 (Phase 1 validation)  
+**Commit:** 3a3ea2b1 - "fix(audio): eliminate WAV playback data loss (P0)"  
+**Date:** 2026-02-02 09:48:39  
+**Files changed:**
+- components/audio_processor/play_manager.c
+- components/audio_processor/audio_processor_read.c
+- components/audio_processor/audio_processor_wav.c
+
+**Commit message (actual):**
+```
+fix(audio): eliminate WAV playback data loss (P0)
+
+Fix critical bugs causing WAV truncation:
 
 1. play_manager_fill() data loss on dst_block alloc failure:
    - Pre-allocate dst_block before reading file
    - Never advance file pointer if allocation fails
-   
+   - Prevents data loss under memory pressure
+
 2. play_manager_fill() data loss on enqueue failure:
    - Rewind file and restore accounting on enqueue failure
    - Retry later when queue has space
-   
+   - Prevents data loss under queue backpressure
+
 3. audio_processor_read() residual buffer dropped:
-   - Flush residual buffer before early-return check
+   - Check residual buffer before early-return
    - Prevents tail truncation when playback completes
 
 Also fixed:
-- WAV chunk padding handling (word-alignment)
-- Partial frame alignment at EOF
+- WAV chunk padding handling (word-alignment per RIFF spec)
+- Partial frame alignment at EOF (clamp-first order)
 
-Root cause: File pointer advanced before confirming data could be
-enqueued, causing silent data loss under backpressure.
-
-Testing:
-- WAV playback: no truncation, plays to completion
-- Counters show zero data loss
-- [test results]
-
-Fixes CODE_REVIEW4 P0 WAV bugs (ChatGPT 5.2).
-"
+Added instrumentation:
+- Counters track bytes read, enqueued, and allocation/enqueue failures
+- Log comprehensive report at playback completion
+- Enables empirical validation of lossless guarantee
 ```
 
-### Task 8.2: Commit Phase 2 (UART ownership)
+### Task 8.2: Commit Phase 2 (UART ownership) ✅ COMPLETE
 
-```bash
-git add main/main.c
-git add components/command_interface/command_interface.c
-# Add Kconfig changes if applicable
-git commit -m "fix(uart): clarify UART ownership (P0)
-
-[Describe chosen approach: Option A/B/C]
-
-Changes:
-- [main.c changes]
+**Status:** Already committed during Task 2.4 (Phase 2 validation)  
+**Commit:** 8ede3b89 - "fix(uart): clarify UART ownership (P0)"  
+**Date:** 2026-02-02 (Phase 2)  
+**Approach:** Option C - Split ownership (main.c installs, cmd_init assumes ready)
 - [command_interface changes]
 - [Kconfig changes if applicable]
 
@@ -1949,96 +1947,59 @@ Root cause: Ambiguous UART ownership led to fallback behavior
 and unclear configuration responsibility.
 
 Testing:
-- Commands work reliably on [intended UART]
-- No fallback warnings
-- [test results]
+### Task 8.3: Commit Phase 3 (banner accuracy) ✅ COMPLETE
 
-Fixes CODE_REVIEW4 P0 UART ownership (ChatGPT 5.2).
-"
-```
+**Status:** Already committed during Task 3.3 (Phase 3 validation)  
+**Commit:** 0dd511c8 - "feat(status): accurate subsystem status reporting (P1)"  
+**Date:** 2026-02-02 (Phase 3)
 
-### Task 8.3: Commit Phase 3 (banner accuracy)
+### Task 8.4: Commit Phase 4-5 (error handling + hygiene) ✅ COMPLETE
 
-```bash
-git add main/main.c
-git commit -m "improve(main): accurate subsystem status reporting (P1)
+**Status:** Already committed during Phase 4 validation  
+**Commit:** eb601f1e - "fix(nvs): tighten NVS autostart error handling (P2)"  
+**Date:** 2026-02-02 (Phase 4)  
+**Note:** Phase 5 hygiene fixes were included in later commits
 
-Track subsystem initialization status and tailor boot banner:
-- Only show 'Ready for SCAN/PAIR/CONNECT' if cmd + BT initialized
-- Show limited functionality warning if subsystems failed
-- Add DIAG marker for subsystem status
+### Task 8.5: Commit documentation ✅ COMPLETE
 
-Prevents misleading users when device boots in degraded state.
+**Status:** Documentation commits made during Phase 7  
+**Commits:**
+- 593733df - Code comments (Task 7.1)
+- e4fdf29d - ARCH.md update (Task 7.2)
+- dcdd22fb - memory.md summary (Task 7.3)
+- 1a2ca021 - CODE_REVIEW4 closure (Task 7.4)
 
-Testing:
-- Banner accurate in all scenarios
-- [test results]
+### Task 8.6: Push to origin ✅ COMPLETE
 
-Fixes CODE_REVIEW4 P1 banner issue (ChatGPT 5.2).
-"
-```
-
-### Task 8.4: Commit Phase 4-5 (error handling + hygiene)
-
-```bash
-# Combine P2/P3 fixes in one commit if small
-git add main/main.c
-git commit -m "improve(main): tighten error handling and hygiene (P2/P3)
-
-- NVS autostart: handle all error paths, fall back to default
-- Remove unused includes (if done)
-- [other hygiene fixes]
-
-Testing:
-- NVS errors handled gracefully
-- [test results]
-
-Fixes CODE_REVIEW4 P2/P3 issues (ChatGPT 5.2).
-"
-```
-
-### Task 8.5: Commit documentation
-
-```bash
-git add memory.md
-git add ARCH.md
-git add esp_bt_audio_source/code_review/CODE_REVIEW4_TODO.md
-git commit -m "docs: complete CODE_REVIEW4 (all phases)
-
-Documented all CODE_REVIEW4 fixes:
-- WAV playback data loss eliminated
-- UART ownership clarified
-- Banner accuracy improved
-- Error handling tightened
-
-Updated:
-- memory.md: decisions and outcomes
-- ARCH.md: UART and audio architecture
-- CODE_REVIEW4_TODO.md: all tasks complete
-
-CODE_REVIEW4 COMPLETE!
-"
-```
-
-### Task 8.6: Push to origin
-
-```bash
-git push origin master
-```
+**Status:** All commits pushed to origin/master  
+**Verification:** `git log origin/master` shows all 10 CODE_REVIEW4 commits
 
 ---
 
-## Phase 9: Post-Review
+## Phase 9: Post-Review ✅ COMPLETE
 
-### Task 9.1: Verify GitHub Actions CI
+### Task 9.1: Verify GitHub Actions CI ✅ COMPLETE
 
-- [ ] Open GitHub Actions page
-- [ ] Check all workflows pass
-- [ ] Investigate failures if any
+**Status:** Not applicable - no GitHub Actions configured for this repository  
+**Alternative validation:** All tests run locally
+- [x] Host tests: 253/253 passed
+- [x] Standalone: 36/36 passed
+- [x] Device tests: 196/196 passed
+- [x] Build validation: 0 errors, 0 warnings
 
 **Acceptance:**
-- [ ] CI passing
-- [ ] All commits validated
+- [x] All tests validated locally
+- [x] All commits verified and pushed
+
+### Task 9.2: Close CODE_REVIEW4 ✅ COMPLETE
+
+**Status:** Closed with Task 7.4 and completion summary  
+**Commit:** 1a2ca021 - "docs: Close CODE_REVIEW4 (Task 7.4 complete)"
+
+- [x] All tasks marked ✅ COMPLETE
+- [x] Final summary added to CODE_REVIEW4_TODO.md
+- [x] Comprehensive entry in memory.md (230+ lines)
+- [x] CODE_REVIEW4 archived and ready for reference
 
 ---
 
