@@ -190,20 +190,20 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
             double t = (dst_frame_count > 1)
                            ? (double)dst_frame * (double)(src_frame_count - 1) / (double)(dst_frame_count - 1)
                            : 0.0;
-            size_t s0 = (size_t)floor(t);
-            double frac = t - (double)s0;
-            size_t s1 = (s0 + 1 < src_frame_count) ? (s0 + 1) : s0;
+            size_t src_frame_0 = (size_t)floor(t);
+            double frac = t - (double)src_frame_0;
+            size_t src_frame_1 = (src_frame_0 + 1 < src_frame_count) ? (src_frame_0 + 1) : src_frame_0;
 
             for (int ch = 0; ch < channels; ++ch) {
-                size_t src_idx1 = (s0 * (size_t)channels) + (size_t)ch;
-                size_t src_idx2 = (s1 * (size_t)channels) + (size_t)ch;
+                size_t src_idx1 = (src_frame_0 * (size_t)channels) + (size_t)ch;
+                size_t src_idx2 = (src_frame_1 * (size_t)channels) + (size_t)ch;
                 size_t dst_idx = (dst_frame * (size_t)channels) + (size_t)ch;
 
                 if (dst_idx >= dst_sample_count || src_idx2 >= src_sample_count) {
                     continue;
                 }
 
-                if (s1 == s0) {
+                if (src_frame_1 == src_frame_0) {
                     dst_samples[dst_idx] = src_samples[src_idx1];
                 } else {
                     dst_samples[dst_idx] = (int16_t)(((1.0 - frac) * (double)src_samples[src_idx1]) + (frac * (double)src_samples[src_idx2]));
@@ -217,20 +217,20 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
             double t = (dst_frame_count > 1)
                            ? (double)dst_frame * (double)(src_frame_count - 1) / (double)(dst_frame_count - 1)
                            : 0.0;
-            size_t s0 = (size_t)floor(t);
-            double frac = t - (double)s0;
-            size_t s1 = (s0 + 1 < src_frame_count) ? (s0 + 1) : s0;
+            size_t src_frame_0 = (size_t)floor(t);
+            double frac = t - (double)src_frame_0;
+            size_t src_frame_1 = (src_frame_0 + 1 < src_frame_count) ? (src_frame_0 + 1) : src_frame_0;
 
             for (int ch = 0; ch < channels; ++ch) {
-                size_t src_idx1 = (s0 * (size_t)channels) + (size_t)ch;
-                size_t src_idx2 = (s1 * (size_t)channels) + (size_t)ch;
+                size_t src_idx1 = (src_frame_0 * (size_t)channels) + (size_t)ch;
+                size_t src_idx2 = (src_frame_1 * (size_t)channels) + (size_t)ch;
                 size_t dst_idx = (dst_frame * (size_t)channels) + (size_t)ch;
 
                 if (dst_idx >= dst_sample_count || src_idx2 >= src_sample_count) {
                     continue;
                 }
 
-                if (s1 == s0) {
+                if (src_frame_1 == src_frame_0) {
                     dst_samples[dst_idx] = src_samples[src_idx1];
                 } else {
                     dst_samples[dst_idx] = (int32_t)(((1.0 - frac) * (double)src_samples[src_idx1]) + (frac * (double)src_samples[src_idx2]));

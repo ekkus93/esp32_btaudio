@@ -1,3 +1,46 @@
+## 2026-02-02 12:28:50 — Lint Warning Fixes (Continued - Session 2)
+
+**Session Summary:** Successfully fixed **9 additional warnings** using manual file-by-file approach.
+
+**Commits This Session:**
+
+**Commit 1: commands.c identifiers (3 warnings) - 603d7d7e**
+- commands.c: `n` → `chars_written` (snprintf result)
+- commands.c: `nl` → `newline_pos` (newline position in buffer)
+- commands.c: `cr` → `cr_pos` (carriage return position in buffer)
+
+**Commit 2: mem_util + util_safe + commands + cmd_handlers_bt (6 warnings) - 6cd79e0b**
+- mem_util.c: `v` → `byte_value` (memset byte value)
+- util_safe.c: `v` → `parsed_value` (parsed MAC byte value)
+- commands.c: `r` → `bytes_read` (uart read result)
+- cmd_handlers_bt.c: `l` → `param_len` (parameter length)
+- cmd_handlers_bt.c: `n` → `probe_count` (audio probe count)
+
+**Progress:**
+- Fixed this session: 9 warnings
+- Total fixed: 257/761 warnings (33.8%)
+- Remaining: ~504 in project code
+- 2 commits pushed to GitHub
+- All builds successful ✅
+
+**Warning Categories Remaining:**
+- ~105 short identifiers (down from 113, many idiomatic)
+- ~93 cognitive-complexity (excluded per user)
+- 13 easily-swappable-parameters
+- 5 suspicious-call-argument
+- ~2 performance warnings (likely false positives)
+- ESP-IDF warnings (excluded)
+
+**Identifiers Skipped (Idiomatic Embedded C):**
+- Loop variables: i, j, k, f (for frames)
+- Mathematical: t (time in fade functions)
+- Low-level pointers: p, d, s (destination/source in utility functions)
+- NVS handle: h (nvs_handle_t - ESP-IDF convention, many weak wrappers)
+- Iterator: it (esp_partition_iterator_t)
+- Short-scope temps in weak wrappers (1-line forwards)
+
+**Strategy:** Continue with manual approach - focus on genuinely unclear short names. Next targets: more clear identifier improvements, then move to easily-swappable-parameters (13) and suspicious-call-argument (5).
+
 ## 2026-02-02 12:15:17 — Lint Warning Fixes (Continued - Manual Approach)
 
 **Session Summary:** Successfully fixed **23 additional warnings** using manual file-by-file approach.

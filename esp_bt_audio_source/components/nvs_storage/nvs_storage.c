@@ -56,10 +56,10 @@ esp_err_t nvs_storage_get_volume(uint8_t* volume)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t v = 0;
-    err = nvs_storage_get_i32(h, "volume", &v);
+    int32_t int32_value = 0;
+    err = nvs_storage_get_i32(h, "volume", &int32_value);
     if (err == ESP_OK) {
-    	*volume = (uint8_t)v;
+    	*volume = (uint8_t)int32_value;
     }
     nvs_storage_close(h);
     return err == ESP_OK ? ESP_OK : ESP_ERR_NOT_FOUND;
@@ -72,8 +72,8 @@ esp_err_t nvs_storage_set_volume(uint8_t volume)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t v = volume;
-    err = nvs_storage_set_i32(h, "volume", v);
+    int32_t int32_value = volume;
+    err = nvs_storage_set_i32(h, "volume", int32_value);
     if (err == ESP_OK) {
     	err = nvs_storage_commit(h);
     }
@@ -227,10 +227,10 @@ esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t v = 0;
-    err = nvs_storage_get_i32(h, "audio_autostart", &v);
+    int32_t int32_value = 0;
+    err = nvs_storage_get_i32(h, "audio_autostart", &int32_value);
     if (err == ESP_OK) {
-        *autostart = (v != 0) ? 1 : 0;
+        *autostart = (int32_value != 0) ? 1 : 0;
     }
     nvs_storage_close(h);
     /* If not found, caller should default to enabled (true) */
@@ -244,8 +244,8 @@ esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t v = autostart ? 1 : 0;
-    err = nvs_storage_set_i32(h, "audio_autostart", v);
+    int32_t int32_value = autostart ? 1 : 0;
+    err = nvs_storage_set_i32(h, "audio_autostart", int32_value);
     if (err == ESP_OK) {
     	err = nvs_storage_commit(h);
     }
@@ -297,11 +297,11 @@ esp_err_t nvs_storage_get_paired_count(int* count)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t c = 0;
-    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &c);
+    int32_t device_count = 0;
+    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &device_count);
     nvs_storage_close(h);
     if (err == ESP_OK) {
-        *count = (int)c;
+        *count = (int)device_count;
         return ESP_OK;
     }
     *count = 0;
@@ -357,14 +357,14 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t c = 0;
-    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &c);
+    int32_t device_count = 0;
+    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &device_count);
     if (err != ESP_OK) {
-    	c = 0;
+    	device_count = 0;
     }
     // Check for duplicates (binary compare)
     char key[32];
-    for (int i = 0; i < c; i++) {
+    for (int i = 0; i < device_count; i++) {
         safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
         size_t req = 0;
         if (nvs_storage_get_blob(h, key, NULL, &req) == ESP_OK && req == 6) {
@@ -378,15 +378,15 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
         }
     }
     // Append at index c
-    safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, c);
+    safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, device_count);
     err = nvs_storage_set_blob(h, key, mac_bin, 6);
     if (err == ESP_OK && name) {
-    safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, c);
+    safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, device_count);
         err = nvs_storage_set_str(h, key, name);
     }
     if (err == ESP_OK) {
-        c++;
-        err = nvs_storage_set_i32(h, PAIRED_COUNT_KEY, c);
+        device_count++;
+        err = nvs_storage_set_i32(h, PAIRED_COUNT_KEY, device_count);
     }
     if (err == ESP_OK) {
     	err = nvs_storage_commit(h);
@@ -409,12 +409,12 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t c = 0;
-    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &c);
-    if (err != ESP_OK || c <= 0) { nvs_storage_close(h); return ESP_ERR_NOT_FOUND; }
+    int32_t device_count = 0;
+    err = nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &device_count);
+    if (err != ESP_OK || device_count <= 0) { nvs_storage_close(h); return ESP_ERR_NOT_FOUND; }
     int found = -1;
     char key[32];
-    for (int i = 0; i < c; i++) {
+    for (int i = 0; i < device_count; i++) {
         safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
         size_t req = 0;
         if (nvs_storage_get_blob(h, key, NULL, &req) == ESP_OK && req == 6) {
@@ -426,7 +426,7 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     }
     if (found < 0) { nvs_storage_close(h); return ESP_ERR_NOT_FOUND; }
     // Shift remaining entries down
-    for (int i = found; i < c - 1; i++) {
+    for (int i = found; i < device_count - 1; i++) {
         uint8_t src_mac[6];
         char src_name[64];
         safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i+1);
@@ -451,13 +451,13 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
         }
     }
     // Erase last
-    safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)(c-1));
+    safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, (int)(device_count-1));
     nvs_storage_erase_key(h, key);
-    safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)(c-1));
+    safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, (int)(device_count-1));
     nvs_storage_erase_key(h, key);
-    c--;
-    nvs_storage_set_i32(h, PAIRED_COUNT_KEY, c);
-    if (c == 0) {
+    device_count--;
+    nvs_storage_set_i32(h, PAIRED_COUNT_KEY, device_count);
+    if (device_count == 0) {
     	nvs_storage_erase_key(h, PAIRED_COUNT_KEY);
     }
     err = nvs_storage_commit(h);
@@ -476,10 +476,10 @@ esp_err_t nvs_storage_clear_paired_devices(void)
     if (err != ESP_OK) {
     	return err;
     }
-    int32_t c = 0;
-    if (nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &c) == ESP_OK) {
+    int32_t device_count = 0;
+    if (nvs_storage_get_i32(h, PAIRED_COUNT_KEY, &device_count) == ESP_OK) {
         char key[32];
-        for (int i = 0; i < c; i++) {
+        for (int i = 0; i < device_count; i++) {
             safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
             nvs_storage_erase_key(h, key);
             safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, i);
