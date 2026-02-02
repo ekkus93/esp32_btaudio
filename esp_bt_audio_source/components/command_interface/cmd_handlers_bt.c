@@ -524,15 +524,15 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
             for (int i = 1; i < ctx->param_count && pos + 1 < sizeof(payload); ++i)
             {
                 const char *p = ctx->params[i];
-                size_t l = strlen(p);
-                if (pos + l + 1 >= sizeof(payload)) {
+                size_t param_len = strlen(p);
+                if (pos + param_len + 1 >= sizeof(payload)) {
                     break;
                 }
                 if (i > 1) {
                     payload[pos++] = ',';
                 }
-                memcpy(&payload[pos], p, l);
-                pos += l;
+                memcpy(&payload[pos], p, param_len);
+                pos += param_len;
             }
             payload[pos] = '\0';
 
@@ -647,14 +647,14 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
         if (ctx->param_count < 2) {
             cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_PROBE_USAGE", NULL);
         } else if (strcasecmp(ctx->params[1], "ARM") == 0) {
-            unsigned n = 0;
+            unsigned probe_count = 0;
             if (ctx->param_count >= 3) {
-                n = (unsigned)strtoul(ctx->params[2], NULL, 10);
+                probe_count = (unsigned)strtoul(ctx->params[2], NULL, 10);
             }
-            if (n == 0) {
-            	n = 16;
+            if (probe_count == 0) {
+            	probe_count = 16;
             }
-            audio_processor_arm_probe((size_t)n);
+            audio_processor_arm_probe((size_t)probe_count);
             cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_ARMED", (ctx->param_count >= 3) ? ctx->params[2] : "16");
         } else if (strcasecmp(ctx->params[1], "DUMP") == 0) {
             cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_DUMP", NULL);

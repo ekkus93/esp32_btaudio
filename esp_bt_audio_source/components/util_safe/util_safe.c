@@ -103,12 +103,12 @@ bool util_parse_mac(const char *str, uint8_t out[6]) {
         }
         char byte_str[3] = { p[0], p[1], '\0' };
         char *end = NULL;
-        unsigned long v = strtoul(byte_str, &end, 16);
-        if (end != byte_str + 2 || v > UCHAR_MAX) {
+        unsigned long parsed_value = strtoul(byte_str, &end, 16);
+        if (end != byte_str + 2 || parsed_value > UCHAR_MAX) {
             return false;
         }
 
-        out[i] = (uint8_t)v;
+        out[i] = (uint8_t)parsed_value;
         p += 2;
 
         if (i < 5) {

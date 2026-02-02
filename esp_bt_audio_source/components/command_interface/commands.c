@@ -292,13 +292,13 @@ cmd_status_t cmd_process(void)
     const int read_uart = CMD_UART_NUM;
 #endif
 
-    int r = uart_read_bytes(read_uart, read_buf, sizeof(read_buf) - 1, 0);
-    if (r <= 0)
+    int bytes_read = uart_read_bytes(read_uart, read_buf, sizeof(read_buf) - 1, 0);
+    if (bytes_read <= 0)
     {
         return CMD_SUCCESS;
     }
 
-    size_t to_copy = (size_t)r;
+    size_t to_copy = (size_t)bytes_read;
     if (s_cmd_line_len + to_copy >= sizeof(s_cmd_line_buf))
     {
 #ifdef ESP_PLATFORM
