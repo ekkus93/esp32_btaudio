@@ -24,6 +24,7 @@ size_t mock_uart_get_available_bytes(uart_port_t uart_num);
 esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size,
                              int queue_size, void* uart_queue, int intr_alloc_flags);
 esp_err_t uart_driver_delete(uart_port_t uart_num);
+bool uart_is_driver_installed(uart_port_t uart_num);
 int uart_read_bytes(uart_port_t uart_num, uint8_t* buf, uint32_t length, TickType_t ticks_to_wait);
 int uart_write_bytes(uart_port_t uart_num, const char* src, size_t size);
 

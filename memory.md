@@ -1,3 +1,52 @@
+## 2026-02-02 10:07:31 — CODE_REVIEW4 Phase 2: UART Ownership (Complete)
+
+**Context:** Completed Phase 2 UART ownership clarification per CODE_REVIEW4 priority P0. All tasks (2.1-2.4) complete, validated, ready for commit.
+
+**Tasks Completed:**
+
+**Task 2.1 - Decision:** Chose Option A (commands always on console UART)
+- Rationale: Simplest, already reality, development-friendly, CI-compatible
+- No dedicated UART1, no runtime fallback complexity
+
+**Task 2.2 - Implementation:**
+- commands_priv.h: Removed UART1 fallback, default to console UART
+- commands.c: Removed runtime fallback logic (~15 lines eliminated)
+- main.c: Added documentation for dual purpose (logging + commands)
+- mock_uart: Added uart_is_driver_installed() for test compatibility
+- 5 files modified total
+
+**Task 2.3 - Configuration Documentation:**
+- Documented ESP-IDF boot ROM handles hardware config (pins/baud)
+- Clarified main.c only installs driver (allocates buffers, interrupts)
+- Default pins: GPIO1 (TX), GPIO3 (RX); 115200 baud, 8N1
+- Added comprehensive CONFIGURATION OWNERSHIP section to main.c
+
+**Task 2.4 - Validation:**
+- Build: ✅ SUCCESS (929,952 bytes, +192 from Phase 1, +0.021%)
+- Tests: ✅ 36/36 passing (1.20 sec)
+- Warnings: ✅ Zero compile warnings/errors
+- Full test suite: ✅ 253 test cases, all passed (2.78 sec)
+
+**Lint Results:**
+- Clang-tidy executed: Mostly ESP-IDF header warnings (cannot fix)
+- Project warnings: Cognitive complexity in main.c (app_main=325), audio_processor_read.c functions
+- Phase 2 modified files: No new critical issues introduced
+- Decision: Cognitive complexity refactoring is lower priority (P3 hygiene), commit Phase 2 as-is
+
+**Architecture After Phase 2:**
+- UART ownership now completely unambiguous
+- Console UART (UART0) used for both logging and commands
+- main.c installs driver (owns lifecycle)
+- command_interface uses installed driver (consumer)
+- No runtime UART selection complexity
+- Clear separation: ROM = hardware config, main.c = driver install
+
+**Next Steps:**
+- Commit Phase 2 UART ownership changes
+- Proceed to Phase 3 (status reporting) or close CODE_REVIEW4
+
+---
+
 ## 2026-02-02 05:23:59 — CODE_REVIEW4: Complexity Refactoring (Partial)
 
 **Context:** User requested fixing cognitive complexity lint warnings rather than suppressing them. Refactored parse_wav_header() and play_manager_fill() to reduce complexity.

@@ -238,24 +238,19 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
 cmd_status_t cmd_process(void)
 {
     uint8_t read_buf[CMD_BUF_SIZE];
-    int read_uart = -1;
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    (void)CMD_UART_NUM;
-    read_uart = CMD_UART_NUM;
+    const int read_uart = CMD_UART_NUM;
 #else
-    if (uart_is_driver_installed(CMD_UART_NUM))
+    /* 
+     * CMD_UART_NUM is the console UART (installed by main.c).
+     * If not installed, device cannot function - fail gracefully.
+     * (CODE_REVIEW4 Task 2.2 - Option A: commands always on console UART)
+     */
+    if (!uart_is_driver_installed(CMD_UART_NUM))
     {
-        read_uart = CMD_UART_NUM;
+        return CMD_SUCCESS;  /* UART not ready, skip processing */
     }
-    else if (uart_is_driver_installed(UART_NUM_0))
-    {
-        ESP_LOGW(TAG, "cmd_process: command UART %d not installed; falling back to console UART 0", CMD_UART_NUM);
-        read_uart = UART_NUM_0;
-    }
-    else
-    {
-        return CMD_SUCCESS;
-    }
+    const int read_uart = CMD_UART_NUM;
 #endif
 
     int r = uart_read_bytes(read_uart, read_buf, sizeof(read_buf) - 1, 0);

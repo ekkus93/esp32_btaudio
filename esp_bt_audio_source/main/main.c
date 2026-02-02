@@ -175,9 +175,24 @@ void app_main(void)
      * OWNERSHIP: main.c owns UART driver installation for early diagnostics.
      * cmd_init() and all other components assume UART is already operational.
      * 
-     * RATIONALE: Early boot diagnostics require unbuffered uart_write_bytes()
-     * before subsystems initialize. printf/esp_rom_printf are insufficient
-     * (buffered/unreliable for programmatic test harness captures).
+     * CONFIGURATION OWNERSHIP (CODE_REVIEW4 Task 2.3):
+     *   - ESP-IDF boot ROM and console subsystem configure the console UART
+     *     (pins, baud rate, data bits, parity, stop bits) during early boot
+     *   - Default pins: UART0 uses GPIO1 (TX), GPIO3 (RX) - standard USB-serial
+     *   - Default baud: 115200 (configurable via bootloader config or strap pins)
+     *   - main.c ONLY installs the driver (allocates RX/TX buffers, enables interrupts)
+     *   - We do NOT call uart_param_config() or uart_set_pin() - already done by ROM
+     * 
+     * USAGE: This console UART is used for BOTH:
+     *   1. Console logging (ESP_LOGx, printf, esp_rom_printf)
+     *   2. Command interface (cmd_process() reads commands from same UART)
+     * 
+     * RATIONALE: 
+     *   - Early boot diagnostics require unbuffered uart_write_bytes()
+     *     before subsystems initialize (printf/esp_rom_printf are insufficient)
+     *   - Single UART architecture simplifies configuration and development
+     *   - No need for separate debug/command channels in this BT audio application
+     *   - (CODE_REVIEW4 Task 2.2 - Option A: commands always on console UART)
      * 
      * CONTRACT: Single install only - NEVER call uart_driver_delete() after
      * install as it breaks esp-console, logging, and the cmd layer.

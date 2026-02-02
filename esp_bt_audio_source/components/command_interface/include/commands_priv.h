@@ -37,13 +37,23 @@
 #endif
 
 #ifdef ESP_PLATFORM
-/* Prefer console UART when available to avoid driver-not-installed errors. */
+/* 
+ * CMD_UART_NUM: Commands always use the console UART (CODE_REVIEW4 Task 2.2).
+ * 
+ * OWNERSHIP: main.c installs the console UART driver during platform service
+ * initialization. command_interface.c uses the same UART for command I/O.
+ * 
+ * RATIONALE: Single UART simplifies architecture - console logging and command
+ * interface share the same serial connection. No need for separate debug/command
+ * channels in this BT audio source application.
+ */
 #ifdef CONFIG_ESP_CONSOLE_UART_NUM
 #define CMD_UART_NUM CONFIG_ESP_CONSOLE_UART_NUM
 #else
-#define CMD_UART_NUM UART_NUM_1
+#define CMD_UART_NUM UART_NUM_0
 #endif
 #else
+/* Host tests use mock UART (UART_NUM_1 for historical compatibility with tests) */
 #ifndef CMD_UART_NUM
 #define CMD_UART_NUM UART_NUM_1
 #endif

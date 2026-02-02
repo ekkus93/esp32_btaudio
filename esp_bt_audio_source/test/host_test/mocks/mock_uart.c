@@ -204,6 +204,14 @@ int uart_write_bytes(uart_port_t uart_num, const char* src, size_t size) {
     return size;
 }
 
+// ESP-IDF API: Check if UART driver is installed
+bool uart_is_driver_installed(uart_port_t uart_num) {
+    if (uart_num >= UART_NUM_MAX) {
+        return false;
+    }
+    return uart_mock_state[uart_num].initialized;
+}
+
 // Test helper functions
 bool mock_uart_is_initialized(uart_port_t uart_num) {
     if (uart_num >= UART_NUM_MAX) {
