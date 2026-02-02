@@ -1,4 +1,4 @@
-## 2026-02-02 12:00:54 — Lint Warning Fixes (Short Identifiers - Manual Approach)
+## 2026-02-02 12:00:54 — Lint Warning Fixes (Short Identifiers + Miscellaneous - Manual Approach)
 
 **Context:** Failed automation attempt. Mass sed/regex renaming of 121 short identifier warnings resulted in 20+ build errors across 10+ files. Reverted all changes. Now using **careful manual file-by-file approach**.
 
@@ -10,23 +10,41 @@
 - Symbol/type conflicts: Renaming created redeclarations and type mismatches
 
 **New Strategy: Manual File-by-File**
-- Review each short identifier warning individually
+- Review each warning individually
 - Fix only in appropriate context (skip idiomatic embedded C patterns)
 - Test build after EACH file
-- Focus on genuinely unclear names, not cosmetic issues
+- Focus on genuinely unclear names and other actionable warnings
 
 **Fixes This Session:**
-1. ✅ beep_manager.c: `cb` → `callback` (2 usages)
+1. ✅ beep_manager.c: `cb` → `callback` (1 warning, 2 usages)
    - Function: `beep_manager_set_done_callback(beep_done_cb_t callback, void *ctx)`
-   - Straightforward parameter rename
+   - Build: ✅ SUCCESS
+
+2. ✅ cmd_handlers_audio.c: Removed else-after-return (1 warning)
+   - Line 515: Removed unnecessary else branch after return in cmd_handle_audio_autostart()
+   - Build: ✅ SUCCESS
+
+3. ✅ cmd_handlers_audio.c: Fixed redundant declaration (1 warning)
+   - Removed `extern int bt_manager_is_connected(void);` declaration
+   - Added `#include "bt_manager.h"` instead (proper header inclusion)
+   - Build: ✅ SUCCESS
+
+4. ✅ cmd_handlers_audio.c: Removed preprocessor-always-true (1 warning)
+   - Removed `#if 1` ... `#endif` block in cmd_handle_beep()
+   - Kept the code inside (was always active)
+   - Build: ✅ SUCCESS
+
+5. ✅ nvs_storage.c: Fixed reserved identifier (1 warning)
+   - Renamed `_nvs_storage_suppress_unused_tag` → `nvs_storage_suppress_unused_tag`
+   - Removed leading underscore (reserved in global namespace)
    - Build: ✅ SUCCESS
 
 **Progress:**
-- Fixed: 226/761 warnings (29.7%)
-- Remaining: 535 in project code
-- Actionable (excluding ESP macro exceptions): 130
+- Fixed: 231/761 warnings (30.4%)
+- Remaining: 530 in project code
+- Actionable (excluding ESP macro exceptions): 125
 
-**Files Attempted and Reverted:**
+**Files Attempted and Reverted (Previous Session):**
 - nvs_storage.c/h: Failed (weak wrapper issues, incomplete renames)
 - audio_util.c: Failed (mathematical variable `t`)
 - synth_manager.c: Failed (type conflicts on `sample`)

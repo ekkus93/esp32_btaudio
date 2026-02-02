@@ -1,5 +1,6 @@
 #include "cmd_handlers.h"
 #include "play_manager.h"
+#include "bt_manager.h"
 
 static const char *TAG = "cmd";
 
@@ -9,10 +10,6 @@ extern int bt_get_streaming_state_int(void);
 #else
 int bt_get_connection_state(void);
 int bt_get_streaming_state_int(void);
-#endif
-
-#ifdef ESP_PLATFORM
-extern int bt_manager_is_connected(void);
 #endif
 
 cmd_status_t cmd_handle_synth(const cmd_context_t *ctx)
@@ -88,7 +85,6 @@ cmd_status_t cmd_handle_diag(const cmd_context_t *ctx)
 cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
 {
     (void)ctx;
-#if 1
     int conn = 0;
 #ifdef ESP_PLATFORM
     conn = bt_get_connection_state();
@@ -138,7 +134,6 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         cmd_send_response("ERR", "BEEP", "BUSY", "PLAY_ACTIVE");
         return CMD_SUCCESS;
     }
-#endif
 #endif
 #ifdef ESP_PLATFORM
     if (streaming != 1)
@@ -512,9 +507,7 @@ cmd_status_t cmd_handle_audio_autostart(const cmd_context_t *ctx)
         }
         return CMD_SUCCESS;
     }
-    else
-    {
-        cmd_send_response("ERR", "AUDIO_AUTOSTART", "INVALID_PARAM", "Use: on|off|get");
-        return CMD_SUCCESS;
-    }
+    
+    cmd_send_response("ERR", "AUDIO_AUTOSTART", "INVALID_PARAM", "Use: on|off|get");
+    return CMD_SUCCESS;
 }

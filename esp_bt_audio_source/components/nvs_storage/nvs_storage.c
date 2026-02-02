@@ -11,7 +11,7 @@
 
 static const char* TAG = "nvs_storage";
 /* TAG may be unused under some build configs; keep a quiet reference to avoid warnings */
-static void __attribute__((unused)) _nvs_storage_suppress_unused_tag(void) { (void)TAG; }
+static void __attribute__((unused)) nvs_storage_suppress_unused_tag(void) { (void)TAG; }
 static const char* NVS_NAMESPACE = "bt_audio_cfg";
 
 /* Overridable wrappers so tests can inject NVS behavior without the real driver. */
