@@ -104,23 +104,23 @@ esp_err_t audio_processor_emit_probe(void)
     ESP_LOGI(TAG, "I2S probe: captured=%u target=%u", captured, target);
     printf("I2S-PROBE: captured=%u\n", captured);
     for (unsigned i = 0; i < captured && i < I2S_PROBE_MAX_ENTRIES; ++i) {
-        i2s_probe_entry_t *e = &s_probe_buf[i];
+        i2s_probe_entry_t *entry = &s_probe_buf[i];
         ESP_LOGI(TAG, "I2S-PROBE-ENTRY: idx=%u before=%lld after=%lld dur=%u req=%zu got=%zu err=%d",
                  i,
-                 (long long)e->t_before_us,
-                 (long long)e->t_after_us,
-                 (unsigned)e->dur_us,
-                 e->requested,
-                 e->got,
-                 e->err);
+                 (long long)entry->t_before_us,
+                 (long long)entry->t_after_us,
+                 (unsigned)entry->dur_us,
+                 entry->requested,
+                 entry->got,
+                 entry->err);
         printf("I2S-PROBE-ENTRY: %u %lld %lld %u %zu %zu %d\n",
                i,
-               (long long)e->t_before_us,
-               (long long)e->t_after_us,
-               (unsigned)e->dur_us,
-               e->requested,
-               e->got,
-               e->err);
+               (long long)entry->t_before_us,
+               (long long)entry->t_after_us,
+               (unsigned)entry->dur_us,
+               entry->requested,
+               entry->got,
+               entry->err);
     }
 
     return ESP_OK;
@@ -165,7 +165,7 @@ void diag_dump_bytes(const void* data, size_t len, const char* tag)
     if  (data == NULL || len == 0 || tag == NULL) {
     	return;
     }
-    const uint8_t* b = (const uint8_t*)data;
+    const uint8_t* byte_data = (const uint8_t*)data;
     size_t off = 0;
     while (off < len) {
         char line[128];
@@ -184,7 +184,7 @@ void diag_dump_bytes(const void* data, size_t len, const char* tag)
         }
         static const char HEX[] = "0123456789ABCDEF";
         for (size_t i = 0; i < row && (pos + 3U) < sizeof(line); ++i) {
-            uint8_t byte = b[off + i];
+            uint8_t byte = byte_data[off + i];
             line[pos++] = HEX[(byte >> 4) & 0xF];
             line[pos++] = HEX[byte & 0xF];
             line[pos++] = ' ';

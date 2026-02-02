@@ -11,8 +11,8 @@ esp_err_t nvs_storage_get_volume(uint8_t* volume);
 esp_err_t nvs_storage_set_volume(uint8_t volume);
 
 // I2S pins: bclk, ws, din, dout
-esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* ws, int* din, int* dout);
-esp_err_t nvs_storage_set_i2s_pins(int bclk, int ws, int din, int dout);
+esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* word_select, int* din, int* dout);
+esp_err_t nvs_storage_set_i2s_pins(int bclk, int word_select, int din, int dout);
 
 // Device name
 esp_err_t nvs_storage_get_device_name(char* buf, size_t buf_len);

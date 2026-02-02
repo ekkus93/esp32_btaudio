@@ -93,9 +93,9 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
     printf("DIAG-EVENT: %s\n", buf);
 
 #if defined(__GNUC__)
-    extern void test_push_event(const char *ev) __attribute__((weak));
+    extern void test_push_event(const char *event) __attribute__((weak));
 #else
-    extern void test_push_event(const char *ev);
+    extern void test_push_event(const char *event);
 #endif
     printf("HOOK-DEBUG: about to call test_push_event (len=%d)\n", n);
     if (n > 0 && test_push_event)

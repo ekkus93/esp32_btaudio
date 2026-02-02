@@ -81,7 +81,7 @@ esp_err_t nvs_storage_set_volume(uint8_t volume)
     return err;
 }
 
-esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* ws, int* din, int* dout)
+esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* word_select, int* din, int* dout)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
@@ -97,12 +97,12 @@ esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* ws, int* din, int* dout)
 		*bclk = -1;
 	}
     }
-    if (ws) {
+    if (word_select) {
         err = nvs_storage_get_i32(h, "i2s_ws", &tmp);
         if (err == ESP_OK) {
-		*ws = (int)tmp;
+		*word_select = (int)tmp;
 	} else {
-		*ws = -1;
+		*word_select = -1;
 	}
     }
     if (din) {
@@ -125,7 +125,7 @@ esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* ws, int* din, int* dout)
     return ESP_OK;
 }
 
-esp_err_t nvs_storage_set_i2s_pins(int bclk, int ws, int din, int dout)
+esp_err_t nvs_storage_set_i2s_pins(int bclk, int word_select, int din, int dout)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
@@ -134,7 +134,7 @@ esp_err_t nvs_storage_set_i2s_pins(int bclk, int ws, int din, int dout)
     }
     err = nvs_storage_set_i32(h, "i2s_bclk", bclk);
     if (err == ESP_OK) {
-    	err = nvs_storage_set_i32(h, "i2s_ws", ws);
+    	err = nvs_storage_set_i32(h, "i2s_ws", word_select);
     }
     if (err == ESP_OK) {
     	err = nvs_storage_set_i32(h, "i2s_din", din);

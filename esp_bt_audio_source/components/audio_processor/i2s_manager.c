@@ -307,8 +307,8 @@ esp_err_t i2s_manager_start(void)
 
 	s_mgr.running = true;
 	if (s_mgr.task == NULL) {
-		BaseType_t ok = xTaskCreate(i2s_manager_task, "i2s_mgr", 4096, NULL, 5, &s_mgr.task);
-		if (ok != pdPASS) {
+		BaseType_t task_created = xTaskCreate(i2s_manager_task, "i2s_mgr", 4096, NULL, 5, &s_mgr.task);
+		if (task_created != pdPASS) {
 			s_mgr.running = false;
 			return ESP_ERR_NO_MEM;
 		}
