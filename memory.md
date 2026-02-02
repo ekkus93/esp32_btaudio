@@ -1,3 +1,105 @@
+## 2026-02-02 15:32:29 — Code Comment Enhancement (CODE_REVIEW4 Task 7.1) ✅
+
+**User Request:** "let's work on: ### Task 7.1: Update code comments" from CODE_REVIEW4_TODO.md
+
+**Task Goal:** Ensure all code comments accurately reflect the new implementations from CODE_REVIEW4, with clear explanations of WHY/HOW/CORRECTNESS for critical mechanisms.
+
+**Review Summary:**
+- **main.c:** Already comprehensive from Tasks 2.2, 2.3, 3.1, 3.2, 5.2 — no changes needed
+  - UART ownership documented (single install policy, usage by console + command_interface)
+  - Subsystem status tracking explained (cmd_ok, bt_ok, audio_ok flags)
+  - Boot banner logic documented (conditional based on actual subsystem state)
+- **play_manager.c:** Enhanced 4 critical sections
+- **audio_processor_read.c:** Enhanced residual flush ordering logic
+
+**Comment Enhancements:**
+
+**1. play_manager.c Module Header (44 lines):**
+Added comprehensive DATA LOSS PREVENTION STRATEGY documentation:
+- Documents 5 core mechanisms:
+  1. FILE REWIND ON ENQUEUE FAILURE (Task 1.2)
+  2. FRAME ALIGNMENT (Task 1.5)
+  3. CHUNK PADDING HANDLING (Task 1.4)
+  4. INSTRUMENTATION (Task 0.2, 6.1)
+  5. ERROR PROPAGATION
+- Lists correctness invariants:
+  - `s_bytes_read_from_file_total == s_expected_data_bytes` (when complete)
+  - Data loss % = 0% for functioning subsystems
+  - Retries transparent to caller
+- Cross-references all relevant CODE_REVIEW4 tasks
+
+**2. rewind_after_enqueue_failure() (20 lines):**
+Enhanced from 1-line task reference to detailed explanation:
+- **WHY REWIND:** When `audio_chunk_enqueue_block()` fails, bytes just read from file haven't been queued. Without rewinding, those bytes would be lost forever.
+- **HOW IT WORKS:** 4-step process
+  1. fseek backwards by bytes_to_rewind
+  2. Restore s_pm.remaining_bytes
+  3. Decrement s_bytes_read_from_file_total (prevent double-counting)
+  4. Increment s_enqueue_fail_count (instrumentation)
+- **CORRECTNESS:** bytes_to_rewind always <= bytes just read, only rewind on enqueue failure (not read/convert errors)
+- **ROBUSTNESS:** Rewind failure logged but doesn't crash; worst case = degraded mode, normal case = zero data loss
+- Task 1.2 — Core of lossless WAV playback
+
+**3. calculate_read_size() (22 lines):**
+Enhanced from 1-line task reference to detailed explanation:
+- **WHY FRAME ALIGNMENT:** Reading partial frames causes glitches, corruption, misaligned samples in Bluetooth audio
+- **HOW IT WORKS:** Two-step alignment
+  1. CLAMP to remaining_bytes FIRST (prevents read-past-EOF)
+  2. ALIGN DOWN to frame boundary (ensures complete frames only)
+- **Edge cases:**
+  - If aligned result is 0: return one frame minimum
+  - Last chunk may be smaller than AUDIO_CHUNK_BLOCK_BYTES but still frame-aligned
+  - frame_bytes=0 treated as 1 (safety, though shouldn't occur)
+- **CORRECTNESS:** Order matters — clamping before alignment prevents align-down past EOF
+- Task 1.5 — Prevents partial frames, guarantees clean audio
+
+**4. skip_wav_chunk() (22 lines):**
+Enhanced from 1-line task reference to detailed explanation:
+- **WHY PADDING MATTERS:** WAV/RIFF spec requires word-alignment (even byte offset). Odd-sized chunks have 1 padding byte. Without accounting for padding, file pointer drifts and chunk headers are misinterpreted as audio data (corruption).
+- **HOW IT WORKS:** `skip = chunk_size + (chunk_size & 1)`
+  - Add 1 if odd, 0 if even
+  - fseek forward by skip bytes
+- **EXAMPLES:**
+  - chunk_size=100 (even): skip=100+0=100 bytes
+  - chunk_size=101 (odd): skip=101+1=102 bytes (includes 1-byte pad)
+- **CORRECTNESS:** `chunk_size & 1` is 1 when odd, 0 when even. Transparent for both cases.
+- Task 1.4 — Ensures accurate WAV file parsing
+
+**5. audio_processor_read.c Residual Flush (26 lines):**
+Enhanced from 3-line comment to detailed explanation:
+- **WHY FLUSH BEFORE EARLY RETURN:** Residual buffer holds leftover bytes from previous reads. Early-return without checking residual first = tail bytes lost forever (truncation).
+- **HOW IT WORKS:**
+  1. Calculate residual_remaining bytes (len - pos)
+  2. Check if ALL sources inactive: !play_manager, !beep, !force_synth, !wav
+  3. Check if residual buffer empty: residual_remaining == 0
+  4. Only THEN safe to early-return (drain queue + zero bytes)
+- **CORRECTNESS GUARANTEE:** residual_remaining check MUST be part of early-return condition. Order doesn't matter (boolean AND), but all must be false before skipping read. If residual has data, main loop flushes it naturally.
+- **ALTERNATIVE REJECTED (Task 1.3 Option A):** Always flush residual in separate pass before checking sources. Chosen Option B is simpler: check residual state in early-return condition, let main loop handle flush naturally.
+- Task 1.3 (Option B) — Prevents tail truncation in WAV playback
+
+**Pattern Applied:**
+All enhanced comments follow consistent structure:
+- **WHY:** Explains the problem being solved
+- **HOW:** Describes the mechanism/algorithm
+- **CORRECTNESS:** States invariants and guarantees
+- **ROBUSTNESS/EDGE CASES:** Explains error handling or special cases
+- **TASK REFERENCE:** Cross-references specific CODE_REVIEW4 task
+
+**Build Validation:**
+```
+Binary size: 0xe33f0 bytes (no change from Task 6.2)
+Errors: 0
+Warnings: 0
+```
+
+**Outcome:**
+✅ Task 7.1 complete — All critical data loss prevention mechanisms now have comprehensive documentation explaining their design, correctness, and relationship to CODE_REVIEW4 fixes. Future maintainers can understand WHY each mechanism exists and HOW it ensures lossless WAV playback.
+
+**Commit:** 593733df — "CODE_REVIEW4 Task 7.1: Enhance code comments for maintainability"
+**Pushed:** origin/master
+
+---
+
 ## 2026-02-02 15:01:00 — WAV Playback Completeness Test (CODE_REVIEW4 Task 6.1) ✅
 
 **User Request:** "Let's work on: ### Task 6.1: Create WAV playback test (if feasible)" from CODE_REVIEW4_TODO.md

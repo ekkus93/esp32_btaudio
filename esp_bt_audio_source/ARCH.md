@@ -192,14 +192,86 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
   - Streaming manager for audio data flow
 
 ### Audio Processor Component
-- **Purpose:** Audio pipeline orchestration
+- **Purpose:** Audio pipeline orchestration with lossless WAV playback guarantees
 - **Responsibilities:**
   - I2S slave configuration and management
   - Audio buffer management and ring buffer
   - Audio queue for multiple sources (I2S, WAV, beep, synth)
   - Coordinate with bt_manager for A2DP streaming
   - Generate keepalive tones and beeps
-  - WAV file playback from SPIFFS
+  - **WAV file playback from SPIFFS with zero data loss guarantee**
+
+#### WAV Playback Lossless Architecture (CODE_REVIEW4 Phase 1)
+
+The audio processor implements a robust WAV playback system with **lossless guarantees** even under memory pressure or queue backpressure conditions. This architecture prevents audio truncation and ensures complete file playback.
+
+**Core Data Loss Prevention Mechanisms:**
+
+1. **File Rewind on Enqueue Failure (play_manager.c)**
+   - When `audio_chunk_enqueue_block()` fails due to queue full or out-of-memory, the file pointer is rewound to the last successful position
+   - Bytes are re-read on the next fill iteration, ensuring zero data loss
+   - Instrumentation tracks retry attempts via `s_enqueue_fail_count`
+   - **Guarantee:** No bytes are lost when enqueue operations fail; playback automatically retries
+
+2. **Frame Boundary Alignment (play_manager.c)**
+   - All reads are aligned to audio frame boundaries (e.g., 4 bytes for stereo 16-bit)
+   - Two-step alignment: (1) clamp to remaining bytes, (2) align down to frame size
+   - Prevents partial frames that would cause glitches, corruption, or misaligned samples
+   - **Guarantee:** Every chunk delivered to Bluetooth contains only complete audio frames
+
+3. **WAV Chunk Padding Handling (play_manager.c)**
+   - WAV/RIFF specification requires word-alignment (even byte offsets)
+   - Odd-sized chunks have 1 padding byte that must be skipped: `skip = chunk_size + (chunk_size & 1)`
+   - Prevents file pointer drift that would cause chunk header misinterpretation
+   - **Guarantee:** File parsing is accurate regardless of chunk sizes
+
+4. **Residual Buffer Flush Ordering (audio_processor_read.c)**
+   - Residual buffer holds leftover bytes from previous read operations
+   - Early-return check MUST verify residual buffer is empty before skipping reads
+   - Prevents tail truncation where final bytes are lost when sources become inactive
+   - **Guarantee:** All buffered data is flushed before playback is considered complete
+
+5. **Instrumentation and Verification (play_manager.c, Task 0.2/6.1)**
+   - Tracks `s_expected_data_bytes` (from WAV header), `s_bytes_read_from_file_total`, `s_bytes_enqueued_total`
+   - Public API `play_manager_get_instrumentation()` exposes counters for test verification
+   - Device test `test_wav_playback_completeness()` validates: expected == bytes_read (no file errors)
+   - **Guarantee:** Data loss is detectable and tracked; regression tests prevent future truncation bugs
+
+**Queue Backpressure Handling:**
+
+The audio queue can experience backpressure when:
+- Bluetooth transmission is slower than audio generation
+- Queue fills up faster than A2DP can drain it
+- Temporary memory pressure prevents new chunk allocation
+
+**Backpressure Response Strategy:**
+1. **Enqueue Blocking:** `audio_chunk_enqueue_block()` waits up to 1 second for queue space
+2. **Automatic Retry:** If enqueue fails after timeout, file pointer rewinds and retry occurs on next fill
+3. **Transparent to Caller:** play_manager handles retry internally; caller sees eventual success
+4. **No Data Loss:** Retry mechanism ensures all bytes are eventually queued (unless file read errors occur)
+5. **Graceful Degradation:** Under sustained backpressure, playback may slow but will not truncate
+
+**Error Propagation:**
+- File read errors: Propagated to caller as `ESP_ERR_INVALID_STATE`
+- Enqueue failures: Returned as `ESP_ERR_NO_MEM` after retry exhausted (caller can retry later)
+- All errors logged with `ESP_LOGE` for diagnostics
+
+**Correctness Invariants:**
+- `s_bytes_read_from_file_total == s_expected_data_bytes` when playback completes successfully
+- Data loss percentage = 0% for functioning subsystems
+- Retry operations are transparent and do not alter audio content
+- Frame alignment is maintained across all chunk boundaries
+
+**Testing:**
+- **Host tests:** Verify data flow through audio_queue under normal conditions
+- **Device tests:** `test_wav_playback_completeness()` validates complete file drainage and instrumentation accuracy
+- **Stress tests:** Validate behavior under memory pressure and queue backpressure (manual testing)
+
+**Benefits:**
+- **Lossless playback:** Complete audio files play without truncation or glitches
+- **Robust under pressure:** Handles queue full and OOM conditions gracefully
+- **Verifiable:** Instrumentation allows automated regression testing
+- **Maintainable:** Clear separation of concerns (file I/O, alignment, queueing, error handling)
 
 ### Command Interface Component
 - **Purpose:** UART-based control protocol

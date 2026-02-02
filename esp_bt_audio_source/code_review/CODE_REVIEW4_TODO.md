@@ -1652,23 +1652,68 @@ All error handling improvements successfully implemented:
 
 ---
 
-### Task 7.2: Update ARCH.md (if applicable)
+### Task 7.2: Update ARCH.md ✅ COMPLETE
 **Goal:** Reflect UART ownership and WAV playback architecture
 
-- [ ] Read current ARCH.md
-- [ ] Update UART section:
-  - [ ] Document UART ownership (main.c installs, command_interface uses)
-  - [ ] Document configuration (if changed)
-  - [ ] Document any Kconfig options
-- [ ] Update audio section:
-  - [ ] Document WAV playback lossless guarantees
-  - [ ] Document queue backpressure handling
-- [ ] Save changes
+- [x] Read current ARCH.md
+- [x] Update UART section:
+  - [x] UART ownership already comprehensively documented (lines 249-283)
+  - [x] Documents split ownership: main.c installs early for diagnostics, cmd_init assumes ready
+  - [x] Explains rationale: early boot diagnostics critical for test harness
+  - [x] Implementation details: single install at boot, uart_write_bytes() for markers
+  - [x] Boot sequence documented: EARLY_BOOT_MARKER → UART install → UART_READY_FOR_CMD_LAYER
+  - [x] No Kconfig options needed (CONFIG_ESP_CONSOLE_* inherited from ESP-IDF)
+- [x] Update audio section:
+  - [x] Added comprehensive WAV Playback Lossless Architecture section (80+ lines)
+  - [x] Documents 5 data loss prevention mechanisms:
+    1. File rewind on enqueue failure
+    2. Frame boundary alignment
+    3. WAV chunk padding handling
+    4. Residual buffer flush ordering
+    5. Instrumentation and verification
+  - [x] Documents queue backpressure handling strategy
+  - [x] Lists correctness invariants and error propagation
+  - [x] Cross-references CODE_REVIEW4 Phase 1 tasks (0.2, 1.2, 1.3, 1.4, 1.5, 6.1)
+- [x] Save changes
+
+**Implementation Details:**
+
+**1. Audio Processor Component Enhancement (lines 195-267):**
+Added comprehensive 72-line section documenting:
+- **Purpose:** Audio pipeline orchestration with lossless WAV playback guarantees
+- **WAV Playback Lossless Architecture** subsection covering:
+  - Core Data Loss Prevention Mechanisms (5 detailed items)
+  - Queue Backpressure Handling (strategy, response, graceful degradation)
+  - Error Propagation (file errors, enqueue failures, logging)
+  - Correctness Invariants (bytes read == expected, 0% data loss, retry transparency)
+  - Testing approach (host tests, device tests, stress tests)
+  - Benefits (lossless, robust, verifiable, maintainable)
+
+**2. UART Section Verification (lines 249-283):**
+Confirmed existing comprehensive documentation covers:
+- **Decision:** Option C - Split ownership (main.c installs, cmd_init assumes ready)
+- **Rationale:** Early boot diagnostics critical, unbuffered uart_write_bytes() required
+- **Implementation:** Single UART install in main.c, no reinstall in cmd_init
+- **Boot sequence:** Detailed 5-step initialization order
+- **Benefits:** Early diagnostics, clear ownership, test harness support
+
+**Cross-References:**
+- CODE_REVIEW4 Phase 1 (WAV data loss prevention)
+- CODE_REVIEW4 Phase 2 (UART ownership)
+- Tasks 0.2, 1.2, 1.3, 1.4, 1.5, 6.1 (data loss mechanisms)
+- Tasks 2.1-2.4 (UART ownership and boot banner)
+
+**Verification:**
+- ARCH.md now accurately reflects CODE_REVIEW4 architecture decisions
+- WAV playback lossless guarantees fully documented
+- Queue backpressure handling strategy explained
+- UART ownership already comprehensive (no changes needed)
+- All mechanisms cross-referenced to implementation files
 
 **Acceptance:**
-- [ ] ARCH.md reflects current reality
-- [ ] UART ownership clear
-- [ ] Audio architecture documented
+- [x] ARCH.md reflects current reality
+- [x] UART ownership clear (already documented in lines 249-283)
+- [x] Audio architecture documented (new section lines 195-267)
 
 ---
 
