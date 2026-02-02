@@ -210,13 +210,13 @@ cmd_status_t cmd_handle_parts(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
-    esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
-    if (it == NULL) {
+    esp_partition_iterator_t partition_iter = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    if (partition_iter == NULL) {
         cmd_send_response("ERR", "PARTS", "NONE", NULL);
         return CMD_SUCCESS;
     }
     int count = 0;
-    for (esp_partition_iterator_t cur = it; cur != NULL; cur = esp_partition_next(cur)) {
+    for (esp_partition_iterator_t cur = partition_iter; cur != NULL; cur = esp_partition_next(cur)) {
         const esp_partition_t *p = esp_partition_get(cur);
         if (p) {
             char data[128];
