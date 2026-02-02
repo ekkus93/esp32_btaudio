@@ -21,15 +21,19 @@ cmd_status_t cmd_handle_scan(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
-    if (bt_manager_start_scan() == ESP_OK)
+    if (bt_manager_start_scan() == ESP_OK) {
         cmd_send_response("OK", "SCAN", "STARTED", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "SCAN", "FAILED", NULL);
+    }
 #elif defined(UNIT_TEST)
-    if (bt_manager_start_scan() == ESP_OK)
+    if (bt_manager_start_scan() == ESP_OK) {
         cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "SCAN", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "SCAN", "MOCK_STARTED", NULL);
 #endif
@@ -44,10 +48,12 @@ cmd_status_t cmd_handle_connect(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 #ifdef ESP_PLATFORM
-    if (bt_manager_connect(ctx->params[0]) == ESP_OK)
+    if (bt_manager_connect(ctx->params[0]) == ESP_OK) {
         cmd_send_response("OK", "CONNECT", "INITIATED", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "CONNECT", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "CONNECT", "MOCK_CONNECTED", ctx->params[0]);
 #endif
@@ -69,10 +75,12 @@ cmd_status_t cmd_handle_connect_name(const cmd_context_t *ctx)
         cmd_safe_append(name_buf, sizeof(name_buf), ctx->params[i]);
     }
 #ifdef ESP_PLATFORM
-    if (bt_connect_by_name(name_buf) == ESP_OK)
+    if (bt_connect_by_name(name_buf) == ESP_OK) {
         cmd_send_response("OK", "CONNECT_NAME", "INITIATED", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "CONNECT_NAME", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "CONNECT_NAME", "MOCK_INITIATED", name_buf);
 #endif
@@ -83,15 +91,19 @@ cmd_status_t cmd_handle_disconnect(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
-    if (bt_manager_disconnect() == ESP_OK)
+    if (bt_manager_disconnect() == ESP_OK) {
         cmd_send_response("OK", "DISCONNECT", "DONE", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+    }
 #elif defined(UNIT_TEST)
-    if (bt_manager_disconnect() == 0)
+    if (bt_manager_disconnect() == 0) {
         cmd_send_response("OK", "DISCONNECT", "MOCK_DONE", NULL);
-    else
+    }
+    else {
         cmd_send_response("ERR", "DISCONNECT", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "DISCONNECT", "MOCK_DONE", NULL);
 #endif
@@ -110,15 +122,19 @@ cmd_status_t cmd_handle_pair(const cmd_context_t *ctx)
     if (looks_like_mac)
     {
 #ifdef ESP_PLATFORM
-        if (bt_manager_start_pair(first) == ESP_OK)
+        if (bt_manager_start_pair(first) == ESP_OK) {
             cmd_send_response("OK", "PAIR", "INITIATED", first);
-        else
+        }
+        else {
             cmd_send_response("ERR", "PAIR", "FAILED", first);
+        }
 #elif defined(UNIT_TEST)
-        if (bt_manager_start_pair(first) == ESP_OK)
+        if (bt_manager_start_pair(first) == ESP_OK) {
             cmd_send_response("OK", "PAIR", "MOCK_INITIATED", first);
-        else
+        }
+        else {
             cmd_send_response("ERR", "PAIR", "FAILED", first);
+        }
 #else
         cmd_send_response("OK", "PAIR", "MOCK_INITIATED", first);
 #endif
@@ -133,10 +149,12 @@ cmd_status_t cmd_handle_pair(const cmd_context_t *ctx)
             cmd_safe_append(name_buf, sizeof(name_buf), ctx->params[i]);
         }
 #ifdef ESP_PLATFORM
-        if (bt_connect_by_name(name_buf) == ESP_OK)
+        if (bt_connect_by_name(name_buf) == ESP_OK) {
             cmd_send_response("OK", "PAIR", "INITIATED_BY_NAME", name_buf);
-        else
+        }
+        else {
             cmd_send_response("ERR", "PAIR", "FAILED_BY_NAME", name_buf);
+        }
 #else
         cmd_send_response("OK", "PAIR", "MOCK_INITIATED_BY_NAME", name_buf);
 #endif
@@ -183,10 +201,12 @@ cmd_status_t cmd_handle_confirm_pin(const cmd_context_t *ctx)
     const char *decision_param = NULL;
     if (ctx->param_count >= 1)
     {
-        if (strchr(ctx->params[0], ':') != NULL)
+        if (strchr(ctx->params[0], ':') != NULL) {
             mac_param = ctx->params[0];
-        else
+        }
+        else {
             decision_param = ctx->params[0];
+        }
     }
     if (ctx->param_count >= 2)
     {
@@ -203,10 +223,12 @@ cmd_status_t cmd_handle_confirm_pin(const cmd_context_t *ctx)
     bool accept = true;
     if (decision_param != NULL)
     {
-        if (strcasecmp(decision_param, "REJECT") == 0 || strcasecmp(decision_param, "NO") == 0 || strcmp(decision_param, "0") == 0)
+        if (strcasecmp(decision_param, "REJECT") == 0 || strcasecmp(decision_param, "NO") == 0 || strcmp(decision_param, "0") == 0) {
             accept = false;
-        else if (strcasecmp(decision_param, "ACCEPT") == 0 || strcasecmp(decision_param, "YES") == 0 || strcmp(decision_param, "1") == 0)
+        }
+        else if (strcasecmp(decision_param, "ACCEPT") == 0 || strcasecmp(decision_param, "YES") == 0 || strcmp(decision_param, "1") == 0) {
             accept = true;
+        }
         else if (decision_param[0] != '\0' && strchr(decision_param, ':') == NULL)
         {
             cmd_send_response("ERR", "CONFIRM_PIN", "BAD_PARAM", decision_param);
@@ -239,8 +261,9 @@ cmd_status_t cmd_handle_confirm_pin(const cmd_context_t *ctx)
     const char *mac = mac_param;
     if (mac == NULL)
     {
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0)
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) {
             mac = s_cmd_mock_pairing_addr;
+        }
         else
         {
             cmd_send_response("ERR", "CONFIRM_PIN", "NO_MOCK", NULL);
@@ -317,8 +340,9 @@ cmd_status_t cmd_handle_enter_pin(const cmd_context_t *ctx)
     const char *mac = mac_param;
     if (mac == NULL || mac[0] == '\0')
     {
-        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0)
+        if (s_cmd_mock_enabled && strlen(s_cmd_mock_pairing_addr) > 0) {
             mac = s_cmd_mock_pairing_addr;
+        }
         else
         {
             cmd_send_response("ERR", "ENTER_PIN", "NO_MOCK", NULL);
@@ -327,8 +351,9 @@ cmd_status_t cmd_handle_enter_pin(const cmd_context_t *ctx)
     }
     if (pin_param == NULL || pin_param[0] == '\0')
     {
-        if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0)
+        if (nvs_storage_get_default_pin(default_pin, sizeof(default_pin)) == ESP_OK && strlen(default_pin) > 0) {
             pin_param = default_pin;
+        }
     }
     if (pin_param == NULL || pin_param[0] == '\0')
     {
@@ -340,8 +365,9 @@ cmd_status_t cmd_handle_enter_pin(const cmd_context_t *ctx)
     {
         uint8_t pin_code[ESP_BT_PIN_CODE_LEN] = {0};
         size_t pin_len = strlen(pin_param);
-        if (pin_len > ESP_BT_PIN_CODE_LEN)
+        if (pin_len > ESP_BT_PIN_CODE_LEN) {
             pin_len = ESP_BT_PIN_CODE_LEN;
+        }
         memcpy(pin_code, pin_param, pin_len);
         esp_bt_gap_pin_reply(bda, true, (uint8_t)pin_len, pin_code);
         cmd_send_response("OK", "ENTER_PIN", "MOCK_SENT", mac);
@@ -369,10 +395,12 @@ cmd_status_t cmd_handle_set_default_pin(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 #ifdef ESP_PLATFORM
-    if (nvs_storage_set_default_pin(ctx->params[0]) == ESP_OK)
+    if (nvs_storage_set_default_pin(ctx->params[0]) == ESP_OK) {
         cmd_send_response("OK", "SET_DEFAULT_PIN", "SUCCESS", ctx->params[0]);
-    else
+    }
+    else {
         cmd_send_response("ERR", "SET_DEFAULT_PIN", "FAILED", NULL);
+    }
 #else
     nvs_storage_set_default_pin(ctx->params[0]);
     cmd_send_response("OK", "SET_DEFAULT_PIN", "MOCK_SUCCESS", ctx->params[0]);
@@ -456,8 +484,9 @@ cmd_status_t cmd_handle_set_name(const cmd_context_t *ctx)
         bt_manager_set_name(ctx->params[0]);
         cmd_send_response("OK", "SET_NAME", "SUCCESS", ctx->params[0]);
     }
-    else
+    else {
         cmd_send_response("ERR", "SET_NAME", "FAILED", NULL);
+    }
 #else
     nvs_storage_set_device_name(ctx->params[0]);
     cmd_send_response("OK", "SET_NAME", "MOCK_SUCCESS", ctx->params[0]);
@@ -496,10 +525,12 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
             {
                 const char *p = ctx->params[i];
                 size_t l = strlen(p);
-                if (pos + l + 1 >= sizeof(payload))
+                if (pos + l + 1 >= sizeof(payload)) {
                     break;
-                if (i > 1)
+                }
+                if (i > 1) {
                     payload[pos++] = ',';
+                }
                 memcpy(&payload[pos], p, l);
                 pos += l;
             }
@@ -562,10 +593,12 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
     else if (strcasecmp(ctx->params[0], "WORKER_DIAG") == 0)
     {
 #ifdef ESP_PLATFORM
-        if (audio_processor_emit_sync_worker_diag() == ESP_OK)
+        if (audio_processor_emit_sync_worker_diag() == ESP_OK) {
             cmd_send_response("OK", "DEBUG", "WORKER_DIAG_EMITTED", NULL);
-        else
+        }
+        else {
             cmd_send_response("ERR", "DEBUG", "WORKER_DIAG_FAILED", NULL);
+        }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
@@ -618,7 +651,9 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
             if (ctx->param_count >= 3) {
                 n = (unsigned)strtoul(ctx->params[2], NULL, 10);
             }
-            if (n == 0) n = 16;
+            if (n == 0) {
+            	n = 16;
+            }
             audio_processor_arm_probe((size_t)n);
             cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_ARMED", (ctx->param_count >= 3) ? ctx->params[2] : "16");
         } else if (strcasecmp(ctx->params[1], "DUMP") == 0) {
@@ -659,10 +694,12 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
     else if (strcasecmp(ctx->params[0], "FORCE_BEEP") == 0)
     {
 #ifdef ESP_PLATFORM
-        if (audio_processor_beep(200) == ESP_OK)
+        if (audio_processor_beep(200) == ESP_OK) {
             cmd_send_response("OK", "DEBUG", "FORCE_BEEP_SENT", NULL);
-        else
+        }
+        else {
             cmd_send_response("ERR", "DEBUG", "FORCE_BEEP_FAILED", NULL);
+        }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
@@ -670,10 +707,12 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
     else if (strcasecmp(ctx->params[0], "DRAIN_QUEUE") == 0 || strcasecmp(ctx->params[0], "DRAIN_RING") == 0)
     {
 #ifdef ESP_PLATFORM
-        if (audio_processor_drain_audio_queue() == ESP_OK)
+        if (audio_processor_drain_audio_queue() == ESP_OK) {
             cmd_send_response("OK", "DEBUG", "DRAIN_QUEUE_DONE", NULL);
-        else
+        }
+        else {
             cmd_send_response("ERR", "DEBUG", "DRAIN_QUEUE_FAILED", NULL);
+        }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif
@@ -690,10 +729,12 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
         esp_err_t err = audio_processor_dump_tag_queue(max_items, &captured);
         char buf[32];
         snprintf(buf, sizeof(buf), "%zu", captured);
-        if (err == ESP_OK)
+        if (err == ESP_OK) {
             cmd_send_response("OK", "DEBUG", "TAG_DUMP", buf);
-        else
+        }
+        else {
             cmd_send_response("ERR", "DEBUG", "TAG_DUMP_FAIL", esp_err_to_name(err));
+        }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
 #endif

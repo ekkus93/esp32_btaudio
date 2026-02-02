@@ -1,5 +1,5 @@
-#ifndef _AUDIO_PROCESSOR_H_
-#define _AUDIO_PROCESSOR_H_
+#ifndef AUDIO_PROCESSOR_H_
+#define AUDIO_PROCESSOR_H_
 
 #include <stdint.h>
 #include <stddef.h>
@@ -409,4 +409,4 @@ void audio_processor_test_reset_tag_recover_window(void);
  */
 esp_err_t audio_processor_play_wav(const char* path);
 
-#endif /* _AUDIO_PROCESSOR_H_ */
+#endif /* AUDIO_PROCESSOR_H_ */

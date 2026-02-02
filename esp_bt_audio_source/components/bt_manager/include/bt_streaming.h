@@ -1,5 +1,5 @@
-#ifndef _BT_STREAMING_H_
-#define _BT_STREAMING_H_
+#ifndef BT_STREAMING_H_
+#define BT_STREAMING_H_
 
 #include <stdbool.h>
 #include "esp_bt_defs.h"
@@ -53,4 +53,4 @@ esp_err_t bt_resume_streaming(void);
 }
 #endif
 
-#endif /* _BT_STREAMING_H_ */
+#endif /* BT_STREAMING_H_ */

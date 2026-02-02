@@ -113,105 +113,144 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
 
 cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
 {
-    if (!cmd_str || !ctx)
+    if (!cmd_str || !ctx) {
         return CMD_ERROR_INVALID_PARAM;
+    }
 
     memset(ctx, 0, sizeof(*ctx));
 
     char buf[512];
     cmd_safe_copy(buf, sizeof(buf), cmd_str);
     char *s = buf;
-    while (*s && isspace((unsigned char)*s))
+    while (*s && isspace((unsigned char)*s)) {
         ++s;
+    }
     char *end = s + strlen(s) - 1;
     while (end >= s && isspace((unsigned char)*end))
     {
         *end = '\0';
         --end;
     }
-    if (*s == '\0')
+    if (*s == '\0') {
         return CMD_ERROR_UNKNOWN;
+    }
 
     char *save = NULL;
     char *token = strtok_r(s, " \t", &save);
-    if (!token)
+    if (!token) {
         return CMD_ERROR_UNKNOWN;
+    }
     printf("PARSE-DIAG: token='%s'\n", token);
 
-    if (strcasecmp(token, "SCAN") == 0)
+    if (strcasecmp(token, "SCAN") == 0) {
         ctx->type = CMD_TYPE_SCAN;
-    else if (strcasecmp(token, "CONNECT") == 0)
+    }
+    else if (strcasecmp(token, "CONNECT") == 0) {
         ctx->type = CMD_TYPE_CONNECT;
-    else if (strcasecmp(token, "CONNECT_NAME") == 0)
+    }
+    else if (strcasecmp(token, "CONNECT_NAME") == 0) {
         ctx->type = CMD_TYPE_CONNECT_NAME;
-    else if (strcasecmp(token, "DISCONNECT") == 0)
+    }
+    else if (strcasecmp(token, "DISCONNECT") == 0) {
         ctx->type = CMD_TYPE_DISCONNECT;
-    else if (strcasecmp(token, "PAIRED") == 0)
+    }
+    else if (strcasecmp(token, "PAIRED") == 0) {
         ctx->type = CMD_TYPE_PAIRED;
-    else if (strcasecmp(token, "SET_NAME") == 0)
+    }
+    else if (strcasecmp(token, "SET_NAME") == 0) {
         ctx->type = CMD_TYPE_SET_NAME;
-    else if (strcasecmp(token, "START") == 0)
+    }
+    else if (strcasecmp(token, "START") == 0) {
         ctx->type = CMD_TYPE_START;
-    else if (strcasecmp(token, "STOP") == 0)
+    }
+    else if (strcasecmp(token, "STOP") == 0) {
         ctx->type = CMD_TYPE_STOP;
-    else if (strcasecmp(token, "VOLUME") == 0)
+    }
+    else if (strcasecmp(token, "VOLUME") == 0) {
         ctx->type = CMD_TYPE_VOLUME;
-    else if (strcasecmp(token, "MUTE") == 0)
+    }
+    else if (strcasecmp(token, "MUTE") == 0) {
         ctx->type = CMD_TYPE_MUTE;
-    else if (strcasecmp(token, "UNMUTE") == 0)
+    }
+    else if (strcasecmp(token, "UNMUTE") == 0) {
         ctx->type = CMD_TYPE_UNMUTE;
-    else if (strcasecmp(token, "STATUS") == 0)
+    }
+    else if (strcasecmp(token, "STATUS") == 0) {
         ctx->type = CMD_TYPE_STATUS;
-    else if (strcasecmp(token, "VERSION") == 0)
+    }
+    else if (strcasecmp(token, "VERSION") == 0) {
         ctx->type = CMD_TYPE_VERSION;
-    else if (strcasecmp(token, "RESET") == 0)
+    }
+    else if (strcasecmp(token, "RESET") == 0) {
         ctx->type = CMD_TYPE_RESET;
-    else if (strcasecmp(token, "DEBUG") == 0)
+    }
+    else if (strcasecmp(token, "DEBUG") == 0) {
         ctx->type = CMD_TYPE_DEBUG;
-    else if (strcasecmp(token, "SAMPLE_RATE") == 0)
+    }
+    else if (strcasecmp(token, "SAMPLE_RATE") == 0) {
         ctx->type = CMD_TYPE_SAMPLE_RATE;
-    else if (strcasecmp(token, "MEM") == 0)
+    }
+    else if (strcasecmp(token, "MEM") == 0) {
         ctx->type = CMD_TYPE_MEM;
-    else if (strcasecmp(token, "SYNTH") == 0)
+    }
+    else if (strcasecmp(token, "SYNTH") == 0) {
         ctx->type = CMD_TYPE_SYNTH;
-    else if (strcasecmp(token, "I2S_CONFIG") == 0)
+    }
+    else if (strcasecmp(token, "I2S_CONFIG") == 0) {
         ctx->type = CMD_TYPE_I2S_CONFIG;
-    else if (strcasecmp(token, "BEEP") == 0)
+    }
+    else if (strcasecmp(token, "BEEP") == 0) {
         ctx->type = CMD_TYPE_BEEP;
-    else if (strcasecmp(token, "PLAY") == 0)
+    }
+    else if (strcasecmp(token, "PLAY") == 0) {
         ctx->type = CMD_TYPE_PLAY;
-    else if (strcasecmp(token, "PAIR") == 0)
+    }
+    else if (strcasecmp(token, "PAIR") == 0) {
         ctx->type = CMD_TYPE_PAIR;
-    else if (strcasecmp(token, "CONFIRM_PIN") == 0)
+    }
+    else if (strcasecmp(token, "CONFIRM_PIN") == 0) {
         ctx->type = CMD_TYPE_CONFIRM_PIN;
-    else if (strcasecmp(token, "ENTER_PIN") == 0)
+    }
+    else if (strcasecmp(token, "ENTER_PIN") == 0) {
         ctx->type = CMD_TYPE_ENTER_PIN;
-    else if (strcasecmp(token, "SET_DEFAULT_PIN") == 0)
+    }
+    else if (strcasecmp(token, "SET_DEFAULT_PIN") == 0) {
         ctx->type = CMD_TYPE_SET_DEFAULT_PIN;
-    else if (strcasecmp(token, "UNPAIR") == 0)
+    }
+    else if (strcasecmp(token, "UNPAIR") == 0) {
         ctx->type = CMD_TYPE_UNPAIR;
-    else if (strcasecmp(token, "UNPAIR_ALL") == 0)
+    }
+    else if (strcasecmp(token, "UNPAIR_ALL") == 0) {
         ctx->type = CMD_TYPE_UNPAIR_ALL;
-    else if (strcasecmp(token, "FILE") == 0)
+    }
+    else if (strcasecmp(token, "FILE") == 0) {
         ctx->type = CMD_TYPE_FILE;
-    else if (strcasecmp(token, "FILES") == 0)
+    }
+    else if (strcasecmp(token, "FILES") == 0) {
         ctx->type = CMD_TYPE_FILES;
-    else if (strcasecmp(token, "PARTS") == 0)
+    }
+    else if (strcasecmp(token, "PARTS") == 0) {
         ctx->type = CMD_TYPE_PARTS;
-    else if (strcasecmp(token, "AUDIO_AUTOSTART") == 0)
+    }
+    else if (strcasecmp(token, "AUDIO_AUTOSTART") == 0) {
         ctx->type = CMD_TYPE_AUDIO_AUTOSTART;
-    else if (strcasecmp(token, "DIAG") == 0)
+    }
+    else if (strcasecmp(token, "DIAG") == 0) {
         ctx->type = CMD_TYPE_DIAG;
-    else if (strcasecmp(token, "HELP") == 0)
+    }
+    else if (strcasecmp(token, "HELP") == 0) {
         ctx->type = CMD_TYPE_HELP;
-    else
+    }
+    else {
         ctx->type = CMD_TYPE_UNKNOWN;
+    }
 
     if (ctx->type == CMD_TYPE_CONNECT_NAME)
     {
         char *rest = save;
-        while (rest && *rest && isspace((unsigned char)*rest))
+        while (rest && *rest && isspace((unsigned char)*rest)) {
             ++rest;
+        }
         if (rest && *rest)
         {
             cmd_safe_copy(ctx->params[0], CMD_MAX_PARAM_LEN, rest);
@@ -278,8 +317,9 @@ cmd_status_t cmd_process(void)
         char *nl = (char *)memchr(start, '\n', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
         char *cr = (char *)memchr(start, '\r', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
         char *term = nl ? nl : cr;
-        if (!term)
+        if (!term) {
             break;
+        }
 
         *term = '\0';
         char *line_end = term - 1;
@@ -296,13 +336,15 @@ cmd_status_t cmd_process(void)
         }
 
         start = term + 1;
-        while (start < s_cmd_line_buf + s_cmd_line_len && (*start == '\n' || *start == '\r'))
+        while (start < s_cmd_line_buf + s_cmd_line_len && (*start == '\n' || *start == '\r')) {
             ++start;
+        }
     }
 
     size_t remaining = (size_t)(s_cmd_line_buf + s_cmd_line_len - start);
-    if (remaining > 0)
+    if (remaining > 0) {
         memmove(s_cmd_line_buf, start, remaining);
+    }
     s_cmd_line_len = remaining;
     s_cmd_line_buf[s_cmd_line_len] = '\0';
 
@@ -311,8 +353,9 @@ cmd_status_t cmd_process(void)
 
 cmd_status_t cmd_execute(const cmd_context_t *ctx)
 {
-    if (ctx == NULL)
+    if (ctx == NULL) {
         return CMD_ERROR_NOT_INITIALIZED;
+    }
 
     switch (ctx->type)
     {

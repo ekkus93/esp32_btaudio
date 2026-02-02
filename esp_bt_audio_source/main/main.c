@@ -5,8 +5,7 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+/* stdlib.h and string.h removed (CODE_REVIEW4 Task 5.1): No malloc/free/memcpy/strlen used in main.c */
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -29,6 +28,20 @@
 
 /* device name */
 #define LOCAL_DEVICE_NAME     "ESP_A2DP_SRC"
+
+/* DIAG marker helper (CODE_REVIEW4 Task 5.2): Consolidate duplicated printf/esp_rom_printf.
+ * WHY: Many diagnostic markers need both printf() (for buffered console) and esp_rom_printf()
+ * (for unbuffered ROM output) to ensure maximum reliability across different boot stages and
+ * console configurations. This macro eliminates duplication and ensures consistency.
+ * Note: esp_rom_printf only available on ESP32, so we conditionally compile it. */
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define DIAG_MARKER(msg, ...) do { \
+    printf(msg "\r\n", ##__VA_ARGS__); \
+    esp_rom_printf(msg "\r\n", ##__VA_ARGS__); \
+} while(0)
+#else
+#define DIAG_MARKER(msg, ...) printf(msg "\r\n", ##__VA_ARGS__)
+#endif
 
 /* Small FreeRTOS task that polls the command interface */
 static void cmd_process_task(void* arg) {
@@ -166,12 +179,8 @@ void app_main(void)
      * device has actually booted (vs. bootloader output or previous session).
      * This marker appears BEFORE subsystem init to prevent test scripts from
      * sending commands before the device is ready to process them.
-     * Use both printf and ROM-level esp_rom_printf when available for maximum
-     * reliability across different console configurations. */
-    printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("DIAG|BOOT|EARLY_BOOT_MARKER\r\n");
-#endif
+     * Use DIAG_MARKER macro for reliable dual-output (buffered + unbuffered). */
+    DIAG_MARKER("DIAG|BOOT|EARLY_BOOT_MARKER");
 
     ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting");
     /* Quiet the very chatty audio processor logs so CLI commands aren't
@@ -223,10 +232,7 @@ void app_main(void)
     ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0));
     
     /* Success markers for test harness: UART driver installed successfully */
-    printf("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1\r\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1\r\n");
-#endif
+    DIAG_MARKER("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1");
 
     /* Emit critical marker for test harness: UART driver is ready, cmd layer
      * can now perform synchronous I/O without driver installation races. */
@@ -273,18 +279,12 @@ void app_main(void)
     cmd_status_t cmd_result = cmd_init();
     if (cmd_result != CMD_SUCCESS) {
         ESP_LOGE(BT_AV_TAG, "cmd_init() failed (%s) - command interface unavailable", cmd_status_to_name(cmd_result));
-        printf("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF\r\n", cmd_status_to_name(cmd_result));
-#ifdef CONFIG_IDF_TARGET_ESP32
-        esp_rom_printf("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF\r\n", cmd_status_to_name(cmd_result));
-#endif
+        DIAG_MARKER("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF", cmd_status_to_name(cmd_result));
         ESP_LOGW(BT_AV_TAG, "Device will boot without command interface - BT/Audio may still function");
         // Skip cmd task creation - device continues but cmd interface dead
     } else {
         // cmd_init() succeeded - proceed with task creation
-        printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_SUCCESS\r\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-        esp_rom_printf("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_SUCCESS\r\n");
-#endif
+        DIAG_MARKER("INFO|CMD_IF|BOOT_DIAG|CMD_INIT_SUCCESS");
 
         // Create command processing task - this starts the command interface
         // event loop so commands can be processed as soon as they arrive.
@@ -294,17 +294,11 @@ void app_main(void)
         BaseType_t task_created = xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
         if (task_created != pdPASS) {
             ESP_LOGE(BT_AV_TAG, "Failed to create cmd_process_task - heap/stack exhausted?");
-            printf("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING\r\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-            esp_rom_printf("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING\r\n");
-#endif
+            DIAG_MARKER("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING");
             ESP_LOGW(BT_AV_TAG, "Device will boot without cmd processing - BT/Audio may still function");
         } else {
             // Task created successfully - emit success markers
-            printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
-#ifdef CONFIG_IDF_TARGET_ESP32
-            esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
-#endif
+            DIAG_MARKER("INFO|CMD_IF|CMD_TASK_STARTED");
             // Mark command interface as fully operational (CODE_REVIEW4 Task 3.1)
             cmd_ok = true;
         }
@@ -421,12 +415,8 @@ void app_main(void)
     
     /* Emit machine-readable subsystem status for test harness */
 #ifdef ESP_PLATFORM
-    printf("DIAG|BOOT|SUBSYSTEM_STATUS|cmd=%d|bt=%d|audio=%d\r\n", 
-           cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_rom_printf("DIAG|BOOT|SUBSYSTEM_STATUS|cmd=%d|bt=%d|audio=%d\r\n", 
-                   cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
-#endif
+    DIAG_MARKER("DIAG|BOOT|SUBSYSTEM_STATUS|cmd=%d|bt=%d|audio=%d", 
+                cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
 #endif
 
     ESP_LOGI(BT_AV_TAG, "====================================================");

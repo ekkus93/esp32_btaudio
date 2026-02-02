@@ -62,7 +62,9 @@ static i2s_manager_state_t s_mgr = {0};
 #ifdef ESP_PLATFORM
 static esp_err_t configure_i2s(const audio_config_t *cfg)
 {
-	if (cfg == NULL) return ESP_ERR_INVALID_ARG;
+	if (cfg == NULL) {
+		return ESP_ERR_INVALID_ARG;
+	}
 
 	if (s_mgr.i2s_rx != NULL) {
 		i2s_channel_disable(s_mgr.i2s_rx);
@@ -316,7 +318,9 @@ esp_err_t i2s_manager_start(void)
 
 esp_err_t i2s_manager_stop(void)
 {
-	if (!s_mgr.initialized) return ESP_ERR_INVALID_STATE;
+	if (!s_mgr.initialized) {
+		return ESP_ERR_INVALID_STATE;
+	}
 	s_mgr.running = false;
 #ifdef ESP_PLATFORM
 	if (s_mgr.i2s_rx != NULL && s_mgr.i2s_enabled) {

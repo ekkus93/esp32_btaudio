@@ -3,14 +3,18 @@
 static int16_t clamp_int16(int32_t value)
 {
     if (value > INT16_MAX) return INT16_MAX;
-    if (value < INT16_MIN) return INT16_MIN;
+    if  (value < INT16_MIN) {
+    	return INT16_MIN;
+    }
     return (int16_t)value;
 }
 
 static int32_t clamp_int32(int64_t value)
 {
     if (value > INT32_MAX) return INT32_MAX;
-    if (value < INT32_MIN) return INT32_MIN;
+    if  (value < INT32_MIN) {
+    	return INT32_MIN;
+    }
     return (int32_t)value;
 }
 
@@ -72,8 +76,12 @@ esp_err_t audio_processor_emit_diag_summary(void)
 
 void audio_processor_arm_probe(size_t n_entries)
 {
-    if (n_entries == 0) return;
-    if (n_entries > I2S_PROBE_MAX_ENTRIES) n_entries = I2S_PROBE_MAX_ENTRIES;
+    if  (n_entries == 0) {
+    	return;
+    }
+    if  (n_entries > I2S_PROBE_MAX_ENTRIES) {
+    	n_entries = I2S_PROBE_MAX_ENTRIES;
+    }
     __atomic_store_n(&s_probe_captured, 0U, __ATOMIC_RELAXED);
     __atomic_store_n(&s_probe_target, (unsigned)n_entries, __ATOMIC_RELAXED);
     ESP_LOGI(TAG, "I2S probe armed for %u entries", (unsigned)n_entries);
@@ -83,7 +91,9 @@ esp_err_t audio_processor_emit_probe(void)
 {
     unsigned captured = __atomic_exchange_n(&s_probe_captured, 0U, __ATOMIC_RELAXED);
     unsigned target = __atomic_exchange_n(&s_probe_target, 0U, __ATOMIC_RELAXED);
-    if (captured > target) captured = target;
+    if  (captured > target) {
+    	captured = target;
+    }
 
     if (captured == 0) {
         ESP_LOGI(TAG, "I2S probe: no entries captured");
@@ -152,7 +162,9 @@ esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
 
 void diag_dump_bytes(const void* data, size_t len, const char* tag)
 {
-    if (data == NULL || len == 0 || tag == NULL) return;
+    if  (data == NULL || len == 0 || tag == NULL) {
+    	return;
+    }
     const uint8_t* b = (const uint8_t*)data;
     size_t off = 0;
     while (off < len) {

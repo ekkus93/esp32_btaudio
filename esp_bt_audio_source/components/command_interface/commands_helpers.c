@@ -136,20 +136,21 @@ bool cmd_parse_log_level(const char *level_str, int *out_level)
         return false;
     }
 
-    if (strcasecmp(level_str, "NONE") == 0)
+    if (strcasecmp(level_str, "NONE") == 0) {
         *out_level = ESP_LOG_NONE;
-    else if (strcasecmp(level_str, "ERROR") == 0 || strcasecmp(level_str, "ERR") == 0)
+    } else if (strcasecmp(level_str, "ERROR") == 0 || strcasecmp(level_str, "ERR") == 0) {
         *out_level = ESP_LOG_ERROR;
-    else if (strcasecmp(level_str, "WARN") == 0 || strcasecmp(level_str, "WARNING") == 0)
+    } else if (strcasecmp(level_str, "WARN") == 0 || strcasecmp(level_str, "WARNING") == 0) {
         *out_level = ESP_LOG_WARN;
-    else if (strcasecmp(level_str, "INFO") == 0)
+    } else if (strcasecmp(level_str, "INFO") == 0) {
         *out_level = ESP_LOG_INFO;
-    else if (strcasecmp(level_str, "DEBUG") == 0 || strcasecmp(level_str, "DBG") == 0)
+    } else if (strcasecmp(level_str, "DEBUG") == 0 || strcasecmp(level_str, "DBG") == 0) {
         *out_level = ESP_LOG_DEBUG;
-    else if (strcasecmp(level_str, "VERBOSE") == 0 || strcasecmp(level_str, "TRACE") == 0)
+    } else if (strcasecmp(level_str, "VERBOSE") == 0 || strcasecmp(level_str, "TRACE") == 0) {
         *out_level = ESP_LOG_VERBOSE;
-    else
+    } else {
         return false;
+    }
 
     return true;
 }

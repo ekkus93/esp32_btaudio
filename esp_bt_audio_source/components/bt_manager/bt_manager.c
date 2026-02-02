@@ -1237,7 +1237,9 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
 // used by other components after we update their forward declarations.
 int bt_manager_set_name(const char* name) {
 #ifdef ESP_PLATFORM
-    if (!bt_ctx.initialized) return -1;
+    if (!bt_ctx.initialized) {
+    	return -1;
+    }
     esp_err_t err = esp_bt_gap_set_device_name(name);
     return (err == ESP_OK) ? 0 : -1;
 #else

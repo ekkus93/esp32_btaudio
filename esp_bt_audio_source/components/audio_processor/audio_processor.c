@@ -505,7 +505,9 @@ static esp_err_t configure_i2s(const audio_config_t* config)
 esp_err_t audio_processor_get_status(audio_status_t* status)
 {
     AUDIO_PROC_LOG_ONCE();
-    if (status == NULL) return ESP_ERR_INVALID_ARG;
+    if (status == NULL) {
+    	return ESP_ERR_INVALID_ARG;
+    }
     status->initialized = s_is_initialized;
     status->running = s_is_running;
     status->volume = s_volume_gain;
@@ -526,7 +528,9 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     bool was_running = s_is_running;
     if (was_running) {
         esp_err_t ret = audio_processor_stop();
-        if (ret != ESP_OK) return ret;
+        if (ret != ESP_OK) {
+        	return ret;
+        }
     }
 
     s_audio_config.i2s_bclk_pin = bclk_pin;
@@ -549,7 +553,9 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 esp_err_t audio_processor_drain_audio_queue(void)
 {
     AUDIO_PROC_LOG_ONCE();
-    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
+    if (!s_is_initialized) {
+    	return ESP_ERR_INVALID_STATE;
+    }
 
     audio_chunk_clear();
     audio_source_tag_reset_buffer();
@@ -570,10 +576,14 @@ esp_err_t audio_processor_drain_audio_queue(void)
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
     AUDIO_PROC_LOG_ONCE();
-    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
+    if (!s_is_initialized) {
+    	return ESP_ERR_INVALID_STATE;
+    }
 
     size_t target = audio_get_runtime_work_bytes();
-    if (target == 0) return ESP_ERR_INVALID_ARG;
+    if (target == 0) {
+    	return ESP_ERR_INVALID_ARG;
+    }
 
     size_t generated = 0;
 
@@ -651,7 +661,9 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     }
 #endif
 
-    if (generated == 0) return ESP_ERR_INVALID_SIZE;
+    if (generated == 0) {
+    	return ESP_ERR_INVALID_SIZE;
+    }
 
     size_t conv_size = 0;
     size_t res_size = 0;
@@ -669,7 +681,9 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     if (convert_audio_format(&conv_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (conv_size == 0) return ESP_ERR_INVALID_SIZE;
+    if (conv_size == 0) {
+    	return ESP_ERR_INVALID_SIZE;
+    }
 
     audio_resample_args_t res_args = {
         .src = s_proc_buffer,
@@ -685,7 +699,9 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     if (resample_audio(&res_args) != ESP_OK) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (res_size == 0) return ESP_ERR_INVALID_SIZE;
+    if (res_size == 0) {
+    	return ESP_ERR_INVALID_SIZE;
+    }
 
     size_t dump = res_size < DIAG_DUMP_BYTES ? res_size : DIAG_DUMP_BYTES;
     diag_dump_bytes(s_proc_buffer2, dump, "DIAG:worker-out");
@@ -709,8 +725,12 @@ esp_err_t audio_processor_play_wav(const char* path)
               (int)s_is_initialized, (int)s_is_running, queue_free);
         printf("DIAG-APLAY-STATE: init=%d run=%d queue_free=%zu path=%s\n",
             (int)s_is_initialized, (int)s_is_running, queue_free, path ? path : "(null)");
-    if (!s_is_initialized) return ESP_ERR_INVALID_STATE;
-    if (!path) return ESP_ERR_INVALID_ARG;
+    if (!s_is_initialized) {
+    	return ESP_ERR_INVALID_STATE;
+    }
+    if (!path) {
+    	return ESP_ERR_INVALID_ARG;
+    }
 
     /* Drop any synthetic keepalive so WAV output is audible immediately. */
     if (s_force_synth) {

@@ -195,9 +195,9 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
             size_t s1 = (s0 + 1 < src_frame_count) ? (s0 + 1) : s0;
 
             for (int ch = 0; ch < channels; ++ch) {
-                size_t src_idx1 = s0 * (size_t)channels + (size_t)ch;
-                size_t src_idx2 = s1 * (size_t)channels + (size_t)ch;
-                size_t dst_idx = dst_frame * (size_t)channels + (size_t)ch;
+                size_t src_idx1 = (s0 * (size_t)channels) + (size_t)ch;
+                size_t src_idx2 = (s1 * (size_t)channels) + (size_t)ch;
+                size_t dst_idx = (dst_frame * (size_t)channels) + (size_t)ch;
 
                 if (dst_idx >= dst_sample_count || src_idx2 >= src_sample_count) {
                     continue;
@@ -206,7 +206,7 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
                 if (s1 == s0) {
                     dst_samples[dst_idx] = src_samples[src_idx1];
                 } else {
-                    dst_samples[dst_idx] = (int16_t)((1.0 - frac) * (double)src_samples[src_idx1] + frac * (double)src_samples[src_idx2]);
+                    dst_samples[dst_idx] = (int16_t)(((1.0 - frac) * (double)src_samples[src_idx1]) + (frac * (double)src_samples[src_idx2]));
                 }
             }
         }
@@ -222,9 +222,9 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
             size_t s1 = (s0 + 1 < src_frame_count) ? (s0 + 1) : s0;
 
             for (int ch = 0; ch < channels; ++ch) {
-                size_t src_idx1 = s0 * (size_t)channels + (size_t)ch;
-                size_t src_idx2 = s1 * (size_t)channels + (size_t)ch;
-                size_t dst_idx = dst_frame * (size_t)channels + (size_t)ch;
+                size_t src_idx1 = (s0 * (size_t)channels) + (size_t)ch;
+                size_t src_idx2 = (s1 * (size_t)channels) + (size_t)ch;
+                size_t dst_idx = (dst_frame * (size_t)channels) + (size_t)ch;
 
                 if (dst_idx >= dst_sample_count || src_idx2 >= src_sample_count) {
                     continue;
@@ -233,7 +233,7 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
                 if (s1 == s0) {
                     dst_samples[dst_idx] = src_samples[src_idx1];
                 } else {
-                    dst_samples[dst_idx] = (int32_t)((1.0 - frac) * (double)src_samples[src_idx1] + frac * (double)src_samples[src_idx2]);
+                    dst_samples[dst_idx] = (int32_t)(((1.0 - frac) * (double)src_samples[src_idx1]) + (frac * (double)src_samples[src_idx2]));
                 }
             }
         }

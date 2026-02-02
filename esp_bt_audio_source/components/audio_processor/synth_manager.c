@@ -102,9 +102,13 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 						s_synth_fade_dir = 0;
 						if (force_synth_flag != NULL) {
 #ifdef ESP_PLATFORM
-							if (lock != NULL) portENTER_CRITICAL(lock);
+						if (lock != NULL) {
+							portENTER_CRITICAL(lock);
+						}
 							*force_synth_flag = false;
-							if (lock != NULL) portEXIT_CRITICAL(lock);
+						if (lock != NULL) {
+							portEXIT_CRITICAL(lock);
+						}
 #else
 							(void)lock;
 							*force_synth_flag = false;
@@ -112,7 +116,9 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 						}
 					}
 				}
-				if (s_synth_fade_frames_remaining > 0) s_synth_fade_frames_remaining--;
+				if (s_synth_fade_frames_remaining > 0) {
+				s_synth_fade_frames_remaining--;
+			}
 			}
 
 			double sample = sin(phase) * scale * s_synth_env;
@@ -121,7 +127,9 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 				*out++ = s;
 			}
 			phase += phase_inc;
-			if (phase >= two_pi) phase -= two_pi;
+			if (phase >= two_pi) {
+				phase -= two_pi;
+			}
 		}
 	} else {
 		int32_t *out32 = (int32_t *)buffer;
@@ -144,9 +152,13 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 						s_synth_fade_dir = 0;
 						if (force_synth_flag != NULL) {
 #ifdef ESP_PLATFORM
-							if (lock != NULL) portENTER_CRITICAL(lock);
+						if (lock != NULL) {
+							portENTER_CRITICAL(lock);
+						}
 							*force_synth_flag = false;
-							if (lock != NULL) portEXIT_CRITICAL(lock);
+						if (lock != NULL) {
+							portEXIT_CRITICAL(lock);
+						}
 #else
 							(void)lock;
 							*force_synth_flag = false;
@@ -154,7 +166,9 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 						}
 					}
 				}
-				if (s_synth_fade_frames_remaining > 0) s_synth_fade_frames_remaining--;
+				if (s_synth_fade_frames_remaining > 0) {
+				s_synth_fade_frames_remaining--;
+			}
 			}
 			double sample = sin(phase) * scale32 * s_synth_env;
 			int32_t s = (int32_t)sample;
@@ -162,7 +176,9 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 				*out32++ = s;
 			}
 			phase += phase_inc;
-			if (phase >= two_pi) phase -= two_pi;
+			if (phase >= two_pi) {
+				phase -= two_pi;
+			}
 		}
 	}
 

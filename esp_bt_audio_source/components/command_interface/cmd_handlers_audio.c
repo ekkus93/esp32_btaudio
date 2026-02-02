@@ -271,10 +271,11 @@ cmd_status_t cmd_handle_play(const cmd_context_t *ctx)
         }
     }
     esp_err_t r = audio_processor_play_wav(path);
-    if (r == ESP_OK)
+    if (r == ESP_OK) {
         cmd_send_response("OK", "PLAY", "ENQUEUED", path);
-    else
-        cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
+    } else {
+    	cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
+    }
 #else
     (void)mount_err;
     if (audio_processor_is_beep_active()) {
@@ -351,10 +352,11 @@ cmd_status_t cmd_handle_mute(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_mute(true) == ESP_OK)
+    if (audio_processor_set_mute(true) == ESP_OK) {
         cmd_send_response("OK", "MUTE", "SET", NULL);
-    else
-        cmd_send_response("ERR", "MUTE", "FAILED", NULL);
+    } else {
+    	cmd_send_response("ERR", "MUTE", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "MUTE", "MOCK_SET", NULL);
 #endif
@@ -365,10 +367,11 @@ cmd_status_t cmd_handle_unmute(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_mute(false) == ESP_OK)
+    if (audio_processor_set_mute(false) == ESP_OK) {
         cmd_send_response("OK", "UNMUTE", "CLEARED", NULL);
-    else
-        cmd_send_response("ERR", "UNMUTE", "FAILED", NULL);
+    } else {
+    	cmd_send_response("ERR", "UNMUTE", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "UNMUTE", "MOCK_UNMUTED", NULL);
 #endif
@@ -389,10 +392,11 @@ cmd_status_t cmd_handle_volume(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_volume((uint8_t)vol) == ESP_OK)
+    if (audio_processor_set_volume((uint8_t)vol) == ESP_OK) {
         cmd_send_response("OK", "VOLUME", "SET", ctx->params[0]);
-    else
-        cmd_send_response("ERR", "VOLUME", "FAILED", NULL);
+    } else {
+    	cmd_send_response("ERR", "VOLUME", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "VOLUME", "MOCK_SET", ctx->params[0]);
 #endif
@@ -417,10 +421,11 @@ cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx)
         tok = strtok(NULL, ",");
     }
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_i2s_pins(pins[0], pins[1], pins[2], pins[3]) == ESP_OK)
+    if (audio_processor_set_i2s_pins(pins[0], pins[1], pins[2], pins[3]) == ESP_OK) {
         cmd_send_response("OK", "I2S_CONFIG", "APPLIED", ctx->params[0]);
-    else
-        cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+    } else {
+    	cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "I2S_CONFIG", "MOCK_APPLIED", ctx->params[0]);
 #endif
@@ -441,10 +446,11 @@ cmd_status_t cmd_handle_sample_rate(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 #ifdef ESP_PLATFORM
-    if (audio_processor_set_sample_rate((audio_sample_rate_t)rate) == ESP_OK)
+    if (audio_processor_set_sample_rate((audio_sample_rate_t)rate) == ESP_OK) {
         cmd_send_response("OK", "SAMPLE_RATE", "APPLIED", ctx->params[0]);
-    else
-        cmd_send_response("ERR", "SAMPLE_RATE", "FAILED", NULL);
+    } else {
+    	cmd_send_response("ERR", "SAMPLE_RATE", "FAILED", NULL);
+    }
 #else
     cmd_send_response("OK", "SAMPLE_RATE", "MOCK_APPLIED", ctx->params[0]);
 #endif

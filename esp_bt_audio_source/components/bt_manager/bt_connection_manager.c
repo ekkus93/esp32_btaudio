@@ -36,7 +36,7 @@ static esp_a2d_audio_state_t s_a2d_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
 static uint8_t s_reconnect_attempts = 0;
 static bool s_auto_reconnect = true;
 static uint32_t s_reconnect_delay_ms = BT_RECONNECT_DELAY_MS;
-static char s_last_connected_addr[ESP_BD_ADDR_LEN*2+6] = {0}; // XX:XX:XX:XX:XX:XX format
+static char s_last_connected_addr[(ESP_BD_ADDR_LEN*2)+6] = {0}; // XX:XX:XX:XX:XX:XX format
 
 #if CONFIG_BT_MOCK_TESTING
 static esp_err_t s_test_reconnect_results[8];
