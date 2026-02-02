@@ -193,7 +193,16 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (!play_manager_is_active() && s_beep_remaining_bytes == 0 && !s_force_synth && !s_wav_playback_active) {
+    /* 
+     * Check if audio sources are inactive AND residual buffer is empty.
+     * Must flush residual buffer before early-return to prevent tail truncation.
+     * (CODE_REVIEW4 Task 1.3 - Option B)
+     */
+    size_t residual_remaining = (s_audio_rb_residual_len > s_audio_rb_residual_pos) 
+                               ? (s_audio_rb_residual_len - s_audio_rb_residual_pos) 
+                               : 0;
+    
+    if (!play_manager_is_active() && s_beep_remaining_bytes == 0 && !s_force_synth && !s_wav_playback_active && residual_remaining == 0) {
         (void)audio_processor_drain_audio_queue();
         *bytes_read = 0;
         return ESP_OK;
