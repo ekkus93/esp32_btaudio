@@ -61,13 +61,13 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     size_t bytes_read = 0;
     esp_err_t result = audio_processor_read(data, (size_t)len, &bytes_read);
     if (result != ESP_OK) {
-        ESP_LOGW(TAG, "audio_processor_read error: %d", result);
+        ESP_LOGW(TAG, "audio_processor_read error: %d", result);  // NOLINT(bugprone-branch-clone)
         safe_memset(data, (size_t)len, 0, (size_t)len);
         bytes_read = 0;
     } else if (bytes_read < (size_t)len) {
         /* Underflow — zero-fill remainder */
         safe_memset(data + bytes_read, (size_t)(len - bytes_read), 0, (size_t)(len - bytes_read));
-        ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);
+        ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);  // NOLINT(bugprone-branch-clone)
     }
 
     /* Update streaming statistics */
@@ -96,7 +96,7 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
  */
 static void update_streaming_state(bt_streaming_state_t new_state)
 {
-    ESP_LOGI(TAG, "Streaming state changing: %d -> %d", s_streaming_state, new_state);
+    ESP_LOGI(TAG, "Streaming state changing: %d -> %d", s_streaming_state, new_state);  // NOLINT(bugprone-branch-clone)
     s_streaming_state = new_state;
     s_streaming_info.state = new_state;
     
@@ -129,7 +129,7 @@ static void update_streaming_state(bt_streaming_state_t new_state)
             break;
             
         case BT_STREAMING_STATE_ERROR:
-            ESP_LOGE(TAG, "Streaming error occurred");
+            ESP_LOGE(TAG, "Streaming error occurred");  // NOLINT(bugprone-branch-clone)
             break;
             
         default:
@@ -159,13 +159,13 @@ esp_err_t bt_streaming_start(void)
 {
     /* Check if already streaming */
     if (s_streaming_state == BT_STREAMING_STATE_STREAMING) {
-        ESP_LOGW(TAG, "Already streaming");
+        ESP_LOGW(TAG, "Already streaming");  // NOLINT(bugprone-branch-clone)
         return ESP_OK;
     }
     
     /* Check if connected */
     if (bt_get_connection_state() != 1) {
-        ESP_LOGE(TAG, "Cannot start streaming - not connected");
+        ESP_LOGE(TAG, "Cannot start streaming - not connected");  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
@@ -173,7 +173,7 @@ esp_err_t bt_streaming_start(void)
     update_streaming_state(BT_STREAMING_STATE_STARTING);
     esp_err_t ret = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start streaming: %d", ret);
+        ESP_LOGE(TAG, "Failed to start streaming: %d", ret);  // NOLINT(bugprone-branch-clone)
         update_streaming_state(BT_STREAMING_STATE_ERROR);
         return ESP_FAIL;
     }
@@ -186,7 +186,7 @@ esp_err_t bt_streaming_stop(void)
 {
     /* Check if already stopped */
     if (s_streaming_state == BT_STREAMING_STATE_STOPPED) {
-        ESP_LOGW(TAG, "Already stopped");
+        ESP_LOGW(TAG, "Already stopped");  // NOLINT(bugprone-branch-clone)
         return ESP_OK;
     }
     
@@ -194,7 +194,7 @@ esp_err_t bt_streaming_stop(void)
     update_streaming_state(BT_STREAMING_STATE_STOPPING);
     esp_err_t ret = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_STOP);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to stop streaming: %d", ret);
+        ESP_LOGE(TAG, "Failed to stop streaming: %d", ret);  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
@@ -206,13 +206,13 @@ esp_err_t bt_streaming_pause(void)
 {
     /* Check if already paused */
     if (s_streaming_state == BT_STREAMING_STATE_PAUSED) {
-        ESP_LOGW(TAG, "Already paused");
+        ESP_LOGW(TAG, "Already paused");  // NOLINT(bugprone-branch-clone)
         return ESP_OK;
     }
     
     /* Check if streaming */
     if (s_streaming_state != BT_STREAMING_STATE_STREAMING) {
-        ESP_LOGE(TAG, "Cannot pause - not streaming");
+        ESP_LOGE(TAG, "Cannot pause - not streaming");  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
@@ -220,7 +220,7 @@ esp_err_t bt_streaming_pause(void)
     update_streaming_state(BT_STREAMING_STATE_PAUSED);
     esp_err_t ret = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_SUSPEND);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to pause streaming: %d", ret);
+        ESP_LOGE(TAG, "Failed to pause streaming: %d", ret);  // NOLINT(bugprone-branch-clone)
         /* Revert state if API call failed */
         update_streaming_state(BT_STREAMING_STATE_STREAMING);
         return ESP_FAIL;
@@ -233,14 +233,14 @@ esp_err_t bt_streaming_resume(void)
 {
     /* Check if not paused */
     if (s_streaming_state != BT_STREAMING_STATE_PAUSED) {
-        ESP_LOGE(TAG, "Cannot resume - not paused");
+        ESP_LOGE(TAG, "Cannot resume - not paused");  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
     /* Resume streaming */
     esp_err_t ret = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to resume streaming: %d", ret);
+        ESP_LOGE(TAG, "Failed to resume streaming: %d", ret);  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
@@ -273,7 +273,7 @@ void bt_streaming_manager_init(void)
     /* Register data callback */
     esp_a2d_source_register_data_callback(bt_audio_data_callback);
     
-    ESP_LOGI(TAG, "Streaming manager initialized");
+    ESP_LOGI(TAG, "Streaming manager initialized");  // NOLINT(bugprone-branch-clone)
 }
 
 #ifdef UNIT_TEST

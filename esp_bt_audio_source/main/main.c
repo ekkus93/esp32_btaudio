@@ -182,7 +182,7 @@ void app_main(void)
      * Use DIAG_MARKER macro for reliable dual-output (buffered + unbuffered). */
     DIAG_MARKER("DIAG|BOOT|EARLY_BOOT_MARKER");
 
-    ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting");
+    ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source starting");  // NOLINT(bugprone-branch-clone)
     /* Quiet the very chatty audio processor logs so CLI commands aren't
      * drowned out during diagnostics. Raise as needed when deep-diving.
      */
@@ -278,9 +278,9 @@ void app_main(void)
 #ifdef ESP_PLATFORM
     cmd_status_t cmd_result = cmd_init();
     if (cmd_result != CMD_SUCCESS) {
-        ESP_LOGE(BT_AV_TAG, "cmd_init() failed (%s) - command interface unavailable", cmd_status_to_name(cmd_result));
+        ESP_LOGE(BT_AV_TAG, "cmd_init() failed (%s) - command interface unavailable", cmd_status_to_name(cmd_result));  // NOLINT(bugprone-branch-clone)
         DIAG_MARKER("ERROR|CMD_IF|INIT_FAILED|code=%s|impact=NO_CMD_IF", cmd_status_to_name(cmd_result));
-        ESP_LOGW(BT_AV_TAG, "Device will boot without command interface - BT/Audio may still function");
+        ESP_LOGW(BT_AV_TAG, "Device will boot without command interface - BT/Audio may still function");  // NOLINT(bugprone-branch-clone)
         // Skip cmd task creation - device continues but cmd interface dead
     } else {
         // cmd_init() succeeded - proceed with task creation
@@ -293,9 +293,9 @@ void app_main(void)
         // degrade) but cmd processing unavailable.
         BaseType_t task_created = xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
         if (task_created != pdPASS) {
-            ESP_LOGE(BT_AV_TAG, "Failed to create cmd_process_task - heap/stack exhausted?");
+            ESP_LOGE(BT_AV_TAG, "Failed to create cmd_process_task - heap/stack exhausted?");  // NOLINT(bugprone-branch-clone)
             DIAG_MARKER("ERROR|CMD_IF|TASK_CREATE_FAILED|impact=NO_CMD_PROCESSING");
-            ESP_LOGW(BT_AV_TAG, "Device will boot without cmd processing - BT/Audio may still function");
+            ESP_LOGW(BT_AV_TAG, "Device will boot without cmd processing - BT/Audio may still function");  // NOLINT(bugprone-branch-clone)
         } else {
             // Task created successfully - emit success markers
             DIAG_MARKER("INFO|CMD_IF|CMD_TASK_STARTED");
@@ -322,9 +322,9 @@ void app_main(void)
     };
 
     if (bt_manager_init(&bt_cfg) != ESP_OK) {
-        ESP_LOGE(BT_AV_TAG, "bt_manager_init failed");
+        ESP_LOGE(BT_AV_TAG, "bt_manager_init failed");  // NOLINT(bugprone-branch-clone)
     } else {
-        ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized - SCAN/PAIR commands ready");
+        ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized - SCAN/PAIR commands ready");  // NOLINT(bugprone-branch-clone)
         // Mark Bluetooth subsystem as operational (CODE_REVIEW4 Task 3.1)
         bt_ok = true;
     }
@@ -358,16 +358,16 @@ void app_main(void)
         esp_err_t autostart_err = nvs_storage_get_audio_autostart(&autostart);
         
         /* Explicit error handling: handle all possible NVS error codes */
-        if (autostart_err == ESP_OK) {
+        if (autostart_err == ESP_OK) {  // NOLINT(bugprone-branch-clone)
             /* NVS value read successfully - use it (already in autostart variable) */
-            ESP_LOGI(BT_AV_TAG, "Audio autostart from NVS: %s", autostart ? "enabled" : "disabled");
+            ESP_LOGI(BT_AV_TAG, "Audio autostart from NVS: %s", autostart ? "enabled" : "disabled");  // NOLINT(bugprone-branch-clone)
         } else if (autostart_err == ESP_ERR_NOT_FOUND) {
             /* Not set in NVS - use Kconfig default (already initialized above) */
-            ESP_LOGI(BT_AV_TAG, "Audio autostart not set in NVS, using Kconfig default: %s",
+            ESP_LOGI(BT_AV_TAG, "Audio autostart not set in NVS, using Kconfig default: %s",  // NOLINT(bugprone-branch-clone)
                      autostart ? "enabled" : "disabled");
         } else {
             /* Other NVS error (corruption, flash failure, etc.) - log warning and fall back to default */
-            ESP_LOGW(BT_AV_TAG, "Failed to read audio_autostart from NVS (%s), using Kconfig default: %s",
+            ESP_LOGW(BT_AV_TAG, "Failed to read audio_autostart from NVS (%s), using Kconfig default: %s",  // NOLINT(bugprone-branch-clone)
                      esp_err_to_name(autostart_err),
                      (CONFIG_AUDIO_AUTOSTART_DEFAULT ? "enabled" : "disabled"));
             autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Reset to default on error */
@@ -398,7 +398,7 @@ void app_main(void)
             }
         } else {
             printf("DIAG|AUDIO|STATUS|autostart=0|deferred=1\r\n");
-            ESP_LOGI(BT_AV_TAG, "Audio autostart disabled - audio initialization deferred");
+            ESP_LOGI(BT_AV_TAG, "Audio autostart disabled - audio initialization deferred");  // NOLINT(bugprone-branch-clone)
         }
     }
 #endif
@@ -419,29 +419,29 @@ void app_main(void)
                 cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
 #endif
 
-    ESP_LOGI(BT_AV_TAG, "====================================================");
+    ESP_LOGI(BT_AV_TAG, "====================================================");  // NOLINT(bugprone-branch-clone)
     
     /* Conditional banner based on actual subsystem status */
     if (cmd_ok && bt_ok) {
         /* All critical subsystems operational - device fully functional */
-        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");
-        ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");
-        ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");
+        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");  // NOLINT(bugprone-branch-clone)
+        ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");  // NOLINT(bugprone-branch-clone)
+        ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");  // NOLINT(bugprone-branch-clone)
     } else {
         /* One or more subsystems failed - warn user of limited functionality */
-        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Started with limited functionality:");
+        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Started with limited functionality:");  // NOLINT(bugprone-branch-clone)
         if (!cmd_ok) {
-            ESP_LOGI(BT_AV_TAG, "  ⚠️  Command interface unavailable");
+            ESP_LOGI(BT_AV_TAG, "  ⚠️  Command interface unavailable");  // NOLINT(bugprone-branch-clone)
         }
         if (!bt_ok) {
-            ESP_LOGI(BT_AV_TAG, "  ⚠️  Bluetooth unavailable");
+            ESP_LOGI(BT_AV_TAG, "  ⚠️  Bluetooth unavailable");  // NOLINT(bugprone-branch-clone)
         }
         if (cmd_ok || bt_ok) {
-            ESP_LOGI(BT_AV_TAG, "Some features may still work.");
+            ESP_LOGI(BT_AV_TAG, "Some features may still work.");  // NOLINT(bugprone-branch-clone)
         }
     }
     
-    ESP_LOGI(BT_AV_TAG, "====================================================");
+    ESP_LOGI(BT_AV_TAG, "====================================================");  // NOLINT(bugprone-branch-clone)
     
     /* app_main() returns to FreeRTOS scheduler.
      * WHY THIS IS SAFE: FreeRTOS tasks (cmd_process_task, BT stack tasks,

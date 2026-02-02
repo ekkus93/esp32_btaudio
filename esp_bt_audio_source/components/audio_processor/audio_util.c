@@ -88,7 +88,7 @@ esp_err_t convert_audio_format(const audio_convert_args_t *args)
         util_safe_memmove(dst, work_bytes, src, copy_size);
         *dst_size = copy_size;
     } else {
-        ESP_LOGE(TAG, "Unsupported format conversion: %d -> %d", src_bit_depth, dst_bit_depth);
+        ESP_LOGE(TAG, "Unsupported format conversion: %d -> %d", src_bit_depth, dst_bit_depth);  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_NOT_SUPPORTED;
     }
 

@@ -62,9 +62,9 @@ static esp_err_t configure_i2s(const audio_config_t* config);
 
 void audio_processor_set_dram_only(bool enable)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     s_dram_only_alloc = enable ? true : false;
-    ESP_LOGI(TAG, "audio_processor: DRAM-only allocations %s", s_dram_only_alloc ? "ENABLED" : "DISABLED");
+    ESP_LOGI(TAG, "audio_processor: DRAM-only allocations %s", s_dram_only_alloc ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
 }
 
 /**
@@ -72,14 +72,14 @@ void audio_processor_set_dram_only(bool enable)
  */
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (s_is_initialized) {
-        ESP_LOGW(TAG, "Audio processor already initialized");
+        ESP_LOGW(TAG, "Audio processor already initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     if (config == NULL) {
-        ESP_LOGE(TAG, "Null config provided");
+        ESP_LOGE(TAG, "Null config provided");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -94,7 +94,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     /* Initialize descriptor queue and block pool (128 x 1 KiB blocks in DRAM). */
     if (!audio_chunk_pool_init()) {
-        ESP_LOGE(TAG, "audio_processor_init: failed to init audio chunk pool");
+        ESP_LOGE(TAG, "audio_processor_init: failed to init audio chunk pool");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_NO_MEM;
     }
 
@@ -150,7 +150,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     }
 
     if (s_runtime_work_bytes == 0U) {
-        ESP_LOGE(TAG, "audio_processor_init: failed to allocate work buffers");
+        ESP_LOGE(TAG, "audio_processor_init: failed to allocate work buffers");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_NO_MEM;
     }
 
@@ -159,7 +159,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     };
     ret = play_manager_init(&s_audio_config, &pm_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_init: play_manager_init failed (%d)", (int)ret);
+        ESP_LOGE(TAG, "audio_processor_init: play_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         return ret;
     }
 
@@ -172,27 +172,27 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     };
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_init: i2s_manager_init failed (%d)", (int)ret);
+        ESP_LOGE(TAG, "audio_processor_init: i2s_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         play_manager_deinit();
         return ret;
     }
 
     ret = beep_manager_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_init: beep_manager_init failed (%d)", (int)ret);
+        ESP_LOGE(TAG, "audio_processor_init: beep_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         i2s_manager_deinit();
         play_manager_deinit();
         return ret;
     }
 
     s_is_initialized = true;
-    ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no");
+    ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no");  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
 esp_err_t audio_processor_start(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -209,7 +209,7 @@ esp_err_t audio_processor_start(void)
 
     esp_err_t ret = i2s_manager_start();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);
+        ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         return ret;
     }
 
@@ -219,7 +219,7 @@ esp_err_t audio_processor_start(void)
 
 esp_err_t audio_processor_stop(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -237,7 +237,7 @@ esp_err_t audio_processor_stop(void)
 
 esp_err_t audio_processor_deinit(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -318,9 +318,9 @@ esp_err_t audio_processor_deinit(void)
  */
 esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -332,7 +332,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     if (was_running) {
         esp_err_t ret = audio_processor_stop();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);
+            ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
         }
     }
@@ -345,7 +345,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     };
     esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);
+        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
         return ret;
     }
 
@@ -359,7 +359,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     };
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);
+        ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
         play_manager_deinit();
         return ret;
     }
@@ -367,12 +367,12 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     if (was_running) {
         ret = audio_processor_start();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to restart audio processor: %d", ret);
+            ESP_LOGE(TAG, "Failed to restart audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
         }
     }
 
-    ESP_LOGI(TAG, "Audio sample rate changed to %d Hz", sample_rate);
+    ESP_LOGI(TAG, "Audio sample rate changed to %d Hz", sample_rate);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
@@ -381,9 +381,9 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
  */
 esp_err_t audio_processor_set_volume(uint8_t volume)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -398,7 +398,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
     // Persist new volume
     nvs_storage_set_volume(s_volume_gain);
 
-    ESP_LOGI(TAG, "Audio volume set to %d%%", volume);
+    ESP_LOGI(TAG, "Audio volume set to %d%%", volume);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
@@ -407,14 +407,14 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
  */
 esp_err_t audio_processor_set_mute(bool mute)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     s_audio_config.mute = mute;
-    ESP_LOGI(TAG, "Audio %s", mute ? "muted" : "unmuted");
+    ESP_LOGI(TAG, "Audio %s", mute ? "muted" : "unmuted");  // NOLINT(bugprone-branch-clone)
 
     return ESP_OK;
 }
@@ -424,14 +424,14 @@ esp_err_t audio_processor_set_mute(bool mute)
  */
 esp_err_t audio_processor_get_config(audio_config_t* config)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     if (config == NULL) {
-        ESP_LOGE(TAG, "Null config pointer");
+        ESP_LOGE(TAG, "Null config pointer");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -444,14 +444,14 @@ esp_err_t audio_processor_get_config(audio_config_t* config)
  */
 esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     if (stats == NULL) {
-        ESP_LOGE(TAG, "Null stats pointer");
+        ESP_LOGE(TAG, "Null stats pointer");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -504,7 +504,7 @@ static esp_err_t configure_i2s(const audio_config_t* config)
 
 esp_err_t audio_processor_get_status(audio_status_t* status)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (status == NULL) {
     	return ESP_ERR_INVALID_ARG;
     }
@@ -520,7 +520,7 @@ esp_err_t audio_processor_get_status(audio_status_t* status)
 
 esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -552,7 +552,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
 
 esp_err_t audio_processor_drain_audio_queue(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
     	return ESP_ERR_INVALID_STATE;
     }
@@ -561,7 +561,7 @@ esp_err_t audio_processor_drain_audio_queue(void)
     audio_source_tag_reset_buffer();
     audio_processor_beep_reset();
     wav_playback_abort(__func__);
-    ESP_LOGI(TAG, "audio_processor_drain_audio_queue: cleared audio_queue and beep state");
+    ESP_LOGI(TAG, "audio_processor_drain_audio_queue: cleared audio_queue and beep state");  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
@@ -575,7 +575,7 @@ esp_err_t audio_processor_drain_audio_queue(void)
  */
 esp_err_t audio_processor_emit_sync_worker_diag(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
     	return ESP_ERR_INVALID_STATE;
     }
@@ -715,13 +715,13 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
  */
 esp_err_t audio_processor_play_wav(const char* path)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     /* Diagnostic: record initialization/running state to help trace
      * unexpected INVALID_STATE returns observed in unit tests. Use both
      * ESP_LOG and a plain printf so the test monitor captures the output
      * regardless of log configuration. */
         size_t queue_free = audio_processor_queue_free_bytes();
-        ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, queue_free=%zu)",
+        ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, queue_free=%zu)",  // NOLINT(bugprone-branch-clone)
               (int)s_is_initialized, (int)s_is_running, queue_free);
         printf("DIAG-APLAY-STATE: init=%d run=%d queue_free=%zu path=%s\n",
             (int)s_is_initialized, (int)s_is_running, queue_free, path ? path : "(null)");
@@ -741,13 +741,13 @@ esp_err_t audio_processor_play_wav(const char* path)
     /* Reject PLAY while A2DP is disconnected to avoid queueing audio that
      * cannot be consumed. */
     if (!audio_processor_is_a2dp_connected()) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: A2DP not connected; rejecting PLAY");
+        ESP_LOGW(TAG, "audio_processor_play_wav: A2DP not connected; rejecting PLAY");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     /* I2S capture has priority over PLAY; reject when capture is active. */
     if (i2s_manager_is_running()) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: I2S running; rejecting PLAY");
+        ESP_LOGW(TAG, "audio_processor_play_wav: I2S running; rejecting PLAY");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -760,12 +760,12 @@ esp_err_t audio_processor_play_wav(const char* path)
     }
     portEXIT_CRITICAL(&s_beep_lock);
     if (beep_active) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: busy (beep active)");
+        ESP_LOGW(TAG, "audio_processor_play_wav: busy (beep active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     s_trace_next_read_call = true;
-    ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");
+    ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");  // NOLINT(bugprone-branch-clone)
 
     esp_err_t status = ESP_OK;
 
@@ -789,7 +789,7 @@ esp_err_t audio_processor_play_wav(const char* path)
         wav_playback_complete_if_idle();
     }
 
-    ESP_LOGI(TAG, "audio_processor_play_wav: playback streaming for %s", path);
+    ESP_LOGI(TAG, "audio_processor_play_wav: playback streaming for %s", path);  // NOLINT(bugprone-branch-clone)
     status = ESP_OK;
 
 cleanup:
@@ -808,9 +808,9 @@ cleanup:
  */
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGE(TAG, "Audio processor not initialized");
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -823,7 +823,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     if (was_running) {
         esp_err_t ret = audio_processor_stop();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);
+            ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
         }
     }
@@ -836,7 +836,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     };
     esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);
+        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
         return ret;
     }
 
@@ -850,7 +850,7 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     };
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);
+        ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
         play_manager_deinit();
         return ret;
     }
@@ -858,31 +858,31 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     if (was_running) {
         ret = audio_processor_start();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to restart audio processor: %d", ret);
+            ESP_LOGE(TAG, "Failed to restart audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
         }
     }
 
-    ESP_LOGI(TAG, "Audio bit depth changed to %d bits", bit_depth);
+    ESP_LOGI(TAG, "Audio bit depth changed to %d bits", bit_depth);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
 bool audio_processor_is_i2s_active(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return s_is_running;
 }
 
 bool audio_processor_is_wav_active(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return wav_playback_is_active();
 }
 
 void audio_processor_set_diag_enabled(bool enable)
 {
     s_audio_diag_enabled = enable;
-    ESP_LOGI(TAG, "audio_processor: diagnostics %s", enable ? "ENABLED" : "DISABLED");
+    ESP_LOGI(TAG, "audio_processor: diagnostics %s", enable ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
 }
 
 bool audio_processor_is_diag_enabled(void)
@@ -897,27 +897,27 @@ bool audio_processor_is_diag_enabled(void)
  */
 bool audio_processor_is_running(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return s_is_running;
 }
 
 size_t audio_processor_get_work_buffer_bytes(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return s_runtime_work_bytes;
 }
 
 bool audio_processor_is_synth_mode_enabled(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return s_force_synth;
 }
 
 void audio_processor_set_synth_mode(bool enable)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     s_force_synth = enable;
-    ESP_LOGI(TAG, "audio_processor: synth mode %s", enable ? "ENABLED" : "DISABLED");
+    ESP_LOGI(TAG, "audio_processor: synth mode %s", enable ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
 }
 
 uint32_t audio_processor_test_get_tag_miss_count(void)
@@ -937,7 +937,7 @@ void audio_processor_test_reset_tag_recover_window(void)
 
 size_t audio_processor_test_get_audio_free_bytes(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return audio_processor_queue_free_bytes();
 }
 

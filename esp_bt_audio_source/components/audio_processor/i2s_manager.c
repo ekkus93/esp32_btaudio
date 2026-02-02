@@ -83,7 +83,7 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 
 	esp_err_t ret = i2s_new_channel(&chan_cfg, NULL, &s_mgr.i2s_rx);
 	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "i2s_new_channel failed: %d", ret);
+		ESP_LOGE(TAG, "i2s_new_channel failed: %d", ret);  // NOLINT(bugprone-branch-clone)
 		return ret;
 	}
 
@@ -125,7 +125,7 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 	if (ret != ESP_OK) {
 		i2s_del_channel(s_mgr.i2s_rx);
 		s_mgr.i2s_rx = NULL;
-		ESP_LOGE(TAG, "i2s_channel_init_std_mode failed: %d", ret);
+		ESP_LOGE(TAG, "i2s_channel_init_std_mode failed: %d", ret);  // NOLINT(bugprone-branch-clone)
 		return ret;
 	}
 
@@ -156,7 +156,7 @@ static esp_err_t process_frame(const uint8_t *data,
 		.dst_size = &conv_size,
 		.work_bytes = s_mgr.bufs.work_bytes,
 	};
-	ESP_RETURN_ON_ERROR(convert_audio_format(&conv_args), TAG, "convert failed");
+	ESP_RETURN_ON_ERROR(convert_audio_format(&conv_args), TAG, "convert failed");  // NOLINT(bugprone-branch-clone)
 
 	size_t res_size = 0;
 	audio_resample_args_t res_args = {
@@ -170,7 +170,7 @@ static esp_err_t process_frame(const uint8_t *data,
 		.dst_size = &res_size,
 		.work_bytes = s_mgr.bufs.work_bytes,
 	};
-	ESP_RETURN_ON_ERROR(resample_audio(&res_args), TAG, "resample failed");
+	ESP_RETURN_ON_ERROR(resample_audio(&res_args), TAG, "resample failed");  // NOLINT(bugprone-branch-clone)
 
 	if (res_size == 0) {
 		return ESP_OK;
@@ -186,7 +186,7 @@ static esp_err_t process_frame(const uint8_t *data,
 static void i2s_manager_task(void *arg)
 {
 	(void)arg;
-	ESP_LOGI(TAG, "i2s_manager task started");
+	ESP_LOGI(TAG, "i2s_manager task started");  // NOLINT(bugprone-branch-clone)
 	const TickType_t idle_wait = pdMS_TO_TICKS(20);
 	const uint32_t read_timeout_ms = 5;
 	while (s_mgr.running) {
@@ -229,7 +229,7 @@ static void i2s_manager_task(void *arg)
 			vTaskDelay(pdMS_TO_TICKS(1));
 		}
 	}
-	ESP_LOGI(TAG, "i2s_manager task exiting");
+	ESP_LOGI(TAG, "i2s_manager task exiting");  // NOLINT(bugprone-branch-clone)
 	s_mgr.task = NULL;
 	vTaskDelete(NULL);
 }
@@ -256,7 +256,7 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 #endif
 
 #ifdef ESP_PLATFORM
-	ESP_RETURN_ON_ERROR(configure_i2s(&s_mgr.cfg), TAG, "configure_i2s failed");
+	ESP_RETURN_ON_ERROR(configure_i2s(&s_mgr.cfg), TAG, "configure_i2s failed");  // NOLINT(bugprone-branch-clone)
 #endif
 
 	s_mgr.initialized = true;
@@ -300,7 +300,7 @@ esp_err_t i2s_manager_start(void)
 
 #ifdef ESP_PLATFORM
 	if (s_mgr.i2s_rx != NULL) {
-		ESP_RETURN_ON_ERROR(i2s_channel_enable(s_mgr.i2s_rx), TAG, "i2s_channel_enable failed");
+		ESP_RETURN_ON_ERROR(i2s_channel_enable(s_mgr.i2s_rx), TAG, "i2s_channel_enable failed");  // NOLINT(bugprone-branch-clone)
 		s_mgr.i2s_enabled = true;
 	}
 #endif

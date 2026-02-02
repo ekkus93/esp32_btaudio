@@ -86,7 +86,7 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
     cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", payload);
 
 #ifdef ESP_PLATFORM
-    ESP_LOGI(TAG, "DIAG-EVENT: %s", buf);
+    ESP_LOGI(TAG, "DIAG-EVENT: %s", buf);  // NOLINT(bugprone-branch-clone)
 #else
     printf("DIAG-EVENT: %s\n", buf);
 #endif
@@ -302,7 +302,7 @@ cmd_status_t cmd_process(void)
     if (s_cmd_line_len + to_copy >= sizeof(s_cmd_line_buf))
     {
 #ifdef ESP_PLATFORM
-        ESP_LOGW(TAG, "cmd_process: line buffer overflow, resetting buffer");
+        ESP_LOGW(TAG, "cmd_process: line buffer overflow, resetting buffer");  // NOLINT(bugprone-branch-clone)
 #endif
         s_cmd_line_len = 0;
         to_copy = sizeof(s_cmd_line_buf) - 1;

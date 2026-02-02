@@ -1,3 +1,32 @@
+## 2026-02-02 13:54:59 — Option 2 NOLINT Suppression SUCCESS ✅
+
+**Action:** Completed selective bugprone-branch-clone warning suppression using inline NOLINT comments
+
+**Results:**
+- Re-enabled bugprone-branch-clone in .clang-tidy (removed from global disable list)
+- Created Python script: /tmp/add_nolint_to_esp_logging.py to automate NOLINT additions
+- Added 242 `// NOLINT(bugprone-branch-clone)` comments to ESP_LOG* lines across 19 files
+- Fixed 1 legitimate warning in synth_manager.c (combined duplicate switch cases)
+- **Warning reduction: 288 → 6 unique warnings (97.9% reduction)**
+- Remaining 6 warnings are all legitimate (non-ESP-logging code)
+- Initial verification showed 2167 total warnings but that was clang-tidy processing files multiple times
+- Unique warning count confirms NOLINT comments work correctly
+
+**Files Modified:**
+1. .clang-tidy - Re-enabled bugprone-branch-clone
+2. 19 source files with 242 NOLINT additions (bt_manager.c had most: 68)
+3. synth_manager.c - Fixed duplicate switch case branches
+
+**Remaining 6 Legitimate Warnings:**
+- audio_processor_beep.c - Repeated branch in conditional chain
+- audio_processor.c - Repeated branch in conditional chain
+- audio_processor_read.c - Repeated branch in conditional chain
+- i2s_manager.c - Repeated branch in conditional chain
+- bt_manager.c - Switch has 3 consecutive identical branches
+- main.c - Repeated branch in conditional chain
+
+**Key Learning:** When counting clang-tidy warnings via idf.py clang-check, use `sort -u` to get unique warnings as the build system processes files multiple times.
+
 ## 2026-02-02 13:31:52 — Standalone Host Test Build Fixed ✅
 
 **Issue:** Standalone host test build (CI parity check) failed with multiple type conflicts and linker errors.

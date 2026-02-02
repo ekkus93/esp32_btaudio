@@ -16,8 +16,7 @@ static int synth_bytes_per_sample(audio_bit_depth_t bit_depth)
 	switch (bit_depth) {
 	case AUDIO_BIT_DEPTH_16:
 		return 2;
-	case AUDIO_BIT_DEPTH_24:
-		return 4; /* store in 32-bit container */
+	case AUDIO_BIT_DEPTH_24:  // Stored in 32-bit container
 	case AUDIO_BIT_DEPTH_32:
 		return 4;
 	default:

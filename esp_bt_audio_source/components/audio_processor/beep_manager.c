@@ -155,7 +155,7 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 
 	const size_t sample_bytes = bytes_per_sample(cfg->bit_depth);
 	if (sample_bytes == 0) {
-		ESP_LOGW(TAG, "unsupported bit depth %d", (int)cfg->bit_depth);
+		ESP_LOGW(TAG, "unsupported bit depth %d", (int)cfg->bit_depth);  // NOLINT(bugprone-branch-clone)
 		return ESP_ERR_NOT_SUPPORTED;
 	}
 
@@ -196,7 +196,7 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 
 	const uint32_t sample_rate = (uint32_t)cfg->sample_rate;
 	if (sample_rate == 0U) {
-		ESP_LOGW(TAG, "invalid sample rate");
+		ESP_LOGW(TAG, "invalid sample rate");  // NOLINT(bugprone-branch-clone)
 		BEEP_ENTER_CRITICAL();
 		s_state = BEEP_STATE_STOPPED;
 		BEEP_EXIT_CRITICAL();
@@ -226,7 +226,7 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 
 	uint8_t *chunk = heap_caps_malloc((size_t)AUDIO_CHUNK_BLOCK_BYTES, MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
 	if (chunk == NULL) {
-		ESP_LOGW(TAG, "beep_manager_play: failed to allocate chunk buffer");
+		ESP_LOGW(TAG, "beep_manager_play: failed to allocate chunk buffer");  // NOLINT(bugprone-branch-clone)
 		BEEP_ENTER_CRITICAL();
 		s_state = BEEP_STATE_STOPPED;
 		BEEP_EXIT_CRITICAL();
@@ -306,18 +306,18 @@ esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_co
 			/* Diagnostic: show descriptor usage and a snapshot to aid debugging of
 			 * "no free blocks" enqueue failures. */
 			size_t used = audio_descriptor_used();
-			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u q_used=%u (timed out)", (unsigned)tag_id, (unsigned)used);
+			ESP_LOGW(TAG, "beep enqueue failed tag_id=%u q_used=%u (timed out)", (unsigned)tag_id, (unsigned)used);  // NOLINT(bugprone-branch-clone)
 			audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
 			size_t captured = 0;
 			esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
 			if (sret == ESP_OK && captured > 0) {
 				for (size_t i = 0; i < captured; ++i) {
-					ESP_LOGI(TAG, "beep queued[%u] tag=%d id=%u len=%u", (unsigned)i, (int)snap[i].tag, (unsigned)snap[i].tag_id, (unsigned)snap[i].len);
+					ESP_LOGI(TAG, "beep queued[%u] tag=%d id=%u len=%u", (unsigned)i, (int)snap[i].tag, (unsigned)snap[i].tag_id, (unsigned)snap[i].len);  // NOLINT(bugprone-branch-clone)
 				}
 			} else if (sret != ESP_OK) {
-				ESP_LOGW(TAG, "beep: audio_descriptor_snapshot failed: %d", (int)sret);
+				ESP_LOGW(TAG, "beep: audio_descriptor_snapshot failed: %d", (int)sret);  // NOLINT(bugprone-branch-clone)
 			} else {
-				ESP_LOGI(TAG, "beep: no queued descriptors captured (captured=0)");
+				ESP_LOGI(TAG, "beep: no queued descriptors captured (captured=0)");  // NOLINT(bugprone-branch-clone)
 			}
 			enqueue_failed = true;
 			break;

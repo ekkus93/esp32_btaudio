@@ -91,7 +91,7 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
     int streaming = bt_get_streaming_state_int();
     int mgr_conn = 0;
     mgr_conn = bt_manager_is_connected();
-    ESP_LOGI(TAG, "DIAG-BEEP: bt_get_connection_state=%d bt_get_streaming_state_int=%d bt_manager_conn=%d", conn, streaming, mgr_conn);
+    ESP_LOGI(TAG, "DIAG-BEEP: bt_get_connection_state=%d bt_get_streaming_state_int=%d bt_manager_conn=%d", conn, streaming, mgr_conn);  // NOLINT(bugprone-branch-clone)
     printf("DIAG-BEEP: bt_get_connection_state=%d bt_get_streaming_state_int=%d bt_manager_conn=%d\n", conn, streaming, mgr_conn);
     if (!((conn == 1) || (streaming == 1) || (mgr_conn == 1)))
     {
@@ -141,7 +141,7 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         int start_res = bt_manager_start_audio();
         if (start_res != 0)
         {
-            ESP_LOGW(TAG, "BEEP: bt_manager_start_audio failed (%d)", start_res);
+            ESP_LOGW(TAG, "BEEP: bt_manager_start_audio failed (%d)", start_res);  // NOLINT(bugprone-branch-clone)
             cmd_send_response("ERR", "BEEP", "FAILED", "START_AUDIO");
             return CMD_SUCCESS;
         }
@@ -160,7 +160,7 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
     if (_beep_res == ESP_OK) {
         cmd_send_response("OK", "BEEP", "SENT", NULL);
     } else {
-        ESP_LOGW(TAG, "BEEP: audio_processor_beep_tone() failed err=%d", (int)_beep_res);
+        ESP_LOGW(TAG, "BEEP: audio_processor_beep_tone() failed err=%d", (int)_beep_res);  // NOLINT(bugprone-branch-clone)
         (void)audio_processor_dump_tag_queue(8, NULL);
         cmd_send_response("ERR", "BEEP", "FAILED", NULL);
     }

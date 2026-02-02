@@ -61,7 +61,7 @@ esp_err_t audio_processor_emit_diag_summary(void)
     uint32_t tag_miss = audio_processor_test_get_tag_miss_count();
     size_t queue_free = audio_processor_queue_free_bytes();
 
-    ESP_LOGI(TAG, "AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u queue_free=%zu underruns=%u overruns=%u",
+    ESP_LOGI(TAG, "AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u queue_free=%zu underruns=%u overruns=%u",  // NOLINT(bugprone-branch-clone)
              ops, bytes, timeouts, (unsigned)tag_miss, queue_free,
              (unsigned)s_audio_stats.buffer_underruns,
              (unsigned)s_audio_stats.buffer_overruns);
@@ -84,7 +84,7 @@ void audio_processor_arm_probe(size_t n_entries)
     }
     __atomic_store_n(&s_probe_captured, 0U, __ATOMIC_RELAXED);
     __atomic_store_n(&s_probe_target, (unsigned)n_entries, __ATOMIC_RELAXED);
-    ESP_LOGI(TAG, "I2S probe armed for %u entries", (unsigned)n_entries);
+    ESP_LOGI(TAG, "I2S probe armed for %u entries", (unsigned)n_entries);  // NOLINT(bugprone-branch-clone)
 }
 
 esp_err_t audio_processor_emit_probe(void)
@@ -96,16 +96,16 @@ esp_err_t audio_processor_emit_probe(void)
     }
 
     if (captured == 0) {
-        ESP_LOGI(TAG, "I2S probe: no entries captured");
+        ESP_LOGI(TAG, "I2S probe: no entries captured");  // NOLINT(bugprone-branch-clone)
         printf("I2S-PROBE: none\n");
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "I2S probe: captured=%u target=%u", captured, target);
+    ESP_LOGI(TAG, "I2S probe: captured=%u target=%u", captured, target);  // NOLINT(bugprone-branch-clone)
     printf("I2S-PROBE: captured=%u\n", captured);
     for (unsigned i = 0; i < captured && i < I2S_PROBE_MAX_ENTRIES; ++i) {
         i2s_probe_entry_t *entry = &s_probe_buf[i];
-        ESP_LOGI(TAG, "I2S-PROBE-ENTRY: idx=%u before=%lld after=%lld dur=%u req=%zu got=%zu err=%d",
+        ESP_LOGI(TAG, "I2S-PROBE-ENTRY: idx=%u before=%lld after=%lld dur=%u req=%zu got=%zu err=%d",  // NOLINT(bugprone-branch-clone)
                  i,
                  (long long)entry->t_before_us,
                  (long long)entry->t_after_us,
@@ -140,17 +140,17 @@ esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
     }
 
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "AUDIO-TAG-DUMP: snapshot failed (%s)", esp_err_to_name(err));
+        ESP_LOGW(TAG, "AUDIO-TAG-DUMP: snapshot failed (%s)", esp_err_to_name(err));  // NOLINT(bugprone-branch-clone)
         return err;
     }
 
     if (captured == 0) {
-        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: queue empty");
+        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: queue empty");  // NOLINT(bugprone-branch-clone)
         return ESP_OK;
     }
 
     for (size_t i = 0; i < captured; ++i) {
-        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: idx=%zu tag=%d id=%u len=%zu",
+        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: idx=%zu tag=%d id=%u len=%zu",  // NOLINT(bugprone-branch-clone)
                  i,
                  (int)snapshot[i].tag,
                  (unsigned)snapshot[i].tag_id,
@@ -190,7 +190,7 @@ void diag_dump_bytes(const void* data, size_t len, const char* tag)
             line[pos++] = ' ';
         }
         line[(pos < sizeof(line)) ? pos : (sizeof(line) - 1U)] = '\0';
-        ESP_LOGI(TAG, "%s", line);
+        ESP_LOGI(TAG, "%s", line);  // NOLINT(bugprone-branch-clone)
         off += row;
     }
 }

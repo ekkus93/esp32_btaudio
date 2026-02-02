@@ -502,7 +502,7 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
         return CMD_SUCCESS;
     }
 #ifdef ESP_PLATFORM
-    ESP_LOGI(TAG, "DIAG-DEBUG-ENTRY subcmd=%s param_count=%d", ctx->params[0], ctx->param_count);
+    ESP_LOGI(TAG, "DIAG-DEBUG-ENTRY subcmd=%s param_count=%d", ctx->params[0], ctx->param_count);  // NOLINT(bugprone-branch-clone)
 #else
     printf("DIAG-DEBUG-ENTRY subcmd=%s param_count=%d\n", ctx->params[0], ctx->param_count);
 #endif
@@ -544,7 +544,7 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
             }
             cmd_safe_copy(s_cmd_mock_pairing_addr, sizeof(s_cmd_mock_pairing_addr), mac);
 #ifdef ESP_PLATFORM
-            ESP_LOGI(TAG, "DIAG-DEBUG-MOCK-ADD-BEFORE-SEND: mac=%s", s_cmd_mock_pairing_addr);
+            ESP_LOGI(TAG, "DIAG-DEBUG-MOCK-ADD-BEFORE-SEND: mac=%s", s_cmd_mock_pairing_addr);  // NOLINT(bugprone-branch-clone)
 #else
             printf("DIAG-DEBUG-MOCK-ADD-BEFORE-SEND: mac=%s\n", s_cmd_mock_pairing_addr);
 #endif
@@ -635,7 +635,7 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
         cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_SUMMARY", NULL);
         if (audio_processor_emit_diag_summary() != ESP_OK)
         {
-            ESP_LOGW(TAG, "audio_processor_emit_diag_summary() failed");
+            ESP_LOGW(TAG, "audio_processor_emit_diag_summary() failed");  // NOLINT(bugprone-branch-clone)
         }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
@@ -659,7 +659,7 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
         } else if (strcasecmp(ctx->params[1], "DUMP") == 0) {
             cmd_send_response("OK", "DEBUG", "AUDIO_DIAG_PROBE_DUMP", NULL);
             if (audio_processor_emit_probe() != ESP_OK) {
-                ESP_LOGW(TAG, "audio_processor_emit_probe() failed");
+                ESP_LOGW(TAG, "audio_processor_emit_probe() failed");  // NOLINT(bugprone-branch-clone)
             }
         } else {
             cmd_send_response("ERR", "DEBUG", "AUDIO_DIAG_PROBE_BAD_PARAM", ctx->params[1]);

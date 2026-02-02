@@ -47,7 +47,7 @@ static void audio_processor_beep_done_cb(void *ctx)
         s_trace_next_read_call = true; /* log next read summary once */
     }
 
-    ESP_LOGI(TAG, "audio_processor_beep: generation completed");
+    ESP_LOGI(TAG, "audio_processor_beep: generation completed");  // NOLINT(bugprone-branch-clone)
     printf("DIAG-BEEP-DONE\n");
 }
 
@@ -64,7 +64,7 @@ static void log_queue_snapshot_on_beep_failure(const char *reason)
     size_t captured = 0;
     esp_err_t sret = audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured);
     if (sret != ESP_OK) {
-        ESP_LOGW(TAG,
+        ESP_LOGW(TAG,  // NOLINT(bugprone-branch-clone)
                  "audio_processor_beep: snapshot failed reason=%s err=%s used=%u",
                  reason,
                  esp_err_to_name(sret),
@@ -101,7 +101,7 @@ static void log_queue_snapshot_on_beep_failure(const char *reason)
         }
     }
 
-    ESP_LOGW(TAG,
+    ESP_LOGW(TAG,  // NOLINT(bugprone-branch-clone)
              "audio_processor_beep: queue snapshot reason=%s used=%u captured=%u tags"
              " {wav=%u cap=%u synth=%u beep=%u invalid=%u other=%u}",
              reason,
@@ -134,26 +134,26 @@ static bool wait_for_queue_empty(TickType_t max_wait_ticks)
 
 esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (!s_is_initialized) {
-        ESP_LOGW(TAG, "audio_processor_beep: not initialized");
+        ESP_LOGW(TAG, "audio_processor_beep: not initialized");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     if (i2s_manager_is_running()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (I2S active)");
+        ESP_LOGW(TAG, "audio_processor_beep: busy (I2S active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     /* Do not allow beep while WAV/PLAY is active. PLAY owns its path and must
      * not be interrupted by BEEP. */
     if (play_manager_is_active()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (play active)");
+        ESP_LOGW(TAG, "audio_processor_beep: busy (play active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
     if (wav_playback_is_active()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (WAV active)");
+        ESP_LOGW(TAG, "audio_processor_beep: busy (WAV active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -167,7 +167,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     }
     portEXIT_CRITICAL(&s_beep_lock);
     if (beep_active) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (beep active)");
+        ESP_LOGW(TAG, "audio_processor_beep: busy (beep active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -195,7 +195,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     if (!queue_empty && audio_descriptor_used() > 0) {
         log_queue_snapshot_on_beep_failure("pre_beep_queue_not_empty");
         audio_queue_beep_exclusive_end();
-        ESP_LOGW(TAG, "audio_processor_beep: queue not empty after wait (used=%u)", (unsigned)audio_descriptor_used());
+        ESP_LOGW(TAG, "audio_processor_beep: queue not empty after wait (used=%u)", (unsigned)audio_descriptor_used());  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_TIMEOUT;
     }
 
@@ -203,7 +203,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     uint32_t sample_bytes = (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) ? 4U : 2U;
     uint64_t bytes_per_ms = ((uint64_t)s_audio_config.sample_rate * (uint64_t)channels * (uint64_t)sample_bytes) / 1000ULL;
     if (bytes_per_ms == 0) {
-        ESP_LOGW(TAG, "audio_processor_beep: invalid format (bytes_per_ms=0)");
+        ESP_LOGW(TAG, "audio_processor_beep: invalid format (bytes_per_ms=0)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_NO_MEM;
     }
 
@@ -237,7 +237,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     s_last_beep_freq_hz = freq_hz;
 #endif
 
-    ESP_LOGI(TAG, "audio_processor_beep: queued duration_ms=%u freq=%.2f bytes=%zu", (unsigned)duration_ms, freq_hz, bytes_enqueued);
+    ESP_LOGI(TAG, "audio_processor_beep: queued duration_ms=%u freq=%.2f bytes=%zu", (unsigned)duration_ms, freq_hz, bytes_enqueued);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
@@ -248,7 +248,7 @@ esp_err_t audio_processor_beep(uint32_t duration_ms)
 
 bool audio_processor_is_beep_active(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     if (s_beep_remaining_bytes == 0) {
         return false;
     }
@@ -271,7 +271,7 @@ bool audio_processor_is_beep_active(void)
         }
         if (!beep_present) {
             s_beep_remaining_bytes = 0;
-            ESP_LOGW(TAG, "audio_processor_beep: clearing stale busy flag (captured=%u)", (unsigned)captured);
+            ESP_LOGW(TAG, "audio_processor_beep: clearing stale busy flag (captured=%u)", (unsigned)captured);  // NOLINT(bugprone-branch-clone)
             printf("DIAG-BEEP-DONE\n");
             return false;
         }
@@ -290,11 +290,11 @@ size_t audio_processor_test_get_beep_remaining_bytes(void)
 
 void audio_processor_enable_next_beep_diag(void)
 {
-    AUDIO_PROC_LOG_ONCE();
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     s_dump_next_beep_diag = true;
     s_trace_read_until_beep_done = true;
     s_trace_next_read_call = true;
-    ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");
+    ESP_LOGI(TAG, "audio_processor: next-beep diagnostic enabled");  // NOLINT(bugprone-branch-clone)
 }
 
 #ifdef UNIT_TEST

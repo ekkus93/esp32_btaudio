@@ -15,7 +15,7 @@ void wav_playback_begin(void)
     s_wav_pending_bytes = 0;
     s_wav_playback_active = true;
     portEXIT_CRITICAL(&s_wav_lock);
-    ESP_LOGI(TAG, "audio_processor: WAV playback begin (prev synth=%s)", prev ? "ENABLED" : "DISABLED");
+    ESP_LOGI(TAG, "audio_processor: WAV playback begin (prev synth=%s)", prev ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
 }
 
 #if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
@@ -124,9 +124,9 @@ void wav_playback_abort(const char *caller)
              (unsigned long)beep_remaining_before);
 #endif
     if (restored) {
-        ESP_LOGI(TAG, "audio_processor: WAV playback aborted (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
+        ESP_LOGI(TAG, "audio_processor: WAV playback aborted (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
     }
-    ESP_LOGI(TAG, "audio_processor: wav_playback_abort called (caller=%s) -> s_force_synth=%s s_beep_remaining=%zu",
+    ESP_LOGI(TAG, "audio_processor: wav_playback_abort called (caller=%s) -> s_force_synth=%s s_beep_remaining=%zu",  // NOLINT(bugprone-branch-clone)
              (caller != NULL) ? caller : "<unknown>",
              s_force_synth ? "ENABLED" : "DISABLED",
              s_beep_remaining_bytes);
@@ -156,9 +156,9 @@ void wav_playback_complete_if_idle(void)
     audio_processor_beep_reset();
 
     if (restored) {
-        ESP_LOGI(TAG, "audio_processor: WAV playback completed (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");
+        ESP_LOGI(TAG, "audio_processor: WAV playback completed (restored synth=%s)", synth_mode ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
     }
-    ESP_LOGI(TAG, "audio_processor: wav_playback_complete_if_idle -> s_force_synth=%s s_beep_remaining=%zu",
+    ESP_LOGI(TAG, "audio_processor: wav_playback_complete_if_idle -> s_force_synth=%s s_beep_remaining=%zu",  // NOLINT(bugprone-branch-clone)
              s_force_synth ? "ENABLED" : "DISABLED",
              s_beep_remaining_bytes);
 }
@@ -177,7 +177,7 @@ void wav_refill_from_manager(void)
     portEXIT_CRITICAL(&s_wav_lock);
 
     if (fill_ret != ESP_OK) {
-        ESP_LOGE(TAG, "wav_refill_from_manager: fill failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));
+        ESP_LOGE(TAG, "wav_refill_from_manager: fill failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));  // NOLINT(bugprone-branch-clone)
         play_manager_abort(false);
         wav_playback_abort(__func__);
     }

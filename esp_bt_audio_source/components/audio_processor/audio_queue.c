@@ -36,21 +36,21 @@ bool audio_chunk_pool_init(void)
 
 	if (s_audio_queue == NULL || s_audio_block_free == NULL || s_audio_block_pool == NULL) {
 		audio_chunk_pool_deinit();
-		ESP_LOGE(TAG, "audio_chunk_pool_init: failed to create queues or pool (%u blocks)", (unsigned)AUDIO_CHUNK_POOL_BLOCKS);
+		ESP_LOGE(TAG, "audio_chunk_pool_init: failed to create queues or pool (%u blocks)", (unsigned)AUDIO_CHUNK_POOL_BLOCKS);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
 	for (size_t i = 0; i < AUDIO_CHUNK_POOL_BLOCKS; ++i) {
 		uint8_t *ptr = s_audio_block_pool + (i * (size_t)AUDIO_CHUNK_BLOCK_BYTES);
 		if (xQueueSend(s_audio_block_free, (const void *)&ptr, 0) != pdTRUE) {
-			ESP_LOGE(TAG, "audio_chunk_pool_init: failed to seed free pool at i=%zu", i);
+			ESP_LOGE(TAG, "audio_chunk_pool_init: failed to seed free pool at i=%zu", i);  // NOLINT(bugprone-branch-clone)
 			audio_chunk_pool_deinit();
 			return false;
 		}
 	}
 
 	atomic_store_explicit(&s_tag_counter, 0, memory_order_seq_cst);
-	ESP_LOGI(TAG, "audio_chunk_pool_init: queue ready (%u blocks)", (unsigned)AUDIO_CHUNK_POOL_BLOCKS);
+	ESP_LOGI(TAG, "audio_chunk_pool_init: queue ready (%u blocks)", (unsigned)AUDIO_CHUNK_POOL_BLOCKS);  // NOLINT(bugprone-branch-clone)
 	return true;
 }
 
@@ -88,7 +88,7 @@ void audio_chunk_release_block(uint8_t *ptr)
 		return;
 	}
 	if (xQueueSend(s_audio_block_free, (const void *)&ptr, 0) != pdTRUE) {
-		ESP_LOGW(TAG, "audio_chunk_release_block: free queue full, dropping block %p", ptr);
+		ESP_LOGW(TAG, "audio_chunk_release_block: free queue full, dropping block %p", ptr);  // NOLINT(bugprone-branch-clone)
 	}
 }
 
@@ -105,7 +105,7 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
 	uint8_t *block = audio_chunk_alloc_block(wait_ticks);
 	if (block == NULL) {
-		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes: no free blocks len=%u tag=%d", (unsigned)len, (int)tag);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes: no free blocks len=%u tag=%d", (unsigned)len, (int)tag);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
@@ -121,7 +121,7 @@ bool audio_chunk_enqueue_bytes(const uint8_t *data, size_t len, audio_source_tag
 
 	if (xQueueSend(s_audio_queue, &chunk, wait_ticks) != pdTRUE) {
 		audio_chunk_release_block(block);
-		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes: queue full len=%u tag=%d", (unsigned)copy_len, (int)tag);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes: queue full len=%u tag=%d", (unsigned)copy_len, (int)tag);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
@@ -148,7 +148,7 @@ bool audio_chunk_enqueue_block(uint8_t *block, size_t len, audio_source_tag_t ta
 
 	if (xQueueSend(s_audio_queue, &chunk, wait_ticks) != pdTRUE) {
 		audio_chunk_release_block(block);
-		ESP_LOGW(TAG, "audio_chunk_enqueue_block: queue full len=%u tag=%d", (unsigned)chunk.len, (int)tag);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_block: queue full len=%u tag=%d", (unsigned)chunk.len, (int)tag);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
@@ -168,7 +168,7 @@ bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_so
 	const TickType_t wait_ticks = pdMS_TO_TICKS(5);
 	uint8_t *block = audio_chunk_alloc_block(wait_ticks);
 	if (block == NULL) {
-		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: no free blocks len=%u tag=%d id=%u", (unsigned)len, (int)tag, (unsigned)tag_id);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: no free blocks len=%u tag=%d id=%u", (unsigned)len, (int)tag, (unsigned)tag_id);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
@@ -184,7 +184,7 @@ bool audio_chunk_enqueue_bytes_with_id(const uint8_t *data, size_t len, audio_so
 
 	if (xQueueSend(s_audio_queue, &chunk, wait_ticks) != pdTRUE) {
 		audio_chunk_release_block(block);
-		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: queue full len=%u tag=%d id=%u", (unsigned)copy_len, (int)tag, (unsigned)tag_id);
+		ESP_LOGW(TAG, "audio_chunk_enqueue_bytes_with_id: queue full len=%u tag=%d id=%u", (unsigned)copy_len, (int)tag, (unsigned)tag_id);  // NOLINT(bugprone-branch-clone)
 		return false;
 	}
 
@@ -232,7 +232,7 @@ esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t
 		return ESP_ERR_INVALID_ARG;
 	}
 	if (s_audio_queue == NULL) {
-		ESP_LOGW(TAG, "audio_descriptor_snapshot: queue not initialized");
+		ESP_LOGW(TAG, "audio_descriptor_snapshot: queue not initialized");  // NOLINT(bugprone-branch-clone)
 		return ESP_ERR_INVALID_STATE;
 	}
 
@@ -243,7 +243,7 @@ esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t
 
 	QueueHandle_t temp = xQueueCreate(waiting, sizeof(audio_chunk_t));
 	if (temp == NULL) {
-		ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to allocate temp queue entries=%u", (unsigned)waiting);
+		ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to allocate temp queue entries=%u", (unsigned)waiting);  // NOLINT(bugprone-branch-clone)
 		return ESP_ERR_NO_MEM;
 	}
 
@@ -256,14 +256,14 @@ esp_err_t audio_descriptor_snapshot(audio_chunk_t *out, size_t max_items, size_t
 			out[captured++] = chunk;
 		}
 		if (xQueueSend(temp, &chunk, 0) != pdTRUE) {
-			ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to mirror entry idx=%u", (unsigned)captured);
+			ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to mirror entry idx=%u", (unsigned)captured);  // NOLINT(bugprone-branch-clone)
 			break;
 		}
 		++dequeued;
 	}
 	while (xQueueReceive(temp, &chunk, 0) == pdTRUE) {
 		if (xQueueSend(s_audio_queue, &chunk, 0) != pdTRUE) {
-			ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to restore entry tag=%d id=%u", (int)chunk.tag, (unsigned)chunk.tag_id);
+			ESP_LOGW(TAG, "audio_descriptor_snapshot: failed to restore entry tag=%d id=%u", (int)chunk.tag, (unsigned)chunk.tag_id);  // NOLINT(bugprone-branch-clone)
 		}
 	}
 	xTaskResumeAll();
