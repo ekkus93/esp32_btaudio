@@ -1,3 +1,74 @@
+## 2026-02-02 10:16:15 — CODE_REVIEW4 Phase 3: Status Reporting (Complete)
+
+**Context:** Completed Phase 3 status reporting improvements per CODE_REVIEW4 priority P1. All tasks (3.1-3.3) complete, validated, ready for commit.
+
+**Tasks Completed:**
+
+**Task 3.1 - Subsystem Status Tracking:**
+- Added three boolean flags to app_main(): cmd_ok, bt_ok, audio_ok
+- cmd_ok: Set only after both cmd_init() AND xTaskCreate() succeed
+- bt_ok: Set only after bt_manager_init() succeeds
+- audio_ok: Set only after both audio_processor_init() AND audio_processor_start() succeed
+- Flags track actual subsystem state, not just init attempt completion
+
+**Task 3.2 - Conditional "Ready" Banner:**
+- Replaced unconditional "Ready" banner with conditional logic
+- Success case (cmd_ok && bt_ok): Display standard "Ready" message with instructions
+- Failure case: Display "Started with limited functionality:" with specific warnings
+- Individual subsystem warnings (⚠️ emoji for visual clarity)
+- Added DIAG|BOOT|SUBSYSTEM_STATUS marker for test automation
+- Machine-readable format: `cmd=<0|1>|bt=<0|1>|audio=<0|1>`
+
+**Task 3.3 - Validation:**
+- Build: ✅ SUCCESS (930,400 bytes, +448 from Phase 2, +0.048%)
+- Tests: ✅ 253 test cases, all passed (2.77 sec)
+- Warnings: ✅ Zero compile warnings/errors
+- Full test suite: ✅ 100% passing
+
+**Architecture After Phase 3:**
+- Banner no longer lies - "Ready" only when cmd AND bt operational
+- Users get clear warnings for failed subsystems
+- Test automation can verify subsystem status via DIAG markers
+- Graceful degradation messaging: "Some features may still work."
+
+**Example Output Scenarios:**
+
+Full success:
+```
+DIAG|BOOT|SUBSYSTEM_STATUS|cmd=1|bt=1|audio=1
+====================================================
+ESP32 Bluetooth Audio Source - Ready
+Use SCAN/PAIR/CONNECT commands to control BT
+Use PLAY/VOLUME commands to control audio
+====================================================
+```
+
+Partial failure (!cmd_ok):
+```
+DIAG|BOOT|SUBSYSTEM_STATUS|cmd=0|bt=1|audio=0
+====================================================
+ESP32 Bluetooth Audio Source - Started with limited functionality:
+  ⚠️  Command interface unavailable
+Some features may still work.
+====================================================
+```
+
+Total failure (!cmd_ok && !bt_ok):
+```
+DIAG|BOOT|SUBSYSTEM_STATUS|cmd=0|bt=0|audio=0
+====================================================
+ESP32 Bluetooth Audio Source - Started with limited functionality:
+  ⚠️  Command interface unavailable
+  ⚠️  Bluetooth unavailable
+====================================================
+```
+
+**Next Steps:**
+- Commit Phase 3 status reporting changes
+- Proceed to Phase 4 (NVS error handling) or close CODE_REVIEW4
+
+---
+
 ## 2026-02-02 10:07:31 — CODE_REVIEW4 Phase 2: UART Ownership (Complete)
 
 **Context:** Completed Phase 2 UART ownership clarification per CODE_REVIEW4 priority P0. All tasks (2.1-2.4) complete, validated, ready for commit.

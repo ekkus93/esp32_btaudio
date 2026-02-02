@@ -145,6 +145,15 @@ static audio_config_t load_audio_boot_config(void)
 
 void app_main(void)
 {
+    /* Subsystem initialization status tracking (CODE_REVIEW4 Task 3.1).
+     * WHY: "Ready" banner should reflect actual subsystem state, not just
+     * completion of init sequence. If cmd or BT fails, banner would be
+     * misleading. These flags enable accurate status reporting.
+     * Updated as each subsystem initializes successfully. */
+    bool cmd_ok = false;
+    bool bt_ok = false;
+    bool audio_ok = false;
+
     /* Free BLE controller memory to give Classic BT more DRAM.
      * WHY: This application uses only Bluetooth Classic (A2DP), not BLE.
      * ESP32 memory is limited; releasing unused BLE controller memory (21KB+)
@@ -296,6 +305,8 @@ void app_main(void)
 #ifdef CONFIG_IDF_TARGET_ESP32
             esp_rom_printf("INFO|CMD_IF|CMD_TASK_STARTED\r\n");
 #endif
+            // Mark command interface as fully operational (CODE_REVIEW4 Task 3.1)
+            cmd_ok = true;
         }
     }
 #endif
@@ -320,6 +331,8 @@ void app_main(void)
         ESP_LOGE(BT_AV_TAG, "bt_manager_init failed");
     } else {
         ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized - SCAN/PAIR commands ready");
+        // Mark Bluetooth subsystem as operational (CODE_REVIEW4 Task 3.1)
+        bt_ok = true;
     }
 
     /* ========== Audio Initialization ==========
@@ -367,6 +380,8 @@ void app_main(void)
                            (int)aconf.sample_rate,
                            (int)aconf.bit_depth,
                            (int)aconf.channels);
+                    // Mark audio subsystem as operational (CODE_REVIEW4 Task 3.1)
+                    audio_ok = true;
                 }
             }
         } else {
@@ -376,10 +391,48 @@ void app_main(void)
     }
 #endif
     
+    /* ========== Subsystem Status Banner (CODE_REVIEW4 Task 3.2) ==========
+     * WHY CONDITIONAL: Banner should accurately reflect actual subsystem state.
+     * Claiming "Ready" when cmd or BT failed misleads users and test harnesses.
+     * 
+     * STATUS TRACKING: Flags (cmd_ok, bt_ok, audio_ok) set during init sequence.
+     * Only true if both init AND task/start succeeded (Task 3.1).
+     * 
+     * DIAG MARKER: Machine-readable subsystem status for test automation.
+     */
+    
+    /* Emit machine-readable subsystem status for test harness */
+#ifdef ESP_PLATFORM
+    printf("DIAG|BOOT|SUBSYSTEM_STATUS|cmd=%d|bt=%d|audio=%d\r\n", 
+           cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
+#ifdef CONFIG_IDF_TARGET_ESP32
+    esp_rom_printf("DIAG|BOOT|SUBSYSTEM_STATUS|cmd=%d|bt=%d|audio=%d\r\n", 
+                   cmd_ok ? 1 : 0, bt_ok ? 1 : 0, audio_ok ? 1 : 0);
+#endif
+#endif
+
     ESP_LOGI(BT_AV_TAG, "====================================================");
-    ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");
-    ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");
-    ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");
+    
+    /* Conditional banner based on actual subsystem status */
+    if (cmd_ok && bt_ok) {
+        /* All critical subsystems operational - device fully functional */
+        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");
+        ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");
+        ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");
+    } else {
+        /* One or more subsystems failed - warn user of limited functionality */
+        ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Started with limited functionality:");
+        if (!cmd_ok) {
+            ESP_LOGI(BT_AV_TAG, "  ⚠️  Command interface unavailable");
+        }
+        if (!bt_ok) {
+            ESP_LOGI(BT_AV_TAG, "  ⚠️  Bluetooth unavailable");
+        }
+        if (cmd_ok || bt_ok) {
+            ESP_LOGI(BT_AV_TAG, "Some features may still work.");
+        }
+    }
+    
     ESP_LOGI(BT_AV_TAG, "====================================================");
     
     /* app_main() returns to FreeRTOS scheduler.
