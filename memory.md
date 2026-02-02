@@ -3041,3 +3041,116 @@ bash tools/run_clang_tidy_xtensa.sh 'main/main\.c$|components/command_interface/
 - Phase 6: Already committed and pushed (incremental commits during phases)
 - Phase 7: Verify CI (GitHub Actions)
 - Close CODE_REVIEW3
+
+---
+
+## 2026-02-01 20:42:09 — CODE_REVIEW3: Documentation Commit (Phase 6 Task 6.4)
+
+**Commit:** d49ced4e - "docs: complete CODE_REVIEW3 documentation (Phase 5)"
+
+**Context:** Final documentation commit completing CODE_REVIEW3. All code changes already committed and pushed in Phases 1-3 (commits 0e1275cd, a334e7f4, 43a465e7, 8f1347a4). This commit finalizes documentation updates from Phase 5.
+
+**Files Committed:**
+1. **.gitignore** - Added `**/warnings.txt` pattern
+   - Prevents accidental commit of clang-tidy diagnostic output
+   - Cleanup from Phase 3 clang-tidy validation work
+   
+2. **memory.md** - Comprehensive CODE_REVIEW3 summary
+   - All phases documented (P0/P1/P2 fixes)
+   - All decisions logged (UART fail-fast, cmd graceful degrade, ESP include policy)
+   - 4 code commits tracked with hashes and descriptions
+   - Binary size progression (+976 bytes total, justified)
+   - Test results (253/253 passing, 0 warnings)
+   - Deferred work documented (Phase 4 error path testing with rationale)
+   
+3. **ARCH.md** - Updated subsystems list
+   - Added CMD to subsystems: "BT, Audio, CMD" (was "BT, Audio")
+   - Added CMD failure example (graceful degradation)
+   - Clarifies CMD uses subsystem tier error handling (not platform)
+   
+4. **CODE_REVIEW3_TODO.md** - Task completion tracking
+   - Tasks 5.1-5.4: Documentation & review marked complete
+   - Tasks 6.1-6.3: Code commits already pushed (noted)
+   - Task 6.4: This documentation commit
+   - Ready for Task 6.5 (push) and Phase 7 (CI verification)
+
+**Phase 5-6 Summary:**
+- **Phase 5 (Documentation):** Tasks 5.1-5.4 complete
+  - Verified main.c comments accuracy (no changes needed)
+  - Updated ARCH.md with CMD subsystem
+  - Added comprehensive memory.md summary
+  - Completed self-review checklist (all criteria met)
+  
+- **Phase 6 (Commits):** Tasks 6.1-6.4 complete
+  - Task 6.1: Phase 1 commit (0e1275cd) already pushed
+  - Task 6.2: Phase 2 commit (a334e7f4) already pushed
+  - Task 6.3: Phase 3 commits (43a465e7, 8f1347a4) already pushed
+  - Task 6.4: Documentation commit (d49ced4e) ✅ COMPLETE
+
+**Remaining Work:**
+- Task 6.5: Push documentation commit to origin/master
+- Task 7.1: Verify GitHub Actions CI passes
+- Task 7.2: Close CODE_REVIEW3 and celebrate 🎉
+
+**Status:** Documentation phase complete. Ready to push and verify CI.
+---
+
+## 2026-02-01 20:59:49 — CODE_REVIEW3: Final Closure ✅
+
+**Context:** Completed all CODE_REVIEW3 phases (P0/P1/P2 fixes + documentation). All commits pushed, CI verified passing. Final closure and celebration.
+
+**Final Status:**
+
+All Success Criteria Met ✅:
+- ✅ All P0 issues fixed (UART fail-fast, cmd_init graceful degrade, xTaskCreate checked)
+- ✅ All P1 issues fixed (unused include removed)
+- ✅ All P2 issues fixed (human-readable error codes, impact fields)
+- ✅ Code matches documented contracts (verified Task 5.1)
+- ✅ All tests passing (253/253, 0 failures, 0 ignored)
+- ✅ Binary size acceptable (+976 bytes = 0.1%, justified)
+- ✅ Documentation updated (memory.md, ARCH.md, comments)
+- ✅ All changes committed and pushed (5 commits to origin/master)
+- ✅ CI passing (all GitHub Actions workflows green, verified Task 7.1)
+
+**All Commits (in order):**
+1. **0e1275cd** - Phase 1: P0 critical fixes (UART, cmd_init, xTaskCreate)
+2. **a334e7f4** - Phase 2: P1 cleanup (unused includes)
+3. **43a465e7** - Phase 3: P2 observability code (cmd_status_to_name, impact fields)
+4. **8f1347a4** - Phase 3: Documentation update
+5. **d49ced4e** - Phase 5: Final documentation (ARCH.md, memory.md, .gitignore)
+
+**Final Metrics:**
+- Build: Clean (0 errors, 0 warnings in modified files)
+- Tests: 253/253 passing (36 CTest + 217 Unity cases)
+- Clang-tidy: Zero warnings (main.c, command_interface.c)
+- Binary size: 928,896 bytes (baseline 927,920 → +976 bytes = +0.1%)
+- GitHub Actions CI: All workflows passing ✅
+
+**Deferred Work:**
+- Phase 4 error path testing (documented in memory.md Phase 3 entry)
+- Rationale: Mock complexity vs value trade-off; comprehensive test suite provides confidence
+
+**Lessons Learned:**
+1. **Policy enforcement matters:** UART was documented as platform service but treated as subsystem - code must match docs
+2. **Subsystem distinction critical:** Platform (NVS, UART, BLE mem) fail-fast; subsystems (BT, Audio, CMD) graceful degrade
+3. **Observability is valuable:** Human-readable error codes + impact fields make field diagnostics practical
+4. **Test-driven confidence:** 253 passing tests + clean clang-tidy = safe refactoring foundation
+5. **Incremental commits:** 5 commits with clear separation (P0 → P1 → P2 → docs) easier to review/rollback
+
+**Impact Summary:**
+- ✅ Eliminated 3 P0 "silent failure" scenarios (boots but broken)
+- ✅ Enforced documented error handling contracts (fail-fast vs graceful degrade)
+- ✅ Improved field diagnostics (human-readable codes + impact fields)
+- ✅ Code hygiene improved (unused includes removed)
+- ✅ Comprehensive documentation (memory.md, ARCH.md, inline comments)
+- ✅ Zero regressions (all tests maintained passing status)
+- ✅ Minimal binary cost (+976 bytes for safety + observability)
+
+**Next Steps:**
+- Monitor field deployments for error marker occurrences
+- Consider Phase 4 error path testing if cmd_init gains failure paths
+- Apply lessons to future subsystem development (graceful degrade pattern)
+
+**Outcome:** CODE_REVIEW3 COMPLETE! 🎉 All objectives achieved, all commits pushed, CI passing, ready for production.
+
+---

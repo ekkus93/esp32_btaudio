@@ -908,57 +908,102 @@ Fixes CODE_REVIEW3 P0 issues (ChatGPT 5.2 + Copilot review).
 
 **Status:** ✅ Already committed and pushed during Phase 3 validation (Task 3.3)
 
-### Task 6.4: Commit documentation
+### Task 6.4: Commit documentation ✅
+**Completed:** 2026-02-01 20:40:00
 
-```bash
-git add memory.md [ARCH.md if updated]
-git commit -m "docs: document CODE_REVIEW3 error handling fixes"
-```
+**Commit:** d49ced4e - "docs: complete CODE_REVIEW3 documentation (Phase 5)"
 
-### Task 6.5: Push to origin
+**Files committed:**
+- .gitignore: Added `**/warnings.txt` pattern
+- memory.md: Comprehensive CODE_REVIEW3 summary (all phases, decisions, commits)
+- ARCH.md: Added CMD to subsystems list + example
+- CODE_REVIEW3_TODO.md: Tasks 5.1-5.4, 6.1-6.3 marked complete
 
-- [ ] `git push origin master` (or feature branch)
-- [ ] Verify GitHub Actions CI passes
-- [ ] If CI fails: investigate, fix, repeat
+**Content:**
+- All P0/P1/P2 fixes documented
+- All 4 code commits tracked (0e1275cd, a334e7f4, 43a465e7, 8f1347a4)
+- Binary size progression documented (+976 bytes)
+- Test results: 253/253 passing, 0 warnings
+- Deferred work: Phase 4 error path testing with rationale
+
+**Status:** ✅ Documentation commit created, ready to push
+
+### Task 6.5: Push to origin ✅
+**Completed:** 2026-02-01 20:44:00
+
+**Push successful:** d49ced4e → origin/master
+
+**Summary:**
+- Commit: d49ced4e - "docs: complete CODE_REVIEW3 documentation (Phase 5)"
+- Remote: github.com:ekkus93/esp32_btaudio.git
+- Result: ✅ Successfully pushed (8f1347a4..d49ced4e)
+- Objects: 8 pushed, 7 deltas resolved
+- Size: 7.24 KiB
+
+**All CODE_REVIEW3 commits now pushed:**
+1. 0e1275cd - Phase 1 P0 fixes ✅ pushed
+2. a334e7f4 - Phase 2 P1 cleanup ✅ pushed
+3. 43a465e7 - Phase 3 P2 observability (code) ✅ pushed
+4. 8f1347a4 - Phase 3 documentation ✅ pushed
+5. d49ced4e - Phase 5 documentation (final) ✅ pushed
+
+**Next:** Task 7.1 - Verify GitHub Actions CI passes
 
 ---
 
 ## Phase 7: Post-Review
 
-### Task 7.1: Verify GitHub Actions CI
+### Task 7.1: Verify GitHub Actions CI ✅
+**Completed:** 2026-02-01 20:46:00
 
-- [ ] Check GitHub Actions status
-- [ ] All workflows green?
-- [ ] If failures:
-  - Review logs
-  - Fix issues
-  - Push fixes
-  - Re-verify
+**CI Status:** ✅ All workflows passing
 
----
+**Verified:**
+- GitHub Actions workflows for commit d49ced4e (documentation)
+- All CODE_REVIEW3 commits (0e1275cd, a334e7f4, 43a465e7, 8f1347a4, d49ced4e)
+- No failures detected
+- All checks green ✅
 
-### Task 7.2: Close CODE_REVIEW3
+**Result:** CI validation successful - all changes passed automated testing
 
-- [ ] Mark all tasks ✅ COMPLETE
-- [ ] Final summary in memory.md
-- [ ] Archive CODE_REVIEW3_TODO.md or mark complete
-- [ ] Run `play_chime` 🎉
+**Next:** Task 7.2 - Close CODE_REVIEW3
 
 ---
 
-## Success Criteria
+### Task 7.2: Close CODE_REVIEW3 ✅
+**Completed:** 2026-02-01 20:59:49
 
-This CODE_REVIEW3 is **COMPLETE** when:
+- [x] Mark all tasks ✅ COMPLETE
+- [x] Final summary in memory.md
+- [x] Archive CODE_REVIEW3_TODO.md or mark complete
+- [x] Run `play_chime` 🎉
 
-- [ ] All P0 issues fixed (UART, cmd_init, xTaskCreate)
-- [ ] All P1 issues fixed or documented as skipped
-- [ ] All P2 issues fixed or documented as deferred
-- [ ] Code matches documented contracts
-- [ ] All tests passing
-- [ ] Binary size acceptable (or increase justified)
-- [ ] Documentation updated (memory.md, comments)
-- [ ] Changes committed and pushed
-- [ ] CI passing
+**Final Status:** All CODE_REVIEW3 objectives achieved:
+- All P0/P1/P2 issues fixed and committed
+- All 5 commits pushed to origin/master
+- CI passing (all workflows green)
+- Documentation complete
+- Binary size: +976 bytes (0.1%, justified)
+- Tests: 253/253 passing
+- Zero warnings in modified files
+
+**CODE_REVIEW3 COMPLETE!** 🎉
+
+---
+
+## Success Criteria ✅
+
+This CODE_REVIEW3 is **✅ COMPLETE** (2026-02-01 20:59:49):
+
+- [x] All P0 issues fixed (UART, cmd_init, xTaskCreate)
+- [x] All P1 issues fixed or documented as skipped
+- [x] All P2 issues fixed or documented as deferred
+- [x] Code matches documented contracts
+- [x] All tests passing (253/253, 0 failures)
+- [x] Binary size acceptable (or increase justified) - +976 bytes (0.1%)
+- [x] Documentation updated (memory.md, comments, ARCH.md)
+- [x] Changes committed and pushed (5 commits)
+- [x] CI passing (all GitHub Actions workflows green)
 
 ---
 
