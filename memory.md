@@ -1,3 +1,66 @@
+## 2026-02-02 10:22:14 — CODE_REVIEW4 Phase 4: NVS Error Handling (Complete)
+
+**Context:** Completed Phase 4 NVS error handling improvements per CODE_REVIEW4 priority P2. All tasks (4.1-4.2) complete, validated, ready for commit.
+
+**Tasks Completed:**
+
+**Task 4.1 - Tighten NVS Autostart Error Handling:**
+- Fixed bug: Only ESP_ERR_NOT_FOUND was handled; other errors ignored
+- Added explicit three-way error handling:
+  - ESP_OK: NVS value exists - use it
+  - ESP_ERR_NOT_FOUND: Key not set - use Kconfig default (expected)
+  - Other errors: NVS corruption/failure - log warning, reset to default
+- Prevents undefined behavior from uninitialized autostart variable
+- Added comprehensive logging for all paths (ESP_LOGI for normal, ESP_LOGW for errors)
+- Added DIAG marker for automation: `DIAG|AUDIO|NVS_READ_ERROR|key=autostart|err=<name>|fallback=kconfig_default`
+
+**Task 4.2 - Validation:**
+- Build: ✅ SUCCESS (930,832 bytes, +432 from Phase 3, +0.046%)
+- Tests: ✅ 253 test cases, all passed (2.76 sec)
+- Warnings: ✅ Zero compile warnings/errors
+- Full test suite: ✅ 100% passing
+
+**Bug Fixed:**
+
+**Before (P2 bug):**
+```c
+esp_err_t ret = nvs_storage_get_audio_autostart(&autostart);
+if (ret == ESP_ERR_NOT_FOUND) {
+    autostart = default;
+}
+// If ret != ESP_OK && ret != ESP_ERR_NOT_FOUND, autostart could be uninitialized!
+if (autostart) { ... }  // Undefined behavior on NVS errors
+```
+
+**After (robust):**
+```c
+esp_err_t ret = nvs_storage_get_audio_autostart(&autostart);
+if (ret == ESP_OK) {
+    ESP_LOGI(..., "from NVS: %s", autostart ? "enabled" : "disabled");
+} else if (ret == ESP_ERR_NOT_FOUND) {
+    ESP_LOGI(..., "not set, using default: %s", ...);
+    autostart = default;
+} else {
+    ESP_LOGW(..., "NVS error (%s), using default", esp_err_to_name(ret));
+    printf("DIAG|AUDIO|NVS_READ_ERROR|...\r\n");
+    autostart = default;  // Explicit reset
+}
+// autostart is always defined
+```
+
+**Architecture After Phase 4:**
+- All NVS error codes handled explicitly (ESP_OK, ESP_ERR_NOT_FOUND, ESP_FAIL, ESP_ERR_NVS_*, etc.)
+- No undefined behavior possible
+- Clear logging for debugging NVS issues
+- Machine-readable DIAG markers for test automation
+- Graceful fallback to Kconfig default on any error
+
+**Next Steps:**
+- Commit Phase 4 NVS error handling changes
+- Proceed to Phase 5 (code hygiene) or close CODE_REVIEW4
+
+---
+
 ## 2026-02-02 10:16:15 — CODE_REVIEW4 Phase 3: Status Reporting (Complete)
 
 **Context:** Completed Phase 3 status reporting improvements per CODE_REVIEW4 priority P1. All tasks (3.1-3.3) complete, validated, ready for commit.

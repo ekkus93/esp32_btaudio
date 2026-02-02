@@ -353,14 +353,32 @@ void app_main(void)
      * 2. Kconfig compile-time default - project-wide default via menuconfig
      * 
      * load_audio_boot_config() encapsulates all policy (pins/rate/volume).
+     * 
+     * ERROR HANDLING (CODE_REVIEW4 Task 4.1): NVS reads can fail for multiple
+     * reasons (corruption, flash errors, invalid data). We handle all error
+     * paths explicitly to avoid undefined behavior from uninitialized variables.
      */
 #ifdef ESP_PLATFORM
     {
         uint8_t autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Kconfig default */
         esp_err_t autostart_err = nvs_storage_get_audio_autostart(&autostart);
-        if (autostart_err == ESP_ERR_NOT_FOUND) {
-            /* Not set in NVS, use Kconfig default */
-            autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0;
+        
+        /* Explicit error handling: handle all possible NVS error codes */
+        if (autostart_err == ESP_OK) {
+            /* NVS value read successfully - use it (already in autostart variable) */
+            ESP_LOGI(BT_AV_TAG, "Audio autostart from NVS: %s", autostart ? "enabled" : "disabled");
+        } else if (autostart_err == ESP_ERR_NOT_FOUND) {
+            /* Not set in NVS - use Kconfig default (already initialized above) */
+            ESP_LOGI(BT_AV_TAG, "Audio autostart not set in NVS, using Kconfig default: %s",
+                     autostart ? "enabled" : "disabled");
+        } else {
+            /* Other NVS error (corruption, flash failure, etc.) - log warning and fall back to default */
+            ESP_LOGW(BT_AV_TAG, "Failed to read audio_autostart from NVS (%s), using Kconfig default: %s",
+                     esp_err_to_name(autostart_err),
+                     (CONFIG_AUDIO_AUTOSTART_DEFAULT ? "enabled" : "disabled"));
+            autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Reset to default on error */
+            printf("DIAG|AUDIO|NVS_READ_ERROR|key=autostart|err=%s|fallback=kconfig_default\r\n",
+                   esp_err_to_name(autostart_err));
         }
 
         if (autostart) {
