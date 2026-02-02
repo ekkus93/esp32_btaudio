@@ -1,3 +1,53 @@
+## 2026-02-02 12:15:17 — Lint Warning Fixes (Continued - Manual Approach)
+
+**Session Summary:** Successfully fixed **23 additional warnings** using manual file-by-file approach.
+
+**Commits This Session:**
+
+**Commit 1: beep_manager (1 warning) - 8ac8c930**
+- beep_manager.c: `cb` → `callback` parameter rename
+
+**Commit 2: cmd_handlers_audio + nvs_storage (5 warnings) - 5a07beb0**
+- cmd_handlers_audio.c: removed else-after-return
+- cmd_handlers_audio.c: fixed redundant declaration (added proper include)
+- cmd_handlers_audio.c: removed preprocessor-always-true `#if 1` block
+- nvs_storage.c: fixed reserved identifier (removed leading underscore)
+
+**Commit 3: synth_manager + audio_queue (4 warnings) - cd4ce0a6**
+- synth_manager.c: narrowing conversion (explicit cast)
+- audio_queue.c: 3 multilevel pointer conversions (explicit casts)
+
+**Commit 4: miscellaneous warnings (6 warnings) - 47bac60f**
+- play_manager.c: uppercase literal suffix (100.0f → 100.0F)
+- audio_processor_beep.c: isolate declarations (split 6 variables)
+- play_manager.c: non-const parameter (made src_block const)
+- bt_manager.c: signed-char-misuse (cast via unsigned char)
+- audio_util.c: narrowing conversion (explicit cast)
+- beep_manager.h: inconsistent parameter name (cb → callback)
+
+**Commit 5: short identifiers (7 warnings) - d703af79**
+- i2s_manager.c: ok → task_created
+- nvs_storage.h/.c: ws → word_select (2 functions)
+- commands.c: ev → event
+- audio_processor_diag.c: e → entry, b → byte_data
+
+**Progress:**
+- Fixed this session: 23 warnings
+- Total fixed: 248/761 warnings (32.6%)
+- Remaining: 513 in project code
+- 5 commits pushed to GitHub
+- All builds successful ✅
+
+**Warning Categories Remaining:**
+- ~113 short identifiers (down from 120)
+- ~93 cognitive-complexity (excluded per user)
+- 13 easily-swappable-parameters
+- 5 suspicious-call-argument
+- ~2 performance warnings
+- ESP-IDF warnings (excluded)
+
+**Strategy:** Continue with manual approach - focus on genuinely unclear short names and other actionable warnings. Skip idiomatic embedded C patterns like loop indices.
+
 ## 2026-02-02 12:00:54 — Lint Warning Fixes (Short Identifiers + Miscellaneous - Manual Approach)
 
 **Context:** Failed automation attempt. Mass sed/regex renaming of 121 short identifier warnings resulted in 20+ build errors across 10+ files. Reverted all changes. Now using **careful manual file-by-file approach**.

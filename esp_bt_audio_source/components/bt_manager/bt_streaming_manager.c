@@ -55,9 +55,9 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     /* Read from shared audio_processor. audio_processor_read() will
      * return available bytes up to 'len' from its internal audio_queue. */
     size_t bytes_read = 0;
-    esp_err_t r = audio_processor_read(data, (size_t)len, &bytes_read);
-    if (r != ESP_OK) {
-        ESP_LOGW(TAG, "audio_processor_read error: %d", r);
+    esp_err_t result = audio_processor_read(data, (size_t)len, &bytes_read);
+    if (result != ESP_OK) {
+        ESP_LOGW(TAG, "audio_processor_read error: %d", result);
         safe_memset(data, (size_t)len, 0, (size_t)len);
         bytes_read = 0;
     } else if (bytes_read < (size_t)len) {

@@ -38,14 +38,14 @@ cmd_status_t cmd_handle_file(const cmd_context_t *ctx)
         }
     }
 
-    struct stat st = {0};
-    if (stat(fullpath, &st) != 0)
+    struct stat file_stat = {0};
+    if (stat(fullpath, &file_stat) != 0)
     {
         cmd_send_response("ERR", "FILE", "NOT_FOUND", requested);
         return CMD_SUCCESS;
     }
 
-    if (!S_ISREG(st.st_mode))
+    if (!S_ISREG(file_stat.st_mode))
     {
         cmd_send_response("ERR", "FILE", "NOT_FILE", requested);
         return CMD_SUCCESS;
@@ -62,7 +62,7 @@ cmd_status_t cmd_handle_file(const cmd_context_t *ctx)
     }
 
     char data[160];
-    snprintf(data, sizeof(data), "%s,%llu", display_name, (unsigned long long)st.st_size);
+    snprintf(data, sizeof(data), "%s,%llu", display_name, (unsigned long long)file_stat.st_size);
     cmd_send_response("OK", "FILE", "FOUND", data);
     return CMD_SUCCESS;
 }
@@ -144,8 +144,8 @@ cmd_status_t cmd_handle_files(const cmd_context_t *ctx)
             continue;
         }
 
-        struct stat st = {0};
-        if (stat(fullpath, &st) != 0)
+        struct stat file_stat = {0};
+        if (stat(fullpath, &file_stat) != 0)
         {
             char warn_name[CMD_FILES_WARN_NAME_MAX];
             copy_truncated_identifier(name, warn_name, sizeof(warn_name));
@@ -165,7 +165,7 @@ cmd_status_t cmd_handle_files(const cmd_context_t *ctx)
             continue;
         }
 
-        if (!S_ISREG(st.st_mode))
+        if (!S_ISREG(file_stat.st_mode))
         {
             char warn_name[CMD_FILES_WARN_NAME_MAX];
             copy_truncated_identifier(name, warn_name, sizeof(warn_name));
@@ -182,14 +182,14 @@ cmd_status_t cmd_handle_files(const cmd_context_t *ctx)
         char item_name[CMD_FILES_ITEM_NAME_MAX];
         copy_truncated_identifier(name, item_name, sizeof(item_name));
         char line[192];
-        int line_written = snprintf(line, sizeof(line), "%s,%llu", item_name, (unsigned long long)st.st_size);
+        int line_written = snprintf(line, sizeof(line), "%s,%llu", item_name, (unsigned long long)file_stat.st_size);
         if (line_written < 0 || line_written >= (int)sizeof(line))
         {
             cmd_safe_copy(line, sizeof(line), "???,0");
         }
         cmd_send_response("INFO", "FILES", "ITEM", line);
         file_count++;
-        total_size += (unsigned long long)st.st_size;
+        total_size += (unsigned long long)file_stat.st_size;
     }
 
     closedir(dir);

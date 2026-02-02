@@ -378,9 +378,9 @@ void beep_manager_stop(void)
 
 beep_state_t beep_manager_get_state(void)
 {
-	beep_state_t st;
+	beep_state_t state;
 	BEEP_ENTER_CRITICAL();
-	st = s_state;
+	state = s_state;
 	BEEP_EXIT_CRITICAL();
-	return st;
+	return state;
 }

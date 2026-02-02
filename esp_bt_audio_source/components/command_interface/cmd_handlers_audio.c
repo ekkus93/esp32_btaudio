@@ -265,11 +265,11 @@ cmd_status_t cmd_handle_play(const cmd_context_t *ctx)
             return CMD_SUCCESS;
         }
     }
-    esp_err_t r = audio_processor_play_wav(path);
-    if (r == ESP_OK) {
+    esp_err_t result = audio_processor_play_wav(path);
+    if (result == ESP_OK) {
         cmd_send_response("OK", "PLAY", "ENQUEUED", path);
     } else {
-    	cmd_send_response("ERR", "PLAY", esp_err_to_name(r), path);
+    	cmd_send_response("ERR", "PLAY", esp_err_to_name(result), path);
     }
 #else
     (void)mount_err;
