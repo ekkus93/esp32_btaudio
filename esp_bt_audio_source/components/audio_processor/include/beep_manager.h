@@ -26,7 +26,7 @@ esp_err_t beep_manager_init(void);
 void beep_manager_deinit(void);
 
 /* Optional callback invoked when a play request finishes (natural or stopped). */
-void beep_manager_set_done_callback(beep_done_cb_t cb, void *ctx);
+void beep_manager_set_done_callback(beep_done_cb_t callback, void *ctx);
 
 /* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing. */
 /* Generate a beep and report how many bytes were actually enqueued. When

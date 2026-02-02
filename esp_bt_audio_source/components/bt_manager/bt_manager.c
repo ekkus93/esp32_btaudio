@@ -1476,7 +1476,7 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
                           sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
                 safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
                           sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
-                bt_ctx.discovered_devices.devices[idx].rssi = rssi;
+                bt_ctx.discovered_devices.devices[idx].rssi = (int)(unsigned char)rssi;
                 bt_ctx.discovered_devices.count++;
             }
             break;

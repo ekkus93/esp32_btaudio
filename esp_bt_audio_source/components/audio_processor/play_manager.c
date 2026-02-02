@@ -341,7 +341,7 @@ static esp_err_t convert_audio_block(uint8_t *src_block, size_t src_size, size_t
 }
 
 /* Helper: Resample audio */
-static esp_err_t resample_audio_block(uint8_t *src_block, uint8_t *dst_block,
+static esp_err_t resample_audio_block(const uint8_t *src_block, uint8_t *dst_block,
                                      size_t src_size, size_t *res_size)
 {
     audio_resample_args_t res_args = {
@@ -572,7 +572,7 @@ static void log_playback_completion(void)
         if (s_bytes_read_from_file_total > s_bytes_enqueued_total) {
             bytes_lost = s_bytes_read_from_file_total - s_bytes_enqueued_total;
         }
-        float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0f;
+        float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0F;
         ESP_LOGI(TAG, "  Data loss: %zu bytes (%.2f%%)", bytes_lost, (double)percent_lost);
     }
 }

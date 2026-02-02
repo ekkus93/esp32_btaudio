@@ -72,7 +72,12 @@ static void log_queue_snapshot_on_beep_failure(const char *reason)
         return;
     }
 
-    size_t wav = 0, capture = 0, synth = 0, beep = 0, invalid = 0, other = 0;
+    size_t wav = 0;
+    size_t capture = 0;
+    size_t synth = 0;
+    size_t beep = 0;
+    size_t invalid = 0;
+    size_t other = 0;
     for (size_t i = 0; i < captured; ++i) {
         switch (snap[i].tag) {
         case AUDIO_SOURCE_TAG_WAV:

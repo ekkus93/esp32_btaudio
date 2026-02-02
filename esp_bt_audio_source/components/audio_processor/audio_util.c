@@ -118,7 +118,7 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
     }
 
     int channels = (channels_in == AUDIO_CHANNEL_MONO || channels_in == AUDIO_CHANNEL_STEREO)
-                       ? channels_in
+                       ? (int)channels_in
                        : AUDIO_CHANNEL_STEREO;
 
     const int bps = bytes_per_sample(bit_depth);
