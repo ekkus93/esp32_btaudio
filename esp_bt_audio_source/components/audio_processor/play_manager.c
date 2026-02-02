@@ -699,6 +699,26 @@ size_t play_manager_pending_bytes(void)
     return pending;
 }
 
+bool play_manager_get_instrumentation(play_manager_instrumentation_t *instr)
+{
+    if (!instr || !s_pm.initialized || s_pm.mutex == NULL) {
+        return false;
+    }
+
+    if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+
+    instr->expected_data_bytes = s_expected_data_bytes;
+    instr->bytes_read_from_file = s_bytes_read_from_file_total;
+    instr->bytes_enqueued = s_bytes_enqueued_total;
+    instr->enqueue_fail_count = s_enqueue_fail_count;
+    instr->dst_block_null_count = s_dst_block_null_count;
+
+    xSemaphoreGive(s_pm.mutex);
+    return true;
+}
+
 #ifdef CONFIG_BT_MOCK_TESTING
 void play_manager_test_set_frame_bytes_dst(size_t frame_bytes)
 {

@@ -1489,32 +1489,46 @@ All error handling improvements successfully implemented:
 
 ## Phase 6: Testing & Validation
 
-### Task 6.1: Create WAV playback test (if feasible)
+### Task 6.1: Create WAV playback test (if feasible) ✅ COMPLETE
 **Goal:** Automated test for WAV truncation regression
 
 **Approaches:**
-- [ ] **Option A:** Host test with mock file I/O
-  - [ ] Mock fread(), fseek(), etc.
-  - [ ] Simulate queue full scenario
-  - [ ] Verify no data loss (counters or mock verification)
-- [ ] **Option B:** Device test with known WAV file
-  - [ ] Upload test WAV to SPIFFS
-  - [ ] Play and measure duration
-  - [ ] Compare to expected duration
-  - [ ] Verify no truncation
-- [ ] **Option C:** Document test procedure without automation
-  - [ ] Manual test steps
-  - [ ] Expected results
-  - [ ] Mark as future work
+- [x] **Option B:** Device test with known WAV file (IMPLEMENTED)
+  - [x] Added `play_manager_get_instrumentation()` API (play_manager.h/c)
+  - [x] Created `test_wav_playback_completeness()` test (audio_processor_test.c)
+  - [x] Test drains entire WAV file and verifies instrumentation counters
+  - [x] Validates: expected_data_bytes == bytes_read_from_file
+  - [x] Validates: bytes_enqueued > 0 (data was enqueued)
+  - [x] Reports allocation failures and retries if they occur
+- [ ] **Option A:** Host test with mock file I/O (NOT NEEDED)
+- [ ] **Option C:** Document test procedure without automation (NOT NEEDED)
 
-**Subtasks:**
-- [ ] **DECIDE:** Which approach?
-- [ ] Implement if feasible
-- [ ] Document if not
+**Implementation Details:**
+- **New API:** `play_manager_instrumentation_t` struct and `play_manager_get_instrumentation()`
+  - Exposes: expected_data_bytes, bytes_read_from_file, bytes_enqueued
+  - Exposes: enqueue_fail_count, dst_block_null_count
+  - Thread-safe via mutex protection
+- **New Test:** `test_wav_playback_completeness()`
+  - Plays `/spiffs/worker_long_norm.wav` completely
+  - Drains all audio data (waits for play_manager_is_active() == false)
+  - Checks instrumentation: all expected bytes read, data successfully enqueued
+  - 15 second timeout prevents hanging on failure
+  - Registered in test_app_audio suite
+
+**Test Results:**
+- ✅ Compiles cleanly (zero warnings)
+- ✅ All 63 test_app_audio tests pass (was 62, now includes new test)
+- ✅ Full device test suite: 196/196 passed
 
 **Acceptance:**
-- [ ] Test exists or procedure documented
-- [ ] WAV truncation regression detectable
+- [x] Test exists or procedure documented → Device test implemented
+- [x] WAV truncation regression detectable → Instrumentation verified programmatically
+
+**Notes:**
+- Regression test addresses CODE_REVIEW4 Phase 6 goal: detect WAV truncation
+- Uses existing instrumentation from Task 0.2 (bytes_read vs bytes_enqueued)
+- More robust than log parsing: uses typed API with explicit assertions
+- Detects queue-full scenarios via enqueue_fail_count (retries are normal)
 
 ---
 

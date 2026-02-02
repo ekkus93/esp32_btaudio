@@ -37,6 +37,24 @@ bool play_manager_consume(size_t bytes);
 
 size_t play_manager_pending_bytes(void);
 
+/**
+ * WAV playback instrumentation data for verification and diagnostics.
+ * Updated during playback and reset when new playback starts.
+ */
+typedef struct {
+    size_t expected_data_bytes;        /* Expected bytes from WAV data chunk */
+    size_t bytes_read_from_file;       /* Actual bytes read from file */
+    size_t bytes_enqueued;             /* Bytes successfully enqueued */
+    size_t enqueue_fail_count;         /* Number of enqueue failures (retried) */
+    size_t dst_block_null_count;       /* Failed dst block allocations */
+} play_manager_instrumentation_t;
+
+/**
+ * Get current instrumentation counters. Safe to call anytime.
+ * Returns false if play_manager not initialized.
+ */
+bool play_manager_get_instrumentation(play_manager_instrumentation_t *instr);
+
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Test hooks for visibility and small overrides. */
 void play_manager_test_set_frame_bytes_dst(size_t frame_bytes);
