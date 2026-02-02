@@ -229,7 +229,7 @@ void app_main(void)
     const int console_uart = UART_NUM_0;
 #endif
 
-    ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0));  // NOLINT(readability-suspicious-call-argument)
     
     /* Success markers for test harness: UART driver installed successfully */
     DIAG_MARKER("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1");

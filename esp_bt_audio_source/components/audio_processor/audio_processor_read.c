@@ -1,9 +1,9 @@
 #include "audio_processor_internal.h"
 
 static size_t residual_copy(uint8_t *dest, size_t dest_len,
-                            uint8_t *buffer, size_t *pos, size_t *len)
+                            uint8_t *src, size_t *pos, size_t *len)
 {
-    if (dest == NULL || buffer == NULL || pos == NULL || len == NULL || dest_len == 0) {
+    if (dest == NULL || src == NULL || pos == NULL || len == NULL || dest_len == 0) {
         return 0;
     }
 
@@ -13,7 +13,7 @@ static size_t residual_copy(uint8_t *dest, size_t dest_len,
         return 0;
     }
 
-    safe_memcpy(dest, dest_len, buffer + *pos, to_copy);
+    safe_memcpy(dest, dest_len, src + *pos, to_copy);
     *pos += to_copy;
     if (*pos >= *len) {
         *pos = 0;
