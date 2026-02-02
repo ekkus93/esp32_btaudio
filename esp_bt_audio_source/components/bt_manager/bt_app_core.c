@@ -175,10 +175,9 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
         safe_memcpy(msg->param, (size_t)len, p_dest, (size_t)len);
         msg->param_free_cb = bt_app_param_free_cb;
         return BT_APP_WORK_OK;
-    } else {
-        ESP_LOGE(TAG, "%s: malloc failed", __func__);
-        return BT_APP_WORK_FAIL;
     }
+    ESP_LOGE(TAG, "%s: malloc failed", __func__);
+    return BT_APP_WORK_FAIL;
 }
 
 void bt_app_param_free_cb(void *param)

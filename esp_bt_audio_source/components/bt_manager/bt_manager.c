@@ -388,12 +388,14 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     ESP_LOGI(TAG, "Controller enabled via bt_manager: mode=CLASSIC_BT");
 
     // Initialize Bluedroid
-    if ((ret = esp_bluedroid_init()) != ESP_OK) {
+    ret = esp_bluedroid_init();
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Initialize bluedroid failed: %s", esp_err_to_name(ret));
     return ESP_FAIL;
     }
 
-    if ((ret = esp_bluedroid_enable()) != ESP_OK) {
+    ret = esp_bluedroid_enable();
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Enable bluedroid failed: %s", esp_err_to_name(ret));
         return ESP_FAIL;
     }
@@ -408,7 +410,8 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     // Register GAP callback
     esp_bt_gap_register_callback(bt_app_gap_callback);
 
-    if ((ret = bt_manager_init_profiles()) != ESP_OK) {
+    ret = bt_manager_init_profiles();
+    if (ret != ESP_OK) {
         return ret;
     }
 

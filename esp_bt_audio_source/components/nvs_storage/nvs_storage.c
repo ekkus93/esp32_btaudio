@@ -460,7 +460,11 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     if (c == 0) {
     	nvs_storage_erase_key(h, PAIRED_COUNT_KEY);
     }
-    if ((err = nvs_storage_commit(h)) != ESP_OK) { nvs_storage_close(h); return err; }
+    err = nvs_storage_commit(h);
+    if (err != ESP_OK) {
+        nvs_storage_close(h);
+        return err;
+    }
     nvs_storage_close(h);
     return ESP_OK;
 }
@@ -483,7 +487,11 @@ esp_err_t nvs_storage_clear_paired_devices(void)
         }
         nvs_storage_erase_key(h, PAIRED_COUNT_KEY);
     }
-    if ((err = nvs_storage_commit(h)) != ESP_OK) { nvs_storage_close(h); return err; }
+    err = nvs_storage_commit(h);
+    if (err != ESP_OK) {
+        nvs_storage_close(h);
+        return err;
+    }
     nvs_storage_close(h);
     return ESP_OK;
 }

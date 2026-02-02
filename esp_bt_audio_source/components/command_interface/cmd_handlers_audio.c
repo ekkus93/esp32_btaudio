@@ -484,7 +484,7 @@ cmd_status_t cmd_handle_audio_autostart(const cmd_context_t *ctx)
         cmd_send_response("OK", "AUDIO_AUTOSTART", "STATUS", status);
         return CMD_SUCCESS;
     }
-    else if (strcasecmp(action, "on") == 0 || strcasecmp(action, "1") == 0)
+    if (strcasecmp(action, "on") == 0 || strcasecmp(action, "1") == 0)
     {
         /* Enable autostart */
         esp_err_t err = nvs_storage_set_audio_autostart(1);
@@ -498,7 +498,7 @@ cmd_status_t cmd_handle_audio_autostart(const cmd_context_t *ctx)
         }
         return CMD_SUCCESS;
     }
-    else if (strcasecmp(action, "off") == 0 || strcasecmp(action, "0") == 0)
+    if (strcasecmp(action, "off") == 0 || strcasecmp(action, "0") == 0)
     {
         /* Disable autostart */
         esp_err_t err = nvs_storage_set_audio_autostart(0);
