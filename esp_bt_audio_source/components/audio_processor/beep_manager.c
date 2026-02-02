@@ -130,9 +130,9 @@ void beep_manager_deinit(void)
 	s_initialized = false;
 }
 
-void beep_manager_set_done_callback(beep_done_cb_t cb, void *ctx)
+void beep_manager_set_done_callback(beep_done_cb_t callback, void *ctx)
 {
-	s_done_cb = cb;
+	s_done_cb = callback;
 	s_done_ctx = ctx;
 }
 
