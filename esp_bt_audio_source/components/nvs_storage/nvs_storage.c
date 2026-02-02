@@ -436,7 +436,7 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
             safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
             nvs_storage_erase_key(h, key);
         } else {
-            if (nvs_storage_get_blob(h, key, src_mac, &req) != ESP_OK) { safe_memset(src_mac, 0, 6); }
+            if (nvs_storage_get_blob(h, key, src_mac, &req) != ESP_OK) { safe_memset(src_mac, sizeof(src_mac), 0, 6); }
             safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, i);
             nvs_storage_set_blob(h, key, src_mac, 6);
         }

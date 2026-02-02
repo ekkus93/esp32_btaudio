@@ -228,7 +228,7 @@ esp_err_t play_manager_init(const audio_config_t *config,
         return ESP_OK;
     }
 
-    util_safe_memset(&s_pm, 0, sizeof(s_pm));
+    util_safe_memset(&s_pm, sizeof(s_pm), 0, sizeof(s_pm));
     s_pm.out_cfg = *config;
     s_pm.work_bytes = (buffers && buffers->work_bytes > 0) ? buffers->work_bytes : AUDIO_CHUNK_BLOCK_BYTES;
     s_pm.mutex = xSemaphoreCreateMutex();

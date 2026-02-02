@@ -5,44 +5,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void util_safe_memset(void *dst, int value, size_t len) {
-    if (dst == NULL || len == 0) {
+void util_safe_memset(void *dst, size_t dst_size, int value, size_t len) {
+    if (dst == NULL || dst_size == 0 || len == 0) {
         return;
     }
+    size_t to_set = (len > dst_size) ? dst_size : len;
     uint8_t *d = (uint8_t *)dst;
-    for (size_t i = 0; i < len; ++i) {
-        d[i] = (uint8_t)value;
+    uint8_t byte_value = (uint8_t)value;
+    for (size_t i = 0; i < to_set; ++i) {
+        d[i] = byte_value;
     }
 }
 
-void util_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len) {
-    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
-        return;
+size_t util_safe_memcpy(void *dst, size_t dst_capacity, const void *src, size_t src_len) {
+    if (dst == NULL || src == NULL || dst_capacity == 0 || src_len == 0) {
+        return 0;
     }
-    size_t to_copy = len;
-    if (to_copy > dst_size) {
-        to_copy = dst_size;
+    size_t to_copy = src_len;
+    if (to_copy > dst_capacity) {
+        to_copy = dst_capacity;
     }
     uint8_t *d = (uint8_t *)dst;
     const uint8_t *s = (const uint8_t *)src;
     for (size_t i = 0; i < to_copy; ++i) {
         d[i] = s[i];
     }
+    return to_copy;
 }
 
-void util_safe_memmove(void *dst, size_t dst_size, const void *src, size_t len) {
-    if (dst == NULL || src == NULL || dst_size == 0 || len == 0) {
-        return;
+size_t util_safe_memmove(void *dst, size_t dst_capacity, const void *src, size_t src_len) {
+    if (dst == NULL || src == NULL || dst_capacity == 0 || src_len == 0) {
+        return 0;
     }
-    size_t to_copy = len;
-    if (to_copy > dst_size) {
-        to_copy = dst_size;
+    size_t to_copy = src_len;
+    if (to_copy > dst_capacity) {
+        to_copy = dst_capacity;
     }
 
     uint8_t *d = (uint8_t *)dst;
     const uint8_t *s = (const uint8_t *)src;
     if (d == s) {
-        return;
+        return to_copy;
     }
 
     if (d > s && d < (s + to_copy)) {
@@ -54,6 +57,7 @@ void util_safe_memmove(void *dst, size_t dst_size, const void *src, size_t len) 
             d[i] = s[i];
         }
     }
+    return to_copy;
 }
 
 void util_safe_copy_str(char *dst, size_t dst_size, const char *src) {

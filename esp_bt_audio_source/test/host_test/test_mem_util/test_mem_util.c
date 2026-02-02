@@ -3,7 +3,11 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "mem_util.h"
+#include "util_safe.h"
+
+/* Convenience aliases to maintain test names */
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
 
 void setUp(void) {}
 void tearDown(void) {}

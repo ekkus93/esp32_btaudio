@@ -123,7 +123,7 @@ static void bt_pairing_clear_pending_flags(bool clear_pin, bool clear_ssp)
         s_pair_pending.ssp_pending = false;
     }
     if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
-        safe_memset(s_pair_pending.bda, 0, sizeof(s_pair_pending.bda));
+        safe_memset(s_pair_pending.bda, sizeof(s_pair_pending.bda), 0, sizeof(s_pair_pending.bda));
         s_pair_pending.mac[0] = '\0';
         s_pair_pending.passkey = 0;
     }
@@ -362,8 +362,8 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     bt_ctx.disconnected_callback = config->disconnected_cb;
     
     // Initialize structures
-    safe_memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
-    safe_memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    safe_memset(&bt_ctx.discovered_devices, sizeof(bt_ctx.discovered_devices), 0, sizeof(bt_ctx.discovered_devices));
+    safe_memset(&bt_ctx.paired_devices, sizeof(bt_ctx.paired_devices), 0, sizeof(bt_ctx.paired_devices));
     
 #ifdef ESP_PLATFORM
     // NVS is initialized by main.c before calling bt_manager_init.
@@ -505,7 +505,7 @@ int bt_manager_is_connected(void) {
     }
     
     // Clear previous discovered devices
-    safe_memset(&bt_ctx.discovered_devices, 0, sizeof(bt_ctx.discovered_devices));
+    safe_memset(&bt_ctx.discovered_devices, sizeof(bt_ctx.discovered_devices), 0, sizeof(bt_ctx.discovered_devices));
     
 #ifdef ESP_PLATFORM
     // Start discovery
@@ -1075,7 +1075,7 @@ exit:
 #endif
     }
 
-    safe_memset(&bt_ctx.paired_devices, 0, sizeof(bt_ctx.paired_devices));
+    safe_memset(&bt_ctx.paired_devices, sizeof(bt_ctx.paired_devices), 0, sizeof(bt_ctx.paired_devices));
 
 #ifdef UNIT_TEST
     bt_manager_test_record_unpair_all_call(cleared_before, removed_count);
@@ -1117,7 +1117,7 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
         return false;
     }
     if (!s_pair_pending.pin_pending && !s_pair_pending.ssp_pending) {
-        safe_memset(info, 0, sizeof(*info));
+        safe_memset(info, sizeof(*info), 0, sizeof(*info));
         return false;
     }
     info->pin_request_pending = s_pair_pending.pin_pending;
@@ -1658,7 +1658,7 @@ static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
 
     if (produced == 0) {
         // Fallback: provide silence if no data available
-        safe_memset(buf, 0, (size_t)len);
+        safe_memset(buf, (size_t)len, 0, (size_t)len);
         return len;
     }
 

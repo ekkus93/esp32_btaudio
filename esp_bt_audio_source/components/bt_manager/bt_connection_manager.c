@@ -90,9 +90,9 @@ static void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd
         case ESP_A2D_CONNECTION_STATE_CONNECTED:
             ESP_LOGI(TAG, "Connected to device");
             util_format_mac(bd_addr, addr_str, sizeof(addr_str));
-            safe_memset(s_last_connected_addr, 0, sizeof(s_last_connected_addr));
+            safe_memset(s_last_connected_addr, sizeof(s_last_connected_addr), 0, sizeof(s_last_connected_addr));
             safe_memcpy(s_last_connected_addr, sizeof(s_last_connected_addr), addr_str, strlen(addr_str));
-            safe_memset(s_connection_info.addr, 0, sizeof(s_connection_info.addr));
+            safe_memset(s_connection_info.addr, sizeof(s_connection_info.addr), 0, sizeof(s_connection_info.addr));
             safe_memcpy(s_connection_info.addr, sizeof(s_connection_info.addr), addr_str, strlen(addr_str));
             s_connection_info.connect_time = (uint32_t)time(NULL);
             s_reconnect_attempts = 0;
@@ -317,11 +317,11 @@ void bt_connection_manager_init(esp_a2d_cb_t conn_cb, esp_a2d_source_data_cb_t a
     esp_a2d_source_register_data_callback(audio_cb);
     
     /* Initialize connection info */
-    safe_memset(&s_connection_info, 0, sizeof(bt_connection_info_t));
+    safe_memset(&s_connection_info, sizeof(bt_connection_info_t), 0, sizeof(bt_connection_info_t));
     s_connection_info.state = BT_CONNECTION_STATE_DISCONNECTED;
     
     /* Initialize streaming info */
-    safe_memset(&s_streaming_info, 0, sizeof(bt_streaming_info_t));
+    safe_memset(&s_streaming_info, sizeof(bt_streaming_info_t), 0, sizeof(bt_streaming_info_t));
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
     
     ESP_LOGI(TAG, "Connection manager initialized");
@@ -349,7 +349,7 @@ void bt_conn_test_set_reconnect_results(const esp_err_t *results, size_t len)
         len = sizeof(s_test_reconnect_results) / sizeof(s_test_reconnect_results[0]);
     }
 
-    safe_memset(s_test_reconnect_results, 0, sizeof(s_test_reconnect_results));
+    safe_memset(s_test_reconnect_results, sizeof(s_test_reconnect_results), 0, sizeof(s_test_reconnect_results));
     safe_memcpy(s_test_reconnect_results, sizeof(s_test_reconnect_results), results, len * sizeof(results[0]));
     s_test_reconnect_results_len = len;
     s_test_reconnect_results_idx = 0;
@@ -367,9 +367,9 @@ void bt_conn_test_reset_state(void)
 #else
     s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     s_streaming_state = BT_STREAMING_STATE_STOPPED;
-    safe_memset(&s_connection_info, 0, sizeof(s_connection_info));
+    safe_memset(&s_connection_info, sizeof(s_connection_info), 0, sizeof(s_connection_info));
     s_connection_info.state = BT_CONNECTION_STATE_DISCONNECTED;
-    safe_memset(&s_streaming_info, 0, sizeof(s_streaming_info));
+    safe_memset(&s_streaming_info, sizeof(s_streaming_info), 0, sizeof(s_streaming_info));
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
     s_a2d_conn_state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
     s_a2d_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
@@ -411,9 +411,9 @@ void bt_connection_manager_reset_state_for_test(void)
 {
     s_connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     s_streaming_state = BT_STREAMING_STATE_STOPPED;
-    safe_memset(&s_connection_info, 0, sizeof(s_connection_info));
+    safe_memset(&s_connection_info, sizeof(s_connection_info), 0, sizeof(s_connection_info));
     s_connection_info.state = BT_CONNECTION_STATE_DISCONNECTED;
-    safe_memset(&s_streaming_info, 0, sizeof(s_streaming_info));
+    safe_memset(&s_streaming_info, sizeof(s_streaming_info), 0, sizeof(s_streaming_info));
     s_streaming_info.state = BT_STREAMING_STATE_STOPPED;
     s_a2d_conn_state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
     s_a2d_audio_state = ESP_A2D_AUDIO_STATE_STOPPED;

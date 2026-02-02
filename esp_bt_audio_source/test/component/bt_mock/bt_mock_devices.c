@@ -81,7 +81,7 @@ static void normalize_addr_upper(const char* in, char* out, size_t out_len)
 
 void bt_mock_devices_init(void)
 {
-    safe_memset(&mock_state, 0, sizeof(mock_state));
+    safe_memset(&mock_state, sizeof(mock_state), 0, sizeof(mock_state));
     mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     mock_state.streaming_state = BT_STREAMING_STATE_STOPPED;
 }
@@ -94,7 +94,7 @@ void bt_mock_devices_cleanup(void)
 void bt_mock_devices_reset(void)
 {
     int prev = mock_state.device_count;
-    safe_memset(&mock_state, 0, sizeof(mock_state));
+    safe_memset(&mock_state, sizeof(mock_state), 0, sizeof(mock_state));
     mock_state.connection_state = BT_CONNECTION_STATE_DISCONNECTED;
     mock_state.streaming_state = BT_STREAMING_STATE_STOPPED;
 
@@ -123,7 +123,7 @@ esp_err_t bt_mock_add_device(const char* addr_str, const char* name, bt_device_t
     if (mock_state.device_count >= MAX_TEST_DEVICES) return ESP_ERR_NO_MEM;
 
         bt_device_t* d = &mock_state.devices[mock_state.device_count];
-        safe_memset(d, 0, sizeof(*d));
+        safe_memset(d, sizeof(*d), 0, sizeof(*d));
         if (!parse_mac_bytes(addr_str, d->addr)) {
             return ESP_ERR_INVALID_ARG;
         }
@@ -468,7 +468,7 @@ esp_err_t bt_mock_send_pin(const char* pin)
             /* If device not present, append a new paired device (preserve existing behavior) */
             if (mock_state.device_count < MAX_TEST_DEVICES) {
                 bt_device_t *d = &mock_state.devices[mock_state.device_count];
-                  safe_memset(d, 0, sizeof(*d));
+                  safe_memset(d, sizeof(*d), 0, sizeof(*d));
                 if (!parse_mac_bytes(current_pairing_addr, d->addr)) {
                     return ESP_ERR_INVALID_ARG;
                 }

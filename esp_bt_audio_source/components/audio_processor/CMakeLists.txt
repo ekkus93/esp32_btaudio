@@ -13,7 +13,6 @@ idf_component_register(
         "i2s_manager.c"
         "play_manager.c"
         "synth_manager.c"
-        "mem_util.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

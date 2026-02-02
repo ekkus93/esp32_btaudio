@@ -24,7 +24,6 @@ idf_component_register(
         "../../../components/audio_processor/audio_processor_common.c"
         "../../../components/audio_processor/audio_queue.c"
         "../../../components/audio_processor/audio_util.c"
-        "../../../components/audio_processor/mem_util.c"
         "../../../components/audio_processor/play_manager.c"
         "../../../components/audio_processor/i2s_manager.c"
         "../../../components/audio_processor/beep_manager.c"

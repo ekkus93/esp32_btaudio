@@ -6,12 +6,11 @@
 #include <stdint.h>
 
 /* Minimal mock I2S types and APIs used by host tests */
-#if !defined(_AUDIO_PROCESSOR_H_) && !defined(__I2S_PORT_T_DEFINED)
-typedef enum {
-    I2S_NUM_0 = 0,
-    I2S_NUM_1 = 1,
-    I2S_NUM_MAX
-} i2s_port_t;
+#if !defined(AUDIO_PROCESSOR_H_) && !defined(__I2S_PORT_T_DEFINED)
+typedef int i2s_port_t;
+#define I2S_NUM_0 0
+#define I2S_NUM_1 1
+#define I2S_NUM_MAX 2
 #define __I2S_PORT_T_DEFINED
 #endif
 

@@ -42,7 +42,7 @@ void *cmd_memmove_safe(void *dst, const void *src, size_t len)
 
 void *cmd_memset_safe(void *dst, int value, size_t len)
 {
-    util_safe_memset(dst, value, len);
+    util_safe_memset(dst, len, value, len);
     return dst;
 }
 

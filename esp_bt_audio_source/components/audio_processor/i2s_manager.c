@@ -244,7 +244,7 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 		return ESP_ERR_NO_MEM;
 	}
 
-	util_safe_memset(&s_mgr, 0, sizeof(s_mgr));
+	util_safe_memset(&s_mgr, sizeof(s_mgr), 0, sizeof(s_mgr));
 	s_mgr.cfg = *config;
 	s_mgr.bufs = *buffers;
 

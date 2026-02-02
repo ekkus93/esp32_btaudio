@@ -258,11 +258,11 @@ add_test(NAME test_dispatch_copy_regression COMMAND $<TARGET_FILE:test_dispatch_
 add_executable(test_bt_app_core_host
     test_bt_app_core_host.c
     ../../components/bt_manager/bt_app_core.c
-    ../../components/audio_processor/mem_util.c
     mocks/fake_task.c
     mocks/fake_queue.c
     mocks/fake_log.c
-    mocks/fake_esp_err.c)
+    mocks/fake_esp_err.c
+    ../../components/util_safe/util_safe.c)
 target_link_libraries(test_bt_app_core_host unity)
 target_compile_definitions(test_bt_app_core_host PRIVATE UNIT_TEST)
 add_test(NAME test_bt_app_core_host COMMAND $<TARGET_FILE:test_bt_app_core_host>)
@@ -436,7 +436,6 @@ add_test(NAME test_bt_connection_manager COMMAND $<TARGET_FILE:test_bt_connectio
 add_executable(test_bt_streaming_manager
     test_bt_streaming_manager.c
     ../../components/bt_manager/bt_streaming_manager.c
-    ../../components/audio_processor/mem_util.c
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c
     mocks/audio_processor_host_stub.c
@@ -444,6 +443,7 @@ add_executable(test_bt_streaming_manager
     mocks/fake_task.c
     mocks/fake_log.c
     mocks/fake_esp_err.c
+    ../../components/util_safe/util_safe.c
 )
 target_include_directories(test_bt_streaming_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
@@ -528,6 +528,7 @@ add_executable(test_beep_manager
     mocks/fake_timer.c
     mocks/fake_log.c
     mocks/fake_esp_err.c
+    ../../components/util_safe/util_safe.c
     mocks/esp_heap_caps_mock.c)
 target_include_directories(test_beep_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
@@ -606,13 +607,14 @@ target_link_libraries(test_synth_manager unity m)
 add_test(NAME test_synth_manager COMMAND $<TARGET_FILE:test_synth_manager>)
 
 # mem_util host unit tests
+# mem_util host unit tests (now using util_safe)
 add_executable(test_mem_util
     test_mem_util/test_mem_util.c
-    ../../components/audio_processor/mem_util.c)
+    ../../components/util_safe/util_safe.c)
 target_include_directories(test_mem_util PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 target_link_libraries(test_mem_util unity)
 add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 

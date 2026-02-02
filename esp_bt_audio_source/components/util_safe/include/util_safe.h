@@ -10,9 +10,9 @@ extern "C" {
 #endif
 
 /* Bounded memory helpers */
-void util_safe_memset(void *dst, int value, size_t len);
-void util_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t len);
-void util_safe_memmove(void *dst, size_t dst_size, const void *src, size_t len);
+void util_safe_memset(void *dst, size_t dst_size, int value, size_t len);
+size_t util_safe_memcpy(void *dst, size_t dst_capacity, const void *src, size_t src_len);
+size_t util_safe_memmove(void *dst, size_t dst_capacity, const void *src, size_t src_len);
 void util_safe_copy_str(char *dst, size_t dst_size, const char *src);
 
 /* Bounded printf wrappers: return characters that would have been written, like snprintf. */

@@ -13,9 +13,13 @@
 #include "esp_log.h"
 #include "bt_app_core.h"
 #include "osi/allocator.h"
-#include "mem_util.h"
+#include "util_safe.h"
 #include <stdarg.h>
 
+
+/* Convenience aliases for safe memory functions */
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
 static const char *TAG = "BT_APP_CORE";
 
 /* Ring buffer for app event queue */

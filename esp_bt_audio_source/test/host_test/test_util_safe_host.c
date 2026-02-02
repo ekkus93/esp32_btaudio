@@ -110,14 +110,14 @@ static void test_safe_vsnprintf_zero_size_guard(void)
 static void test_safe_memset_zero_len_no_change(void)
 {
     char buf[3] = {'a','b','c'};
-    util_safe_memset(buf, 'z', 0);
+    util_safe_memset(buf, sizeof(buf), 'z', 0);
     TEST_ASSERT_EQUAL_CHAR_ARRAY("abc", buf, sizeof(buf));
 }
 
 static void test_safe_memset_basic_fill(void)
 {
     char buf[4] = {0};
-    util_safe_memset(buf, 'q', 3);
+    util_safe_memset(buf, sizeof(buf), 'q', 3);
     TEST_ASSERT_EQUAL_CHAR_ARRAY("qqq\0", buf, sizeof(buf));
 }
 

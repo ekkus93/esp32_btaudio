@@ -13,8 +13,12 @@
 #include "play_manager.h"
 #include "i2s_manager.h"
 #include "audio_util.h"
-#include "mem_util.h"
+#include "util_safe.h"
 #include "synth_manager.h"
+
+/* Convenience aliases for safe memory functions */
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
 
 #define TAG "AUDIO_PROC"
 

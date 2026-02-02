@@ -10,7 +10,11 @@
 #include "esp_a2dp_api.h"
 #include "bt_source.h"
 #include "audio_processor.h"
-#include "mem_util.h"
+#include "util_safe.h"
+
+/* Convenience aliases for safe memory functions */
+#define safe_memcpy util_safe_memcpy
+#define safe_memset util_safe_memset
 
 static const char *TAG = "BT_STREAM_MGR";
 
