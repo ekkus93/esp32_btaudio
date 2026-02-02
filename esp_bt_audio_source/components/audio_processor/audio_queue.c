@@ -42,7 +42,7 @@ bool audio_chunk_pool_init(void)
 
 	for (size_t i = 0; i < AUDIO_CHUNK_POOL_BLOCKS; ++i) {
 		uint8_t *ptr = s_audio_block_pool + (i * (size_t)AUDIO_CHUNK_BLOCK_BYTES);
-		if (xQueueSend(s_audio_block_free, &ptr, 0) != pdTRUE) {
+		if (xQueueSend(s_audio_block_free, (const void *)&ptr, 0) != pdTRUE) {
 			ESP_LOGE(TAG, "audio_chunk_pool_init: failed to seed free pool at i=%zu", i);
 			audio_chunk_pool_deinit();
 			return false;
@@ -76,7 +76,7 @@ uint8_t *audio_chunk_alloc_block(TickType_t wait_ticks)
 		return NULL;
 	}
 	uint8_t *ptr = NULL;
-	if (xQueueReceive(s_audio_block_free, &ptr, wait_ticks) != pdTRUE) {
+	if (xQueueReceive(s_audio_block_free, (void *)&ptr, wait_ticks) != pdTRUE) {
 		return NULL;
 	}
 	return ptr;
@@ -87,7 +87,7 @@ void audio_chunk_release_block(uint8_t *ptr)
 	if (ptr == NULL || s_audio_block_free == NULL) {
 		return;
 	}
-	if (xQueueSend(s_audio_block_free, &ptr, 0) != pdTRUE) {
+	if (xQueueSend(s_audio_block_free, (const void *)&ptr, 0) != pdTRUE) {
 		ESP_LOGW(TAG, "audio_chunk_release_block: free queue full, dropping block %p", ptr);
 	}
 }

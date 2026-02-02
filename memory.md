@@ -12,37 +12,49 @@
 **New Strategy: Manual File-by-File**
 - Review each warning individually
 - Fix only in appropriate context (skip idiomatic embedded C patterns)
-- Test build after EACH file
+- Test build after EACH file or small batch
 - Focus on genuinely unclear names and other actionable warnings
 
 **Fixes This Session:**
+
+**Commit 1: beep_manager (1 warning)**
 1. ✅ beep_manager.c: `cb` → `callback` (1 warning, 2 usages)
    - Function: `beep_manager_set_done_callback(beep_done_cb_t callback, void *ctx)`
    - Build: ✅ SUCCESS
 
+**Commit 2: cmd_handlers_audio + nvs_storage (5 warnings)**
 2. ✅ cmd_handlers_audio.c: Removed else-after-return (1 warning)
    - Line 515: Removed unnecessary else branch after return in cmd_handle_audio_autostart()
-   - Build: ✅ SUCCESS
 
 3. ✅ cmd_handlers_audio.c: Fixed redundant declaration (1 warning)
    - Removed `extern int bt_manager_is_connected(void);` declaration
    - Added `#include "bt_manager.h"` instead (proper header inclusion)
-   - Build: ✅ SUCCESS
 
 4. ✅ cmd_handlers_audio.c: Removed preprocessor-always-true (1 warning)
    - Removed `#if 1` ... `#endif` block in cmd_handle_beep()
    - Kept the code inside (was always active)
-   - Build: ✅ SUCCESS
 
 5. ✅ nvs_storage.c: Fixed reserved identifier (1 warning)
    - Renamed `_nvs_storage_suppress_unused_tag` → `nvs_storage_suppress_unused_tag`
    - Removed leading underscore (reserved in global namespace)
    - Build: ✅ SUCCESS
 
+**Commit 3: synth_manager + audio_queue (4 warnings)**
+6. ✅ synth_manager.c: Fixed narrowing conversion (1 warning)
+   - Line 49: Added explicit cast `(int)config->sample_rate`
+   - Converts unsigned enum to signed int safely
+
+7-9. ✅ audio_queue.c: Fixed 3 multilevel pointer conversions (3 warnings)
+   - Line 45: `xQueueSend(s_audio_block_free, (const void *)&ptr, 0)`
+   - Line 79: `xQueueReceive(s_audio_block_free, (void *)&ptr, wait_ticks)`
+   - Line 90: `xQueueSend(s_audio_block_free, (const void *)&ptr, 0)`
+   - Added explicit casts from `uint8_t **` to `void *`/`const void *`
+   - Build: ✅ SUCCESS
+
 **Progress:**
-- Fixed: 231/761 warnings (30.4%)
-- Remaining: 530 in project code
-- Actionable (excluding ESP macro exceptions): 125
+- Fixed: 235/761 warnings (30.9%)
+- Remaining: 526 in project code
+- Actionable (excluding ESP macro exceptions): 121
 
 **Files Attempted and Reverted (Previous Session):**
 - nvs_storage.c/h: Failed (weak wrapper issues, incomplete renames)

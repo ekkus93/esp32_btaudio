@@ -46,7 +46,7 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 		return 0;
 	}
 
-	const int sample_rate = (config->sample_rate > 0) ? config->sample_rate : 44100;
+	const int sample_rate = (config->sample_rate > 0) ? (int)config->sample_rate : 44100;
 	const int channels = (config->channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
 	int bytes_per_sample = synth_bytes_per_sample(config->bit_depth);
 	if (bytes_per_sample <= 0) {
