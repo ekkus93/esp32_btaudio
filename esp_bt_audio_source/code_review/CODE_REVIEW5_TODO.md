@@ -169,15 +169,14 @@ typedef struct {
 
 ---
 
-### Task 1.2: Implement PCM stash buffer ⏸️
+### Task 1.2: Implement PCM stash buffer ✅
 
 **Goal:** Create input buffer to decouple file reads from resampling
 
-**Options:**
-- **A:** Add to `play_manager.c` (simple, inline)
-- **B:** Separate `pcm_stash.h/.c` (cleaner separation)
+**Implementation:** Option A (inline in play_manager.c)
 
-**Recommendation:** Option A (minimal churn)
+**Files modified:**
+- `components/audio_processor/play_manager.c` (added typedef and 5 functions)
 
 **Struct design:**
 ```c
@@ -189,12 +188,12 @@ typedef struct {
 } pcm_stash_t;
 ```
 
-**Functions:**
-- [ ] `pcm_stash_init()` - allocate buffer (heap_caps_malloc)
-- [ ] `pcm_stash_deinit()` - free buffer
-- [ ] `pcm_stash_free_frames()` - return available space
-- [ ] `pcm_stash_append_frames()` - append converted frames
-- [ ] `pcm_stash_consume_frames()` - memmove after resampler consumes
+**Functions implemented:**
+- [x] `pcm_stash_init()` - allocate buffer (heap_caps_malloc)
+- [x] `pcm_stash_deinit()` - free buffer
+- [x] `pcm_stash_free_frames()` - return available space
+- [x] `pcm_stash_append_frames()` - append converted frames
+- [x] `pcm_stash_consume_frames()` - memmove after resampler consumes
 
 **Sizing:**
 - Capacity: 2048 frames (stereo 16-bit → ~8KB)
@@ -202,9 +201,10 @@ typedef struct {
 - Large enough for variable input reads
 
 **Acceptance:**
-- [ ] Stash implementation complete
-- [ ] Memory management safe
-- [ ] Ready for integration
+- [x] Stash implementation complete
+- [x] Memory management safe (overflow/underflow checks)
+- [x] Ready for integration
+- [x] Binary size: unchanged (functions optimized out until used)
 
 ---
 

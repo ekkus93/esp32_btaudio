@@ -53,6 +53,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 
 #include "audio_queue.h"
 #include "audio_util.h"
@@ -63,6 +64,30 @@ static const char *TAG = "play_manager";
 #define PLAY_HIGH_WATER_PCT       90U
 #define PLAY_WAIT_FOR_FREE_MS     5U
 #define PLAY_ENQUEUE_TIMEOUT_MS   500U
+
+/**
+ * PCM stash buffer for streaming resampler (CODE_REVIEW5 Task 1.2)
+ *
+ * WHY: Decouples file reads from resampler input requirements
+ *      - File reads are fixed-size (1KB blocks from pool)
+ *      - Resampler needs variable input (depends on ratio and phase)
+ *      - Stash accumulates converted frames until resampler needs them
+ *
+ * HOW: Ring buffer holding PCM frames in output format
+ *      - Frames are already bit-depth converted and channel-upmixed
+ *      - Resampler consumes from stash, we refill from file as needed
+ *
+ * CORRECTNESS: Memory managed via heap_caps_malloc (regular heap)
+ *              - 2048 frames × 4 bytes/frame (stereo 16-bit) = 8KB
+ *              - Fits comfortably in available heap
+ *              - Freed on playback stop/close
+ */
+typedef struct {
+    uint8_t *buf;           ///< PCM buffer (allocated on init)
+    size_t cap_frames;      ///< Capacity in frames
+    size_t frame_bytes;     ///< Bytes per frame (channels × sample_bytes)
+    size_t frames;          ///< Current frames stored
+} pcm_stash_t;
 
 typedef struct {
     bool initialized;
@@ -90,6 +115,135 @@ static size_t s_bytes_enqueued_total = 0;
 static size_t s_enqueue_fail_count = 0;
 static size_t s_dst_block_null_count = 0;
 static size_t s_expected_data_bytes = 0;
+
+/**
+ * PCM stash buffer functions (CODE_REVIEW5 Task 1.2)
+ */
+
+/**
+ * Initialize PCM stash buffer
+ *
+ * Allocates buffer on heap to hold converted PCM frames.
+ * Buffer persists for entire playback session.
+ *
+ * @param stash Stash structure to initialize
+ * @param cap_frames Capacity in frames (e.g., 2048)
+ * @param frame_bytes Bytes per frame (e.g., 4 for stereo 16-bit)
+ * @return ESP_OK on success, ESP_ERR_NO_MEM if allocation fails
+ */
+static esp_err_t pcm_stash_init(pcm_stash_t *stash, size_t cap_frames, size_t frame_bytes)
+{
+    size_t buf_bytes = cap_frames * frame_bytes;
+    stash->buf = (uint8_t *)heap_caps_malloc(buf_bytes, MALLOC_CAP_8BIT);
+    if (!stash->buf) {
+        ESP_LOGE(TAG, "Failed to allocate %zu bytes for PCM stash", buf_bytes);
+        return ESP_ERR_NO_MEM;
+    }
+
+    stash->cap_frames = cap_frames;
+    stash->frame_bytes = frame_bytes;
+    stash->frames = 0;
+
+    ESP_LOGI(TAG, "PCM stash initialized: %zu frames, %zu bytes/frame, %zu bytes total",
+             cap_frames, frame_bytes, buf_bytes);
+    return ESP_OK;
+}
+
+/**
+ * Deinitialize PCM stash buffer
+ *
+ * Frees allocated buffer. Safe to call even if init failed.
+ *
+ * @param stash Stash structure to deinitialize
+ */
+static void pcm_stash_deinit(pcm_stash_t *stash)
+{
+    if (stash->buf) {
+        free(stash->buf);
+        stash->buf = NULL;
+    }
+    stash->cap_frames = 0;
+    stash->frame_bytes = 0;
+    stash->frames = 0;
+}
+
+/**
+ * Get available space in stash
+ *
+ * @param stash Stash structure
+ * @return Number of frames that can be appended
+ */
+static inline size_t pcm_stash_free_frames(const pcm_stash_t *stash)
+{
+    return stash->cap_frames - stash->frames;
+}
+
+/**
+ * Append frames to stash
+ *
+ * Copies frames to end of stash buffer. Caller must ensure enough space.
+ *
+ * @param stash Stash structure
+ * @param frames Pointer to frame data
+ * @param num_frames Number of frames to append
+ * @return ESP_OK on success, ESP_ERR_INVALID_SIZE if insufficient space
+ */
+static esp_err_t pcm_stash_append_frames(pcm_stash_t *stash, const uint8_t *frames, size_t num_frames)
+{
+    if (num_frames > pcm_stash_free_frames(stash)) {
+        ESP_LOGE(TAG, "PCM stash overflow: trying to append %zu frames, only %zu free",
+                 num_frames, pcm_stash_free_frames(stash));
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    size_t append_bytes = num_frames * stash->frame_bytes;
+    uint8_t *dst = stash->buf + (stash->frames * stash->frame_bytes);
+    memcpy(dst, frames, append_bytes);
+    stash->frames += num_frames;
+
+    return ESP_OK;
+}
+
+/**
+ * Consume frames from stash
+ *
+ * Removes consumed frames from front of stash using memmove.
+ * Call this after resampler has processed frames from stash.
+ *
+ * WHY memmove: Stash is not a true ring buffer (simpler implementation)
+ *              - Frames always appended to end
+ *              - Consumed frames removed from front via memmove
+ *              - Trade: CPU cost of memmove vs complexity of ring buffer
+ *              - Acceptable because consumption is infrequent (large chunks)
+ *
+ * @param stash Stash structure
+ * @param num_frames Number of frames to consume from front
+ * @return ESP_OK on success, ESP_ERR_INVALID_SIZE if not enough frames
+ */
+static esp_err_t pcm_stash_consume_frames(pcm_stash_t *stash, size_t num_frames)
+{
+    if (num_frames > stash->frames) {
+        ESP_LOGE(TAG, "PCM stash underflow: trying to consume %zu frames, only %zu available",
+                 num_frames, stash->frames);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (num_frames == 0) {
+        return ESP_OK;
+    }
+
+    size_t consume_bytes = num_frames * stash->frame_bytes;
+    size_t remaining_frames = stash->frames - num_frames;
+    size_t remaining_bytes = remaining_frames * stash->frame_bytes;
+
+    if (remaining_frames > 0) {
+        // Shift remaining frames to front of buffer
+        memmove(stash->buf, stash->buf + consume_bytes, remaining_bytes);
+    }
+
+    stash->frames = remaining_frames;
+    return ESP_OK;
+}
 
 static inline int bytes_per_sample(audio_bit_depth_t bit_depth)
 {

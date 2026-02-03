@@ -1,3 +1,42 @@
+## 2026-02-02 18:55:41 — CODE_REVIEW5 Task 1.2: PCM stash buffer complete ✅
+
+**Task:** Implement PCM stash buffer for streaming resampler
+
+**Implementation details:**
+- Added inline to play_manager.c (Option A - minimal churn)
+- Typedef: pcm_stash_t with buf, cap_frames, frame_bytes, frames fields
+- Functions implemented (all static):
+  1. `pcm_stash_init()` - Allocates 8KB heap buffer (2048 frames × 4 bytes)
+  2. `pcm_stash_deinit()` - Frees buffer safely
+  3. `pcm_stash_free_frames()` - Returns available space
+  4. `pcm_stash_append_frames()` - Appends converted frames to end
+  5. `pcm_stash_consume_frames()` - Removes consumed frames via memmove
+
+**Design decisions:**
+- Simple linear buffer with memmove (not ring buffer)
+- Trade-off: CPU cost of memmove vs code complexity
+- Acceptable because consumption happens in large chunks
+- Capacity: 2048 frames = 8KB (stereo 16-bit)
+- Allocation: heap_caps_malloc with MALLOC_CAP_8BIT
+
+**Build verification:**
+- Binary size: 0xe34f0 bytes (931,056 bytes) - unchanged
+- Compiler optimized out unused static functions (expected)
+- Warnings: "defined but not used" for pcm_stash_* (expected until Task 1.3)
+- Compilation: Clean build, ready for integration
+
+**Memory safety:**
+- Overflow/underflow checks with ESP_LOGE logging
+- Safe to call deinit even if init failed
+- Buffer lifecycle: init on WAV start, deinit on WAV close
+
+**Next steps:**
+- Task 1.3: Extend play_manager_state_t with stash field
+- Task 1.4: Implement ensure_stash_frames() helper
+- Task 1.5: Implement produce_one_output_block()
+
+---
+
 ## 2026-02-02 18:52:04 — CODE_REVIEW5 Task 1.1: audio_resampler_stream module complete ✅
 
 **Task:** Implement stateful streaming resampler with Q16.16 fixed-point phase
