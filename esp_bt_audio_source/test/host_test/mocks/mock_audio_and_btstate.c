@@ -67,6 +67,9 @@ __attribute__((weak)) esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
     info->packet_errors = 0;
     info->stream_duration = 0;
     info->paused = false;
+    /* CODE_REVIEW5 Task 3.2 */
+    info->underrun_count = 0;
+    info->total_callbacks = 0;
     return ESP_OK;
 }
 

@@ -262,6 +262,9 @@ static void update_streaming_state(bt_streaming_state_t new_state)
         s_streaming_info.packets_sent = 0;
         s_streaming_info.packet_errors = 0;
         s_streaming_info.stream_duration = 0;
+        /* CODE_REVIEW5 Task 3.2 */
+        s_streaming_info.underrun_count = 0;
+        s_streaming_info.total_callbacks = 0;
     }
 }
 

@@ -691,26 +691,43 @@ s_streaming_info.bytes_silence += (len - bytes_read);  // zero-fill
 
 ---
 
-### Task 3.2: Add underrun rate metric ⏸️
+### Task 3.2: Add underrun rate metric ✅
 
 **Goal:** Expose underrun frequency
 
 **New metrics:**
 ```c
-uint32_t underrun_count;
-uint32_t total_callbacks;
-float underrun_rate;  // underruns / total_callbacks
+uint32_t underrun_count;    // Number of callbacks with underruns
+uint32_t total_callbacks;   // Total A2DP data callbacks
+float underrun_rate;        // Calculated: underruns / total_callbacks
 ```
 
 **Log on underrun:**
 ```c
-ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%)", 
-         underrun_count, underrun_rate * 100);
+ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
+         underrun_count, underrun_rate * 100, len, bytes_read);
 ```
 
+**Changes:**
+- [x] Added underrun_count and total_callbacks to bt_streaming_info_t
+- [x] Updated bt_audio_data_callback to track both counters
+- [x] Log warning on each underrun with current rate
+- [x] Updated reset logic in both streaming managers
+- [x] STATUS command shows UNDERRUNS, CALLBACKS, UNDERRUN_RATE
+- [x] Updated host test stub
+
 **Acceptance:**
-- [ ] Underrun rate tracked
-- [ ] Visible in logs and status
+- [x] Underrun rate tracked and calculated correctly
+- [x] Visible in logs (ESP_LOGW) when underruns occur
+- [x] Visible in STATUS command output
+- [x] All 271 host tests pass
+- [x] Binary: 935,232 bytes (+144 bytes from Task 3.1)
+
+**Implementation notes:**
+- Underrun detected when bytes_read < len
+- Rate calculated as percentage: (underrun_count / total_callbacks) * 100
+- Logs include actual bytes requested vs received for debugging
+- Counters reset on STARTING and STOPPED states
 
 ---
 

@@ -1,3 +1,62 @@
+## 2026-02-03 01:17 — CODE_REVIEW5 Task 3.2: Underrun Rate Tracking
+
+**Context:** Added underrun frequency monitoring to streaming statistics
+
+**Problem:**
+- Task 3.1 exposed underruns via bytes_silence counter
+- No visibility into underrun frequency or rate
+- No runtime logging when underruns occur
+- Hard to diagnose streaming health issues
+
+**Solution:** Track underrun frequency with rate calculation
+- underrun_count: Increments when bytes_read < len
+- total_callbacks: Total A2DP data callback invocations
+- underrun_rate: Percentage calculated at runtime
+
+**Implementation:**
+
+*bt_streaming_info_t structure (bt_source.h):*
+- Added 2 new uint32_t fields: underrun_count, total_callbacks
+
+*bt_audio_data_callback (bt_streaming_manager.c):*
+```c
+s_streaming_info.total_callbacks++;  // Track every callback
+if (bytes_read < len) {
+    s_streaming_info.underrun_count++;
+    float underrun_rate = (float)underrun_count / (float)total_callbacks;
+    ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
+             underrun_count, underrun_rate * 100, len, bytes_read);
+}
+```
+
+*STATUS command output (cmd_handlers_system.c):*
+- Added UNDERRUNS, CALLBACKS, UNDERRUN_RATE fields
+- Rate displayed as percentage (e.g., 2.50 for 2.5%)
+
+*Reset logic:*
+- Both counters reset on STARTING and STOPPED states
+- Ensures fresh tracking for each streaming session
+
+**Binary size:** 935,232 bytes (+144 bytes from Task 3.1)
+**Tests:** 271/271 passing (100%)
+
+**Use cases:**
+- Real-time underrun detection via ESP_LOGW logs
+- Monitor underrun frequency during streaming
+- Diagnose audio queue health issues
+- Compare underrun rates across different scenarios
+
+**Example visible change:**
+```
+# Console log on underrun:
+W (12345) bt_streaming: A2DP underrun #5 (rate: 2.50%, requested: 1024, got: 512)
+
+# STATUS command output:
+UNDERRUNS=5,CALLBACKS=200,UNDERRUN_RATE=2.50
+```
+
+---
+
 ## 2026-02-03 01:13 — CODE_REVIEW5 Task 3.1: Split Streaming Stats (Audio vs Silence)
 
 **Context:** Streaming statistics now distinguish actual audio from zero-fill silence

@@ -113,6 +113,9 @@ typedef struct {
     uint32_t bytes_requested;       // Total bytes A2DP requested
     uint32_t bytes_produced;        // Actual audio bytes from queue
     uint32_t bytes_silence;         // Zero-fill bytes (underruns)
+    /* CODE_REVIEW5 Task 3.2: Underrun rate tracking */
+    uint32_t underrun_count;        // Number of callbacks with underruns
+    uint32_t total_callbacks;       // Total A2DP data callbacks
 } bt_streaming_info_t;
 
 // Callback type definitions

@@ -77,6 +77,17 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     s_streaming_info.bytes_silence += (len - bytes_read);  /* Zero-fill (underruns) */
     s_streaming_info.packets_sent++;
     
+    /* CODE_REVIEW5 Task 3.2: Track underrun rate */
+    s_streaming_info.total_callbacks++;
+    if (bytes_read < len) {
+        s_streaming_info.underrun_count++;
+        float underrun_rate = (float)s_streaming_info.underrun_count / (float)s_streaming_info.total_callbacks;
+        ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
+                 (unsigned long)s_streaming_info.underrun_count,
+                 underrun_rate * 100.0f,
+                 len, bytes_read);
+    }
+    
     /* Calculate streaming duration */
     uint32_t current_time = get_current_time_ms();
     if (s_stream_start_time > 0) {
