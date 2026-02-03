@@ -382,26 +382,53 @@ idf_component_register(
 
 ---
 
-### Task 1.9: Test new resampler (manual device test) ⏸️
+### Task 1.9: Test new resampler (manual device test) 🔄
 
 **Goal:** Verify playback duration correct
 
-**Test procedure:**
-1. Build and flash firmware
-2. Play test WAV (44.1kHz → 48kHz upsampling)
-3. Measure playback duration
-4. Compare to expected duration
-5. Check logs for frame counts
+**Progress (2026-02-02 19:53):**
+- [x] Main firmware built and flashed (933,968 bytes)
+- [x] Device boots successfully (ESP32-D0WD-V3)
+- [x] Streaming resampler integrated and operational
+- [x] Identified test framework issue:
+  - `test_wav_playback_duration_baseline` fails due to test setup
+  - Conflict: test starts I2S, then play_wav rejects (ESP_ERR_INVALID_STATE)
+  - **Not a resampler bug** - defensive check prevents concurrent I2S/WAV
+- [ ] Manual console validation pending (requires BT device pairing)
 
-**Expected outcome:**
+**Test Procedure Options:**
+
+**Option A: Manual Console Test (Recommended)**
+```bash
+idf.py -p /dev/ttyUSB0 monitor
+# Then: pair → connect → play /spiffs/worker_long_norm.wav
+# Observe: Duration (~500ms), completion logs, no truncation
+```
+
+**Option B: Fix Test Code**
+- Stop I2S before `audio_processor_play_wav()` call
+- Or remove defensive "I2S running" check from play_wav
+- Re-run `test_app_audio` device tests
+
+**Option C: Proceed to Phase 2**
+- Defer device validation until Phase 2 instrumentation (Task 2.1)
+- Frame-based metrics will provide better validation data
+
+**Expected Outcome:**
 - Playback completes to end
-- Duration matches WAV file duration
+- Duration matches WAV file duration (500ms ±50ms)
 - No "ends early" behavior
+- Frame counts accurate (if instrumentation active)
 
-**Acceptance:**
-- [ ] Playback duration correct
-- [ ] No cumulative frame loss
-- [ ] Upsampling works correctly
+**Acceptance Criteria:**
+- [ ] Playback duration within tolerance (500ms ±50ms)
+- [ ] No cumulative frame loss observed
+- [ ] Upsampling works correctly (44.1kHz → 48kHz)
+- [ ] Completion logs show success
+
+**Current Status:** **Blocked by test framework issue OR awaiting manual validation**
+
+**Recommendation:** Either (A) manual console test with BT device, or (C) proceed to Phase 2 instrumentation and validate with better metrics.
 
 ---
 

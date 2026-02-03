@@ -1,3 +1,63 @@
+## 2026-02-02 19:53:11 — CODE_REVIEW5 Task 1.9: Device Testing (Partial)
+
+**Objective:** Validate streaming resampler on real hardware
+
+**Findings:**
+
+**Main Firmware:** ✅ Successfully built and flashed
+- Binary size: 933,968 bytes (47% free space)
+- Firmware version: v0.2.0-mainc-stable-49-gde518b8f
+- Device: ESP32-D0WD-V3 (revision v3.1) on /dev/ttyUSB0
+- Boot status: Clean, all subsystems initialized
+- Streaming resampler: All 10 functions integrated and operational
+
+**Test App (test_app_audio):** ⚠️ Identified test setup issue
+- Built successfully: 304,320 bytes (83% free)
+- Test results: 64 tests total, 63 passed, **1 failed**
+- **Failing test:** `test_wav_playback_duration_baseline` (line 1821)
+- **Failure reason:** ESP_ERR_INVALID_STATE (259)
+  - Test sequence: init → start → mock_connection → drain → **play_wav**
+  - Issue: `audio_processor_start()` starts I2S
+  - Then: `audio_processor_play_wav()` rejected with "I2S running; rejecting PLAY"
+  - Defensive check in play_manager prevents concurrent I2S/WAV operations
+- **Root cause:** Test framework setup conflict, NOT a resampler bug
+- **Needs:** Test code fix (stop I2S before play) OR remove defensive check
+
+**Manual Test Procedure (Recommended):**
+Since automated test blocked, manual console test ready:
+```bash
+# Open serial monitor
+cd /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source
+. $HOME/esp/esp-idf/export.sh
+idf.py -p /dev/ttyUSB0 monitor
+
+# In console (after boot):
+1. pair               # Pair with Bluetooth speaker/headphones  
+2. connect            # Connect to paired device
+3. play /spiffs/worker_long_norm.wav
+4. Observe logs for:
+   - Playback completion messages
+   - Duration (expected: ~500ms)
+   - No truncation warnings or frame loss
+```
+
+**Expected Results:**
+- Playback completes fully (no "ends early" behavior)
+- Duration: 500ms ±50ms (±10% tolerance)
+- Upsampling: 44.1kHz → 48kHz without frame loss
+- Completion logs show success
+
+**Task Status:** ⏸️ **Blocked** by test framework issue OR **awaiting** manual validation
+
+**Next Steps (3 options):**
+1. **Option A:** Manual console test with Bluetooth device (recommended for empirical validation)
+2. **Option B:** Fix test_wav_playback_duration_baseline() - stop I2S before play_wav call
+3. **Option C:** Proceed to Phase 2 instrumentation (Tasks 2.1-2.3), validate with better metrics
+
+**Recommendation:** Either manual console test (A) if BT device available, or proceed to Phase 2 (C) and circle back with frame-based instrumentation for more detailed validation.
+
+---
+
 ## 2026-02-02 19:20:20 — CODE_REVIEW5 Task 1.7 Complete
 
 **Task:** Initialize resampler and stash on WAV start, cleanup on close
