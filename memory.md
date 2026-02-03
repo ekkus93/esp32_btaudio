@@ -1,3 +1,35 @@
+## 2026-02-03 — CODE_REVIEW5 Task 2.2: Enhanced Completion Report
+
+**Context:** Enhanced WAV playback completion report to emphasize frame-based metrics
+
+**Changes:**
+- Reorganized log_playback_completion() to show frame metrics first
+- Added duration accuracy indicator (EXCELLENT >= 99%, POOR < 99%)
+- Moved byte metrics to "legacy" section for debugging
+- Added clear section headers and visual separators
+
+**Report structure:**
+```
+=== WAV Playback Complete - Instrumentation Report ===
+Frame metrics:          ← Primary (Task 2.1)
+Byte metrics (legacy):  ← Secondary (debugging)
+Error counters:         ← Failures/issues
+```
+
+**Benefits:**
+- Frame accuracy now the first metric users see
+- Duration accuracy (>= 99%) provides immediate quality assessment
+- Legacy byte metrics retained for debugging weird behavior
+- Clear separation reduces confusion
+
+**Files changed:**
+- components/audio_processor/play_manager.c
+
+**Binary size:** 934,016 bytes (+48 bytes)
+**Tests:** 271/271 passing (100%)
+
+---
+
 ## 2026-02-02 23:51:32 — CODE_REVIEW5 Task 2.1: Frame-Based Instrumentation ✅ COMPLETE
 
 **Objective:** Track PCM frames instead of bytes for accurate playback metrics

@@ -958,23 +958,10 @@ static esp_err_t initialize_playback_state(FILE *file,
 /* Helper: Log playback instrumentation results */
 static void log_playback_completion(void)
 {
-    ESP_LOGI(TAG, "WAV playback complete - instrumentation report:");  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Expected data bytes: %zu", s_expected_data_bytes);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Bytes read from file: %zu", s_bytes_read_from_file_total);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Bytes enqueued: %zu", s_bytes_enqueued_total);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  dst_block alloc failures: %zu", s_dst_block_null_count);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Enqueue failures: %zu", s_enqueue_fail_count);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "=== WAV Playback Complete - Instrumentation Report ===");  // NOLINT(bugprone-branch-clone)
     
-    if (s_expected_data_bytes > 0) {
-        size_t bytes_lost = 0;
-        if (s_bytes_read_from_file_total > s_bytes_enqueued_total) {
-            bytes_lost = s_bytes_read_from_file_total - s_bytes_enqueued_total;
-        }
-        float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0F;
-        ESP_LOGI(TAG, "  Data loss: %zu bytes (%.2f%%)", bytes_lost, (double)percent_lost);  // NOLINT(bugprone-branch-clone)
-    }
-    
-    /* Frame-based metrics (CODE_REVIEW5 Task 2.1) */
+    /* Frame-based metrics (primary - CODE_REVIEW5 Task 2.2) */
+    ESP_LOGI(TAG, "Frame metrics:");  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "  Source frames read: %zu", s_src_frames_read);  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "  Destination frames produced: %zu", s_dst_frames_produced);  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "  Expected destination frames: %zu", s_expected_dst_frames);  // NOLINT(bugprone-branch-clone)
@@ -986,9 +973,38 @@ static void log_playback_completion(void)
             frames_lost = s_expected_dst_frames - s_dst_frames_produced;
         }
         float percent_frame_loss = (float)frames_lost / (float)s_expected_dst_frames * 100.0F;
+        
         ESP_LOGI(TAG, "  Frame accuracy ratio: %.4f", (double)ratio);  // NOLINT(bugprone-branch-clone)
         ESP_LOGI(TAG, "  Frame loss: %zu frames (%.2f%%)", frames_lost, (double)percent_frame_loss);  // NOLINT(bugprone-branch-clone)
+        
+        /* Duration accuracy check (Task 2.2) */
+        if (ratio >= 0.99F) {
+            ESP_LOGI(TAG, "  Duration accuracy: EXCELLENT (>= 99%%)");  // NOLINT(bugprone-branch-clone)
+        } else {
+            ESP_LOGW(TAG, "  Duration accuracy: POOR (< 99%%) - possible resampler issue");
+        }
     }
+    
+    /* Byte-based metrics (legacy - for debugging) */
+    ESP_LOGI(TAG, "Byte metrics (legacy):");  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Expected data bytes: %zu", s_expected_data_bytes);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Bytes read from file: %zu", s_bytes_read_from_file_total);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Bytes enqueued: %zu", s_bytes_enqueued_total);  // NOLINT(bugprone-branch-clone)
+    
+    if (s_expected_data_bytes > 0) {
+        size_t bytes_lost = 0;
+        if (s_bytes_read_from_file_total > s_bytes_enqueued_total) {
+            bytes_lost = s_bytes_read_from_file_total - s_bytes_enqueued_total;
+        }
+        float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0F;
+        ESP_LOGI(TAG, "  Byte loss: %zu bytes (%.2f%%)", bytes_lost, (double)percent_lost);  // NOLINT(bugprone-branch-clone)
+    }
+    
+    /* Error counters */
+    ESP_LOGI(TAG, "Error counters:");  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  dst_block alloc failures: %zu", s_dst_block_null_count);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Enqueue failures: %zu", s_enqueue_fail_count);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "=====================================================");  // NOLINT(bugprone-branch-clone)
 }
 
 /* Helper: Cleanup playback state */

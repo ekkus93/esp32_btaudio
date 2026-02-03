@@ -553,30 +553,49 @@ Frame loss: 0 frames (0.00%)
 
 ---
 
-### Task 2.2: Update completion report ⏸️
+### Task 2.2: Update completion report ✅ COMPLETE
 
 **Goal:** Report frame-based metrics
 
-**Current log:**
+**Implementation (2026-02-03):**
+
+**Enhanced completion report structure:**
 ```c
-ESP_LOGI(TAG, "WAV complete: read=%zu enqueued=%zu loss=%zu",
-         bytes_read, bytes_enqueued, bytes_read - bytes_enqueued);
+=== WAV Playback Complete - Instrumentation Report ===
+Frame metrics:
+  Source frames read: 22050
+  Destination frames produced: 24000
+  Expected destination frames: 24000
+  Frame accuracy ratio: 1.0000
+  Frame loss: 0 frames (0.00%)
+  Duration accuracy: EXCELLENT (>= 99%)
+Byte metrics (legacy):
+  Expected data bytes: 88200
+  Bytes read from file: 28672
+  Bytes enqueued: 28672
+  Byte loss: 0 bytes (0.00%)
+Error counters:
+  dst_block alloc failures: 0
+  Enqueue failures: 0
+=====================================================
 ```
 
-**New log:**
-```c
-ESP_LOGI(TAG, "WAV complete: src_frames=%zu dst_frames=%zu expected=%zu ratio=%.4f",
-         src_frames_read, dst_frames_produced, expected_dst_frames,
-         (float)dst_frames_produced / expected_dst_frames);
-```
+**Improvements:**
+- **Reorganized report** - Frame metrics first (primary), byte metrics second (legacy)
+- **Duration accuracy indicator** - Logs "EXCELLENT" if ratio >= 99%, "POOR" with warning otherwise
+- **Clear sections** - Separated frame/byte/error metrics with headers
+- **Visual boundaries** - Added separators for readability
 
-**Additional metrics:**
-- Frame loss: `expected_dst_frames - dst_frames_produced`
-- Duration accuracy: `ratio >= 0.99` (allow 1% tolerance)
+**Changes:**
+- File: components/audio_processor/play_manager.c (log_playback_completion)
+- Binary size: 934,016 bytes (+48 bytes from enhanced logging)
+- All tests pass: 271/271 (100%)
 
 **Acceptance:**
-- [ ] Completion report accurate
-- [ ] Frame-based metrics clear
+- [x] Completion report accurate
+- [x] Frame-based metrics clear and prominent
+- [x] Duration accuracy check implemented (>= 99% threshold)
+- [x] Legacy byte metrics retained for debugging
 
 ---
 
