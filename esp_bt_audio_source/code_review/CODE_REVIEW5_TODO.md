@@ -265,7 +265,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed);
 
 ---
 
-### Task 1.5: Implement produce_one_output_block() ⏸️
+### Task 1.5: Implement produce_one_output_block() ✅
 
 **Goal:** Produce exactly one 1KB output block (fixed size)
 
@@ -284,9 +284,11 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
 7. Return: ESP_OK
 
 **Acceptance:**
-- [ ] Always produces 1024-byte blocks
-- [ ] Pads silence at EOF
-- [ ] Integrates stash + resampler
+- [x] Always produces 1024-byte blocks
+- [x] Pads silence at EOF
+- [x] Integrates stash + resampler
+- [x] Binary size: 931,056 bytes (unchanged, function optimized out until Task 1.6)
+- [x] Implemented in play_manager.c lines 465-520
 
 ---
 

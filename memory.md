@@ -1,3 +1,78 @@
+## 2026-02-02 19:09:03 — CODE_REVIEW5 Task 1.5: produce_one_output_block() complete ✅
+
+**Task:** Implement function to produce exactly one 1KB output block (fixed size)
+
+**Implementation details:**
+- Function: `static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)`
+- Location: play_manager.c lines 465-520 (after ensure_stash_frames)
+- Purpose: Tie together stash buffer, resampler, and file reader into fixed-output pipeline
+- Integrates: Tasks 1.1 (resampler), 1.2 (stash), 1.4 (ensure_stash_frames)
+
+**Logic flow:**
+1. Compute out_frames = s_pm.out_frames_per_chunk (256 frames for stereo 16-bit)
+2. Compute min_in_frames = audio_resampler_stream_min_in_frames(&s_pm.rs, out_frames)
+   - Variable requirement depends on sample rate ratio and current phase
+   - Example: 44.1k→48k might need 235-236 input frames for 256 output
+3. Call ensure_stash_frames(min_in_frames) - fills stash with converted file data
+4. Get available_frames = s_pm.stash.frames (may be < min_in at EOF)
+5. Call audio_resampler_stream_process():
+   - Input: stash buffer, available frames
+   - Output: dst_block, out_frames (always exactly 256)
+   - Returns: frames_produced, in_frames_consumed
+6. Call pcm_stash_consume_frames(in_frames_consumed) - remove used frames
+7. If frames_produced < out_frames (EOF case): pad remainder with zeros
+8. Set *out_bytes = out_frames * frame_bytes_dst (always 1024)
+9. Return ESP_OK
+
+**Fixed-output design rationale:**
+- Old resampler: variable output size (process_audio_block produced ~1088 bytes)
+- New resampler: fixed output size (always 1024 bytes = 256 frames)
+- Benefits:
+  - Simplifies queue management (all blocks same size)
+  - Eliminates cumulative rounding errors (phase carries across calls)
+  - Predictable memory usage (no variable allocations)
+  - Matches audio_chunk pool block size exactly
+
+**Variable-input consumption:**
+- Stash holds variable number of converted frames
+- Resampler requests min_in_frames based on current phase
+- ensure_stash_frames() reads/converts file data as needed
+- Resampler may consume less than min_in (fractional carry)
+- Example: Request 236 frames, consume 235.7 → consume 235, carry 0.7
+
+**EOF handling edge case:**
+- When file exhausted: ensure_stash_frames() sets s_pm.eof_seen = true
+- Stash may have partial frames (e.g., 50 frames when 236 needed)
+- Resampler produces what it can from available frames (e.g., 54 output frames)
+- Remainder padded with silence: memset(dst_block + 54*frame_bytes, 0, 202*frame_bytes)
+- Caller (Task 1.6) will detect EOF when stash fully drained and eof_seen == true
+
+**Integration points:**
+- Task 1.1: audio_resampler_stream_t resampler state (Q16.16 phase accumulator)
+- Task 1.2: pcm_stash_t buffer (2048 frame capacity)
+- Task 1.4: ensure_stash_frames() helper (file read + conversion + upmix)
+- Task 1.6: play_manager_fill() will call this in loop (next task)
+
+**Build verification:**
+- Binary size: 0xe34f0 bytes (931,056 bytes) - unchanged from Task 1.4
+- Free space: 838,416 bytes (47% of 1,769,472 partition)
+- Compilation: Clean build, no errors
+- Warnings (expected):
+  - `produce_one_output_block` defined but not used (will be used in Task 1.6)
+  - `pcm_stash_init/deinit` defined but not used (will be used in Task 1.7)
+- Function optimized out by compiler until actually called
+
+**Minor fix applied:**
+- Removed unused variable `dst_frame_bytes` in ensure_stash_frames() (line 417)
+- Clean build now shows only expected "unused function" warnings
+
+**Next steps:**
+- Task 1.6: Refactor play_manager_fill() to replace process_audio_block()
+- Task 1.7: Initialize resampler/stash on WAV start in play_manager_play_wav()
+- Then binary size will increase when functions actually called/linked
+
+---
+
 ## 2026-02-02 19:01:45 — CODE_REVIEW5 Task 1.4: ensure_stash_frames() helper complete ✅
 
 **Task:** Implement helper to read variable bytes from WAV and fill stash

@@ -414,7 +414,6 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
         }
         
         /* Append converted frames to stash */
-        size_t dst_frame_bytes = s_pm.out_cfg.channels * sample_bytes_dst;
         ret = pcm_stash_append_frames(&s_pm.stash, src_block, dst_frames);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "ensure_stash_frames: Failed to append %zu frames to stash", dst_frames);
@@ -431,6 +430,90 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
             break;
         }
     }
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Produce exactly one 1KB output block (fixed size)
+ *
+ * WHY: New streaming resampler pipeline produces fixed-size output chunks
+ *      to simplify queue management and eliminate cumulative rounding errors.
+ *      Unlike old block-local resampling (variable output), this always
+ *      produces exactly 1024 bytes (256 frames stereo 16-bit).
+ *
+ * HOW:
+ *   1. Compute required input frames for desired output (variable, depends on ratio)
+ *   2. Ensure stash has enough frames (reads/converts file data as needed)
+ *   3. Call streaming resampler (consumes from stash, produces fixed output)
+ *   4. Pad with zeros if EOF prevents full output
+ *   5. Always return 1024 bytes (even if partial silence)
+ *
+ * CORRECTNESS:
+ *   - Stash provides variable input frames based on resampler needs
+ *   - Resampler maintains Q16.16 phase across calls (no cumulative loss)
+ *   - Fixed output size simplifies caller (always 1KB blocks)
+ *   - EOF handling: pads silence when stash exhausted
+ *
+ * @param dst_block Output buffer (must be AUDIO_CHUNK_BLOCK_BYTES = 1024 bytes)
+ * @param out_bytes [OUT] Bytes written (always 1024, even if padded)
+ * @return ESP_OK on success, error code otherwise
+ *
+ * @note Called repeatedly by play_manager_fill() until EOF and stash drained
+ * @note Uses Tasks 1.1 (resampler), 1.2 (stash), 1.4 (ensure_stash_frames)
+ */
+static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
+{
+    /* Compute desired output frames (fixed chunk size) */
+    size_t out_frames = s_pm.out_frames_per_chunk;  /* e.g., 256 frames */
+    
+    /* Compute minimum input frames needed from stash */
+    size_t min_in_frames = audio_resampler_stream_min_in_frames(&s_pm.rs, out_frames);
+    
+    /* Ensure stash has enough frames (reads/converts file data if needed) */
+    esp_err_t ret = ensure_stash_frames(min_in_frames);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "produce_one_output_block: Failed to fill stash");
+        return ret;
+    }
+    
+    /* Get current stash frame count (may be less than min_in if EOF) */
+    size_t available_frames = s_pm.stash.frames;
+    
+    /* Call streaming resampler (produces exactly out_frames, consumes variable input) */
+    size_t in_frames_consumed = 0;
+    size_t frames_produced = audio_resampler_stream_process(
+        &s_pm.rs,
+        s_pm.stash.buf,         /* Input from stash */
+        available_frames,        /* Available input frames */
+        dst_block,               /* Output block */
+        out_frames,              /* Desired output frames */
+        &in_frames_consumed      /* [OUT] Frames consumed from stash */
+    );
+    
+    /* Remove consumed frames from stash */
+    if (in_frames_consumed > 0) {
+        ret = pcm_stash_consume_frames(&s_pm.stash, in_frames_consumed);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "produce_one_output_block: Failed to consume %zu frames", in_frames_consumed);
+            return ret;
+        }
+    }
+    
+    /* Check for partial output (EOF case) */
+    if (frames_produced < out_frames) {
+        /* Pad remainder with zeros (silence) */
+        size_t silence_frames = out_frames - frames_produced;
+        size_t silence_bytes = silence_frames * s_pm.frame_bytes_dst;
+        uint8_t *silence_ptr = dst_block + (frames_produced * s_pm.frame_bytes_dst);
+        memset(silence_ptr, 0, silence_bytes);
+        
+        ESP_LOGD(TAG, "produce_one_output_block: EOF - produced %zu/%zu frames, padded %zu",
+                 frames_produced, out_frames, silence_frames);
+    }
+    
+    /* Always output exactly 1024 bytes (256 frames stereo 16-bit) */
+    *out_bytes = out_frames * s_pm.frame_bytes_dst;
     
     return ESP_OK;
 }
