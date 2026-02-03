@@ -506,42 +506,50 @@ idf_component_register(
 
 ## Phase 2: WAV Instrumentation Fixes
 
-### Task 2.1: Change instrumentation to track frames ⏸️
+### Task 2.1: Change instrumentation to track frames ✅ COMPLETE
 
 **Goal:** Report PCM frames instead of bytes
 
-**Current (play_manager.c):**
+**Implementation (2026-02-02):**
+
+**New instrumentation variables:**
 ```c
-s_pm.bytes_read += bytes_read;
-s_pm.bytes_enqueued += out_bytes;
+static size_t s_src_frames_read;        /* Source frames read from file */
+static size_t s_dst_frames_produced;    /* Destination frames produced */
+static size_t s_expected_dst_frames;    /* Expected output frames */
 ```
 
-**New:**
-```c
-s_pm.src_frames_read += frames_read;
-s_pm.dst_frames_produced += frames_produced;
+**Tracking locations:**
+- `ensure_stash_frames()` - tracks source frames read after conversion
+- `produce_one_output_block()` - tracks destination frames produced
+- `initialize_playback_state()` - computes expected output frames:
+  ```c
+  size_t src_frames_total = data_bytes / frame_bytes_src;
+  s_expected_dst_frames = (src_frames_total * dst_rate_hz) / src_rate_hz;
+  ```
+
+**Completion report enhanced:**
+Now logs both byte and frame metrics:
+```
+Source frames read: 22050
+Destination frames produced: 24000
+Expected destination frames: 24000
+Frame accuracy ratio: 1.0000
+Frame loss: 0 frames (0.00%)
 ```
 
 **Changes:**
-- [ ] Add fields to `play_manager_state_t`:
-  ```c
-  size_t src_frames_read;
-  size_t dst_frames_produced;
-  size_t expected_dst_frames;  // from header: duration * dst_rate
-  ```
-
-- [ ] Update instrumentation in:
-  - [ ] `ensure_stash_frames()` - track src frames read
-  - [ ] `produce_one_output_block()` - track dst frames produced
-  
-- [ ] Compute expected frames on WAV start:
-  ```c
-  s_pm.expected_dst_frames = (wav_data_bytes / src_frame_bytes) * dst_rate / src_rate;
-  ```
+- Added 3 new frame-based counters
+- Track frames in `ensure_stash_frames()` (after conversion)
+- Track frames in `produce_one_output_block()` (after resampling)
+- Compute expected frames on WAV start (based on sample rate ratio)
+- Updated `log_playback_completion()` to show frame metrics
 
 **Acceptance:**
-- [ ] Instrumentation tracks frames
-- [ ] Expected frames computed correctly
+- [x] Instrumentation tracks frames
+- [x] Expected frames computed correctly (src_frames * dst_rate / src_rate)
+- [x] Completion report shows frame accuracy ratio
+- [x] All tests pass (271/271)
 
 ---
 

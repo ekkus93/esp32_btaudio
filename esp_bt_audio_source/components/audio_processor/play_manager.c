@@ -116,12 +116,17 @@ typedef struct {
 
 static play_manager_state_t s_pm = {0};
 
-/* WAV playback instrumentation (CODE_REVIEW4 Task 0.2) */
-static size_t s_bytes_read_from_file_total = 0;
-static size_t s_bytes_enqueued_total = 0;
+/* WAV playback instrumentation (CODE_REVIEW4 Task 0.2, CODE_REVIEW5 Task 2.1) */
+static size_t s_bytes_read_from_file_total = 0;  /* Deprecated: use frames */
+static size_t s_bytes_enqueued_total = 0;        /* Deprecated: use frames */
 static size_t s_enqueue_fail_count = 0;
 static size_t s_dst_block_null_count = 0;
-static size_t s_expected_data_bytes = 0;
+static size_t s_expected_data_bytes = 0;         /* Deprecated: use frames */
+
+/* Frame-based instrumentation (CODE_REVIEW5 Task 2.1) */
+static size_t s_src_frames_read = 0;             /* Source frames read from file */
+static size_t s_dst_frames_produced = 0;         /* Destination frames produced */
+static size_t s_expected_dst_frames = 0;         /* Expected output frames */
 
 /**
  * PCM stash buffer functions (CODE_REVIEW5 Task 1.2)
@@ -427,6 +432,9 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
             return ret;
         }
         
+        /* Track source frames read (CODE_REVIEW5 Task 2.1) */
+        s_src_frames_read += src_frames;
+        
         /* Release temporary block */
         audio_chunk_release_block(src_block);
         
@@ -523,6 +531,9 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
     
     /* Always output exactly 1024 bytes (256 frames stereo 16-bit) */
     *out_bytes = out_frames * s_pm.frame_bytes_dst;
+    
+    /* Track destination frames produced (CODE_REVIEW5 Task 2.1) */
+    s_dst_frames_produced += frames_produced;
     
     return ESP_OK;
 }
@@ -909,6 +920,16 @@ static esp_err_t initialize_playback_state(FILE *file,
     s_enqueue_fail_count = 0;
     s_dst_block_null_count = 0;
     s_expected_data_bytes = data_bytes;
+    
+    /* Initialize frame-based counters (CODE_REVIEW5 Task 2.1) */
+    s_src_frames_read = 0;
+    s_dst_frames_produced = 0;
+    
+    /* Compute expected output frames based on sample rate ratio */
+    size_t src_frames_total = data_bytes / frame_bytes_src;
+    uint32_t src_rate_hz = (uint32_t)src_rate;  /* Enum values are Hz */
+    uint32_t dst_rate_hz = (uint32_t)s_pm.out_cfg.sample_rate;
+    s_expected_dst_frames = (src_frames_total * dst_rate_hz) / src_rate_hz;
 
     /* CODE_REVIEW5 Task 1.7: Initialize streaming resampler state */
     s_pm.wav_channels = channels;
@@ -951,6 +972,22 @@ static void log_playback_completion(void)
         }
         float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0F;
         ESP_LOGI(TAG, "  Data loss: %zu bytes (%.2f%%)", bytes_lost, (double)percent_lost);  // NOLINT(bugprone-branch-clone)
+    }
+    
+    /* Frame-based metrics (CODE_REVIEW5 Task 2.1) */
+    ESP_LOGI(TAG, "  Source frames read: %zu", s_src_frames_read);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Destination frames produced: %zu", s_dst_frames_produced);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Expected destination frames: %zu", s_expected_dst_frames);  // NOLINT(bugprone-branch-clone)
+    
+    if (s_expected_dst_frames > 0) {
+        float ratio = (float)s_dst_frames_produced / (float)s_expected_dst_frames;
+        size_t frames_lost = 0;
+        if (s_expected_dst_frames > s_dst_frames_produced) {
+            frames_lost = s_expected_dst_frames - s_dst_frames_produced;
+        }
+        float percent_frame_loss = (float)frames_lost / (float)s_expected_dst_frames * 100.0F;
+        ESP_LOGI(TAG, "  Frame accuracy ratio: %.4f", (double)ratio);  // NOLINT(bugprone-branch-clone)
+        ESP_LOGI(TAG, "  Frame loss: %zu frames (%.2f%%)", frames_lost, (double)percent_frame_loss);  // NOLINT(bugprone-branch-clone)
     }
 }
 

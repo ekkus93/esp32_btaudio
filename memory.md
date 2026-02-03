@@ -1,3 +1,75 @@
+## 2026-02-02 23:51:32 — CODE_REVIEW5 Task 2.1: Frame-Based Instrumentation ✅ COMPLETE
+
+**Objective:** Track PCM frames instead of bytes for accurate playback metrics
+
+**Implementation:**
+
+**New Instrumentation Variables:**
+- `s_src_frames_read` - Source frames read from file (after conversion)
+- `s_dst_frames_produced` - Destination frames produced by resampler
+- `s_expected_dst_frames` - Expected output frames (computed from sample rate ratio)
+
+**Tracking Locations:**
+1. **ensure_stash_frames()** - Tracks source frames after bit-depth conversion and mono→stereo upmix
+2. **produce_one_output_block()** - Tracks destination frames after resampling
+3. **initialize_playback_state()** - Computes expected output frames:
+   ```c
+   size_t src_frames_total = data_bytes / frame_bytes_src;
+   s_expected_dst_frames = (src_frames_total * dst_rate_hz) / src_rate_hz;
+   ```
+
+**Enhanced Completion Report:**
+Now logs both legacy byte metrics and new frame-based metrics:
+```
+WAV playback complete - instrumentation report:
+  Expected data bytes: 44144
+  Bytes read from file: 0  [deprecated]
+  Bytes enqueued: 44144    [deprecated]
+  dst_block alloc failures: 0
+  Enqueue failures: 0
+  Data loss: 0 bytes (0.00%)
+  
+  Source frames read: 22050
+  Destination frames produced: 24000
+  Expected destination frames: 24000
+  Frame accuracy ratio: 1.0000
+  Frame loss: 0 frames (0.00%)
+```
+
+**Key Metrics:**
+- **Frame accuracy ratio:** `dst_frames_produced / expected_dst_frames`
+  - 1.0000 = perfect (no loss)
+  - < 1.0 = truncation (old resampler would show ~0.9977 for 44.1→48k)
+- **Frame loss:** Difference between expected and actual frames
+- **Sample rate aware:** Computation accounts for upsampling/downsampling
+
+**Benefits:**
+1. **Accurate** - Frames are the fundamental unit, bytes vary by bit depth
+2. **Ratio-aware** - Shows exactly how much data was preserved through resampling
+3. **Debugging** - Separates source read issues from resampler output issues
+4. **Backward compatible** - Old byte metrics still logged for comparison
+
+**Files Modified:**
+- `/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/play_manager.c`
+  - Added 3 frame-based instrumentation variables (lines 127-129)
+  - Track source frames in ensure_stash_frames() (after line 430)
+  - Track destination frames in produce_one_output_block() (after line 524)
+  - Compute expected frames in initialize_playback_state() (lines 920-925)
+  - Enhanced log_playback_completion() with frame metrics (lines 958-973)
+
+**Test Results:**
+- ✅ Build successful (933,968 bytes - no size change)
+- ✅ All host tests pass (271/271)
+- ✅ Incremental and standalone builds pass
+
+**Next Steps:**
+- Task 2.2: Update completion report format (optional - already done)
+- Task 2.3: Add diagnostic command for runtime WAV state
+
+**Task Status:** ✅ **COMPLETE** - Frame-based instrumentation operational
+
+---
+
 ## 2026-02-02 23:20:53 — Test Fixes for Streaming Resampler ✅ ALL TESTS PASSING
 
 **Objective:** Fix 5 failing tests after streaming resampler integration
