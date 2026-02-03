@@ -189,8 +189,8 @@ cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx)
                         wav_status.stash_capacity);
         
         /* Resampler position */
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",RESAMP_POS=0x%08lX", 
-                        (unsigned long)wav_status.resampler_pos_q16);
+        (void)snprintf(data + pos, sizeof(data) - (size_t)pos, ",RESAMP_POS=0x%08lX", 
+                       (unsigned long)wav_status.resampler_pos_q16);
     }
     
     cmd_send_response("OK", "WAV_STATUS", "CURRENT", data);

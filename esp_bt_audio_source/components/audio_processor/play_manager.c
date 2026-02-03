@@ -929,6 +929,12 @@ static esp_err_t initialize_playback_state(FILE *file,
     size_t src_frames_total = data_bytes / frame_bytes_src;
     uint32_t src_rate_hz = (uint32_t)src_rate;  /* Enum values are Hz */
     uint32_t dst_rate_hz = (uint32_t)s_pm.out_cfg.sample_rate;
+    if (src_rate_hz == 0) {
+        ESP_LOGE(TAG, "Invalid source sample rate: 0");
+        xSemaphoreGive(s_pm.mutex);
+        fclose(file);
+        return ESP_ERR_INVALID_ARG;
+    }
     s_expected_dst_frames = (src_frames_total * dst_rate_hz) / src_rate_hz;
 
     /* CODE_REVIEW5 Task 1.7: Initialize streaming resampler state */

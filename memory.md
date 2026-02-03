@@ -1,3 +1,46 @@
+## 2026-02-03 01:35 — Clang-tidy Warning Fixes
+
+**Context:** Fixed clang-tidy static analysis warnings
+
+**Warnings found:**
+1. **Dead store** in cmd_handlers_system.c line 192
+   - `pos` assigned but never read after last snprintf
+2. **Division by zero** in play_manager.c line 932
+   - Tainted `src_rate_hz` value from file input could be zero
+
+**Fixes applied:**
+
+*cmd_handlers_system.c:*
+```c
+/* Changed from: pos += snprintf(...) */
+(void)snprintf(data + pos, sizeof(data) - (size_t)pos, ",RESAMP_POS=0x%08lX", ...);
+```
+- Cast result to void since pos unused after this point
+
+*play_manager.c:*
+```c
+uint32_t src_rate_hz = (uint32_t)src_rate;
+if (src_rate_hz == 0) {
+    ESP_LOGE(TAG, "Invalid source sample rate: 0");
+    xSemaphoreGive(s_pm.mutex);
+    fclose(file);
+    return ESP_ERR_INVALID_ARG;
+}
+s_expected_dst_frames = (src_frames_total * dst_rate_hz) / src_rate_hz;
+```
+- Added validation before division to prevent divide-by-zero
+
+**Results:**
+- clang-tidy: 0 warnings (27/27 files clean)
+- Binary: 935,328 bytes (+96 bytes for validation)
+- Tests: 271/271 passing (100%)
+
+**Notes:**
+- Defense-in-depth: src_rate already validated in parse_wav_header, but clang-tidy treats file input as tainted
+- Explicit check satisfies static analyzer and improves robustness
+
+---
+
 ## 2026-02-03 01:17 — CODE_REVIEW5 Task 3.2: Underrun Rate Tracking
 
 **Context:** Added underrun frequency monitoring to streaming statistics
