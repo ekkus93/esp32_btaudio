@@ -1790,6 +1790,8 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
  */
 static void test_wav_playback_duration_baseline(void)
 {
+    ensure_i2s_stopped();
+    
     const char *path = "/spiffs/worker_long_norm.wav";
     const uint32_t expected_duration_ms = 500; /* WAV file is 0.5s */
     const uint32_t tolerance_ms = 50; /* ±10% tolerance */
