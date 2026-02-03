@@ -252,6 +252,9 @@ static esp_err_t pcm_stash_consume_frames(pcm_stash_t *stash, size_t num_frames)
     return ESP_OK;
 }
 
+/**
+ * Helper: Get bytes per sample based on bit depth
+ */
 static inline int bytes_per_sample(audio_bit_depth_t bit_depth)
 {
     switch (bit_depth) {
@@ -262,6 +265,174 @@ static inline int bytes_per_sample(audio_bit_depth_t bit_depth)
         default:
             return 2;
     }
+}
+
+/**
+ * ensure_stash_frames() - Read and convert frames from WAV to fill stash
+ * (CODE_REVIEW5 Task 1.4)
+ *
+ * WHY: Streaming resampler needs variable input frames based on ratio and phase
+ *      - File reads are fixed-size (1KB blocks from pool)
+ *      - Stash decouples file I/O from resampler consumption
+ *
+ * HOW: Loop until stash has enough frames:
+ *      1. Compute frames needed (gap to min_frames_needed)
+ *      2. Convert to source bytes, clamp to remaining file data
+ *      3. Allocate 1KB block, read aligned chunk from file
+ *      4. Convert bit depth (reuse existing convert_audio_format)
+ *      5. Upmix mono→stereo if needed (duplicate samples L=R)
+ *      6. Append converted frames to stash, release block
+ *      7. Handle EOF: set eof_seen flag, break if cannot satisfy request
+ *
+ * CORRECTNESS: Mono→stereo upmix performed on converted data before stash
+ *              - Ensures stash always holds output format frames
+ *              - Resampler doesn't need channel awareness
+ *              - Frame counts are output-format frames throughout
+ *
+ * @param min_frames_needed Minimum frames required in stash (output format)
+ * @return ESP_OK on success (stash may have fewer frames at EOF)
+ *         ESP_ERR_NO_MEM if block allocation fails
+ *         ESP_ERR_INVALID_STATE on file read error
+ */
+static esp_err_t ensure_stash_frames(size_t min_frames_needed)
+{
+    while (s_pm.stash.frames < min_frames_needed && !s_pm.eof_seen) {
+        size_t frames_to_add = min_frames_needed - s_pm.stash.frames;
+        
+        /* Clamp to stash free space */
+        size_t stash_free = pcm_stash_free_frames(&s_pm.stash);
+        if (frames_to_add > stash_free) {
+            frames_to_add = stash_free;
+        }
+        
+        if (frames_to_add == 0) {
+            /* Stash full but still need more frames - cannot proceed */
+            break;
+        }
+        
+        /* Convert output frames to source bytes needed */
+        size_t src_frames_needed = frames_to_add;  /* 1:1 for now, will adjust for ratio later */
+        size_t src_bytes_needed = src_frames_needed * s_pm.frame_bytes_src;
+        
+        /* Clamp to remaining file data */
+        if (src_bytes_needed > s_pm.remaining_bytes) {
+            src_bytes_needed = s_pm.remaining_bytes;
+        }
+        
+        /* Frame-align the read (must read complete frames) */
+        size_t src_frame_bytes = s_pm.frame_bytes_src;
+        if (src_frame_bytes == 0) {
+            src_frame_bytes = 1;  /* Safety: avoid divide-by-zero */
+        }
+        src_bytes_needed = (src_bytes_needed / src_frame_bytes) * src_frame_bytes;
+        
+        if (src_bytes_needed == 0) {
+            /* EOF or no data left */
+            s_pm.eof_seen = true;
+            break;
+        }
+        
+        /* Clamp to 1KB block size (AUDIO_CHUNK_BLOCK_BYTES) */
+        if (src_bytes_needed > AUDIO_CHUNK_BLOCK_BYTES) {
+            src_bytes_needed = AUDIO_CHUNK_BLOCK_BYTES;
+            /* Re-align after clamping */
+            src_bytes_needed = (src_bytes_needed / src_frame_bytes) * src_frame_bytes;
+        }
+        
+        /* Allocate temporary read buffer from pool */
+        uint8_t *src_block = audio_chunk_alloc_block(pdMS_TO_TICKS(100));
+        if (!src_block) {
+            ESP_LOGW(TAG, "ensure_stash_frames: Failed to allocate read block");
+            return ESP_ERR_NO_MEM;
+        }
+        
+        /* Read from file */
+        size_t bytes_read = fread(src_block, 1, src_bytes_needed, s_pm.file);
+        if (bytes_read == 0) {
+            audio_chunk_release_block(src_block);
+            s_pm.eof_seen = true;
+            break;
+        }
+        
+        /* Update file accounting */
+        if (bytes_read > s_pm.remaining_bytes) {
+            s_pm.remaining_bytes = 0;
+        } else {
+            s_pm.remaining_bytes -= bytes_read;
+        }
+        
+        /* Convert bit depth in-place */
+        size_t conv_bytes = 0;
+        audio_convert_args_t conv_args = {
+            .src = src_block,
+            .dst = src_block,
+            .src_size = bytes_read,
+            .src_bit_depth = s_pm.src_bit,
+            .dst_bit_depth = s_pm.out_cfg.bit_depth,
+            .dst_size = &conv_bytes,
+            .work_bytes = AUDIO_CHUNK_BLOCK_BYTES,
+        };
+        esp_err_t ret = convert_audio_format(&conv_args);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "ensure_stash_frames: Bit depth conversion failed");
+            audio_chunk_release_block(src_block);
+            return ret;
+        }
+        
+        /* Calculate source frames after conversion */
+        size_t sample_bytes_dst = bytes_per_sample(s_pm.out_cfg.bit_depth);
+        size_t src_frame_bytes_conv = s_pm.wav_channels * sample_bytes_dst;
+        size_t src_frames = conv_bytes / src_frame_bytes_conv;
+        
+        /* Upmix mono→stereo if needed */
+        size_t dst_frames = src_frames;
+        if (s_pm.wav_channels == 1 && s_pm.out_cfg.channels == 2) {
+            /* Mono→stereo: duplicate each sample L=R
+             * Process backwards to avoid overwriting source data
+             * Source: [s0, s1, s2, ...]
+             * Dest:   [s0, s0, s1, s1, s2, s2, ...]
+             */
+            if (sample_bytes_dst == 2) {
+                /* 16-bit samples */
+                int16_t *samples = (int16_t *)src_block;
+                for (int i = (int)src_frames - 1; i >= 0; i--) {
+                    int16_t sample = samples[i];
+                    samples[i * 2] = sample;      /* Left */
+                    samples[i * 2 + 1] = sample;  /* Right */
+                }
+            } else {
+                /* 32-bit samples */
+                int32_t *samples = (int32_t *)src_block;
+                for (int i = (int)src_frames - 1; i >= 0; i--) {
+                    int32_t sample = samples[i];
+                    samples[i * 2] = sample;      /* Left */
+                    samples[i * 2 + 1] = sample;  /* Right */
+                }
+            }
+            /* Output is now stereo frames */
+            dst_frames = src_frames;  /* Same number of frames, just doubled channels */
+        }
+        
+        /* Append converted frames to stash */
+        size_t dst_frame_bytes = s_pm.out_cfg.channels * sample_bytes_dst;
+        ret = pcm_stash_append_frames(&s_pm.stash, src_block, dst_frames);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "ensure_stash_frames: Failed to append %zu frames to stash", dst_frames);
+            audio_chunk_release_block(src_block);
+            return ret;
+        }
+        
+        /* Release temporary block */
+        audio_chunk_release_block(src_block);
+        
+        /* Check for EOF */
+        if (s_pm.remaining_bytes == 0) {
+            s_pm.eof_seen = true;
+            break;
+        }
+    }
+    
+    return ESP_OK;
 }
 
 /* Helper: Read and validate RIFF/WAVE header */

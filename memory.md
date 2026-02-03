@@ -1,3 +1,60 @@
+## 2026-02-02 19:01:45 — CODE_REVIEW5 Task 1.4: ensure_stash_frames() helper complete ✅
+
+**Task:** Implement helper to read variable bytes from WAV and fill stash
+
+**Implementation details:**
+- Function: `static esp_err_t ensure_stash_frames(size_t min_frames_needed)`
+- Location: play_manager.c (after pcm_stash functions, before existing helpers)
+- Logic flow:
+  1. Loop while stash.frames < min_frames_needed and !eof_seen
+  2. Compute frames needed (gap to min_frames_needed)
+  3. Convert to source bytes, clamp to remaining file data
+  4. Frame-align read size, clamp to 1KB block limit
+  5. Allocate temporary block from pool (audio_chunk_alloc_block)
+  6. Read from file with fread(), update remaining_bytes
+  7. Convert bit depth in-place (reuse convert_audio_format)
+  8. Upmix mono→stereo if needed (duplicate samples L=R)
+  9. Append converted frames to stash
+  10. Release temporary block
+  11. Handle EOF: set eof_seen flag, break
+
+**Mono→stereo upmix implementation:**
+- Detects when wav_channels==1 and out_cfg.channels==2
+- Processes backwards to avoid overwriting source data
+- Supports 16-bit and 32-bit samples
+- Algorithm: `samples[i*2] = samples[i*2+1] = samples[i]`
+- Result: Same number of frames, doubled channels
+
+**Key design decisions:**
+- Reuses existing audio_chunk pool for temp buffer (no extra allocation)
+- Reuses convert_audio_format() for bit depth conversion
+- Stash always holds output-format frames (resampler channel-agnostic)
+- Frame alignment enforced at multiple levels (safety)
+- EOF handling: sets eof_seen flag, allows partial stash fill
+
+**Error handling:**
+- ESP_ERR_NO_MEM: Block allocation failure (pool exhausted)
+- ESP_ERR_INVALID_STATE: File read error (propagated)
+- Conversion errors: Propagated from convert_audio_format()
+- Stash overflow: Detected by pcm_stash_append_frames()
+
+**Function ordering fix:**
+- Moved bytes_per_sample() before ensure_stash_frames()
+- Reason: ensure_stash_frames() calls bytes_per_sample()
+- Avoided forward declaration (cleaner)
+
+**Build verification:**
+- Binary size: 0xe34f0 bytes (931,056 bytes) - unchanged
+- Compilation: Clean build, no errors
+- Warnings: "defined but not used" for stash functions (expected until Task 1.5)
+
+**Next steps:**
+- Task 1.5: Implement produce_one_output_block()
+- Task 1.6: Refactor play_manager_fill() to use new pipeline
+- Task 1.7: Initialize stash/resampler on WAV start
+
+---
+
 ## 2026-02-02 18:58:12 — CODE_REVIEW5 Task 1.3: Extended play_manager_state_t ✅
 
 **Task:** Add resampler and stash fields to play manager state

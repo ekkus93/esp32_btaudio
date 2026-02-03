@@ -231,7 +231,7 @@ typedef struct {
 
 ---
 
-### Task 1.4: Implement ensure_stash_frames() helper ⏸️
+### Task 1.4: Implement ensure_stash_frames() helper ✅
 
 **Goal:** Read variable bytes from WAV to fill stash
 
@@ -256,9 +256,12 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed);
 - Reject mono output (not supported by A2DP typically)
 
 **Acceptance:**
-- [ ] Reads variable input sizes
-- [ ] Handles mono→stereo upmix
-- [ ] Stops cleanly at EOF
+- [x] Reads variable input sizes
+- [x] Handles mono→stereo upmix (backwards processing, 16-bit and 32-bit)
+- [x] Stops cleanly at EOF (sets eof_seen flag)
+- [x] Reuses existing convert_audio_format() for bit depth conversion
+- [x] Uses audio_chunk pool for temporary read buffer
+- [x] Binary size: unchanged (931,056 bytes, function not yet called)
 
 ---
 
