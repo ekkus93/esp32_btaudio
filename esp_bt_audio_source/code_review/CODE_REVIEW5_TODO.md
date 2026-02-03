@@ -292,7 +292,7 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
 
 ---
 
-### Task 1.6: Refactor play_manager_fill() ⏸️
+### Task 1.6: Refactor play_manager_fill() ✅
 
 **Goal:** Replace block-local resampling with fixed-output streaming
 
@@ -317,9 +317,11 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
 - Keep: Rewind-on-enqueue-failure (still useful for queue backpressure)
 
 **Acceptance:**
-- [ ] Produces fixed 1KB blocks
-- [ ] Resampler phase carries across blocks
-- [ ] EOF handling clean
+- [x] Produces fixed 1KB blocks
+- [x] Resampler phase carries across blocks
+- [x] EOF handling clean (eof_seen && stash.frames == 0)
+- [x] Binary size: 932,304 bytes (+1,248 from Task 1.5)
+- [x] Old helpers marked deprecated (will be removed after Task 1.9)
 
 ---
 

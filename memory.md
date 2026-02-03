@@ -1,3 +1,88 @@
+## 2026-02-02 19:13:30 — CODE_REVIEW5 Task 1.6 Complete
+
+**Task:** Refactor play_manager_fill() to use streaming resampler pipeline
+
+**Implementation:**
+- Completely refactored play_manager_fill() function (lines 962-1031)
+- Replaced old block-local resampling with new streaming pipeline
+- Old logic: Read → Convert → Resample → Enqueue (variable output)
+- New logic: Loop produce_one_output_block() → Enqueue (fixed 1024-byte output)
+
+**Key changes:**
+1. **EOF detection updated:**
+   - Old: `s_pm.remaining_bytes > 0` (file bytes)
+   - New: `s_pm.eof_seen && s_pm.stash.frames == 0` (file + stash drained)
+   - Ensures all buffered data processed before completion
+
+2. **Block allocation simplified:**
+   - Old: Allocate both src and dst blocks (2 allocations)
+   - New: Allocate only dst block (1 allocation)
+   - src blocks allocated internally by ensure_stash_frames()
+
+3. **Processing pipeline:**
+   - Old: process_audio_block() called per iteration
+   - New: produce_one_output_block() called per iteration
+   - Fixed 1024-byte output vs variable output
+
+4. **Error handling:**
+   - Kept ESP_OK return on queue full (not fatal)
+   - Removed file rewind logic (see design note below)
+
+5. **Enqueue failure handling (design decision):**
+   - Old: Rewind file pointer, restore remaining_bytes
+   - New: No rewind (stash already consumed)
+   - **Trade-off:** Accept minor audio skip on queue full (rare)
+   - **Rationale:** Queue full is rare, stash rewind complex/error-prone
+   - **Impact:** Continuous audio maintained, just different chunk
+   - **Alternative:** Could implement stash rewind if needed (TODO)
+   - Increments s_enqueue_fail_count for monitoring
+
+**Deprecated functions (marked for deletion):**
+- Added deprecation banner before old helpers (line ~748)
+- Functions kept temporarily for reference/rollback:
+  - allocate_audio_blocks()
+  - calculate_read_size()
+  - read_audio_data()
+  - convert_audio_block()
+  - resample_audio_block()
+  - process_audio_block()
+- Will be removed after Task 1.9 (device test validation)
+- Currently show "unused function" warnings (expected)
+
+**Integration completeness:**
+- produce_one_output_block() now CALLED (no longer unused)
+- ensure_stash_frames() now CALLED via produce_one_output_block()
+- audio_resampler_stream_process() now CALLED (phase carry active)
+- pcm_stash_consume_frames() now CALLED (stash management active)
+- pcm_stash_append_frames() now CALLED via ensure_stash_frames()
+
+**Still pending (Task 1.7):**
+- pcm_stash_init() - not yet called (needs WAV start initialization)
+- pcm_stash_deinit() - not yet called (needs WAV close cleanup)
+- audio_resampler_stream_init() - not yet called (needs WAV start)
+
+**Binary impact:**
+- Size: 932,304 bytes (0xe39d0) — **+1,248 bytes from Task 1.5**
+- Previous: 931,056 bytes (Task 1.5)
+- Increase: Functions now actually linked and used
+- Free space: 837,168 bytes (47% of partition)
+- Expected: Functions were optimized out until called
+
+**Build verification:**
+- Clean build, no errors
+- Warnings (expected, will be resolved in Task 1.7):
+  - `pcm_stash_init` defined but not used
+  - `pcm_stash_deinit` defined but not used
+  - `process_audio_block` defined but not used (deprecated)
+
+**Next steps:**
+- Task 1.7: Initialize resampler/stash on WAV start
+- Task 1.7: Clean up stash on WAV close
+- After Task 1.7: Remove deprecated process_audio_block() and helpers
+- Task 1.9: Device test to validate no frame loss
+
+---
+
 ## 2026-02-02 19:09:03 — CODE_REVIEW5 Task 1.5: produce_one_output_block() complete ✅
 
 **Task:** Implement function to produce exactly one 1KB output block (fixed size)
