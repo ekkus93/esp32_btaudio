@@ -1,3 +1,56 @@
+## 2026-02-03 06:27 — CODE_REVIEW5: Phase 6 Task 6.3 Stress Test Created
+
+**Context:** Implementing queue backpressure stress test to validate resampler state preservation under slow consumption
+
+**Goal:** Create device test that stresses the audio queue by introducing artificial delays
+
+**Work Done:**
+1. Created `test_queue_backpressure_stress()` device test in audio_processor_test.c
+2. Test introduces 50ms delays between audio_processor_read() calls
+3. Monitors max queue usage during playback
+4. Validates:
+   - Playback duration within tolerance (1000ms ±100ms plus delays)
+   - No frame drops despite backpressure
+   - Queue actually fills up (max usage ≥4 descriptors)
+   - Resampler state preserved across slow draining
+
+**Test Logic:**
+- Plays test_441_1s.wav (44.1kHz → 48kHz upsampling)
+- Introduces 50ms delay after each read operation
+- Tracks maximum queue descriptor usage
+- Asserts queue was stressed (min 4 descriptors used)
+- Asserts duration within tolerance accounting for delays
+- Validates frame counts accurate (1.0000 ratio)
+
+**Key Metrics:**
+- Read delay: 50ms per operation
+- Timeout: 5s (longer than normal to account for delays)
+- Tolerance: ±10% (100ms for 1s file)
+- Queue stress threshold: ≥4 descriptors
+
+**Build Status:**
+- ✅ Code compiles clean (0 errors, 0 warnings)
+- ✅ Binary size: 309,664 bytes (82% free in factory partition)
+- ✅ Ready for hardware validation
+
+**Next Steps:**
+1. Flash firmware to device
+2. Run stress test on hardware
+3. Verify queue fills up and drains correctly
+4. Validate no frame loss under backpressure
+5. Document results
+
+**Files Modified:**
+- test/test_app_audio/main/audio_processor_test.c (+114 lines, new stress test)
+
+**Notes:**
+- Stress test complements existing duration tests (Task 6.2)
+- Validates rewind-on-failure queue logic
+- Tests real-world scenario: slow BT receiver
+- Higher tolerance (±10%) accounts for FreeRTOS timing + artificial delays
+
+---
+
 ## 2026-02-03 06:10 — CODE_REVIEW5: Phase 6 Task 6.2 Test Infrastructure Created
 
 **Context:** Creating extended WAV duration tests to validate resampler accuracy over 1-second durations

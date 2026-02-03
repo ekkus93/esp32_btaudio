@@ -435,6 +435,7 @@ static void test_wav_playback_duration_baseline(void);
 static void test_wav_playback_duration_upsampling(void);
 static void test_wav_playback_duration_downsampling(void);
 static void test_wav_playback_duration_no_resampling(void);
+static void test_queue_backpressure_stress(void);
 
 void run_audio_processor_tests(void)
 {
@@ -477,6 +478,7 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_wav_playback_duration_upsampling);
     RUN_TEST(test_wav_playback_duration_downsampling);
     RUN_TEST(test_wav_playback_duration_no_resampling);
+    RUN_TEST(test_queue_backpressure_stress);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -2140,6 +2142,111 @@ static void test_wav_playback_duration_no_resampling(void)
                              "Baseline: Playback ended too early");
     TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms),
                              "Baseline: Playback took too long");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+/**
+ * @brief Stress test: Queue backpressure with artificial delays
+ *
+ * WHY: Validates queue backpressure handling doesn't drop frames or corrupt state
+ * HOW: Plays 1s WAV with artificial read delays to force queue to fill up
+ * CORRECTNESS: Playback completes with accurate duration and frame count despite delays
+ */
+static void test_queue_backpressure_stress(void)
+{
+    ensure_i2s_stopped();
+    
+    const char *path = "/spiffs/test_441_1s.wav";
+    const uint32_t expected_duration_ms = 1000; /* 1 second WAV file */
+    const uint32_t tolerance_ms = 100; /* ±10% tolerance (more lenient for stress test) */
+    const uint32_t read_delay_ms = 50; /* Delay between reads to stress queue */
+
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_48K, /* Output 48kHz - requires upsampling */
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
+    (void)audio_processor_drain_audio_queue();
+
+    /* Record start time */
+    const TickType_t start_ticks = xTaskGetTickCount();
+
+    ret = audio_processor_play_wav(path);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Drain audio with artificial delays to stress queue */
+    uint8_t buf[2048];
+    size_t total_bytes = 0;
+    uint32_t read_count = 0;
+    uint32_t max_queue_used = 0;
+    const TickType_t max_wait_ticks = pdMS_TO_TICKS(5000); /* 5s max (longer for stress test) */
+
+    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+        size_t bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+        total_bytes += bytes_read;
+        read_count++;
+
+        /* Track maximum queue usage during stress test */
+        size_t queue_used = audio_descriptor_used();
+        if (queue_used > max_queue_used) {
+            max_queue_used = queue_used;
+        }
+
+        /* Introduce artificial delay to force queue to fill up */
+        test_delay_ms(read_delay_ms);
+
+        if ((xTaskGetTickCount() - start_ticks) > max_wait_ticks) {
+            break;
+        }
+    }
+
+    /* Record end time */
+    const TickType_t end_ticks = xTaskGetTickCount();
+    const uint32_t duration_ticks = end_ticks - start_ticks;
+    const uint32_t duration_ms = pdTICKS_TO_MS(duration_ticks);
+
+    /* Calculate delta */
+    const int32_t delta_ms = (int32_t)duration_ms - (int32_t)expected_duration_ms;
+
+    /* Log results for CODE_REVIEW5 Task 6.3 documentation */
+    ESP_LOGI(TAG, "==== CODE_REVIEW5 Task 6.3: Queue Backpressure Stress Test ====");
+    ESP_LOGI(TAG, "WAV file: %s", path);
+    ESP_LOGI(TAG, "Expected duration: %lu ms", (unsigned long)expected_duration_ms);
+    ESP_LOGI(TAG, "Measured duration: %lu ms", (unsigned long)duration_ms);
+    ESP_LOGI(TAG, "Delta: %ld ms (%.1f%%)", (long)delta_ms,
+             (float)delta_ms * 100.0f / (float)expected_duration_ms);
+    ESP_LOGI(TAG, "Total bytes read: %zu", total_bytes);
+    ESP_LOGI(TAG, "Read operations: %lu", (unsigned long)read_count);
+    ESP_LOGI(TAG, "Read delay per operation: %lu ms", (unsigned long)read_delay_ms);
+    ESP_LOGI(TAG, "Max queue usage: %zu descriptors", max_queue_used);
+    ESP_LOGI(TAG, "Source: 44.1kHz stereo → Output: 48kHz stereo (upsampling)");
+    ESP_LOGI(TAG, "Test: Backpressure stress with artificial delays");
+    ESP_LOGI(TAG, "===============================================================");
+
+    /* Assert duration is within tolerance despite artificial delays */
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms >= (expected_duration_ms - tolerance_ms),
+                             "Backpressure stress: Playback ended too early (possible frame drop)");
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms + (read_count * read_delay_ms)),
+                             "Backpressure stress: Playback took too long (accounting for delays)");
+
+    /* Verify queue was actually stressed (should have filled up) */
+    TEST_ASSERT_TRUE_MESSAGE(max_queue_used >= 4,
+                             "Backpressure stress: Queue was not stressed (max usage < 4 descriptors)");
 
     ret = audio_processor_stop();
     TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);

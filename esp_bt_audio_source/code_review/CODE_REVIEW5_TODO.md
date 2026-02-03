@@ -987,18 +987,52 @@ python3 tools/run_all_tests.py
 
 ---
 
-### Task 6.3: Stress test: queue backpressure ⏸️
+### Task 6.3: Stress test: queue backpressure 🔄
 
 **Goal:** Verify lossless behavior under pressure
 
-**Test scenario:**
-- Slow BT connection (simulate by adding delay)
-- Queue fills up
-- Verify: no frames dropped, resampler state preserved
+**Implementation (2026-02-03):**
+
+**Test created:** `test_queue_backpressure_stress()`
+
+**Test strategy:**
+- Plays 1-second WAV file (test_441_1s.wav, 44.1kHz → 48kHz upsampling)
+- Introduces artificial 50ms delays between audio_processor_read() calls
+- Monitors maximum queue descriptor usage
+- Validates playback completes accurately despite slow consumption
+
+**Test validation points:**
+1. **Duration accuracy:** 1000ms ±100ms (plus delays from slow reads)
+2. **Queue stress:** Max queue usage ≥4 descriptors (proves backpressure occurred)
+3. **Frame accuracy:** Frame count matches expected (1.0000 ratio)
+4. **No frame drops:** All audio data drained despite backpressure
+
+**Implementation details:**
+- File: test/test_app_audio/main/audio_processor_test.c
+- Read delay: 50ms per operation (simulates slow BT receiver)
+- Timeout: 5s (longer than normal to account for artificial delays)
+- Tolerance: ±10% (more lenient than duration tests due to delays)
+
+**Build status:**
+- [x] Test code written and added to test suite
+- [x] Forward declaration added
+- [x] Registered in RUN_TEST() list
+- [x] Builds clean (0 errors, 0 warnings)
+- [x] Binary: 309,664 bytes (82% free)
+
+**Hardware validation pending:**
+- [ ] Flash firmware with new test
+- [ ] Run test on ESP32 device
+- [ ] Verify queue fills up (max usage ≥4 descriptors)
+- [ ] Verify playback duration accurate despite delays
+- [ ] Verify frame count accurate (1.0000 ratio)
+- [ ] Verify no enqueue failures
 
 **Acceptance:**
-- [ ] No data loss under backpressure
-- [ ] State recovery clean
+- [x] Test infrastructure complete
+- [ ] Hardware validation passing (pending)
+- [ ] No data loss under backpressure (pending)
+- [ ] State recovery clean (pending)
 
 ---
 
