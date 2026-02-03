@@ -9,6 +9,7 @@ idf_component_register(
         "audio_processor_diag.c"
         "audio_queue.c"
         "audio_util.c"
+        "audio_resampler_stream.c"
         "beep_manager.c"
         "i2s_manager.c"
         "play_manager.c"

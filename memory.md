@@ -1,3 +1,44 @@
+## 2026-02-02 18:52:04 — CODE_REVIEW5 Task 1.1: audio_resampler_stream module complete ✅
+
+**Task:** Implement stateful streaming resampler with Q16.16 fixed-point phase
+
+**Files created:**
+- `components/audio_processor/include/audio_resampler_stream.h`
+- `components/audio_processor/audio_resampler_stream.c`
+- Updated: `components/audio_processor/CMakeLists.txt`
+
+**Implementation details:**
+- Q16.16 fixed-point arithmetic (no floating point)
+- Linear interpolation: `y = s0 + frac * (s1 - s0)`
+- Phase accumulator carries fractional position across blocks
+- Supports 16-bit and 32-bit samples
+- Supports mono and stereo
+
+**API functions:**
+1. `audio_resampler_stream_init()` - computes step_q16 from rates
+2. `audio_resampler_stream_min_in_frames()` - computes required input
+3. `audio_resampler_stream_process()` - resamples with phase carry
+
+**Key design decisions:**
+- Step calculation: `step_q16 = (src_rate << 16) / dst_rate`
+- For 44.1kHz→48kHz: step = 0x00011689 (≈1.088435)
+- Always produces exactly `out_frames` requested
+- Pads with zeros at EOF
+- Returns `in_frames_consumed` for stash management
+
+**Build verification:**
+- Binary size: 0xe34f0 bytes (931,056 bytes)
+- Size increase: 375 bytes from baseline (930,681 → 931,056)
+- Free space: 0xccb10 bytes (838,416 bytes, 47%)
+- Compilation: Clean, 0 errors, 0 warnings
+
+**Next steps:**
+- Task 1.2: Implement PCM stash buffer
+- Task 1.3: Extend play_manager_state_t
+- Task 1.4: Implement ensure_stash_frames()
+
+---
+
 ## 2026-02-02 18:38:24 — CODE_REVIEW5 Task 0.2: Analytically Complete ✅ (Empirical Deferred)
 
 **Task:** Investigate resampler behavior (Task 0.2 from CODE_REVIEW5_TODO.md)
