@@ -179,6 +179,12 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
         dst_frame_count = dst_sample_count / (size_t)channels;
     }
 
+    /* CODE_REVIEW5 Task 0.2: Temporary instrumentation to investigate frame loss */
+    size_t ideal_dst_frames = (size_t)((double)src_frame_count * ratio);
+    ESP_LOGI(TAG, "RESAMPLE: src_frames=%zu dst_frames=%zu ideal=%.2f ratio=%.6f work_cap=%zu%s",
+             src_frame_count, dst_frame_count, (double)src_frame_count * ratio, ratio,
+             max_dst_frames, (dst_frame_count < ideal_dst_frames) ? " TRUNCATED!" : "");
+
     if (dst_bytes == 0 || dst_frame_count == 0) {
         return ESP_ERR_INVALID_SIZE;
     }

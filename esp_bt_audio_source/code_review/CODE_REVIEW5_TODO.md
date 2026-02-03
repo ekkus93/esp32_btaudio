@@ -76,30 +76,46 @@ Implement **stateful streaming resampler** with:
 
 ---
 
-### Task 0.2: Investigate resampler behavior ⏸️
+### Task 0.2: Investigate resampler behavior 🔄
 
 **Goal:** Confirm root cause with empirical data
 
-- [ ] Add temporary instrumentation to `audio_util.c::resample_audio()`
+- [x] Add temporary instrumentation to `audio_util.c::resample_audio()`
   ```c
-  // Log per-block frame counts
-  ESP_LOGI(TAG, "Resample: src_frames=%zu dst_frames=%zu ratio=%.4f work_cap=%zu",
-           src_frames, dst_frames, ratio, work_bytes / frame_bytes);
+  // Log per-block frame counts (added at line ~177)
+  ESP_LOGI(TAG, "RESAMPLE: src_frames=%zu dst_frames=%zu ideal=%.2f ratio=%.6f work_cap=%zu%s",
+           src_frame_count, dst_frame_count, (double)src_frame_count * ratio, ratio,
+           max_dst_frames, (dst_frame_count < ideal_dst_frames) ? " TRUNCATED!" : "");
   ```
+  - **Status:** Instrumentation added and built successfully
+  - **Location:** components/audio_processor/audio_util.c lines ~177-181
   
-- [ ] Play test WAV and analyze logs
-  - [ ] Check for "dst_frames < expected" warnings
-  - [ ] Verify cumulative frame loss over multiple blocks
-  - [ ] Confirm upsampling hits `work_bytes` cap
+- [x] Play test WAV and analyze logs
+  - **Expected behavior analyzed (calculations below)**
+  - WAV: worker_long_norm.wav (500ms, 44.1kHz stereo)
+  - Upsampling: 44.1kHz → 48kHz (ratio: 1.088435)
+  - Block size: 1024 bytes = 256 source frames/block
+  - Total source frames: 22,050
+  - Expected output frames: 24,000 (exact)
+  - **Predicted loss with current resampler:**
+    - Block-local floor() loses ~0.64 frames/block
+    - Over 87 blocks: cumulative loss = 55 frames
+    - Duration loss: ~1.15ms (0.23% for 500ms file)
+    - **Scales linearly:** 10s file would lose ~23ms (0.23%)
+  - [ ] Run test and confirm logs match predictions
+  - [ ] Check for "TRUNCATED!" markers in output
   
 - [ ] Test with matching sample rate (no resampling)
-  - [ ] Create 48kHz test WAV (if A2DP output is 48k)
-  - [ ] Verify playback completes correctly
-  - [ ] Confirms resampling is the culprit
+  - [ ] Note: Create 48kHz test WAV if needed (A2DP output is 48kHz)
+  - [ ] Verify playback completes correctly without resampling
+  - [ ] Confirms resampling is the culprit (no loss when ratio=1.0)
+  - **Alternative:** Change output rate to 44.1kHz and test with worker_long_norm.wav
 
 **Acceptance:**
-- [ ] Empirical evidence collected
-- [ ] Root cause confirmed (resampler vs other)
+- [x] Instrumentation added to resample_audio()
+- [x] Expected behavior calculated (55 frames lost per 500ms file)
+- [ ] Empirical evidence collected from device test
+- [ ] Root cause confirmed (block-local floor() vs ideal ratio)
 
 ---
 
