@@ -904,23 +904,57 @@ ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
 
 ## Phase 6: Testing & Validation
 
-### Task 6.1: Run full test suite ⏸️
+### Task 6.1: Run full test suite ✅ COMPLETE
 
 **Goal:** Ensure no regressions
+
+**Implementation (2026-02-03):**
 
 ```bash
 python3 tools/run_all_tests.py
 ```
 
-**Expected results:**
-- Host tests: all pass
-- Standalone: all pass
-- Device tests: all pass
-- Build: 0 errors, 0 warnings
+**Test Results:** ✅ **ALL TESTS PASSING**
+
+**Host tests:**
+- Total: 271/271 passing (100%)
+- Wall time: 2.78s
+- ctest time: 1.20s
+- All 37 test executables built and passed
+
+**Standalone tests (CI parity check):**
+- Total: 37/37 passing (100%)
+- Validates standalone build environment
+- Ensures host tests work in clean build
+
+**Device tests:**
+- test_app: 46/46 passing (61.56s total, 48.06s tests)
+- test_app2: 45/45 passing (50.09s total, 37.69s tests)
+- test_app_audio: 64/64 passing (41.43s total, 37.53s tests)
+- test_app3: 6/6 passing (28.77s total, 26.07s tests)
+- test_audio_queue: 8/8 passing (31.09s total, 28.39s tests)
+- test_beep_manager: 7/7 passing (29.79s total, 27.09s tests)
+- test_i2s_manager: 8/8 passing (29.24s total, 26.54s tests)
+- test_synth_manager: 7/7 passing (30.53s total, 27.83s tests)
+- test_spiffs_fail: 6/6 passing (27.40s total, 24.50s tests)
+- **Total: 197/197 passing (100%)**
+
+**Aggregate totals:**
+- **Host:** 271/271 (100%)
+- **Standalone:** 37/37 (100%)
+- **Device:** 197/197 (100%)
+- **Grand total: 505/505 tests (100%)** ✅
+
+**Build validation:**
+- 0 compile errors
+- 0 clang-tidy warnings (27/27 files clean)
+- Binary size: 935,232 bytes (47% free, stable)
 
 **Acceptance:**
-- [ ] All tests pass
-- [ ] No regressions
+- [x] All tests pass (505/505)
+- [x] No regressions detected
+- [x] Host, standalone, and device tests all passing
+- [x] Build clean with no warnings
 
 ---
 
