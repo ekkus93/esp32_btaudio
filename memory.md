@@ -1,3 +1,78 @@
+## 2026-02-03 06:10 — CODE_REVIEW5: Phase 6 Task 6.2 Test Infrastructure Created
+
+**Context:** Creating extended WAV duration tests to validate resampler accuracy over 1-second durations
+
+**Goal:** Implement device tests for upsampling, downsampling, and baseline (no resampling) scenarios
+
+**Work Done:**
+1. Generated 3 test WAV files for SPIFFS:
+   - `test_441_1s.wav`: 44.1kHz stereo, 1s (172.3 KB) - upsampling test
+   - `test_48_downsample_1s.wav`: 48kHz stereo, 1s (187.5 KB) - downsampling test
+   - `test_48_baseline_1s.wav`: 48kHz stereo, 1s (187.5 KB) - baseline test
+2. Expanded SPIFFS partition from 256 KB to 1 MB (0x100000)
+   - Original: insufficient for 3 test files (only 169 KB free)
+   - New: 1 MB partition with 453 KB free after test files
+3. Added 3 new device test cases to `audio_processor_test.c`:
+   - `test_wav_playback_duration_upsampling()`: 44.1kHz → 48kHz
+   - `test_wav_playback_duration_downsampling()`: 48kHz → 44.1kHz
+   - `test_wav_playback_duration_no_resampling()`: 48kHz → 48kHz (control)
+4. Updated test_app_audio flash size from 2MB to 4MB (to match main app)
+
+**Technical Details:**
+- **Partition change:** `partitions.csv` SPIFFS size 0x40000 → 0x100000
+- **Test WAV format:** Stereo 16-bit PCM, 440 Hz sine wave test tone
+- **Test duration:** 1 second (compromise due to SPIFFS space)
+- **Tolerance:** ±1% (10ms for 1s file) - accounts for FreeRTOS timing jitter
+- **Total test file size:** 547.4 KB (fits comfortably in 1 MB SPIFFS)
+
+**Test Logic:**
+Each test:
+1. Initializes audio processor with target sample rate
+2. Records start time (FreeRTOS ticks)
+3. Plays WAV file from SPIFFS
+4. Drains audio queue until playback completes
+5. Records end time
+6. Asserts playback duration = expected ±10ms
+7. Logs detailed results (file, duration, delta, bytes)
+
+**Rationale:**
+- **Why 1s duration?** Originally attempted 10s (5.5 MB - too large), then 3s (1.6 MB - too large). 1s files fit within expanded SPIFFS while still validating resampler accuracy over extended duration
+- **Why ±1% tolerance?** FreeRTOS tick resolution (10ms) plus minor timing jitter from task scheduling
+- **Why 3 scenarios?** Validates Q16.16 phase accumulator prevents frame loss during:
+  - Upsampling (more output frames than input)
+  - Downsampling (fewer output frames than input)
+  - Baseline (1:1 passthrough, control test)
+
+**Build Status:**
+- ✅ Code compiles clean (0 errors, 0 warnings)
+- ✅ Binary size: 308,256 bytes (83% free in factory partition)
+- ✅ SPIFFS image builds successfully
+
+**Next Steps:**
+1. Flash firmware with new partition table to device
+2. Run new duration tests on hardware
+3. Verify all 3 tests pass with <1% timing error
+4. Document results in memory.md
+5. Commit changes to repo
+
+**Files Modified:**
+- esp_bt_audio_source/partitions.csv (SPIFFS 256 KB → 1 MB)
+- esp_bt_audio_source/test/test_app_audio/sdkconfig (flash 2MB → 4MB)
+- esp_bt_audio_source/test/test_app_audio/main/audio_processor_test.c (+3 tests, +250 lines)
+
+**Files Created:**
+- esp_bt_audio_source/spiffs/test_441_1s.wav (172.3 KB)
+- esp_bt_audio_source/spiffs/test_48_downsample_1s.wav (187.5 KB)
+- esp_bt_audio_source/spiffs/test_48_baseline_1s.wav (187.5 KB)
+
+**Notes:**
+- Partition expansion requires full flash erase or explicit partition table update on device
+- Test WAV files use pure Python generation (wave + math + struct) - no numpy dependency
+- Q16.16 phase accumulator mathematically prevents cumulative frame loss at any duration
+- 1-second duration sufficient to detect systematic resampler errors (already proven with 500ms baseline test showing 0ms error)
+
+---
+
 ## 2026-02-03 05:55 — CODE_REVIEW5: Phase 6 Task 6.1 Complete
 
 **Context:** Completed full test suite validation for CODE_REVIEW5 (Phases 0-5 complete)

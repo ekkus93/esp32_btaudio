@@ -432,6 +432,9 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void);
 static void test_wav_prefill_produces_initial_audio(void);
 static void test_beep_then_play_streams_full_wav(void);
 static void test_wav_playback_duration_baseline(void);
+static void test_wav_playback_duration_upsampling(void);
+static void test_wav_playback_duration_downsampling(void);
+static void test_wav_playback_duration_no_resampling(void);
 
 void run_audio_processor_tests(void)
 {
@@ -471,6 +474,9 @@ void run_audio_processor_tests(void)
     RUN_TEST(test_wav_prefill_produces_initial_audio);
     RUN_TEST(test_beep_then_play_streams_full_wav);
     RUN_TEST(test_wav_playback_duration_baseline);
+    RUN_TEST(test_wav_playback_duration_upsampling);
+    RUN_TEST(test_wav_playback_duration_downsampling);
+    RUN_TEST(test_wav_playback_duration_no_resampling);
     /* On-device PSRAM integration tests */
 #if CONFIG_TEST_APP_AUDIO_PSRAM_TESTS
     extern void test_heap_psram_simple(void);
@@ -1862,6 +1868,278 @@ static void test_wav_playback_duration_baseline(void)
                              "Playback ended too early (possible resampler truncation)");
     TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms),
                              "Playback took too long");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+/* ============================================================================
+ * CODE_REVIEW5 Phase 6 Task 6.2: Extended WAV Duration Tests
+ * ============================================================================
+ * These tests validate the streaming resampler's accuracy across longer
+ * playback durations. The Q16.16 fixed-point phase accumulator ensures no
+ * cumulative frame loss during upsampling, downsampling, or baseline playback.
+ *
+ * Test files:
+ * - test_441_1s.wav:  44.1kHz stereo, 1s duration (upsampling to 48kHz)
+ * - test_48_downsample_1s.wav: 48kHz stereo, 1s duration (downsampling to 44.1kHz)
+ * - test_48_baseline_1s.wav: 48kHz stereo, 1s duration (no resampling, 48kHz output)
+ *
+ * Tolerance: ±1% (10ms for 1s file) to allow for FreeRTOS timing jitter
+ * ============================================================================ */
+
+/**
+ * @brief Test upsampling accuracy: 44.1kHz → 48kHz for 1 second
+ *
+ * WHY: Validates Q16.16 phase accumulator prevents cumulative frame loss
+ * HOW: Measures playback duration of 1s 44.1kHz WAV file upsampled to 48kHz
+ * CORRECTNESS: Duration must be 1000ms ±10ms (±1% tolerance)
+ */
+static void test_wav_playback_duration_upsampling(void)
+{
+    ensure_i2s_stopped();
+    
+    const char *path = "/spiffs/test_441_1s.wav";
+    const uint32_t expected_duration_ms = 1000; /* 1 second WAV file */
+    const uint32_t tolerance_ms = 10; /* ±1% tolerance */
+
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_48K, /* Output 48kHz - requires upsampling */
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
+    (void)audio_processor_drain_audio_queue();
+
+    /* Record start time */
+    const TickType_t start_ticks = xTaskGetTickCount();
+
+    ret = audio_processor_play_wav(path);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Drain audio until playback completes */
+    uint8_t buf[2048];
+    size_t total_bytes = 0;
+    const TickType_t max_wait_ticks = pdMS_TO_TICKS(3000); /* 3s max */
+
+    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+        size_t bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+        total_bytes += bytes_read;
+
+        if ((xTaskGetTickCount() - start_ticks) > max_wait_ticks) {
+            break;
+        }
+        test_delay_ms(10);
+    }
+
+    /* Record end time */
+    const TickType_t end_ticks = xTaskGetTickCount();
+    const uint32_t duration_ticks = end_ticks - start_ticks;
+    const uint32_t duration_ms = pdTICKS_TO_MS(duration_ticks);
+
+    /* Calculate delta */
+    const int32_t delta_ms = (int32_t)duration_ms - (int32_t)expected_duration_ms;
+
+    /* Log results for CODE_REVIEW5 Task 6.2 documentation */
+    ESP_LOGI(TAG, "==== CODE_REVIEW5 Task 6.2: Upsampling Duration Test ====");
+    ESP_LOGI(TAG, "WAV file: %s", path);
+    ESP_LOGI(TAG, "Expected duration: %lu ms", (unsigned long)expected_duration_ms);
+    ESP_LOGI(TAG, "Measured duration: %lu ms", (unsigned long)duration_ms);
+    ESP_LOGI(TAG, "Delta: %ld ms (%.1f%%)", (long)delta_ms,
+             (float)delta_ms * 100.0f / (float)expected_duration_ms);
+    ESP_LOGI(TAG, "Total bytes read: %zu", total_bytes);
+    ESP_LOGI(TAG, "Source: 44.1kHz stereo → Output: 48kHz stereo (upsampling)");
+    ESP_LOGI(TAG, "=========================================================");
+
+    /* Assert duration is within tolerance */
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms >= (expected_duration_ms - tolerance_ms),
+                             "Upsampling: Playback ended too early (possible frame loss)");
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms),
+                             "Upsampling: Playback took too long");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+/**
+ * @brief Test downsampling accuracy: 48kHz → 44.1kHz for 1 second
+ *
+ * WHY: Validates resampler accuracy during downsampling (more complex than upsampling)
+ * HOW: Measures playback duration of 1s 48kHz WAV file downsampled to 44.1kHz
+ * CORRECTNESS: Duration must be 1000ms ±10ms (±1% tolerance)
+ */
+static void test_wav_playback_duration_downsampling(void)
+{
+    ensure_i2s_stopped();
+    
+    const char *path = "/spiffs/test_48_downsample_1s.wav";
+    const uint32_t expected_duration_ms = 1000; /* 1 second WAV file */
+    const uint32_t tolerance_ms = 10; /* ±1% tolerance */
+
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_44K, /* Output 44.1kHz - requires downsampling */
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
+    (void)audio_processor_drain_audio_queue();
+
+    /* Record start time */
+    const TickType_t start_ticks = xTaskGetTickCount();
+
+    ret = audio_processor_play_wav(path);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Drain audio until playback completes */
+    uint8_t buf[2048];
+    size_t total_bytes = 0;
+    const TickType_t max_wait_ticks = pdMS_TO_TICKS(3000); /* 3s max */
+
+    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+        size_t bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+        total_bytes += bytes_read;
+
+        if ((xTaskGetTickCount() - start_ticks) > max_wait_ticks) {
+            break;
+        }
+        test_delay_ms(10);
+    }
+
+    /* Record end time */
+    const TickType_t end_ticks = xTaskGetTickCount();
+    const uint32_t duration_ticks = end_ticks - start_ticks;
+    const uint32_t duration_ms = pdTICKS_TO_MS(duration_ticks);
+
+    /* Calculate delta */
+    const int32_t delta_ms = (int32_t)duration_ms - (int32_t)expected_duration_ms;
+
+    /* Log results for CODE_REVIEW5 Task 6.2 documentation */
+    ESP_LOGI(TAG, "==== CODE_REVIEW5 Task 6.2: Downsampling Duration Test ====");
+    ESP_LOGI(TAG, "WAV file: %s", path);
+    ESP_LOGI(TAG, "Expected duration: %lu ms", (unsigned long)expected_duration_ms);
+    ESP_LOGI(TAG, "Measured duration: %lu ms", (unsigned long)duration_ms);
+    ESP_LOGI(TAG, "Delta: %ld ms (%.1f%%)", (long)delta_ms,
+             (float)delta_ms * 100.0f / (float)expected_duration_ms);
+    ESP_LOGI(TAG, "Total bytes read: %zu", total_bytes);
+    ESP_LOGI(TAG, "Source: 48kHz stereo → Output: 44.1kHz stereo (downsampling)");
+    ESP_LOGI(TAG, "===========================================================");
+
+    /* Assert duration is within tolerance */
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms >= (expected_duration_ms - tolerance_ms),
+                             "Downsampling: Playback ended too early (possible frame loss)");
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms),
+                             "Downsampling: Playback took too long");
+
+    ret = audio_processor_stop();
+    TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
+
+    ret = audio_processor_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    bt_manager_mock_connection_opened(NULL);
+}
+
+/**
+ * @brief Test baseline accuracy: 48kHz → 48kHz (no resampling) for 1 second
+ *
+ * WHY: Provides control test with no resampling to isolate timing accuracy
+ * HOW: Measures playback duration of 1s 48kHz WAV file with 48kHz output (bypass)
+ * CORRECTNESS: Duration must be 1000ms ±10ms (±1% tolerance)
+ */
+static void test_wav_playback_duration_no_resampling(void)
+{
+    ensure_i2s_stopped();
+    
+    const char *path = "/spiffs/test_48_baseline_1s.wav";
+    const uint32_t expected_duration_ms = 1000; /* 1 second WAV file */
+    const uint32_t tolerance_ms = 10; /* ±1% tolerance */
+
+    audio_config_t config = {
+        .sample_rate = AUDIO_SAMPLE_RATE_48K, /* Output 48kHz - no resampling needed */
+        .bit_depth = I2S_BIT_DEPTH,
+        .channels = I2S_CHANNELS,
+        .volume = 80,
+        .mute = false,
+        .i2s_port = I2S_PORT,
+    };
+
+    esp_err_t ret = audio_processor_init(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
+    (void)audio_processor_drain_audio_queue();
+
+    /* Record start time */
+    const TickType_t start_ticks = xTaskGetTickCount();
+
+    ret = audio_processor_play_wav(path);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    /* Drain audio until playback completes */
+    uint8_t buf[2048];
+    size_t total_bytes = 0;
+    const TickType_t max_wait_ticks = pdMS_TO_TICKS(3000); /* 3s max */
+
+    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+        size_t bytes_read = 0;
+        ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+        total_bytes += bytes_read;
+
+        if ((xTaskGetTickCount() - start_ticks) > max_wait_ticks) {
+            break;
+        }
+        test_delay_ms(10);
+    }
+
+    /* Record end time */
+    const TickType_t end_ticks = xTaskGetTickCount();
+    const uint32_t duration_ticks = end_ticks - start_ticks;
+    const uint32_t duration_ms = pdTICKS_TO_MS(duration_ticks);
+
+    /* Calculate delta */
+    const int32_t delta_ms = (int32_t)duration_ms - (int32_t)expected_duration_ms;
+
+    /* Log results for CODE_REVIEW5 Task 6.2 documentation */
+    ESP_LOGI(TAG, "==== CODE_REVIEW5 Task 6.2: Baseline Duration Test ====");
+    ESP_LOGI(TAG, "WAV file: %s", path);
+    ESP_LOGI(TAG, "Expected duration: %lu ms", (unsigned long)expected_duration_ms);
+    ESP_LOGI(TAG, "Measured duration: %lu ms", (unsigned long)duration_ms);
+    ESP_LOGI(TAG, "Delta: %ld ms (%.1f%%)", (long)delta_ms,
+             (float)delta_ms * 100.0f / (float)expected_duration_ms);
+    ESP_LOGI(TAG, "Total bytes read: %zu", total_bytes);
+    ESP_LOGI(TAG, "Source: 48kHz stereo → Output: 48kHz stereo (no resampling)");
+    ESP_LOGI(TAG, "=======================================================");
+
+    /* Assert duration is within tolerance */
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms >= (expected_duration_ms - tolerance_ms),
+                             "Baseline: Playback ended too early");
+    TEST_ASSERT_TRUE_MESSAGE(duration_ms <= (expected_duration_ms + tolerance_ms),
+                             "Baseline: Playback took too long");
 
     ret = audio_processor_stop();
     TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
