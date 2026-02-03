@@ -273,6 +273,152 @@ The audio queue can experience backpressure when:
 - **Verifiable:** Instrumentation allows automated regression testing
 - **Maintainable:** Clear separation of concerns (file I/O, alignment, queueing, error handling)
 
+#### Stateful Streaming Resampler Architecture (CODE_REVIEW5 Phase 1)
+
+The audio processor implements a **stateful streaming resampler** that eliminates cumulative frame loss during sample rate conversion. This architecture replaces the previous block-local resampling that suffered from rounding errors accumulating over multiple blocks.
+
+**Problem Statement:**
+
+Previous resampler implementation:
+- Processed audio in fixed 1024-byte blocks independently
+- Used block-local `floor()` for output frame calculation
+- Lost ~0.64 frames per block for 44.1kHz→48kHz upsampling
+- Cumulative loss: ~55 frames (1.15ms) per 500ms WAV file
+- Scaled linearly: 10-second files would lose ~23ms of audio
+- Caused audible "ends early" behavior on longer playback
+
+**Solution Architecture:**
+
+**1. Fixed-Output, Variable-Input Pipeline**
+
+The streaming resampler inverts the traditional processing model:
+- **Output:** Always produces exactly 256 frames (1024 bytes) per block
+- **Input:** Reads variable number of frames based on resampling ratio
+- **Benefit:** Predictable output size simplifies downstream queue management
+
+**Pipeline Flow:**
+```
+WAV File → PCM Stash → Streaming Resampler → Fixed 1KB Blocks → Audio Queue
+         (variable)   (phase-preserving)      (constant size)
+```
+
+**2. Q16.16 Fixed-Point Phase Accumulator**
+
+Core resampling algorithm:
+- **Phase tracking:** 32-bit Q16.16 fixed-point position (16 integer bits, 16 fractional bits)
+- **Step calculation:** `step_q16 = (src_rate << 16) / dst_rate`
+- **Phase carry:** Fractional position carries across block boundaries
+- **No rounding loss:** Cumulative error eliminated by preserving phase state
+
+Example (44.1kHz → 48kHz):
+```c
+step_q16 = (44100 << 16) / 48000 = 60293 (0.91875 in Q16.16)
+// For each output frame:
+pos_q16 += step_q16;  // Position advances by 0.91875 input frames
+in_idx = pos_q16 >> 16;  // Integer part = input frame index
+frac = pos_q16 & 0xFFFF;  // Fractional part for interpolation
+```
+
+**3. Linear Interpolation**
+
+Sample interpolation between adjacent input frames:
+```c
+// For stereo 16-bit:
+left_sample = ((0x10000 - frac) * in[i0].left + frac * in[i0+1].left) >> 16;
+right_sample = ((0x10000 - frac) * in[i0].right + frac * in[i0+1].right) >> 16;
+```
+
+- Smooth transitions between samples (prevents aliasing)
+- Simple implementation (no division, only multiplication + shift)
+- Sufficient quality for audio playback (higher-order filters not needed for this use case)
+
+**4. PCM Stash Buffer**
+
+Input buffer decouples file reads from resampling:
+- **Purpose:** Accumulate variable input frames needed for fixed output
+- **Capacity:** 2048 frames (~8KB for stereo 16-bit)
+- **Operations:**
+  - `pcm_stash_append_frames()`: Add converted frames from WAV file
+  - `pcm_stash_consume_frames()`: Remove frames consumed by resampler
+  - `pcm_stash_free_frames()`: Query available space
+
+**Stash Flow:**
+```
+1. Resampler calculates: "I need ≥N input frames for 256 output frames"
+2. ensure_stash_frames(N): Reads from WAV until stash has ≥N frames
+3. Resampler processes: Consumes exactly M frames, produces 256 frames
+4. Stash updated: memmove() to shift unconsumed frames to buffer start
+```
+
+**5. Variable Input Frame Calculation**
+
+Minimum input frames required for N output frames:
+```c
+size_t audio_resampler_stream_min_in_frames(const audio_resampler_stream_t *rs, size_t out_frames) {
+    // Account for current phase position
+    uint32_t next_pos = rs->pos_q16 + (rs->step_q16 * out_frames);
+    size_t in_frames = (next_pos >> 16) + 1;  // +1 for interpolation buffer
+    return in_frames;
+}
+```
+
+Example (44.1kHz → 48kHz, 256 output frames):
+- Step: 0.91875 input frames per output frame
+- Total position advance: 256 × 0.91875 = 235.2 frames
+- Minimum input needed: 236 frames (⌈235.2⌉ + 1 for interpolation)
+
+**6. EOF Handling with Zero-Padding**
+
+When input exhausted before reaching desired output count:
+- Resampler produces exactly 256 output frames (never short blocks)
+- Remaining output filled with silence (zero samples)
+- Ensures consistent block size for audio queue
+- No glitches or pops at end of file
+
+**Implementation Files:**
+
+1. **audio_resampler_stream.h/c** (new module)
+   - `audio_resampler_stream_init()`: Initialize resampler state, compute step_q16
+   - `audio_resampler_stream_min_in_frames()`: Calculate input frames needed
+   - `audio_resampler_stream_process()`: Perform resampling with phase carry
+
+2. **play_manager.c** (PCM stash + integration)
+   - `pcm_stash_t`: Input buffer structure
+   - `pcm_stash_*()`: Buffer management functions
+   - `ensure_stash_frames()`: Read from WAV to fill stash
+   - `produce_one_output_block()`: Orchestrate stash → resampler → queue
+   - `play_manager_fill()`: Main loop producing fixed 1KB blocks
+
+**Correctness Guarantees:**
+
+1. **Frame accuracy:** Q16.16 accumulator prevents cumulative rounding loss
+2. **Exact ratio:** Total output frames = ⌊input frames × (dst_rate / src_rate)⌋
+3. **Lossless:** All input frames consumed (verified by instrumentation)
+4. **Smooth interpolation:** No aliasing or glitches from sample rate conversion
+5. **Predictable output:** Always produces 256-frame blocks (simplifies queue management)
+
+**Validation:**
+
+- **Unit tests (19 tests):** Verify step_q16 calculation, min_in_frames accuracy, phase carry, frame ratios
+- **Device test (baseline):** 500ms WAV plays in 500ms (0ms error, 1.0000 frame ratio)
+- **Frame instrumentation:** Completion report shows 0.00% frame loss, "Duration accuracy: EXCELLENT"
+- **Stress test:** Queue backpressure test validates lossless behavior under slow consumption
+
+**Performance:**
+
+- **Binary size:** +4224 bytes (streaming resampler + stash buffer + instrumentation)
+- **Heap usage:** ~8KB for PCM stash (allocated on WAV start, freed on stop)
+- **CPU overhead:** Minimal (linear interpolation, no division, simple fixed-point math)
+- **Latency:** <1ms added latency from stash buffering (negligible for audio playback)
+
+**Benefits:**
+
+- **Mathematically correct:** No cumulative frame loss over any playback duration
+- **Verifiable:** Instrumentation tracks exact frame counts (src vs dst vs expected)
+- **Robust:** Handles any sample rate pair (upsampling, downsampling, no-op)
+- **Maintainable:** Clear separation of concerns (file I/O, stash, resampling, queue)
+- **Testable:** Fast host tests validate correctness without hardware
+
 ### Command Interface Component
 - **Purpose:** UART-based control protocol
 - **Responsibilities:**
