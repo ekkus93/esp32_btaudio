@@ -1808,8 +1808,9 @@ static void test_wav_playback_duration_baseline(void)
     esp_err_t ret = audio_processor_init(&config);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    ret = audio_processor_start();
-    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    /* NOTE: Don't start audio processor here - play_wav will handle I2S startup */
+    /* ret = audio_processor_start(); */
+    /* TEST_ASSERT_EQUAL(ESP_OK, ret); */
 
     bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
     (void)audio_processor_drain_audio_queue();
