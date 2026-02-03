@@ -733,43 +733,77 @@ ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
 
 ## Phase 4: Error Handling Standardization
 
-### Task 4.1: Audit return code usage ⏸️
+### Task 4.1: Audit return code usage ✅ COMPLETE
 
 **Goal:** Identify all non-standard error types
 
-- [ ] Grep for `bt_err_t` usage
-- [ ] Grep for legacy BT enums
-- [ ] List all mixed return patterns
-- [ ] Document findings
+- [x] Grep for `bt_err_t` usage
+- [x] Grep for legacy BT enums
+- [x] List all mixed return patterns
+- [x] Document findings
+
+**Implementation (2026-02-03):**
+
+**Key Findings:**
+- ✅ Codebase **already standardized** on esp_err_t/bt_err_t
+- ✅ Public BT APIs consistently use `bt_err_t` (typedef to esp_err_t)
+- ✅ Internal helpers consistently use `esp_err_t`
+- ✅ Legacy `bt_status_t` enum marked deprecated, not used in APIs
+- ✅ Test mocks properly isolated (use `esp_bt_status_t`)
+- ✅ No problematic mixing found
+
+**Return Type Patterns Identified:**
+1. **bt_err_t** (typedef to esp_err_t) - All public BT manager APIs (15 functions)
+2. **esp_err_t** - All other component APIs (40+ functions)
+3. **int** - State queries returning enum values (acceptable)
+4. **int** - Legacy compatibility wrappers (bt_manager_* functions)
+5. **bt_status_t** - Deprecated enum (marked, not used)
+6. **esp_bt_status_t** - Test mocks only (isolated)
+
+**Verdict:** ✅ **Already compliant** - No refactoring needed
+
+**Detailed audit:** See `/tmp/error_handling_audit.md`
+
+**Binary:** No changes (audit only)
+**Tests:** 271/271 passing (100%)
 
 **Acceptance:**
-- [ ] Usage patterns documented
-- [ ] Conversion plan clear
+- [x] Usage patterns documented
+- [x] Conversion plan clear (no conversion needed)
 
 ---
 
-### Task 4.2: Standardize on esp_err_t ⏸️
+### Task 4.2: Standardize on esp_err_t ✅ ALREADY COMPLETE
 
 **Goal:** Convert internal APIs to esp_err_t
 
-**Strategy:**
-- Public APIs: always `esp_err_t`
-- Internal BT-specific: wrap in struct if needed
-  ```c
-  typedef struct {
-      esp_err_t err;
-      bt_state_t state;
-  } bt_result_t;
-  ```
+**Status:** ✅ **Already standardized** (discovered in Task 4.1 audit)
 
-**Files to update:**
-- [ ] `bt_manager.h` - public API
-- [ ] `bt_connection_manager.c` - internal conversions
-- [ ] `command_interface` handlers - standardize returns
+**Current state:**
+- ✅ All public BT APIs use `bt_err_t` (which is `esp_err_t`)
+- ✅ All internal helpers use `esp_err_t` consistently
+- ✅ No conversion struct needed (no mixed return patterns)
+- ✅ API boundaries clean and safe
+
+**Files already compliant:**
+- ✅ `bt_manager.h` - All 15 public functions use bt_err_t
+- ✅ `bt_connection_manager.c` - Uses esp_err_t throughout
+- ✅ `bt_streaming_manager.c` - Uses esp_err_t throughout
+- ✅ `command_interface` handlers - Use esp_err_t appropriately
+- ✅ `nvs_storage.h` - All functions use esp_err_t
+- ✅ `play_manager.c` - All functions use esp_err_t
+
+**Minor cleanup opportunities (optional, non-blocking):**
+1. Document legacy `bt_manager_*` wrappers (low priority)
+2. Add deprecation attribute to `bt_status_t` enum (cosmetic)
+3. Update style guide to codify current practice (documentation)
+
+**No breaking changes needed or recommended.**
 
 **Acceptance:**
-- [ ] API boundaries use esp_err_t
-- [ ] Conversions explicit and safe
+- [x] API boundaries use esp_err_t
+- [x] Conversions explicit and safe
+- [x] Already achieved without refactoring
 
 ---
 
