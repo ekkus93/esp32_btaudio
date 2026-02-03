@@ -809,21 +809,36 @@ ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
 
 ## Phase 5: Repo Layout Cleanup
 
-### Task 5.1: Document components/components tree ⏸️
+### Task 5.1: Document components/components tree ✅ COMPLETE
 
 **Goal:** Explain unusual layout
 
-**Create:** `components/components/README.md`
+**Implementation (2026-02-03):**
 
-**Content:**
-- Purpose (host tests? IDF pinning?)
-- How it's used in build
-- Why it exists
-- Alternatives considered
+**Created:** `components/WHY_COMPONENTS_COMPONENTS.md`
+
+**Documentation covers:**
+- **Purpose:** Local ESP-IDF component mirror for host tests only
+- **Firmware builds:** Completely ignored via `.component_ignore` and CMakeLists.txt `return()`
+- **Host tests:** Explicitly referenced to compile BT stack utilities (allocator.c, list.c) on x86/x64
+- **Structure:** Nested `components/components/` contains ~80 ESP-IDF components, only ~5 files actually used
+- **Why it exists:** Pragmatic solution for host tests needing ESP-IDF source without full toolchain
+- **Alternatives considered:** 4 options evaluated (keep as-is, vendor/, FetchContent, extract stubs)
+- **Decision:** Keep as-is, document thoroughly (lowest risk, it works, all 505 tests passing)
+- **Maintenance guide:** How to update if ESP-IDF upgraded or host tests need new files
+
+**Key findings:**
+- Only used by host tests (test/host_test/CMakeLists.txt)
+- Firmware completely ignores this directory
+- Most mirrored components unused (could be cleaned up optionally)
+- Anti-pattern but low priority to fix (cosmetic vs functional)
 
 **Acceptance:**
-- [ ] Documentation added
-- [ ] Purpose clear
+- [x] Documentation added (WHY_COMPONENTS_COMPONENTS.md)
+- [x] Purpose clear (host test fixture for ESP-IDF source)
+- [x] Build usage explained (firmware ignores, host tests include)
+- [x] Alternatives documented (4 options with pros/cons)
+- [x] Maintenance guide provided
 
 ---
 

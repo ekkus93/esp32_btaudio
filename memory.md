@@ -39,6 +39,54 @@ This audit validates that CODE_REVIEW5's error handling concerns (P1-D) were alr
 
 ---
 
+## 2026-02-03 03:20 — CODE_REVIEW5 Task 5.1: Documented components/components tree
+
+**Context:** Document unusual `components/components/` nested directory structure
+
+**Goal:** Explain purpose, usage, and alternatives for confusing layout
+
+**Work done:**
+- Created comprehensive documentation: `components/WHY_COMPONENTS_COMPONENTS.md`
+- Analyzed usage patterns (grep test/host_test/CMakeLists.txt)
+- Examined build system (.component_ignore, CMakeLists.txt return())
+- Evaluated 4 alternative approaches with pros/cons
+
+**Key findings:**
+- **Purpose:** Local ESP-IDF component mirror for host tests only
+- **Firmware:** Completely ignored (`.component_ignore` + CMakeLists.txt `return()`)
+- **Host tests:** Explicitly includes BT stack utilities (allocator.c, list.c) for x86/x64
+- **Reality:** ~80 components mirrored, only ~5 files actually used
+- **Assessment:** Anti-pattern but low priority to fix (cosmetic vs functional)
+
+**Alternatives evaluated:**
+1. Keep as-is (chosen - lowest risk, it works, all tests passing)
+2. Move to vendor/esp-idf/ (clearer intent, migration effort)
+3. Use CMake FetchContent (automatic, complex setup)
+4. Extract to test/host_test/stubs/ (minimal, high effort)
+
+**Decision:** Keep current structure, document thoroughly
+- All 505 tests passing (271 host + 37 standalone + 197 device)
+- No firmware impact
+- Future work: optional cleanup of unused components
+
+**Documentation includes:**
+- TL;DR summary
+- Detailed purpose and usage (firmware vs host tests)
+- Alternatives with pros/cons analysis
+- Maintenance guide (ESP-IDF upgrades, adding files)
+- Migration guide if structure changes
+
+**Impact:**
+- Created: components/WHY_COMPONENTS_COMPONENTS.md
+- Updated: CODE_REVIEW5_TODO.md (Task 5.1 complete)
+- Binary: No changes (documentation only)
+- Tests: 505/505 passing (100%)
+
+**Notes:**
+This completes Phase 5 Task 5.1. Task 5.2 (consider moving structure) is deferred - current approach works, moving would add risk for cosmetic benefit.
+
+---
+
 ## 2026-02-03 01:35 — Clang-tidy Warning Fixes
 
 **Context:** Fixed clang-tidy static analysis warnings
