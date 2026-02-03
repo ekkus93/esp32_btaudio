@@ -538,6 +538,20 @@ target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT
 target_link_libraries(test_beep_manager unity m pthread)
 add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
 
+# Audio resampler stream unit tests (stateful streaming resampler)
+add_executable(test_audio_resampler_stream
+    test_audio_resampler_stream.c
+    ../../components/audio_processor/audio_resampler_stream.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_audio_resampler_stream PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_audio_resampler_stream PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_resampler_stream unity m)
+add_test(NAME test_audio_resampler_stream COMMAND $<TARGET_FILE:test_audio_resampler_stream>)
+
 # I2S manager host unit tests
 add_executable(test_i2s_manager
     test_i2s_manager/test_i2s_manager.c

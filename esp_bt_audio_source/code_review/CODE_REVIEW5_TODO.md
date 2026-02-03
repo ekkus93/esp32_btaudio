@@ -430,25 +430,65 @@ idf_component_register(
 
 ---
 
-### Task 1.10: Create unit test for streaming resampler ⏸️
+### Task 1.10: Create unit test for streaming resampler ✅ COMPLETE
 
 **Goal:** Add host test for resampler correctness
 
 **Test file:** `test/host_test/test_audio_resampler_stream.c`
 
-**Test cases:**
-- [ ] Init with various rate pairs (44.1k→48k, 48k→44.1k, etc.)
-- [ ] Verify step_q16 computation
-- [ ] Test min_in_frames calculation
-- [ ] Process blocks and verify:
-  - Exactly out_frames produced
-  - Phase carries across calls
-  - Total frames match expected ratio
-- [ ] Test EOF handling (partial last block)
+**Test Results:** ✅ **All 19 tests passing (100%)**
+
+**Test Cases Implemented:**
+
+**Init and step_q16 computation (5 tests):**
+- [x] test_init_44k_to_48k_should_compute_correct_step
+- [x] test_init_48k_to_44k_should_compute_correct_step  
+- [x] test_init_same_rate_should_have_step_one
+- [x] test_init_mono_16bit_should_succeed
+- [x] test_init_32bit_should_succeed
+
+**min_in_frames calculation (4 tests):**
+- [x] test_min_in_frames_upsampling_at_zero_position
+- [x] test_min_in_frames_downsampling_at_zero_position
+- [x] test_min_in_frames_same_rate_should_match_output
+- [x] test_min_in_frames_with_fractional_position
+
+**Process tests (5 tests):**
+- [x] test_process_should_produce_exact_output_frames
+- [x] test_process_phase_should_carry_across_blocks
+- [x] test_process_total_frames_should_match_ratio
+- [x] test_process_downsampling_should_produce_exact_frames
+- [x] test_process_mono_should_work
+
+**EOF handling (2 tests):**
+- [x] test_process_eof_should_pad_with_silence
+- [x] test_process_zero_input_should_produce_all_silence
+
+**Edge cases (3 tests):**
+- [x] test_process_single_frame_output_should_work
+- [x] test_process_position_should_not_overflow
+- [x] test_interpolation_should_be_smooth
+
+**Key Validations:**
+1. ✅ Q16.16 step_q16 computed correctly for all rate pairs
+2. ✅ min_in_frames accounts for phase position and interpolation buffer
+3. ✅ Produces exactly requested output frames (never more, never less)
+4. ✅ Phase carries across blocks (no cumulative rounding loss)
+5. ✅ Total frame ratio matches sample rate ratio (±1 frame tolerance)
+6. ✅ EOF padding with silence works correctly
+7. ✅ Position accumulator doesn't overflow
+8. ✅ Linear interpolation is smooth and monotonic
+
+**Integration:**
+- Added to test/host_test/CMakeLists.txt
+- Builds cleanly with Unity framework
+- Runs in < 0.1s (fast host test)
 
 **Acceptance:**
-- [ ] Test coverage comprehensive
-- [ ] All tests pass
+- [x] Test coverage comprehensive (19 test cases)
+- [x] All tests pass (100% pass rate)
+- [x] Validates correctness of streaming resampler
+- [x] Fast iteration (host-based, no device needed)
 
 ---
 
