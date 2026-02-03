@@ -1,4 +1,5 @@
 #include "cmd_handlers.h"
+#include "audio_processor_internal.h"
 
 #if !defined(ESP_PLATFORM)
 #if defined(__GNUC__)
@@ -104,6 +105,76 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     snprintf(data, sizeof(data), "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d",
              mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume);
     cmd_send_response("OK", "STATUS", "CURRENT", data);
+    return CMD_SUCCESS;
+}
+
+cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx)
+{
+    (void)ctx;
+    
+#ifdef ESP_PLATFORM
+    play_manager_status_t wav_status = {0};
+    
+    if (!play_manager_get_status(&wav_status)) {
+        cmd_send_response("ERROR", "WAV_STATUS", "NOT_INITIALIZED", "");
+        return CMD_ERROR_NOT_INITIALIZED;
+    }
+    
+    char data[512];
+    int pos = 0;
+    
+    /* Active status */
+    pos += snprintf(data + pos, sizeof(data) - (size_t)pos, "ACTIVE=%s", 
+                    wav_status.active ? "yes" : "no");
+    
+    if (wav_status.active) {
+        /* Source format */
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_RATE=%u", 
+                        (unsigned)wav_status.src_rate);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_CH=%u", 
+                        (unsigned)wav_status.src_channels);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_BITS=%u", 
+                        (unsigned)(audio_bytes_per_sample(wav_status.src_bit_depth) * 8));
+        
+        /* Output format */
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_RATE=%u", 
+                        (unsigned)wav_status.dst_rate);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_CH=%u", 
+                        (unsigned)wav_status.dst_channels);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_BITS=%u", 
+                        (unsigned)(audio_bytes_per_sample(wav_status.dst_bit_depth) * 8));
+        
+        /* Progress */
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_FRAMES=%zu", 
+                        wav_status.src_frames_read);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_FRAMES=%zu", 
+                        wav_status.dst_frames_produced);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",EXPECTED_FRAMES=%zu", 
+                        wav_status.expected_dst_frames);
+        
+        /* Progress percentage */
+        if (wav_status.expected_dst_frames > 0) {
+            float progress = (float)wav_status.dst_frames_produced / (float)wav_status.expected_dst_frames * 100.0F;
+            pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",PROGRESS_PCT=%.1f", 
+                            (double)progress);
+        }
+        
+        /* Stash buffer */
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",STASH_FRAMES=%zu", 
+                        wav_status.stash_frames);
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",STASH_CAP=%zu", 
+                        wav_status.stash_capacity);
+        
+        /* Resampler position */
+        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",RESAMP_POS=0x%08lX", 
+                        (unsigned long)wav_status.resampler_pos_q16);
+    }
+    
+    cmd_send_response("OK", "WAV_STATUS", "CURRENT", data);
+#else
+    cmd_send_response("OK", "WAV_STATUS", "MOCK", "ACTIVE=no");
+#endif
+    
     return CMD_SUCCESS;
 }
 

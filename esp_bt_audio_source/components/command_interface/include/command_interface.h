@@ -62,6 +62,7 @@ typedef enum {
     // Add new command types here
     CMD_TYPE_PLAY,
     CMD_TYPE_AUDIO_AUTOSTART,
+    CMD_TYPE_WAV_STATUS,
     CMD_TYPE_UNKNOWN
 } cmd_type_t;
 

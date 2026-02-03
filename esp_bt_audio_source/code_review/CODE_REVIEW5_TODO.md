@@ -599,27 +599,56 @@ Error counters:
 
 ---
 
-### Task 2.3: Add diagnostic command for WAV state ⏸️
+### Task 2.3: Add diagnostic command for WAV state ✅ COMPLETE
 
 **Goal:** Expose runtime playback state
 
-**New command:** `wav_status` or extend existing `status` command
+**Implementation (2026-02-03):**
 
-**Output:**
+**New command:** `WAV_STATUS`
+
+**API additions:**
+- `play_manager_status_t` structure in play_manager.h
+- `play_manager_get_status()` function in play_manager.c
+- Thread-safe access via mutex
+
+**Command output format:**
 ```
-WAV Status:
-  Active: yes/no
-  Filename: /spiffs/test.wav
-  Source: 44100 Hz, stereo, 16-bit
-  Output: 48000 Hz, stereo, 16-bit
-  Progress: 12345/50000 frames (24.7%)
-  Stash: 128/2048 frames
-  Resampler: pos_q16=0x00012800
+OK|WAV_STATUS|CURRENT|ACTIVE=yes,SRC_RATE=44100,SRC_CH=2,SRC_BITS=16,DST_RATE=48000,DST_CH=2,DST_BITS=16,SRC_FRAMES=12345,DST_FRAMES=13424,EXPECTED_FRAMES=50000,PROGRESS_PCT=26.8,STASH_FRAMES=128,STASH_CAP=2048,RESAMP_POS=0x00012800
 ```
+
+**When inactive:**
+```
+OK|WAV_STATUS|CURRENT|ACTIVE=no
+```
+
+**Status fields provided:**
+- **Active:** yes/no playback state
+- **Source format:** rate (Hz), channels, bit depth
+- **Output format:** rate (Hz), channels, bit depth  
+- **Progress:** source frames read, destination frames produced, expected total
+- **Progress %:** percentage complete
+- **Stash buffer:** current fill / capacity (frames)
+- **Resampler:** Q16.16 phase position (hex)
+
+**Files modified:**
+- components/audio_processor/include/play_manager.h (new struct + function)
+- components/audio_processor/play_manager.c (play_manager_get_status impl)
+- components/command_interface/include/cmd_handlers.h (new handler decl)
+- components/command_interface/include/command_interface.h (CMD_TYPE_WAV_STATUS)
+- components/command_interface/include/commands_priv.h (include play_manager.h)
+- components/command_interface/cmd_handlers_system.c (cmd_handle_wav_status impl)
+- components/command_interface/commands.c (parser + router)
+
+**Binary size:** 934,928 bytes (+912 bytes from Task 2.2)
+**Tests:** 271/271 passing (100%)
 
 **Acceptance:**
-- [ ] Command implemented
-- [ ] Provides visibility into playback state
+- [x] Command implemented
+- [x] Provides visibility into playback state
+- [x] Thread-safe access to play manager state
+- [x] All status fields exposed
+- [x] All tests passing
 
 ---
 

@@ -1,3 +1,48 @@
+## 2026-02-03 — CODE_REVIEW5 Task 2.3: WAV Status Diagnostic Command
+
+**Context:** Added runtime diagnostic command to expose WAV playback state
+
+**New command:** `WAV_STATUS`
+
+**Implementation:**
+- Added `play_manager_status_t` structure with 13 fields
+- Implemented `play_manager_get_status()` with mutex-protected access
+- New command handler `cmd_handle_wav_status()`
+- Returns comma-separated key=value pairs
+
+**Status fields:**
+- Active state (yes/no)
+- Source format (rate, channels, bits)
+- Output format (rate, channels, bits)
+- Frame progress (read, produced, expected, %)
+- Stash buffer fill (frames/capacity)
+- Resampler Q16.16 phase position
+
+**Use cases:**
+- Debug playback progress during operation
+- Monitor stash buffer fill level
+- Verify resampler state
+- Track frame accuracy in real-time
+
+**Example output:**
+```
+OK|WAV_STATUS|CURRENT|ACTIVE=yes,SRC_RATE=44100,SRC_CH=2,SRC_BITS=16,
+DST_RATE=48000,DST_CH=2,DST_BITS=16,SRC_FRAMES=12345,DST_FRAMES=13424,
+EXPECTED_FRAMES=50000,PROGRESS_PCT=26.8,STASH_FRAMES=128,STASH_CAP=2048,
+RESAMP_POS=0x00012800
+```
+
+**Files changed:**
+- play_manager.h, play_manager.c (new API)
+- cmd_handlers.h, cmd_handlers_system.c (command handler)
+- command_interface.h, commands.c (command routing)
+- commands_priv.h (header include)
+
+**Binary size:** 934,928 bytes (+912 bytes)
+**Tests:** 271/271 passing (100%)
+
+---
+
 ## 2026-02-03 — CODE_REVIEW5 Task 2.2: Enhanced Completion Report
 
 **Context:** Enhanced WAV playback completion report to emphasize frame-based metrics

@@ -38,6 +38,33 @@ bool play_manager_consume(size_t bytes);
 size_t play_manager_pending_bytes(void);
 
 /**
+ * WAV playback runtime status for diagnostics (CODE_REVIEW5 Task 2.3)
+ */
+typedef struct {
+    bool active;                       /* WAV playback active */
+    const char *filename;              /* Currently playing file (NULL if inactive) */
+    audio_sample_rate_t src_rate;      /* Source sample rate (Hz) */
+    uint16_t src_channels;             /* Source channels (1=mono, 2=stereo) */
+    audio_bit_depth_t src_bit_depth;   /* Source bit depth */
+    audio_sample_rate_t dst_rate;      /* Output sample rate (Hz) */
+    uint16_t dst_channels;             /* Output channels */
+    audio_bit_depth_t dst_bit_depth;   /* Output bit depth */
+    size_t src_frames_read;            /* Source frames read so far */
+    size_t dst_frames_produced;        /* Destination frames produced so far */
+    size_t expected_dst_frames;        /* Expected total destination frames */
+    size_t stash_frames;               /* Current PCM stash buffer fill (frames) */
+    size_t stash_capacity;             /* PCM stash buffer capacity (frames) */
+    uint32_t resampler_pos_q16;        /* Resampler Q16.16 phase position */
+} play_manager_status_t;
+
+/**
+ * Get current WAV playback status. Safe to call anytime.
+ * Returns false if play_manager not initialized.
+ * If not active, most fields will be zero/NULL.
+ */
+bool play_manager_get_status(play_manager_status_t *status);
+
+/**
  * WAV playback instrumentation data for verification and diagnostics.
  * Updated during playback and reset when new playback starts.
  */

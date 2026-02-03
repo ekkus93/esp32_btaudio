@@ -1152,6 +1152,46 @@ bool play_manager_get_instrumentation(play_manager_instrumentation_t *instr)
     return true;
 }
 
+bool play_manager_get_status(play_manager_status_t *status)
+{
+    if (!status || !s_pm.initialized || s_pm.mutex == NULL) {
+        return false;
+    }
+
+    if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+
+    /* Basic state */
+    status->active = s_pm.active;
+    status->filename = NULL;  /* Not stored currently - could be added if needed */
+    
+    /* Source format (only valid when active) */
+    status->src_rate = s_pm.src_rate;
+    status->src_channels = s_pm.wav_channels;
+    status->src_bit_depth = s_pm.src_bit;
+    
+    /* Destination format */
+    status->dst_rate = s_pm.out_cfg.sample_rate;
+    status->dst_channels = (s_pm.out_cfg.channels == AUDIO_CHANNEL_MONO) ? 1 : 2;
+    status->dst_bit_depth = s_pm.out_cfg.bit_depth;
+    
+    /* Frame counters (CODE_REVIEW5 Task 2.1) */
+    status->src_frames_read = s_src_frames_read;
+    status->dst_frames_produced = s_dst_frames_produced;
+    status->expected_dst_frames = s_expected_dst_frames;
+    
+    /* Stash buffer state */
+    status->stash_frames = s_pm.stash.frames;
+    status->stash_capacity = s_pm.stash.cap_frames;
+    
+    /* Resampler state */
+    status->resampler_pos_q16 = s_pm.rs.pos_q16;
+
+    xSemaphoreGive(s_pm.mutex);
+    return true;
+}
+
 #ifdef CONFIG_BT_MOCK_TESTING
 void play_manager_test_set_frame_bytes_dst(size_t frame_bytes)
 {
