@@ -1,3 +1,41 @@
+## 2026-02-02 18:58:12 — CODE_REVIEW5 Task 1.3: Extended play_manager_state_t ✅
+
+**Task:** Add resampler and stash fields to play manager state
+
+**Changes to play_manager_state_t:**
+- Added `uint16_t wav_channels` - WAV channel count from header (1=mono, 2=stereo)
+- Added `size_t out_frames_per_chunk` - Fixed output block size in frames (e.g., 256)
+- Added `pcm_stash_t stash` - Input buffer for variable-rate resampler
+- Added `audio_resampler_stream_t rs` - Stateful streaming resampler instance
+- Added `bool eof_seen` - EOF reached flag for clean termination
+
+**Include added:**
+- `#include "audio_resampler_stream.h"` in play_manager.c
+
+**Implementation notes:**
+- Fields added after existing fields with clear comments
+- Struct layout: existing fields → streaming resampler fields
+- Zero-initialized via existing `static play_manager_state_t s_pm = {0};`
+- Maintains backward compatibility (new fields only used in new code path)
+
+**Build verification:**
+- Binary size: 0xe34f0 bytes (931,056 bytes) - unchanged
+- Compilation: Clean build, no errors
+- Warnings: "defined but not used" for stash functions (expected until Task 1.4)
+
+**State lifecycle (to be implemented in Task 1.7):**
+- Init on WAV start: populate wav_channels, out_frames_per_chunk
+- Init stash: pcm_stash_init() with 2048 frame capacity
+- Init resampler: audio_resampler_stream_init() with rates
+- Deinit on WAV close: pcm_stash_deinit()
+
+**Next steps:**
+- Task 1.4: Implement ensure_stash_frames() helper
+- Task 1.5: Implement produce_one_output_block()
+- Task 1.6: Refactor play_manager_fill() to use new pipeline
+
+---
+
 ## 2026-02-02 18:55:41 — CODE_REVIEW5 Task 1.2: PCM stash buffer complete ✅
 
 **Task:** Implement PCM stash buffer for streaming resampler

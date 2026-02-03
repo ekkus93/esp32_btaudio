@@ -57,6 +57,7 @@
 
 #include "audio_queue.h"
 #include "audio_util.h"
+#include "audio_resampler_stream.h"
 #include "util_safe.h"
 
 static const char *TAG = "play_manager";
@@ -105,6 +106,12 @@ typedef struct {
 #ifdef CONFIG_BT_MOCK_TESTING
     bool test_zero_resample;
 #endif
+    /* CODE_REVIEW5 Task 1.3: Streaming resampler state */
+    uint16_t wav_channels;           /* WAV channels (1=mono, 2=stereo) from header */
+    size_t out_frames_per_chunk;     /* Fixed output size in frames (e.g., 256) */
+    pcm_stash_t stash;               /* Input buffer for variable-rate resampler */
+    audio_resampler_stream_t rs;     /* Stateful streaming resampler */
+    bool eof_seen;                   /* EOF reached during file read */
 } play_manager_state_t;
 
 static play_manager_state_t s_pm = {0};

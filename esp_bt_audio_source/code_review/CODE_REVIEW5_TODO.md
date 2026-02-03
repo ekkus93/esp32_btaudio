@@ -208,7 +208,7 @@ typedef struct {
 
 ---
 
-### Task 1.3: Extend play_manager_state_t ⏸️
+### Task 1.3: Extend play_manager_state_t ✅
 
 **Goal:** Add resampler and stash to play manager state
 
@@ -225,8 +225,9 @@ typedef struct {
 ```
 
 **Acceptance:**
-- [ ] State extended
-- [ ] Compiles cleanly
+- [x] State extended with 5 new fields
+- [x] Compiles cleanly
+- [x] Binary size unchanged (fields zero-initialized, not yet used)
 
 ---
 
