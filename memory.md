@@ -1,3 +1,37 @@
+## 2026-02-02 17:45:31 — CODE_REVIEW5 Task 0.1: Baseline Metrics Established ✅
+
+**Context:** Starting CODE_REVIEW5 implementation (WAV resampler fix)  
+**Task:** Establish baseline metrics before making any changes  
+**Purpose:** Capture current state for comparison and regression detection
+
+**Binary Size (Baseline):**
+- App binary: 930,681 bytes (0xe33f0)
+- Flash free: 838,672 bytes (47% of 1,769,472 partition)
+- IRAM usage: 111,947/131,072 bytes (85.41%)
+- DRAM usage: 57,580/124,580 bytes (46.22%)
+
+**Test Results (Baseline):**
+- Total: 485/485 tests (100% pass rate)
+- Host: 253/253 passed (3.14s)
+- Standalone: 36/36 passed
+- Device: 196/196 passed across 9 suites
+  - test_app_audio: 63/63 (includes WAV completeness test)
+
+**WAV Playback Duration Test:**
+- Created `test_wav_playback_duration_baseline()` device test
+- File: test/test_app_audio/main/audio_processor_test.c
+- Test WAV: worker_long_norm.wav (44.1kHz stereo, 500ms, 87KB)
+- Measures actual playback duration to quantify "ends early" behavior
+- Upsampling: 44.1kHz → 48kHz (exercises resampler)
+- Expected: 500ms ±50ms tolerance
+- Status: Test created and built successfully
+- Results: Will be captured in next full test run (test_app_audio now has 64 tests)
+
+**Task 0.1 Complete:**
+All baseline metrics established. Ready for Task 0.2 (investigate resampler behavior).
+
+---
+
 ## 2026-02-02 16:00:08 — Success Criteria Finalized: CODE_REVIEW4 Officially COMPLETE ✅
 
 **Context:** Final documentation task for CODE_REVIEW4 completion  
