@@ -205,7 +205,10 @@ static esp_err_t pcm_stash_append_frames(pcm_stash_t *stash, const uint8_t *fram
 
     size_t append_bytes = num_frames * stash->frame_bytes;
     uint8_t *dst = stash->buf + (stash->frames * stash->frame_bytes);
+    // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    // C11 _s variants not available in ESP-IDF; bounds checked above
     memcpy(dst, frames, append_bytes);
+    // NOLINTEND(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
     stash->frames += num_frames;
 
     return ESP_OK;
@@ -245,7 +248,10 @@ static esp_err_t pcm_stash_consume_frames(pcm_stash_t *stash, size_t num_frames)
 
     if (remaining_frames > 0) {
         // Shift remaining frames to front of buffer
+        // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+        // C11 _s variants not available in ESP-IDF; bounds checked via stash->frames
         memmove(stash->buf, stash->buf + consume_bytes, remaining_bytes);
+        // NOLINTEND(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
     }
 
     stash->frames = remaining_frames;
@@ -506,7 +512,10 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
         size_t silence_frames = out_frames - frames_produced;
         size_t silence_bytes = silence_frames * s_pm.frame_bytes_dst;
         uint8_t *silence_ptr = dst_block + (frames_produced * s_pm.frame_bytes_dst);
+        // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+        // C11 _s variants not available in ESP-IDF; silence_bytes bounded by block size
         memset(silence_ptr, 0, silence_bytes);
+        // NOLINTEND(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
         
         ESP_LOGD(TAG, "produce_one_output_block: EOF - produced %zu/%zu frames, padded %zu",
                  frames_produced, out_frames, silence_frames);
@@ -744,238 +753,6 @@ void play_manager_deinit(void)
 bool play_manager_is_active(void)
 {
     return s_pm.active;
-}
-
-/*
- * ============================================================================
- * DEPRECATED: Old block-local resampler helpers (CODE_REVIEW5)
- * ============================================================================
- * 
- * The functions below (allocate_audio_blocks through process_audio_block)
- * implement the OLD pipeline that caused cumulative frame loss.
- * 
- * They are REPLACED by the new streaming resampler pipeline:
- *   - ensure_stash_frames() - variable input reads
- *   - produce_one_output_block() - fixed output blocks  
- *   - play_manager_fill() - new loop using streaming resampler
- * 
- * These functions are kept temporarily for reference/rollback purposes.
- * They will be removed after Phase 1 validation (Task 1.9).
- * 
- * DO NOT USE - marked for deletion after successful device test.
- */
-
-/* Helper: Allocate src and dst blocks */
-static esp_err_t allocate_audio_blocks(uint8_t **src_block, uint8_t **dst_block)
-{
-    *src_block = audio_chunk_alloc_block(pdMS_TO_TICKS(5));
-    if (*src_block == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    *dst_block = audio_chunk_alloc_block(pdMS_TO_TICKS(5));
-    if (*dst_block == NULL) {
-        s_dst_block_null_count++;  /* Instrumentation */
-        audio_chunk_release_block(*src_block);
-        return ESP_ERR_NO_MEM;
-    }
-
-    return ESP_OK;
-}
-
-/* Helper: Calculate frame-aligned read size (DATA LOSS PREVENTION)
- * 
- * WHY FRAME ALIGNMENT: Reading partial frames causes glitches, corruption, and
- * misaligned samples in Bluetooth audio. Every read must deliver complete frames
- * (e.g., 4 bytes for stereo 16-bit) to maintain audio integrity downstream.
- * 
- * HOW IT WORKS (two-step alignment):
- * 1. CLAMP to remaining_bytes FIRST (Task 1.5) - prevents read-past-EOF
- * 2. ALIGN DOWN to frame boundary - ensures complete frames only
- * 
- * Edge cases:
- * - If aligned result is 0 (rare: to_read < frame_bytes), return one frame minimum
- * - Last chunk may be smaller than AUDIO_CHUNK_BLOCK_BYTES but still frame-aligned
- * - frame_bytes=0 treated as 1 (safety: avoid divide-by-zero, though shouldn't occur)
- * 
- * CORRECTNESS: Order matters. Clamping before alignment ensures we never align
- * down past EOF (which would create a short read and require rewind). Alignment
- * after clamping ensures we respect file boundaries while maintaining frames.
- * 
- * This is CODE_REVIEW4 Task 1.5 - prevents partial frames and guarantees clean audio.
- */
-static size_t calculate_read_size(size_t frame_bytes, size_t remaining_bytes)
-{
-    size_t to_read = AUDIO_CHUNK_BLOCK_BYTES;
-    
-    /* Clamp to remaining bytes FIRST (CODE_REVIEW4 Task 1.5) */
-    if (to_read > remaining_bytes) {
-        to_read = remaining_bytes;
-    }
-    
-    /* Align down to frame boundary */
-    size_t frame_src = (frame_bytes != 0) ? frame_bytes : 1U;
-    to_read = (to_read / frame_src) * frame_src;
-    if (to_read == 0) {
-        to_read = frame_src;
-    }
-    
-    return to_read;
-}
-
-/* Helper: Read data from file and update accounting */
-static esp_err_t read_audio_data(uint8_t *buffer, size_t to_read, size_t *bytes_read)
-{
-    *bytes_read = fread(buffer, 1, to_read, s_pm.file);
-    if (*bytes_read == 0) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    /* Update instrumentation and state */
-    s_bytes_read_from_file_total += *bytes_read;
-    if (*bytes_read > s_pm.remaining_bytes) {
-        s_pm.remaining_bytes = 0;
-    } else {
-        s_pm.remaining_bytes -= *bytes_read;
-    }
-    
-    return ESP_OK;
-}
-
-/* Helper: Convert audio format */
-static esp_err_t convert_audio_block(uint8_t *src_block, size_t src_size, size_t *conv_size)
-{
-    audio_convert_args_t conv_args = {
-        .src = src_block,
-        .dst = src_block,
-        .src_size = src_size,
-        .src_bit_depth = s_pm.src_bit,
-        .dst_bit_depth = s_pm.out_cfg.bit_depth,
-        .dst_size = conv_size,
-        .work_bytes = s_pm.work_bytes,
-    };
-    return convert_audio_format(&conv_args);
-}
-
-/* Helper: Resample audio */
-static esp_err_t resample_audio_block(const uint8_t *src_block, uint8_t *dst_block,
-                                     size_t src_size, size_t *res_size)
-{
-    audio_resample_args_t res_args = {
-        .src = src_block,
-        .dst = dst_block,
-        .src_size = src_size,
-        .src_rate = s_pm.src_rate,
-        .dst_rate = s_pm.out_cfg.sample_rate,
-        .bit_depth = s_pm.out_cfg.bit_depth,
-        .channels = s_pm.out_cfg.channels,
-        .dst_size = res_size,
-        .work_bytes = s_pm.work_bytes,
-    };
-    return resample_audio(&res_args);
-}
-
-/* Helper: Rewind file after enqueue failure (DATA LOSS PREVENTION)
- * 
- * WHY REWIND: When audio_chunk_enqueue_block() fails (queue full, OOM), the
- * bytes we just read from the file haven't been queued. Without rewinding,
- * those bytes would be lost forever when we advance to the next read.
- * 
- * HOW IT WORKS:
- * 1. fseek backwards by bytes_to_rewind (the amount we just read)
- * 2. Restore s_pm.remaining_bytes so next fill iteration re-reads same data
- * 3. Decrement s_bytes_read_from_file_total to prevent double-counting
- * 4. Increment s_enqueue_fail_count for instrumentation (retries are normal)
- * 
- * CORRECTNESS: bytes_to_rewind is always <= bytes we just read in current
- * iteration, and we only rewind on enqueue failure (not read/convert errors).
- * File position perfectly tracks queued data, not just read data.
- * 
- * ROBUSTNESS: Rewind failure is logged but doesn't crash. Worst case: some
- * bytes lost (degraded mode). Normal case: rewind succeeds, zero data loss.
- * 
- * This is CODE_REVIEW4 Task 1.2 - the core of lossless WAV playback.
- */
-static void rewind_after_enqueue_failure(size_t bytes_to_rewind)
-{
-    /* Rewind file pointer to re-read this data on next fill */
-    if (fseek(s_pm.file, -(long)bytes_to_rewind, SEEK_CUR) != 0) {
-        ESP_LOGW(TAG, "Failed to rewind file after enqueue failure");  // NOLINT(bugprone-branch-clone)
-    }
-    
-    /* Restore accounting - bytes_to_rewind always <= bytes_read_from_file_total at this point */
-    s_pm.remaining_bytes += bytes_to_rewind;
-    s_enqueue_fail_count++;
-    s_bytes_read_from_file_total -= bytes_to_rewind;
-}
-
-/* Helper: Process one audio block (read, convert, resample, enqueue) */
-static esp_err_t process_audio_block(void)
-{
-    uint8_t *src_block = NULL;
-    uint8_t *dst_block = NULL;
-    
-    /* Allocate blocks */
-    esp_err_t ret = allocate_audio_blocks(&src_block, &dst_block);
-    if (ret != ESP_OK) {
-        return ESP_OK;  /* Not an error, just no memory available */
-    }
-    
-    /* Calculate read size */
-    size_t to_read = calculate_read_size(s_pm.frame_bytes_src, s_pm.remaining_bytes);
-    
-    /* Read from file */
-    size_t got = 0;
-    ret = read_audio_data(src_block, to_read, &got);
-    if (ret != ESP_OK) {
-        audio_chunk_release_block(dst_block);
-        audio_chunk_release_block(src_block);
-        s_pm.remaining_bytes = 0;
-        return ESP_ERR_INVALID_STATE;
-    }
-    
-    /* Convert format */
-    size_t conv_size = 0;
-    ret = convert_audio_block(src_block, got, &conv_size);
-    if (ret != ESP_OK) {
-        audio_chunk_release_block(dst_block);
-        audio_chunk_release_block(src_block);
-        return ret;
-    }
-    
-    /* Resample */
-    size_t res_size = 0;
-    ret = resample_audio_block(src_block, dst_block, conv_size, &res_size);
-    audio_chunk_release_block(src_block);
-    if (ret != ESP_OK) {
-        audio_chunk_release_block(dst_block);
-        return ret;
-    }
-    
-#ifdef CONFIG_BT_MOCK_TESTING
-    if (s_pm.test_zero_resample) {
-        res_size = 0;
-    }
-#endif
-    
-    /* Skip if empty */
-    if (res_size == 0) {
-        audio_chunk_release_block(dst_block);
-        return ESP_OK;
-    }
-    
-    /* Enqueue */
-    if (!audio_chunk_enqueue_block(dst_block, res_size, AUDIO_SOURCE_TAG_WAV)) {
-        rewind_after_enqueue_failure(got);
-        audio_chunk_release_block(dst_block);
-        return ESP_ERR_NO_MEM;  /* Signal to stop loop */
-    }
-    
-    /* Update instrumentation */
-    s_bytes_enqueued_total += res_size;
-    s_pm.pending_bytes += res_size;
-    
-    return ESP_OK;
 }
 
 esp_err_t play_manager_fill(void)

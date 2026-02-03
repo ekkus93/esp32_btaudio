@@ -211,6 +211,7 @@ add_test(NAME test_audio_queue_host COMMAND $<TARGET_FILE:test_audio_queue_host>
 add_executable(test_play_manager_host
     test_play_manager_host.c
     ../../components/audio_processor/play_manager.c
+    ../../components/audio_processor/audio_resampler_stream.c
     ../../components/audio_processor/audio_queue.c
     ../../components/audio_processor/audio_util.c
     mocks/fake_queue.c
@@ -591,6 +592,7 @@ add_executable(test_play_manager
     test_play_manager/test_play_manager.c
     test_play_manager/shim_play_manager_stubs.c
     ../../components/audio_processor/play_manager.c
+    ../../components/audio_processor/audio_resampler_stream.c
     ../../components/audio_processor/audio_queue.c
     mocks/esp_heap_caps_mock.c
     mocks/fake_queue.c

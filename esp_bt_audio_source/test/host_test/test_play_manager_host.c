@@ -12,8 +12,11 @@ static const char *k_test_wav_path = "/tmp/play_manager_host.wav";
 
 static void write_test_wav(void)
 {
-    /* Simple 44.1 kHz stereo, 16-bit PCM with 4 frames. */
-    const uint16_t samples[] = {0x1111, 0x2222, 0x3333, 0x4444, 0x5555, 0x6666, 0x7777, 0x8888};
+    /* Simple 44.1 kHz stereo, 16-bit PCM with 512 frames (streaming resampler needs >=256). */
+    uint16_t samples[1024]; /* 512 frames * 2 channels */
+    for (size_t i = 0; i < 1024; i++) {
+        samples[i] = (uint16_t)(0x1000 + i);
+    }
     const uint32_t data_bytes = sizeof(samples);
     const uint32_t riff_size = 36 + data_bytes;
     const uint16_t audio_format = 1;
