@@ -842,20 +842,63 @@ ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
 
 ---
 
-### Task 5.2: Consider moving to vendor/ or third_party/ ⏸️
+### Task 5.2: Consider moving to vendor/ or third_party/ ✅ COMPLETE
 
 **Goal:** Reduce confusion
 
-**Options:**
-- Move to `vendor/esp-idf-components/`
-- Move to `third_party/`
-- Leave as-is but document
+**Decision (2026-02-03):** **Keep current structure** (no move)
 
-**Decision:** ___
+**Rationale:**
+- **Lowest risk:** All 505 tests passing (271 host + 37 standalone + 197 device)
+- **No firmware impact:** Build system completely ignores this directory
+- **It works:** Pragmatic solution that has been stable for project lifetime
+- **Migration cost > benefit:** Cosmetic cleanup vs functional stability
+
+**Options evaluated (see WHY_COMPONENTS_COMPONENTS.md for full analysis):**
+
+1. **Keep as-is** ✅ **CHOSEN**
+   - **Pros:** No migration risk, tests work reliably, firmware unaffected
+   - **Cons:** Confusing structure, maintenance burden, wastes repo space
+   - **Decision:** Accept technical debt, document thoroughly
+
+2. **Move to vendor/esp-idf/ or third_party/esp-idf/**
+   - **Pros:** Clearer intent (third-party code), standard practice
+   - **Cons:** Requires updating all host test includes, migration risk
+   - **Assessment:** Not worth effort for cosmetic improvement
+
+3. **Use CMake FetchContent or ExternalProject**
+   - **Pros:** No mirroring needed, automatic ESP-IDF version pinning
+   - **Cons:** Complex CMake setup, requires internet, fragile if ESP-IDF structure changes
+   - **Assessment:** Over-engineering for current needs
+
+4. **Extract to test/host_test/esp_idf_stubs/**
+   - **Pros:** Minimal footprint (~5 files needed), clear ownership
+   - **Cons:** Highest migration effort, may need expansion
+   - **Assessment:** Best technical solution but not justified by current pain
+
+**Trade-off analysis:**
+- **Current pain level:** Low (confusing to new developers, documented in WHY_COMPONENTS_COMPONENTS.md)
+- **Migration risk:** High (must update test CMakeLists.txt, verify all 271 host tests still pass)
+- **Benefit:** Cosmetic only (clearer structure, no functional improvement)
+- **Verdict:** Technical debt acceptable, not worth migration risk
+
+**Future reconsideration triggers:**
+- Host test dependencies expand significantly (>10 ESP-IDF files needed)
+- ESP-IDF component structure changes break current approach
+- New developers consistently confused despite documentation
+- Migration can be done as part of larger refactoring (lower incremental cost)
+
+**Documentation:**
+- Comprehensive analysis in `components/WHY_COMPONENTS_COMPONENTS.md`
+- Alternatives with full pros/cons evaluation
+- Maintenance guide for current structure
+- Migration guide if decision changes in future
 
 **Acceptance:**
-- [ ] Decision made and documented
-- [ ] If moved: build still works
+- [x] Decision made and documented (keep as-is)
+- [x] Build still works (all 505 tests passing)
+- [x] Alternatives evaluated (4 options with trade-off analysis)
+- [x] Future reconsideration triggers identified
 
 ---
 

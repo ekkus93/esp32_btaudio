@@ -87,6 +87,50 @@ This completes Phase 5 Task 5.1. Task 5.2 (consider moving structure) is deferre
 
 ---
 
+## 2026-02-03 03:26 — CODE_REVIEW5 Task 5.2: Decision on components/components location
+
+**Context:** Evaluate whether to move components/components to vendor/ or third_party/
+
+**Goal:** Make final decision on directory structure
+
+**Decision:** **Keep as-is** (no move)
+
+**Rationale:**
+- **Risk vs reward:** Migration risk high, benefit cosmetic only
+- **Current pain low:** Documented thoroughly in WHY_COMPONENTS_COMPONENTS.md
+- **Tests passing:** All 505 tests stable (271 host + 37 standalone + 197 device)
+- **No functional impact:** Structure choice doesn't affect firmware or test correctness
+- **Technical debt acceptable:** Confusion mitigated by documentation
+
+**Options evaluated (full analysis in WHY_COMPONENTS_COMPONENTS.md):**
+1. **Keep as-is** ✅ (chosen) - Lowest risk, it works
+2. **Move to vendor/** - Clearer intent but requires CMakeLists.txt migration
+3. **CMake FetchContent** - Over-engineering for current needs
+4. **Extract to stubs/** - Best technical solution but highest effort
+
+**Trade-off analysis:**
+- Migration cost: Update all host test includes, verify 271 tests still pass
+- Benefit: Clearer structure only (no functionality change)
+- Risk: Breaking host tests during migration
+- Verdict: Not justified by current pain level
+
+**Future reconsideration triggers:**
+- Host test dependencies expand (>10 ESP-IDF files)
+- ESP-IDF structure changes break current approach
+- New developers consistently confused despite docs
+- Part of larger refactoring (lower incremental cost)
+
+**Impact:**
+- Updated: CODE_REVIEW5_TODO.md (Task 5.2 complete)
+- Binary: No changes (decision only, no code)
+- Tests: 505/505 passing (100%)
+- Phase 5 complete: Both tasks (5.1 documentation, 5.2 decision) done
+
+**Notes:**
+Phase 5 (Repo Layout Cleanup) complete. Decision to maintain current structure is documented and justified. Future work on this is optional and should only be done if triggered by one of the identified conditions.
+
+---
+
 ## 2026-02-03 01:35 — Clang-tidy Warning Fixes
 
 **Context:** Fixed clang-tidy static analysis warnings
