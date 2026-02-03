@@ -654,7 +654,7 @@ OK|WAV_STATUS|CURRENT|ACTIVE=no
 
 ## Phase 3: Streaming Stats Fixes
 
-### Task 3.1: Split bytes_sent into produced vs requested ⏸️
+### Task 3.1: Split bytes_sent into produced vs requested ✅
 
 **Goal:** Track real audio vs silence separately
 
@@ -671,13 +671,23 @@ s_streaming_info.bytes_silence += (len - bytes_read);  // zero-fill
 ```
 
 **Changes:**
-- [ ] Add fields to streaming stats struct
-- [ ] Update A2DP callback to track separately
-- [ ] Update status command output
+- [x] Add fields to streaming stats struct
+- [x] Update A2DP callback to track separately
+- [x] Update status command output
+- [x] Add host test stub for bt_get_streaming_info
 
 **Acceptance:**
-- [ ] Stats distinguish audio from silence
-- [ ] Underruns visible in stats
+- [x] Stats distinguish audio from silence
+- [x] Underruns visible in stats
+- [x] All 271 host tests pass
+- [x] Binary: 935,088 bytes (47% free)
+
+**Implementation notes:**
+- Added 3 new fields to bt_streaming_info_t: bytes_requested, bytes_produced, bytes_silence
+- bytes_sent kept for backward compatibility (marked DEPRECATED)
+- Reset logic updated in both bt_streaming_manager.c and bt_connection_manager.c
+- STATUS command now shows BYTES_REQ, BYTES_PROD, BYTES_SILENCE
+- Used BT_SOURCE_SKIP_DEVICE_STRUCT pattern to avoid bt_device_t conflict
 
 ---
 

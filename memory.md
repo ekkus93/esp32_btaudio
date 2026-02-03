@@ -1,3 +1,61 @@
+## 2026-02-03 01:13 — CODE_REVIEW5 Task 3.1: Split Streaming Stats (Audio vs Silence)
+
+**Context:** Streaming statistics now distinguish actual audio from zero-fill silence
+
+**Problem:** 
+- bytes_sent always incremented by full A2DP request length
+- Underruns hidden - couldn't tell if bytes came from queue or were zero-filled
+- Made streaming health appear better than reality
+
+**Solution:** Split tracking into 3 separate metrics
+- bytes_requested: Total bytes A2DP asked for (always full request)
+- bytes_produced: Actual audio bytes from queue
+- bytes_silence: Zero-fill bytes when queue underruns
+- Formula: bytes_requested = bytes_produced + bytes_silence
+
+**Implementation:**
+
+*bt_streaming_info_t structure (bt_source.h):*
+- Added 3 new uint32_t fields
+- bytes_sent marked DEPRECATED (kept for compatibility)
+
+*bt_audio_data_callback (bt_streaming_manager.c):*
+```c
+s_streaming_info.bytes_requested += len;  // Total A2DP asked for
+s_streaming_info.bytes_produced += bytes_read;  // Actual from queue
+s_streaming_info.bytes_silence += (len - bytes_read);  // Underruns
+```
+
+*Reset logic:*
+- Updated STARTING state in bt_streaming_manager.c
+- Updated STOPPED state in bt_connection_manager.c
+
+*STATUS command output (cmd_handlers_system.c):*
+- Added BYTES_REQ, BYTES_PROD, BYTES_SILENCE to output
+- Also shows PKTS, PKT_ERR, DUR
+- Used BT_SOURCE_SKIP_DEVICE_STRUCT to avoid bt_device_t conflict
+
+*Host tests:*
+- Added bt_get_streaming_info() stub to mock_audio_and_btstate.c
+- Returns zeroed structure for host builds
+
+**Binary size:** 935,088 bytes (+160 bytes from Task 2.3)
+**Tests:** 271/271 passing (100%)
+
+**Use cases:**
+- Monitor queue health during streaming
+- Detect underrun frequency
+- Distinguish data delivery issues from queue issues
+- Debug audio continuity problems
+
+**Example visible change:**
+```
+Before: BYTES_SENT=1000000  (all bytes, including silence)
+After:  BYTES_REQ=1000000,BYTES_PROD=980000,BYTES_SILENCE=20000  (2% underrun)
+```
+
+---
+
 ## 2026-02-03 — CODE_REVIEW5 Task 2.3: WAV Status Diagnostic Command
 
 **Context:** Added runtime diagnostic command to expose WAV playback state

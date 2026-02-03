@@ -253,9 +253,12 @@ static void update_streaming_state(bt_streaming_state_t new_state)
     /* Update paused flag */
     s_streaming_info.paused = (new_state == BT_STREAMING_STATE_PAUSED);
 
-    /* Reset streaming stats if stopped */
+    /* Reset streaming stats if stopped (CODE_REVIEW5 Task 3.1) */
     if (new_state == BT_STREAMING_STATE_STOPPED) {
         s_streaming_info.bytes_sent = 0;
+        s_streaming_info.bytes_requested = 0;
+        s_streaming_info.bytes_produced = 0;
+        s_streaming_info.bytes_silence = 0;
         s_streaming_info.packets_sent = 0;
         s_streaming_info.packet_errors = 0;
         s_streaming_info.stream_duration = 0;

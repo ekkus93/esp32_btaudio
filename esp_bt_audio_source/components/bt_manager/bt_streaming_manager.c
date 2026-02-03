@@ -70,8 +70,11 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
         ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);  // NOLINT(bugprone-branch-clone)
     }
 
-    /* Update streaming statistics */
-    s_streaming_info.bytes_sent += len;
+    /* Update streaming statistics (CODE_REVIEW5 Task 3.1) */
+    s_streaming_info.bytes_sent += len;          /* Legacy - keep for compatibility */
+    s_streaming_info.bytes_requested += len;     /* Total bytes A2DP asked for */
+    s_streaming_info.bytes_produced += bytes_read;  /* Actual audio from queue */
+    s_streaming_info.bytes_silence += (len - bytes_read);  /* Zero-fill (underruns) */
     s_streaming_info.packets_sent++;
     
     /* Calculate streaming duration */
@@ -103,8 +106,11 @@ static void update_streaming_state(bt_streaming_state_t new_state)
     /* Handle state transitions */
     switch (new_state) {
         case BT_STREAMING_STATE_STARTING:
-            /* Reset statistics */
+            /* Reset statistics (CODE_REVIEW5 Task 3.1) */
             s_streaming_info.bytes_sent = 0;
+            s_streaming_info.bytes_requested = 0;
+            s_streaming_info.bytes_produced = 0;
+            s_streaming_info.bytes_silence = 0;
             s_streaming_info.packets_sent = 0;
             s_streaming_info.packet_errors = 0;
             s_streaming_info.stream_duration = 0;

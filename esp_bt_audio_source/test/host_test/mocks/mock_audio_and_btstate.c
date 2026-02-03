@@ -10,6 +10,11 @@
 #include "bt_api.h"
 #include "esp_bt.h"
 #include "../../components/audio_processor/include/audio_processor.h"
+/* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
+#include "bt_manager.h"  /* Defines bt_device_t */
+#define BT_SOURCE_SKIP_DEVICE_STRUCT 1
+#include "bt_source.h"   /* Defines bt_streaming_info_t */
+#undef BT_SOURCE_SKIP_DEVICE_STRUCT
 
 // Track mock connection state for host tests. bt_manager mock code will call
 // bt_manager_test_set_connection_state() to update this when it simulates
@@ -45,6 +50,24 @@ __attribute__((weak)) int bt_manager_is_connected(void) {
 
 __attribute__((weak)) int bt_get_streaming_state_int(void) {
     return 0; /* host tests default to not streaming */
+}
+
+/* CODE_REVIEW5 Task 3.1: Stub for bt_get_streaming_info() */
+__attribute__((weak)) esp_err_t bt_get_streaming_info(bt_streaming_info_t* info) {
+    if (info == NULL) {
+        return ESP_FAIL;
+    }
+    /* Return zeroed streaming info for host tests */
+    info->state = BT_STREAMING_STATE_STOPPED;
+    info->bytes_sent = 0;
+    info->bytes_requested = 0;
+    info->bytes_produced = 0;
+    info->bytes_silence = 0;
+    info->packets_sent = 0;
+    info->packet_errors = 0;
+    info->stream_duration = 0;
+    info->paused = false;
+    return ESP_OK;
 }
 
 __attribute__((weak)) bt_err_t bt_start_audio(void) {
