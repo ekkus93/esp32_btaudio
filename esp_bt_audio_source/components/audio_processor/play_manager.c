@@ -1099,6 +1099,7 @@ static esp_err_t calculate_frame_sizes(audio_bit_depth_t src_bit, uint16_t chann
 static esp_err_t initialize_playback_state(FILE *file, 
                                            audio_bit_depth_t src_bit,
                                            audio_sample_rate_t src_rate,
+                                           uint16_t channels,
                                            size_t frame_bytes_src,
                                            size_t frame_bytes_dst,
                                            size_t data_bytes)
@@ -1132,6 +1133,26 @@ static esp_err_t initialize_playback_state(FILE *file,
     s_dst_block_null_count = 0;
     s_expected_data_bytes = data_bytes;
 
+    /* CODE_REVIEW5 Task 1.7: Initialize streaming resampler state */
+    s_pm.wav_channels = channels;
+    s_pm.out_frames_per_chunk = AUDIO_CHUNK_BLOCK_BYTES / frame_bytes_dst;
+    s_pm.eof_seen = false;
+    
+    /* Initialize PCM stash buffer (2048 frames = ~8KB for stereo 16-bit) */
+    esp_err_t ret = pcm_stash_init(&s_pm.stash, 2048, frame_bytes_dst);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "initialize_playback_state: Failed to init stash buffer");
+        xSemaphoreGive(s_pm.mutex);
+        return ret;
+    }
+    
+    /* Initialize streaming resampler */
+    audio_resampler_stream_init(&s_pm.rs, 
+                                src_rate, 
+                                s_pm.out_cfg.sample_rate,
+                                s_pm.out_cfg.bit_depth,
+                                s_pm.out_cfg.channels);
+
     xSemaphoreGive(s_pm.mutex);
     return ESP_OK;
 }
@@ -1159,6 +1180,9 @@ static void log_playback_completion(void)
 /* Helper: Cleanup playback state */
 static void cleanup_playback_state(void)
 {
+    /* CODE_REVIEW5 Task 1.7: Cleanup streaming resampler state */
+    pcm_stash_deinit(&s_pm.stash);
+    
     if (s_pm.file) {
         fclose(s_pm.file);
         s_pm.file = NULL;
@@ -1198,7 +1222,7 @@ esp_err_t play_manager_play_wav(const char *path)
     }
 
     /* Initialize playback state */
-    status = initialize_playback_state(file, src_bit, src_rate, frame_bytes_src, frame_bytes_dst, data_bytes);
+    status = initialize_playback_state(file, src_bit, src_rate, channels, frame_bytes_src, frame_bytes_dst, data_bytes);
     if (status != ESP_OK) {
         fclose(file);
         return status;

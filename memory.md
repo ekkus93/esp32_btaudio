@@ -1,3 +1,94 @@
+## 2026-02-02 19:20:20 — CODE_REVIEW5 Task 1.7 Complete
+
+**Task:** Initialize resampler and stash on WAV start, cleanup on close
+
+**Implementation:**
+- Modified initialize_playback_state() to accept channels parameter
+- Added streaming resampler initialization code in initialize_playback_state()
+- Added stash cleanup in cleanup_playback_state()
+- Updated play_manager_play_wav() call site with channels parameter
+
+**Initialization sequence (on WAV start):**
+1. Parse WAV header (existing code)
+2. Calculate frame sizes (existing code)
+3. **NEW:** Set s_pm.wav_channels = channels (from header)
+4. **NEW:** Compute s_pm.out_frames_per_chunk = AUDIO_CHUNK_BLOCK_BYTES / frame_bytes_dst
+   - Example: 1024 / 4 = 256 frames (stereo 16-bit)
+5. **NEW:** Clear s_pm.eof_seen flag
+6. **NEW:** Initialize PCM stash buffer:
+   - Call pcm_stash_init(&s_pm.stash, 2048, frame_bytes_dst)
+   - Capacity: 2048 frames (~8KB for stereo 16-bit)
+   - Allocation: heap_caps_malloc with MALLOC_CAP_8BIT
+   - Error handling: Return ESP_ERR_NO_MEM on failure
+7. **NEW:** Initialize streaming resampler:
+   - Call audio_resampler_stream_init(&s_pm.rs, src_rate, dst_rate, bit_depth, channels)
+   - Computes Q16.16 step_q16 = (src_rate << 16) / dst_rate
+   - Example: 44.1kHz→48kHz → step = 0x00011689 (~1.088435)
+   - Resets pos_q16 to 0 (start of stream)
+
+**Cleanup sequence (on WAV close/abort):**
+1. **NEW:** Call pcm_stash_deinit(&s_pm.stash)
+   - Frees stash buffer if allocated
+   - Safe to call even if init failed (checks for NULL)
+2. Close file handle (existing code)
+3. Mark playback inactive (existing code)
+
+**Integration completeness:**
+All streaming resampler functions now used:
+- ✅ pcm_stash_init() - called on WAV start
+- ✅ pcm_stash_deinit() - called on WAV close
+- ✅ pcm_stash_free_frames() - called by ensure_stash_frames()
+- ✅ pcm_stash_append_frames() - called by ensure_stash_frames()
+- ✅ pcm_stash_consume_frames() - called by produce_one_output_block()
+- ✅ audio_resampler_stream_init() - called on WAV start
+- ✅ audio_resampler_stream_min_in_frames() - called by produce_one_output_block()
+- ✅ audio_resampler_stream_process() - called by produce_one_output_block()
+- ✅ ensure_stash_frames() - called by produce_one_output_block()
+- ✅ produce_one_output_block() - called by play_manager_fill()
+
+**Memory allocation:**
+- Stash buffer: ~8KB allocated at WAV start, freed at close
+- Previous approach: No extra buffer (streamed directly)
+- Trade-off: Small memory cost for correct resampling behavior
+
+**Error handling:**
+- pcm_stash_init() failure: Propagated to caller, WAV playback aborted
+- Prevents playback with uninitialized stash (would crash)
+- File closed cleanly on init failure
+
+**Binary impact:**
+- Size: 933,968 bytes (0xe3c50) — **+1,664 bytes from Task 1.6**
+- Previous: 932,304 bytes (Task 1.6)
+- Increase: Stash allocation and resampler init now linked
+- Free space: 835,504 bytes (47% of partition)
+- Total increase from baseline (930,681): +3,287 bytes (~0.35%)
+
+**Build verification:**
+- Clean build, no errors
+- Warning: `process_audio_block` defined but not used (deprecated, OK)
+- All stash/resampler functions now in use (no "unused" warnings)
+
+**Phase 1 completion status:**
+Core streaming resampler implementation **COMPLETE**:
+- ✅ Task 1.1: audio_resampler_stream module
+- ✅ Task 1.2: PCM stash buffer
+- ✅ Task 1.3: Extended play_manager_state_t
+- ✅ Task 1.4: ensure_stash_frames() helper
+- ✅ Task 1.5: produce_one_output_block()
+- ✅ Task 1.6: Refactored play_manager_fill()
+- ✅ Task 1.7: Initialize/cleanup on WAV start/close
+- ⏸️ Task 1.8: Update CMakeLists.txt (already done in 1.1)
+- ⏸️ Task 1.9: Manual device test (ready to execute)
+- ⏸️ Task 1.10: Unit tests (deferred)
+
+**Next steps:**
+- Task 1.8: Already complete (CMakeLists.txt updated in Task 1.1)
+- Task 1.9: Device test - validate no frame loss with real hardware
+- Clean up deprecated process_audio_block() after Task 1.9 validation
+- Phase 2: WAV instrumentation fixes (frame-based metrics)
+
+---
+
 ## 2026-02-02 19:13:30 — CODE_REVIEW5 Task 1.6 Complete
 
 **Task:** Refactor play_manager_fill() to use streaming resampler pipeline

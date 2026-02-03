@@ -325,7 +325,7 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
 
 ---
 
-### Task 1.7: Initialize resampler and stash on WAV start ⏸️
+### Task 1.7: Initialize resampler and stash on WAV start ✅
 
 **Goal:** Set up streaming state in `play_manager_play_wav()`
 
@@ -354,8 +354,12 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
    ```
 
 **Acceptance:**
-- [ ] State initialized correctly
-- [ ] Memory allocated/freed cleanly
+- [x] State initialized correctly
+- [x] Memory allocated/freed cleanly
+- [x] Binary size: 933,968 bytes (+1,664 from Task 1.6)
+- [x] All streaming resampler functions now in use
+- [x] Modified initialize_playback_state() signature (added channels)
+- [x] Added stash cleanup in cleanup_playback_state()
 
 ---
 
