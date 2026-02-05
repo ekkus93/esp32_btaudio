@@ -423,7 +423,7 @@ Each resource has ONE owner:
 
 - **Bluetooth Stack:** Owned by bt_manager component. main.c calls `bt_manager_init()` but does NOT make direct ESP-IDF Bluetooth API calls. ALL Bluetooth logic (A2DP, AVRCP, GAP, state machines, callbacks) lives in bt_manager.
 
-- **Audio Pipeline:** Owned by audio_processor component. main.c calls `audio_processor_init()` with configuration but does NOT manage I2S, DMA, or audio queues directly.
+- **Audio Pipeline:** Owned by audio_processor component. main.c calls `audio_processor_init()` with configuration but does NOT manage I2S, DMA, or the ring buffer directly.
 
 **2. Fail-Fast for Critical Errors**
 

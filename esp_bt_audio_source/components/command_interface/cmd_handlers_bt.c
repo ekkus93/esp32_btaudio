@@ -707,33 +707,11 @@ cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
     else if (strcasecmp(ctx->params[0], "DRAIN_QUEUE") == 0 || strcasecmp(ctx->params[0], "DRAIN_RING") == 0)
     {
 #ifdef ESP_PLATFORM
-        if (audio_processor_drain_audio_queue() == ESP_OK) {
+        if (audio_processor_drain_ring() == ESP_OK) {
             cmd_send_response("OK", "DEBUG", "DRAIN_QUEUE_DONE", NULL);
         }
         else {
             cmd_send_response("ERR", "DEBUG", "DRAIN_QUEUE_FAILED", NULL);
-        }
-#else
-        cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);
-#endif
-    }
-    else if (strcasecmp(ctx->params[0], "TAG_DUMP") == 0)
-    {
-#ifdef ESP_PLATFORM
-        size_t max_items = 0;
-        if (ctx->param_count > 1)
-        {
-            max_items = (size_t)strtoul(ctx->params[1], NULL, 10);
-        }
-        size_t captured = 0;
-        esp_err_t err = audio_processor_dump_tag_queue(max_items, &captured);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%zu", captured);
-        if (err == ESP_OK) {
-            cmd_send_response("OK", "DEBUG", "TAG_DUMP", buf);
-        }
-        else {
-            cmd_send_response("ERR", "DEBUG", "TAG_DUMP_FAIL", esp_err_to_name(err));
         }
 #else
         cmd_send_response("ERR", "DEBUG", "UNSUPPORTED", ctx->params[0]);

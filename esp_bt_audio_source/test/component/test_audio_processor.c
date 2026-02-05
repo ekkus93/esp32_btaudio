@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "unity.h"
 #include "audio_processor.h"
-#include "audio_queue.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -357,38 +356,6 @@ void test_audio_processor_beep_disables_synth_keepalive(void)
     TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
 
     audio_processor_stop();
-    audio_processor_deinit();
-}
-
-void test_audio_processor_beep_drains_queue_first(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-
-    /* Seed the audio queue with a non-beep chunk to verify it is cleared. */
-    uint8_t dummy[AUDIO_CHUNK_BLOCK_BYTES];
-    memset(dummy, 0xA5, sizeof(dummy));
-    TEST_ASSERT_TRUE(audio_chunk_enqueue_bytes(dummy, sizeof(dummy), AUDIO_SOURCE_TAG_CAPTURE));
-    TEST_ASSERT_GREATER_THAN_UINT32(0, audio_descriptor_used());
-
-    /* Request a beep; implementation should drain the queue before enqueuing. */
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 880.0));
-
-    audio_chunk_t snap[AUDIO_CHUNK_POOL_BLOCKS];
-    size_t captured = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, audio_descriptor_snapshot(snap, AUDIO_CHUNK_POOL_BLOCKS, &captured));
-    for (size_t i = 0; i < captured; ++i) {
-        TEST_ASSERT_NOT_EQUAL(AUDIO_SOURCE_TAG_CAPTURE, snap[i].tag);
-    }
-
     audio_processor_deinit();
 }
 

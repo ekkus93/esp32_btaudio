@@ -8,7 +8,6 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "audio_processor.h"
-#include "audio_queue.h"
 #include "audio_ringbuffer.h"
 #include "beep_manager.h"
 #include "play_manager.h"
@@ -133,9 +132,6 @@ extern volatile bool s_wav_playback_active;
 extern volatile size_t s_wav_pending_bytes;
 extern bool s_wav_prev_valid;
 extern bool s_wav_prev_force_synth;
-#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
-extern size_t s_test_queue_block_override;
-#endif
 extern portMUX_TYPE s_beep_lock;
 extern size_t s_beep_remaining_bytes;
 extern bool s_dump_next_beep_diag;
@@ -152,7 +148,6 @@ extern double s_last_beep_freq_hz;
 /* Shared helpers */
 size_t audio_get_runtime_work_bytes(void);
 int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
-esp_err_t audio_processor_acquire_chunk_internal(audio_chunk_t *out_chunk, TickType_t wait_ticks);
 void apply_volume(void* buffer, size_t size, uint8_t volume);
 
 /* WAV helpers */
@@ -168,10 +163,6 @@ void wav_playback_add_pending(size_t bytes);
 
 /* Beep helpers */
 void audio_processor_beep_reset(void);
-
-/* Priority queue helpers */
-void audio_processor_flush_priority_queues(const char* reason);
-size_t audio_processor_queue_free_bytes(void);
 
 /* Diagnostics */
 void diag_dump_bytes(const void* data, size_t len, const char* tag);

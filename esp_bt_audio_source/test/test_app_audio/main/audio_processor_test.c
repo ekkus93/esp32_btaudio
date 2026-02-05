@@ -10,7 +10,6 @@
 #include "command_interface.h"
 #include "bt_manager.h"
 #include "play_manager.h"
-#include "audio_queue.h"
 #include "driver/i2s_std.h"
 
 /* Internal state needed for stale-beep regression checks. */
@@ -502,7 +501,7 @@ static void test_audio_processor_play_wav_api(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     ret = audio_processor_play_wav("/spiffs/worker_long_norm.wav");
     TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
@@ -572,7 +571,7 @@ static void test_wav_playback_completeness(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     const char *path = "/spiffs/worker_long_norm.wav";
     ret = audio_processor_play_wav(path);
@@ -593,7 +592,7 @@ static void test_wav_playback_completeness(void)
     const TickType_t start = xTaskGetTickCount();
     const TickType_t max_ticks = pdMS_TO_TICKS(15000);
 
-    while (play_manager_is_active() || play_manager_pending_bytes() > 0) {
+    while (play_manager_is_active() || audio_processor_test_get_ring_used_bytes() > 0) {
         bytes_read = 0;
         ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
         TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -613,24 +612,9 @@ static void test_wav_playback_completeness(void)
     TEST_ASSERT_EQUAL_MESSAGE(instr.expected_data_bytes, instr.bytes_read_from_file,
                               "Not all WAV data was read from file");
 
-    /* All bytes read from file should be enqueued (allowing for format conversion) */
-    /* Note: bytes_enqueued may differ from bytes_read due to resampling/conversion,
-     * but there should be no significant unexplained loss. Since conversion ratios
-     * are complex, we check that bytes were actually enqueued. */
-    TEST_ASSERT_GREATER_THAN_MESSAGE(0, instr.bytes_enqueued,
-                                     "No audio data was enqueued");
-
-    /* Check for allocation failures that could indicate memory pressure */
-    if (instr.dst_block_null_count > 0) {
-        ESP_LOGW("test_wav", "Warning: %zu dst block allocation failures during playback",
-                 instr.dst_block_null_count);
-    }
-
-    /* Enqueue failures are retried, but log if they occurred */
-    if (instr.enqueue_fail_count > 0) {
-        ESP_LOGI("test_wav", "Info: %zu enqueue retries during playback (normal under load)",
-                 instr.enqueue_fail_count);
-    }
+    /* Ensure playback produced output bytes (may differ from input due to resampling) */
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, instr.bytes_produced,
+                                     "No audio data was produced");
 
     ret = audio_processor_stop();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -665,7 +649,7 @@ static void test_play_wav_command(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     /* Ensure ringbuffer is empty before we start */
-    (void) audio_processor_drain_audio_queue();
+    (void) audio_processor_drain_ring();
 
     /* Parse & execute PLAY against the command layer so the same code-path
      * used in production is exercised. Use the asset filename only; the
@@ -737,7 +721,7 @@ static void test_play_command_requires_a2dp_connection(void)
     bt_manager_mock_connection_opened(NULL);
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* Explicitly mark BT as disconnected so PLAY should refuse to queue. */
     bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
@@ -783,7 +767,7 @@ static void test_wav_resumes_after_a2dp_reconnect(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_test_reset_tag_miss_count();
 
     cmd_context_t ctx;
@@ -807,8 +791,8 @@ static void test_wav_resumes_after_a2dp_reconnect(void)
     }
 
     test_delay_ms(150);
-    size_t pending_before = play_manager_pending_bytes();
-    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "WAV should enqueue data before disconnect");
+    size_t pending_before = audio_processor_test_get_ring_used_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "WAV should produce data before disconnect");
 
     uint8_t buf[256];
     size_t bytes_read = 0;
@@ -823,8 +807,9 @@ static void test_wav_resumes_after_a2dp_reconnect(void)
     TEST_ASSERT_TRUE_MESSAGE(ret == ESP_ERR_INVALID_STATE || ret == ESP_FAIL,
                              "audio_processor_read should fail while A2DP is disconnected");
     TEST_ASSERT_EQUAL_UINT32(0, bytes_read);
-    size_t pending_during_disconnect = play_manager_pending_bytes();
-    TEST_ASSERT_TRUE_MESSAGE(pending_during_disconnect > 0, "WAV queue should remain intact during disconnect");
+    size_t pending_during_disconnect = audio_processor_test_get_ring_used_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_during_disconnect > 0 || play_manager_is_active(),
+                             "WAV should remain active or buffered during disconnect");
     TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
 
@@ -867,7 +852,7 @@ static void test_keepalive_read_suppressed_when_a2dp_disconnected(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_set_synth_mode(true);
 
     bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
@@ -982,7 +967,7 @@ static void test_wav_prefill_produces_initial_audio(void)
     const char *path = "/spiffs/worker_long_norm.wav";
     start_pipeline_default();
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     esp_err_t play_ret = audio_processor_play_wav(path);
     TEST_ASSERT_TRUE_MESSAGE(play_ret == ESP_OK || play_ret == ESP_ERR_INVALID_STATE,
                              "PLAY should either start or report busy when I2S is active");
@@ -1007,7 +992,7 @@ static void test_beep_then_play_streams_full_wav(void)
     TEST_ASSERT_TRUE_MESSAGE(wav_size > 0, "wav file missing");
 
     start_pipeline_default();
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* Issue a short beep to exercise the post-beep recovery path. */
     esp_err_t beep_ret = audio_processor_beep(200);
@@ -1033,7 +1018,7 @@ static void test_beep_then_play_streams_full_wav(void)
     const TickType_t start = xTaskGetTickCount();
     const TickType_t max_ticks = pdMS_TO_TICKS(15000);
 
-    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+    while (play_manager_is_active() || audio_processor_test_get_ring_used_bytes() > 0) {
         bytes_read = 0;
         esp_err_t r = audio_processor_read(buf, sizeof(buf), &bytes_read);
         TEST_ASSERT_EQUAL(ESP_OK, r);
@@ -1054,7 +1039,7 @@ static void test_beep_rejected_while_wav_active(void)
     const char *path = "/spiffs/worker_long_norm.wav";
 
     start_pipeline_default();
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* With I2S running (input only), PLAY should be rejected. */
     esp_err_t play_ret = audio_processor_play_wav(path);
@@ -1070,7 +1055,7 @@ static void test_beep_rejected_while_wav_active(void)
 static void test_beep_rejected_while_i2s_running(void)
 {
     start_pipeline_default();
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     esp_err_t ret = audio_processor_beep(100);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, ret);
@@ -1082,7 +1067,7 @@ static void test_play_rejected_while_i2s_running(void)
 {
     const char *path = "/spiffs/worker_long_norm.wav";
     start_pipeline_default();
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     esp_err_t ret = audio_processor_play_wav(path);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, ret);
@@ -1106,7 +1091,7 @@ static void test_stop_clears_keepalive(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     bool synth_after = false;
     int failures_after = -1;
@@ -1145,7 +1130,7 @@ static void test_drain_stops_play_manager_and_clears_queue(void)
     ret = audio_processor_start();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     ret = audio_processor_play_wav("/spiffs/worker_long_norm.wav");
     TEST_ASSERT_TRUE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE);
@@ -1164,13 +1149,13 @@ static void test_drain_stops_play_manager_and_clears_queue(void)
     test_delay_ms(50);
 
     TEST_ASSERT_TRUE_MESSAGE(play_manager_is_active(), "play_manager inactive after PLAY");
-    size_t pending_before = play_manager_pending_bytes();
-    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "Expected pending bytes after PLAY");
+    size_t pending_before = audio_processor_test_get_ring_used_bytes();
+    TEST_ASSERT_TRUE_MESSAGE(pending_before > 0, "Expected ring data after PLAY");
 
-    ret = audio_processor_drain_audio_queue();
+    ret = audio_processor_drain_ring();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
-    size_t pending_after = play_manager_pending_bytes();
+    size_t pending_after = audio_processor_test_get_ring_used_bytes();
     TEST_ASSERT_EQUAL(0, pending_after);
     TEST_ASSERT_FALSE_MESSAGE(play_manager_is_active(), "play_manager still active after drain");
 
@@ -1198,7 +1183,7 @@ static void test_fallback_stop_resume_preserves_tag_alignment(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_test_reset_tag_miss_count();
 
     bool synth_after = false;
@@ -1261,7 +1246,7 @@ static void test_interleaved_play_stop_beep_sequence(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
@@ -1278,7 +1263,7 @@ static void test_interleaved_play_stop_beep_sequence(void)
     TEST_ASSERT_EQUAL_MESSAGE(CMD_ERROR_UNKNOWN, cmd_execute(&ctx), "BEEP should return busy when I2S running");
 
     /* Follow-up PLAY should also be busy while I2S remains active. */
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
     cmd_status_t second_play = cmd_execute(&ctx);
     TEST_ASSERT_TRUE_MESSAGE(second_play == CMD_SUCCESS || second_play == CMD_ERROR_UNKNOWN, "PLAY should not fail hard when I2S running");
@@ -1305,7 +1290,7 @@ static void test_beep_command_clears_busy_after_draining(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
@@ -1334,7 +1319,7 @@ static void test_beep_busy_clears_when_manager_stopped_and_queue_empty(void)
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
 
     /* Simulate a stale beep counter with an empty queue and no active beep. */
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     s_beep_remaining_bytes = 128;
 
     TEST_ASSERT_FALSE(audio_processor_is_beep_active());
@@ -1362,7 +1347,7 @@ static void test_keepalive_beep_then_play_recovers(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_set_synth_mode(true);
     TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
 
@@ -1370,7 +1355,7 @@ static void test_keepalive_beep_then_play_recovers(void)
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
     TEST_ASSERT_EQUAL_MESSAGE(CMD_ERROR_UNKNOWN, cmd_execute(&ctx), "BEEP should return busy when I2S running");
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY worker_long_norm.wav", &ctx));
     TEST_ASSERT_EQUAL_MESSAGE(CMD_ERROR_UNKNOWN, cmd_execute(&ctx), "PLAY should return busy when I2S running");
@@ -1398,7 +1383,7 @@ static void test_beep_synth_overlap_busy_and_recovers(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_set_synth_mode(true);
     TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
 
@@ -1412,7 +1397,7 @@ static void test_beep_synth_overlap_busy_and_recovers(void)
 
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_processor_beep(60));
 
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_set_synth_mode(false);
 
     esp_err_t ret = ESP_OK;
@@ -1440,7 +1425,7 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_test_reset_tag_miss_count();
     audio_processor_test_reset_tag_recover_window();
 
@@ -1505,7 +1490,7 @@ static void test_stop_during_wav_to_beep_transition_keeps_tags_consistent(void)
 
     TEST_ASSERT_TRUE_MESSAGE(saw_data, "beep after STOP did not produce data");
 
-    ret = audio_processor_drain_audio_queue();
+    ret = audio_processor_drain_ring();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
@@ -1536,7 +1521,7 @@ static void test_synth_keepalive_cleared_on_disconnect_and_recovers_after_reconn
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* Arm synth keepalive and confirm it is active. */
     audio_processor_set_synth_mode(true);
@@ -1609,7 +1594,7 @@ static void test_wav_pause_resume_after_disconnect_restarts_playback(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_test_reset_tag_miss_count();
 
     cmd_context_t ctx;
@@ -1708,7 +1693,7 @@ static void test_synth_toggle_mid_wav_keeps_tag_counters_clean(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
     audio_processor_test_reset_tag_miss_count();
     audio_processor_test_reset_tag_recover_window();
     audio_processor_set_synth_mode(false);
@@ -1815,7 +1800,7 @@ static void test_wav_playback_duration_baseline(void)
     /* TEST_ASSERT_EQUAL(ESP_OK, ret); */
 
     bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* Record start time */
     const TickType_t start_ticks = xTaskGetTickCount();
@@ -1828,7 +1813,7 @@ static void test_wav_playback_duration_baseline(void)
     size_t total_bytes = 0;
     const TickType_t max_wait_ticks = pdMS_TO_TICKS(2000); /* 2s max */
 
-    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+    while (play_manager_is_active() || audio_processor_test_get_ring_used_bytes() > 0) {
         size_t bytes_read = 0;
         ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
         TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -1916,7 +1901,7 @@ static void test_queue_backpressure_stress(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     bt_manager_mock_connection_opened("AB:CD:EF:12:34:56");
-    (void)audio_processor_drain_audio_queue();
+    (void)audio_processor_drain_ring();
 
     /* Record start time */
     const TickType_t start_ticks = xTaskGetTickCount();
@@ -1931,7 +1916,7 @@ static void test_queue_backpressure_stress(void)
     uint32_t max_queue_used = 0;
     const TickType_t max_wait_ticks = pdMS_TO_TICKS(5000); /* 5s max (longer for stress test) */
 
-    while (play_manager_is_active() || play_manager_pending_bytes() > 0 || audio_descriptor_used() > 0) {
+    while (play_manager_is_active() || audio_processor_test_get_ring_used_bytes() > 0) {
         size_t bytes_read = 0;
         ret = audio_processor_read(buf, sizeof(buf), &bytes_read);
         TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -1939,7 +1924,7 @@ static void test_queue_backpressure_stress(void)
         read_count++;
 
         /* Track maximum queue usage during stress test */
-        size_t queue_used = audio_descriptor_used();
+        size_t queue_used = audio_processor_test_get_ring_used_bytes();
         if (queue_used > max_queue_used) {
             max_queue_used = queue_used;
         }

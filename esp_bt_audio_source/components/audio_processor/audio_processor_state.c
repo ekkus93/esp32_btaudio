@@ -79,9 +79,6 @@ volatile bool s_wav_playback_active = false;
 volatile size_t s_wav_pending_bytes = 0;
 bool s_wav_prev_valid = false;
 bool s_wav_prev_force_synth = false;
-#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
-size_t s_test_queue_block_override = 0;
-#endif
 portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
 size_t s_beep_remaining_bytes = 0;
 bool s_dump_next_beep_diag = false;

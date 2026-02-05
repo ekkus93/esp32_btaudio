@@ -97,37 +97,6 @@ esp_err_t __attribute__((weak)) audio_processor_read(uint8_t* buffer, size_t siz
     return ESP_OK;
 }
 
-esp_err_t __attribute__((weak)) audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
-{
-    (void)wait_ticks;
-    AUDIO_PROC_STUB2_LOG_ONCE();
-    if (out_chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    uint8_t *buf = (uint8_t *)malloc(AUDIO_CHUNK_BLOCK_BYTES);
-    if (buf == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-    memset(buf, 0, AUDIO_CHUNK_BLOCK_BYTES);
-    out_chunk->data = buf;
-    out_chunk->len = AUDIO_CHUNK_BLOCK_BYTES;
-    out_chunk->tag = AUDIO_SOURCE_TAG_CAPTURE;
-    out_chunk->tag_id = 0;
-    return ESP_OK;
-}
-
-esp_err_t __attribute__((weak)) audio_processor_release_chunk(const audio_chunk_t *chunk)
-{
-    AUDIO_PROC_STUB2_LOG_ONCE();
-    if (chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (chunk->data != NULL) {
-        free(chunk->data);
-    }
-    return ESP_OK;
-}
-
 esp_err_t __attribute__((weak)) audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
@@ -191,7 +160,7 @@ esp_err_t __attribute__((weak)) audio_processor_emit_sync_worker_diag(void)
     return ESP_OK;
 }
 
-esp_err_t __attribute__((weak)) audio_processor_drain_audio_queue(void)
+esp_err_t __attribute__((weak)) audio_processor_drain_ring(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;

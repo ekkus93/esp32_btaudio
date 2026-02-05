@@ -1,5 +1,5 @@
 /**
- * I2S manager: read/convert/resample capture audio and enqueue to audio_queue.
+ * I2S manager: read/convert/resample capture audio and fill caller buffers.
  */
 
 #include "i2s_manager.h"
@@ -9,11 +9,9 @@
 #include "util_safe.h"
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
 
-#include "audio_queue.h"
 #ifndef ESP_RETURN_ON_ERROR
 #define ESP_RETURN_ON_ERROR(x, tag, msg) do { esp_err_t __err = (x); if (__err != ESP_OK) { ESP_LOGE(tag, "%s: %d", msg, __err); return __err; } } while (0)
 #endif
@@ -51,7 +49,6 @@ typedef struct {
 #ifdef ESP_PLATFORM
 	i2s_chan_handle_t i2s_rx;
 #endif
-	TaskHandle_t task;
 #ifdef CONFIG_BT_MOCK_TESTING
 	QueueHandle_t mock_queue;
 #endif
@@ -133,17 +130,19 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 }
 #endif
 
-static esp_err_t process_frame(const uint8_t *data,
-							   size_t len,
-							   audio_bit_depth_t bit_depth,
-							   audio_sample_rate_t sample_rate)
+static size_t convert_and_resample_to_dst(const uint8_t *data,
+                                          size_t len,
+                                          audio_bit_depth_t bit_depth,
+                                          audio_sample_rate_t sample_rate,
+                                          uint8_t *dst,
+                                          size_t dst_bytes)
 {
-	if (!s_mgr.initialized || data == NULL || len == 0) {
-		return ESP_ERR_INVALID_STATE;
+	if (!s_mgr.initialized || data == NULL || len == 0 || dst == NULL || dst_bytes == 0) {
+		return 0;
 	}
 
 	if (s_mgr.bufs.proc_buf == NULL || s_mgr.bufs.proc_buf2 == NULL) {
-		return ESP_ERR_INVALID_STATE;
+		return 0;
 	}
 
 	size_t conv_size = 0;
@@ -156,7 +155,9 @@ static esp_err_t process_frame(const uint8_t *data,
 		.dst_size = &conv_size,
 		.work_bytes = s_mgr.bufs.work_bytes,
 	};
-	ESP_RETURN_ON_ERROR(convert_audio_format(&conv_args), TAG, "convert failed");  // NOLINT(bugprone-branch-clone)
+	if (convert_audio_format(&conv_args) != ESP_OK || conv_size == 0) {
+		return 0;
+	}
 
 	size_t res_size = 0;
 	audio_resample_args_t res_args = {
@@ -170,17 +171,13 @@ static esp_err_t process_frame(const uint8_t *data,
 		.dst_size = &res_size,
 		.work_bytes = s_mgr.bufs.work_bytes,
 	};
-	ESP_RETURN_ON_ERROR(resample_audio(&res_args), TAG, "resample failed");  // NOLINT(bugprone-branch-clone)
-
-	if (res_size == 0) {
-		return ESP_OK;
+	if (resample_audio(&res_args) != ESP_OK || res_size == 0) {
+		return 0;
 	}
 
-	/* Enqueue into audio_queue with capture tag; tag_id assigned inside queue. */
-	if (!audio_chunk_enqueue_bytes(s_mgr.bufs.proc_buf2, res_size, AUDIO_SOURCE_TAG_CAPTURE)) {
-		return ESP_ERR_NO_MEM;
-	}
-	return ESP_OK;
+	size_t copy_bytes = (res_size < dst_bytes) ? res_size : dst_bytes;
+	util_safe_memcpy(dst, dst_bytes, s_mgr.bufs.proc_buf2, copy_bytes);
+	return copy_bytes;
 }
 
 /**
@@ -208,7 +205,21 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 	if (s_mgr.bufs.proc_buf == NULL || s_mgr.bufs.proc_buf2 == NULL) {
 		return 0;
 	}
-	
+
+#ifdef CONFIG_BT_MOCK_TESTING
+	if (s_mgr.mock_queue != NULL) {
+		mock_item_t item;
+		if (xQueueReceive(s_mgr.mock_queue, &item, 0) == pdTRUE) {
+			return convert_and_resample_to_dst(item.data,
+			                                   item.len,
+			                                   item.bit_depth,
+			                                   item.rate,
+			                                   dst,
+			                                   dst_bytes);
+		}
+	}
+#endif
+
 #ifdef ESP_PLATFORM
 	if (s_mgr.i2s_rx == NULL || s_mgr.bufs.raw_buf == NULL || s_mgr.bufs.raw_buf_bytes == 0) {
 		return 0;  /* I2S not configured */
@@ -231,46 +242,13 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 	if (ret != ESP_OK || read_bytes == 0) {
 		return 0;  /* No data available or timeout */
 	}
-	
-	/* Convert bit depth (I2S format → output format) */
-	size_t conv_size = 0;
-	audio_convert_args_t conv_args = {
-		.src = s_mgr.bufs.raw_buf,
-		.dst = s_mgr.bufs.proc_buf,
-		.src_size = read_bytes,
-		.src_bit_depth = s_mgr.cfg.bit_depth,
-		.dst_bit_depth = s_mgr.cfg.bit_depth,
-		.dst_size = &conv_size,
-		.work_bytes = s_mgr.bufs.work_bytes,
-	};
-	ret = convert_audio_format(&conv_args);
-	if (ret != ESP_OK) {
-		return 0;  /* Conversion error */
-	}
-	
-	/* Resample (I2S rate → output rate) */
-	size_t res_size = 0;
-	audio_resample_args_t res_args = {
-		.src = s_mgr.bufs.proc_buf,
-		.dst = s_mgr.bufs.proc_buf2,
-		.src_size = conv_size,
-		.src_rate = s_mgr.cfg.sample_rate,
-		.dst_rate = s_mgr.cfg.sample_rate,
-		.bit_depth = s_mgr.cfg.bit_depth,
-		.channels = s_mgr.cfg.channels,
-		.dst_size = &res_size,
-		.work_bytes = s_mgr.bufs.work_bytes,
-	};
-	ret = resample_audio(&res_args);
-	if (ret != ESP_OK || res_size == 0) {
-		return 0;  /* Resample error or no output */
-	}
-	
-	/* Copy to destination buffer (up to dst_bytes) */
-	size_t copy_bytes = (res_size < dst_bytes) ? res_size : dst_bytes;
-	util_safe_memcpy(dst, dst_bytes, s_mgr.bufs.proc_buf2, copy_bytes);
-	
-	return copy_bytes;
+
+	return convert_and_resample_to_dst(s_mgr.bufs.raw_buf,
+	                                   read_bytes,
+	                                   s_mgr.cfg.bit_depth,
+	                                   s_mgr.cfg.sample_rate,
+	                                   dst,
+	                                   dst_bytes);
 #else
 	/* Non-ESP platform (host tests) - return silence */
 	(void)dst_bytes;
@@ -278,76 +256,10 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 #endif
 }
 
-static void i2s_manager_task(void *arg)
-{
-	(void)arg;
-	ESP_LOGI(TAG, "i2s_manager task started");  // NOLINT(bugprone-branch-clone)
-	const TickType_t idle_wait = pdMS_TO_TICKS(20);
-	const uint32_t read_timeout_ms = 5;
-	while (s_mgr.running) {
-		bool did_work = false;
-#ifdef CONFIG_BT_MOCK_TESTING
-		mock_item_t item;
-		if (s_mgr.mock_queue != NULL && xQueueReceive(s_mgr.mock_queue, &item, pdMS_TO_TICKS(10)) == pdTRUE) {
-			(void)process_frame(item.data, item.len, item.bit_depth, item.rate);
-			did_work = true;
-			continue;
-		}
-#endif
-#ifdef ESP_PLATFORM
-		if (s_mgr.i2s_rx != NULL && s_mgr.bufs.raw_buf != NULL && s_mgr.bufs.raw_buf_bytes > 0) {
-			/* CODE_REVIEW6 P0-C: Limit I2S reads to AUDIO_CHUNK_BLOCK_BYTES (1KB)
-			 * CRITICAL: process_frame() calls audio_chunk_enqueue_bytes() which only
-			 * enqueues first 1KB of data. Previously we read up to 8KB but only enqueued
-			 * 1KB, causing 87.5% audio loss on I2S capture.
-			 * 
-			 * FIX: Clamp read size to match enqueue capacity (1KB)
-			 */
-			size_t read_bytes_limit = (s_mgr.bufs.raw_buf_bytes > AUDIO_CHUNK_BLOCK_BYTES)
-			                          ? AUDIO_CHUNK_BLOCK_BYTES
-			                          : s_mgr.bufs.raw_buf_bytes;
-			
-			size_t read_bytes = 0;
-			esp_err_t ret = i2s_channel_read(s_mgr.i2s_rx,
-											 s_mgr.bufs.raw_buf,
-											 read_bytes_limit,  /* Limit to 1KB */
-											 &read_bytes,
-									 read_timeout_ms);
-			if (ret == ESP_OK && read_bytes > 0) {
-				(void)process_frame(s_mgr.bufs.raw_buf, read_bytes, s_mgr.cfg.bit_depth, s_mgr.cfg.sample_rate);
-				did_work = true;
-			} else if (ret == ESP_ERR_TIMEOUT) {
-				/* No samples available; pause a bit to keep idle tasks feeding the WDT. */
-				vTaskDelay(idle_wait);
-			}
-		}
-#else
-		vTaskDelay(pdMS_TO_TICKS(10));
-		did_work = true;
-		continue;
-#endif
-
-		if (!did_work) {
-			vTaskDelay(idle_wait);
-		}
-		else {
-			/* Even when work was done, yield briefly to keep the WDT fed. */
-			vTaskDelay(pdMS_TO_TICKS(1));
-		}
-	}
-	ESP_LOGI(TAG, "i2s_manager task exiting");  // NOLINT(bugprone-branch-clone)
-	s_mgr.task = NULL;
-	vTaskDelete(NULL);
-}
-
 esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffers_t *buffers)
 {
 	if (config == NULL || buffers == NULL || buffers->proc_buf == NULL || buffers->proc_buf2 == NULL || buffers->work_bytes == 0) {
 		return ESP_ERR_INVALID_ARG;
-	}
-
-	if (!audio_chunk_pool_init()) {
-		return ESP_ERR_NO_MEM;
 	}
 
 	util_safe_memset(&s_mgr, sizeof(s_mgr), 0, sizeof(s_mgr));
@@ -412,13 +324,6 @@ esp_err_t i2s_manager_start(void)
 #endif
 
 	s_mgr.running = true;
-	if (s_mgr.task == NULL) {
-		BaseType_t task_created = xTaskCreate(i2s_manager_task, "i2s_mgr", 4096, NULL, 5, &s_mgr.task);
-		if (task_created != pdPASS) {
-			s_mgr.running = false;
-			return ESP_ERR_NO_MEM;
-		}
-	}
 	return ESP_OK;
 }
 
@@ -434,27 +339,12 @@ esp_err_t i2s_manager_stop(void)
 		s_mgr.i2s_enabled = false;
 	}
 #endif
-	for (int i = 0; i < 5 && s_mgr.task != NULL; ++i) {
-		vTaskDelay(pdMS_TO_TICKS(10));
-	}
-	if (s_mgr.task != NULL) {
-		vTaskDelete(s_mgr.task);
-		s_mgr.task = NULL;
-	}
 	return ESP_OK;
 }
 
 bool i2s_manager_is_running(void)
 {
 	return s_mgr.running;
-}
-
-esp_err_t i2s_manager_handle_frame(const uint8_t *data,
-								   size_t len,
-								   audio_bit_depth_t bit_depth,
-								   audio_sample_rate_t sample_rate)
-{
-	return process_frame(data, len, bit_depth, sample_rate);
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING

@@ -198,6 +198,23 @@ A2DP Callback (Single Consumer, zero-fill underruns)
 3. `components/audio_processor/play_manager.c`
    - Added: wav_source_fill() - fills buffer from WAV
    - Kept: Streaming resampler + stash (unchanged)
+
+---
+
+## 2026-02-05 14:26 — Legacy Queue Cleanup Progress + Test Runner Fixes
+
+- Removed legacy queue surface from public/internal audio_processor headers and call sites; deleted `audio_queue.c/.h`.
+- Updated test_app3 component build (removed deleted audio pipeline bridge); adjusted test_app_audio tests to ring-buffer APIs.
+- Fixed beep manager: reject unsupported bit depths (returns `ESP_ERR_NOT_SUPPORTED`).
+- Fixed host tests build: `audio_processor_host_stub.c` used `TickType_t`; changed to `uint32_t` for host build.
+- Updated `tools/run_all_tests.py` to compute final exit status from final summary (avoids false failure after successful runs).
+- Tests: host CTest suite passes (33/33); device suites pass (151/151).
+
+---
+
+## 2026-02-05 14:27 — Tooling Note
+
+- `play_chime` alias provided: `ffplay -nodisp -autoexit $HOME/sounds/festive-chime-439612.mp3 > /dev/null 2>&1`.
    - Kept: Queue enqueue path (parallel, not removed yet)
 
 4. `components/audio_processor/i2s_manager.c`

@@ -1,12 +1,13 @@
 #include "unity.h"
 #include "unity_test_runner.h"
 
+#include <string.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
 #include "beep_manager.h"
-#include "audio_queue.h"
 
 static bool s_done_called = false;
 
@@ -20,50 +21,60 @@ static void done_cb(void *ctx)
 
 static void reset_state(void)
 {
-    audio_chunk_pool_deinit();
     beep_manager_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, beep_manager_init());
     s_done_called = false;
     beep_manager_set_done_callback(NULL, NULL);
 }
 
-static size_t drain_queue(uint16_t *first_tag, uint16_t *last_tag)
+static size_t bytes_per_sample(audio_bit_depth_t depth)
 {
-    audio_chunk_t chunk = {0};
-    size_t count = 0;
-    bool have_first = false;
+    if (depth == AUDIO_BIT_DEPTH_16) {
+        return 2;
+    }
+    if (depth == AUDIO_BIT_DEPTH_32) {
+        return 4;
+    }
+    return 0;
+}
 
-    while (audio_chunk_dequeue(&chunk, 0)) {
-        TEST_ASSERT_EQUAL(AUDIO_SOURCE_TAG_BEEP, chunk.tag);
-        if (!have_first) {
-            *first_tag = chunk.tag_id;
-            have_first = true;
+static size_t frame_bytes(const audio_config_t *cfg)
+{
+    size_t sample_bytes = bytes_per_sample(cfg->bit_depth);
+    size_t channels = (cfg->channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
+    return sample_bytes * channels;
+}
+
+static bool drive_overlay_until_done(const audio_config_t *cfg, uint32_t duration_ms, bool *any_nonzero)
+{
+    uint8_t buf[256];
+    size_t fbytes = frame_bytes(cfg);
+    if (fbytes == 0 || cfg->sample_rate == 0) {
+        return false;
+    }
+
+    uint64_t total_frames = ((uint64_t)duration_ms * (uint64_t)cfg->sample_rate) / 1000ULL;
+    size_t frames_per_call = sizeof(buf) / fbytes;
+    size_t max_iters = (size_t)(total_frames / (frames_per_call ? frames_per_call : 1U)) + 4U;
+
+    for (size_t i = 0; i < max_iters && beep_overlay_is_active(); ++i) {
+        memset(buf, 0, sizeof(buf));
+        beep_overlay_fill(buf, sizeof(buf), cfg);
+        if (any_nonzero && !*any_nonzero) {
+            for (size_t j = 0; j < sizeof(buf); ++j) {
+                if (buf[j] != 0) {
+                    *any_nonzero = true;
+                    break;
+                }
+            }
         }
-        *last_tag = chunk.tag_id;
-        ++count;
-        audio_chunk_release_block(chunk.data);
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
-    if (!have_first) {
-        *first_tag = 0;
-        *last_tag = 0;
-    }
-
-    return count;
+    return !beep_overlay_is_active();
 }
 
-static audio_config_t make_cfg(audio_sample_rate_t rate, audio_bit_depth_t depth, audio_channel_t ch)
-{
-    audio_config_t cfg = {
-        .sample_rate = rate,
-        .bit_depth = depth,
-        .channels = ch,
-        .volume = 80,
-    };
-    return cfg;
-}
-
-TEST_CASE("beep_manager_play_enqueues_and_calls_done", "[beep_manager]")
+TEST_CASE("beep_manager_play_starts_overlay_and_calls_done", "[beep_manager]")
 {
     reset_state();
     beep_manager_set_done_callback(done_cb, &s_done_called);
@@ -82,49 +93,14 @@ TEST_CASE("beep_manager_play_enqueues_and_calls_done", "[beep_manager]")
     };
 
     TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
+    TEST_ASSERT_TRUE(beep_overlay_is_active());
 
+    bool any_nonzero = false;
+    TEST_ASSERT_TRUE(drive_overlay_until_done(&cfg, req.duration_ms, &any_nonzero));
+
+    TEST_ASSERT_TRUE(any_nonzero);
     TEST_ASSERT_TRUE(s_done_called);
     TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
-
-    uint16_t first_tag = 0;
-    uint16_t last_tag = 0;
-    size_t count = drain_queue(&first_tag, &last_tag);
-    TEST_ASSERT_GREATER_THAN_UINT(0, count);
-    TEST_ASSERT_EQUAL_UINT16(0, first_tag);
-    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
-}
-
-TEST_CASE("beep_manager_tag_ids_continue_across_runs", "[beep_manager]")
-{
-    reset_state();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_8K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_MONO,
-        .volume = 50,
-    };
-
-    beep_request_t req = {
-        .duration_ms = 2, /* short enough to fit in one chunk */
-        .freq_hz = 800.0,
-        .amplitude = 1000,
-    };
-
-    uint16_t first_tag = 0;
-    uint16_t last_tag = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
-    size_t count_first = drain_queue(&first_tag, &last_tag);
-    TEST_ASSERT_EQUAL_UINT16(0, first_tag);
-    TEST_ASSERT_GREATER_THAN_UINT(0, count_first);
-
-    uint16_t first_tag_second = 0;
-    uint16_t last_tag_second = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
-    size_t count_second = drain_queue(&first_tag_second, &last_tag_second);
-    TEST_ASSERT_GREATER_THAN_UINT(0, count_second);
-    TEST_ASSERT_EQUAL_UINT16(last_tag + 1, first_tag_second);
-    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
 }
 
 TEST_CASE("beep_manager_rejects_invalid_args", "[beep_manager]")
@@ -152,7 +128,12 @@ TEST_CASE("beep_manager_rejects_unsupported_bit_depth", "[beep_manager]")
 {
     reset_state();
 
-    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_8K, AUDIO_BIT_DEPTH_24, AUDIO_CHANNEL_MONO);
+    audio_config_t cfg = {
+        .sample_rate = AUDIO_SAMPLE_RATE_8K,
+        .bit_depth = AUDIO_BIT_DEPTH_24,
+        .channels = AUDIO_CHANNEL_MONO,
+        .volume = 50,
+    };
     beep_request_t req = {
         .duration_ms = 10,
         .freq_hz = 500.0,
@@ -160,30 +141,12 @@ TEST_CASE("beep_manager_rejects_unsupported_bit_depth", "[beep_manager]")
     };
 
     TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, beep_manager_play(&req, &cfg));
-    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
     TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
 }
 
-typedef struct {
-    SemaphoreHandle_t done;
-    esp_err_t result;
-} worker_ctx_t;
-
-static bool wait_for_state(beep_state_t target, TickType_t timeout_ticks)
+TEST_CASE("beep_manager_reports_busy_while_playing", "[beep_manager]")
 {
-    TickType_t start = xTaskGetTickCount();
-    while ((xTaskGetTickCount() - start) < timeout_ticks) {
-        if (beep_manager_get_state() == target) {
-            return true;
-        }
-        vTaskDelay(pdMS_TO_TICKS(5));
-    }
-    return false;
-}
-
-static void beep_worker(void *arg)
-{
-    worker_ctx_t *ctx = (worker_ctx_t *)arg;
+    reset_state();
 
     audio_config_t cfg = {
         .sample_rate = AUDIO_SAMPLE_RATE_16K,
@@ -193,135 +156,45 @@ static void beep_worker(void *arg)
     };
 
     beep_request_t req = {
-        .duration_ms = 20000, /* long to keep state busy */
+        .duration_ms = 500,
         .freq_hz = 440.0,
         .amplitude = 1200,
     };
 
-    ctx->result = beep_manager_play(&req, &cfg);
+    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
+    TEST_ASSERT_EQUAL(BEEP_STATE_PLAYING, beep_manager_get_state());
 
-    if (ctx->done) {
-        xSemaphoreGive(ctx->done);
-    }
+    esp_err_t rc = beep_manager_play(&req, &cfg);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, rc);
 
-    vTaskDelete(NULL);
+    beep_manager_stop();
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
 }
 
-TEST_CASE("beep_manager_reports_busy_while_playing", "[beep_manager]")
+TEST_CASE("beep_manager_stop_terminates_overlay", "[beep_manager]")
 {
     reset_state();
-
-    worker_ctx_t ctx = {
-        .done = xSemaphoreCreateBinary(),
-        .result = ESP_FAIL,
-    };
-
-    TEST_ASSERT_NOT_NULL(ctx.done);
-
-    TaskHandle_t handle = NULL;
-    BaseType_t created = xTaskCreate(beep_worker, "beep_worker", 4096, &ctx, 5, &handle);
-    TEST_ASSERT_EQUAL(pdPASS, created);
-
-    bool playing = wait_for_state(BEEP_STATE_PLAYING, pdMS_TO_TICKS(200));
+    beep_manager_set_done_callback(done_cb, &s_done_called);
 
     audio_config_t cfg = {
         .sample_rate = AUDIO_SAMPLE_RATE_16K,
         .bit_depth = AUDIO_BIT_DEPTH_16,
         .channels = AUDIO_CHANNEL_MONO,
-        .volume = 60,
+        .volume = 70,
     };
 
     beep_request_t req = {
-        .duration_ms = 5,
-        .freq_hz = 1000.0,
-        .amplitude = 800,
-    };
-
-    esp_err_t rc = beep_manager_play(&req, &cfg);
-    if (playing) {
-        TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, rc);
-    } else {
-        /* If the worker exited early (e.g., pool exhausted), any non-OK error is acceptable. */
-        TEST_ASSERT_NOT_EQUAL(ESP_OK, rc);
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(20));
-    beep_manager_stop();
-
-    TEST_ASSERT_TRUE_MESSAGE(xSemaphoreTake(ctx.done, pdMS_TO_TICKS(1000)) == pdTRUE,
-                             "worker did not finish in time");
-
-    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
-    TEST_ASSERT(ctx.result == ESP_OK || ctx.result == ESP_ERR_NO_MEM);
-
-    vSemaphoreDelete(ctx.done);
-    audio_chunk_pool_deinit();
-}
-
-TEST_CASE("beep_manager_stop_requests_terminate_and_invoke_done", "[beep_manager]")
-{
-    reset_state();
-    beep_manager_set_done_callback(done_cb, &s_done_called);
-
-    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_16K, AUDIO_BIT_DEPTH_16, AUDIO_CHANNEL_MONO);
-    beep_request_t req = {
-        .duration_ms = 500, /* long enough to stop mid-stream */
+        .duration_ms = 500,
         .freq_hz = 600.0,
         .amplitude = 1200,
     };
 
-    worker_ctx_t ctx = {
-        .done = xSemaphoreCreateBinary(),
-        .result = ESP_FAIL,
-    };
-    TEST_ASSERT_NOT_NULL(ctx.done);
-
-    TaskHandle_t handle = NULL;
-    BaseType_t created = xTaskCreate(beep_worker, "beep_worker_stop", 4096, &ctx, 5, &handle);
-    TEST_ASSERT_EQUAL(pdPASS, created);
-
-    /* Wait until playback begins, then stop */
-    (void)wait_for_state(BEEP_STATE_PLAYING, pdMS_TO_TICKS(200));
-    beep_manager_stop();
-
-    TEST_ASSERT_TRUE_MESSAGE(xSemaphoreTake(ctx.done, pdMS_TO_TICKS(1000)) == pdTRUE,
-                             "worker did not finish in time");
-
-    TEST_ASSERT_TRUE(s_done_called);
-    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
-
-    uint16_t first_tag = 0, last_tag = 0;
-    size_t drained = drain_queue(&first_tag, &last_tag);
-    if (drained > 0) {
-        TEST_ASSERT_EQUAL_UINT16(0, first_tag);
-    }
-    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
-
-    vSemaphoreDelete(ctx.done);
-    audio_chunk_pool_deinit();
-}
-
-TEST_CASE("beep_manager_emits_consecutive_tags_within_long_beep", "[beep_manager]")
-{
-    reset_state();
-
-    audio_config_t cfg = make_cfg(AUDIO_SAMPLE_RATE_16K, AUDIO_BIT_DEPTH_16, AUDIO_CHANNEL_MONO);
-    beep_request_t req = {
-        .duration_ms = 200, /* multiple chunks */
-        .freq_hz = 700.0,
-        .amplitude = 1800,
-    };
-
     TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &cfg));
+    TEST_ASSERT_EQUAL(BEEP_STATE_PLAYING, beep_manager_get_state());
 
-    uint16_t first_tag = 0, last_tag = 0;
-    size_t drained = drain_queue(&first_tag, &last_tag);
-    TEST_ASSERT_GREATER_THAN_UINT(1, drained); /* should span multiple chunks */
-    TEST_ASSERT_EQUAL_UINT16(drained - 1, last_tag);
-    TEST_ASSERT_EQUAL_UINT(0, audio_descriptor_used());
+    beep_manager_stop();
     TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
-
-    audio_chunk_pool_deinit();
+    TEST_ASSERT_FALSE(s_done_called);
 }
 
 void app_main(void)

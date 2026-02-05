@@ -5,20 +5,9 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "audio_queue.h"
 
-// Pull in the test app's forwarder to the production audio processor API so
-// this stub stays in sync with the real implementation used by the tests.
-#include "../../main/include/audio_processor.h"
-
-/* The forwarder above should bring in the real prototypes, but explicitly
- * declare the small subset we use to guard against include path surprises
- * during test builds.
- */
-esp_err_t audio_processor_play_wav(const char* path);
-esp_err_t audio_processor_drain_audio_queue(void);
-esp_err_t audio_processor_stop(void);
-esp_err_t audio_processor_beep(uint32_t duration_ms);
+// Pull in the production audio processor API and test hooks.
+#include "audio_processor.h"
 
 static bool s_bt_connected = true;
 static TaskHandle_t s_beep_drain_task = NULL;
@@ -28,14 +17,16 @@ static void beep_drain_task(void *arg)
 {
     (void)arg;
     uint8_t buf[256];
-    const size_t high_water = (AUDIO_CHUNK_POOL_BLOCKS * 85U) / 100U;
     TickType_t idle_since = xTaskGetTickCount();
 
     while (!s_beep_drain_stop) {
-        size_t used = audio_descriptor_used();
+        size_t ring_used = audio_processor_test_get_ring_used_bytes();
+        size_t ring_free = audio_processor_test_get_audio_free_bytes();
+        size_t ring_capacity = ring_used + ring_free;
+        size_t high_water = (ring_capacity * 85U) / 100U;
         bool beep_active = audio_processor_is_beep_active();
 
-        if (used >= high_water || beep_active) {
+        if ((ring_capacity > 0 && ring_used >= high_water) || beep_active) {
             size_t bytes_read = 0;
             (void)audio_processor_read(buf, sizeof(buf), &bytes_read);
             idle_since = xTaskGetTickCount();
@@ -176,7 +167,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
 
     if (ctx->type == CMD_TYPE_STOP) {
         /* Mirror STOP behavior enough for tests: drain queue and stop the processor. */
-        (void)audio_processor_drain_audio_queue();
+        (void)audio_processor_drain_ring();
         esp_err_t stop_ret = audio_processor_stop();
         if (stop_ret == ESP_OK || stop_ret == ESP_ERR_INVALID_STATE) {
             return CMD_SUCCESS;
@@ -194,7 +185,7 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx)
         /* Ensure the pipeline is ready to consume the long (10s) test tone so
          * the enqueue path does not fail on a full queue when the app is idle.
          * This mirrors production, where the pipeline is normally running. */
-        (void)audio_processor_drain_audio_queue();
+        (void)audio_processor_drain_ring();
         (void)audio_processor_start();
         start_beep_drain_task();
         esp_err_t bret = audio_processor_beep(10000);

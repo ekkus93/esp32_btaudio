@@ -59,15 +59,15 @@ esp_err_t audio_processor_emit_diag_summary(void)
     unsigned bytes = __atomic_load_n(&s_i2s_total_read_bytes, __ATOMIC_RELAXED);
     unsigned timeouts = __atomic_load_n(&s_i2s_timeout_count, __ATOMIC_RELAXED);
     uint32_t tag_miss = audio_processor_test_get_tag_miss_count();
-    size_t queue_free = audio_processor_queue_free_bytes();
+    size_t ring_free = s_audio_ring ? audio_rb_available_to_write(s_audio_ring) : 0;
 
-    ESP_LOGI(TAG, "AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u queue_free=%zu underruns=%u overruns=%u",  // NOLINT(bugprone-branch-clone)
-             ops, bytes, timeouts, (unsigned)tag_miss, queue_free,
+    ESP_LOGI(TAG, "AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u ring_free=%zu underruns=%u overruns=%u",  // NOLINT(bugprone-branch-clone)
+             ops, bytes, timeouts, (unsigned)tag_miss, ring_free,
              (unsigned)s_audio_stats.buffer_underruns,
              (unsigned)s_audio_stats.buffer_overruns);
 
-    printf("AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u queue_free=%zu underruns=%u overruns=%u\n",
-           ops, bytes, timeouts, (unsigned)tag_miss, queue_free,
+    printf("AUDIO-DIAG-SUMMARY: i2s_ops=%u i2s_bytes=%u i2s_timeouts=%u tag_miss=%u ring_free=%zu underruns=%u overruns=%u\n",
+           ops, bytes, timeouts, (unsigned)tag_miss, ring_free,
            (unsigned)s_audio_stats.buffer_underruns,
            (unsigned)s_audio_stats.buffer_overruns);
 
@@ -128,36 +128,12 @@ esp_err_t audio_processor_emit_probe(void)
 
 esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
 {
-    if (max_items == 0 || max_items > AUDIO_CHUNK_POOL_BLOCKS) {
-        max_items = AUDIO_CHUNK_POOL_BLOCKS;
-    }
-
-    audio_chunk_t snapshot[AUDIO_CHUNK_POOL_BLOCKS] = {0};
-    size_t captured = 0;
-    esp_err_t err = audio_descriptor_snapshot(snapshot, max_items, &captured);
+    (void)max_items;
     if (captured_out != NULL) {
-        *captured_out = captured;
+        *captured_out = 0;
     }
-
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "AUDIO-TAG-DUMP: snapshot failed (%s)", esp_err_to_name(err));  // NOLINT(bugprone-branch-clone)
-        return err;
-    }
-
-    if (captured == 0) {
-        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: queue empty");  // NOLINT(bugprone-branch-clone)
-        return ESP_OK;
-    }
-
-    for (size_t i = 0; i < captured; ++i) {
-        ESP_LOGI(TAG, "AUDIO-TAG-DUMP: idx=%zu tag=%d id=%u len=%zu",  // NOLINT(bugprone-branch-clone)
-                 i,
-                 (int)snapshot[i].tag,
-                 (unsigned)snapshot[i].tag_id,
-                 snapshot[i].len);
-    }
-
-    return ESP_OK;
+    ESP_LOGW(TAG, "AUDIO-TAG-DUMP: legacy queue removed; span log is the replacement");  // NOLINT(bugprone-branch-clone)
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 void diag_dump_bytes(const void* data, size_t len, const char* tag)

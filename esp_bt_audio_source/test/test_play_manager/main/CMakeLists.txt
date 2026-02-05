@@ -2,7 +2,6 @@ idf_component_register(
     SRCS
         "test_play_manager.c"
         "../../../components/audio_processor/play_manager.c"
-        "../../../components/audio_processor/audio_queue.c"
         "../../../components/audio_processor/audio_util.c"
     INCLUDE_DIRS
         "."

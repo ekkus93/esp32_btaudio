@@ -28,11 +28,6 @@ static bool audio_processor_is_a2dp_connected(void)
     return bt_manager_is_a2dp_connected();
 }
 
-static void audio_source_tag_reset_buffer(void)
-{
-    /* Metadata buffer removed in the audio_queue path; nothing to reset. */
-}
-
 #ifdef CONFIG_BT_MOCK_TESTING
 typedef struct {
     bool enabled;
@@ -167,6 +162,15 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
         /* Track beep overlay stats (Phase 4.2) */
         s_audio_stats.beep_overlay_count++;
         s_audio_stats.beep_overlay_bytes += produced;
+
+        /* Decrement remaining bytes for diagnostics/CLI gating. */
+        portENTER_CRITICAL(&s_beep_lock);
+        if (s_beep_remaining_bytes > produced) {
+            s_beep_remaining_bytes -= produced;
+        } else {
+            s_beep_remaining_bytes = 0;
+        }
+        portEXIT_CRITICAL(&s_beep_lock);
     }
     
     return produced;
@@ -276,12 +280,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     // Copy configuration
     safe_memcpy(&s_audio_config, sizeof(s_audio_config), config, sizeof(audio_config_t));
-
-    /* Initialize descriptor queue and block pool (128 x 1 KiB blocks in DRAM). */
-    if (!audio_chunk_pool_init()) {
-        ESP_LOGE(TAG, "audio_processor_init: failed to init audio chunk pool");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_NO_MEM;
-    }
 
     bool runtime_psram_ready = false;
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
@@ -408,11 +406,10 @@ esp_err_t audio_processor_start(void)
     }
 
     /* I2S capture has highest priority. Stop any ongoing WAV/BEEP playback
-     * and clear queued audio so capture owns the pipeline. */
+     * so capture owns the pipeline. */
     wav_playback_abort(__func__);
     audio_processor_beep_reset();
     play_manager_abort(false);
-    (void)audio_processor_drain_audio_queue();
 
     esp_err_t ret = i2s_manager_start();
     if (ret != ESP_OK) {
@@ -472,7 +469,37 @@ esp_err_t audio_processor_stop(void)
     s_is_running = false;
     s_keepalive_armed = false;
     s_force_synth = false;
-    (void)audio_processor_drain_audio_queue();
+    return ESP_OK;
+}
+
+esp_err_t audio_processor_drain_ring(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    if (!s_is_initialized || s_audio_ring == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Clear pending ring buffer data by reading it out. */
+    uint8_t scratch[256];
+    while (audio_rb_available_to_read(s_audio_ring) > 0) {
+        size_t available = audio_rb_available_to_read(s_audio_ring);
+        size_t to_read = (available > sizeof(scratch)) ? sizeof(scratch) : available;
+        (void)audio_rb_read(s_audio_ring, scratch, to_read);
+    }
+
+    /* Reset transient playback state. */
+    s_audio_rb_residual_len = 0;
+    s_audio_rb_residual_pos = 0;
+    s_keepalive_armed = false;
+    s_force_synth = false;
+    s_last_source_was_synth = false;
+
+    wav_playback_abort("audio_processor_drain_ring");
+    play_manager_abort(false);
+    audio_processor_beep_reset();
+    beep_overlay_stop();
+
+    ESP_LOGI(TAG, "audio_processor_drain_ring: cleared ring buffer and playback state");
     return ESP_OK;
 }
 
@@ -489,7 +516,6 @@ esp_err_t audio_processor_deinit(void)
 
     /* Reset playback state so re-init starts cleanly. */
     wav_playback_abort("audio_processor_deinit");
-    audio_processor_flush_priority_queues("deinit");
     audio_processor_beep_reset();
     s_keepalive_armed = false;
     s_force_synth = false;
@@ -505,7 +531,6 @@ esp_err_t audio_processor_deinit(void)
         s_audio_ring = NULL;
     }
 
-    audio_chunk_pool_deinit();
     synth_manager_reset_state();
 
     if (s_capture_buffer) {
@@ -707,23 +732,6 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
-{
-    return audio_processor_acquire_chunk_internal(out_chunk, wait_ticks);
-}
-
-esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk)
-{
-    if (chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (chunk->data != NULL) {
-        audio_chunk_release_block(chunk->data);
-    }
-    return ESP_OK;
-}
-
-
 /*******************************
  * Internal functions
  *******************************/
@@ -796,21 +804,6 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     }
 
     return ret;
-}
-
-esp_err_t audio_processor_drain_audio_queue(void)
-{
-    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    if (!s_is_initialized) {
-    	return ESP_ERR_INVALID_STATE;
-    }
-
-    audio_chunk_clear();
-    audio_source_tag_reset_buffer();
-    audio_processor_beep_reset();
-    wav_playback_abort(__func__);
-    ESP_LOGI(TAG, "audio_processor_drain_audio_queue: cleared audio_queue and beep state");  // NOLINT(bugprone-branch-clone)
-    return ESP_OK;
 }
 
 /**
@@ -959,7 +952,7 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
 
 /**
  * @brief Play a WAV file by reading PCM frames, converting/resampling as needed
- * and enqueueing into the shared audio_queue.
+ * and writing into the shared ring buffer.
  */
 esp_err_t audio_processor_play_wav(const char* path)
 {
@@ -968,11 +961,11 @@ esp_err_t audio_processor_play_wav(const char* path)
      * unexpected INVALID_STATE returns observed in unit tests. Use both
      * ESP_LOG and a plain printf so the test monitor captures the output
      * regardless of log configuration. */
-        size_t queue_free = audio_processor_queue_free_bytes();
-        ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, queue_free=%zu)",  // NOLINT(bugprone-branch-clone)
-              (int)s_is_initialized, (int)s_is_running, queue_free);
-        printf("DIAG-APLAY-STATE: init=%d run=%d queue_free=%zu path=%s\n",
-            (int)s_is_initialized, (int)s_is_running, queue_free, path ? path : "(null)");
+        size_t ring_free = s_audio_ring ? audio_rb_available_to_write(s_audio_ring) : 0;
+        ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, ring_free=%zu)",  // NOLINT(bugprone-branch-clone)
+              (int)s_is_initialized, (int)s_is_running, ring_free);
+        printf("DIAG-APLAY-STATE: init=%d run=%d ring_free=%zu path=%s\n",
+            (int)s_is_initialized, (int)s_is_running, ring_free, path ? path : "(null)");
     if (!s_is_initialized) {
     	return ESP_ERR_INVALID_STATE;
     }
@@ -982,7 +975,6 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     /* Drop any synthetic keepalive so WAV output is audible immediately. */
     if (s_force_synth) {
-        audio_processor_flush_priority_queues("play_wav");
         s_last_source_was_synth = false;
     }
 
@@ -1001,7 +993,7 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     /* Reject WAV playback while a beep is active or queued to keep the
      * paths isolated and avoid audible contention. */
-    bool beep_active = (beep_manager_get_state() == BEEP_STATE_PLAYING);
+    bool beep_active = beep_overlay_is_active();
     portENTER_CRITICAL(&s_beep_lock);
     if (!beep_active && s_beep_remaining_bytes > 0) {
         beep_active = true;
@@ -1017,8 +1009,7 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     esp_err_t status = ESP_OK;
 
-    /* Clear queues/beep state before enqueuing WAV data. */
-    (void)audio_processor_drain_audio_queue();
+    /* Clear any beep state before WAV playback. */
     audio_processor_beep_reset();
 
     wav_playback_begin();
@@ -1030,10 +1021,10 @@ esp_err_t audio_processor_play_wav(const char* path)
     }
 
     portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = play_manager_pending_bytes();
+    s_wav_pending_bytes = 0;
     portEXIT_CRITICAL(&s_wav_lock);
 
-    if (!play_manager_is_active() && s_wav_pending_bytes == 0) {
+    if (!play_manager_is_active()) {
         wav_playback_complete_if_idle();
     }
 
@@ -1186,7 +1177,16 @@ void audio_processor_test_reset_tag_recover_window(void)
 size_t audio_processor_test_get_audio_free_bytes(void)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    return audio_processor_queue_free_bytes();
+    return s_audio_ring ? audio_rb_available_to_write(s_audio_ring) : 0;
+}
+
+size_t audio_processor_test_get_ring_used_bytes(void)
+{
+    AUDIO_PROC_LOG_ONCE();
+    if (s_audio_ring == NULL) {
+        return 0;
+    }
+    return audio_rb_capacity(s_audio_ring) - audio_rb_available_to_write(s_audio_ring);
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -1262,18 +1262,14 @@ bool audio_processor_test_wav_is_active(void)
 }
 #endif /* CONFIG_BT_MOCK_TESTING */
 
-#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
-void audio_processor_test_set_queue_block_override(size_t max_item_bytes)
-{
-    s_test_queue_block_override = max_item_bytes;
-}
-#endif /* CONFIG_BT_MOCK_TESTING || UNIT_TEST */
-
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Return number of queued audio descriptors (each carries its source tag).
  * Callers can use this to validate producer/consumer balance during tests. */
 size_t audio_processor_test_get_tag_used(void)
 {
-    return audio_descriptor_used();
+    if (s_audio_ring == NULL) {
+        return 0;
+    }
+    return audio_rb_capacity(s_audio_ring) - audio_rb_available_to_write(s_audio_ring);
 }
 #endif

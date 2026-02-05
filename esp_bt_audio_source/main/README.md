@@ -6,7 +6,7 @@ This document explains how the production app under `main/` is structured, how a
 What the app does
 -----------------
 - Acts as a Bluetooth Classic A2DP **source** with AVRCP controller to a paired speaker/headset.
-- Captures PCM from I2S (or generates synthetic/diagnostic audio), converts/resamples, and pushes it through a zero-copy queue to the BT stack.
+- Captures PCM from I2S (or generates synthetic/diagnostic audio), converts/resamples, and pushes it through a shared ring buffer to the BT stack.
 - Plays short beeps and WAV clips through the same pipeline so priority and volume handling remain consistent.
 - Exposes a small command interface (UART-driven) for diagnostics and control.
 
@@ -17,20 +17,20 @@ Startup and system services
 - Device name and peer name filters come from Kconfig (`CONFIG_EXAMPLE_PEER_DEVICE_NAME`).
 - When the stack is up, the app hands audio buffers to the BT data callback; when disconnected, the audio pipeline can still run locally for diagnostics.
 
-Audio pipeline (zero-copy core)
---------------------------------
+Audio pipeline (ring buffer core)
+---------------------------------
 - The pipeline centers on `audio_processor.c`, which owns task orchestration, buffer ownership, and source selection.
-- `audio_queue.c` implements a pooled queue of 1 KiB blocks: a free-block pool plus a descriptor queue. All producers enqueue by copying into a block; consumers release blocks back to the pool.
-- Sources feeding the queue:
-	- **I2S capture** via `i2s_manager.c`: configures the standard I2S driver, reads DMA frames, converts bit depth, and resamples to the configured output rate before enqueueing with `AUDIO_SOURCE_TAG_CAPTURE`.
-	- **WAV playback** via `play_manager.c`: parses PCM WAV headers, converts/resamples frames into the queue, and tracks residual bytes between chunks to keep frame alignment.
-	- **Beep generation** via `beep_manager.c`: synthesizes short sine beeps with fade-in/out, tags each chunk, and signals completion through an optional callback.
+- `audio_ringbuffer.c` implements a single-producer/single-consumer ring buffer used by the audio engine task and the BT stack callback.
+- Sources feeding the ring buffer:
+	- **I2S capture** via `i2s_manager.c`: reads DMA frames, converts bit depth, and resamples to the configured output rate before filling the ring buffer.
+	- **WAV playback** via `play_manager.c`: parses PCM WAV headers, converts/resamples frames into the ring, and tracks residual bytes between chunks to keep frame alignment.
+	- **Beep generation** via `beep_manager.c`: synthesizes short sine beeps with fade-in/out and overlays them during reads.
 	- **Synthetic tone/keepalive** via `synth_manager.c` (and helpers inside `audio_processor.c`): used when capture is unavailable or to keep the BT link alive.
-- `audio_processor` consumes from the descriptor queue, applies volume/mute, enforces tag accounting, and hands buffers to the BT A2DP data callback. It also exposes diagnostics (probe dumps, tag-miss counters, queue draining) and runtime switches (force synth mode, DRAM-only allocations).
+- `audio_processor` produces into the ring buffer, applies volume/mute, tracks stats, and the BT A2DP data callback reads from the ring. It also exposes diagnostics (probe dumps, tag-miss counters, ring drain helpers) and runtime switches (force synth mode, DRAM-only allocations).
 
 Bluetooth data path
 -------------------
-- In `main.c`, `bt_app_a2d_data_cb()` is the A2DP source data callback. It pulls the next processed chunk from `audio_processor_acquire_chunk()` and copies it into the buffer provided by the BT stack. When no audio is ready, it can inject a muted keepalive to prevent stream stalls.
+- In `main.c`, `bt_app_a2d_data_cb()` is the A2DP source data callback. It reads processed audio via `audio_processor_read()` and copies it into the buffer provided by the BT stack. When no audio is ready, the ring buffer path zero-fills to prevent stream stalls.
 - AVRCP callbacks handle remote control notifications (e.g., volume change) and respond with capability queries and notifications when supported by the peer.
 - GAP callback filters discovery results by name, caches the peer BDA, and triggers connects.
 
@@ -38,7 +38,7 @@ Tasks, timers, and concurrency
 ------------------------------
 - Command task: polls UART for user commands at ~20 ms cadence.
 - Audio processor task: owns the processing loop; manages prefill, draining, resample work buffers, and keepalive timing.
-- I2S task: created by `i2s_manager_start()` to read DMA and push into the queue; sleeps briefly when no samples are available to keep WDT fed.
+- I2S capture: pulled on demand by the audio engine loop via `i2s_source_fill()`, which reads DMA with short timeouts.
 - Heart-beat timer: periodic state machine tick for BT connect/retry; also used to gate some diagnostics.
 - Mutexes/critical sections: play/beep managers use mutexes or spinlocks around state transitions; queue access is lock-free beyond FreeRTOS queues.
 
@@ -48,7 +48,7 @@ Configuration and data formats
 - Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, WAV, beep, synth) are converted/resampled to this configured output before entering the queue.
 - Producers (beep_manager, i2s_manager, play_manager, synth_manager) always enqueue PCM in the current output format; by default that is 16-bit, 44.1 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
-- The queue uses fixed 1024-byte blocks. Producers align chunk sizes to frame boundaries when possible (see `play_manager.c`).
+- The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible (see `play_manager.c`).
 
 WAV playback details (`play_manager.c`)
 ---------------------------------------
@@ -60,22 +60,22 @@ WAV playback details (`play_manager.c`)
 Beep generation details (`beep_manager.c`)
 ------------------------------------------
 - Generates sine samples with configurable duration, frequency, amplitude; clamps duration to 20 s, defaults to 50 ms at 1 kHz.
-- Applies cosine fade-in/out (`BEEP_FADE_MS`) to avoid clicks, enqueues frames in queue-sized chunks, and marks stop on request or completion.
-- Tracks state (`STOPPED`/`PLAYING`), supports a completion callback, and uses atomic tag counters for per-chunk IDs.
+- Applies cosine fade-in/out (`BEEP_FADE_MS`) to avoid clicks, and mixes into the output stream via the overlay path.
+- Tracks state (`STOPPED`/`PLAYING`) and supports a completion callback when the overlay finishes.
 
 I2S capture details (`i2s_manager.c`)
 --------------------------------------
 - Configures an I2S RX channel as slave, sets DMA descriptors/counts, and assigns pins from `audio_config_t` (with `GPIO_NUM_NC` / `I2S_GPIO_UNUSED` fallbacks under mock builds).
-- Reads into a caller-supplied raw buffer, converts bit depth, resamples to the output rate, and enqueues into the queue with capture tag.
+- Reads into a caller-supplied raw buffer, converts bit depth, resamples to the output rate, and fills the ring buffer with capture audio.
 - Mock/testing mode (`CONFIG_BT_MOCK_TESTING`) bypasses hardware by pulling frames from a queue of synthetic items and uses a relaxed clock config.
 
 Audio processor responsibilities (`audio_processor.c`)
 -----------------------------------------------------
 - Initializes shared buffers (capture, work, conversion) with optional DRAM-only mode for boards sensitive to PSRAM.
 - Orchestrates sources: prioritizes beeps and WAV playback, otherwise uses live I2S capture; falls back to synthetic tones/keepalive when no capture data is available or when A2DP is disconnected.
-- Applies volume/mute to dequeued chunks, maintains residual ring-buffer bytes, and tracks tag continuity. Provides stats via `audio_processor_get_stats()` and status via `audio_processor_get_status()`.
-- Exposes diagnostics: probe arm/emit for I2S timing, sync worker dump, tag-queue snapshot, keepalive arming, and queue drain helpers.
-- Public helpers: `audio_processor_beep[_tone]`, `audio_processor_play_wav`, `audio_processor_acquire_chunk`/`release_chunk`, `audio_processor_set_synth_mode`, `audio_processor_set_dram_only`, and test-only injection APIs under `CONFIG_BT_MOCK_TESTING`.
+- Applies volume/mute to produced audio, maintains residual ring-buffer bytes, and tracks tag continuity. Provides stats via `audio_processor_get_stats()` and status via `audio_processor_get_status()`.
+- Exposes diagnostics: probe arm/emit for I2S timing, sync worker dump, keepalive arming, and ring drain helpers.
+- Public helpers: `audio_processor_beep[_tone]`, `audio_processor_play_wav`, `audio_processor_read`, `audio_processor_set_synth_mode`, `audio_processor_set_dram_only`, and test-only injection APIs under `CONFIG_BT_MOCK_TESTING`.
 
 Bluetooth control helpers
 -------------------------
@@ -89,9 +89,9 @@ Diagnostics and testing
 
 Operational notes
 -----------------
-- Ensure `audio_chunk_pool_init()` succeeds early; most producers/consumers bail if the pool is absent.
+- Ensure the ring buffer initializes successfully; producers/consumers bail if it is absent.
 - If PSRAM artifacts appear, call `audio_processor_set_dram_only(true)` before init to force DRAM allocations.
-- When integrating new sources, feed data via `audio_chunk_enqueue_bytes[_with_id]` and supply meaningful `audio_source_tag_t` values so stats and diagnostics remain accurate.
+- When integrating new sources, fill the ring buffer with properly formatted PCM and supply meaningful `audio_source_tag_t` values so stats and diagnostics remain accurate.
 
 Diagrams
 --------
@@ -118,24 +118,22 @@ Audio pipeline (source selection and flow)
     +--------+--------+--------+--------+--------+-------+
 	     |                 |                 |
 	     v                 v                 v
-	+-----------------------------------------------+
-	|        audio_queue (1 KiB blocks)             |
-	|  free-pool + descriptor queue + tag IDs       |
-	+----------------------+------------------------+
-			       |
-			       v
-		      +----------------+
-		      | audio_proc     |
-		      | consumer stage |
-		      | (volume/mute,  |
-		      |  tag tracking) |
-		      +-------+--------+
-			      |
-			      v
-		      +---------------+
-		      | BT A2DP data  |
-		      | callback      |
-		      +---------------+
+	      +------------------------+
+	      | audio_proc coordinator |
+	      | (mix, volume/mute)     |
+	      +-----------+------------+
+			  |
+			  v
+	+------------------------+
+	| audio_ringbuffer       |
+	| (1 KiB producer chunks)|
+	+-----------+------------+
+		    |
+		    v
+	    +---------------+
+	    | BT A2DP data  |
+	    | callback      |
+	    +---------------+
 ```
 
 Bluetooth link state machine (main.c)

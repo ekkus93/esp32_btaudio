@@ -8,11 +8,11 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
     if (s_audio_rb_residual_len > s_audio_rb_residual_pos) {
         audio_residual = s_audio_rb_residual_len - s_audio_rb_residual_pos;
     }
-    size_t free_bytes = audio_processor_queue_free_bytes();
+    size_t free_bytes = s_audio_ring ? audio_rb_available_to_write(s_audio_ring) : 0;
 
     if (s_trace_read_until_beep_done) {
         /* Emit an explicit trace line so monitor logs clearly show reader activity during a beep. */
-        printf("TRACE-READ: phase=%s req=%zu produced=%zu beep_remaining=%zu queue_free=%zu underruns=%u overruns=%u\n",
+        printf("TRACE-READ: phase=%s req=%zu produced=%zu beep_remaining=%zu ring_free=%zu underruns=%u overruns=%u\n",
                tag,
                requested,
                produced,
@@ -38,7 +38,7 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
     }
 
     ESP_LOGI(TAG,  // NOLINT(bugprone-branch-clone)
-             "audio_processor_read[%s]: req=%zu produced=%zu mute=%d beep_remaining=%zu audio_residual=%zu queue_free=%zu underruns=%u overruns=%u",
+             "audio_processor_read[%s]: req=%zu produced=%zu mute=%d beep_remaining=%zu audio_residual=%zu ring_free=%zu underruns=%u overruns=%u",
              tag,
              requested,
              produced,
@@ -48,58 +48,6 @@ static void log_read_summary(const char *phase, size_t requested, size_t produce
              free_bytes,
              (unsigned)s_audio_stats.buffer_underruns,
              (unsigned)s_audio_stats.buffer_overruns);
-}
-
-esp_err_t audio_processor_acquire_chunk_internal(audio_chunk_t *out_chunk, TickType_t wait_ticks)
-{
-    if (out_chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (!s_is_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (!audio_chunk_dequeue(out_chunk, wait_ticks)) {
-        return ESP_ERR_TIMEOUT;
-    }
-
-    size_t to_copy = out_chunk->len;
-    bool is_beep = (out_chunk->tag == AUDIO_SOURCE_TAG_BEEP);
-    if (is_beep) {
-        bool was_active = (s_beep_remaining_bytes > 0);
-        if (s_beep_remaining_bytes > to_copy) {
-            s_beep_remaining_bytes -= to_copy;
-        } else {
-            s_beep_remaining_bytes = 0;
-        }
-        if (was_active && s_beep_remaining_bytes == 0) {
-            ESP_LOGI(TAG, "audio_processor_beep: completed (drained)");  // NOLINT(bugprone-branch-clone)
-            printf("DIAG-BEEP-DONE\n");
-        }
-    } else {
-        if (s_audio_config.mute) {
-            safe_memset(out_chunk->data, out_chunk->len, 0, to_copy);
-        } else if (s_volume_gain < 100 && to_copy > 0) {
-            apply_volume(out_chunk->data, to_copy, s_volume_gain);
-        }
-        if (out_chunk->tag == AUDIO_SOURCE_TAG_WAV) {
-            bool drained = wav_playback_consume(to_copy);
-            if (drained) {
-                wav_playback_complete_if_idle();
-            }
-        }
-    }
-
-    int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
-    if (bytes_per_sample <= 0) {
-        bytes_per_sample = 2;
-    }
-    size_t frame_bytes = (size_t)bytes_per_sample * (size_t)((s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U);
-    if (frame_bytes > 0) {
-        s_audio_stats.samples_processed += (uint32_t)(to_copy / frame_bytes);
-    }
-
-    return ESP_OK;
 }
 
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)

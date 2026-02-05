@@ -1,6 +1,6 @@
 /**
- * WAV playback manager: parses WAV headers, streams audio via audio_queue,
- * and tracks playback state without relying on ringbuffers.
+ * WAV playback manager: parses WAV headers, streams audio via the ring-buffer
+ * engine using a direct fill API, and tracks playback state.
  */
 
 #pragma once
@@ -24,22 +24,6 @@ void play_manager_deinit(void);
 esp_err_t play_manager_play_wav(const char *path);
 void play_manager_abort(bool allow_resume);
 bool play_manager_is_active(void);
-
-/* Attempt to enqueue more audio from the active WAV. Call from worker/reader
- * context; non-blocking except for short file I/O and conversion.
- * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
- *       Will be removed in Phase 6 after ring buffer fully validated.
- */
-esp_err_t play_manager_fill(void);
-
-/* Notify the manager that `bytes` were consumed from the queue. Returns true
- * when playback has no more pending bytes.
- * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
- *       Will be removed in Phase 6 after ring buffer fully validated.
- */
-bool play_manager_consume(size_t bytes);
-
-size_t play_manager_pending_bytes(void);
 
 /**
  * WAV source fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.1)
@@ -91,9 +75,7 @@ bool play_manager_get_status(play_manager_status_t *status);
 typedef struct {
     size_t expected_data_bytes;        /* Expected bytes from WAV data chunk */
     size_t bytes_read_from_file;       /* Actual bytes read from file */
-    size_t bytes_enqueued;             /* Bytes successfully enqueued */
-    size_t enqueue_fail_count;         /* Number of enqueue failures (retried) */
-    size_t dst_block_null_count;       /* Failed dst block allocations */
+    size_t bytes_produced;             /* Bytes produced via wav_source_fill */
 } play_manager_instrumentation_t;
 
 /**

@@ -24,62 +24,25 @@ void wav_playback_add_pending(size_t bytes)
     if (bytes == 0) {
         return;
     }
-
-    size_t pending = 0;
-
-    if (play_manager_is_active() || play_manager_pending_bytes() > 0) {
-        (void)play_manager_consume(bytes);
-        pending = play_manager_pending_bytes();
-    } else {
-        portENTER_CRITICAL(&s_wav_lock);
-        if (s_wav_playback_active) {
-            if (bytes >= s_wav_pending_bytes) {
-                s_wav_pending_bytes = 0;
-            } else {
-                s_wav_pending_bytes -= bytes;
-            }
-            pending = s_wav_pending_bytes;
-        }
-        portEXIT_CRITICAL(&s_wav_lock);
-        return;
-    }
-
     portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = pending;
-    s_wav_playback_active = (pending > 0) || play_manager_is_active();
+    if (bytes >= s_wav_pending_bytes) {
+        s_wav_pending_bytes = 0;
+    } else {
+        s_wav_pending_bytes -= bytes;
+    }
+    s_wav_playback_active = (s_wav_pending_bytes > 0) || play_manager_is_active();
     portEXIT_CRITICAL(&s_wav_lock);
 }
 #endif
 
 bool wav_playback_consume(size_t bytes)
 {
-    bool drained = false;
-    size_t pending = 0;
-
-    if (play_manager_is_active() || play_manager_pending_bytes() > 0) {
-        drained = play_manager_consume(bytes);
-        pending = play_manager_pending_bytes();
-    } else {
-        portENTER_CRITICAL(&s_wav_lock);
-        if (s_wav_playback_active) {
-            if (bytes >= s_wav_pending_bytes) {
-                s_wav_pending_bytes = 0;
-                drained = true;
-            } else {
-                s_wav_pending_bytes -= bytes;
-            }
-            pending = s_wav_pending_bytes;
-            s_wav_playback_active = (pending > 0);
-        }
-        portEXIT_CRITICAL(&s_wav_lock);
-        return drained && (pending == 0);
+    (void)bytes;
+    if (!play_manager_is_active()) {
+        wav_playback_complete_if_idle();
+        return true;
     }
-
-    portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = pending;
-    s_wav_playback_active = (pending > 0) || play_manager_is_active();
-    portEXIT_CRITICAL(&s_wav_lock);
-    return drained && (pending == 0);
+    return false;
 }
 
 void wav_playback_abort(const char *caller)
@@ -136,12 +99,11 @@ void wav_playback_complete_if_idle(void)
 {
     bool restored = false;
     bool synth_mode = false;
-    size_t pending = play_manager_pending_bytes();
     bool pm_active = play_manager_is_active();
 
     portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = pending;
-    if (s_wav_playback_active && !pm_active && pending == 0) {
+    s_wav_pending_bytes = 0;
+    if (s_wav_playback_active && !pm_active) {
         s_wav_playback_active = false;
         if (s_wav_prev_valid) {
             s_force_synth = false;
@@ -165,22 +127,7 @@ void wav_playback_complete_if_idle(void)
 
 void wav_refill_from_manager(void)
 {
-    if (!play_manager_is_active()) {
-        return;
-    }
-
-    esp_err_t fill_ret = play_manager_fill();
-    size_t pending = play_manager_pending_bytes();
-
-    portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = pending;
-    portEXIT_CRITICAL(&s_wav_lock);
-
-    if (fill_ret != ESP_OK) {
-        ESP_LOGE(TAG, "wav_refill_from_manager: fill failed (%d %s)", (int)fill_ret, esp_err_to_name(fill_ret));  // NOLINT(bugprone-branch-clone)
-        play_manager_abort(false);
-        wav_playback_abort(__func__);
-    }
+    wav_playback_complete_if_idle();
 }
 
 #ifdef CONFIG_BT_MOCK_TESTING

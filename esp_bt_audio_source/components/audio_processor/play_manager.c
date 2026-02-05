@@ -1,71 +1,28 @@
 /**
- * WAV playback manager using audio_queue for zero-copy handoff.
- * 
- * DATA LOSS PREVENTION STRATEGY (CODE_REVIEW4 Phase 1):
- * 
- * This module implements a robust WAV playback system with lossless guarantees
- * even under memory pressure or queue backpressure conditions. Key mechanisms:
- * 
- * 1. FILE REWIND ON ENQUEUE FAILURE (Task 1.2):
- *    - When audio_chunk_enqueue_block() fails (queue full, no memory), we
- *      rewind the file pointer by the number of bytes we just read
- *    - This allows next play_manager_fill() call to re-read the same data
- *    - Zero data loss: Every byte from WAV file eventually reaches the queue
- *    - Instrumentation: s_enqueue_fail_count tracks retries (normal under load)
- * 
- * 2. FRAME ALIGNMENT (Task 1.5):
- *    - Always read frame-aligned chunks (multiples of frame_bytes_src)
- *    - Prevents partial frames that could cause glitches or corruption
- *    - Alignment preserved through convert/resample pipeline
- * 
- * 3. CHUNK PADDING HANDLING (Task 1.4):
- *    - WAV chunks are word-aligned: odd-sized chunks have 1 padding byte
- *    - fmt chunk can be >16 bytes (extended format) - skip extra bytes correctly
- *    - Prevents file pointer drift that would corrupt subsequent reads
- * 
- * 4. INSTRUMENTATION (Task 0.2, 6.1):
- *    - s_bytes_read_from_file_total: Cumulative bytes read (with retries)
- *    - s_bytes_enqueued_total: Cumulative bytes successfully enqueued
- *    - s_expected_data_bytes: Total WAV data chunk size from header
- *    - s_enqueue_fail_count: Number of queue-full retries
- *    - s_dst_block_null_count: Memory allocation failures
- *    - Exposed via play_manager_get_instrumentation() for validation
- *    - Logged on completion to detect truncation regressions
- * 
- * 5. ERROR PROPAGATION:
- *    - process_audio_block() returns ESP_ERR_NO_MEM on enqueue failure
- *    - play_manager_fill() stops filling but returns ESP_OK (retry later)
- *    - Real errors (file read, format conversion) propagate immediately
- * 
- * CORRECTNESS INVARIANTS:
- * - s_bytes_read_from_file_total == s_expected_data_bytes (when complete)
- * - Data loss % = 0% for properly functioning queue/memory subsystems
- * - Retries are normal and transparent to caller
- * - Rewind accounting prevents double-counting of retried reads
+ * WAV playback manager for ring-buffer audio engine.
+ *
+ * Provides WAV parsing + resample/stash, and exposes wav_source_fill() to
+ * produce output frames on demand. Instrumentation tracks read/produced bytes
+ * and frame counters.
  */
 
 #include "play_manager.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-
-#include "audio_queue.h"
 #include "audio_util.h"
 #include "audio_resampler_stream.h"
 #include "util_safe.h"
 
 static const char *TAG = "play_manager";
 
-#define PLAY_HIGH_WATER_PCT       90U
-#define PLAY_WAIT_FOR_FREE_MS     5U
-#define PLAY_ENQUEUE_TIMEOUT_MS   500U
-
+#define PLAY_MANAGER_CHUNK_BYTES 1024U
 /**
  * PCM stash buffer for streaming resampler (CODE_REVIEW5 Task 1.2)
  *
@@ -100,7 +57,6 @@ typedef struct {
     size_t frame_bytes_dst;
     FILE *file;
     size_t remaining_bytes;
-    size_t pending_bytes;
     size_t work_bytes;
     SemaphoreHandle_t mutex;
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -118,15 +74,16 @@ static play_manager_state_t s_pm = {0};
 
 /* WAV playback instrumentation (CODE_REVIEW4 Task 0.2, CODE_REVIEW5 Task 2.1) */
 static size_t s_bytes_read_from_file_total = 0;  /* Deprecated: use frames */
-static size_t s_bytes_enqueued_total = 0;        /* Deprecated: use frames */
-static size_t s_enqueue_fail_count = 0;
-static size_t s_dst_block_null_count = 0;
 static size_t s_expected_data_bytes = 0;         /* Deprecated: use frames */
+static size_t s_bytes_produced_total = 0;        /* Bytes produced via wav_source_fill */
 
 /* Frame-based instrumentation (CODE_REVIEW5 Task 2.1) */
 static size_t s_src_frames_read = 0;             /* Source frames read from file */
 static size_t s_dst_frames_produced = 0;         /* Destination frames produced */
 static size_t s_expected_dst_frames = 0;         /* Expected output frames */
+
+static void log_playback_completion(void);
+static void cleanup_playback_state(void);
 
 /**
  * PCM stash buffer functions (CODE_REVIEW5 Task 1.2)
@@ -319,15 +276,15 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
             break;
         }
         
-        /* Clamp to 1KB block size (AUDIO_CHUNK_BLOCK_BYTES) */
-        if (src_bytes_needed > AUDIO_CHUNK_BLOCK_BYTES) {
-            src_bytes_needed = AUDIO_CHUNK_BLOCK_BYTES;
+        /* Clamp to read buffer size */
+        if (src_bytes_needed > s_pm.work_bytes) {
+            src_bytes_needed = s_pm.work_bytes;
             /* Re-align after clamping */
             src_bytes_needed = (src_bytes_needed / src_frame_bytes) * src_frame_bytes;
         }
         
-        /* Allocate temporary read buffer from pool */
-        uint8_t *src_block = audio_chunk_alloc_block(pdMS_TO_TICKS(100));
+        /* Allocate temporary read buffer */
+        uint8_t *src_block = heap_caps_malloc(src_bytes_needed, MALLOC_CAP_8BIT);
         if (!src_block) {
             ESP_LOGW(TAG, "ensure_stash_frames: Failed to allocate read block");
             return ESP_ERR_NO_MEM;
@@ -336,7 +293,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
         /* Read from file */
         size_t bytes_read = fread(src_block, 1, src_bytes_needed, s_pm.file);
         if (bytes_read == 0) {
-            audio_chunk_release_block(src_block);
+            free(src_block);
             s_pm.eof_seen = true;
             break;
         }
@@ -371,7 +328,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
         esp_err_t ret = convert_audio_format(&conv_args);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "ensure_stash_frames: Bit depth conversion failed");
-            audio_chunk_release_block(src_block);
+            free(src_block);
             return ret;
         }
         
@@ -419,7 +376,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
         s_src_frames_read += src_frames;
         
         /* Release temporary block */
-        audio_chunk_release_block(src_block);
+        free(src_block);
         
         /* Check for EOF */
         if (s_pm.remaining_bytes == 0) {
@@ -452,7 +409,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
  *   - Fixed output size simplifies caller (always 1KB blocks)
  *   - EOF handling: pads silence when stash exhausted
  *
- * @param dst_block Output buffer (must be AUDIO_CHUNK_BLOCK_BYTES = 1024 bytes)
+ * @param dst_block Output buffer (must be PLAY_MANAGER_CHUNK_BYTES = 1024 bytes)
  * @param out_bytes [OUT] Bytes written (always 1024, even if padded)
  * @return ESP_OK on success, error code otherwise
  *
@@ -461,6 +418,11 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
  */
 static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
 {
+    if (s_pm.eof_seen && s_pm.stash.frames == 0) {
+        *out_bytes = 0;
+        return ESP_OK;
+    }
+
     /* Compute desired output frames (fixed chunk size) */
     size_t out_frames = s_pm.out_frames_per_chunk;  /* e.g., 256 frames */
     
@@ -512,7 +474,7 @@ static esp_err_t produce_one_output_block(uint8_t *dst_block, size_t *out_bytes)
                  frames_produced, out_frames, silence_frames);
     }
     
-    /* Always output exactly 1024 bytes (256 frames stereo 16-bit) */
+    /* Always output exactly one chunk when data is available */
     *out_bytes = out_frames * s_pm.frame_bytes_dst;
     
     /* Track destination frames produced (CODE_REVIEW5 Task 2.1) */
@@ -711,7 +673,7 @@ esp_err_t play_manager_init(const audio_config_t *config,
 
     util_safe_memset(&s_pm, sizeof(s_pm), 0, sizeof(s_pm));
     s_pm.out_cfg = *config;
-    s_pm.work_bytes = (buffers && buffers->work_bytes > 0) ? buffers->work_bytes : AUDIO_CHUNK_BLOCK_BYTES;
+    s_pm.work_bytes = (buffers && buffers->work_bytes > 0) ? buffers->work_bytes : PLAY_MANAGER_CHUNK_BYTES;
     s_pm.mutex = xSemaphoreCreateMutex();
     if (s_pm.mutex == NULL) {
         return ESP_ERR_NO_MEM;
@@ -735,7 +697,6 @@ void play_manager_deinit(void)
             }
             s_pm.active = false;
             s_pm.remaining_bytes = 0;
-            s_pm.pending_bytes = 0;
             xSemaphoreGive(s_pm.mutex);
         }
         vSemaphoreDelete(s_pm.mutex);
@@ -747,86 +708,6 @@ void play_manager_deinit(void)
 bool play_manager_is_active(void)
 {
     return s_pm.active;
-}
-
-esp_err_t play_manager_fill(void)
-{
-    if (!s_pm.initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (!s_pm.active || s_pm.file == NULL) {
-        return ESP_OK;
-    }
-    if (s_pm.mutex == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    esp_err_t ret = ESP_OK;
-
-    if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) != pdTRUE) {
-        return ESP_ERR_TIMEOUT;
-    }
-
-    /* Process multiple blocks per call (new streaming resampler pipeline) */
-    const int max_iters = 4;
-    for (int iter = 0; iter < max_iters; ++iter) {
-        /* Check EOF: stop when file exhausted AND stash drained */
-        if (s_pm.eof_seen && s_pm.stash.frames == 0) {
-            /* All data processed - WAV playback complete */
-            break;
-        }
-        
-        /* Allocate output block (fixed 1KB) */
-        uint8_t *dst_block = audio_chunk_alloc_block(pdMS_TO_TICKS(100));
-        if (dst_block == NULL) {
-            /* No memory - stop and retry later (not an error) */
-            ret = ESP_OK;
-            break;
-        }
-        
-        /* Produce one fixed-size output block (1024 bytes) */
-        size_t out_bytes = 0;
-        ret = produce_one_output_block(dst_block, &out_bytes);
-        if (ret != ESP_OK) {
-            /* Real error during production */
-            audio_chunk_release_block(dst_block);
-            break;
-        }
-        
-        /* Enqueue block */
-        if (!audio_chunk_enqueue_block(dst_block, out_bytes, AUDIO_SOURCE_TAG_WAV)) {
-            /* Queue full - handle backpressure gracefully
-             *
-             * WHY different from old resampler: Old block-local resampler could rewind
-             * file position and re-process same data. Streaming resampler maintains
-             * stateful phase accumulator and stash, making rewind complex.
-             *
-             * HOW: Accept consumed-but-not-enqueued frames as lost on enqueue failure.
-             * On next fill() call, continue from current stash position with updated
-             * resampler phase. Small audio gap acceptable under extreme backpressure.
-             *
-             * CORRECTNESS: Trade-off decision favors simplicity over perfection:
-             * 1. Queue full is rare (only under extreme backpressure, validated by Task 6.3)
-             * 2. Audio remains continuous in normal operation (99.9% of cases)
-             * 3. Alternative (stash rewind + phase rollback) adds complexity for edge case
-             * 4. Lost frames minimal (~256 frames = 5ms @ 48kHz per enqueue failure)
-             *
-             * VALIDATION: Task 6.3 stress test (50ms delays) showed 0 enqueue failures
-             * despite intentional backpressure, confirming robustness of current approach.
-             */
-            audio_chunk_release_block(dst_block);
-            s_enqueue_fail_count++;
-            ret = ESP_OK;  /* Not a fatal error - retry later */
-            break;
-        }
-        
-        /* Update instrumentation */
-        s_bytes_enqueued_total += out_bytes;
-        s_pm.pending_bytes += out_bytes;
-    }
-
-    xSemaphoreGive(s_pm.mutex);
-    return ret;
 }
 
 /**
@@ -841,8 +722,7 @@ esp_err_t play_manager_fill(void)
  *      streaming resampler and stash logic unchanged.
  * 
  * CORRECTNESS: Thread-safe via mutex, never blocks beyond file I/O, handles EOF
- *              by returning 0 when no more data available. Parallel with legacy
- *              queue path during migration (both can run simultaneously).
+ *              by returning 0 when no more data available.
  */
 size_t wav_source_fill(uint8_t *dst, size_t dst_bytes)
 {
@@ -865,6 +745,8 @@ size_t wav_source_fill(uint8_t *dst, size_t dst_bytes)
     
     /* Check EOF: if file exhausted and stash empty, playback complete */
     if (s_pm.eof_seen && s_pm.stash.frames == 0) {
+        log_playback_completion();
+        cleanup_playback_state();
         xSemaphoreGive(s_pm.mutex);
         return 0;  /* EOF - no more data */
     }
@@ -891,7 +773,13 @@ size_t wav_source_fill(uint8_t *dst, size_t dst_bytes)
     if (ret != ESP_OK) {
         return 0;  /* Error during production - return silence */
     }
-    
+    if (produced_bytes == 0 && s_pm.eof_seen && s_pm.stash.frames == 0) {
+        log_playback_completion();
+        cleanup_playback_state();
+        return 0;
+    }
+
+    s_bytes_produced_total += produced_bytes;
     return produced_bytes;
 }
 
@@ -974,15 +862,12 @@ static esp_err_t initialize_playback_state(FILE *file,
     s_pm.frame_bytes_dst = frame_bytes_dst;
     s_pm.file = file;
     s_pm.remaining_bytes = data_bytes;
-    s_pm.pending_bytes = 0;
     s_pm.active = true;
 
     /* Initialize instrumentation counters (CODE_REVIEW4 Task 0.2) */
     s_bytes_read_from_file_total = 0;
-    s_bytes_enqueued_total = 0;
-    s_enqueue_fail_count = 0;
-    s_dst_block_null_count = 0;
     s_expected_data_bytes = data_bytes;
+    s_bytes_produced_total = 0;
     
     /* Initialize frame-based counters (CODE_REVIEW5 Task 2.1) */
     s_src_frames_read = 0;
@@ -1002,7 +887,7 @@ static esp_err_t initialize_playback_state(FILE *file,
 
     /* CODE_REVIEW5 Task 1.7: Initialize streaming resampler state */
     s_pm.wav_channels = channels;
-    s_pm.out_frames_per_chunk = AUDIO_CHUNK_BLOCK_BYTES / frame_bytes_dst;
+    s_pm.out_frames_per_chunk = PLAY_MANAGER_CHUNK_BYTES / frame_bytes_dst;
     s_pm.eof_seen = false;
     
     /* Initialize PCM stash buffer (2048 frames = ~8KB for stereo 16-bit) */
@@ -1030,10 +915,9 @@ static esp_err_t initialize_playback_state(FILE *file,
  * WHY: Provides observable validation of streaming resampler correctness.
  *      Frame-based metrics prove mathematical accuracy (no cumulative loss).
  *
- * HOW: Reports three metric groups:
+ * HOW: Reports metric groups:
  *      1. Frame metrics (primary) - src/dst frame counts, accuracy ratio
  *      2. Byte metrics (legacy) - for debugging bit-depth conversion
- *      3. Error counters - allocation/enqueue failures
  *
  * CORRECTNESS: Frame accuracy ratio should be >= 0.99 (99%) for correct
  *              resampling. Ratio = 1.0000 proves zero frame loss.
@@ -1071,21 +955,7 @@ static void log_playback_completion(void)
     ESP_LOGI(TAG, "Byte metrics (legacy):");  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "  Expected data bytes: %zu", s_expected_data_bytes);  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "  Bytes read from file: %zu", s_bytes_read_from_file_total);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Bytes enqueued: %zu", s_bytes_enqueued_total);  // NOLINT(bugprone-branch-clone)
-    
-    if (s_expected_data_bytes > 0) {
-        size_t bytes_lost = 0;
-        if (s_bytes_read_from_file_total > s_bytes_enqueued_total) {
-            bytes_lost = s_bytes_read_from_file_total - s_bytes_enqueued_total;
-        }
-        float percent_lost = (float)bytes_lost / (float)s_expected_data_bytes * 100.0F;
-        ESP_LOGI(TAG, "  Byte loss: %zu bytes (%.2f%%)", bytes_lost, (double)percent_lost);  // NOLINT(bugprone-branch-clone)
-    }
-    
-    /* Error counters */
-    ESP_LOGI(TAG, "Error counters:");  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  dst_block alloc failures: %zu", s_dst_block_null_count);  // NOLINT(bugprone-branch-clone)
-    ESP_LOGI(TAG, "  Enqueue failures: %zu", s_enqueue_fail_count);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "  Bytes produced (output): %zu", s_bytes_produced_total);  // NOLINT(bugprone-branch-clone)
     ESP_LOGI(TAG, "=====================================================");  // NOLINT(bugprone-branch-clone)
 }
 
@@ -1140,13 +1010,6 @@ esp_err_t play_manager_play_wav(const char *path)
         return status;
     }
 
-    /* Start filling audio queue */
-    status = play_manager_fill();
-    if (status != ESP_OK) {
-        play_manager_abort(false);
-        return status;
-    }
-
     /* Log playback start */
     ESP_LOGI(TAG, "play_manager: streaming %s (src %u Hz %d-bit ch=%u)",  // NOLINT(bugprone-branch-clone)
              path,
@@ -1170,48 +1033,8 @@ void play_manager_abort(bool allow_resume)
         }
         s_pm.active = false;
         s_pm.remaining_bytes = 0;
-        s_pm.pending_bytes = 0;
         xSemaphoreGive(s_pm.mutex);
     }
-}
-
-bool play_manager_consume(size_t bytes)
-{
-    if (!s_pm.initialized || s_pm.mutex == NULL) {
-        return false;
-    }
-    
-    bool drained = false;
-    if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) == pdTRUE) {
-        /* Update pending bytes accounting */
-        if (bytes > s_pm.pending_bytes) {
-            s_pm.pending_bytes = 0;
-        } else {
-            s_pm.pending_bytes -= bytes;
-        }
-        
-        /* Check if playback complete */
-        if (s_pm.pending_bytes == 0 && s_pm.remaining_bytes == 0) {
-            log_playback_completion();
-            cleanup_playback_state();
-            drained = true;
-        }
-        
-        xSemaphoreGive(s_pm.mutex);
-    }
-    return drained;
-}
-
-size_t play_manager_pending_bytes(void)
-{
-    size_t pending = 0;
-    if (s_pm.initialized && s_pm.mutex != NULL) {
-        if (xSemaphoreTake(s_pm.mutex, portMAX_DELAY) == pdTRUE) {
-            pending = s_pm.pending_bytes;
-            xSemaphoreGive(s_pm.mutex);
-        }
-    }
-    return pending;
 }
 
 bool play_manager_get_instrumentation(play_manager_instrumentation_t *instr)
@@ -1226,9 +1049,7 @@ bool play_manager_get_instrumentation(play_manager_instrumentation_t *instr)
 
     instr->expected_data_bytes = s_expected_data_bytes;
     instr->bytes_read_from_file = s_bytes_read_from_file_total;
-    instr->bytes_enqueued = s_bytes_enqueued_total;
-    instr->enqueue_fail_count = s_enqueue_fail_count;
-    instr->dst_block_null_count = s_dst_block_null_count;
+    instr->bytes_produced = s_bytes_produced_total;
 
     xSemaphoreGive(s_pm.mutex);
     return true;

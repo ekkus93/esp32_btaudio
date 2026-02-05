@@ -9,7 +9,6 @@
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
 #endif
-#include "audio_queue.h"
 
 /* When building against ESP-IDF the platform headers provide i2s types.
  * Host/unit tests (and desktop builds) don't have those headers, so provide
@@ -23,6 +22,10 @@ typedef int i2s_port_t;
 #ifndef GPIO_NUM_NC
 #define GPIO_NUM_NC (-1)
 #endif
+#endif
+
+#ifndef AUDIO_CHUNK_BLOCK_BYTES
+#define AUDIO_CHUNK_BLOCK_BYTES 1024
 #endif
 
 // Audio bit depths
@@ -165,11 +168,7 @@ esp_err_t audio_processor_get_config(audio_config_t* config);
 esp_err_t audio_processor_get_stats(audio_stats_t* stats);
 
 /**
- * @brief Read processed audio data (copying wrapper; legacy compatibility)
- *
- * This API retains the previous copy-based behavior. New callers should use
- * `audio_processor_acquire_chunk`/`audio_processor_release_chunk` for
- * zero-copy access to audio_queue blocks.
+ * @brief Read processed audio data into a caller-provided buffer.
  *
  * @param buffer Buffer to store audio data
  * @param size Size of the buffer
@@ -179,29 +178,12 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats);
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read);
 
 /**
- * @brief Acquire a processed audio chunk without copying.
+ * @brief Drain any queued audio in the ring buffer and reset transient state.
  *
- * On success, `out_chunk` points into the audio_queue block pool. Call
- * `audio_processor_release_chunk` when finished so the block is returned to
- * the pool. Blocks are mutated in-place to honor mute/volume and bookkeeping
- * (beep remaining, WAV consume, stats).
- *
- * @param out_chunk Filled with chunk metadata and data pointer on success.
- * @param wait_ticks Max ticks to wait for a chunk (0 = non-blocking).
- * @return ESP_OK on success; ESP_ERR_TIMEOUT if no chunk available; other
- *         esp_err_t values on invalid state/args.
+ * This discards pending audio, clears residual buffers, and stops any active
+ * WAV/beep playback state so the pipeline resumes cleanly.
  */
-esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks);
-
-/**
- * @brief Release a previously acquired chunk back to the pool.
- *
- * This returns ownership of the block obtained via `audio_processor_acquire_chunk`.
- *
- * @param chunk Chunk previously acquired; only data pointer is used.
- * @return ESP_OK on success.
- */
-esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk);
+esp_err_t audio_processor_drain_ring(void);
 
 /**
  * @brief Simple audio runtime status
@@ -305,21 +287,6 @@ esp_err_t audio_processor_emit_probe(void);
  */
 esp_err_t audio_processor_emit_sync_worker_diag(void);
 
-/**
- * @brief Snapshot the metadata tag queue and log its contents.
-
- * This is a diagnostic-only helper. It temporarily pauses task scheduling,
- * copies up to `max_items` tag entries (tag type + monotonic counter) from
- * the metadata queue, re-queues them unchanged to preserve runtime state,
- * and emits an ESP_LOGI line per entry. The queue ordering and counters are
- * preserved; producers/consumers see the same contents after the snapshot
- * completes.
-
- * @param max_items Maximum entries to log (clamped to a small internal cap)
- * @param captured_out Optional pointer to receive the number of entries logged
- * @return esp_err_t ESP_OK on success, ESP_ERR_INVALID_STATE if queue is missing
- */
-esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out);
 
 /**
  * @brief Convenience query for whether the audio processor is currently running
@@ -345,15 +312,6 @@ void audio_processor_set_synth_mode(bool enable);
  */
 bool audio_processor_is_synth_mode_enabled(void);
 
-/**
- * @brief Drain (clear) the internal audio queue of any queued items.
-
- * This is a debug/test helper to free any queued audio blocks so that
- * subsequent beeps will be enqueued into the queue even when prior data
- * saturated the ring. Use sparingly and only from diagnostic command
- * paths.
- */
-esp_err_t audio_processor_drain_audio_queue(void);
 
 /**
  * @brief Force audio allocations to use DRAM only (disable PSRAM usage)
@@ -399,8 +357,8 @@ bool audio_processor_test_wav_is_active(void);
 size_t audio_processor_test_wav_pending_bytes(void);
 size_t audio_processor_test_get_beep_remaining_bytes(void);
 size_t audio_processor_test_get_audio_free_bytes(void);
+size_t audio_processor_test_get_ring_used_bytes(void);
 void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, size_t beep_remaining, bool *synth_after, int *failures_after);
-void audio_processor_test_set_queue_block_override(size_t max_item_bytes);
 #endif
 
 /* Diagnostic counter: number of times audio bytes were observed without a

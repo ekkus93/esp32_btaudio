@@ -58,21 +58,12 @@ esp_err_t beep_overlay_start(const beep_request_t *req, const audio_config_t *cf
  * @return true if beep is generating, false otherwise
  */
 bool beep_overlay_is_active(void);
+void beep_overlay_stop(void);
 
-/* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing.
- * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
- *       Will be removed in Phase 6 after ring buffer fully validated.
- */
-/* Generate a beep and report how many bytes were actually enqueued. When
- * out_bytes_enqueued is provided, it is set to the total bytes successfully
- * queued so callers can track remaining playback and avoid overestimating
- * duration if the queue fills. */
-esp_err_t beep_manager_play_with_bytes(const beep_request_t *req, const audio_config_t *cfg, size_t *out_bytes_enqueued);
-
-/* Backward-compatible wrapper: old callers can omit the byte-count result. */
+/* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing. */
 esp_err_t beep_manager_play(const beep_request_t *req, const audio_config_t *cfg);
 
-/* Request the current beep to stop generating/enqueueing audio immediately. */
+/* Request the current beep to stop generating immediately. */
 void beep_manager_stop(void);
 
 beep_state_t beep_manager_get_state(void);

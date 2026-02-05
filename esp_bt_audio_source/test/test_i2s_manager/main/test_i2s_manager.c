@@ -9,7 +9,6 @@
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 
-#include "audio_queue.h"
 #include "i2s_manager.h"
 
 static uint8_t s_raw_buf[256];
@@ -48,17 +47,12 @@ static i2s_manager_buffers_t default_buffers(void)
 void tearDown(void)
 {
     i2s_manager_deinit();
-    audio_chunk_pool_deinit();
 }
 
-TEST_CASE("i2s_manager_handle_requires_init", "[i2s_manager]")
+TEST_CASE("i2s_source_fill_requires_init", "[i2s_manager]")
 {
-    int16_t samples[2] = {100, -100};
-    esp_err_t rc = i2s_manager_handle_frame((const uint8_t *)samples,
-                                            sizeof(samples),
-                                            AUDIO_BIT_DEPTH_16,
-                                            AUDIO_SAMPLE_RATE_16K);
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, rc);
+    size_t filled = i2s_source_fill(s_raw_buf, sizeof(s_raw_buf));
+    TEST_ASSERT_EQUAL_UINT32(0, filled);
 }
 
 TEST_CASE("i2s_manager_init_rejects_missing_buffers", "[i2s_manager]")
@@ -84,38 +78,27 @@ TEST_CASE("i2s_manager_stop_requires_init", "[i2s_manager]")
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, i2s_manager_stop());
 }
 
-TEST_CASE("i2s_manager_handle_frame_enqueues_capture_chunk", "[i2s_manager]")
+#ifdef CONFIG_BT_MOCK_TESTING
+TEST_CASE("i2s_source_fill_consumes_mock_queue", "[i2s_manager]")
 {
     audio_config_t cfg = default_config();
     i2s_manager_buffers_t bufs = default_buffers();
 
     TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_init(&cfg, &bufs));
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_start());
 
     int16_t samples[4] = {100, -200, 300, -400};
-    esp_err_t rc = i2s_manager_handle_frame((const uint8_t *)samples,
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      i2s_manager_mock_push((const uint8_t *)samples,
                                             sizeof(samples),
                                             AUDIO_BIT_DEPTH_16,
-                                            AUDIO_SAMPLE_RATE_16K);
-    TEST_ASSERT_EQUAL(ESP_OK, rc);
+                                            AUDIO_SAMPLE_RATE_16K));
 
-    audio_chunk_t chunk = {0};
-    TEST_ASSERT_TRUE(audio_chunk_dequeue(&chunk, pdMS_TO_TICKS(50)));
-    TEST_ASSERT_EQUAL(AUDIO_SOURCE_TAG_CAPTURE, chunk.tag);
-    TEST_ASSERT_EQUAL(sizeof(samples), chunk.len);
-    TEST_ASSERT_EQUAL_MEMORY(samples, chunk.data, chunk.len);
-    audio_chunk_release_block(chunk.data);
+    size_t filled = i2s_source_fill(s_raw_buf, sizeof(samples));
+    TEST_ASSERT_EQUAL(sizeof(samples), filled);
+    TEST_ASSERT_EQUAL_MEMORY(samples, s_raw_buf, filled);
 }
-
-TEST_CASE("i2s_manager_handle_frame_rejects_zero_length", "[i2s_manager]")
-{
-    audio_config_t cfg = default_config();
-    i2s_manager_buffers_t bufs = default_buffers();
-
-    TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_init(&cfg, &bufs));
-
-    esp_err_t rc = i2s_manager_handle_frame(s_raw_buf, 0, AUDIO_BIT_DEPTH_16, AUDIO_SAMPLE_RATE_16K);
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, rc);
-}
+#endif
 
 TEST_CASE("i2s_manager_start_is_idempotent", "[i2s_manager]")
 {

@@ -69,15 +69,20 @@ except Exception as exc:  # pragma: no cover - guard for malformed DB
     sys.stderr.write(f"Failed to load {db_in}: {exc}\n")
     sys.exit(1)
 
+filtered_entries = []
 for entry in entries:
+    entry_file = entry.get("file")
+    if entry_file and not os.path.exists(entry_file):
+        continue
     if "arguments" in entry:
         entry["arguments"] = [arg for arg in entry["arguments"] if arg not in strip_flags]
     if "command" in entry:
         parts = entry["command"].split()
         entry["command"] = " ".join(part for part in parts if part not in strip_flags)
+    filtered_entries.append(entry)
 
 with open(db_out, "w", encoding="utf-8") as f:
-    json.dump(entries, f, indent=2)
+    json.dump(filtered_entries, f, indent=2)
 PY
 
 DB_DIR_EFFECTIVE="$SANITIZED_DB_DIR"

@@ -161,7 +161,6 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         cmd_send_response("OK", "BEEP", "SENT", NULL);
     } else {
         ESP_LOGW(TAG, "BEEP: audio_processor_beep_tone() failed err=%d", (int)_beep_res);  // NOLINT(bugprone-branch-clone)
-        (void)audio_processor_dump_tag_queue(8, NULL);
         cmd_send_response("ERR", "BEEP", "FAILED", NULL);
     }
     return CMD_SUCCESS;

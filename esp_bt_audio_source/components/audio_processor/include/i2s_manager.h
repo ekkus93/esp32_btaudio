@@ -1,6 +1,6 @@
 /**
- * I2S manager: reads I2S samples, converts/resamples as needed, and enqueues
- * audio descriptors into the shared audio_queue with AUDIO_SOURCE_TAG_CAPTURE.
+ * I2S manager: reads I2S samples, converts/resamples as needed, and provides
+ * direct buffer fills for the ring-buffer audio engine.
  */
 
 #pragma once
@@ -44,15 +44,6 @@ bool i2s_manager_is_running(void);
  * CORRECTNESS: Thread-safe, never blocks, handles format conversion cleanly
  */
 size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes);
-
-/* Directly process a captured frame (used by tests and mock feeds).
- * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
- *       Will be removed in Phase 6 after ring buffer fully validated.
- */
-esp_err_t i2s_manager_handle_frame(const uint8_t *data,
-								  size_t len,
-								  audio_bit_depth_t bit_depth,
-								  audio_sample_rate_t sample_rate);
 
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Test helper to inject mock frames without real I2S. */

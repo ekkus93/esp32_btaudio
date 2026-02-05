@@ -58,7 +58,6 @@ target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_commands PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_commands PRIVATE mocks/fake_esp_err.c)
 target_sources(test_commands PRIVATE mocks/mock_a2dp.c)
 target_sources(test_commands PRIVATE mocks/mock_avrc.c)
@@ -124,7 +123,6 @@ target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_S
 # contains device-specific dependencies) and prevents duplicate symbol
 # collisions with other host mocks (e.g. mock_audio_and_btstate.c).
 target_sources(test_audio_processor PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_audio_processor PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_audio_processor PRIVATE mocks/nvs_storage_mock.c)
 target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_processor unity m util_safe_host)
@@ -160,7 +158,6 @@ add_test(NAME test_util_safe COMMAND $<TARGET_FILE:test_util_safe>)
 # Idle I2S failure recovery test (uses production audio_processor + mocks)
 add_executable(test_audio_processor_idle_i2s test_audio_processor_idle_i2s.c
     mocks/audio_processor_host_stub.c
-    mocks/shim_audio_queue.c
     mocks/esp_heap_caps_mock.c
     mocks/mock_i2s.c
     mocks/mock_gap.c
@@ -188,24 +185,6 @@ add_executable(test_list_ownership test_list_ownership.c
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
 target_link_libraries(test_list_ownership unity)
 add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
-
-# Host coverage for production audio_queue helpers
-add_executable(test_audio_queue_host
-    test_audio_queue_host.c
-    ../../components/audio_processor/audio_queue.c
-    mocks/fake_queue.c
-    mocks/fake_task.c
-    mocks/fake_timer.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c
-    mocks/esp_heap_caps_mock.c)
-target_include_directories(test_audio_queue_host PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_compile_definitions(test_audio_queue_host PRIVATE UNIT_TEST)
-target_link_libraries(test_audio_queue_host unity util_safe_host)
-add_test(NAME test_audio_queue_host COMMAND $<TARGET_FILE:test_audio_queue_host>)
 
 # Host coverage for audio ring buffer (SPSC for audio engine architecture)
 add_executable(test_audio_ringbuffer
@@ -237,27 +216,6 @@ target_compile_definitions(test_audio_engine_stress PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_engine_stress unity util_safe_host)
 add_test(NAME test_audio_engine_stress COMMAND $<TARGET_FILE:test_audio_engine_stress>)
 
-# Host coverage for play_manager enqueue path (ensures WAVs use queue-owned blocks)
-add_executable(test_play_manager_host
-    test_play_manager_host.c
-    ../../components/audio_processor/play_manager.c
-    ../../components/audio_processor/audio_resampler_stream.c
-    ../../components/audio_processor/audio_queue.c
-    ../../components/audio_processor/audio_util.c
-    mocks/fake_queue.c
-    mocks/fake_task.c
-    mocks/fake_timer.c
-    mocks/fake_semphr.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c
-    mocks/esp_heap_caps_mock.c)
-target_include_directories(test_play_manager_host PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_compile_definitions(test_play_manager_host PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING)
-target_link_libraries(test_play_manager_host unity util_safe_host m)
-add_test(NAME test_play_manager_host COMMAND $<TARGET_FILE:test_play_manager_host>)
 # allocator.c and list.c depend on bt_common.h which lives in the bt common include path
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
 target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
@@ -309,7 +267,6 @@ target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manag
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_confirm PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_confirm PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_confirm PRIVATE mocks/fake_esp_err.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_avrc.c)
@@ -325,7 +282,6 @@ target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_connect_name unity util_safe_host command_interface_host)
 target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_connect_name PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_connect_name PRIVATE mocks/fake_esp_err.c)
 target_sources(test_connect_name PRIVATE mocks/mock_a2dp.c)
 target_sources(test_connect_name PRIVATE mocks/mock_avrc.c)
@@ -341,7 +297,6 @@ target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_man
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/fake_esp_err.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_avrc.c)
@@ -364,7 +319,6 @@ target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_ma
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/fake_esp_err.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_avrc.c)
@@ -409,7 +363,6 @@ target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_event_stress PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_event_stress PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_event_stress PRIVATE mocks/fake_esp_err.c)
 target_sources(test_event_stress PRIVATE mocks/mock_a2dp.c)
 target_sources(test_event_stress PRIVATE mocks/mock_avrc.c)
@@ -425,23 +378,11 @@ target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
 
-# Ensure beep-flush behavior: host test
-add_executable(test_beep_flush test_beep_flush.c)
-target_sources(test_beep_flush PRIVATE
-    mocks/audio_processor_host_stub.c
-    mocks/shim_audio_queue.c
-    mocks/esp_heap_caps_mock.c
-    mocks/nvs_storage_mock.c)
-target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
-target_include_directories(test_beep_flush PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_link_libraries(test_beep_flush unity util_safe_host)
-add_test(NAME test_beep_flush COMMAND $<TARGET_FILE:test_beep_flush>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)
@@ -449,7 +390,6 @@ target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
 
 add_executable(test_bt_connection_manager
@@ -470,7 +410,6 @@ add_executable(test_bt_streaming_manager
     mocks/mock_a2dp.c
     mocks/mock_audio_and_btstate.c
     mocks/audio_processor_host_stub.c
-    mocks/shim_audio_queue.c
     mocks/fake_task.c
     mocks/fake_log.c
     mocks/fake_esp_err.c
@@ -513,7 +452,6 @@ target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
 target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(dump_event_stress_output PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(dump_event_stress_output PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(dump_event_stress_output PRIVATE mocks/shim_audio_queue.c)
 target_sources(dump_event_stress_output PRIVATE mocks/fake_esp_err.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
@@ -543,31 +481,9 @@ add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_ada
 target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_adapter_runner PRIVATE mocks/shim_audio_queue.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_avrc.c)
-
-# Beep manager host unit tests (moved under host_test/test_beep_manager)
-add_executable(test_beep_manager
-    test_beep_manager/test_beep_manager.c
-    mocks/shim_audio_queue.c
-    ../../components/audio_processor/beep_manager.c
-    mocks/fake_queue.c
-    mocks/fake_semphr.c
-    mocks/fake_task.c
-    mocks/fake_timer.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c
-    ../../components/util_safe/util_safe.c
-    mocks/esp_heap_caps_mock.c)
-target_include_directories(test_beep_manager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_compile_definitions(test_beep_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_beep_manager unity m pthread)
-add_test(NAME test_beep_manager COMMAND $<TARGET_FILE:test_beep_manager>)
 
 # Audio resampler stream unit tests (stateful streaming resampler)
 add_executable(test_audio_resampler_stream
@@ -584,26 +500,6 @@ target_compile_definitions(test_audio_resampler_stream PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_resampler_stream util_safe_host unity m)
 add_test(NAME test_audio_resampler_stream COMMAND $<TARGET_FILE:test_audio_resampler_stream>)
 
-# I2S manager host unit tests
-add_executable(test_i2s_manager
-    test_i2s_manager/test_i2s_manager.c
-    mocks/shim_audio_queue.c
-    ../../components/audio_processor/i2s_manager.c
-    ../../components/audio_processor/audio_util.c
-    mocks/fake_queue.c
-    mocks/fake_semphr.c
-    mocks/fake_task.c
-    mocks/fake_timer.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
-target_include_directories(test_i2s_manager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_compile_definitions(test_i2s_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_i2s_manager unity m util_safe_host)
-add_test(NAME test_i2s_manager COMMAND $<TARGET_FILE:test_i2s_manager>)
-
 # Audio util host unit tests
 add_executable(test_audio_util
     test_audio_util/test_audio_util.c
@@ -617,29 +513,6 @@ target_include_directories(test_audio_util PRIVATE
 target_compile_definitions(test_audio_util PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_util unity m util_safe_host)
 add_test(NAME test_audio_util COMMAND $<TARGET_FILE:test_audio_util>)
-
-# Play manager host unit tests
-add_executable(test_play_manager
-    test_play_manager/test_play_manager.c
-    test_play_manager/shim_play_manager_stubs.c
-    ../../components/audio_processor/play_manager.c
-    ../../components/audio_processor/audio_resampler_stream.c
-    ../../components/audio_processor/audio_queue.c
-    mocks/esp_heap_caps_mock.c
-    mocks/fake_queue.c
-    mocks/fake_semphr.c
-    mocks/fake_task.c
-    mocks/fake_timer.c
-    mocks/fake_esp_err.c
-    mocks/fake_log.c
-    mocks/fake_debug_helpers.c)
-target_include_directories(test_play_manager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-target_compile_definitions(test_play_manager PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_play_manager unity m util_safe_host)
-add_test(NAME test_play_manager COMMAND $<TARGET_FILE:test_play_manager>)
 
 # Synth manager host unit tests (exercise CONFIG_AUDIO_USE_SYNTH_SOURCE path)
 add_executable(test_synth_manager

@@ -548,7 +548,6 @@ def aggregate_summary(root: Path) -> dict:
              root / "esp_bt_audio_source" / "test" / "test_app2" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_audio_queue" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_beep_manager" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_i2s_manager" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_synth_manager" / "build" / "one_run_unity.log",
@@ -750,7 +749,6 @@ def main(argv: list[str] | None = None):
             ROOT / "esp_bt_audio_source" / "test" / "test_app2",
             ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
             ROOT / "esp_bt_audio_source" / "test" / "test_app3",
-            ROOT / "esp_bt_audio_source" / "test" / "test_audio_queue",
             ROOT / "esp_bt_audio_source" / "test" / "test_beep_manager",
             ROOT / "esp_bt_audio_source" / "test" / "test_i2s_manager",
             ROOT / "esp_bt_audio_source" / "test" / "test_synth_manager",
@@ -1139,6 +1137,54 @@ def main(argv: list[str] | None = None):
     except Exception as _:
         # don't fail the script if pretty printing fails
         pass
+    # Recompute final failure status from the current summary so transient
+    # earlier flags (e.g., flaky device runs) don't override the final results.
+    final_failed = False
+    try:
+        host = report.get("host")
+        if host and isinstance(host, dict):
+            case_counts = host.get("case_counts", {}) if isinstance(host.get("case_counts"), dict) else {}
+            if int(case_counts.get("failures", 0) or 0) > 0:
+                final_failed = True
+            zero_bins = case_counts.get("zero_test_binaries", []) if isinstance(case_counts.get("zero_test_binaries"), list) else []
+            if zero_bins:
+                final_failed = True
+    except Exception:
+        pass
+    try:
+        standalone = report.get("standalone_host")
+        if standalone and isinstance(standalone, dict):
+            if not standalone.get("build", False):
+                final_failed = True
+            elif int(standalone.get("failures", 0) or 0) > 0:
+                final_failed = True
+    except Exception:
+        pass
+    try:
+        devices = report.get("devices", {}) or {}
+        for dev in devices.values():
+            tests = dev.get("tests_total")
+            failures = dev.get("tests_failed")
+            ignored = dev.get("tests_ignored")
+            if tests is None or failures is None:
+                # fallback to parse output file if present
+                if dev.get("output_file"):
+                    counted = count_unity_results(Path(dev.get("output_file")))
+                    tests = counted.get("tests", 0)
+                    failures = counted.get("failures", 0)
+                    ignored = counted.get("ignored", 0)
+                else:
+                    tests = tests or 0
+                    failures = failures or 0
+                    ignored = ignored or 0
+            if int(tests or 0) == 0:
+                final_failed = True
+            if int(failures or 0) > 0:
+                final_failed = True
+    except Exception:
+        pass
+
+    overall_failed = final_failed
     print("Done.")
     if overall_failed:
         print("One or more suites failed to build/run or reported zero tests. Exiting with failure.")

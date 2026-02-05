@@ -3,7 +3,7 @@
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
-#include "audio_processor_internal.h"
+#include "audio_processor.h"
 #undef TAG
 #include "command_interface.h"
 #include <stdio.h>
@@ -1596,77 +1596,19 @@ static esp_err_t bt_manager_init_profiles(void)
 }
 
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
-static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len) {
+static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len)
+{
     if (len <= 0 || buf == NULL) {
         return 0;
     }
 
-    if (s_trace_read_until_beep_done) {
-        size_t queue_used = audio_descriptor_used();
-        size_t queue_free = audio_processor_queue_free_bytes();
-         printf("TRACE-A2DP-CB: req=%ld queue_used=%zu queue_free=%zu beep_remaining=%zu\n",
-             (long)len,
-               queue_used,
-               queue_free,
-               s_beep_remaining_bytes);
+    size_t bytes_read = 0;
+    esp_err_t ret = audio_processor_read(buf, (size_t)len, &bytes_read);
+    if (ret != ESP_OK) {
+        return 0;
     }
 
-    static audio_chunk_t s_pending = {0};
-    static size_t s_pending_offset = 0;
-    static bool s_pending_valid = false;
-
-    size_t produced = 0;
-    while (produced < (size_t)len) {
-        audio_chunk_t *chunk = NULL;
-        if (s_pending_valid) {
-            chunk = &s_pending;
-        } else {
-            audio_chunk_t fresh = {0};
-            esp_err_t acq = audio_processor_acquire_chunk(&fresh, 0);
-            if (acq != ESP_OK) {
-                break;
-            }
-            s_pending = fresh;
-            s_pending_offset = 0;
-            s_pending_valid = true;
-            chunk = &s_pending;
-        }
-
-        size_t available = (chunk->len > s_pending_offset) ? (chunk->len - s_pending_offset) : 0;
-        if (available == 0) {
-            audio_processor_release_chunk(chunk);
-            s_pending_valid = false;
-            s_pending_offset = 0;
-            continue;
-        }
-
-        size_t to_copy = available;
-        if (to_copy > ((size_t)len - produced)) {
-            to_copy = (size_t)len - produced;
-        }
-
-        util_safe_memcpy(buf + produced, (size_t)len - produced, chunk->data + s_pending_offset, to_copy);
-        produced += to_copy;
-        s_pending_offset += to_copy;
-
-        if (s_pending_offset >= chunk->len) {
-            audio_processor_release_chunk(chunk);
-            s_pending_valid = false;
-            s_pending_offset = 0;
-        }
-    }
-
-    if (produced == 0) {
-        // Fallback: provide silence if no data available
-        safe_memset(buf, (size_t)len, 0, (size_t)len);
-        return len;
-    }
-
-    if (s_trace_read_until_beep_done) {
-        printf("TRACE-A2DP-CB-RET: produced=%zu\n", produced);
-    }
-
-    return (int32_t)produced;
+    return (int32_t)bytes_read;
 }
 #endif
 

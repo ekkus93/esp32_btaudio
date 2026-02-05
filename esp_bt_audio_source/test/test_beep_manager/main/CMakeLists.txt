@@ -2,7 +2,6 @@ idf_component_register(
     SRCS
         "test_beep_manager.c"
         "../../../components/audio_processor/beep_manager.c"
-        "../../../components/audio_processor/audio_queue.c"
     INCLUDE_DIRS
         "."
         "../../../components/audio_processor/include"

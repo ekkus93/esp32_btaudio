@@ -190,73 +190,6 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
-{
-    (void)wait_ticks;
-    if (out_chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (s_ring_len == 0) {
-        return ESP_ERR_TIMEOUT;
-    }
-
-    size_t to_read = s_ring_len;
-    if (to_read > AUDIO_CHUNK_BLOCK_BYTES) {
-        to_read = AUDIO_CHUNK_BLOCK_BYTES;
-    }
-
-    uint8_t *buf = (uint8_t *)malloc(to_read);
-    if (buf == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    size_t n = ring_pop(buf, to_read);
-    out_chunk->data = buf;
-    out_chunk->len = n;
-    out_chunk->tag = AUDIO_SOURCE_TAG_CAPTURE;
-    out_chunk->tag_id = s_tag_counter++;
-
-    bool skip_scale = s_skip_scale_once;
-    s_skip_scale_once = false;
-    if (s_mute && n > 0) {
-        memset(buf, 0, n);
-    } else if (!skip_scale && n > 0 && s_bit_depth == AUDIO_BIT_DEPTH_16) {
-        size_t samples = n / sizeof(int16_t);
-        int16_t *s = (int16_t *)buf;
-        float scale = (float)s_volume / 100.0f;
-        for (size_t i = 0; i < samples; ++i) {
-            int32_t v = s[i];
-            v = (int32_t)(v * scale);
-            if (v > INT16_MAX) v = INT16_MAX;
-            if (v < INT16_MIN) v = INT16_MIN;
-            s[i] = (int16_t)v;
-        }
-    }
-
-    if (n == 0) {
-        free(buf);
-        out_chunk->data = NULL;
-        return ESP_ERR_TIMEOUT;
-    }
-
-    if (s_mute && !s_beep_active && s_ring_len == 0) {
-        s_beep_active = false;
-    }
-
-    return ESP_OK;
-}
-
-esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk)
-{
-    if (chunk == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (chunk->data != NULL) {
-        free(chunk->data);
-    }
-    return ESP_OK;
-}
-
 esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
     if (bytes_read) *bytes_read = 0;
@@ -340,12 +273,9 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
      * the generated beep rather than the idle synth source. */
     s_synth_mode = false;
 
-    /* Host stub: flush any queued priority audio so beep insertion mirrors
-     * production behavior where priority queues are dropped before beeps. */
-    audio_chunk_t _tmp;
-    while (audio_chunk_dequeue(&_tmp, 0)) {
-        audio_chunk_release_block(_tmp.data);
-    }
+    /* Host stub: clear any pending ring data so beep insertion mirrors
+     * production behavior where prior audio is dropped before beeps. */
+    s_ring_len = 0;
 
     s_last_beep_duration_ms = duration_ms;
     s_last_beep_freq_hz = freq_hz;
@@ -459,7 +389,7 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_drain_audio_queue(void)
+esp_err_t audio_processor_drain_ring(void)
 {
     s_ring_len = 0;
     return ESP_OK;
@@ -507,7 +437,7 @@ bool audio_source_tag_test_push(int tag)
     return true;
 }
 
-bool audio_source_tag_test_take(int* tag_out, TickType_t wait_ticks)
+bool audio_source_tag_test_take(int* tag_out, uint32_t wait_ticks)
 {
     (void)wait_ticks;
     if (s_tag_used == 0) return false;

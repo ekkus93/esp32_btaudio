@@ -45,7 +45,7 @@ void tearDown(void)
             (void)audio_processor_stop();
         }
         if (status.initialized) {
-            (void)audio_processor_drain_audio_queue();
+            (void)audio_processor_drain_ring();
             audio_processor_test_reset_tag_miss_count();
             (void)audio_processor_deinit();
         }

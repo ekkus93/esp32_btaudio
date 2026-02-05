@@ -3,13 +3,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-extern void audio_queue_tests_register(void);
 extern void audio_util_tests_register(void);
 
 void app_main(void)
 {
 	UNITY_BEGIN();
-	audio_queue_tests_register();
 	audio_util_tests_register();
 	UNITY_END();
 
