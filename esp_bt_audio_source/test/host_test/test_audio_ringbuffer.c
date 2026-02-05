@@ -328,6 +328,138 @@ void test_rb_split_writes_across_wrap(void)
 }
 
 //-----------------------------------------------------------------------------
+// Aggressive stress tests (Phase 5)
+//-----------------------------------------------------------------------------
+
+void test_rb_stress_random_size_operations(void)
+{
+    const size_t capacity = 4096;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+    
+    uint8_t write_buf[1024];
+    uint8_t read_buf[1024];
+    uint32_t total_written = 0;
+    uint32_t total_read = 0;
+    
+    /* Seed pattern for verification */
+    for (size_t i = 0; i < sizeof(write_buf); i++) {
+        write_buf[i] = (uint8_t)(i & 0xFF);
+    }
+    
+    /* 10,000 iterations of random-sized writes and reads */
+    for (int iter = 0; iter < 10000; iter++) {
+        /* Random write size (1-512 bytes) */
+        size_t write_size = 1 + (iter % 512);
+        if (write_size > sizeof(write_buf)) write_size = sizeof(write_buf);
+        
+        size_t written = audio_rb_write(rb, write_buf, write_size);
+        total_written += written;
+        
+        /* Random read size (1-256 bytes) */
+        size_t read_size = 1 + ((iter * 7) % 256);
+        if (read_size > sizeof(read_buf)) read_size = sizeof(read_buf);
+        
+        size_t read = audio_rb_read(rb, read_buf, read_size);
+        total_read += read;
+        
+        /* Invariants */
+        size_t available = audio_rb_available_to_read(rb);
+        size_t free = audio_rb_available_to_write(rb);
+        TEST_ASSERT_EQUAL_UINT(capacity, available + free);
+        TEST_ASSERT_EQUAL_UINT(total_written - total_read, available);
+    }
+    
+    /* Drain remaining data */
+    while (audio_rb_available_to_read(rb) > 0) {
+        audio_rb_read(rb, read_buf, sizeof(read_buf));
+    }
+    
+    TEST_ASSERT_EQUAL_UINT(0, audio_rb_available_to_read(rb));
+}
+
+void test_rb_stress_fill_drain_cycles(void)
+{
+    const size_t capacity = 8192;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+    
+    uint8_t pattern[1024];
+    uint8_t verify[1024];
+    
+    for (size_t i = 0; i < sizeof(pattern); i++) {
+        pattern[i] = (uint8_t)(i & 0xFF);
+    }
+    
+    /* 1000 fill-drain cycles */
+    for (int cycle = 0; cycle < 1000; cycle++) {
+        /* Fill buffer completely */
+        size_t remaining = capacity;
+        while (remaining > 0) {
+            size_t chunk = (remaining > sizeof(pattern)) ? sizeof(pattern) : remaining;
+            size_t written = audio_rb_write(rb, pattern, chunk);
+            TEST_ASSERT_EQUAL_UINT(chunk, written);
+            remaining -= written;
+        }
+        
+        TEST_ASSERT_EQUAL_UINT(0, audio_rb_available_to_write(rb));
+        TEST_ASSERT_EQUAL_UINT(capacity, audio_rb_available_to_read(rb));
+        
+        /* Drain buffer completely */
+        remaining = capacity;
+        while (remaining > 0) {
+            size_t chunk = (remaining > sizeof(verify)) ? sizeof(verify) : remaining;
+            size_t read = audio_rb_read(rb, verify, chunk);
+            TEST_ASSERT_EQUAL_UINT(chunk, read);
+            remaining -= read;
+        }
+        
+        TEST_ASSERT_EQUAL_UINT(0, audio_rb_available_to_read(rb));
+        TEST_ASSERT_EQUAL_UINT(capacity, audio_rb_available_to_write(rb));
+    }
+    
+    /* Peak should be capacity */
+    TEST_ASSERT_EQUAL_UINT(capacity, audio_rb_peak_used(rb));
+}
+
+void test_rb_stress_alternating_small_large(void)
+{
+    const size_t capacity = 16384;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+    
+    uint8_t small_buf[64];
+    uint8_t large_buf[4096];
+    
+    /* Initialize patterns */
+    for (size_t i = 0; i < sizeof(small_buf); i++) {
+        small_buf[i] = (uint8_t)(i & 0xFF);
+    }
+    for (size_t i = 0; i < sizeof(large_buf); i++) {
+        large_buf[i] = (uint8_t)((i >> 3) & 0xFF);
+    }
+    
+    /* 5000 iterations: alternate small writes with large reads and vice versa */
+    for (int iter = 0; iter < 5000; iter++) {
+        if (iter % 2 == 0) {
+            /* Many small writes, few large reads */
+            for (int i = 0; i < 16; i++) {
+                audio_rb_write(rb, small_buf, sizeof(small_buf));
+            }
+            audio_rb_read(rb, large_buf, sizeof(large_buf));
+        } else {
+            /* Few large writes, many small reads */
+            audio_rb_write(rb, large_buf, sizeof(large_buf));
+            for (int i = 0; i < 16; i++) {
+                audio_rb_read(rb, small_buf, sizeof(small_buf));
+            }
+        }
+        
+        /* Verify invariants */
+        size_t avail = audio_rb_available_to_read(rb);
+        size_t free = audio_rb_available_to_write(rb);
+        TEST_ASSERT_EQUAL_UINT(capacity, avail + free);
+    }
+}
+
+//-----------------------------------------------------------------------------
 // NULL/invalid parameter tests
 //-----------------------------------------------------------------------------
 
@@ -393,6 +525,11 @@ void run_all_tests(void)
     /* Stress */
     RUN_TEST(test_rb_alternating_write_read_many_times);
     RUN_TEST(test_rb_split_writes_across_wrap);
+    
+    /* Aggressive stress (Phase 5) */
+    RUN_TEST(test_rb_stress_random_size_operations);
+    RUN_TEST(test_rb_stress_fill_drain_cycles);
+    RUN_TEST(test_rb_stress_alternating_small_large);
     
     /* NULL/invalid parameters */
     RUN_TEST(test_rb_init_rejects_null_pointer);

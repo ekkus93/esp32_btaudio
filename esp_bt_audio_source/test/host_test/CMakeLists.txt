@@ -222,6 +222,21 @@ target_compile_definitions(test_audio_ringbuffer PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_ringbuffer unity util_safe_host)
 add_test(NAME test_audio_ringbuffer COMMAND $<TARGET_FILE:test_audio_ringbuffer>)
 
+# Host stress tests for audio engine (ring buffer + sources)
+add_executable(test_audio_engine_stress
+    test_audio_engine_stress.c
+    ../../components/audio_processor/audio_ringbuffer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_audio_engine_stress PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_audio_engine_stress PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_engine_stress unity util_safe_host)
+add_test(NAME test_audio_engine_stress COMMAND $<TARGET_FILE:test_audio_engine_stress>)
+
 # Host coverage for play_manager enqueue path (ensures WAVs use queue-owned blocks)
 add_executable(test_play_manager_host
     test_play_manager_host.c
