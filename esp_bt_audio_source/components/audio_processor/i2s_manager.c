@@ -201,10 +201,21 @@ static void i2s_manager_task(void *arg)
 #endif
 #ifdef ESP_PLATFORM
 		if (s_mgr.i2s_rx != NULL && s_mgr.bufs.raw_buf != NULL && s_mgr.bufs.raw_buf_bytes > 0) {
+			/* CODE_REVIEW6 P0-C: Limit I2S reads to AUDIO_CHUNK_BLOCK_BYTES (1KB)
+			 * CRITICAL: process_frame() calls audio_chunk_enqueue_bytes() which only
+			 * enqueues first 1KB of data. Previously we read up to 8KB but only enqueued
+			 * 1KB, causing 87.5% audio loss on I2S capture.
+			 * 
+			 * FIX: Clamp read size to match enqueue capacity (1KB)
+			 */
+			size_t read_bytes_limit = (s_mgr.bufs.raw_buf_bytes > AUDIO_CHUNK_BLOCK_BYTES)
+			                          ? AUDIO_CHUNK_BLOCK_BYTES
+			                          : s_mgr.bufs.raw_buf_bytes;
+			
 			size_t read_bytes = 0;
 			esp_err_t ret = i2s_channel_read(s_mgr.i2s_rx,
 											 s_mgr.bufs.raw_buf,
-											 s_mgr.bufs.raw_buf_bytes,
+											 read_bytes_limit,  /* Limit to 1KB */
 											 &read_bytes,
 									 read_timeout_ms);
 			if (ret == ESP_OK && read_bytes > 0) {

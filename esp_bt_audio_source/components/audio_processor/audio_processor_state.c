@@ -1,9 +1,20 @@
 #include "audio_processor_internal.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "audio_ringbuffer.h"
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
+
+/**
+ * Ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1, Task 1.3)
+ * 
+ * WHY: Single producer (audio engine task) → single consumer (A2DP callback)
+ *      Replaces multi-producer queue (eliminates race conditions)
+ * HOW: SPSC ring buffer, initialized in audio_processor_init()
+ * CORRECTNESS: Capacity configurable via Kconfig, optional PSRAM allocation
+ */
+audio_rb_t *s_audio_ring = NULL;
 
 volatile bool s_audio_diag_enabled = false;
 bool s_is_initialized = false;

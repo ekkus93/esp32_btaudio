@@ -191,36 +191,12 @@ static inline size_t pcm_stash_free_frames(const pcm_stash_t *stash)
 }
 
 /**
- * Append frames to stash
+ * Consume frames from stash (CODE_REVIEW6 P0-A: pcm_stash_append_frames removed)
  *
- * Copies frames to end of stash buffer. Caller must ensure enough space.
- *
- * @param stash Stash structure
- * @param frames Pointer to frame data
- * @param num_frames Number of frames to append
- * @return ESP_OK on success, ESP_ERR_INVALID_SIZE if insufficient space
- */
-static esp_err_t pcm_stash_append_frames(pcm_stash_t *stash, const uint8_t *frames, size_t num_frames)
-{
-    if (num_frames > pcm_stash_free_frames(stash)) {
-        ESP_LOGE(TAG, "PCM stash overflow: trying to append %zu frames, only %zu free",
-                 num_frames, pcm_stash_free_frames(stash));
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    size_t append_bytes = num_frames * stash->frame_bytes;
-    uint8_t *dst = stash->buf + (stash->frames * stash->frame_bytes);
-    // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
-    // C11 _s variants not available in ESP-IDF; bounds checked above
-    memcpy(dst, frames, append_bytes);
-    // NOLINTEND(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
-    stash->frames += num_frames;
-
-    return ESP_OK;
-}
-
-/**
- * Consume frames from stash
+ * NOTE: pcm_stash_append_frames() was removed as part of CODE_REVIEW6 P0-A fix.
+ * Frames are now written directly to stash free region during conversion+upmix
+ * in ensure_stash_frames(), eliminating the intermediate copy and preventing
+ * mono→stereo buffer overflow.
  *
  * Removes consumed frames from front of stash using memmove.
  * Call this after resampler has processed frames from stash.
@@ -372,16 +348,25 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
             s_pm.remaining_bytes -= bytes_read;
         }
         
-        /* Convert bit depth in-place */
+        /* Calculate stash destination pointer (write directly to stash free region)
+         * CRITICAL (CODE_REVIEW6 P0-A): Convert+upmix directly to stash to avoid
+         * buffer overflow. Previous code converted in-place to src_block (1KB),
+         * then upmixed mono→stereo in-place (needs 2KB for stereo output).
+         * This caused heap corruption when mono→stereo upmix doubled data size.
+         */
+        uint8_t *stash_dst = s_pm.stash.buf + (s_pm.stash.frames * s_pm.stash.frame_bytes);
+        size_t stash_free_bytes = (s_pm.stash.cap_frames - s_pm.stash.frames) * s_pm.stash.frame_bytes;
+        
+        /* Convert bit depth directly to stash free region */
         size_t conv_bytes = 0;
         audio_convert_args_t conv_args = {
             .src = src_block,
-            .dst = src_block,
+            .dst = stash_dst,
             .src_size = bytes_read,
             .src_bit_depth = s_pm.src_bit,
             .dst_bit_depth = s_pm.out_cfg.bit_depth,
             .dst_size = &conv_bytes,
-            .work_bytes = AUDIO_CHUNK_BLOCK_BYTES,
+            .work_bytes = stash_free_bytes,  /* Use stash free space as work buffer */
         };
         esp_err_t ret = convert_audio_format(&conv_args);
         if (ret != ESP_OK) {
@@ -395,7 +380,10 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
         size_t src_frame_bytes_conv = s_pm.wav_channels * sample_bytes_dst;
         size_t src_frames = conv_bytes / src_frame_bytes_conv;
         
-        /* Upmix mono→stereo if needed */
+        /* Upmix mono→stereo if needed (directly in stash buffer)
+         * CRITICAL: Now safe because we're writing to stash free region
+         * which has sufficient space (checked via stash_free_bytes above)
+         */
         size_t dst_frames = src_frames;
         if (s_pm.wav_channels == 1 && s_pm.out_cfg.channels == 2) {
             /* Mono→stereo: duplicate each sample L=R
@@ -405,7 +393,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
              */
             if (sample_bytes_dst == 2) {
                 /* 16-bit samples */
-                int16_t *samples = (int16_t *)src_block;
+                int16_t *samples = (int16_t *)stash_dst;
                 for (int i = (int)src_frames - 1; i >= 0; i--) {
                     int16_t sample = samples[i];
                     samples[i * 2] = sample;      /* Left */
@@ -413,7 +401,7 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
                 }
             } else {
                 /* 32-bit samples */
-                int32_t *samples = (int32_t *)src_block;
+                int32_t *samples = (int32_t *)stash_dst;
                 for (int i = (int)src_frames - 1; i >= 0; i--) {
                     int32_t sample = samples[i];
                     samples[i * 2] = sample;      /* Left */
@@ -424,13 +412,8 @@ static esp_err_t ensure_stash_frames(size_t min_frames_needed)
             dst_frames = src_frames;  /* Same number of frames, just doubled channels */
         }
         
-        /* Append converted frames to stash */
-        ret = pcm_stash_append_frames(&s_pm.stash, src_block, dst_frames);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "ensure_stash_frames: Failed to append %zu frames to stash", dst_frames);
-            audio_chunk_release_block(src_block);
-            return ret;
-        }
+        /* Update stash frame count (data already written directly to stash buffer) */
+        s_pm.stash.frames += dst_frames;
         
         /* Track source frames read (CODE_REVIEW5 Task 2.1) */
         s_src_frames_read += src_frames;

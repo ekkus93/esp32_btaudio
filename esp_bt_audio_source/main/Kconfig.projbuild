@@ -59,5 +59,26 @@ menu "A2DP Example Configuration"
                 at boot. When disabled, audio init is deferred until explicitly
                 requested via command or application logic.
                 Runtime setting stored in NVS takes precedence if configured.
+
+        config AUDIO_RB_CAPACITY_KB
+            int "Ring Buffer Capacity (KB)"
+            default 32
+            range 8 256
+            help
+                Audio ring buffer capacity in kilobytes.
+                Larger buffers provide more headroom against underruns but use more memory.
+                32KB = 167ms @ 48kHz stereo 16-bit (192KB/s)
+                128KB = 667ms buffer (requires PSRAM for this size)
+                Recommended: 32KB (DRAM) or 128KB (PSRAM)
+
+        config AUDIO_RB_USE_PSRAM
+            bool "Use PSRAM for Ring Buffer"
+            default n
+            depends on SPIRAM
+            help
+                When enabled, allocate ring buffer in PSRAM instead of DRAM.
+                Recommended for large buffers (>64KB) to conserve DRAM.
+                Requires PSRAM to be enabled and available.
+                Note: Ring buffer structure itself is always in DRAM (small overhead).
     endmenu
 endmenu

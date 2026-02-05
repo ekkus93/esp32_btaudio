@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "audio_processor.h"
 #include "audio_queue.h"
+#include "audio_ringbuffer.h"
 #include "beep_manager.h"
 #include "play_manager.h"
 #include "i2s_manager.h"
@@ -71,6 +72,10 @@ typedef struct {
 } i2s_probe_entry_t;
 
 /* Shared state (defined in audio_processor_state.c) */
+
+/* Ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1) */
+extern audio_rb_t *s_audio_ring;
+
 extern bool s_is_initialized;
 extern bool s_is_running;
 extern bool s_force_synth;

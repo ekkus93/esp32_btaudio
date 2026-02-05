@@ -497,8 +497,12 @@ void test_process_zero_input_should_produce_all_silence(void)
     
     // Must produce requested frames
     TEST_ASSERT_EQUAL_UINT(FRAMES_PER_BLOCK, out_produced);
-    // in_consumed is based on position advancement, not actual input
-    TEST_ASSERT_GREATER_THAN(0, in_consumed);
+    
+    // CODE_REVIEW6 P0-B: When input is zero, consumed should also be zero
+    // Previous behavior advanced position even with no input, which was part
+    // of the EOF over-consumption bug. Correct behavior: can't consume what
+    // doesn't exist.
+    TEST_ASSERT_EQUAL_UINT(0, in_consumed);
     
     // All output should be silence
     TEST_ASSERT_TRUE(is_silence_16(out_buf, FRAMES_PER_BLOCK, 2));

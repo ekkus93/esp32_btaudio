@@ -170,16 +170,28 @@ size_t audio_resampler_stream_process(audio_resampler_stream_t *rs,
         pos += rs->step_q16;
     }
 
-    // Update resampler position (carry fractional part to next call)
-    rs->pos_q16 = pos;
+    // Compute whole frames consumed from input (CODE_REVIEW6 P0-B: clamp to available)
+    // CRITICAL: When padding zeros at EOF (i0 >= in_frames), pos_q16 advances beyond
+    // available input. We MUST NOT report consuming more frames than provided, as this
+    // causes pcm_stash_consume_frames() to fail with ESP_ERR_INVALID_SIZE, stopping
+    // playback early.
+    //
+    // FIX: Clamp consumed frames to actual input available
+    uint32_t pos_int = Q16_INT(pos);
+    *in_frames_consumed = (pos_int < in_frames) ? pos_int : in_frames;
 
-    // Compute whole frames consumed from input
-    // This is the integer part of the final position
-    *in_frames_consumed = Q16_INT(pos);
-
-    // Reset position to fractional remainder for next call
-    // This preserves sub-frame accuracy across blocks
-    rs->pos_q16 = Q16_FRAC(pos);
+    // Reset position for next call (CODE_REVIEW6 P0-B: EOF-aware phase handling)
+    // When we've consumed all input (at EOF), reset phase to zero to prevent
+    // infinite zero-padding with ever-increasing position values.
+    // Otherwise, preserve fractional remainder for accurate inter-block resampling.
+    if (*in_frames_consumed >= in_frames) {
+        // At EOF: consumed all input, reset phase to avoid cumulative drift
+        rs->pos_q16 = 0;
+    } else {
+        // Mid-stream: preserve fractional part for next call
+        // This maintains sub-frame accuracy across blocks
+        rs->pos_q16 = Q16_FRAC(pos);
+    }
 
     return out_frames;  // Always produce exactly what was requested
 }

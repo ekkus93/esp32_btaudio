@@ -1,3 +1,357 @@
+## 2026-02-04 22:51 — CODE_REVIEW6 Phase 1: COMPLETE — Code Quality Validated
+
+**✅ PHASE 1 COMPLETE:** Ring buffer integration validated with clang-tidy (1267 files, 0 warnings in our code)
+
+---
+
+### Lint Validation Results
+
+**Tool:** run_clang_tidy_xtensa.sh (esp-clang 19.1.2, ESP-IDF 5.5.1)  
+**Scope:** 1267 files analyzed  
+**Result:** **ZERO warnings/errors** in ring buffer integration
+
+**Files validated:**
+- ✅ `audio_ringbuffer.c` — No warnings
+- ✅ `audio_processor_state.c` — No warnings  
+- ✅ `audio_processor.c` — No warnings
+
+**Pre-existing issues:** Some ESP-IDF framework files have `memset`/`memcpy` security warnings (not our code)
+
+**Database update:** Reconfigured build_clang_tidy to include new files (verified 2 entries for audio_ringbuffer.c)
+
+---
+
+## 2026-02-04 22:33 — CODE_REVIEW6 Phase 1, Task 1.3: COMPLETE — Ring Buffer Integration
+
+**🔌 RING BUFFER INTEGRATED:** Successfully integrated into audio_processor, parallel operation with queue
+
+---
+
+### Integration Summary
+
+Ring buffer now initialized and available in audio_processor module:
+- **Static variable:** `audio_rb_t *s_audio_ring` (declared in audio_processor_state.c)
+- **Extern declaration:** audio_processor_internal.h (visible to all audio components)
+- **Lifecycle:** Init in `audio_processor_init()`, cleanup in `audio_processor_deinit()`
+- **Configuration:** Kconfig options for capacity and PSRAM usage
+
+---
+
+### Files Modified
+
+**Kconfig configuration (main/Kconfig.projbuild):**
+- Added `CONFIG_AUDIO_RB_CAPACITY_KB` (default 32KB, range 8-256KB)
+- Added `CONFIG_AUDIO_RB_USE_PSRAM` (default disabled, requires SPIRAM)
+- Settings under "Audio Configuration Defaults" menu
+
+**State management (audio_processor_state.c):**
+- Added `audio_rb_t *s_audio_ring = NULL` with WHY/HOW/CORRECTNESS comment
+- Included audio_ringbuffer.h header
+
+**Header (audio_processor_internal.h):**
+- Added `extern audio_rb_t *s_audio_ring` declaration
+- Added audio_ringbuffer.h include (after audio_queue.h)
+
+**Initialization (audio_processor.c):**
+- Ring buffer init after beep_manager_init() in `audio_processor_init()`
+- Reads CONFIG_AUDIO_RB_CAPACITY_KB and CONFIG_AUDIO_RB_USE_PSRAM from Kconfig
+- Fallback: 32KB DRAM if config not defined
+- Error handling: cleanup on failure, propagate ESP_ERR_NO_MEM
+- Logging: added ring_buf capacity to init success message
+
+**Cleanup (audio_processor.c):**
+- Ring buffer deinit before pool cleanup in `audio_processor_deinit()`
+- NULL-safe cleanup (checks `if (s_audio_ring != NULL)`)
+- Sets `s_audio_ring = NULL` after deinit
+
+---
+
+### Configuration Options
+
+**Ring buffer capacity (CONFIG_AUDIO_RB_CAPACITY_KB):**
+- **Default:** 32KB (167ms @ 48kHz stereo 16-bit = 192KB/s)
+- **Range:** 8-256KB
+- **Recommendations:**
+  - 32KB: Good for DRAM (167ms buffer)
+  - 128KB: Better for PSRAM (667ms buffer, more headroom)
+  - Larger buffers: more protection against underruns, more memory usage
+
+**PSRAM usage (CONFIG_AUDIO_RB_USE_PSRAM):**
+- **Default:** Disabled (allocate in DRAM)
+- **Depends on:** SPIRAM enabled in system config
+- **When enabled:** Ring buffer data in PSRAM, structure always in DRAM
+- **Recommendation:** Enable for buffers >64KB to conserve DRAM
+
+---
+
+### Parallel Operation Strategy
+
+**Current state: Ring buffer + queue coexist**
+- Ring buffer initialized but **not yet used** for audio flow
+- Old queue-based path still active (WAV, I2S, beep all use queue)
+- Ring buffer available for audio engine task (Phase 2)
+
+**Why parallel operation:**
+- Safe rollback: can disable ring buffer without breaking audio
+- Gradual migration: switch sources one at a time
+- Testing flexibility: compare queue vs ring buffer performance
+- Phase 2+ will connect audio engine task to ring buffer
+
+---
+
+### Validation Results
+
+**ESP-IDF build:**
+```
+Building C object esp-idf/audio_processor/.../audio_processor_state.c.obj [SUCCESS]
+Building C object esp-idf/audio_processor/.../audio_processor.c.obj [SUCCESS]
+```
+
+**Host tests (ring buffer):**
+```
+17 Tests 0 Failures 0 Ignored
+OK
+```
+
+**No regressions:**
+- All audio_processor files compile cleanly
+- Ring buffer tests still pass
+- Kconfig integration successful
+
+---
+
+### Next Steps
+
+**Phase 2: Audio Engine Task**
+- Create audio_engine_task() skeleton
+- Implement source selection logic (WAV → I2S → synth → silence)
+- Connect produce_audio_chunk() to ring buffer
+- Add watermark management (high/low thresholds)
+
+**Phase 3: Source Refactoring**
+- Refactor WAV to wav_source_fill()
+- Refactor I2S to i2s_source_fill()
+- Refactor beep to beep_overlay_fill()
+- Refactor synth to synth_source_fill()
+- Switch audio_processor_read() to ring buffer
+
+---
+
+### Status
+
+✅ Phase 1 Task 1.1: Ring buffer module implemented
+✅ Phase 1 Task 1.2: Unit tests complete
+✅ Phase 1 Task 1.3: Integration into audio_processor (THIS UPDATE)
+⏳ Phase 2: Audio Engine Task (NEXT)
+
+**Phase 1 COMPLETE:** Ring buffer foundation ready for audio engine!
+
+---
+
+## 2026-02-04 22:28 — CODE_REVIEW6 Phase 1, Task 1.2: COMPLETE — Ring Buffer Unit Tests
+
+**🧪 RING BUFFER FULLY TESTED:** 17/17 unit tests passing, module ready for integration
+
+---
+
+### Test Coverage Summary
+
+Created comprehensive host test suite for SPSC ring buffer module:
+- **Test file:** test/host_test/test_audio_ringbuffer.c
+- **Total tests:** 17 (11 functional + 6 parameter validation)
+- **Result:** All tests passing, no memory leaks, clean compilation
+
+---
+
+### Test Categories
+
+**Basic Operations (5 tests):**
+- `test_rb_init_and_capacity` — allocation, capacity reporting
+- `test_rb_write_and_read_simple` — basic write→read roundtrip, data integrity
+- `test_rb_wrap_around` — split writes/reads across buffer boundary
+- `test_rb_available_counts_correct` — query functions accuracy
+- `test_rb_peak_tracking` — high-water mark tracking, reset behavior
+
+**Edge Cases (4 tests):**
+- `test_rb_write_when_full_returns_zero` — graceful full buffer handling
+- `test_rb_read_when_empty_returns_zero` — graceful empty buffer handling
+- `test_rb_partial_write_when_insufficient_space` — partial write behavior
+- `test_rb_partial_read_when_insufficient_data` — partial read behavior
+
+**Stress Tests (2 tests):**
+- `test_rb_alternating_write_read_many_times` — sustained operation (100 iterations)
+- `test_rb_split_writes_across_wrap` — complex wrap-around scenarios
+
+**Parameter Validation (6 tests):**
+- `test_rb_init_rejects_null_pointer` — NULL rb pointer check
+- `test_rb_init_rejects_zero_capacity` — zero capacity check
+- `test_rb_write_handles_null_rb` — NULL-safe write operation
+- `test_rb_read_handles_null_rb` — NULL-safe read operation
+- `test_rb_queries_handle_null_rb` — NULL-safe query functions
+- `test_rb_deinit_handles_null_safely` — NULL-safe cleanup
+
+---
+
+### Build Integration
+
+**Host test build:**
+- Added test_audio_ringbuffer target to test/host_test/CMakeLists.txt
+- Links: unity, util_safe_host, production audio_ringbuffer.c
+- Dependencies: fake_log, fake_esp_err, esp_heap_caps_mock
+- Critical sections: portENTER/EXIT_CRITICAL macros stubbed (no-op)
+
+**ESP-IDF device build:**
+- audio_ringbuffer.c compiles cleanly with production FreeRTOS
+- Conditional includes: portmacro.h (device) vs semphr.h (host tests)
+- UNIT_TEST flag controls include paths
+
+---
+
+### Bug Fixes During Testing
+
+**Issue:** Stack smashing detected in test_rb_peak_tracking
+- **Root cause:** Test bug — reading 150 bytes into 100-byte buffer
+- **Fix:** Increased buffer to 200 bytes (large enough for all test operations)
+- **Lesson:** Ring buffer implementation is correct; test had buffer overflow
+
+**Issue:** Compilation errors in host build
+- **Missing stdint.h:** audio_ringbuffer.h used uint8_t without include
+- **Missing portENTER_CRITICAL:** portmacro.h not available in host tests
+- **Fix:** Added stdint.h to header, conditional semphr.h include for UNIT_TEST
+
+---
+
+### Validation Results
+
+**Host tests:**
+```
+17 Tests 0 Failures 0 Ignored
+OK
+```
+
+**ESP-IDF build:**
+```
+Building C object esp-idf/audio_processor/.../audio_ringbuffer.c.obj
+[SUCCESS]
+```
+
+---
+
+### Status
+
+✅ Phase 1 Task 1.1: Ring buffer module implemented
+✅ Phase 1 Task 1.2: Unit tests complete (THIS UPDATE)
+⏳ Phase 1 Task 1.3: Integration into audio_processor (NEXT)
+
+Ring buffer module is production-ready and fully tested. Ready for integration.
+
+---
+
+## 2026-02-04 22:05 — CODE_REVIEW6 Phase 0: COMPLETE — Critical Bug Fixes
+
+**🎯 ALL CRITICAL BUGS FIXED:** Phase 0 complete, 469/469 tests passing (271 host + 198 device)
+
+---
+
+### Background
+
+After completing CODE_REVIEW5 (streaming resampler), ChatGPT (o1/o3) performed CODE_REVIEW6
+and identified **3 critical bugs** (P0-A, P0-B, P0-C) that would cause heap corruption,
+playback truncation, and massive audio loss. Also proposed architecture migration to
+ring buffer + audio engine task (Phases 1-6), but Phase 0 bugs can ship immediately.
+
+---
+
+### Critical Bugs Fixed (Phase 0)
+
+**P0-A: Mono→Stereo Buffer Overflow (play_manager.c)**
+- **Root cause:** `ensure_stash_frames()` converts bit depth in-place to src_block (1KB),
+  then upmixes mono→stereo in-place (needs 2KB). Buffer overflow on stereo upmix.
+- **Impact:** Heap corruption, crashes, audio artifacts when playing mono WAV files
+- **Solution:** Convert+upmix directly into stash free region instead of src_block
+  - Eliminated intermediate copy (pcm_stash_append_frames removed)
+  - Data written directly to `stash->buf + stash->frames * frame_bytes`
+  - No buffer overflow possible (stash has guaranteed capacity)
+- **Files:** play_manager.c (ensure_stash_frames, removed pcm_stash_append_frames)
+
+**P0-B: EOF Over-consumption (audio_resampler_stream.c)**
+- **Root cause:** When padding zeros at EOF (i0 >= in_frames), pos_q16 advances beyond
+  available input. `*in_frames_consumed = Q16_INT(pos)` exceeds `in_frames`, causing
+  `pcm_stash_consume_frames()` to fail with ESP_ERR_INVALID_SIZE and stop playback early.
+- **Impact:** WAV playback ends prematurely, last resampled output block never plays
+- **Solution:** Clamp consumption to available input, reset phase at EOF
+  - `*in_frames_consumed = min(Q16_INT(pos), in_frames)`
+  - Reset `pos_q16 = 0` when all input consumed (prevents infinite drift)
+  - Preserve fractional part mid-stream for inter-block accuracy
+- **Files:** audio_resampler_stream.c (audio_resampler_stream_process)
+- **Test fix:** test_audio_resampler_stream.c (zero-input test now expects 0 consumed)
+
+**P0-C: I2S Truncation (i2s_manager.c)**
+- **Root cause:** I2S task reads up to 8KB (AUDIO_WORK_BUFFER_BYTES) but
+  `audio_chunk_enqueue_bytes()` only enqueues first 1KB (AUDIO_CHUNK_BLOCK_BYTES).
+  7KB discarded on every I2S read = 87.5% audio loss.
+- **Impact:** I2S capture nearly unusable, massive data loss
+- **Solution:** Limit I2S reads to match enqueue capacity (1KB)
+  - Quick fix (Option A from CODE_REVIEW6): clamp read to AUDIO_CHUNK_BLOCK_BYTES
+  - Alternative (Option B): multi-block enqueue — deferred to Phase 1+ (ring buffer)
+- **Files:** i2s_manager.c (i2s_manager_task)
+
+---
+
+### Validation & Testing
+
+**Test Results:**
+- Host tests: 271/271 passed (0 failures)
+- Device tests: 198/198 passed (0 failures)
+- **Total: 469/469 tests passing**
+
+**Test Changes:**
+- Fixed `test_process_zero_input_should_produce_all_silence` expectation
+  - Old behavior: reported consuming frames even with zero input (bug)
+  - New behavior: reports 0 consumed when input is 0 (correct)
+  - Rationale: Can't consume what doesn't exist; EOF fix prevents false consumption
+
+**No Regressions:**
+- All CODE_REVIEW5 tests still pass (streaming resampler, instrumentation)
+- No behavioral changes to working code paths
+- Only edge-case bugs fixed (mono→stereo, EOF, I2S truncation)
+
+---
+
+### Files Modified
+
+1. **play_manager.c** (P0-A fix)
+   - `ensure_stash_frames()`: Direct-to-stash conversion+upmix
+   - Removed `pcm_stash_append_frames()` (no longer needed)
+   - Added CODE_REVIEW6 comments explaining fix
+
+2. **audio_resampler_stream.c** (P0-B fix)
+   - `audio_resampler_stream_process()`: Clamp consumption, reset phase at EOF
+   - Added CODE_REVIEW6 comments explaining EOF-aware handling
+
+3. **i2s_manager.c** (P0-C fix)
+   - `i2s_manager_task()`: Limit I2S reads to 1KB (match enqueue capacity)
+   - Added CODE_REVIEW6 comments explaining truncation fix
+
+4. **test_audio_resampler_stream.c** (test fix)
+   - Updated zero-input test to expect 0 consumed (matches correct behavior)
+
+---
+
+### Next Steps (Phases 1-6 from CODE_REVIEW6_TODO.md)
+
+Phase 0 bugs are **ship-able immediately** (independent of architecture migration).
+Larger ring buffer + audio engine refactor (Phases 1-6) proceeds in parallel:
+
+- **Phase 1:** Ring Buffer Implementation (SPSC, 32-128KB DRAM/PSRAM)
+- **Phase 2:** Audio Engine Task (single consumer, source fill() APIs)
+- **Phase 3:** Source Module Refactoring (WAV/I2S/beep/synth)
+- **Phase 4:** Metadata & Debugging (span log, not position-coupled)
+- **Phase 5:** Testing & Validation
+- **Phase 6:** Cleanup & Documentation
+
+---
+
 ## 2026-02-03 08:00 — CODE_REVIEW5: COMPLETE — WAV Resampler & Instrumentation Fixes
 
 **🎯 PROJECT COMPLETE:** All phases finished, all tests passing, all documentation updated.

@@ -185,8 +185,30 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         return ret;
     }
 
+    /* Initialize ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1, Task 1.3)
+     * Capacity and PSRAM usage configurable via Kconfig.
+     * Ring buffer coexists with old queue during migration (parallel operation). */
+#ifdef CONFIG_AUDIO_RB_CAPACITY_KB
+    size_t rb_capacity = CONFIG_AUDIO_RB_CAPACITY_KB * 1024;
+#else
+    size_t rb_capacity = 32 * 1024;  /* Fallback: 32KB default */
+#endif
+#ifdef CONFIG_AUDIO_RB_USE_PSRAM
+    bool use_psram = true;
+#else
+    bool use_psram = false;
+#endif
+    ret = audio_rb_init(&s_audio_ring, rb_capacity, use_psram);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "audio_processor_init: ring buffer init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
+        beep_manager_deinit();
+        i2s_manager_deinit();
+        play_manager_deinit();
+        return ret;
+    }
+
     s_is_initialized = true;
-    ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no");  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s ring_buf=%zu", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no", rb_capacity);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 
@@ -257,6 +279,13 @@ esp_err_t audio_processor_deinit(void)
     beep_manager_deinit();
     i2s_manager_deinit();
     play_manager_deinit();
+
+    /* Cleanup ring buffer (CODE_REVIEW6 Phase 1, Task 1.3) */
+    if (s_audio_ring != NULL) {
+        audio_rb_deinit(s_audio_ring);
+        s_audio_ring = NULL;
+    }
+
     audio_chunk_pool_deinit();
     synth_manager_reset_state();
 

@@ -207,6 +207,21 @@ target_compile_definitions(test_audio_queue_host PRIVATE UNIT_TEST)
 target_link_libraries(test_audio_queue_host unity util_safe_host)
 add_test(NAME test_audio_queue_host COMMAND $<TARGET_FILE:test_audio_queue_host>)
 
+# Host coverage for audio ring buffer (SPSC for audio engine architecture)
+add_executable(test_audio_ringbuffer
+    test_audio_ringbuffer.c
+    ../../components/audio_processor/audio_ringbuffer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_audio_ringbuffer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_audio_ringbuffer PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_ringbuffer unity util_safe_host)
+add_test(NAME test_audio_ringbuffer COMMAND $<TARGET_FILE:test_audio_ringbuffer>)
+
 # Host coverage for play_manager enqueue path (ensures WAVs use queue-owned blocks)
 add_executable(test_play_manager_host
     test_play_manager_host.c
