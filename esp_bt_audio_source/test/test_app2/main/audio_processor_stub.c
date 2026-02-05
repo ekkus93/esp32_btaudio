@@ -57,7 +57,7 @@ static audio_stub_state_t s_audio_stub = {
     .diag_enabled = false,
 };
 
-esp_err_t audio_processor_get_status(audio_status_t *status)
+esp_err_t __attribute__((weak)) audio_processor_get_status(audio_status_t *status)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     if (!status) {
@@ -67,7 +67,7 @@ esp_err_t audio_processor_get_status(audio_status_t *status)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_set_mute(bool mute)
+esp_err_t __attribute__((weak)) audio_processor_set_mute(bool mute)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.status.mute = mute;
@@ -75,7 +75,7 @@ esp_err_t audio_processor_set_mute(bool mute)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_set_volume(uint8_t volume)
+esp_err_t __attribute__((weak)) audio_processor_set_volume(uint8_t volume)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     if (volume > 100) {
@@ -86,7 +86,7 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
+esp_err_t __attribute__((weak)) audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     (void)buffer;
@@ -97,7 +97,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
+esp_err_t __attribute__((weak)) audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wait_ticks)
 {
     (void)wait_ticks;
     AUDIO_PROC_STUB2_LOG_ONCE();
@@ -116,7 +116,7 @@ esp_err_t audio_processor_acquire_chunk(audio_chunk_t *out_chunk, TickType_t wai
     return ESP_OK;
 }
 
-esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk)
+esp_err_t __attribute__((weak)) audio_processor_release_chunk(const audio_chunk_t *chunk)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     if (chunk == NULL) {
@@ -128,7 +128,7 @@ esp_err_t audio_processor_release_chunk(const audio_chunk_t *chunk)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
+esp_err_t __attribute__((weak)) audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.config.i2s_bclk_pin = bclk_pin;
@@ -138,7 +138,7 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
     return ESP_OK;
 }
 
-esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
+esp_err_t __attribute__((weak)) audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.config.sample_rate = sample_rate;
@@ -150,7 +150,7 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
 // invokes higher-level audio_processor helpers that are not needed in
 // the unit-test firmware.
 
-esp_err_t audio_processor_play_wav(const char *path)
+esp_err_t __attribute__((weak)) audio_processor_play_wav(const char *path)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     (void)path;
@@ -162,99 +162,99 @@ esp_err_t audio_processor_play_wav(const char *path)
  * so provide the exact signature expected by production code. The test harness
  * doesn't need a return code here.
  */
-void audio_processor_enable_next_beep_diag(void)
+void __attribute__((weak)) audio_processor_enable_next_beep_diag(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.diag_enabled = true;
 }
 
-void audio_processor_set_diag_enabled(bool enable)
+void __attribute__((weak)) audio_processor_set_diag_enabled(bool enable)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.diag_enabled = enable;
 }
 
-bool audio_processor_is_diag_enabled(void)
+bool __attribute__((weak)) audio_processor_is_diag_enabled(void)
 {
     return s_audio_stub.diag_enabled;
 }
 
-bool audio_processor_is_synth_mode_enabled(void)
+bool __attribute__((weak)) audio_processor_is_synth_mode_enabled(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;
 }
 
-esp_err_t audio_processor_emit_sync_worker_diag(void)
+esp_err_t __attribute__((weak)) audio_processor_emit_sync_worker_diag(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
-esp_err_t audio_processor_drain_audio_queue(void)
+esp_err_t __attribute__((weak)) audio_processor_drain_audio_queue(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
 /* Public header: `void audio_processor_set_dram_only(bool enable)` */
-void audio_processor_set_dram_only(bool dram_only)
+void __attribute__((weak)) audio_processor_set_dram_only(bool dram_only)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     (void)dram_only;
 }
 
 /* Diagnostic/probe stubs required by command interface */
-esp_err_t audio_processor_emit_diag_summary(void)
+esp_err_t __attribute__((weak)) audio_processor_emit_diag_summary(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
-void audio_processor_arm_probe(size_t n_entries)
+void __attribute__((weak)) audio_processor_arm_probe(size_t n_entries)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     (void)n_entries;
 }
 
-esp_err_t audio_processor_emit_probe(void)
+esp_err_t __attribute__((weak)) audio_processor_emit_probe(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return ESP_OK;
 }
 
-bool audio_processor_is_running(void)
+bool __attribute__((weak)) audio_processor_is_running(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return s_audio_stub.status.running;
 }
 
-__attribute__((used)) bool audio_processor_is_i2s_active(void)
+__attribute__((used, weak)) bool audio_processor_is_i2s_active(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;
 }
 
-__attribute__((used)) bool audio_processor_is_beep_active(void)
+__attribute__((used, weak)) bool audio_processor_is_beep_active(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;
 }
 
-__attribute__((used)) bool audio_processor_is_wav_active(void)
+__attribute__((used, weak)) bool audio_processor_is_wav_active(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;
 }
 
-esp_err_t audio_processor_start(void)
+esp_err_t __attribute__((weak)) audio_processor_start(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.status.running = true;
     return ESP_OK;
 }
 
-esp_err_t audio_processor_stop(void)
+esp_err_t __attribute__((weak)) audio_processor_stop(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     s_audio_stub.status.running = false;

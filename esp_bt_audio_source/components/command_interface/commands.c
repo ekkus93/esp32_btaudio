@@ -145,6 +145,9 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     if (strcasecmp(token, "SCAN") == 0) {
         ctx->type = CMD_TYPE_SCAN;
     }
+    else if (strcasecmp(token, "AUDIO_STATUS") == 0) {
+        ctx->type = CMD_TYPE_AUDIO_STATUS;
+    }
     else if (strcasecmp(token, "CONNECT") == 0) {
         ctx->type = CMD_TYPE_CONNECT;
     }
@@ -366,6 +369,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_status(ctx);
     case CMD_TYPE_WAV_STATUS:
         return cmd_handle_wav_status(ctx);
+    case CMD_TYPE_AUDIO_STATUS:
+        return cmd_handle_audio_status(ctx);
     case CMD_TYPE_MEM:
         return cmd_handle_mem(ctx);
     case CMD_TYPE_VERSION:

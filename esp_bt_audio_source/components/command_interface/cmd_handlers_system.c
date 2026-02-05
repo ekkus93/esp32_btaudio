@@ -47,6 +47,7 @@ static const struct
     {"SYNTH", "ON|OFF", "Force synthetic audio source on/off (diagnostic)"},
     {"BEEP", NULL, "Play 10s middle-C tone when connected"},
     {"DIAG", NULL, "Report connection/stream/I2S/beep state"},
+    {"AUDIO_STATUS", NULL, "Report audio engine stats and ring buffer state"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
     {"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"},
@@ -218,6 +219,90 @@ cmd_status_t cmd_handle_mem(const cmd_context_t *ctx)
     cmd_send_response("OK", "MEM", "STATS", data);
 #else
     cmd_send_response("OK", "MEM", "MOCK", "DRAM=0,INTERNAL=0,8BIT=0,PSRAM=0");
+#endif
+    return CMD_SUCCESS;
+}
+
+cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
+{
+    (void)ctx;
+#ifdef ESP_PLATFORM
+    audio_stats_t stats = {0};
+    esp_err_t err = audio_processor_get_stats(&stats);
+    if (err != ESP_OK) {
+        cmd_send_response("ERR", "AUDIO_STATUS", "FAILED", esp_err_to_name(err));
+        return CMD_SUCCESS;
+    }
+    
+    /* Query ring buffer state */
+    extern audio_rb_t *s_audio_ring;  /* From audio_processor_internal.h */
+    size_t ring_cap = 0;
+    size_t ring_used = 0;
+    size_t ring_free = 0;
+    if (s_audio_ring != NULL) {
+        ring_cap = audio_rb_capacity(s_audio_ring);
+        ring_free = audio_rb_available_to_write(s_audio_ring);
+        ring_used = ring_cap - ring_free;
+    }
+    
+    /* Determine current source from stats (source with most recent bytes)
+     * This is heuristic - actual source is only known in audio_engine_task */
+    const char *source_name = "UNKNOWN";
+    uint64_t max_bytes = 0;
+    if (stats.bytes_by_source[0] > max_bytes) {  /* WAV */
+        max_bytes = stats.bytes_by_source[0];
+        source_name = "WAV";
+    }
+    if (stats.bytes_by_source[1] > max_bytes) {  /* I2S */
+        max_bytes = stats.bytes_by_source[1];
+        source_name = "I2S";
+    }
+    if (stats.bytes_by_source[2] > max_bytes) {  /* SYNTH */
+        max_bytes = stats.bytes_by_source[2];
+        source_name = "SYNTH";
+    }
+    if (stats.bytes_by_source[3] > max_bytes) {  /* SILENCE */
+        source_name = "SILENCE";
+    }
+    
+    /* Check if beep is currently active */
+    const char *beep_state = audio_processor_is_beep_active() ? "yes" : "no";
+    
+    /* Format response: CODE_REVIEW6 Phase 4, Task 4.3
+     * RING_CAP, RING_USED, RING_FREE, RING_PEAK: Ring buffer metrics
+     * SOURCE: Current/dominant audio source
+     * BEEP: Beep overlay active
+     * UNDERRUNS, UNDERRUN_BYTES: Consumer starvation stats
+     * WAV_BYTES, I2S_BYTES, SYNTH_BYTES, SILENCE_BYTES: Per-source totals
+     * SOURCE_SWITCHES: Source change count
+     * BEEP_OVERLAYS: Beep mix count
+     * ENGINE_WRITES, ENGINE_BYTES: Producer write stats
+     * ENGINE_PAUSES: Watermark pause count */
+    char data[512];
+    snprintf(data, sizeof(data),
+             "RING_CAP=%zu,RING_USED=%zu,RING_FREE=%zu,RING_PEAK=%zu,"
+             "SOURCE=%s,BEEP=%s,"
+             "UNDERRUNS=%lu,UNDERRUN_BYTES=%llu,"
+             "WAV_BYTES=%llu,I2S_BYTES=%llu,SYNTH_BYTES=%llu,SILENCE_BYTES=%llu,"
+             "SOURCE_SWITCHES=%lu,BEEP_OVERLAYS=%lu,BEEP_BYTES=%llu,"
+             "ENGINE_WRITES=%lu,ENGINE_BYTES=%llu,ENGINE_PAUSES=%lu",
+             ring_cap, ring_used, ring_free, stats.ring_peak_used,
+             source_name, beep_state,
+             (unsigned long)stats.buffer_underruns, (unsigned long long)stats.underrun_bytes,
+             (unsigned long long)stats.bytes_by_source[0],
+             (unsigned long long)stats.bytes_by_source[1],
+             (unsigned long long)stats.bytes_by_source[2],
+             (unsigned long long)stats.bytes_by_source[3],
+             (unsigned long)stats.source_switch_count,
+             (unsigned long)stats.beep_overlay_count,
+             (unsigned long long)stats.beep_overlay_bytes,
+             (unsigned long)stats.engine_write_calls,
+             (unsigned long long)stats.engine_write_bytes,
+             (unsigned long)stats.engine_pause_count);
+    
+    cmd_send_response("OK", "AUDIO_STATUS", "CURRENT", data);
+#else
+    cmd_send_response("OK", "AUDIO_STATUS", "MOCK", "RING_CAP=0,RING_USED=0,SOURCE=MOCK,BEEP=no");
 #endif
     return CMD_SUCCESS;
 }

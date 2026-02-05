@@ -108,6 +108,7 @@ static audio_source_t get_active_source(void)
 /**
  * Produce audio chunk from active source with optional beep overlay (Phase 2, Task 2.3)
  * Returns bytes written to dst (may be less than dst_bytes at EOF or underrun)
+ * Updates per-source stats (Phase 4, Task 4.2)
  */
 static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
 {
@@ -116,6 +117,14 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     }
     
     audio_source_t base = get_active_source();
+    
+    /* Track source switches (Phase 4.2) */
+    static audio_source_t s_last_source = AUDIO_SOURCE_SILENCE;
+    if (base != s_last_source) {
+        s_audio_stats.source_switch_count++;
+        s_last_source = base;
+    }
+    
     size_t produced = 0;
     
     /* Produce base audio from active source
@@ -142,12 +151,22 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
             break;
     }
     
+    /* Track per-source bytes (Phase 4.2) */
+    if (produced > 0 && base < NUM_AUDIO_SOURCES) {
+        s_audio_stats.bytes_by_source[base] += produced;
+    }
+    
     /* Mix beep overlay if active (CODE_REVIEW6 Phase 3.3)
      * WHY: Beep must mix over any base source (WAV, I2S, Synth, Silence)
      * HOW: beep_overlay_fill() modifies buffer in-place with clamped mixing
      * CORRECTNESS: beep_overlay_is_active() thread-safe check before mixing */
-    if (beep_overlay_is_active() && produced > 0) {
+    bool beep_active = beep_overlay_is_active();
+    if (beep_active && produced > 0) {
         beep_overlay_fill(dst, produced, &s_audio_config);
+        
+        /* Track beep overlay stats (Phase 4.2) */
+        s_audio_stats.beep_overlay_count++;
+        s_audio_stats.beep_overlay_bytes += produced;
     }
     
     return produced;
@@ -156,6 +175,7 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
 /**
  * Audio engine task main loop (Phase 2, Tasks 2.1 + 2.4)
  * Produces audio chunks into ring buffer, respecting watermarks
+ * Tracks stats (Phase 4, Task 4.2)
  */
 static void audio_engine_task(void *arg)
 {
@@ -181,8 +201,18 @@ static void audio_engine_task(void *arg)
         size_t free = audio_rb_available_to_write(s_audio_ring);
         size_t used = capacity - free;
         
+        /* Track peak ring buffer usage (Phase 4.2) */
+        if (used > s_audio_stats.ring_peak_used) {
+            s_audio_stats.ring_peak_used = used;
+        }
+        
+        /* Watermark logic with pause tracking */
+        bool was_paused = s_audio_engine_paused;
         if (used >= AUDIO_RB_HIGH_WATERMARK) {
             s_audio_engine_paused = true;
+            if (!was_paused) {
+                s_audio_stats.engine_pause_count++;  /* Count transitions to paused */
+            }
         }
         if (used <= AUDIO_RB_LOW_WATERMARK) {
             s_audio_engine_paused = false;
@@ -194,6 +224,11 @@ static void audio_engine_task(void *arg)
             
             if (produced > 0) {
                 size_t written = audio_rb_write(s_audio_ring, chunk_buf, produced);
+                
+                /* Track write stats (Phase 4.2) */
+                s_audio_stats.engine_write_calls++;
+                s_audio_stats.engine_write_bytes += written;
+                
                 if (written < produced) {
                     /* Ring filled between check and write (rare but possible) */
                     ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu", written, produced);

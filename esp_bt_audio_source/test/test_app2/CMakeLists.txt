@@ -9,6 +9,9 @@ set(EXTRA_COMPONENT_DIRS
     "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )
 
+# Exclude the real audio_processor component to avoid conflicts with stubs
+set(EXCLUDE_COMPONENTS audio_processor)
+
 # Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

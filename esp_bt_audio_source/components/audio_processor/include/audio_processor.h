@@ -75,6 +75,16 @@ typedef struct {
     float cpu_load;               // Percentage 0-1
     uint32_t current_buffer_level;
     uint32_t peak_buffer_level;
+    
+    /* Audio engine stats (CODE_REVIEW6 Phase 4, Task 4.2) */
+    uint64_t bytes_by_source[4];  // Per-source byte counts: [WAV, I2S, SYNTH, SILENCE]
+    uint32_t source_switch_count; // Number of times active source changed
+    uint32_t beep_overlay_count;  // Number of times beep was overlaid
+    uint64_t beep_overlay_bytes;  // Total bytes mixed with beep
+    size_t   ring_peak_used;      // Peak ring buffer occupancy (bytes)
+    uint32_t engine_write_calls;  // Number of audio_rb_write() calls
+    uint64_t engine_write_bytes;  // Total bytes written to ring buffer
+    uint32_t engine_pause_count;  // Times engine paused due to watermark
 } audio_stats_t;
 
 /** 
