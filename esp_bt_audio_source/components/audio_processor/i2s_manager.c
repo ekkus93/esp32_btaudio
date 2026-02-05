@@ -183,6 +183,101 @@ static esp_err_t process_frame(const uint8_t *data,
 	return ESP_OK;
 }
 
+/**
+ * I2S source fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.2)
+ * 
+ * WHY: Ring buffer architecture needs direct buffer fills instead of queue enqueue.
+ *      Eliminates I2S truncation issue by writing exactly what was captured.
+ * 
+ * HOW: Reads from I2S DMA, converts/resamples, writes directly to caller's buffer.
+ *      Handles format conversion same as process_frame() but without enqueue.
+ * 
+ * CORRECTNESS: Never blocks (quick return if no data), handles conversion errors,
+ *              returns 0 if not running/initialized (caller fills silence).
+ */
+size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
+{
+	if (dst == NULL || dst_bytes == 0) {
+		return 0;
+	}
+	
+	if (!s_mgr.initialized || !s_mgr.running) {
+		return 0;  /* Not running - return silence */
+	}
+	
+	if (s_mgr.bufs.proc_buf == NULL || s_mgr.bufs.proc_buf2 == NULL) {
+		return 0;
+	}
+	
+#ifdef ESP_PLATFORM
+	if (s_mgr.i2s_rx == NULL || s_mgr.bufs.raw_buf == NULL || s_mgr.bufs.raw_buf_bytes == 0) {
+		return 0;  /* I2S not configured */
+	}
+	
+	/* Limit read size to AUDIO_CHUNK_BLOCK_BYTES (same as task loop) */
+	size_t read_bytes_limit = (s_mgr.bufs.raw_buf_bytes > AUDIO_CHUNK_BLOCK_BYTES)
+	                          ? AUDIO_CHUNK_BLOCK_BYTES
+	                          : s_mgr.bufs.raw_buf_bytes;
+	
+	/* Read from I2S DMA with short timeout (audio engine context) */
+	size_t read_bytes = 0;
+	const uint32_t read_timeout_ms = 2;  /* Quick timeout for audio engine */
+	esp_err_t ret = i2s_channel_read(s_mgr.i2s_rx,
+	                                  s_mgr.bufs.raw_buf,
+	                                  read_bytes_limit,
+	                                  &read_bytes,
+	                                  read_timeout_ms);
+	
+	if (ret != ESP_OK || read_bytes == 0) {
+		return 0;  /* No data available or timeout */
+	}
+	
+	/* Convert bit depth (I2S format → output format) */
+	size_t conv_size = 0;
+	audio_convert_args_t conv_args = {
+		.src = s_mgr.bufs.raw_buf,
+		.dst = s_mgr.bufs.proc_buf,
+		.src_size = read_bytes,
+		.src_bit_depth = s_mgr.cfg.bit_depth,
+		.dst_bit_depth = s_mgr.cfg.bit_depth,
+		.dst_size = &conv_size,
+		.work_bytes = s_mgr.bufs.work_bytes,
+	};
+	ret = convert_audio_format(&conv_args);
+	if (ret != ESP_OK) {
+		return 0;  /* Conversion error */
+	}
+	
+	/* Resample (I2S rate → output rate) */
+	size_t res_size = 0;
+	audio_resample_args_t res_args = {
+		.src = s_mgr.bufs.proc_buf,
+		.dst = s_mgr.bufs.proc_buf2,
+		.src_size = conv_size,
+		.src_rate = s_mgr.cfg.sample_rate,
+		.dst_rate = s_mgr.cfg.sample_rate,
+		.bit_depth = s_mgr.cfg.bit_depth,
+		.channels = s_mgr.cfg.channels,
+		.dst_size = &res_size,
+		.work_bytes = s_mgr.bufs.work_bytes,
+	};
+	ret = resample_audio(&res_args);
+	if (ret != ESP_OK || res_size == 0) {
+		return 0;  /* Resample error or no output */
+	}
+	
+	/* Copy to destination buffer (up to dst_bytes) */
+	size_t copy_bytes = (res_size < dst_bytes) ? res_size : dst_bytes;
+	util_safe_memcpy(dst, dst_bytes, s_mgr.bufs.proc_buf2, copy_bytes);
+	
+	return copy_bytes;
+#else
+	/* Non-ESP platform (host tests) - return silence */
+	(void)dst_bytes;
+	return 0;
+#endif
+}
+
 static void i2s_manager_task(void *arg)
 {
 	(void)arg;

@@ -15,6 +15,7 @@
 #include <stdatomic.h>
 
 #include "audio_processor_internal.h"
+#include "util_safe.h"
 #include "nvs_storage.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
@@ -59,6 +60,155 @@ static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
 #endif
 
 static esp_err_t configure_i2s(const audio_config_t* config);
+
+#ifndef UNIT_TEST
+/**
+ * Audio engine task (CODE_REVIEW6 Phase 2)
+ * 
+ * WHY: Single producer for ring buffer - centralizes source arbitration,
+ *      eliminates multi-producer races, provides clean backpressure via watermarks
+ * HOW: Runs at 2ms tick, produces 1KB chunks from active source into ring buffer
+ *      Watermarks: pause at high (24KB), resume at low (8KB) for hysteresis
+ * CORRECTNESS: Never blocks, respects watermarks, handles all source types
+ */
+
+/**
+ * Get active audio source (Phase 2, Task 2.2)
+ * Priority order: WAV → I2S → Synth → Silence
+ */
+typedef enum {
+    AUDIO_SOURCE_WAV = 0,
+    AUDIO_SOURCE_I2S,
+    AUDIO_SOURCE_SYNTH,
+    AUDIO_SOURCE_SILENCE,
+    NUM_AUDIO_SOURCES
+} audio_source_t;
+
+static audio_source_t get_active_source(void)
+{
+    /* WAV has highest priority */
+    if (play_manager_is_active()) {
+        return AUDIO_SOURCE_WAV;
+    }
+    
+    /* I2S capture second */
+    if (s_is_running) {  /* I2S manager active when audio_processor running */
+        return AUDIO_SOURCE_I2S;
+    }
+    
+    /* Synth if forced or fallback */
+    if (s_force_synth) {
+        return AUDIO_SOURCE_SYNTH;
+    }
+    
+    /* Silence as final fallback */
+    return AUDIO_SOURCE_SILENCE;
+}
+
+/**
+ * Produce audio chunk from active source with optional beep overlay (Phase 2, Task 2.3)
+ * Returns bytes written to dst (may be less than dst_bytes at EOF or underrun)
+ */
+static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
+{
+    if (dst == NULL || dst_bytes == 0) {
+        return 0;
+    }
+    
+    audio_source_t base = get_active_source();
+    size_t produced = 0;
+    
+    /* Produce base audio from active source
+     * Phase 3.1: WAV uses wav_source_fill() - real audio ✅
+     * Phase 3.2: I2S uses i2s_source_fill() - real I2S capture ✅
+     * Phase 3.4: Synth still TODO - silence placeholder */
+    switch (base) {
+        case AUDIO_SOURCE_WAV:
+            produced = wav_source_fill(dst, dst_bytes);
+            break;
+            
+        case AUDIO_SOURCE_I2S:
+            produced = i2s_source_fill(dst, dst_bytes);
+            break;
+            
+        case AUDIO_SOURCE_SYNTH:
+            produced = synth_source_fill(dst, dst_bytes);
+            break;
+            
+        case AUDIO_SOURCE_SILENCE:
+        default:
+            util_safe_memset(dst, dst_bytes, 0, dst_bytes);
+            produced = dst_bytes;
+            break;
+    }
+    
+    /* Mix beep overlay if active (CODE_REVIEW6 Phase 3.3)
+     * WHY: Beep must mix over any base source (WAV, I2S, Synth, Silence)
+     * HOW: beep_overlay_fill() modifies buffer in-place with clamped mixing
+     * CORRECTNESS: beep_overlay_is_active() thread-safe check before mixing */
+    if (beep_overlay_is_active() && produced > 0) {
+        beep_overlay_fill(dst, produced, &s_audio_config);
+    }
+    
+    return produced;
+}
+
+/**
+ * Audio engine task main loop (Phase 2, Tasks 2.1 + 2.4)
+ * Produces audio chunks into ring buffer, respecting watermarks
+ */
+static void audio_engine_task(void *arg)
+{
+    (void)arg;
+    
+    const TickType_t delay_ticks = pdMS_TO_TICKS(AUDIO_ENGINE_TICK_MS);
+    
+    /* Allocate chunk buffer (DMA-capable for future I2S reads) */
+    uint8_t *chunk_buf = heap_caps_malloc(AUDIO_ENGINE_CHUNK_BYTES, MALLOC_CAP_DMA);
+    if (chunk_buf == NULL) {
+        ESP_LOGE(TAG, "audio_engine_task: failed to allocate chunk buffer");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "audio_engine_task: started (tick=%dms, chunk=%d bytes)", 
+             AUDIO_ENGINE_TICK_MS, AUDIO_ENGINE_CHUNK_BYTES);
+    
+    for (;;) {
+        /* Watermark management (Phase 2, Task 2.4)
+         * Check ring occupancy and apply hysteresis to prevent thrashing */
+        size_t capacity = audio_rb_capacity(s_audio_ring);
+        size_t free = audio_rb_available_to_write(s_audio_ring);
+        size_t used = capacity - free;
+        
+        if (used >= AUDIO_RB_HIGH_WATERMARK) {
+            s_audio_engine_paused = true;
+        }
+        if (used <= AUDIO_RB_LOW_WATERMARK) {
+            s_audio_engine_paused = false;
+        }
+        
+        /* Produce audio if not paused and ring has space */
+        if (!s_audio_engine_paused && free >= AUDIO_ENGINE_CHUNK_BYTES) {
+            size_t produced = produce_audio_chunk(chunk_buf, AUDIO_ENGINE_CHUNK_BYTES);
+            
+            if (produced > 0) {
+                size_t written = audio_rb_write(s_audio_ring, chunk_buf, produced);
+                if (written < produced) {
+                    /* Ring filled between check and write (rare but possible) */
+                    ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu", written, produced);
+                }
+            }
+        }
+        
+        vTaskDelay(delay_ticks);
+    }
+    
+    /* Cleanup (unreachable in normal operation) */
+    heap_caps_free(chunk_buf);
+    vTaskDelete(NULL);
+}
+#endif /* UNIT_TEST */
 
 void audio_processor_set_dram_only(bool enable)
 {
@@ -235,6 +385,30 @@ esp_err_t audio_processor_start(void)
         return ret;
     }
 
+#ifndef UNIT_TEST
+    /* Create audio engine task (CODE_REVIEW6 Phase 2, Task 2.1)
+     * Task produces audio chunks into ring buffer from active source */
+    if (s_audio_engine_task_handle == NULL) {
+        BaseType_t task_ret = xTaskCreate(
+            audio_engine_task,
+            "audio_engine",
+            AUDIO_ENGINE_TASK_STACK_SIZE,
+            NULL,
+            AUDIO_ENGINE_TASK_PRIORITY,
+            &s_audio_engine_task_handle
+        );
+        
+        if (task_ret != pdPASS) {
+            ESP_LOGE(TAG, "audio_processor_start: failed to create audio engine task");
+            i2s_manager_stop();
+            return ESP_FAIL;
+        }
+        
+        ESP_LOGI(TAG, "audio_processor_start: audio engine task created (priority=%d)", 
+                 AUDIO_ENGINE_TASK_PRIORITY);
+    }
+#endif
+
     s_is_running = true;
     return ESP_OK;
 }
@@ -248,6 +422,16 @@ esp_err_t audio_processor_stop(void)
     if (!s_is_running) {
         return ESP_OK;
     }
+
+#ifndef UNIT_TEST
+    /* Stop audio engine task (CODE_REVIEW6 Phase 2, Task 2.1) */
+    if (s_audio_engine_task_handle != NULL) {
+        vTaskDelete(s_audio_engine_task_handle);
+        s_audio_engine_task_handle = NULL;
+        s_audio_engine_paused = false;  /* Reset pause state */
+        ESP_LOGI(TAG, "audio_processor_stop: audio engine task deleted");
+    }
+#endif
 
     i2s_manager_stop();
     s_is_running = false;

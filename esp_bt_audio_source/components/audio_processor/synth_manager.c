@@ -185,9 +185,52 @@ size_t synth_manager_generate_audio(uint8_t* buffer,
 	return frames * frame_bytes;
 }
 
+size_t synth_source_fill(uint8_t *dst, size_t dst_bytes)
+{
+	if (dst == NULL || dst_bytes == 0) {
+		return 0;
+	}
+	
+	/* Get audio config from processor state (external declaration)
+	 * WHY: Ring buffer architecture needs config for synth generation
+	 * HOW: Access s_audio_config from audio_processor_internal.h
+	 * CORRECTNESS: Config is read-only after initialization, safe to access */
+	extern audio_config_t s_audio_config;
+	
+	/* Generate synth audio directly into destination buffer
+	 * WHY: Ring buffer needs direct fill (no enqueue)
+	 * HOW: Reuse synth_manager_generate_audio() logic
+	 * CORRECTNESS: Stateless per-call generation, returns actual bytes written */
+	size_t written = synth_manager_generate_audio(dst, dst_bytes, &s_audio_config, NULL, NULL);
+	
+	return written;
+}
+
+bool synth_source_is_active(void)
+{
+	/* Synth is active when envelope is non-zero or fading
+	 * WHY: Audio engine needs to know when synth should be selected
+	 * HOW: Check envelope state (s_synth_env > 0 or fade active)
+	 * CORRECTNESS: No locking needed (read-only check, worst case is stale read) */
+	return (s_synth_env > 0.0 || s_synth_fade_active);
+}
+
 #else
 
 void synth_manager_reset_state(void) {}
+
+size_t synth_source_fill(uint8_t *dst, size_t dst_bytes)
+{
+	(void)dst;
+	(void)dst_bytes;
+	return 0;
+}
+
+bool synth_source_is_active(void)
+{
+	return false;
+}
+
 size_t synth_manager_generate_audio(uint8_t* buffer,
 									size_t buffer_size,
 									const audio_config_t* config,

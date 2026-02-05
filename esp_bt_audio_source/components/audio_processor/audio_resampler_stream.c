@@ -12,6 +12,7 @@
 #include "audio_resampler_stream.h"
 #include <string.h>
 #include <esp_log.h>
+#include "util_safe.h"
 
 static const char *TAG = "audio_resampler_stream";
 
@@ -163,7 +164,7 @@ size_t audio_resampler_stream_process(audio_resampler_stream_t *rs,
             }
         } else {
             // Beyond EOF: pad with zeros
-            memset(out_buf + (out_idx * frame_bytes), 0, frame_bytes);
+            util_safe_memset(out_buf + (out_idx * frame_bytes), frame_bytes, 0, frame_bytes);
         }
 
         out_idx++;

@@ -103,9 +103,19 @@ for arg in "${EXTRA_ARGS[@]}"; do
     PREFIXED_ARGS+=("-extra-arg=$arg")
 done
 
+# Only lint project files, not ESP-IDF framework
+# If user provides paths via $@, use those; otherwise default to project components
+if [ $# -eq 0 ]; then
+    PROJECT_FILTER="$ROOT_DIR/esp_bt_audio_source/components|$ROOT_DIR/esp_bt_audio_source/main"
+else
+    PROJECT_FILTER=""  # User specified paths, don't filter
+fi
+
 "$RUN_CLANG_TIDY" \
     -clang-tidy-binary "$CLANG_TIDY" \
     -quiet \
     -p "$DB_DIR_EFFECTIVE" \
+    ${PROJECT_FILTER:+-header-filter="$PROJECT_FILTER"} \
     "${PREFIXED_ARGS[@]}" \
+    ${PROJECT_FILTER:+"$PROJECT_FILTER"} \
     "$@"

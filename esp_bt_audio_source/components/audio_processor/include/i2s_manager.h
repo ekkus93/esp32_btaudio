@@ -29,7 +29,26 @@ esp_err_t i2s_manager_start(void);
 esp_err_t i2s_manager_stop(void);
 bool i2s_manager_is_running(void);
 
-/* Directly process a captured frame (used by tests and mock feeds). */
+/**
+ * I2S source fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.2)
+ * 
+ * Fills buffer from I2S capture. Reads from I2S DMA, converts format, resamples,
+ * and writes directly to destination buffer.
+ * 
+ * @param dst Destination buffer (must be at least dst_bytes)
+ * @param dst_bytes Requested bytes to fill (typically 1024)
+ * @return Actual bytes written (0 if not running or no data available)
+ * 
+ * WHY: Ring buffer architecture needs source "fill" API instead of queue enqueue
+ * HOW: Reuses process_frame() logic, writes to dst instead of enqueueing
+ * CORRECTNESS: Thread-safe, never blocks, handles format conversion cleanly
+ */
+size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes);
+
+/* Directly process a captured frame (used by tests and mock feeds).
+ * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
+ *       Will be removed in Phase 6 after ring buffer fully validated.
+ */
 esp_err_t i2s_manager_handle_frame(const uint8_t *data,
 								  size_t len,
 								  audio_bit_depth_t bit_depth,

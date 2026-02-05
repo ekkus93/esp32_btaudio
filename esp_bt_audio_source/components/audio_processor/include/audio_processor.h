@@ -69,6 +69,8 @@ typedef struct {
     uint32_t samples_processed;
     uint32_t buffer_overruns;
     uint32_t buffer_underruns;
+    uint64_t underrun_bytes;      // Total bytes zero-filled on underrun (CODE_REVIEW6)
+    uint64_t bytes_read;          // Total bytes read from ring/queue (CODE_REVIEW6)
     uint32_t conversion_errors;
     float cpu_load;               // Percentage 0-1
     uint32_t current_buffer_level;

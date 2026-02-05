@@ -563,9 +563,10 @@ add_executable(test_audio_resampler_stream
 target_include_directories(test_audio_resampler_stream PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 target_compile_definitions(test_audio_resampler_stream PRIVATE UNIT_TEST)
-target_link_libraries(test_audio_resampler_stream unity m)
+target_link_libraries(test_audio_resampler_stream util_safe_host unity m)
 add_test(NAME test_audio_resampler_stream COMMAND $<TARGET_FILE:test_audio_resampler_stream>)
 
 # I2S manager host unit tests
@@ -628,6 +629,7 @@ add_test(NAME test_play_manager COMMAND $<TARGET_FILE:test_play_manager>)
 # Synth manager host unit tests (exercise CONFIG_AUDIO_USE_SYNTH_SOURCE path)
 add_executable(test_synth_manager
     test_synth_manager/test_synth_manager.c
+    test_synth_manager/stub_audio_config.c
     ../../components/audio_processor/synth_manager.c)
 target_include_directories(test_synth_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks

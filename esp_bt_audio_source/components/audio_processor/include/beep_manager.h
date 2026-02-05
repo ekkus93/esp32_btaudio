@@ -28,7 +28,41 @@ void beep_manager_deinit(void);
 /* Optional callback invoked when a play request finishes (natural or stopped). */
 void beep_manager_set_done_callback(beep_done_cb_t callback, void *ctx);
 
-/* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing. */
+/**
+ * Beep overlay fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.3)
+ * 
+ * Mixes beep samples into existing buffer in-place. Uses internal state to track
+ * beep progress (phase, remaining frames, fade envelope).
+ * 
+ * @param buffer Buffer containing base audio (modified in-place)
+ * @param bytes Buffer size in bytes
+ * @param cfg Audio configuration (bit depth, channels, sample rate)
+ * 
+ * WHY: Ring buffer architecture needs in-place mixing instead of separate enqueue
+ * HOW: Generate beep samples, mix with base using clamped add (base*0.7 + beep*0.5)
+ * CORRECTNESS: Thread-safe via state lock, auto-stops when duration exhausted
+ */
+void beep_overlay_fill(uint8_t *buffer, size_t bytes, const audio_config_t *cfg);
+
+/**
+ * Start beep overlay with specified parameters (CODE_REVIEW6 Phase 3.3)
+ * 
+ * @param req Beep parameters (duration, frequency, amplitude)
+ * @param cfg Audio configuration (must match ring buffer format)
+ * @return ESP_OK on success, ESP_ERR_INVALID_STATE if already playing
+ */
+esp_err_t beep_overlay_start(const beep_request_t *req, const audio_config_t *cfg);
+
+/**
+ * Check if beep overlay is currently active
+ * @return true if beep is generating, false otherwise
+ */
+bool beep_overlay_is_active(void);
+
+/* Start a beep using the supplied audio format; returns ESP_ERR_INVALID_STATE if already playing.
+ * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
+ *       Will be removed in Phase 6 after ring buffer fully validated.
+ */
 /* Generate a beep and report how many bytes were actually enqueued. When
  * out_bytes_enqueued is provided, it is set to the total bytes successfully
  * queued so callers can track remaining playback and avoid overestimating

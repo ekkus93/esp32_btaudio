@@ -27,15 +27,35 @@ bool play_manager_is_active(void);
 
 /* Attempt to enqueue more audio from the active WAV. Call from worker/reader
  * context; non-blocking except for short file I/O and conversion.
+ * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
+ *       Will be removed in Phase 6 after ring buffer fully validated.
  */
 esp_err_t play_manager_fill(void);
 
 /* Notify the manager that `bytes` were consumed from the queue. Returns true
  * when playback has no more pending bytes.
+ * NOTE: Legacy queue-based API - retained for parallel operation during migration (CODE_REVIEW6 Phase 3).
+ *       Will be removed in Phase 6 after ring buffer fully validated.
  */
 bool play_manager_consume(size_t bytes);
 
 size_t play_manager_pending_bytes(void);
+
+/**
+ * WAV source fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.1)
+ * 
+ * Fills buffer from active WAV playback. Uses internal resampler+stash pipeline
+ * to produce exactly the requested bytes (or less at EOF).
+ * 
+ * @param dst Destination buffer (must be at least dst_bytes)
+ * @param dst_bytes Requested bytes to fill (typically 1024)
+ * @return Actual bytes written (0 if inactive or EOF, dst_bytes if successful)
+ * 
+ * WHY: Ring buffer architecture needs source "fill" API instead of queue enqueue
+ * HOW: Reuses produce_one_output_block() logic, writes to dst instead of enqueueing
+ * CORRECTNESS: Thread-safe via existing mutex, never blocks, handles EOF cleanly
+ */
+size_t wav_source_fill(uint8_t *dst, size_t dst_bytes);
 
 /**
  * WAV playback runtime status for diagnostics (CODE_REVIEW5 Task 2.3)

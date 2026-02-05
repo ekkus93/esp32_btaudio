@@ -16,6 +16,28 @@
  */
 audio_rb_t *s_audio_ring = NULL;
 
+#ifndef UNIT_TEST
+/**
+ * Audio engine task handle (CODE_REVIEW6 Phase 2, Task 2.1)
+ * 
+ * WHY: Single producer task that fills ring buffer from active audio source
+ *      Centralizes source arbitration, eliminates multi-producer races
+ * HOW: High-priority task runs 2ms tick, produces chunks into ring buffer
+ * CORRECTNESS: Task lifecycle managed in audio_processor_init/deinit/start/stop
+ */
+TaskHandle_t s_audio_engine_task_handle = NULL;
+
+/**
+ * Audio engine pause state for watermark management (Phase 2, Task 2.4)
+ * 
+ * WHY: Stop filling when ring near full (HIGH_WATERMARK), resume when drained (LOW_WATERMARK)
+ *      Prevents overflow without blocking, provides backpressure to producer
+ * HOW: Hysteresis between high/low prevents thrashing
+ * CORRECTNESS: Task checks watermarks each iteration before producing audio
+ */
+bool s_audio_engine_paused = false;
+#endif
+
 volatile bool s_audio_diag_enabled = false;
 bool s_is_initialized = false;
 bool s_is_running = false;

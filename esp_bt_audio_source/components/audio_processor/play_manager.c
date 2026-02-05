@@ -829,6 +829,72 @@ esp_err_t play_manager_fill(void)
     return ret;
 }
 
+/**
+ * WAV source fill API for ring buffer architecture (CODE_REVIEW6 Phase 3.1)
+ * 
+ * WHY: Ring buffer architecture needs direct buffer fills instead of queue enqueue.
+ *      This allows audio engine task to produce exactly the requested bytes without
+ *      the overhead of block allocation/deallocation and queue operations.
+ * 
+ * HOW: Reuses existing produce_one_output_block() logic but writes directly to
+ *      caller's buffer instead of allocated block + enqueue. Maintains all the
+ *      streaming resampler and stash logic unchanged.
+ * 
+ * CORRECTNESS: Thread-safe via mutex, never blocks beyond file I/O, handles EOF
+ *              by returning 0 when no more data available. Parallel with legacy
+ *              queue path during migration (both can run simultaneously).
+ */
+size_t wav_source_fill(uint8_t *dst, size_t dst_bytes)
+{
+    if (dst == NULL || dst_bytes == 0) {
+        return 0;
+    }
+    
+    if (!s_pm.initialized || !s_pm.active || s_pm.file == NULL) {
+        return 0;  /* Not playing - return silence (caller will fill zeros) */
+    }
+    
+    if (s_pm.mutex == NULL) {
+        return 0;
+    }
+    
+    /* Quick mutex acquisition with short timeout (audio engine context) */
+    if (xSemaphoreTake(s_pm.mutex, pdMS_TO_TICKS(5)) != pdTRUE) {
+        return 0;  /* Mutex busy - return silence this cycle */
+    }
+    
+    /* Check EOF: if file exhausted and stash empty, playback complete */
+    if (s_pm.eof_seen && s_pm.stash.frames == 0) {
+        xSemaphoreGive(s_pm.mutex);
+        return 0;  /* EOF - no more data */
+    }
+    
+    /* Determine how many output frames to produce based on dst_bytes */
+    size_t dst_frame_bytes = s_pm.frame_bytes_dst;
+    if (dst_frame_bytes == 0) {
+        xSemaphoreGive(s_pm.mutex);
+        return 0;
+    }
+    
+    size_t dst_frames = dst_bytes / dst_frame_bytes;
+    if (dst_frames == 0) {
+        xSemaphoreGive(s_pm.mutex);
+        return 0;
+    }
+    
+    /* Produce audio directly into dst buffer (reusing existing logic) */
+    size_t produced_bytes = 0;
+    esp_err_t ret = produce_one_output_block(dst, &produced_bytes);
+    
+    xSemaphoreGive(s_pm.mutex);
+    
+    if (ret != ESP_OK) {
+        return 0;  /* Error during production - return silence */
+    }
+    
+    return produced_bytes;
+}
+
 /* Helper: Open and parse WAV file */
 static esp_err_t open_and_parse_wav(const char *path, FILE **file, 
                                     audio_bit_depth_t *src_bit,

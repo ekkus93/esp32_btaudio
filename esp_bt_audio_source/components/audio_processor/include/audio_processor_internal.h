@@ -62,6 +62,16 @@ extern volatile bool s_audio_diag_enabled;
 #define I2S_FAILURE_LOG_THROTTLE 200
 #define DIAG_DUMP_BYTES 64U
 
+/* Audio engine task configuration (CODE_REVIEW6 Phase 2) */
+#define AUDIO_ENGINE_TASK_STACK_SIZE  4096
+#define AUDIO_ENGINE_TASK_PRIORITY    (configMAX_PRIORITIES - 2)  /* High priority, below BT */
+#define AUDIO_ENGINE_TICK_MS          2   /* 2ms tick rate */
+#define AUDIO_ENGINE_CHUNK_BYTES      1024  /* Produce 1KB chunks */
+
+/* Ring buffer watermarks (Phase 2, Task 2.4) */
+#define AUDIO_RB_LOW_WATERMARK   (8 * 1024)   /* Resume filling below 8KB used */
+#define AUDIO_RB_HIGH_WATERMARK  (24 * 1024)  /* Stop filling above 24KB used */
+
 typedef struct {
     int64_t t_before_us;
     int64_t t_after_us;
@@ -75,6 +85,13 @@ typedef struct {
 
 /* Ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1) */
 extern audio_rb_t *s_audio_ring;
+
+/* Audio engine task (CODE_REVIEW6 Phase 2)
+ * Only available in device builds (FreeRTOS required) */
+#ifndef UNIT_TEST
+extern TaskHandle_t s_audio_engine_task_handle;
+extern bool s_audio_engine_paused;
+#endif
 
 extern bool s_is_initialized;
 extern bool s_is_running;
