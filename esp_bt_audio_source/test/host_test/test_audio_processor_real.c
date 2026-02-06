@@ -8,7 +8,6 @@
 
 #include "unity.h"
 #include "../../main/include/audio_processor.h"
-#include "../../main/include/audio_queue.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include <stdlib.h>
@@ -147,7 +146,7 @@ void test_audio_processor_beep_should_activate_fallback_when_buffers_full(void)
 
     free(big_payload);
 
-    /* Activate a beep while the ringbuffer is saturated; it should enqueue via audio_queue. */
+    /* Activate a beep while the ringbuffer is saturated; beep should use overlay path. */
     TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_beep_tone(200 /* ms */, 440.0));
 
     uint8_t out[AUDIO_CHUNK_BLOCK_BYTES] = {0};

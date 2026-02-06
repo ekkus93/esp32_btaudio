@@ -40,13 +40,13 @@ Tasks, timers, and concurrency
 - Audio processor task: owns the processing loop; manages prefill, draining, resample work buffers, and keepalive timing.
 - I2S capture: pulled on demand by the audio engine loop via `i2s_source_fill()`, which reads DMA with short timeouts.
 - Heart-beat timer: periodic state machine tick for BT connect/retry; also used to gate some diagnostics.
-- Mutexes/critical sections: play/beep managers use mutexes or spinlocks around state transitions; queue access is lock-free beyond FreeRTOS queues.
+- Mutexes/critical sections: play/beep managers use mutexes or spinlocks around state transitions; ring buffer access is lock-free (SPSC design).
 
 Configuration and data formats
 ------------------------------
 - `audio_config_t` (see `include/audio_processor.h`) defines sample rate, bit depth (16/24/32), channel mode (mono/stereo), volume (0–100), mute flag, I2S port, and optional pin assignments. Pins can be updated at runtime via `audio_processor_set_i2s_pins()`; the processor restarts to apply changes.
-- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, WAV, beep, synth) are converted/resampled to this configured output before entering the queue.
-- Producers (beep_manager, i2s_manager, play_manager, synth_manager) always enqueue PCM in the current output format; by default that is 16-bit, 44.1 kHz, stereo.
+- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, WAV, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
+- Producers (beep_manager, i2s_manager, play_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 44.1 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
 - The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible (see `play_manager.c`).
 
@@ -54,7 +54,7 @@ WAV playback details (`play_manager.c`)
 ---------------------------------------
 - Parses RIFF/WAVE headers, supports PCM only, validates format chunk, and locates the data chunk length.
 - Tracks source format (bit depth, sample rate, channels) and converts to the configured output format.
-- Maintains residual bytes so frame boundaries stay aligned across enqueue operations.
+- Maintains residual bytes so frame boundaries stay aligned across fill operations.
 - Thread-safety via a mutex; `play_manager_is_active()` reports whether a file is in-flight.
 
 Beep generation details (`beep_manager.c`)
@@ -67,7 +67,7 @@ I2S capture details (`i2s_manager.c`)
 --------------------------------------
 - Configures an I2S RX channel as slave, sets DMA descriptors/counts, and assigns pins from `audio_config_t` (with `GPIO_NUM_NC` / `I2S_GPIO_UNUSED` fallbacks under mock builds).
 - Reads into a caller-supplied raw buffer, converts bit depth, resamples to the output rate, and fills the ring buffer with capture audio.
-- Mock/testing mode (`CONFIG_BT_MOCK_TESTING`) bypasses hardware by pulling frames from a queue of synthetic items and uses a relaxed clock config.
+- Mock/testing mode (`CONFIG_BT_MOCK_TESTING`) bypasses hardware by generating synthetic frames and uses a relaxed clock config.
 
 Audio processor responsibilities (`audio_processor.c`)
 -----------------------------------------------------
@@ -84,7 +84,7 @@ Bluetooth control helpers
 Diagnostics and testing
 -----------------------
 - Host/unit tests target the pure C logic with mocks; mock builds replace hardware with synthetic data paths (`CONFIG_BT_MOCK_TESTING`).
-- Diagnostic commands can trigger queue drains, beep diagnostics, I2S probes, and WAV playback from SPIFFS (`/spiffs/*.wav`).
+- Diagnostic commands can trigger ring buffer drains, beep diagnostics, I2S probes, and WAV playback from SPIFFS (`/spiffs/*.wav`).
 - Logs use consistent module tags (AUDIO_PROC, i2s_manager, play_manager, beep_manager, BT_AV, RC_CT). Warnings/errors include esp_err_t codes; `ESP_RETURN_ON_ERROR` guards most hardware calls.
 
 Operational notes

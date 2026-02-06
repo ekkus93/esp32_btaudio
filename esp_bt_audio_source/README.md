@@ -55,7 +55,7 @@ Timing snapshot from the sweep (per-orchestrator timing): `test_app` ~65 s total
 
 Key recent completions:
 - Host tests: all host CTest targets are green (22/22) with pairing and command coverage intact.
-- Audio processor: WAV enqueue limits now respect ringbuffer capacity and pace retries to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio.
+- Audio processor: WAV playback now uses ring buffer architecture with proper watermark-based pacing to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio.
 - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping yields deterministic automation and clean aggregator JSON for CI.
 - SPIFFS flash+verify helper is available at `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` for reproducible SPIFFS flashing and on-device validation (PARTS/FILES checks).
 

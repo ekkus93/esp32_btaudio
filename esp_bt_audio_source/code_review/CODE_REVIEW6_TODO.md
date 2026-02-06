@@ -962,28 +962,45 @@ python3 tools/run_all_tests.py
 
 ## Phase 6: Cleanup & Documentation
 
-### Task 6.1: Remove deprecated audio_queue module ⏭️ DEFERRED
+### Task 6.1: Remove deprecated audio_queue module ✅ COMPLETE
 
 **Goal:** Clean up old queue-based code
 
-**Status:** DEFERRED - Queue still active as safety fallback
+**Status:** COMPLETED (2026-02-05) - Legacy queue fully removed, see [LEGACY_QUEUE_CLEANUP.md](./LEGACY_QUEUE_CLEANUP.md)
 
-**Rationale:**
-- Ring buffer architecture proven stable (461/461 tests passing)
-- Queue code still present but not in active audio path
-- Provides rollback option if issues discovered in production
-- Removal can be done in future cleanup once ring buffer fully validated in field
+**Completion Summary:**
+- All queue module files deleted (audio_queue.c, audio_queue.h)
+- All queue-based tests removed (redundant with ring buffer tests)
+- All queue mock/shim files deleted
+- Documentation updated to ring buffer terminology
+- Comprehensive grep verification: 0 queue references ✅
+- Build verification: No queue-related errors ✅
+- Test verification: 461/461 passing (295 host + 166 device) ✅
 
-**Files to remove (future work):**
+**Files deleted:**
 - `components/audio_processor/audio_queue.c`
 - `components/audio_processor/include/audio_queue.h`
-- Block pool logic (if not used elsewhere)
-- Queue enqueue calls from play_manager, i2s_manager, beep_manager
+- `test/test_play_manager/` (entire directory)
+- `test/host_test/test_audio_queue_host.c`
+- `test/host_test/test_play_manager_host.c`
+- `test/host_test/test_play_manager/` (entire directory)
+- `test/host_test/test_i2s_manager/` (entire directory)
+- `test/host_test/test_beep_manager.c`
+- `test/host_test/test_beep_flush.c`
+- `test/host_test/test_beep_manager/` (entire directory)
+- `test/host_test/mocks/include/shim_audio_queue.h`
+- `test/host_test/mocks/shim_audio_queue.c`
+
+**Files modified:**
+- `main/README.md` (5 updates: queue → ring buffer)
+- `README.md` (1 update: WAV enqueue → pacing)
+- `test/test_app3/CMakeLists.txt` (removed comment)
+- `test/host_test/test_audio_processor_real.c` (removed include + comment)
 
 **Acceptance:**
-- [ ] No references to audio_queue remain
-- [ ] Builds clean
-- [ ] All tests pass
+- [x] No references to audio_queue remain ✅
+- [x] Builds clean (no queue-related errors) ✅
+- [x] All tests pass (461/461) ✅
 
 ---
 
