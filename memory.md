@@ -1,3 +1,98 @@
+## 2026-02-06 11:50 — Phase 2.2 Exception Classes COMPLETE — PHASE 2 100% COMPLETE! 🎉
+
+**📝 Task:** Implemented centralized exception hierarchy for error handling across all components
+
+**Timestamp:** 2026-02-06 11:50:15
+
+**Context:** Phase 2 Main Application Integration - Exception classes (final component)
+
+**Implementation Summary:**
+
+**Files Created:**
+- **rpi_i2s_source/utils/__init__.py** (6 lines) — Utils package initialization
+- **rpi_i2s_source/utils/exceptions.py** (213 lines) — Centralized exception hierarchy
+
+**Exception Hierarchy:**
+
+**I2S Driver Exceptions:**
+1. `I2SError` (base) — All I2S driver errors
+2. `I2SUnderrunError` — Buffer underrun (recoverable)
+3. `I2SHardwareError` — Hardware failure (non-recoverable)
+
+**UART Communication Exceptions:**
+1. `UARTError` (base) — All UART communication errors
+2. `UARTTimeoutError` — Command timeout (transient, retryable)
+3. `UARTDisconnectedError` — Device disconnected (non-recoverable)
+
+**Audio Processing Exceptions:**
+1. `AudioError` (base) — All audio processing errors
+2. `WAVNotFoundError` — WAV file not found
+3. `WAVFormatError` — Unsupported WAV format
+
+**Key Features:**
+- **Comprehensive Docstrings:** Each exception documents when it's raised, typical causes, recoverability
+- **Clear Hierarchy:** Base exceptions allow catching by category (I2SError, UARTError, AudioError)
+- **Specific Types:** Specific exceptions allow targeted error handling
+- **Centralized Module:** Single import point for all application exceptions
+- **Standard Inheritance:** All inherit from Python's built-in Exception class
+
+**Usage Example:**
+```python
+from utils.exceptions import I2SUnderrunError, UARTError, WAVNotFoundError
+
+# Catch specific exception
+try:
+    i2s_driver.write_frames(data)
+except I2SUnderrunError as e:
+    logger.warning(f"Recoverable underrun: {e}")
+    # Continue operation
+
+# Catch category
+try:
+    uart_mgr.send_command("SCAN")
+except UARTError as e:
+    logger.error(f"UART error: {e}")
+    # Handle any UART error
+```
+
+**Testing:**
+- ✅ Import test: All 9 exceptions import successfully
+- ✅ Hierarchy test: Inheritance relationships correct
+  - I2SUnderrunError → I2SError → Exception
+  - UARTTimeoutError → UARTError → Exception
+  - WAVNotFoundError → AudioError → Exception
+- ✅ All exceptions have descriptive docstrings
+
+**Notes:**
+- Audio exceptions duplicate existing `audio/exceptions.py` (can consolidate in future refactor)
+- Exception classes are "passive" - no logic, just type definitions
+- Components can now raise specific exceptions for better error handling
+- Centralized location makes it easy to add new exceptions as needed
+
+**Phase 2 Summary — 100% COMPLETE:**
+- ✅ 2.1 Main Application (261 lines) — Application entry point, component orchestration
+- ✅ 2.2 Exception Classes (213 lines) — Centralized error handling hierarchy
+
+**Total Phase 2:**
+- **Implementation:** 474 lines (main.py + exceptions.py)
+- **Components:** 2/2 complete (100%)
+- **All Phases:** Phase 0 ✅, Phase 1 ✅, Phase 2 ✅
+
+**Git Commit:** `f2e067ec` (pushed to GitHub master)
+
+**Next Steps:**
+- Phase 3: Testing (unit tests, integration tests, hardware validation)
+- Deploy to Raspberry Pi for hardware testing
+- End-to-end validation with ESP32 Bluetooth module
+
+**Project Status:**
+- Core implementation: COMPLETE
+- Ready for hardware integration testing
+- Total implementation: ~4,524 lines (Phases 1 + 2)
+- Total tests: 206 automated tests (all passing)
+
+---
+
 ## 2026-02-06 11:44 — Phase 2.1 Main Application COMPLETE
 
 **📝 Task:** Implemented main.py - Application entry point orchestrating all Phase 1 components
