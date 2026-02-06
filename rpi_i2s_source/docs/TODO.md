@@ -1195,19 +1195,29 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 
 **Next:** Deploy to Raspberry Pi for hardware verification.
 
-### Milestone 2: UART Command Interface (Target: Day 1-2, 4 hours)
+### Milestone 2: UART Command Interface (Target: Day 1-2, 4 hours) ✅ SOFTWARE COMPLETE
 - [x] **Deliverables:**
   - [x] pyserial UART communication to esp_bt_audio_source
   - [x] Python class `UARTCommandManager` with methods: `send_command()`, `parse_response()`, `wait_for_event()`
   - [x] Command queue with timeout handling
   - [x] Simple CLI test: send `STATUS` command, print response
+  - [x] Test script created: `milestone2_uart_test.py`
+  - [x] Hardware setup guide: `docs/MILESTONE2_HARDWARE_SETUP.md`
 
 - [x] **Success Criteria:** ✅ SOFTWARE COMPLETE
   - [x] `STATUS` command returns valid response (OK|STATUS|...) — validated via unit tests
   - [x] `VOLUME 75` command changes volume — validated via unit tests
   - [x] Timeout handling works — validated via unit tests (33 tests passing)
+  - [ ] ⏳ Hardware verification pending (ESP32 UART connection required)
 
-**Status:** Fully implemented and tested. Hardware validation pending.
+**Status:** Fully implemented and tested. Hardware validation test script ready.
+- UARTCommandManager: pyserial-based ✅
+- Protocol: OK/ERR/EVENT parsing ✅
+- Test Script: Automated STATUS/VOLUME/timeout tests ✅
+- Unit Tests: 33 tests passing ✅
+- Hardware Guide: Complete UART setup instructions ✅
+
+**Next:** Deploy to Raspberry Pi and connect ESP32 via UART for hardware verification.
 
 ### Milestone 3: Flask Web UI (Target: Day 2, 6 hours)
 - [ ] **Deliverables:**

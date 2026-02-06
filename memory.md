@@ -1,3 +1,67 @@
+## 2026-02-06 13:48 — Milestone 2: UART Command Interface (Test Script & Hardware Guide)
+
+**📝 Task:** Created Milestone 2 UART test script and hardware setup guide
+
+**Timestamp:** 2026-02-06 13:48:16
+
+**Context:** Working on Milestone-based deployment after completing Milestone 1
+
+**What Was Created:**
+
+1. **milestone2_uart_test.py** (executable test script)
+   - Tests UARTCommandManager with esp_bt_audio_source
+   - Automated test sequence: STATUS, VOLUME, timeout handling, events
+   - Real-time statistics display (commands sent, OK/ERR responses)
+   - Command-line options for custom serial device and baudrate
+   - Graceful error handling and user feedback
+
+2. **docs/MILESTONE2_HARDWARE_SETUP.md** (comprehensive guide)
+   - Raspberry Pi UART configuration (enable_uart, disable BT)
+   - ESP32 UART wiring diagram (GPIO14/15 ↔ ESP32 RX/TX)
+   - Manual testing with screen/minicom
+   - Comprehensive troubleshooting (permissions, no response, garbled data)
+   - Success criteria checklist
+
+**Milestone 2 Status:**
+
+✅ **Software Complete:**
+- UARTCommandManager implemented (pyserial-based)
+- Command/response protocol (OK/ERR parsing)
+- Event callback system
+- All 33 unit tests passing
+- Test script ready for hardware validation
+
+⏳ **Hardware Validation Required:**
+- Physical Raspberry Pi with UART enabled
+- ESP32 with esp_bt_audio_source firmware
+- UART wiring (TX/RX crossover, GND)
+- STATUS/VOLUME command verification
+
+**Key Technical Details:**
+- Protocol: `COMMAND args\n` → `OK|COMMAND|result\n` or `ERR|...\n`
+- Serial: 115200 baud, 8N1
+- Device: `/dev/serial0` (RPi GPIO14/15)
+- Timeout: 5 seconds (configurable)
+- Events: `EVENT|TYPE|SUBTYPE|data\n`
+
+**User Workflow:**
+```bash
+# Basic test
+./milestone2_uart_test.py
+
+# Custom device
+./milestone2_uart_test.py --device /dev/ttyUSB0
+```
+
+**Next Actions:**
+- Deploy to Raspberry Pi for hardware validation
+- Verify UART communication with ESP32
+- Test STATUS, VOLUME commands
+- Verify timeout and event handling
+- Move to Milestone 3 (Flask Web UI)
+
+---
+
 ## 2026-02-06 13:41 — Milestone 1: Basic I2S Tone Generation (Test Script & Hardware Guide)
 
 **📝 Task:** Created Milestone 1 test script and comprehensive hardware setup guide
