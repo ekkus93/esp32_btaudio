@@ -121,30 +121,6 @@ Purpose: fully remove the legacy multi‑producer `audio_queue` path now that th
 
 ---
 
-## 7) Build/CI Verification
-**Goal:** Ensure no residual references remain and tests still pass.
-- [ ] `rg -n "audio_queue|audio_chunk_" esp_bt_audio_source` returns zero matches (excluding historical logs if desired)
-- [ ] Build firmware (`idf.py build`) if this repo currently expects it
-- [x] Run host tests (`test/host_test` CTest suite)
-- [x] Run key device suites if hardware is available (test_app, test_app2, test_app_audio)
-
----
-
-## 8) Optional Transitional Guard (if you want a soft landing)
-**Goal:** Catch remaining dependencies quickly while allowing rollback.
-- [ ] Add `CONFIG_AUDIO_QUEUE_LEGACY` (default off)
-- [ ] Wrap all queue code behind the flag
-- [ ] Add a build-time error when `CONFIG_AUDIO_QUEUE_LEGACY` is off but queue symbols are still referenced
-
----
-
-## 9) Cleanup Checklist (Final “No Queue” Confirmation)
-- [ ] No `audio_queue.c/.h` in tree
-- [ ] No `audio_chunk_*` symbols in build logs
-- [ ] No queue-only APIs in public headers
-- [ ] No queue-based tests
-- [ ] Docs updated to ring‑buffer only
-
 ---
 
 ## 7) Build/CI Verification ✅ COMPLETE
