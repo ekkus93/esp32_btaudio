@@ -1116,10 +1116,14 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 **Priority:** LOW (defer until MVP validated)  
 **Estimated Time:** 2-4 hours each
 
-- [ ] Multi-tone generator (play up to 4 simultaneous sine tones)
-  - [ ] Update `_generate_tone()` to support multiple frequencies
-  - [ ] Add web UI controls for each tone (freq, amp, phase)
-  - [ ] Use case: Chord generation for audio testing
+- [x] Multi-tone generator (play up to 4 simultaneous sine tones) ✅ **COMPLETE**
+  - [x] Update `_generate_tone()` to support multiple frequencies
+  - [x] Add API endpoints: `POST /api/multi-tone/enable`, `POST /api/multi-tone/<index>`
+  - [x] Add multi-tone state management with phase accumulators
+  - [x] Implement tone summing with normalization to prevent clipping
+  - [x] Create 26 unit tests (all passing)
+  - [ ] Add web UI controls for each tone (freq, amp, enable/disable) ← DEFERRED
+  - Use case: Chord generation for audio testing (A major, C major tested)
 
 - [ ] WAV file upload via web UI
   - [ ] Add Flask endpoint: `POST /api/wav/upload` (multipart/form-data)

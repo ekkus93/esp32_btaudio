@@ -107,6 +107,8 @@ class WebServer:
         
         # Audio control
         self.app.route('/api/tone', methods=['POST'])(self._set_tone)
+        self.app.route('/api/multi-tone/enable', methods=['POST'])(self._enable_multi_tone)
+        self.app.route('/api/multi-tone/<int:tone_index>', methods=['POST'])(self._set_multi_tone)
         self.app.route('/api/sweep', methods=['POST'])(self._set_sweep)
         self.app.route('/api/wav', methods=['POST'])(self._set_wav)
         self.app.route('/api/silence', methods=['POST'])(self._set_silence)
@@ -271,6 +273,123 @@ class WebServer:
             
         except Exception as e:
             logger.error(f"Error setting tone: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+    
+    def _enable_multi_tone(self) -> Response:
+        """
+        POST /api/multi-tone/enable - Enable or disable multi-tone mode.
+        
+        Request body (JSON):
+            {
+                "enabled": true     # True to enable multi-tone, false for single tone
+            }
+        
+        Returns:
+            {"status": "ok"} or {"error": "..."}
+        
+        Example:
+            >>> curl -X POST http://localhost:5000/api/multi-tone/enable \
+            ...   -H "Content-Type: application/json" \
+            ...   -d '{"enabled": true}'
+        """
+        try:
+            data = request.get_json(silent=True)
+            if data is None:
+                return jsonify({"error": "No JSON data provided"}), 400
+            
+            enabled = data.get('enabled')
+            if enabled is None:
+                return jsonify({"error": "enabled parameter required (true/false)"}), 400
+            
+            if not isinstance(enabled, bool):
+                return jsonify({"error": "enabled must be a boolean"}), 400
+            
+            # Enable multi-tone mode
+            self.audio_engine.enable_multi_tone(enabled)
+            
+            # Switch to tone source if not already
+            current_state = self.audio_engine.get_state()
+            if current_state['source'] != 'tone':
+                self.audio_engine.set_source('tone')
+            
+            return jsonify({"status": "ok", "multi_tone_enabled": enabled}), 200
+            
+        except Exception as e:
+            logger.error(f"Error enabling multi-tone: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+    
+    def _set_multi_tone(self, tone_index: int) -> Response:
+        """
+        POST /api/multi-tone/<tone_index> - Set parameters for a specific tone.
+        
+        URL Parameters:
+            tone_index: Tone index (0-3) for tones 1-4
+        
+        Request body (JSON):
+            {
+                "freq": 440,        # Frequency in Hz (20-20000, optional)
+                "amp": 0.5,         # Amplitude (0.0-1.0, optional)
+                "enabled": true     # Enable/disable this tone (optional)
+            }
+        
+        Returns:
+            {"status": "ok"} or {"error": "..."}
+        
+        Example:
+            >>> curl -X POST http://localhost:5000/api/multi-tone/0 \
+            ...   -H "Content-Type: application/json" \
+            ...   -d '{"freq": 440, "amp": 0.8, "enabled": true}'
+        """
+        try:
+            # Validate tone index (0-3)
+            if not 0 <= tone_index <= 3:
+                return jsonify({"error": "tone_index must be 0-3"}), 400
+            
+            data = request.get_json(silent=True)
+            if data is None:
+                return jsonify({"error": "No JSON data provided"}), 400
+            
+            # Extract parameters
+            freq = data.get('freq')
+            amp = data.get('amp')
+            enabled = data.get('enabled')
+            
+            # Validate frequency
+            if freq is not None:
+                if not (20 <= freq <= 20000):
+                    return jsonify({"error": "freq must be 20-20000 Hz"}), 400
+            
+            # Validate amplitude
+            if amp is not None:
+                if not (0.0 <= amp <= 1.0):
+                    return jsonify({"error": "amp must be 0.0-1.0"}), 400
+            
+            # Validate enabled
+            if enabled is not None:
+                if not isinstance(enabled, bool):
+                    return jsonify({"error": "enabled must be a boolean"}), 400
+            
+            # Set multi-tone parameters
+            self.audio_engine.set_multi_tone_params(
+                tone_index=tone_index,
+                freq=freq,
+                amp=amp,
+                enabled=enabled
+            )
+            
+            # Switch to tone source if not already
+            current_state = self.audio_engine.get_state()
+            if current_state['source'] != 'tone':
+                self.audio_engine.set_source('tone')
+            
+            return jsonify({"status": "ok", "tone_index": tone_index}), 200
+            
+        except ValueError as e:
+            logger.warning(f"Invalid multi-tone parameter: {e}")
+            return jsonify({"error": str(e)}), 400
+            
+        except Exception as e:
+            logger.error(f"Error setting multi-tone: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
     
     def _set_sweep(self) -> Response:

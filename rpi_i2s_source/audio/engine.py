@@ -97,6 +97,15 @@ class AudioEngine:
         self.tone_mode = 'mono'
         self.dual_freq = 440  # Second frequency for dual-tone mode
         
+        # Multi-tone state (up to 4 simultaneous tones)
+        self.multi_tone_enabled = False
+        self.tones = [
+            {'freq': 1000, 'amp': 0.7, 'phase': 0.0, 'enabled': True},   # Tone 1
+            {'freq': 440, 'amp': 0.5, 'phase': 0.0, 'enabled': False},   # Tone 2
+            {'freq': 523.25, 'amp': 0.5, 'phase': 0.0, 'enabled': False}, # Tone 3 (C5)
+            {'freq': 659.25, 'amp': 0.5, 'phase': 0.0, 'enabled': False}  # Tone 4 (E5)
+        ]
+        
         # Sweep state
         self.sweep_params = None
         self.sweep_position = 0
@@ -244,6 +253,61 @@ class AudioEngine:
             if dual_freq is not None:
                 self.dual_freq = dual_freq
     
+    def set_multi_tone_params(self, tone_index: int, freq: Optional[float] = None,
+                             amp: Optional[float] = None, enabled: Optional[bool] = None) -> None:
+        """
+        Update parameters for a specific tone in multi-tone mode.
+        
+        Thread-safe method to update individual tone parameters (frequency, amplitude,
+        enabled state) in multi-tone generation. Each tone maintains its own phase
+        accumulator for click-free parameter changes.
+        
+        Args:
+            tone_index: Tone index (0-3) for tones 1-4
+            freq: Tone frequency in Hz (20-20000), or None to keep current
+            amp: Tone amplitude (0.0-1.0), or None to keep current
+            enabled: Enable/disable this tone, or None to keep current
+        
+        Raises:
+            ValueError: If tone_index is out of range (0-3)
+        
+        Example:
+            >>> engine.set_multi_tone_params(0, freq=440, amp=0.8, enabled=True)  # Tone 1
+            >>> engine.set_multi_tone_params(1, freq=554.37, enabled=True)  # Tone 2 (C#5)
+            >>> engine.set_multi_tone_params(2, enabled=False)  # Disable Tone 3
+        """
+        if not 0 <= tone_index < 4:
+            raise ValueError(f"tone_index must be 0-3, got {tone_index}")
+        
+        with self.lock:
+            if freq is not None:
+                self.tones[tone_index]['freq'] = freq
+            if amp is not None:
+                self.tones[tone_index]['amp'] = amp
+            if enabled is not None:
+                self.tones[tone_index]['enabled'] = enabled
+    
+    def enable_multi_tone(self, enabled: bool) -> None:
+        """
+        Enable or disable multi-tone generation mode.
+        
+        When multi-tone mode is enabled, the tone generator will sum all enabled
+        tones from the tones array instead of using the single tone parameters
+        (tone_freq, tone_amp). Each tone in the array can be individually controlled.
+        
+        Args:
+            enabled: True to enable multi-tone mode, False to use single tone mode
+        
+        Example:
+            >>> engine.enable_multi_tone(True)  # Switch to multi-tone mode
+            >>> engine.set_multi_tone_params(0, freq=440, enabled=True)  # A4
+            >>> engine.set_multi_tone_params(1, freq=554.37, enabled=True)  # C#5
+            >>> engine.set_multi_tone_params(2, freq=659.25, enabled=True)  # E5
+            >>> # Now playing A major chord
+        """
+        with self.lock:
+            self.multi_tone_enabled = enabled
+    
     def get_state(self) -> Dict[str, Any]:
         """
         Get current audio engine state.
@@ -263,6 +327,8 @@ class AudioEngine:
                 'amplitude': self.tone_amp,
                 'stereo_mode': self.tone_mode,
                 'dual_freq': self.dual_freq,
+                'multi_tone_enabled': self.multi_tone_enabled,
+                'tones': [dict(t) for t in self.tones],  # Deep copy of tones array
                 'sweep_params': dict(self.sweep_params) if self.sweep_params else None,
                 'wav_file': None,  # Could track filename if needed
                 'wav_loop': self.wav_loop
@@ -320,6 +386,9 @@ class AudioEngine:
         - right: Silence on left, signal on right
         - dual: Different frequencies on left and right
         
+        If multi_tone_enabled is True, generates multiple simultaneous tones by
+        summing all enabled tones from the tones array.
+        
         Returns:
             NumPy array of int16 samples (stereo interleaved LRLRLR...)
         
@@ -328,39 +397,84 @@ class AudioEngine:
             where L == R (same signal)
         """
         with self.lock:
-            freq = self.tone_freq
-            amp = self.tone_amp
-            mode = self.tone_mode
-            dual_freq = self.dual_freq
+            multi_tone = self.multi_tone_enabled
+            if multi_tone:
+                # Multi-tone mode: sum all enabled tones
+                tones = [dict(t) for t in self.tones]  # Copy for thread safety
+            else:
+                # Single tone mode
+                freq = self.tone_freq
+                amp = self.tone_amp
+                mode = self.tone_mode
+                dual_freq = self.dual_freq
         
-        # Generate time array for this chunk
         num_samples = self.chunk_size
-        t = np.arange(num_samples) / self.sample_rate
         
-        # Generate left channel tone with phase accumulator
-        phase_increment = 2 * np.pi * freq / self.sample_rate
-        phases = self.phase + phase_increment * np.arange(num_samples)
-        left_signal = np.sin(phases)
+        if multi_tone:
+            # Generate multi-tone signal by summing enabled tones
+            left_signal = np.zeros(num_samples, dtype=np.float32)
+            right_signal = np.zeros(num_samples, dtype=np.float32)
+            
+            for i, tone in enumerate(tones):
+                if not tone['enabled']:
+                    continue
+                
+                # Generate this tone with its own phase accumulator
+                phase_increment = 2 * np.pi * tone['freq'] / self.sample_rate
+                phases = tone['phase'] + phase_increment * np.arange(num_samples)
+                tone_signal = np.sin(phases) * tone['amp']
+                
+                # Update phase accumulator (wrap to prevent overflow)
+                tone['phase'] = (tone['phase'] + phase_increment * num_samples) % (2 * np.pi)
+                
+                # Add to both channels (mono for multi-tone)
+                left_signal += tone_signal
+                right_signal += tone_signal
+            
+            # Update phase accumulators in the main state
+            with self.lock:
+                for i, tone in enumerate(tones):
+                    self.tones[i]['phase'] = tone['phase']
+            
+            # Normalize to prevent clipping (divide by number of enabled tones)
+            num_enabled = sum(1 for t in tones if t['enabled'])
+            if num_enabled > 0:
+                left_signal /= num_enabled
+                right_signal /= num_enabled
         
-        # Update phase accumulator (wrap to prevent overflow)
-        self.phase = (self.phase + phase_increment * num_samples) % (2 * np.pi)
-        
-        # Generate right channel based on mode
-        if mode == 'mono':
-            right_signal = left_signal
-        elif mode == 'left':
-            right_signal = np.zeros(num_samples)
-        elif mode == 'right':
-            left_signal = np.zeros(num_samples)
-            right_signal = np.sin(2 * np.pi * freq * t)
-        elif mode == 'dual':
-            # Left uses primary freq, right uses dual_freq
-            right_signal = np.sin(2 * np.pi * dual_freq * t)
         else:
-            right_signal = left_signal  # Default to mono
+            # Single tone mode (original behavior)
+            # Generate time array for this chunk
+            t = np.arange(num_samples) / self.sample_rate
+            
+            # Generate left channel tone with phase accumulator
+            phase_increment = 2 * np.pi * freq / self.sample_rate
+            phases = self.phase + phase_increment * np.arange(num_samples)
+            left_signal = np.sin(phases)
+            
+            # Update phase accumulator (wrap to prevent overflow)
+            self.phase = (self.phase + phase_increment * num_samples) % (2 * np.pi)
+            
+            # Generate right channel based on mode
+            if mode == 'mono':
+                right_signal = left_signal
+            elif mode == 'left':
+                right_signal = np.zeros(num_samples)
+            elif mode == 'right':
+                left_signal = np.zeros(num_samples)
+                right_signal = np.sin(2 * np.pi * freq * t)
+            elif mode == 'dual':
+                # Left uses primary freq, right uses dual_freq
+                right_signal = np.sin(2 * np.pi * dual_freq * t)
+            else:
+                right_signal = left_signal  # Default to mono
+            
+            # Apply amplitude scaling
+            left_signal = left_signal * amp
+            right_signal = right_signal * amp
         
-        # Apply amplitude scaling and convert to 16-bit
-        scale = amp * 32767
+        # Convert to 16-bit integer
+        scale = 32767
         left_samples = (left_signal * scale).astype(np.int16)
         right_samples = (right_signal * scale).astype(np.int16)
         
