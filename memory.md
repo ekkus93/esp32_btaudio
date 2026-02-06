@@ -1,3 +1,68 @@
+## 2026-02-06 13:41 — Milestone 1: Basic I2S Tone Generation (Test Script & Hardware Guide)
+
+**📝 Task:** Created Milestone 1 test script and comprehensive hardware setup guide
+
+**Timestamp:** 2026-02-06 13:41:37
+
+**Context:** Working on Milestone-based deployment after completing Phases 0-5.2
+
+**What Was Created:**
+
+1. **milestone1_tone_test.py** (executable test script)
+   - Demonstrates all Milestone 1 deliverables in a single script
+   - Orchestrates AudioEngine (tone generation) + I2SDriver (I2S transmission)
+   - Real-time statistics display (frames sent, underruns, buffer fill)
+   - Configurable duration (default 60s, milestone requires 300s)
+   - Final statistics with success criteria validation
+   - Graceful keyboard interrupt handling
+
+2. **docs/MILESTONE1_HARDWARE_SETUP.md** (comprehensive guide)
+   - Raspberry Pi I2S configuration (`dtoverlay=i2s-mmap`)
+   - ESP32 wiring diagram (GPIO 18/19/21 → ESP32 I2S pins)
+   - Logic analyzer verification procedures (BCLK 1.536 MHz, WS 48 kHz)
+   - Troubleshooting guide (ALSA errors, no audio, underruns)
+   - Success criteria checklist
+   - Next steps to Milestone 2-5
+
+**Milestone 1 Status:**
+
+✅ **Software Complete:**
+- AudioEngine generates 1 kHz tone using NumPy (already implemented)
+- I2S driver outputs via ALSA to GPIO 18/19/21 (already implemented)
+- All 232 unit tests passing
+- Test script ready for hardware validation
+
+⏳ **Hardware Validation Required:**
+- Physical Raspberry Pi with I2S enabled
+- ESP32 with esp_bt_audio_source firmware
+- Bluetooth speaker paired
+- Logic analyzer verification (optional)
+- 5-minute continuous playback test
+
+**Key Technical Details:**
+- Sample rate: 48 kHz
+- I2S format: Stereo 16-bit PCM
+- BCLK: 1.536 MHz (48000 × 32 bits)
+- WS: 48 kHz (left/right channel clock)
+- GPIO: BCM 18 (BCLK), 19 (WS), 21 (DOUT)
+
+**User Workflow:**
+```bash
+# Short test (60 seconds)
+python3 milestone1_tone_test.py
+
+# Full milestone test (5 minutes)
+python3 milestone1_tone_test.py --duration 300
+```
+
+**Next Actions:**
+- Deploy to Raspberry Pi hardware for validation
+- Verify I2S signals with logic analyzer
+- Test ESP32 integration and Bluetooth playback
+- Move to Milestone 2 (UART Command Interface)
+
+---
+
 ## 2026-02-06 12:03 — Phase 3.1 Unit Tests COMPLETE (Documentation)
 
 **📝 Task:** Documented comprehensive unit test suite status (tests completed during Phase 1 TDD)
