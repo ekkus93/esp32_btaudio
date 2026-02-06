@@ -661,20 +661,70 @@ python main.py
 - All component unit tests passing (206 tests)
 - Ready for Phase 3 integration testing on target hardware
 
-### 2.2. Exception Classes (`utils/exceptions.py` or inline)
+### 2.2. Exception Classes (`utils/exceptions.py`)
+**Status:** ✅ **COMPLETE**  
 **Priority:** LOW (can define in component files initially)  
-**Estimated Time:** 15 minutes
+**Estimated Time:** 15 minutes  
+**Actual Time:** ~15 minutes
 
-- [ ] Define custom exception classes (FS.md Section 5.2)
-  - [ ] `I2SError` (base)
-  - [ ] `I2SUnderrunError`
-  - [ ] `I2SHardwareError`
-  - [ ] `UARTError` (base)
-  - [ ] `UARTTimeoutError`
-  - [ ] `UARTDisconnectedError`
-  - [ ] `AudioError` (base)
-  - [ ] `WAVNotFoundError`
-  - [ ] `WAVFormatError`
+- [x] Define custom exception classes (FS.md Section 5.2)
+  - [x] `I2SError` (base)
+  - [x] `I2SUnderrunError`
+  - [x] `I2SHardwareError`
+  - [x] `UARTError` (base)
+  - [x] `UARTTimeoutError`
+  - [x] `UARTDisconnectedError`
+  - [x] `AudioError` (base)
+  - [x] `WAVNotFoundError`
+  - [x] `WAVFormatError`
+
+**Implementation Details:**
+- **File:** `rpi_i2s_source/utils/exceptions.py` (213 lines)
+- **Package:** `rpi_i2s_source/utils/__init__.py` (6 lines)
+- **Exception Hierarchy:** 3 base classes, 6 specific exceptions
+
+**I2S Exceptions:**
+- `I2SError` — Base for all I2S driver errors
+- `I2SUnderrunError` — Buffer underrun (recoverable)
+- `I2SHardwareError` — Hardware failure (non-recoverable)
+
+**UART Exceptions:**
+- `UARTError` — Base for all UART communication errors
+- `UARTTimeoutError` — Command timeout (transient)
+- `UARTDisconnectedError` — Device disconnected (non-recoverable)
+
+**Audio Exceptions:**
+- `AudioError` — Base for all audio processing errors
+- `WAVNotFoundError` — WAV file not found
+- `WAVFormatError` — Unsupported WAV format
+
+**Usage Example:**
+```python
+from utils.exceptions import I2SUnderrunError, UARTTimeoutError, WAVNotFoundError
+
+# Catch specific exception
+try:
+    i2s_driver.write_frames(data)
+except I2SUnderrunError as e:
+    logger.warning(f"Underrun: {e}")
+
+# Catch category of exceptions
+try:
+    uart_mgr.send_command("SCAN")
+except UARTError as e:
+    logger.error(f"UART error: {e}")
+```
+
+**Testing:**
+- ✅ Import test: All exceptions import successfully
+- ✅ Hierarchy test: Inheritance relationships correct
+- ✅ Base class test: All inherit from Exception
+
+**Notes:**
+- Comprehensive docstrings explain when each exception is raised
+- Clear distinction between recoverable vs non-recoverable errors
+- Centralized in utils module for easy import across components
+- Audio exceptions duplicate existing audio/exceptions.py (can consolidate later)
 
 ---
 
