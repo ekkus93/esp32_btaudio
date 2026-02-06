@@ -25,7 +25,7 @@ Example:
 
 import logging
 import json
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, render_template
 from typing import Optional, Dict, Any
 import time
 
@@ -98,6 +98,9 @@ class WebServer:
     
     def _register_routes(self) -> None:
         """Register all Flask routes."""
+        # Web UI
+        self.app.route('/', methods=['GET'])(self._index)
+        
         # Status and monitoring
         self.app.route('/api/status', methods=['GET'])(self._get_status)
         self.app.route('/api/stream', methods=['GET'])(self._stream_status)
@@ -132,6 +135,19 @@ class WebServer:
         use a WSGI server (gunicorn, waitress) with proper shutdown support.
         """
         logger.info("WebServer stop requested (Flask has no clean shutdown)")
+    
+    # =========================================================================
+    # Web UI Routes
+    # =========================================================================
+    
+    def _index(self) -> str:
+        """
+        GET / - Serve main dashboard page.
+        
+        Returns:
+            Rendered HTML template
+        """
+        return render_template('index.html')
     
     # =========================================================================
     # API Endpoints

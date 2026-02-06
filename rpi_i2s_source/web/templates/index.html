@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - RPi I2S Audio Source{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Left Column: Audio Controls -->
+    <div class="col-lg-8">
+        <!-- Audio Source Selection -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-music-player"></i> Audio Source</h5>
+            </div>
+            <div class="card-body">
+                <div class="btn-group w-100" role="group" aria-label="Audio source selection">
+                    <input type="radio" class="btn-check" name="audioSource" id="sourceTone" value="tone" checked>
+                    <label class="btn btn-outline-primary" for="sourceTone">
+                        <i class="bi bi-soundwave"></i> Tone
+                    </label>
+
+                    <input type="radio" class="btn-check" name="audioSource" id="sourceSweep" value="sweep">
+                    <label class="btn btn-outline-primary" for="sourceSweep">
+                        <i class="bi bi-graph-up-arrow"></i> Sweep
+                    </label>
+
+                    <input type="radio" class="btn-check" name="audioSource" id="sourceWav" value="wav">
+                    <label class="btn btn-outline-primary" for="sourceWav">
+                        <i class="bi bi-file-music"></i> WAV File
+                    </label>
+
+                    <input type="radio" class="btn-check" name="audioSource" id="sourceSilence" value="silence">
+                    <label class="btn btn-outline-primary" for="sourceSilence">
+                        <i class="bi bi-volume-mute"></i> Silence
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tone Controls -->
+        <div class="card mb-4" id="toneControls">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-sliders"></i> Tone Generator</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="toneFreq" class="form-label">
+                            Frequency: <span id="toneFreqValue">1000</span> Hz
+                        </label>
+                        <input type="range" class="form-range" id="toneFreq" 
+                               min="20" max="20000" value="1000" step="1">
+                        <div class="d-flex justify-content-between">
+                            <small class="text-muted">20 Hz</small>
+                            <small class="text-muted">20 kHz</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="toneAmp" class="form-label">
+                            Amplitude: <span id="toneAmpValue">70</span>%
+                        </label>
+                        <input type="range" class="form-range" id="toneAmp" 
+                               min="0" max="100" value="70" step="1">
+                        <div class="d-flex justify-content-between">
+                            <small class="text-muted">0%</small>
+                            <small class="text-muted">100%</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="toneMode" class="form-label">Stereo Mode</label>
+                        <select class="form-select" id="toneMode">
+                            <option value="mono" selected>Mono (Both Channels)</option>
+                            <option value="left">Left Channel Only</option>
+                            <option value="right">Right Channel Only</option>
+                            <option value="dual">Dual Tone (L+R Different)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6" id="dualToneControls" style="display: none;">
+                        <label for="dualFreq" class="form-label">
+                            Right Freq: <span id="dualFreqValue">440</span> Hz
+                        </label>
+                        <input type="range" class="form-range" id="dualFreq" 
+                               min="20" max="20000" value="440" step="1">
+                    </div>
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary" id="btnApplyTone">
+                        <i class="bi bi-play-fill"></i> Apply Tone Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sweep Controls -->
+        <div class="card mb-4" id="sweepControls" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Frequency Sweep</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="sweepDuration" class="form-label">Duration</label>
+                        <select class="form-select" id="sweepDuration">
+                            <option value="5">5 seconds</option>
+                            <option value="10" selected>10 seconds</option>
+                            <option value="30">30 seconds</option>
+                            <option value="60">60 seconds</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="sweepLoop">
+                            <label class="form-check-label" for="sweepLoop">
+                                Loop continuously
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary" id="btnStartSweep">
+                        <i class="bi bi-play-fill"></i> Start Sweep (20 Hz → 20 kHz)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- WAV File Controls -->
+        <div class="card mb-4" id="wavControls" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-music"></i> WAV File Playback</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="wavFile" class="form-label">Select File</label>
+                        <input type="text" class="form-control" id="wavFile" 
+                               placeholder="Enter filename (e.g., test.wav)">
+                        <small class="text-muted">File must be in /home/pi/audio/</small>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="wavLoop">
+                            <label class="form-check-label" for="wavLoop">
+                                Loop playback
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary" id="btnPlayWav">
+                        <i class="bi bi-play-fill"></i> Play WAV File
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bluetooth Controls -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bluetooth"></i> Bluetooth Control</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="btMacAddress" 
+                                   placeholder="AA:BB:CC:DD:EE:FF">
+                            <button class="btn btn-outline-secondary" id="btnBtScan">
+                                <i class="bi bi-search"></i> Scan
+                            </button>
+                            <button class="btn btn-success" id="btnBtConnect">
+                                <i class="bi bi-link-45deg"></i> Connect
+                            </button>
+                            <button class="btn btn-danger" id="btnBtDisconnect">
+                                <i class="bi bi-x-circle"></i> Disconnect
+                            </button>
+                        </div>
+                        <small class="text-muted">Enter MAC address or scan for devices</small>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" id="btnBtStart">
+                            <i class="bi bi-play-fill"></i> Start Playback
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-warning w-100" id="btnBtStop">
+                            <i class="bi bi-stop-fill"></i> Stop Playback
+                        </button>
+                    </div>
+                </div>
+                <div id="btDeviceList" class="list-group" style="display: none;">
+                    <!-- Scan results populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Status -->
+    <div class="col-lg-4">
+        <!-- System Status -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="status-item">
+                    <span class="status-label">I2S Driver:</span>
+                    <span class="badge bg-secondary" id="statusI2S">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Audio Source:</span>
+                    <span class="badge bg-secondary" id="statusAudioSource">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Bluetooth:</span>
+                    <span class="badge bg-secondary" id="statusBluetooth">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">CPU Temp:</span>
+                    <span id="statusCpuTemp">--°C</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Memory:</span>
+                    <span id="statusMemory">-- MB</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Uptime:</span>
+                    <span id="statusUptime">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- I2S Statistics -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> I2S Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Buffer Fill</label>
+                    <div class="progress">
+                        <div class="progress-bar" id="bufferFillBar" role="progressbar" 
+                             style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <span id="bufferFillText">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Frames Sent:</span>
+                    <span id="statFramesSent">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Underruns:</span>
+                    <span id="statUnderruns" class="text-danger">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Sample Rate:</span>
+                    <span id="statSampleRate">48000 Hz</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-music-note-beamed"></i> Current Audio</h5>
+            </div>
+            <div class="card-body">
+                <div class="status-item" id="audioInfoTone" style="display: none;">
+                    <span class="status-label">Frequency:</span>
+                    <span id="audioFreq">-- Hz</span>
+                </div>
+                <div class="status-item" id="audioInfoAmplitude" style="display: none;">
+                    <span class="status-label">Amplitude:</span>
+                    <span id="audioAmplitude">--%</span>
+                </div>
+                <div class="status-item" id="audioInfoMode" style="display: none;">
+                    <span class="status-label">Mode:</span>
+                    <span id="audioMode">--</span>
+                </div>
+                <div class="status-item" id="audioInfoWav" style="display: none;">
+                    <span class="status-label">File:</span>
+                    <span id="audioWavFile">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert Area -->
+        <div id="alertArea"></div>
+    </div>
+</div>
+{% endblock %}
