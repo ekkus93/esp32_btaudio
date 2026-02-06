@@ -267,47 +267,101 @@
 ### 1.6. UART Command Manager (`uart/command_manager.py`)
 **Priority:** HIGH (needed for Bluetooth control)  
 **Estimated Time:** 3-4 hours
+**Status:** ✅ COMPLETE
 
-- [ ] Implement `UARTCommandManager` class (FS.md Section 2.5)
-  - [ ] `__init__(config)`: Open serial port with pyserial
-    - [ ] `serial.Serial(port, baudrate, timeout)`
-    - [ ] Initialize command queue, response futures dict, event callbacks list
-    - [ ] Initialize stats counters (sent, ok, err)
+- [x] Implement `UARTCommandManager` class (FS.md Section 2.5)
+  - [x] `__init__(config)`: Store config, deferred serial port opening
+    - [x] Device: `/dev/serial0`, baudrate: 115200, timeout: 1.0
+    - [x] Initialize command queue, response futures dict, event callbacks list
+    - [x] Initialize stats counters (sent, ok, err, events, reconnects)
   
-  - [ ] `start()`: Start UART receive thread
-  - [ ] `stop()`: Stop RX thread, close serial port
+  - [x] `start()`: Initialize serial port, start UART receive thread
+    - [x] Call `_init_serial_port()` to open `serial.Serial(port, baudrate, timeout)`
+    - [x] Launch daemon RX thread with `_rx_loop()`
   
-  - [ ] `send_command(command, args)`: Send command, wait for response (blocking)
-    - [ ] Create `concurrent.futures.Future` for response
-    - [ ] Write command line: `f"{command} {args}\n"`
-    - [ ] Wait for future result with timeout (5 seconds)
-    - [ ] Return `{"status": "ok", "result": ...}` or `{"status": "error", ...}`
-    - [ ] Raise `TimeoutError` if no response
+  - [x] `stop()`: Stop RX thread, close serial port
+    - [x] Set `running = False`
+    - [x] Join thread with 1s timeout
+    - [x] Close serial port
+    - [x] Idempotent (safe to call multiple times)
   
-  - [ ] `send_command_async(command, args, callback)`: Non-blocking send
+  - [x] `send_command(command, args='', timeout=5.0)`: Send command, wait for response (blocking)
+    - [x] Create UUID command_id and `concurrent.futures.Future` for response
+    - [x] Write command line: `f"{command} {args}\n"`
+    - [x] Wait for future result with timeout (default 5 seconds)
+    - [x] Return `{"status": "ok", "command": ..., "result": ...}` or `{"status": "error", ...}`
+    - [x] Raise `concurrent.futures.TimeoutError` if no response
+    - [x] Raise `RuntimeError` if not running
+    - [x] Increment `stats['sent']` counter
   
-  - [ ] `register_event_callback(callback)`: Add event handler function
+  - [x] `send_command_async(command, args='', callback=None)`: Non-blocking send
+    - [x] Spawn daemon thread to call `send_command()`
+    - [x] Call callback(response) on completion
+    - [x] Handle exceptions in callback
   
-  - [ ] `get_last_status()`: Return cached STATUS response
+  - [x] `register_event_callback(callback)`: Add event handler function to list
   
-  - [ ] `get_stats()`: Return command statistics
+  - [x] `get_last_status()`: Return cached STATUS response (or None)
   
-  - [ ] **Internal Methods:**
-    - [ ] `_rx_loop()`: Read bytes from serial port, accumulate until `\n`, parse line
-      - [ ] Handle `serial.SerialException` with reconnect logic
-    - [ ] `_process_line(line)`: Tokenize on `|`, dispatch to response or event handler
-    - [ ] `_handle_response(line)`: Match response to pending future, resolve it
-    - [ ] `_handle_event(parts)`: Parse EVENT|TYPE|SUBTYPE|DATA, call all callbacks
-    - [ ] `_parse_status_response(line)`: Cache STATUS response for quick retrieval
-    - [ ] `_reconnect()`: Attempt serial port reconnect (max 10 attempts, 5s delay)
+  - [x] `get_stats()`: Return copy of statistics dict
+  
+  - [x] **Internal Methods:**
+    - [x] `_init_serial_port()`: Open serial port with pyserial
+      - [x] Idempotent (check if already open)
+      - [x] Raise SerialException on error
+    - [x] `_rx_loop()`: Read bytes from serial port, accumulate until `\n`, parse line
+      - [x] Daemon thread (doesn't block shutdown)
+      - [x] `while self.running:` loop with `readline()`
+      - [x] Decode UTF-8 with errors='ignore'
+      - [x] Handle `serial.SerialException` with `_reconnect()` logic
+    - [x] `_process_line(line)`: Tokenize on `|`, dispatch to response or event handler
+      - [x] Parse OK|COMMAND|result
+      - [x] Parse ERR|COMMAND|error_code|message
+      - [x] Parse EVENT|TYPE|SUBTYPE|data
+      - [x] Log warnings for malformed lines
+    - [x] `_handle_response(line, status, parts)`: Match response to pending future, resolve it
+      - [x] Extract command, result/error_code/message
+      - [x] Cache STATUS responses in `self.last_status`
+      - [x] Resolve oldest pending Future (FIFO matching)
+      - [x] Increment `stats['ok']` or `stats['err']`
+    - [x] `_handle_event(parts)`: Parse EVENT message
+      - [x] Create event dict `{"type": ..., "subtype": ..., "data": ...}`
+      - [x] Call all registered event callbacks
+      - [x] Increment `stats['events']`
+      - [x] Handle exceptions in callbacks (log but don't crash)
+    - [x] `_reconnect()`: Attempt serial port reconnect (max 10 attempts, 5s delay)
+      - [x] Close old serial port
+      - [x] Reopen with `_init_serial_port()`
+      - [x] Increment `stats['reconnects']`
+      - [x] Log reconnect attempts and success/failure
+  
+  - [x] **Mock Support:**
+    - [x] MockSerial class when pyserial unavailable
+    - [x] MockSerial.write() logs data, returns len(data)
+    - [x] MockSerial.readline() sleeps 0.1s, returns b""
+    - [x] Allows development without pyserial or hardware
 
-- [ ] Test UART command manager
-  - [ ] Unit test: command parsing (OK|SCAN|2 → status="ok", result=...)
-  - [ ] Unit test: error parsing (ERR|CONNECT|NOT_FOUND → status="error")
-  - [ ] Unit test: event parsing (EVENT|BT|CONNECTED|MAC → callback invoked)
-  - [ ] Unit test: timeout handling (mock serial read timeout)
-  - [ ] Integration test: send STATUS command to real esp_bt_audio_source
-  - [ ] Integration test: async event handling (disconnect ESP32, verify event)
+- [x] Test UART command manager
+  - [x] **33 tests total, all passing (10.39s)**
+  - [x] Unit test: Initialization (stores config, sets defaults, initializes stats)
+  - [x] Unit test: Serial port opening (pyserial.Serial called with correct params, idempotent)
+  - [x] Unit test: Start/stop lifecycle (opens serial, launches RX thread, graceful shutdown)
+  - [x] Unit test: Command sending (writes to serial, increments sent counter, formats with args)
+  - [x] Unit test: Response parsing
+    - [x] OK response (status="ok", result extracted, ok counter incremented)
+    - [x] ERR response (status="error", error_code/message extracted, err counter incremented)
+    - [x] STATUS caching (last_status updated)
+  - [x] Unit test: Event parsing (EVENT|BT|CONNECTED → callbacks invoked, events counter)
+  - [x] Unit test: Event callbacks (multiple callbacks, exception handling in callbacks)
+  - [x] Unit test: Async commands (send_command_async with callback)
+  - [x] Unit test: Statistics (get_stats returns all counters)
+  - [x] Unit test: get_last_status (None initially, cached after STATUS command)
+  - [x] Unit test: Timeout handling (concurrent.futures.TimeoutError raised)
+  - [x] Unit test: Not running (RuntimeError if send_command before start)
+  - [x] Unit test: Error handling (malformed OK/ERR, unknown message types)
+  - [x] Integration test: Multiple sequential commands (sent/ok counters)
+  - [x] Integration test: Mixed responses and events (interleaved EVENT and OK messages)
+  - [x] **Note:** Hardware integration tests (real ESP32 UART) deferred until Raspberry Pi available
 
 ### 1.7. Flask Web Server (`web/app.py`)
 **Priority:** MEDIUM (needed for UI control)  
