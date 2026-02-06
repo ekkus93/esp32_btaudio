@@ -26,11 +26,11 @@ menu "A2DP Example Configuration"
     menu "Audio Configuration Defaults"
         config AUDIO_DEFAULT_SAMPLE_RATE
             int "Default Audio Sample Rate (Hz)"
-            default 44100
+            default 48000
             range 8000 96000
             help
                 Default sample rate for audio processing at boot.
-                Common values: 44100 (CD quality), 48000 (professional),
+                Common values: 48000 (professional/streaming), 44100 (CD quality),
                 32000, 22050, 16000, 8000.
                 Can be overridden at runtime via NVS or future commands.
 

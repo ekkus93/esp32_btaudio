@@ -107,7 +107,7 @@ This policy is enforced by CI check: `tools/ci_check_main_no_bt_apis.sh`
 - TX: GPIO17 (sends responses/events)
 
 I2S and UART: practical defaults and recommendations
-- I2S recommended default format: 16-bit PCM, stereo, 44.1 kHz (44100 Hz). This minimizes runtime processing on the Bluetooth ESP32 — send raw PCM frames from the decoder/producer ESP32 over I2S for the lowest CPU load on the Bluetooth device.
+- I2S recommended default format: 16-bit PCM, stereo, 48 kHz (48000 Hz). This is the professional/streaming standard and aligns with modern digital audio sources. The esp_bt_audio_source has resampling capability to adapt to different sink requirements if needed.
 - I2S master/slave recommendation: make the audio producer (the ESP32 doing decoding/producing samples) the I2S master and this Bluetooth ESP32 the I2S slave. That way the producer supplies BCLK/WCLK and the BT device simply consumes the samples.
 - UART defaults: 115200 baud, 8 data bits, no parity, 1 stop bit ("115200 8N1"). Commands are newline-terminated (\n).
 - USB-serial adapter / TTL note: Use a 3.3V TTL USB-serial adapter (for example FTDI, CP2102, CH340 variants). Do not connect 5V-level UART adapters directly to the ESP32 pins. Cross RX/TX and always connect a common ground.
@@ -332,7 +332,7 @@ Next steps to finish these flows on-device:
 
 | Command | Description | Parameters | Response | Example |
 |---------|-------------|------------|----------|---------|
-| `SAMPLE_RATE` | Set I2S sample rate | Rate in Hz | `OK\|SAMPLE_RATE\|SET\|<RATE>` | `SAMPLE_RATE 44100` |
+| `SAMPLE_RATE` | Set I2S sample rate | Rate in Hz | `OK\|SAMPLE_RATE\|SET\|<RATE>` | `SAMPLE_RATE 48000` |
 | `I2S_CONFIG` | Configure I2S pins | BCLK,WCLK,DOUT,DIN | `OK\|I2S_CONFIG\|SUCCESS` | `I2S_CONFIG 26,25,22,21` |
 | `AUDIO_AUTOSTART` | Enable/disable audio autostart at boot | on\|off\|get | `OK\|AUDIO_AUTOSTART\|<STATE>` | `AUDIO_AUTOSTART on` |
 
@@ -344,8 +344,8 @@ Audio behavior can be configured at compile-time (via Kconfig) and runtime (via 
 
 Run `idf.py menuconfig` and navigate to "A2DP Example Configuration" → "Audio Configuration Defaults":
 
-- `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE`: Sample rate in Hz (8000-96000, default 44100)
-  - Common rates: 44100, 48000, 32000, 22050, 16000, 8000
+- `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE`: Sample rate in Hz (8000-96000, default 48000)
+  - Common rates: 48000, 44100, 32000, 22050, 16000, 8000
 - `CONFIG_AUDIO_DEFAULT_VOLUME`: Initial volume (0-100, default 80)
 - `CONFIG_AUDIO_DEFAULT_BIT_DEPTH`: Bit depth (16/24/32, default 16)
 - `CONFIG_AUDIO_AUTOSTART_DEFAULT`: Auto-start audio at boot (bool, default yes)

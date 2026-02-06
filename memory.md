@@ -1,3 +1,174 @@
+## 2026-02-06 00:00 — Changed Default Sample Rate from 44.1 kHz to 48 kHz
+
+**⚙️ CONFIGURATION CHANGE:** Updated default audio sample rate across both projects from 44.1 kHz to 48 kHz.
+
+**Timestamp:** 2026-02-06 00:00:26
+
+**Rationale:**
+- **User decision:** 48 kHz is better default for modern streaming/professional audio
+- **Why 48 kHz:**
+  - Internet radio/streaming often uses 48 kHz (DVD/broadcast standard)
+  - Professional digital audio standard (vs 44.1 kHz CD standard)
+  - More future-proof for modern digital sources
+  - esp_bt_audio_source has resampling capability for flexibility with different rates
+- **Design context:**
+  - esp_bt_audio_source is designed to be **flexible** with I2S input (can handle various rates via resampling)
+  - ESP32 WROOM32 isn't powerful enough to decode MP3 in real-time
+  - esp_i2s_source is proof-of-concept test source; will likely be replaced with other I2S sources
+  - esp_bt_audio_source can adapt to whatever the BT sink needs (44.1k, 48k, etc.)
+
+**Files Updated:**
+1. `esp_bt_audio_source/main/Kconfig.projbuild`: Changed `CONFIG_AUDIO_DEFAULT_SAMPLE_RATE` from 44100 to 48000
+2. `esp_bt_audio_source/README.md`: 
+   - Updated I2S recommendation to "48 kHz (48000 Hz)"
+   - Updated SAMPLE_RATE command example to 48000
+   - Updated common rates order to prioritize 48000
+3. `esp_i2s_source/docs/PRD.md`: Changed all 44.1 kHz references to 48 kHz in:
+   - Primary goal
+   - UC1 use case
+   - FR1 output contract
+   - FR12 & FR13 format normalization
+   - NFR1 latency spec
+   - Section 6 default format
+4. `esp_i2s_source/docs/DOC_REVIEW.md`: Updated Finding #4 to reflect 48 kHz and clarified esp_bt_audio_source flexibility
+
+**Standard Format (Both Projects):**
+- **16-bit PCM, stereo, 48 kHz** (little-endian)
+- I2S master/slave: esp_i2s_source is master (generates clocks), esp_bt_audio_source is slave (follows clocks)
+- esp_bt_audio_source resamples internally if BT sink needs different rate
+
+---
+
+## 2026-02-05 18:45 — esp_i2s_source Documentation Review Complete
+
+**📋 DOCUMENTATION PHASE:** Comprehensive review of esp_i2s_source PRD and FunctionalSpecs to validate design before implementation begins.
+
+**Timestamp:** 2026-02-05 18:45:13
+
+**Deliverable:** DOC_REVIEW.md identifying 10 issues (3 blocker, 3 major, 3 moderate, 1 minor)
+
+---
+
+### Review Findings Summary
+
+**Critical Blockers (Must Fix Before Implementation):**
+1. **I2S Master/Slave Terminology:** PRD uses "TX/source mode" but must explicitly state "I2S master transmitter with BCLK/WS generation" to distinguish from esp_bt_audio_source's slave mode
+2. **GPIO Pin Wiring Undefined:** PRD inherited same pin numbers (GPIO26/25/22) from ARCH.md, but these are per-device assignments. Need wiring diagram showing esp_i2s_source output pins → esp_bt_audio_source input pins
+3. **UART Protocol Missing:** PRD mentions UART command channel but doesn't specify baud rate (115200), pins (GPIO16/17), or command format (must match esp_bt_audio_source's `COMMAND ARGS\n` / `OK|ERR|EVENT` protocol)
+
+**Major Issues:**
+4. **FunctionalSpecs.md Empty:** Critical document needs to be written (8-12 hours estimated)
+5. **Internet Radio Scope Unclear:** MP3-only? HTTPS? Codec library choice? Resource budget? Needs scoping into MVP (HTTP MP3) vs future features
+6. **Web UI API Undefined:** REST endpoints, security policy, captive portal all need specification
+
+**Moderate Issues:**
+7. **Testing Strategy Incomplete:** No host test plan, no integration test matrix, no logic analyzer validation for I2S timing
+8. **NVS Schema Missing:** What gets persisted? (Wi-Fi creds, radio URL, settings) What namespace? How to factory reset?
+9. **Command State Machine Undefined:** How to handle esp_bt_audio_source errors? Timeout policy? Retry logic?
+
+**Minor Issue:**
+10. **Terminology Inconsistencies:** "TX/source mode", "host/task", latency endpoint ambiguity
+
+---
+
+### Recommended Actions (Before Implementation)
+
+**Immediate (Week 1):**
+- Update PRD with I2S master/slave clarification
+- Add GPIO wiring diagram
+- Document UART protocol (reference esp_bt_audio_source spec)
+- Write FunctionalSpecs.md (translate PRD → implementation)
+
+**High Priority (Week 2):**
+- Create INTERFACE_SPEC.md (pin-level wiring, UART protocol, I2S timing)
+- Scope internet radio MVP (HTTP MP3 only, library choice)
+- Define web UI REST API and security policy
+- Resolve open questions (SPIFFS, STA mode priority, codec choice)
+
+**Medium Priority (Week 3):**
+- Write test matrix with pass criteria
+- Plan logic analyzer validation for I2S
+- Document NVS schema and factory reset
+- Add command state machine and error mapping
+
+**Validation (Week 4):**
+- Prototype I2S master transmitter (tone → logic analyzer)
+- Test UART command send/receive with esp_bt_audio_source
+- Basic web UI (AP mode, status display)
+- MP3 decode to PCM (verify resource usage)
+
+---
+
+### Interface Compatibility Analysis
+
+**Audio Format Contract:** ✅ **COMPATIBLE**
+- esp_i2s_source PRD: "44.1 kHz, 16-bit, stereo PCM"
+- esp_bt_audio_source i2s_manager: Expects same, can resample if needed
+- **Decision:** esp_i2s_source does all resampling to minimize BT-side CPU
+
+**I2S Master/Slave Roles:** ✅ **COMPATIBLE (after clarification)**
+- esp_i2s_source: I2S master (generates BCLK/WS)
+- esp_bt_audio_source: I2S slave (follows BCLK/WS)
+- **Issue:** PRD terminology confusing, needs explicit "master transmitter" language
+
+**UART Command Interface:** ⚠️ **NEEDS SPECIFICATION**
+- esp_bt_audio_source: Well-defined protocol (115200 8N1, `COMMAND ARGS\n` format)
+- esp_i2s_source: PRD mentions UART but no details
+- **Action Required:** Add Section 5.1 (UART Physical) and 5.2 (Command Protocol) to PRD
+
+**GPIO Pins:** ⚠️ **NEEDS WIRING DIAGRAM**
+- Both devices reference GPIO26/25/22 in ARCH.md
+- **Unclear:** Are these same pins on each ESP32, or wiring specification?
+- **Action Required:** Document esp_i2s_source output pins and physical wiring
+
+---
+
+### Positive Aspects
+
+✅ Clear purpose and scope (Wi-Fi/I2S master side of two-ESP32 system)  
+✅ Concrete use cases (UC1-UC5) for validation  
+✅ Measurable NFRs (latency < 20ms, jitter < 5ms, CPU < 50%)  
+✅ Extensibility considered (internet radio, STA mode as future features)  
+✅ Builds on proven esp_bt_audio_source architecture  
+✅ Open questions documented (shows awareness of gaps)  
+
+---
+
+### Risk Assessment
+
+**High Likelihood + High Impact:**
+- UART protocol mismatch (if not matched to esp_bt_audio_source exactly)
+- Internet radio decoder resource exhaustion (MP3 can be heavy on ESP32)
+- Cross-device integration complexity (two ESP32s must coordinate boot, commands, audio flow)
+
+**Medium Likelihood + High Impact:**
+- I2S master/slave misconfiguration (verify with logic analyzer before integration)
+
+**Mitigation:**
+- Reference esp_bt_audio_source command parser as golden implementation
+- Start with HTTP MP3 only, measure CPU/RAM, optimize before adding features
+- Build incremental test harness (tone → I2S → UART → BT A2DP → speaker)
+- Logic analyzer validation for I2S timing (BCLK/WS phase, data setup/hold)
+
+---
+
+### Next Session Goals
+
+1. Update esp_i2s_source PRD (address 3 blocker findings)
+2. Begin FunctionalSpecs.md (architecture, component APIs, state machines)
+3. Create INTERFACE_SPEC.md (wiring diagram, UART protocol, I2S timing diagrams)
+4. Resolve open questions via design review
+
+**Estimated Effort:**
+- PRD updates: 4-6 hours
+- FunctionalSpecs.md: 8-12 hours
+- INTERFACE_SPEC.md: 4-6 hours
+- Prototype validation: 16-24 hours
+
+**User Preference:** User prefers comprehensive analysis before implementation ("make sure that it makes sense" → thorough review delivered)
+
+---
+
 ## 2026-02-05 01:49 — CODE_REVIEW6 Complete: Ring Buffer Architecture Migration
 
 **✨ MAJOR ARCHITECTURE CHANGE:** Migrated from multi-producer queue to single-producer ring buffer architecture, fixing critical bugs and simplifying audio pipeline.
