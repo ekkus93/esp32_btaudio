@@ -1,3 +1,61 @@
+## 2026-02-06 13:57 — Milestone 3: Flask Web UI (Test Script & Hardware Guide)
+
+**📝 Task:** Created Milestone 3 web UI test script and hardware setup guide
+
+**Timestamp:** 2026-02-06 13:57:28
+
+**Context:** Working on Milestone-based deployment after completing Milestone 2
+
+**What Was Created:**
+
+1. **milestone3_web_ui_test.py** (executable test script, ~630 lines)
+   - Tests all Milestone 3 success criteria
+   - 5 automated tests:
+     1. Server connectivity (HTTP 200)
+     2. Web UI pages accessible
+     3. REST API endpoints (/api/status, /api/tone, /api/silence)
+     4. Tone control latency (<200ms requirement)
+     5. Server-Sent Events stream (500ms intervals)
+   - CLI arguments: --host, --port, --timeout
+   - Statistics: tests run/passed, API calls, average latency
+   - Can test localhost or remote Raspberry Pi on LAN
+
+2. **docs/MILESTONE3_HARDWARE_SETUP.md** (comprehensive guide, ~550 lines)
+   - Step 1: Install Python dependencies (Flask, requests)
+   - Step 2: Configure network access (bind 0.0.0.0, firewall rules)
+   - Step 3: Start Flask web server (bind all interfaces)
+   - Step 4: Access from laptop browser (http://<rpi-ip>:5000)
+   - Step 5: Run automated validation test
+   - Step 6: Test Bluetooth control (if UART available)
+   - Step 7: Verification checklist
+   - Troubleshooting: 5 common issues
+   - Advanced testing: curl commands, Python API testing
+   - Production deployment: gunicorn, systemd service
+
+**Milestone 3 Status:**
+
+✅ **Software Complete:**
+- Flask web server: Complete (web/app.py, 600+ lines)
+- Frontend UI: Complete (templates/index.html, static/js/dashboard.js)
+- REST API: Complete (8 endpoints)
+- SSE stream: Complete (500ms updates)
+- Tests: 36 tests passing (tests/test_web_server.py)
+
+✅ **Hardware Validation Materials:**
+- Test script: milestone3_web_ui_test.py
+- Hardware guide: docs/MILESTONE3_HARDWARE_SETUP.md
+
+⏳ **Hardware Validation Pending:**
+- Deploy to Raspberry Pi with LAN access
+- Test web UI from laptop browser
+- Verify tone control latency <200ms
+- Validate SSE stream updates
+- Test Bluetooth control (if UART connected)
+
+**Next:** Deploy to Raspberry Pi and test web UI access from laptop on LAN
+
+---
+
 ## 2026-02-06 13:48 — Milestone 2: UART Command Interface (Test Script & Hardware Guide)
 
 **📝 Task:** Created Milestone 2 UART test script and hardware setup guide
