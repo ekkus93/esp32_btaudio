@@ -328,6 +328,51 @@ GPIO16 (RX)   ------------- GPIO17 (TX)
 GND           ------------- GND
 ```
 
+### Power Requirements
+
+**RECOMMENDED: Power Both ESP32s Separately**
+
+Each ESP32 WROOM32 should be powered independently via USB:
+
+```
+USB Hub (powered) or separate USB power supplies
+    ├──> WiFi ESP32 (esp_i2s_source) via USB
+    └──> Bluetooth ESP32 (esp_bt_audio_source) via USB
+    
+Common GND established via I2S/UART wiring
+```
+
+**Why separate power is recommended:**
+- Each ESP32 draws 80-260 mA during active Wi-Fi/BT operation
+- Separate power ensures each device gets dedicated 500+ mA from its USB port
+- Eliminates brownout risks when both devices use Wi-Fi/BT simultaneously
+- Easier debugging - can power-cycle one device independently
+- No risk of voltage drops affecting audio quality or causing resets
+- Safer for development boards
+
+**Alternative (NOT RECOMMENDED): Powering one ESP32 from another**
+
+If you must power one ESP32 from the other:
+- Use the **5V rail** (NOT 3.3V) to feed the second ESP32's voltage regulator
+- Requires ESP32 #1 powered by a **2A+ USB supply** (not a computer USB port)
+- Add a 470µF-1000µF electrolytic capacitor across VIN/GND near ESP32 #2
+- Monitor for brownouts/resets during Wi-Fi/BT activity
+- Risk: May exceed USB current limits during peak activity
+
+**Wiring if using shared power (use at your own risk):**
+```
+ESP32 #1 (source)           ESP32 #2 (load)
+VIN or 5V ─────────────────> VIN (NOT 3V3)
+GND       ─────────────────> GND
+          [470µF+ cap across VIN/GND near ESP32 #2]
+```
+
+**Current Limitations:**
+- ESP32 active current: ~80-260 mA (varies with Wi-Fi/BT activity)
+- USB 2.0 limit: 500 mA per port
+- Two ESP32s can exceed 500 mA during peak operation
+- ESP32 3.3V regulator output: ~600 mA max (shared with onboard components)
+
 ## Implementation Guide
 
 ### ESP32 WiFi Controller Project Setup
