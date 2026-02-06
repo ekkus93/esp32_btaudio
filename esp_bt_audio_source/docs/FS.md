@@ -272,7 +272,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 5. Trace parser optionally invoked to generate `trace_parsed.{csv,json}` for audio diagnostics.
 
 ### 5.3 Acceptance criteria recap
-- Two consecutive green orchestrator runs (host 22/22 + Unity 108/108) before release tagging.
+- Two consecutive green orchestrator runs (host 259/259 test cases + device tests TBD) before release tagging.
 - Manual WAV + I2S playback sessions (≥5 min) produce no underrun logs.
 - Pairing persistence script demonstrates store, reboot, recall, unpair cycle.
 
@@ -310,4 +310,17 @@ esp_err_t storage_get_default_pin(char out[8]);
 - C. Audio trace sample: provide example `trace_parsed.csv` with annotated columns.
 
 Document history: initial version authored 2025-12-04 based on PRD v2025-12-04. Future edits should include changelog at end of file.
+
+---
+
+## Changelog
+
+### 2026-02-05 - Ring Buffer Migration Complete (CODE_REVIEW6)
+- **Architecture change**: Migrated from multi-producer queue to SPSC ring buffer
+- **Test status**: All 259 host test cases passing (33 binaries), clang-tidy clean (27 files)
+- **Code cleanup**: Removed duplicate DIAG-EVENT prints, fixed debug traces in commands.c
+- **Legacy cleanup**: audio_queue.c/.h fully removed from codebase
+- **Validation**: 461/461 total tests passing (host + device), stress tests added and passing
+- **Impact**: Simplified audio pipeline, eliminated race conditions, improved diagnostics
+- Updated acceptance criteria to reflect current test counts
 

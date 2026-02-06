@@ -331,8 +331,14 @@ graph LR
 
 ## Notes
 
-- All diagrams reflect the architecture as of Feb 1, 2026 (post CODE_REVIEW2 cleanup)
+- All diagrams reflect the architecture as of **Feb 5, 2026** (post CODE_REVIEW6 ring buffer migration)
+- **Major changes since Feb 1**:
+  - SPSC ring buffer architecture completed and validated (CODE_REVIEW6)
+  - Legacy audio_queue removed from codebase
+  - All 259 host tests passing, clang-tidy clean
+  - Duplicate DIAG-EVENT prints fixed in commands.c
 - See ARCH.md for detailed technical documentation
 - See README.md for user-facing configuration and usage
+- See memory.md for rolling engineering log (CODE_REVIEW6 completion entry)
 - See code_review/CODE_REVIEW2_TODO.md for implementation history
 - These diagrams are rendered by GitHub/GitLab and most Markdown viewers with Mermaid support

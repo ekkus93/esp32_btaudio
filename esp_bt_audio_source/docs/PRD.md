@@ -129,7 +129,7 @@ Representative Use Cases:
 
 ## 7. Metrics & Acceptance Criteria
 
-1. **Test Coverage**: Host (22) + Unity (108) tests pass → `tmp/run_all_tests_summary.json` shows totals with zero failures. Acceptance requires two consecutive green orchestrator runs before release.
+1. **Test Coverage**: Host (259 test cases across 33 binaries) + Unity (device tests TBD) pass → `tmp/run_all_tests_summary.json` shows totals with zero failures. Acceptance requires two consecutive green orchestrator runs before release.
 2. **Audio Continuity**: Manual WAV and I2S playback sessions show no underruns/DIAG warnings for ≥5 minutes (log evidence archived under `tmp/`).
 3. **Pairing Persistence**: `PAIR` + reboot + `PAIRED` returns entry; `UNPAIR` removes entry on next boot. Evidence captured via UART logs.
 4. **Diagnostics Availability**: Running `tools/parse_traces.py` on a latest `one_run_unity.log` produces >1000 records, consumed by `tools/trace_stats.py` without error.
@@ -145,13 +145,14 @@ Representative Use Cases:
 
 ## 9. Milestones & Deliverables
 
-| Milestone | Target / Date | Status (2025-12-04) | Description |
+| Milestone | Target / Date | Status (2026-02-05) | Description |
 | --- | --- | --- | --- |
 | M1 – Documentation Baseline | 2025-11-17 | ✅ Complete | PRD + README capture current behavior and testing workflow. |
-| M2 – Metadata & Diagnostics Closure | +2 weeks from PRD (ETA 2025-12-01) | 🔄 In progress | Finish metadata ringbuffer audit, add tests, document in README. |
-| M3 – Pairing Persistence Validation | +3 weeks (ETA 2025-12-08) | ⏳ Not started | Execute on-device pairing scripts, capture logs, update docs with results. |
-| M4 – PSRAM Validation | Hardware availability dependent | ⏳ Blocked (needs PSRAM board) | Run orchestrator with CONFIG_SPIRAM hardware; record jitter + buffer metrics. |
-| M5 – Release Candidate | After M3 + two green sweeps | ⏳ Pending | Two consecutive green orchestrator runs + updated docs + tagged release. |
+| M2 – Ring Buffer Migration (CODE_REVIEW6) | Completed 2026-02-05 | ✅ Complete | SPSC ring buffer architecture live, 461/461 tests passing, legacy audio_queue removed. |
+| M3 – Code Quality & Diagnostics | Completed 2026-02-05 | ✅ Complete | Fixed duplicate DIAG-EVENT prints, clang-tidy clean (27 files), all 259 host tests passing. |
+| M4 – Pairing Persistence Validation | TBD | ⏳ Not started | Execute on-device pairing scripts, capture logs, update docs with results. |
+| M5 – PSRAM Validation | Hardware availability dependent | ⏳ Blocked (needs PSRAM board) | Run orchestrator with CONFIG_SPIRAM hardware; record jitter + buffer metrics. |
+| M6 – Release Candidate | After device test validation | ⏳ Pending | Two consecutive green orchestrator runs + updated docs + tagged release. |
 
 ## 10. Appendix / References
 - `README.md` (esp_bt_audio_source root) — operational guide, command list, testing instructions.
