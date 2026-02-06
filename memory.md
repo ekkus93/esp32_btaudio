@@ -10127,3 +10127,194 @@ Fixed the flaky test in `test_continuous_transmission` that was failing due to e
 - Commit: 932c35dd "Fix flaky test: Remove underrun assertion in test_continuous_transmission"
 - Pushed to master successfully
 
+
+---
+
+## 2025-01-13 Phase 3.2 Integration Tests - Framework Complete
+
+**Integration Test Framework: 7 Tests Across 3 Modules**
+
+Created comprehensive hardware integration test framework for end-to-end validation on Raspberry Pi with ESP32 and Bluetooth speaker.
+
+**Test Modules Created:**
+
+1. **test_i2s_pipeline.py** (3 tests)
+   - `test_tone_to_bluetooth`: 1 kHz tone → I2S → Bluetooth (FS.md Section 10.2)
+   - `test_frequency_sweep`: 20 Hz → 20 kHz smooth sweep validation
+   - `test_wav_playback`: WAV file loading, resampling, playback
+
+2. **test_uart_resilience.py** (2 tests)
+   - `test_disconnect_reconnect`: Auto-reconnect within 10 seconds
+   - `test_command_during_disconnect`: Graceful error handling
+
+3. **test_long_duration.py** (2 tests)
+   - `test_one_hour_stability`: 60-minute continuous operation (memory, underruns)
+   - `test_five_minute_baseline`: Quick 5-minute stability check
+
+**Test Infrastructure:**
+- **Auto-skip system**: Tests skip by default on dev machines (no hardware)
+- **--run-hardware flag**: Enable tests on Raspberry Pi
+- **Hardware marker**: `@pytest.mark.hardware` for all integration tests
+- **Manual verification**: Tests print clear instructions for listening to Bluetooth speaker
+- **conftest.py**: Automatic test skipping and CLI options
+- **pytest.ini**: Custom markers (hardware, slow)
+
+**Documentation:**
+- **tests/integration/README.md**: Complete guide with:
+  - Hardware requirements and wiring diagrams
+  - Setup instructions (I2S, UART, Bluetooth)
+  - Individual test descriptions and usage
+  - Troubleshooting guide
+  - Expected test durations and success criteria
+
+**Validation:**
+- ✅ All 7 tests discovered by pytest
+- ✅ Auto-skip working (0 failures on dev machine)
+- ✅ Module imports successful
+- ✅ Clear documentation and instructions
+- ✅ Ready for hardware execution when Raspberry Pi available
+
+**Test Execution Examples:**
+```bash
+# Auto-skipped by default
+pytest tests/integration/ -v
+
+# Run on Raspberry Pi
+pytest tests/integration/ -v --run-hardware
+
+# Individual tests
+pytest tests/integration/test_i2s_pipeline.py::test_tone_to_bluetooth -v --run-hardware
+```
+
+**Hardware Prerequisites:**
+- Raspberry Pi with I2S interface (GPIOs 18, 19, 21)
+- UART enabled (/dev/ttyAMA0, GPIOs 14, 15)
+- ESP32 running esp_bt_audio_source firmware
+- I2S connections: BCK, WS, DATA
+- UART connections: TX/RX
+- Bluetooth speaker paired with ESP32
+
+**Status:** Framework complete, awaiting hardware setup for validation.
+
+**Git:**
+- Commit: 7d8a3725 "Phase 3.2: Integration Tests - Complete framework for hardware validation"
+- Files: 8 files, 1158 insertions
+- Pushed to master successfully
+
+
+---
+
+## 2026-02-06 Phase 3.3 Performance Tests - Framework Complete
+
+**Performance Test Framework: 9 Tests Across 2 Modules + Standalone Tool**
+
+Created comprehensive performance test framework to validate non-functional requirements (NFRs) from FS.md Section 10.3, focusing on CPU usage, memory consumption, and I2S timing.
+
+**Test Modules Created:**
+
+1. **test_cpu_usage.py** (5 tests, 232 lines)
+   - `test_cpu_idle`: Validates <10% CPU when system idle
+   - `test_cpu_tone_generation`: Validates <25% CPU during tone generation (FS.md 10.3)
+   - `test_cpu_wav_playback`: Validates <30% CPU during WAV playback with resampling
+   - `test_cpu_frequency_sweep`: Validates <25% CPU during frequency sweep (20 Hz → 20 kHz)
+   - `test_process_cpu_affinity`: Verifies process can use all CPU cores
+
+2. **test_memory_usage.py** (4 tests, 282 lines)
+   - `test_memory_baseline`: Validates <100 MB RSS baseline when idle
+   - `test_memory_during_tone_generation`: 5-minute stability test
+     - Target: <100 MB average RSS
+     - Linear regression for leak detection: <1 MB/minute growth
+   - `test_memory_after_multiple_operations`: Validates memory release after 10 tone cycles
+     - Target: <10 MB growth after operations
+   - `test_buffer_allocation`: Validates audio buffer allocation/deallocation
+     - 60-second buffer ≈ 22 MB expected
+
+3. **monitor_resources.py** (312 lines)
+   - Standalone monitoring utility for resource profiling
+   - Real-time CPU and memory tracking
+   - Configurable sampling interval
+   - CSV export for analysis
+   - Summary statistics with automatic leak detection
+   - Usage: `python tests/performance/monitor_resources.py --duration=300 --output=perf.csv`
+
+**Test Infrastructure:**
+- **Auto-skip system**: Tests skip by default on dev machines (no hardware)
+- **--run-hardware flag**: Enable tests on Raspberry Pi
+- **Hardware marker**: `@pytest.mark.hardware` for all performance tests
+- **conftest.py**: Hardware verification, auto-skip logic (107 lines)
+- **verify_hardware fixture**: Checks I2S device, web server, UART before tests
+
+**Documentation:**
+- **tests/performance/README.md** (352 lines): Complete guide with:
+  - Hardware requirements and setup instructions
+  - Test execution examples and expected durations
+  - NFR targets and success criteria
+  - Troubleshooting guide
+  - Manual I2S timing validation with logic analyzer
+  - Expected waveforms and timing diagrams
+
+**Non-Functional Requirements (NFRs) Validated:**
+- **CPU Usage:**
+  - Idle: <10% average
+  - Tone generation: <25% average
+  - WAV playback: <30% average
+  - Frequency sweep: <25% average
+  
+- **Memory Usage:**
+  - Baseline idle: <100 MB RSS
+  - During operation: <100 MB average RSS
+  - Memory growth: <1 MB/minute (leak detection)
+  - After operations: <10 MB growth (proper release)
+
+**I2S Timing (Manual Validation):**
+- BCLK frequency: 1.536 MHz ±50 ppm
+- WS (LRCLK) frequency: 48 kHz ±50 ppm
+- BCLK/WS ratio: 64 cycles (32 per channel)
+- Phase alignment: WS transitions on BCLK falling edge
+- **Note:** Requires logic analyzer; automated tests not implemented
+
+**Validation:**
+- ✅ All 9 tests discovered by pytest
+- ✅ Auto-skip working (0 failures on dev machine)
+- ✅ Module imports successful
+- ✅ Clear documentation and usage instructions
+- ✅ Ready for hardware execution when Raspberry Pi available
+
+**Test Execution:**
+```bash
+# Auto-skipped by default
+pytest tests/performance/ -v
+
+# Run on Raspberry Pi
+pytest tests/performance/ -v --run-hardware
+
+# Individual modules
+pytest tests/performance/test_cpu_usage.py -v --run-hardware      # ~2 min
+pytest tests/performance/test_memory_usage.py -v --run-hardware   # ~8 min
+
+# Standalone monitoring
+python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
+```
+
+**Expected Duration:**
+- CPU tests: ~2 minutes (5 tests)
+- Memory tests: ~8 minutes (4 tests, includes 5-minute stability test)
+- Total: ~10 minutes
+
+**Hardware Prerequisites:**
+- Raspberry Pi with I2S interface configured
+- Flask web server running (main.py at localhost:5000)
+- I2S device: dtoverlay=i2s-mmap in /boot/config.txt
+- Logic analyzer (for I2S timing validation only)
+
+**Status:** Framework complete, awaiting hardware setup for validation.
+
+**Git:**
+- Commit: 7e9f4333 "Phase 3.3: Performance Tests - Complete framework for NFR validation"
+- Files: 7 files, 1269 insertions
+- Pushed to master successfully
+
+**Next Steps:**
+- Phase 4: Documentation and Deployment
+- Or: Run performance tests on actual Raspberry Pi hardware when available
+
