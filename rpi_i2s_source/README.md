@@ -335,23 +335,47 @@ dtparam=i2s=on
 
 ## Testing
 
-### Unit Tests
+**📋 For detailed testing guide, see [TESTING.md](TESTING.md)**
+
+### Quick Test Commands
+
+**Unit Tests (206 tests, ~43 seconds):**
 ```bash
 cd /home/pi/esp32_btaudio/rpi_i2s_source
 source venv/bin/activate
 pytest tests/ -v
 ```
 
-### Integration Tests (requires ESP32 connected)
+**Integration Tests (requires hardware: RPi + ESP32 + Bluetooth speaker):**
 ```bash
-pytest tests/integration/ -v
+pytest tests/integration/ -v --run-hardware
 ```
 
-### Performance Tests
+**Performance Tests (validates CPU/memory NFRs):**
 ```bash
-# Monitor CPU/memory for 5 minutes
+# Run all performance tests (~10 minutes)
+pytest tests/performance/ -v --run-hardware
+
+# Or monitor resources standalone
 python tests/performance/monitor_resources.py --duration=300
 ```
+
+**Test Summary:**
+- **Unit tests:** 206 tests (100% passing)
+- **Integration tests:** 7 tests (I2S pipeline, UART resilience, stability)
+- **Performance tests:** 9 tests (CPU usage, memory leak detection)
+
+---
+
+## Documentation
+
+- **[README.md](README.md)** - This file (quick start and overview)
+- **[SETUP.md](SETUP.md)** - Detailed Raspberry Pi setup guide (OS installation, network config, systemd service)
+- **[TESTING.md](TESTING.md)** - Comprehensive testing guide (unit, integration, performance tests)
+- **[docs/PRD.md](docs/PRD.md)** - Product Requirements Document
+- **[docs/FS.md](docs/FS.md)** - Functional Specification
+- **[docs/TODO.md](docs/TODO.md)** - Development task tracking
+- **[docs/ARCH.md](docs/ARCH.md)** - Architecture documentation
 
 ---
 

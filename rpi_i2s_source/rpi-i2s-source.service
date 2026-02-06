@@ -1,0 +1,30 @@
+[Unit]
+Description=Raspberry Pi I2S Audio Test Jig
+Documentation=https://github.com/ekkus93/esp32_btaudio
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/esp32_btaudio/rpi_i2s_source
+ExecStart=/home/pi/esp32_btaudio/rpi_i2s_source/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rpi-i2s-source
+
+# Security (optional hardening)
+# ProtectSystem=strict
+# ProtectHome=read-only
+# NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
