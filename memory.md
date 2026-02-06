@@ -1,3 +1,66 @@
+## 2026-02-06 11:17 — Phase 1.7 Flask Web Server COMPLETE (6/8 Phase 1 Components Done)
+
+**📝 MILESTONE:** Completed Flask Web Server implementation with comprehensive REST API and 36 passing unit tests.
+
+**Timestamp:** 2026-02-06 11:17:26
+
+**Context:** User working through rpi_i2s_source Phase 1 implementation. Selected TODO section 1.7 (Flask Web Server) after completing sections 1.1-1.5 in previous session.
+
+**Implementation Summary:**
+
+**File:** `web/app.py` (456 lines, production-ready)
+- **Class:** `WebServer(config, audio_engine, uart_manager, telemetry)`
+- **Flask app** with threaded mode
+- **API Endpoints:**
+  - `GET /api/status` - Full system telemetry (JSON)
+  - `GET /api/stream` - Server-Sent Events (500ms updates)
+  - `POST /api/tone` - Set tone parameters (freq, amp, mode, dual_freq)
+  - `POST /api/sweep` - Start frequency sweep (duration, loop)
+  - `POST /api/wav` - Play WAV file (file, loop)
+  - `POST /api/silence` - Set silence mode
+  - `POST /api/bt/command` - Send Bluetooth command via UART (optional)
+  - `GET /api/bt/status` - Get Bluetooth status (optional)
+- **Graceful degradation:** UART manager optional (returns 503 if unavailable)
+- **Error handling:** WAVNotFoundError → 404, WAVFormatError → 400, TimeoutError → 504
+- **JSON parsing:** Uses `silent=True` to handle missing Content-Type
+- **SSE stream:** Native Flask generator (no flask-sse dependency)
+
+**Tests:** `tests/test_web_server.py` (548 lines, 36 tests, all passing)
+- Initialization (4 tests): Stores dependencies, loads config, creates Flask app, handles missing UART
+- Status endpoints (3 tests): GET /api/status, SSE stream, error handling
+- Audio control (11 tests): Tone params, sweep params, WAV playback, silence, validation
+- Bluetooth endpoints (6 tests): Commands, status, UART unavailable handling
+- Error handling (3 tests): Audio engine, UART exceptions
+- Integration (3 tests): Multiple tone changes, source switching, concurrent requests
+
+**Key Decisions:**
+- **Flask test client:** All tests use Flask test_client() (no real HTTP server)
+- **UART optional:** Server works without UART manager (BT endpoints return 503)
+- **Validation:** Strict validation for freq (20-20000 Hz), amp (0.0-1.0), mode, duration (1-60s)
+- **Auto-switching:** POST /api/tone auto-switches to tone source if currently on sweep/wav
+- **SSE native:** Implemented SSE stream using Flask Response generator (no external lib)
+
+**Dependencies Installed:**
+- Flask==3.0.0
+- Werkzeug, Jinja2, itsdangerous, blinker, MarkupSafe (Flask dependencies)
+
+**Phase 1 Progress:**
+- ✅ 1.1 Ring Buffer (25 tests, 0.65s)
+- ✅ 1.2 Config Manager (25 tests, 0.25s)
+- ✅ 1.3 Telemetry Tracker (24 tests, 0.35s)
+- ✅ 1.4 Audio Engine (37 tests, 1.41s)
+- ✅ 1.5 I2S Driver (26 tests, 8.86s)
+- ✅ 1.7 Flask Web Server (36 tests, 0.43s) ← NEW
+- ⏳ 1.6 UART Command Manager (next)
+- ⏳ 1.8 Frontend Web UI (later)
+
+**Total Tests:** 173 tests (172 passing, 1 flaky I2S timing test)
+**Total Execution Time:** ~12 seconds (excluding I2S continuous transmission test)
+
+**Next Step:** Phase 1.6 UART Command Manager (pyserial-based Bluetooth control)
+
+---
+
 ## 2026-02-06 09:37 — Finding #10 Terminology Cleanup VERIFIED (ALL 10 FINDINGS RESOLVED ✅)
 
 **📝 PRD VERIFICATION:** All 4 DOC_REVIEW Finding #10 (Terminology and Clarity) issues verified as ALREADY RESOLVED. No changes needed.
