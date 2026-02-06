@@ -1,3 +1,77 @@
+## 2026-02-06 11:44 — Phase 2.1 Main Application COMPLETE
+
+**📝 Task:** Implemented main.py - Application entry point orchestrating all Phase 1 components
+
+**Timestamp:** 2026-02-06 11:44:27
+
+**Context:** Phase 2 Main Application Integration - First component (main application entry point)
+
+**Implementation Summary:**
+
+**File Created:**
+- **rpi_i2s_source/main.py** (261 lines)
+
+**Key Components:**
+
+1. **Component Initialization (Dependency Order):**
+   - RingBuffer (capacity from config)
+   - AudioEngine (tone/sweep/WAV generation)
+   - I2SDriverALSA (ALSA PCM output)
+   - UARTCommandManager (optional - graceful degradation if unavailable)
+   - TelemetryTracker (system metrics)
+   - WebServer (Flask dashboard + REST API)
+
+2. **Signal Handlers:**
+   - SIGINT (Ctrl+C) → graceful shutdown
+   - SIGTERM → graceful shutdown
+   - Shutdown sequence in reverse dependency order
+   - All components stopped cleanly with error handling
+
+3. **UART Event Callbacks:**
+   - BT_CONNECTED → on_bt_event() logs connection
+   - BT_DISCONNECTED → on_bt_event() logs disconnection
+   - Telemetry automatically updated via UART manager's internal state
+
+4. **Logging Setup:**
+   - Log level from config (default: INFO)
+   - Format: timestamp - logger - level - message
+   - Comprehensive startup/shutdown logging
+
+5. **Error Handling:**
+   - Try/catch blocks for all component init/shutdown
+   - Fatal errors logged with traceback
+   - Graceful UART degradation (web-only mode if UART unavailable)
+   - Exit codes: 0 (success), 1 (error)
+
+**Usage:**
+```bash
+cd rpi_i2s_source
+python main.py
+# or
+chmod +x main.py
+./main.py
+```
+
+**Testing:**
+- ✅ Import test: All modules import successfully
+- ✅ Function test: main(), signal_handler(), on_bt_event(), setup_logging() exist
+- ✅ Syntax check: py_compile passes
+- ⏸️ Integration test: Requires Raspberry Pi hardware (I2S device)
+- ⏸️ UART test: Requires ESP32 connected via serial
+
+**Phase 2 Progress:**
+- ✅ 2.1 Main Application (261 lines) — COMPLETE
+- ⏸️ 2.2 Exception Classes (optional - can define inline)
+
+**Git Commit:** `12fb7d73` (pushed to GitHub master)
+
+**Next Steps:**
+- Phase 3: Integration testing on Raspberry Pi hardware
+- Hardware validation with I2S audio device and ESP32
+- End-to-end testing (web dashboard → I2S output → Bluetooth audio)
+
+---
+
 ## 2026-02-06 11:35 — Phase 1.8 Frontend Web UI COMPLETE — PHASE 1 100% COMPLETE! 🎉
 
 **📝 MILESTONE:** Completed Frontend Web UI with Bootstrap 5 dashboard. **ALL PHASE 1 COMPONENTS COMPLETE!**
