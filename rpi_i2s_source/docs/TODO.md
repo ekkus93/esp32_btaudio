@@ -9,77 +9,95 @@
 ## Phase 0: Project Setup and Environment
 
 ### 0.1. Repository and Directory Structure
-- [ ] Create directory structure per FS.md Section 9.1
-  - [ ] Create `rpi_i2s_source/` root directory
-  - [ ] Create `audio/` subdirectory with `__init__.py`
-  - [ ] Create `uart/` subdirectory with `__init__.py`
-  - [ ] Create `config/` subdirectory with `__init__.py`
-  - [ ] Create `telemetry/` subdirectory with `__init__.py`
-  - [ ] Create `web/` subdirectory with `__init__.py`
-  - [ ] Create `web/static/css/` directory
-  - [ ] Create `web/static/js/` directory
-  - [ ] Create `web/templates/` directory
-  - [ ] Create `tests/` subdirectory
-  - [ ] Create `tests/integration/` subdirectory
-  - [ ] Create `docs/` subdirectory (already exists)
+- [x] Create directory structure per FS.md Section 9.1
+  - [x] Create `rpi_i2s_source/` root directory
+  - [x] Create `audio/` subdirectory with `__init__.py`
+  - [x] Create `uart/` subdirectory with `__init__.py`
+  - [x] Create `config/` subdirectory with `__init__.py`
+  - [x] Create `telemetry/` subdirectory with `__init__.py`
+  - [x] Create `web/` subdirectory with `__init__.py`
+  - [x] Create `web/static/css/` directory
+  - [x] Create `web/static/js/` directory
+  - [x] Create `web/templates/` directory
+  - [x] Create `tests/` subdirectory
+  - [x] Create `tests/integration/` subdirectory
+  - [x] Create `docs/` subdirectory (already exists)
 
 ### 0.2. Configuration Files
-- [ ] Create `requirements.txt` with Python dependencies
-  - [ ] Add Flask==3.0.0
-  - [ ] Add pyserial==3.5
-  - [ ] Add pigpio==1.78 (or comment out if using ALSA)
-  - [ ] Add numpy==1.24.0
-  - [ ] Add scipy==1.11.0
-  - [ ] Add pyyaml==6.0
-  - [ ] Add flask-sse==1.0.0 (optional)
-  - [ ] Add psutil (for telemetry)
-  - [ ] Add pytest (for testing)
-  - [ ] Add pytest-mock (for mocking in tests)
+- [x] Create `requirements.txt` with Python dependencies
+  - [x] Add Flask==3.0.0
+  - [x] Add pyserial==3.5
+  - [x] Add pigpio==1.78 (or comment out if using ALSA)
+  - [x] Add numpy==1.24.0
+  - [x] Add scipy==1.11.0
+  - [x] Add pyyaml==6.0
+  - [x] Add flask-sse==1.0.0 (optional)
+  - [x] Add psutil (for telemetry)
+  - [x] Add pytest (for testing)
+  - [x] Add pytest-mock (for mocking in tests)
 
-- [ ] Create `config.yaml` template (default configuration)
-  - [ ] Define I2S section (gpio_bclk, gpio_ws, gpio_dout, sample_rate, buffer_size)
-  - [ ] Define UART section (device, baudrate, timeout)
-  - [ ] Define audio section (default_source, tone_freq, tone_amp, wav_directory)
-  - [ ] Define web section (port, bind_address, log_level)
-  - [ ] Define bluetooth section (last_device_mac)
+- [x] Create `config.yaml` template (default configuration)
+  - [x] Define I2S section (gpio_bclk, gpio_ws, gpio_dout, sample_rate, buffer_size)
+  - [x] Define UART section (device, baudrate, timeout)
+  - [x] Define audio section (default_source, tone_freq, tone_amp, wav_directory)
+  - [x] Define web section (port, bind_address, log_level)
+  - [x] Define bluetooth section (last_device_mac)
 
-- [ ] Create `.gitignore`
-  - [ ] Ignore `config.yaml` (user-specific)
-  - [ ] Ignore `__pycache__/` and `*.pyc`
-  - [ ] Ignore `.pytest_cache/`
-  - [ ] Ignore `*.log`
-  - [ ] Ignore `/venv/` and `/env/`
+- [x] Create `.gitignore`
+  - [x] Ignore `config.yaml` (user-specific)
+  - [x] Ignore `__pycache__/` and `*.pyc`
+  - [x] Ignore `.pytest_cache/`
+  - [x] Ignore `*.log`
+  - [x] Ignore `/venv/` and `/env/`
 
-- [ ] Create `README.md` with setup instructions
-  - [ ] Hardware requirements
-  - [ ] Software dependencies
-  - [ ] Installation steps
-  - [ ] Quick start guide
-  - [ ] Wiring diagram (RPi ↔ ESP32)
+- [x] Create `README.md` with setup instructions
+  - [x] Hardware requirements
+  - [x] Software dependencies
+  - [x] Installation steps
+  - [x] Quick start guide
+  - [x] Wiring diagram (RPi ↔ ESP32)
 
 ### 0.3. Development Environment Setup
+**Note:** Preparation complete. Execution deferred until Raspberry Pi hardware is available.
+
+**Preparation (Development Machine):**
+- [x] Create automated setup script (`setup_rpi.sh`)
+- [x] Document automated setup in README.md
+- [x] Document manual setup alternative below
+
+**Execution (Requires Raspberry Pi Hardware):**
 - [ ] Install Raspberry Pi OS (Bookworm or later) on target RPi
-- [ ] Install system packages
+- [ ] Run automated setup script: `bash setup_rpi.sh`
+  - [ ] Script installs system packages (python3, pip, venv, alsa-utils or pigpio)
+  - [ ] Script configures UART (adds `dtoverlay=disable-bt` to `/boot/config.txt`)
+  - [ ] Script creates Python venv and installs requirements.txt
+  - [ ] Script creates `/home/pi/audio` directory
+  - [ ] Script adds user to `dialout` group for UART access
+  - [ ] Script creates `config.yaml` from template
+- [ ] Reboot Raspberry Pi if UART config changed
+- [ ] Verify UART device exists: `ls -l /dev/serial0`
+- [ ] Verify I2S enabled (optional): Check `/boot/config.txt` for `dtparam=i2s=on`
+
+**Alternative (Manual Setup):**
+- [ ] Install system packages manually
   - [ ] `sudo apt update && sudo apt upgrade`
   - [ ] `sudo apt install -y python3-pip python3-venv`
-  - [ ] `sudo apt install -y pigpio` (if using pigpio)
-  - [ ] `sudo systemctl enable pigpiod && sudo systemctl start pigpiod`
-  - [ ] `sudo apt install -y alsa-utils` (if using ALSA)
-
-- [ ] Configure UART (disable Bluetooth on UART if needed)
+  - [ ] `sudo apt install -y alsa-utils` (recommended for MVP)
+  - [ ] OR `sudo apt install -y pigpio && sudo systemctl enable pigpiod` (advanced)
+- [ ] Configure UART manually
   - [ ] Edit `/boot/config.txt`: add `dtoverlay=disable-bt`
-  - [ ] Reboot: `sudo reboot`
+  - [ ] `sudo reboot`
   - [ ] Verify `/dev/serial0` exists: `ls -l /dev/serial0`
-
-- [ ] Create Python virtual environment
-  - [ ] `cd /home/pi/rpi_i2s_source`
+- [ ] Create Python virtual environment manually
+  - [ ] `cd /home/pi/esp32_btaudio/rpi_i2s_source`
   - [ ] `python3 -m venv venv`
   - [ ] `source venv/bin/activate`
   - [ ] `pip install -r requirements.txt`
-
-- [ ] Create audio directory
+- [ ] Create audio directory manually
   - [ ] `mkdir -p /home/pi/audio`
   - [ ] Add sample WAV file for testing (e.g., `test_tone.wav`)
+
+**Status:** ✅ Preparation complete (script created, documented). Execution deferred until Raspberry Pi hardware is available. **Proceed to Phase 1 (Core Components) on development machine.**
 
 ---
 
@@ -87,125 +105,149 @@
 
 ### 1.1. Ring Buffer (`audio/ring_buffer.py`)
 **Priority:** HIGH (dependency for audio engine and I2S driver)  
-**Estimated Time:** 1-2 hours
+**Estimated Time:** 1-2 hours  
+**Status:** ✅ COMPLETE
 
-- [ ] Implement `RingBuffer` class (FS.md Section 2.4)
-  - [ ] `__init__(capacity)`: Initialize buffer, read/write pointers, size, lock, event
-  - [ ] `write(samples)`: Write samples with overflow handling (drop oldest)
-  - [ ] `read(num_samples)`: Read samples, return None on underrun
-  - [ ] `get_fill_percentage()`: Calculate buffer fill (0-100%)
-  - [ ] `clear()`: Reset read/write pointers
-  - [ ] Add thread safety with `threading.Lock`
-  - [ ] Add refill signaling with `threading.Event`
+- [x] Implement `RingBuffer` class (FS.md Section 2.4)
+  - [x] `__init__(capacity)`: Initialize buffer, read/write pointers, size, lock, event
+  - [x] `write(samples)`: Write samples with overflow handling (drop oldest)
+  - [x] `read(num_samples)`: Read samples, return None on underrun
+  - [x] `get_fill_percentage()`: Calculate buffer fill (0-100%)
+  - [x] `clear()`: Reset read/write pointers
+  - [x] Add thread safety with `threading.Lock`
+  - [x] Add refill signaling with `threading.Event`
+  - [x] Additional: `wait_for_data()`, `get_stats()`, properties for `size` and `capacity`
 
-- [ ] Test ring buffer independently
-  - [ ] Unit test: write/read roundtrip (verify FIFO order)
-  - [ ] Unit test: overflow handling (verify drop-oldest policy)
-  - [ ] Unit test: underrun handling (verify None return)
-  - [ ] Unit test: concurrent access (2 writers + 2 readers, FS.md Section 10.1)
+- [x] Test ring buffer independently
+  - [x] Unit test: write/read roundtrip (verify FIFO order) ✅
+  - [x] Unit test: overflow handling (verify drop-oldest policy) ✅
+  - [x] Unit test: underrun handling (verify None return) ✅
+  - [x] Unit test: concurrent access (2 writers + 2 readers, FS.md Section 10.1) ✅
+  - [x] Additional tests: wrap-around, clear, fill percentage, wait_for_data, stats (25 tests total, all passing)
 
 ### 1.2. Config Manager (`config/manager.py`)
 **Priority:** HIGH (needed by all components)  
-**Estimated Time:** 1-2 hours
+**Estimated Time:** 1-2 hours  
+**Status:** ✅ COMPLETE
 
-- [ ] Implement `ConfigManager` class (FS.md Section 2.6)
-  - [ ] Define `DEFAULT_CONFIG` dictionary (all sections with defaults)
-  - [ ] `__init__(config_path)`: Load or create config file
-  - [ ] `get(key_path)`: Get value by dot-separated path (e.g., "i2s.gpio_bclk")
-  - [ ] `set(key_path, value)`: Set value by path
-  - [ ] `save()`: Write config to YAML file
-  - [ ] `reload()`: Reload config from file
-  - [ ] `_load_or_create()`: Load existing or create default YAML
-  - [ ] `_merge_with_defaults()`: Fill missing keys from defaults
-  - [ ] `_validate(config)`: Validate GPIO pins, sample rate, buffer size, etc.
+- [x] Implement `ConfigManager` class (FS.md Section 2.6)
+  - [x] Define `DEFAULT_CONFIG` dictionary (all sections with defaults)
+  - [x] `__init__(config_path)`: Load or create config file
+  - [x] `get(key_path)`: Get value by dot-separated path (e.g., "i2s.gpio_bclk")
+  - [x] `set(key_path, value)`: Set value by path
+  - [x] `save()`: Write config to YAML file
+  - [x] `reload()`: Reload config from file
+  - [x] `_load_or_create()`: Load existing or create default YAML
+  - [x] `_merge_with_defaults()`: Fill missing keys from defaults
+  - [x] `_validate(config)`: Validate GPIO pins, sample rate, buffer size, etc.
+  - [x] Additional: `get_all()`, `config_path` property
 
-- [ ] Test config manager
-  - [ ] Unit test: load default config (verify all sections present)
-  - [ ] Unit test: validation (invalid GPIO pin raises ValueError)
-  - [ ] Unit test: get/set with dot notation
-  - [ ] Unit test: save/reload roundtrip (verify persistence)
+- [x] Test config manager
+  - [x] Unit test: load default config (verify all sections present) ✅
+  - [x] Unit test: validation (invalid GPIO pin raises ValueError) ✅
+  - [x] Unit test: get/set with dot notation ✅
+  - [x] Unit test: save/reload roundtrip (verify persistence) ✅
+  - [x] Additional tests: merge defaults, malformed YAML, validation (GPIO duplicates, sample rate, buffer size, baudrate, tone freq/amp, web port, log level), intermediate dict creation (25 tests total, all passing)
 
 ### 1.3. Telemetry Tracker (`telemetry/tracker.py`)
 **Priority:** MEDIUM (needed for web UI status)  
-**Estimated Time:** 1 hour
+**Estimated Time:** 1 hour  
+**Status:** ✅ COMPLETE
 
-- [ ] Implement `TelemetryTracker` class (FS.md Section 2.7)
-  - [ ] `__init__()`: Initialize all stat dictionaries (i2s, uart, bt, audio, system)
-  - [ ] `update_i2s(stats)`: Update I2S statistics
-  - [ ] `update_uart(stats)`: Update UART statistics
-  - [ ] `update_bt(stats)`: Update Bluetooth statistics
-  - [ ] `update_audio(state)`: Update audio state
-  - [ ] `get_full_status()`: Aggregate all stats into single JSON-serializable dict
-  - [ ] `_get_cpu_temp()`: Read from `/sys/class/thermal/thermal_zone0/temp`
-  - [ ] `_get_memory_usage()`: Use `psutil.Process().memory_info().rss`
+- [x] Implement `TelemetryTracker` class (FS.md Section 2.7)
+  - [x] `__init__()`: Initialize all stat dictionaries (i2s, uart, bt, audio, system)
+  - [x] `update_i2s(stats)`: Update I2S statistics
+  - [x] `update_uart(stats)`: Update UART statistics
+  - [x] `update_bt(stats)`: Update Bluetooth statistics
+  - [x] `update_audio(state)`: Update audio state
+  - [x] `get_full_status()`: Aggregate all stats into single JSON-serializable dict
+  - [x] `_get_cpu_temp()`: Read from `/sys/class/thermal/thermal_zone0/temp`
+  - [x] `_get_memory_usage()`: Use `psutil.Process().memory_info().rss`
+  - [x] Additional: `reset_stats()`, `_refresh_system_stats()`
 
-- [ ] Test telemetry tracker
-  - [ ] Unit test: update and retrieve stats (verify aggregation)
-  - [ ] Unit test: CPU temperature reading (mock file read)
-  - [ ] Unit test: memory usage reading (mock psutil)
+- [x] Test telemetry tracker
+  - [x] Unit test: update and retrieve stats (verify aggregation) ✅
+  - [x] Unit test: CPU temperature reading (mock file read) ✅
+  - [x] Unit test: memory usage reading (mock psutil) ✅
+  - [x] Additional tests: partial updates, incremental counters, multiple audio sources, uptime calculation, deep copy isolation, error handling (24 tests total, all passing)
 
 ### 1.4. Audio Engine (`audio/engine.py`)
 **Priority:** HIGH (core audio generation)  
-**Estimated Time:** 3-4 hours
+**Estimated Time:** 3-4 hours  
+**Status:** ✅ COMPLETE
 
-- [ ] Implement `AudioEngine` class (FS.md Section 2.2)
-  - [ ] `__init__(config, ring_buffer)`: Initialize parameters, phase accumulator
-  - [ ] `start()`: Start audio generation thread
-  - [ ] `stop()`: Stop audio generation thread (graceful shutdown)
-  - [ ] `set_source(source, params)`: Switch between tone/sweep/wav/silence
-  - [ ] `set_tone_params(freq, amp, mode)`: Update tone parameters (atomic, click-free)
+- [x] Implement `AudioEngine` class (FS.md Section 2.2)
+  - [x] `__init__(config, ring_buffer)`: Initialize parameters, phase accumulator
+  - [x] `start()`: Start audio generation thread
+  - [x] `stop()`: Stop audio generation thread (graceful shutdown)
+  - [x] `set_source(source, params)`: Switch between tone/sweep/wav/silence
+  - [x] `set_tone_params(freq, amp, mode)`: Update tone parameters (atomic, click-free)
+  - [x] Additional: `get_state()`
   
-  - [ ] **Internal Methods:**
-    - [ ] `_generation_loop()`: Main background thread (check buffer, generate, write)
-    - [ ] `_generate_next_chunk()`: Dispatch to tone/sweep/wav/silence generator
-    - [ ] `_generate_tone()`: NumPy sine wave with phase accumulator (FS.md example)
-      - [ ] Support mono, left-only, right-only, dual-tone modes
-      - [ ] Interleave stereo: LRLRLR...
-    - [ ] `_generate_sweep()`: Logarithmic chirp using `scipy.signal.chirp`
-      - [ ] Track sweep position for continuous playback
-      - [ ] Support loop mode
-    - [ ] `_generate_wav()`: Read chunk from loaded WAV buffer
-      - [ ] Handle EOF (stop or loop)
-    - [ ] `_load_wav(filename)`: Load WAV file from `/home/pi/audio/`
-      - [ ] Use `scipy.io.wavfile.read()`
-      - [ ] Resample to 48 kHz if needed (`scipy.signal.resample`)
-      - [ ] Convert to 16-bit stereo (mono → duplicate channels)
-      - [ ] Raise `WAVNotFoundError` if file missing
-      - [ ] Raise `WAVFormatError` if format unsupported
+  - [x] **Internal Methods:**
+    - [x] `_generation_loop()`: Main background thread (check buffer, generate, write)
+    - [x] `_generate_next_chunk()`: Dispatch to tone/sweep/wav/silence generator
+    - [x] `_generate_tone()`: NumPy sine wave with phase accumulator (FS.md example)
+      - [x] Support mono, left-only, right-only, dual-tone modes
+      - [x] Interleave stereo: LRLRLR...
+    - [x] `_generate_sweep()`: Logarithmic chirp using `scipy.signal.chirp`
+      - [x] Track sweep position for continuous playback
+      - [x] Support loop mode
+    - [x] `_generate_wav()`: Read chunk from loaded WAV buffer
+      - [x] Handle EOF (stop or loop)
+    - [x] `_load_wav(filename)`: Load WAV file from `/home/pi/audio/`
+      - [x] Use `scipy.io.wavfile.read()`
+      - [x] Resample to 48 kHz if needed (`scipy.signal.resample`)
+      - [x] Convert to 16-bit stereo (mono → duplicate channels)
+      - [x] Raise `WAVNotFoundError` if file missing
+      - [x] Raise `WAVFormatError` if format unsupported
 
-- [ ] Test audio engine
-  - [ ] Unit test: tone frequency accuracy (FFT peak at expected freq, FS.md Section 10.1)
-  - [ ] Unit test: tone amplitude (verify ±5% tolerance)
-  - [ ] Unit test: phase continuity (no clicks when changing frequency)
-  - [ ] Unit test: stereo modes (mono, left-only, right-only, dual-tone)
-  - [ ] Unit test: WAV loading and resampling (44.1 kHz → 48 kHz)
-  - [ ] Unit test: WAV file not found exception
-  - [ ] Unit test: sweep generation (verify chirp parameters)
+- [x] Test audio engine
+  - [x] Unit test: tone frequency accuracy (FFT peak at expected freq, FS.md Section 10.1) ✅
+  - [x] Unit test: tone amplitude (verify ±5% tolerance) ✅
+  - [x] Unit test: phase continuity (no clicks when changing frequency) ✅
+  - [x] Unit test: stereo modes (mono, left-only, right-only, dual-tone) ✅
+  - [x] Unit test: WAV loading and resampling (44.1 kHz → 48 kHz) ✅
+  - [x] Unit test: WAV file not found exception ✅
+  - [x] Unit test: sweep generation (verify chirp parameters) ✅
+  - [x] Additional tests: start/stop thread, set_source, set_tone_params, get_state, thread safety (37 tests total, all passing)
 
 ### 1.5. I2S Driver (`audio/i2s_driver.py`)
 **Priority:** HIGH (critical for I2S output)  
-**Estimated Time:** 4-6 hours (complex, hardware-dependent)
+**Estimated Time:** 4-6 hours (complex, hardware-dependent)  
+**Status:** ✅ COMPLETE
 
 **Decision Point:** Choose implementation approach first.
 
-- [ ] **Option A: ALSA Driver (Recommended for MVP)**
-  - [ ] Implement `I2SDriverALSA` class (FS.md Section 2.3, simplified version)
-    - [ ] `__init__(config, ring_buffer)`: Initialize ALSA device
-      - [ ] `alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device='hw:0,0')`
-      - [ ] Set channels=2, rate=48000, format=S16_LE, period size=1024
-    - [ ] `start()`: Start DMA thread
-    - [ ] `stop()`: Stop DMA thread, close ALSA device
-    - [ ] `get_stats()`: Return frames_sent, underruns, buffer_fill_pct
-    - [ ] `_dma_loop()`: Read from ring buffer, write to ALSA device
-      - [ ] Handle underruns with zero-fill and counter increment
-      - [ ] Block on `self.device.write(samples.tobytes())`
+- [x] **Option A: ALSA Driver (Recommended for MVP)** ✅
+  - [x] Implement `I2SDriverALSA` class (FS.md Section 2.3, simplified version)
+    - [x] `__init__(config, ring_buffer)`: Initialize ALSA device
+      - [x] `alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device='hw:0,0')`
+      - [x] Set channels=2, rate=48000, format=S16_LE, period size=1024
+    - [x] `start()`: Start DMA thread
+    - [x] `stop()`: Stop DMA thread, close ALSA device
+    - [x] `get_stats()`: Return frames_sent, underruns, buffer_fill_pct
+    - [x] `_dma_loop()`: Read from ring buffer, write to ALSA device
+      - [x] Handle underruns with zero-fill and counter increment
+      - [x] Block on `self.device.write(samples.tobytes())`
+    - [x] Additional: `_init_alsa_device()` for deferred initialization
   
-  - [ ] Test ALSA I2S driver
-    - [ ] Integration test: generate tone → ring buffer → ALSA output
-    - [ ] Verify I2S GPIO signals with logic analyzer (BCLK=1.536 MHz, WS=48 kHz)
-    - [ ] Measure underruns during 5-minute continuous playback
+  - [x] Test ALSA I2S driver ✅
+    - [x] Unit test: initialization (stores config, ring buffer, sets defaults) ✅
+    - [x] Unit test: ALSA device initialization (opens PCM, configures parameters) ✅
+    - [x] Unit test: start/stop lifecycle (launches thread, idempotent calls) ✅
+    - [x] Unit test: DMA loop (reads from ring buffer, writes to ALSA, updates stats) ✅
+    - [x] Unit test: underrun handling (zero-fill, increment counter) ✅
+    - [x] Unit test: statistics (get_stats returns all fields, reflects current state) ✅
+    - [x] Integration test: continuous transmission (tone generator → ring buffer → ALSA) ✅
+    - [x] Integration test: underrun recovery (empty buffer → fill → transmit) ✅
+    - [x] Integration test: thread safety (concurrent start/stop calls) ✅
+    - [x] Error handling: ALSA init failure, write failure recovery, close failure ✅
+    - [x] **26 tests total, all passing (8.86s)**
+    - [ ] Hardware verification: I2S GPIO signals with logic analyzer (requires Raspberry Pi)
+    - [ ] Hardware verification: 5-minute continuous playback (requires Raspberry Pi)
 
-- [ ] **Option B: pigpio Driver (Advanced, if ALSA insufficient)**
+- [ ] **Option B: pigpio Driver (Advanced, if ALSA insufficient)** (deferred)
   - [ ] Implement `I2SDriver` class with pigpio (FS.md Section 2.3, full version)
     - [ ] `__init__(config, ring_buffer)`: Connect to pigpiod daemon
     - [ ] `_setup_i2s_waveforms()`: Generate BCLK/WS waveforms with `pigpio.wave_*`

@@ -1,0 +1,33 @@
+# Raspberry Pi I2S Source - Default Configuration
+# Copy this file to config.yaml and customize as needed
+
+# I2S hardware configuration (BCM GPIO numbering)
+i2s:
+  gpio_bclk: 18       # Bit clock output (to ESP32 GPIO26)
+  gpio_ws: 19         # Word select output (to ESP32 GPIO25)
+  gpio_dout: 21       # Data output (to ESP32 GPIO22)
+  sample_rate: 48000  # Fixed at 48 kHz for esp_bt_audio_source
+  buffer_size: 8192   # Ring buffer size in samples (2048-16384)
+
+# UART configuration
+uart:
+  device: /dev/serial0  # Serial device path (RPi UART0)
+  baudrate: 115200      # Must match esp_bt_audio_source
+  timeout: 5.0          # Command response timeout in seconds
+
+# Audio generation defaults
+audio:
+  default_source: tone     # Initial source: tone, sweep, wav, silence
+  tone_freq: 1000          # Default tone frequency in Hz
+  tone_amp: 0.5            # Default amplitude (0.0-1.0)
+  wav_directory: /home/pi/audio  # WAV file search path
+
+# Web server configuration
+web:
+  port: 5000               # HTTP server port
+  bind_address: 0.0.0.0    # Listen on all interfaces (LAN accessible)
+  log_level: INFO          # Logging level: DEBUG, INFO, WARNING, ERROR
+
+# Bluetooth state (auto-updated by application)
+bluetooth:
+  last_device_mac: ""      # Last connected device MAC (saved on clean shutdown)
