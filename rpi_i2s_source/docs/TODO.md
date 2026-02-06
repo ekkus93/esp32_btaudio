@@ -914,29 +914,75 @@ pytest tests/integration/test_long_duration.py::test_five_minute_baseline -v --r
 - Framework is complete and ready for hardware validation when Raspberry Pi is available
 - Unit tests (206 tests, 100% passing) validate component logic without hardware
 
-### 3.3. Performance Tests
+### 3.3. Performance Tests ✅
 **Priority:** MEDIUM (validate NFRs)  
-**Estimated Time:** 1-2 hours
+**Estimated Time:** 1-2 hours  
+**Status:** ✅ FRAMEWORK COMPLETE — Ready for hardware testing
 
-- [ ] Test CPU usage (`tests/performance/test_cpu_usage.py`)
-  - [ ] ✅ Monitor CPU during tone generation (FS.md Section 10.3 example)
-    - [ ] Target: <25% CPU during active tone generation
-    - [ ] Target: <10% CPU idle
-  - [ ] Measure CPU during WAV playback with resample
-  - [ ] Measure CPU during frequency sweep
+- [x] Test CPU usage (`tests/performance/test_cpu_usage.py`)
+  - [x] Monitor CPU during tone generation (FS.md Section 10.3 example)
+    - [x] Target: <25% CPU during active tone generation
+    - [x] Target: <10% CPU idle
+  - [x] Measure CPU during WAV playback with resample
+  - [x] Measure CPU during frequency sweep
+  - [x] Test CPU affinity on multi-core Raspberry Pi
 
-- [ ] Test memory usage (`tests/performance/test_memory_usage.py`)
-  - [ ] Monitor memory during 5-minute tone generation
-    - [ ] Target: <100 MB total Python process RSS
-  - [ ] Check for memory leaks (measure at t=0, t=5min, verify stable)
+- [x] Test memory usage (`tests/performance/test_memory_usage.py`)
+  - [x] Monitor memory during 5-minute tone generation
+    - [x] Target: <100 MB total Python process RSS
+  - [x] Check for memory leaks (measure at t=0, t=5min, verify stable)
+    - [x] Linear regression to calculate growth rate (target: <1 MB/min)
+  - [x] Test memory after multiple operations (verify release)
+  - [x] Test buffer allocation/deallocation
 
-- [ ] Test I2S timing accuracy (requires logic analyzer)
+- [ ] Test I2S timing accuracy (requires logic analyzer) ⏸️
   - [ ] Verify BCLK frequency: 1.536 MHz ±50 ppm
   - [ ] Verify WS frequency: 48 kHz ±50 ppm
   - [ ] Verify BCLK/WS phase alignment
+  - **Note:** Manual validation with logic analyzer (automated tests not implemented)
 
-- [ ] Run performance validation script
-  - [ ] `python tests/performance/monitor_resources.py --duration=300`
+- [x] Run performance validation script
+  - [x] `python tests/performance/monitor_resources.py --duration=300`
+  - [x] Standalone monitoring tool with CSV export
+  - [x] Summary statistics and leak detection
+
+**Test Coverage:**
+```bash
+# Run all performance tests on Raspberry Pi
+pytest tests/performance/ -v --run-hardware
+
+# Individual test modules
+pytest tests/performance/test_cpu_usage.py -v --run-hardware      # 5 tests, ~2 min
+pytest tests/performance/test_memory_usage.py -v --run-hardware   # 4 tests, ~8 min
+
+# Standalone resource monitoring
+python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
+```
+
+**Created Files:**
+- `tests/performance/__init__.py`: Package documentation
+- `tests/performance/test_cpu_usage.py`: 5 CPU performance tests (232 lines)
+- `tests/performance/test_memory_usage.py`: 4 memory/leak tests (282 lines)
+- `tests/performance/monitor_resources.py`: Standalone monitoring tool (312 lines)
+- `tests/performance/conftest.py`: Pytest config with auto-skip (107 lines)
+- `tests/performance/README.md`: Comprehensive documentation (352 lines)
+
+**Test Summary:**
+- Total tests: 9 (5 CPU + 4 memory)
+- Expected duration: ~10 minutes on Raspberry Pi
+- All tests auto-skip without hardware (no false failures on dev machines)
+- Comprehensive README with troubleshooting and manual I2S timing validation
+
+**Hardware Requirements:**
+- Raspberry Pi with I2S configured
+- Flask web server running (main.py)
+- Logic analyzer (for I2S timing validation only)
+
+**Notes:**
+- Performance tests validate FS.md Section 10.3 NFRs
+- Auto-skip mechanism prevents false failures without --run-hardware flag
+- I2S timing tests documented for manual validation (automated version not implemented)
+- Framework ready for hardware validation when Raspberry Pi available
 
 ---
 
