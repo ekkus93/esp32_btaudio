@@ -1146,6 +1146,16 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 **Priority:** LOW (research/validation tools)  
 **Estimated Time:** 4-8 hours each
 
+- [x] Automated test suite ✅ **COMPLETE**
+  - [x] Python script runs all test scenarios (tone, sweep, WAV, UART, multi-tone)
+  - [x] Generate pass/fail reports (HTML and Markdown formats)
+  - [x] 7 test scenarios with detailed step tracking
+  - [x] Hardware-aware skipping (UART/Bluetooth tests)
+  - [x] Color-coded HTML reports with summary statistics
+  - [x] CI/CD friendly (exit codes, timestamps, output directory)
+  - [ ] Screenshots of web UI during tests ← DEFERRED
+  - [ ] Email report on completion ← DEFERRED
+
 - [ ] THD+N measurement
   - [ ] Inject test signal (1 kHz tone)
   - [ ] Capture Bluetooth output via USB audio interface
@@ -1157,12 +1167,6 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
   - [ ] Detect tone start in microphone input
   - [ ] Measure time delta: I2S transmission → microphone detection
   - [ ] Display latency in web UI (target: <100 ms total)
-
-- [ ] Automated test suite
-  - [ ] Python script runs all test scenarios (tone, sweep, WAV, UART)
-  - [ ] Generate pass/fail report (HTML or Markdown)
-  - [ ] Include screenshots of web UI during tests
-  - [ ] Email report on completion (optional)
 
 ---
 
