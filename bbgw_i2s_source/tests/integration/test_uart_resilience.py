@@ -5,7 +5,7 @@ Tests validate UART communication resilience when ESP32 is disconnected
 and reconnected, ensuring the system handles connection failures gracefully.
 
 Hardware Requirements:
-- Raspberry Pi with UART enabled
+- BeagleBone Green Wireless with UART4 enabled (/dev/ttyO4)
 - ESP32 connected via UART
 - Ability to disconnect/reconnect ESP32 USB power
 

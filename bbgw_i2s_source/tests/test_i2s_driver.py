@@ -348,7 +348,7 @@ class TestI2SDriverIntegration:
         stats = driver.get_stats()
         assert stats['frames_sent'] > 0
         # Note: Underruns may occur on development machines due to system load
-        # On Raspberry Pi with dedicated I2S hardware and lower system load,
+        # On BeagleBone Green Wireless with McASP hardware and lower system load,
         # underruns should be minimal. We don't assert on underruns here since
         # the critical check is that frames were successfully sent.
     

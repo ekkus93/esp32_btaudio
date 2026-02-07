@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Standalone resource monitoring utility for rpi_i2s_source.
+Standalone resource monitoring utility for BeagleBone Green Wireless I2S Source.
 
 This script monitors CPU and memory usage during audio playback operations.
 Useful for performance profiling and validation of NFRs.
@@ -183,7 +183,7 @@ def monitor_resources(duration_sec, interval_sec=1, process_name=None, output_fi
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Monitor CPU and memory usage of rpi_i2s_source',
+        description='Monitor CPU and memory usage of BeagleBone Green Wireless I2S Source',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

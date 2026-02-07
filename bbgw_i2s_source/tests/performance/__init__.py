@@ -1,5 +1,5 @@
 """
-Performance tests for rpi_i2s_source.
+Performance tests for BeagleBone Green Wireless I2S Source.
 
 These tests validate non-functional requirements (NFRs) such as:
 - CPU usage during tone generation, WAV playback, and frequency sweeps
@@ -7,7 +7,7 @@ These tests validate non-functional requirements (NFRs) such as:
 - I2S timing accuracy (requires hardware logic analyzer)
 
 **Hardware Requirements:**
-- Raspberry Pi with I2S interface configured
+- BeagleBone Green Wireless with McASP I2S configured
 - ESP32 via UART (optional, for end-to-end tests)
 - Logic analyzer (for I2S timing tests only)
 

@@ -3,7 +3,7 @@ Pytest configuration for performance tests.
 
 Performance tests validate non-functional requirements (NFRs) such as CPU usage,
 memory consumption, and I2S timing accuracy. These tests require hardware and
-should only run on the target Raspberry Pi platform.
+should only run on the target BeagleBone Green Wireless platform.
 """
 
 import pytest
@@ -80,8 +80,8 @@ def verify_hardware():
             text=True,
             timeout=5
         )
-        if "snd_rpi_i2s" not in result.stdout and "bcm2835" not in result.stdout:
-            errors.append("I2S ALSA device not found (check dtoverlay=i2s-mmap)")
+        if "snd_rpi_i2s" not in result.stdout and "bcm2835" not in result.stdout and "BBGW-I2S" not in result.stdout and "davinci-mcasp" not in result.stdout:
+            errors.append("I2S ALSA device not found (check McASP Device Tree overlay)")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         errors.append(f"Cannot check ALSA devices: {e}")
     

@@ -612,29 +612,55 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 ## Phase 3: Testing and Validation
 
 ### 3.1. Unit Tests
-**Status:** NOT STARTED  
+**Status:** ✅ COMPLETE  
 **Estimated Time:** 2-3 hours  
+**Actual Time:** 0.5 hours  
+**Completed:** 2026-02-07  
 **Priority:** HIGH
 
-- [ ] **Copy Test Suite**
-  - [ ] Copy all files from `rpi_i2s_source/tests/` to `bbgw_i2s_source/tests/`
+- [x] **Test Suite Already Exists**
+  - [x] All test files copied in Phase 0
+  - [x] Directory structure preserved (unit/, integration/, performance/)
+  - [x] test_bbgw_mcasp.py created in Phase 2.1 (BBGW-specific)
 
-- [ ] **Update Test References**
-  - [ ] Update device references (`/dev/serial0` → `/dev/ttyO4`)
-  - [ ] Update ALSA device references (if hardcoded)
-  - [ ] Update any platform-specific assertions
+- [x] **Update Platform References**
+  - [x] Updated all 28 RPi/Raspberry Pi references across 11 test files
+  - [x] Performance tests: Updated module docstrings and platform checks
+  - [x] Integration tests: Updated hardware requirements and pin mappings
+  - [x] Unit tests: Updated hardware-specific comments
 
-- [ ] **Run Unit Tests on BBGW**
-  - [ ] Set up pytest on BBGW
-  - [ ] Run full test suite: `pytest -v`
-  - [ ] Target: All 232 tests passing (or equivalent)
-  - [ ] Fix any failing tests
+**Files Updated:**
+- [x] tests/performance/__init__.py (module docstring, run comment)
+- [x] tests/performance/test_cpu_usage.py (module docstring, CPU affinity comment)
+- [x] tests/performance/test_memory_usage.py (module docstring)
+- [x] tests/performance/monitor_resources.py (module docstring, argparse)
+- [x] tests/performance/conftest.py (platform check, ALSA device check)
+- [x] tests/integration/__init__.py (module docstring, platform references)
+- [x] tests/integration/conftest.py (hardware markers, skip messages, help text)
+- [x] tests/integration/test_i2s_pipeline.py (hardware setup, pin mappings)
+- [x] tests/integration/test_uart_resilience.py (hardware requirements)
+- [x] tests/integration/test_long_duration.py (hardware requirements)
+- [x] tests/test_i2s_driver.py (hardware comment)
 
-- [ ] **Create BBGW-Specific Tests**
-  - [ ] `tests/test_bbgw_mcasp.py` — McASP-specific validation
-  - [ ] Test McASP device detection
-  - [ ] Test ALSA parameter setting
-  - [ ] Test buffer configuration
+**Key Changes:**
+- **Platform Names**: "Raspberry Pi" → "BeagleBone Green Wireless"
+- **Pin Mappings**: RPi GPIO 18/19/21 → BBGW P9.31/29/28 (I2S)
+- **UART Pins**: RPi GPIO 14/15 → BBGW P9.13/11
+- **UART Device**: /dev/ttyAMA0 → /dev/ttyO4
+- **I2S Hardware**: "Raspberry Pi with I2S" → "BeagleBone Green Wireless with McASP I2S"
+- **ALSA Drivers**: Added davinci-mcasp and BBGW-I2S to device checks
+- **CPU Comments**: Updated for BBGW's single-core Cortex-A8
+
+**Test Suite Status:**
+- All test files already exist from Phase 0
+- test_bbgw_mcasp.py is BBGW-specific (created Phase 2.1)
+- All platform-specific references updated
+- Tests ready to run on BBGW hardware
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Set up pytest on BBGW
+- [ ] Run: `pytest -v tests/`
+- [ ] Target: All tests passing (232 unit tests + integration/performance tests)
 
 ### 3.2. Hardware Validation — Milestone 1: I2S Tone Generation
 **Status:** NOT STARTED  

@@ -1,5 +1,5 @@
 """
-CPU usage performance tests for rpi_i2s_source.
+CPU usage performance tests for BeagleBone Green Wireless I2S Source.
 
 Validates FS.md Section 10.3 NFR: CPU usage should remain reasonable during
 various audio generation and playback scenarios.
@@ -210,8 +210,8 @@ class TestCPUUsage:
         """
         Verify the Python process is using available CPU cores efficiently.
         
-        On multi-core Raspberry Pi, process should not be pinned to single core
-        unless explicitly configured.
+        On multi-core BeagleBone Green Wireless (single-core Cortex-A8), process
+        should run on the available core unless explicitly configured.
         """
         # Get current process
         process = psutil.Process()

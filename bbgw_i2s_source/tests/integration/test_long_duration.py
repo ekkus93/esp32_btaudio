@@ -5,7 +5,7 @@ Tests validate system stability over extended operation periods,
 checking for memory leaks, resource exhaustion, and performance degradation.
 
 Hardware Requirements:
-- Raspberry Pi with I2S configured
+- BeagleBone Green Wireless with McASP I2S configured
 - ESP32 with Bluetooth speaker connected
 - Stable power supply for extended testing
 

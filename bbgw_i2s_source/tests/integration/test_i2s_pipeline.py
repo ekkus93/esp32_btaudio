@@ -3,23 +3,23 @@ Integration tests for I2S audio pipeline.
 
 These tests validate the complete end-to-end audio pipeline from tone generation
 through I2S transmission to Bluetooth output. They require actual hardware:
-- Raspberry Pi with I2S interface configured
+- BeagleBone Green Wireless with McASP I2S interface configured
 - ESP32 running esp_bt_audio_source firmware
 - Bluetooth speaker paired with ESP32
-- Physical I2S connections (BCK, WS, DATA)
+- Physical I2S connections (BCLK, WS, DATA)
 
 Hardware Setup:
-    RPi GPIO 18 (BCK) → ESP32 GPIO 26 (I2S_BCK)
-    RPi GPIO 19 (WS)  → ESP32 GPIO 25 (I2S_WS)
-    RPi GPIO 21 (DATA)→ ESP32 GPIO 22 (I2S_DATA)
-    RPi GND           → ESP32 GND
-    RPi TX (GPIO 14)  → ESP32 RX (GPIO 16)
-    RPi RX (GPIO 15)  → ESP32 TX (GPIO 17)
+    BBGW P9.31 (BCLK)  → ESP32 GPIO 26 (I2S_BCK)
+    BBGW P9.29 (WS)    → ESP32 GPIO 25 (I2S_WS)
+    BBGW P9.28 (DOUT)  → ESP32 GPIO 22 (I2S_DATA)
+    BBGW GND           → ESP32 GND
+    BBGW P9.13 (TX)    → ESP32 RX (GPIO 16)
+    BBGW P9.11 (RX)    → ESP32 TX (GPIO 17)
 
 Before Running:
     1. Ensure ESP32 is powered and running
     2. Pair Bluetooth speaker with ESP32
-    3. Verify UART connection: ls /dev/ttyAMA0
+    3. Verify UART connection: ls /dev/ttyO4
     4. Verify I2S device: arecord -L | grep hw:
     5. Start the application: python main.py
 

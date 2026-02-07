@@ -11,7 +11,7 @@ def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
         "markers",
-        "hardware: mark test as requiring physical hardware (Raspberry Pi, ESP32, etc.)"
+        "hardware: mark test as requiring physical hardware (BeagleBone Green Wireless, ESP32, etc.)"
     )
     config.addinivalue_line(
         "markers",
@@ -21,11 +21,11 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """
-    Automatically skip hardware tests if not running on Raspberry Pi.
+    Automatically skip hardware tests if not running on BeagleBone Green Wireless.
     
     Hardware tests can be forced to run with: pytest --run-hardware
     """
-    skip_hardware = pytest.mark.skip(reason="Hardware tests require Raspberry Pi setup")
+    skip_hardware = pytest.mark.skip(reason="Hardware tests require BeagleBone Green Wireless setup")
     
     # Check if we should run hardware tests
     run_hardware = config.getoption("--run-hardware", default=False)
@@ -41,5 +41,5 @@ def pytest_addoption(parser):
         "--run-hardware",
         action="store_true",
         default=False,
-        help="Run hardware integration tests (requires Raspberry Pi setup)"
+        help="Run hardware integration tests (requires BeagleBone Green Wireless setup)"
     )

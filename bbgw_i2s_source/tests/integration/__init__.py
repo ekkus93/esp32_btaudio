@@ -1,16 +1,16 @@
 """
-Integration tests for RPi I2S Audio Test Jig.
+Integration tests for BeagleBone Green Wireless I2S Audio Test Jig.
 
 These tests require actual hardware:
-- Raspberry Pi with I2S interface
+- BeagleBone Green Wireless with McASP I2S interface
 - ESP32 running esp_bt_audio_source firmware
 - Bluetooth speaker paired with ESP32
-- I2S connections between RPi and ESP32
+- I2S connections between BBGW and ESP32
 
 Tests validate end-to-end functionality of the complete audio pipeline
 from tone generation through I2S output to Bluetooth transmission.
 
-Run these tests on the Raspberry Pi:
+Run these tests on the BeagleBone Green Wireless:
     pytest tests/integration/ -v --tb=short
 
 Individual test suites:

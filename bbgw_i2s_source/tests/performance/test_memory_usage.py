@@ -1,5 +1,5 @@
 """
-Memory usage performance tests for rpi_i2s_source.
+Memory usage performance tests for BeagleBone Green Wireless I2S Source.
 
 Validates FS.md Section 10.3 NFR: Memory usage should remain stable
 during sustained operation with no memory leaks.
