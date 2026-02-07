@@ -1,3 +1,114 @@
+## 2026-02-07 03:53 — BBGW Port: Phase 3.2 Milestone 1 Hardware Validation (Software Ready) 🧪
+
+**📝 Task:** Created Milestone 1 test script and comprehensive hardware setup documentation
+
+**Timestamp:** 2026-02-07 03:53:35
+
+**Context:** Phase 3.2 of BBGW port - Hardware validation preparation for I2S tone generation testing
+
+**Phase 3.2 Deliverables:**
+
+1. **milestone1_tone_test.py** (314 lines, executable)
+   - Adapted from rpi_i2s_source for BeagleBone Green Wireless
+   - Tests 1 kHz tone generation via McASP I2S
+   - ALSA device: `hw:CARD=BBGW-I2S,DEV=0` (with hw:0,0 fallback)
+   - Real-time statistics: frames sent, frame rate, buffer fill %, underruns
+   - Configurable duration: 60s default, 300s for milestone validation
+   - Pin documentation in output: P9.31/29/28 → ESP32 GPIO 26/25/22
+   - Success criteria validation: tone audible, zero underruns, 5-minute playback
+
+2. **docs/MILESTONE1_HARDWARE_SETUP_BBGW.md** (~500 lines)
+   - Complete hardware setup guide for Milestone 1 testing
+   - Sections:
+     - Prerequisites (software packages, Python dependencies)
+     - Hardware components (BBGW, ESP32, Bluetooth speaker)
+     - Device Tree overlay setup (6-step installation)
+     - Physical wiring (I2S pin connections, diagram)
+     - Verification steps (6 procedures)
+     - Running milestone test (3-step process)
+     - Logic analyzer verification (optional, for signal validation)
+     - Troubleshooting (5 common issues with solutions)
+     - Success criteria checklist
+
+**Key Platform Adaptations:**
+- **ALSA Device Configuration:**
+  - RPi: Generic `hw:0,0` → BBGW: `hw:CARD=BBGW-I2S,DEV=0`
+  - Fallback to `hw:0,0` if Device Tree overlay uses default card naming
+  - Device name configurable via config.yaml
+
+- **Pin Mappings Updated:**
+  - RPi GPIO 18 (BCK) → BBGW P9.31 (BCLK/ACLKX)
+  - RPi GPIO 19 (WS) → BBGW P9.29 (WS/FSX)
+  - RPi GPIO 21 (DOUT) → BBGW P9.28 (DOUT/AXR1)
+  - ESP32 connections: GPIO 26/25/22 (unchanged)
+
+- **McASP-Specific Features:**
+  - Device Tree overlay requirement documented
+  - ALSA driver verification (davinci-mcasp)
+  - Pin mux verification via debugfs
+  - dmesg checks for McASP initialization
+
+- **Hardware Setup Documentation:**
+  - Complete wiring diagram (ASCII art + table)
+  - Voltage level compatibility (3.3V, no level shifters needed)
+  - Wire length recommendations (< 30 cm for signal integrity)
+  - Power supply isolation (separate 5V, common ground)
+  - Device Tree overlay compilation and installation
+
+**Test Script Features:**
+- **Minimal Configuration:** Creates default config if config.yaml doesn't exist
+- **Real-Time Monitoring:** 1-second update interval with overwrite display
+- **Statistics Tracking:**
+  - Total frames transmitted
+  - Average frame rate (should be 48000 fps)
+  - Buffer fill percentage
+  - Underrun count (should be 0)
+- **Graceful Shutdown:** Ctrl+C handler for clean stop
+- **Success Criteria Validation:**
+  - [MANUAL] Tone audible on Bluetooth speaker
+  - [AUTO] Zero I2S underruns
+  - [AUTO] Continuous playback ≥ 300 seconds
+
+**Documentation Quality:**
+- ~500 lines of comprehensive setup instructions
+- 6 verification steps (overlay, ALSA, pin mux, driver)
+- 5 troubleshooting scenarios with solutions
+- Logic analyzer verification procedures (optional)
+- Success criteria checklist
+- ASCII wiring diagram
+- Complete pin mapping table
+
+**Software Status:** ✅ Ready to run on BBGW hardware
+- Test script complete and executable
+- Documentation comprehensive
+- Configuration files updated (from Phase 2.1)
+- No code changes needed
+
+**Hardware Dependencies (To Be Completed On BBGW):**
+- Device Tree overlay installation
+- /boot/uEnv.txt configuration
+- Physical I2S wiring (P9.31/29/28 → ESP32)
+- ESP32 firmware running
+- Bluetooth speaker pairing
+
+**Time Efficiency:**
+- Estimated: 2-3 hours (includes hardware testing)
+- Actual: 1.0 hours (software preparation only)
+- Reason: Hardware testing requires physical BBGW access
+- Next: Hardware validation when BBGW available
+
+**Next Steps (On BBGW Hardware):**
+1. Install Device Tree overlay: `./overlays/compile_overlays.sh --all`
+2. Configure /boot/uEnv.txt
+3. Reboot and verify McASP: `./overlays/verify_mcasp.sh --verbose`
+4. Connect physical wiring
+5. Run short test: `python3 milestone1_tone_test.py`
+6. Run full 5-minute test: `python3 milestone1_tone_test.py --duration 300`
+
+**Phase 3.2 Status:** ✅ COMPLETE (Software Ready, Hardware Pending)
+
+---
+
 ## 2026-02-07 03:38 — BBGW Port: Phase 3.1 Unit Tests Complete — Test Suite Platform References Updated! 🧪
 
 **📝 Task:** Updated all platform references in test suite for BeagleBone Green Wireless
