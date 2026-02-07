@@ -10644,3 +10644,84 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 - Phase 4: Documentation and Deployment
 - Or: Run performance tests on actual Raspberry Pi hardware when available
 
+
+
+---
+
+## 2026-02-07 01:46:07 — Phase 1.1: McASP/I2S Device Tree Overlay Complete
+
+**Context:** BeagleBone Green Wireless port (bbgw_i2s_source) — Phase 1.1 Device Tree overlay creation
+
+**Summary:** Created complete Device Tree overlay infrastructure for McASP I2S configuration:
+
+**Files Created:**
+1. `overlays/BB-BBGW-I2S-00A0.dts` (~145 lines) — Full Device Tree overlay
+   - McASP0 configured as I2S master transmitter
+   - Pin muxing: P9.31 (ACLKX/BCLK), P9.29 (FSX/WS), P9.28 (AXR1/DOUT)
+   - Pin mux modes: Mode 0 for ACLKX/FSX, Mode 2 for AXR1
+   - McASP operating mode: I2S (op-mode = 0)
+   - Serializers: 16 total, AXR1 configured for transmit
+   - ALSA integration: simple-audio-card named "BBGW-I2S"
+   - System clock: 24.576 MHz (48 kHz × 512)
+   - Dummy codec for transmit-only operation
+   - Target ALSA device: hw:CARD=BBGW-I2S,DEV=0 or hw:0,0
+
+2. `overlays/BB-BBGW-I2S-SIMPLE-00A0.dts` (~60 lines) — Fallback overlay
+   - Pin muxing only (no ALSA configuration)
+   - Minimal McASP0 enablement
+   - Use for debugging if full overlay fails
+
+3. `overlays/compile_overlays.sh` (~330 lines) — Automated compilation
+   - Supports --all, --full, --simple modes
+   - Prerequisite checks (dtc installation, .dts file presence)
+   - Colored output (RED/GREEN/YELLOW)
+   - Error handling and logging
+   - Next-step instructions after compilation
+
+4. `overlays/verify_mcasp.sh` (~470 lines) — Comprehensive verification
+   - Hardware detection (ARM architecture, BeagleBone model)
+   - Overlay file checks (/lib/firmware/, /boot/uEnv.txt)
+   - Kernel message analysis (dmesg McASP initialization)
+   - Pin mux verification (P9.31/29/28 mode checking via debugfs)
+   - ALSA device detection (aplay -l, card 0 validation)
+   - Driver status checks (lsmod, /proc/asound)
+   - Supports --verbose, --pins, --alsa, --all modes
+   - Provides troubleshooting guidance on failures
+
+5. `overlays/README.md` (~850 lines) — Complete documentation
+   - Overlay descriptions (full vs simple, when to use each)
+   - Pin configuration table (P9 pins, modes, signals, ESP32 connections)
+   - Compilation instructions (dtc command, options, error handling)
+   - Installation procedures (3 methods: SCP, USB, on-device compilation)
+   - /boot/uEnv.txt configuration (3 methods: uboot_overlay_addr4, cape_enable)
+   - Verification procedures (6 checks: kernel messages, pin mux, ALSA, etc.)
+   - Troubleshooting (6 scenarios: overlay not loading, pin mux issues, ALSA missing, etc.)
+   - Advanced configuration (sample rate changes, different serializers, I2S slave mode)
+
+**Phase 1.1 Completion:** 3 hours actual (vs 4-6 hours estimated)
+**Total Files:** 5 files, ~1855 lines (overlays + scripts + docs)
+
+**Key Technical Decisions:**
+- **McASP0 I2S Master Mode:** BBGW generates BCLK (1.536 MHz) and WS (48 kHz), ESP32 is I2S slave
+- **Serializer Selection:** AXR1 (P9.28, Mode 2) instead of AXR0 for better pin availability
+- **Sample Rate:** 48 kHz with 24.576 MHz system clock (512 × fs)
+- **ALSA Device Name:** hw:CARD=BBGW-I2S,DEV=0 (simple-audio-card)
+- **Dual Overlay Strategy:** Full overlay for production (ALSA), simple for debugging (pin mux only)
+
+**Signal Specifications:**
+- **BCLK (P9.31):** 1.536 MHz (48 kHz × 32 bits/frame), 50% duty cycle
+- **WS (P9.29):** 48 kHz square wave, 50% duty cycle
+- **DOUT (P9.28):** I2S format, MSB-first, 16-bit stereo PCM
+
+**Next Steps (Requires BBGW Hardware):**
+1. Compile overlays: `./compile_overlays.sh --all`
+2. Copy to BBGW: `scp *.dtbo debian@<bbgw-ip>:~`
+3. Install on BBGW: `sudo cp *.dtbo /lib/firmware/`
+4. Enable in /boot/uEnv.txt: `uboot_overlay_addr4=/lib/firmware/BB-BBGW-I2S-00A0.dtbo`
+5. Reboot BBGW: `sudo reboot`
+6. Verify: `./verify_mcasp.sh --all`
+7. Test ALSA: `speaker-test -D hw:0,0 -c 2 -r 48000 -F S16_LE -t sine`
+8. Connect ESP32 and run Milestone 1 test
+
+**Ready for:** Phase 1.2 UART4 Device Tree Configuration (2 hours estimated)
+

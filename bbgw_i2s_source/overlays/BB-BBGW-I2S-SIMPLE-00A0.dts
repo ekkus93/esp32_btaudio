@@ -1,0 +1,75 @@
+/*
+ * Simplified Device Tree Overlay for BeagleBone Green Wireless I2S
+ * 
+ * File: BB-BBGW-I2S-SIMPLE-00A0.dts
+ * Description: Minimal McASP0 I2S configuration (fallback if full version fails)
+ * 
+ * This is a simplified version that only configures pin muxing.
+ * Use this if the full overlay causes issues.
+ * 
+ * Hardware Configuration:
+ *   - BCLK: P9.31 (McASP0_ACLKX)
+ *   - WS:   P9.29 (McASP0_FSX)
+ *   - DOUT: P9.28 (McASP0_AXR1)
+ * 
+ * Compilation:
+ *   dtc -O dtb -o BB-BBGW-I2S-SIMPLE-00A0.dtbo -b 0 -@ BB-BBGW-I2S-SIMPLE-00A0.dts
+ * 
+ * Installation:
+ *   sudo cp BB-BBGW-I2S-SIMPLE-00A0.dtbo /lib/firmware/
+ * 
+ * Enable in /boot/uEnv.txt:
+ *   uboot_overlay_addr4=/lib/firmware/BB-BBGW-I2S-SIMPLE-00A0.dtbo
+ * 
+ * Author: Generated for bbgw_i2s_source project
+ * Date: 2026-02-07
+ * License: GPL-2.0
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+	part-number = "BB-BBGW-I2S-SIMPLE";
+	version = "00A0";
+
+	/* Pin mux configuration only */
+	fragment@0 {
+		target = <&am33xx_pinmux>;
+		__overlay__ {
+			bbgw_i2s_pins: pinmux_bbgw_i2s_pins {
+				pinctrl-single,pins = <
+					/* P9.31: mcasp0_aclkx (BCLK)
+					 * offset: 0x990 (from AM335x TRM)
+					 * mode: 0x00 (Mode 0, output, pull-down)
+					 */
+					0x990 0x00
+					
+					/* P9.29: mcasp0_fsx (WS/LRCLK)
+					 * offset: 0x994
+					 * mode: 0x00 (Mode 0, output, pull-down)
+					 */
+					0x994 0x00
+					
+					/* P9.28: mcasp0_axr1 (DOUT)
+					 * offset: 0x99c
+					 * mode: 0x02 (Mode 2, output, pull-down)
+					 */
+					0x99c 0x02
+				>;
+			};
+		};
+	};
+
+	/* Enable McASP0 with minimal configuration */
+	fragment@1 {
+		target = <&mcasp0>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&bbgw_i2s_pins>;
+			status = "okay";
+		};
+	};
+};

@@ -1,0 +1,137 @@
+/*
+ * Device Tree Overlay for BeagleBone Green Wireless I2S Audio Source
+ * 
+ * File: BB-BBGW-I2S-00A0.dts
+ * Description: Configures McASP0 for I2S master mode transmission to ESP32
+ * 
+ * Hardware Configuration:
+ *   - McASP0 configured as I2S master transmitter
+ *   - BCLK: P9.31 (McASP0_ACLKX, GPIO3_14)
+ *   - WS:   P9.29 (McASP0_FSX, GPIO3_15)
+ *   - DOUT: P9.28 (McASP0_AXR1, GPIO3_17)
+ *   - Sample Rate: 48 kHz, 16-bit stereo
+ * 
+ * Target: ESP32 esp_bt_audio_source (I2S slave receiver)
+ * 
+ * Compilation:
+ *   dtc -O dtb -o BB-BBGW-I2S-00A0.dtbo -b 0 -@ BB-BBGW-I2S-00A0.dts
+ * 
+ * Installation:
+ *   sudo cp BB-BBGW-I2S-00A0.dtbo /lib/firmware/
+ * 
+ * Enable in /boot/uEnv.txt:
+ *   uboot_overlay_addr4=/lib/firmware/BB-BBGW-I2S-00A0.dtbo
+ * 
+ * Author: Generated for bbgw_i2s_source project
+ * Date: 2026-02-07
+ * License: GPL-2.0
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/am33xx.h>
+#include <dt-bindings/board/am335x-bbw-bbb-base.h>
+
+/* Pin mux mode definitions */
+#define BONE_P9_31 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)  /* mcasp0_aclkx */
+#define BONE_P9_29 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)  /* mcasp0_fsx */
+#define BONE_P9_28 (PIN_OUTPUT_PULLDOWN | MUX_MODE2)  /* mcasp0_axr1 (Mode 2 for AXR1) */
+
+/ {
+	compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+	/* Part number for cape manager identification */
+	part-number = "BB-BBGW-I2S";
+	version = "00A0";
+
+	/* Required external symbols */
+	fragment@0 {
+		target = <&am33xx_pinmux>;
+		__overlay__ {
+			bbgw_i2s_pins: pinmux_bbgw_i2s_pins {
+				pinctrl-single,pins = <
+					/* McASP0 I2S pins */
+					/* P9.31: mcasp0_aclkx (BCLK) - offset 0x190, Mode 0 */
+					AM33XX_IOPAD(0x990, BONE_P9_31)
+					
+					/* P9.29: mcasp0_fsx (WS/LRCLK) - offset 0x194, Mode 0 */
+					AM33XX_IOPAD(0x994, BONE_P9_29)
+					
+					/* P9.28: mcasp0_axr1 (DOUT) - offset 0x19c, Mode 2 */
+					AM33XX_IOPAD(0x99c, BONE_P9_28)
+				>;
+			};
+		};
+	};
+
+	/* McASP0 configuration */
+	fragment@1 {
+		target = <&mcasp0>;
+		__overlay__ {
+			#sound-dai-cells = <0>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&bbgw_i2s_pins>;
+			status = "okay";
+
+			/* McASP operating mode */
+			op-mode = <0>;  /* MCASP_IIS_MODE (I2S mode) */
+			tdm-slots = <2>;  /* Stereo: left + right channels */
+			
+			/* Number of serializers (AXR pins) */
+			num-serializer = <16>;  /* AM335x has 16 serializers */
+			
+			/* Serializer configuration:
+			 *   0 = unused
+			 *   1 = transmit (TX)
+			 *   2 = receive (RX)
+			 * 
+			 * We use AXR1 (serializer 1) for transmit
+			 */
+			serial-dir = <
+				0 /* AXR0: unused */
+				1 /* AXR1: transmit (P9.28) */
+				0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 /* AXR2-15: unused */
+			>;
+			
+			/* Transmitter configuration */
+			tx-num-evt = <32>;  /* FIFO trigger level */
+			
+			/* Receiver configuration (not used, but required) */
+			rx-num-evt = <32>;
+		};
+	};
+
+	/* Sound card configuration */
+	fragment@2 {
+		target-path = "/";
+		__overlay__ {
+			sound {
+				compatible = "simple-audio-card";
+				simple-audio-card,name = "BBGW-I2S";
+				simple-audio-card,format = "i2s";
+				simple-audio-card,bitclock-master = <&sound_master>;
+				simple-audio-card,frame-master = <&sound_master>;
+				
+				/* CPU DAI (Digital Audio Interface) */
+				sound_master: simple-audio-card,cpu {
+					sound-dai = <&mcasp0>;
+					system-clock-frequency = <24576000>;  /* 48 kHz * 512 */
+				};
+				
+				/* Codec DAI (dummy codec for transmit-only) */
+				simple-audio-card,codec {
+					sound-dai = <&dummy_codec>;
+				};
+			};
+
+			/* Dummy codec for transmit-only I2S */
+			dummy_codec: snd-soc-dummy {
+				#sound-dai-cells = <0>;
+				compatible = "linux,snd-soc-dummy";
+				status = "okay";
+			};
+		};
+	};
+};
