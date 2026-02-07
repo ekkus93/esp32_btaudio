@@ -119,7 +119,14 @@ The script will:
 
 ### Manual Setup
 
-See [docs/MILESTONE1_HARDWARE_SETUP_BBGW.md](docs/MILESTONE1_HARDWARE_SETUP_BBGW.md) for detailed manual setup instructions.
+For detailed manual setup instructions, see:
+- **[docs/HARDWARE_SETUP_BBGW.md](docs/HARDWARE_SETUP_BBGW.md)** — Complete hardware configuration guide
+- **[docs/SOFTWARE_SETUP_BBGW.md](docs/SOFTWARE_SETUP_BBGW.md)** — Complete software installation guide
+
+Or see milestone-specific guides:
+- [docs/MILESTONE1_HARDWARE_SETUP_BBGW.md](docs/MILESTONE1_HARDWARE_SETUP_BBGW.md) — I2S/McASP setup
+- [docs/MILESTONE2_HARDWARE_SETUP_BBGW.md](docs/MILESTONE2_HARDWARE_SETUP_BBGW.md) — UART4 setup
+- [docs/MILESTONE3_HARDWARE_SETUP_BBGW.md](docs/MILESTONE3_HARDWARE_SETUP_BBGW.md) — Web UI/Wi-Fi setup
 
 ---
 
@@ -271,19 +278,24 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 
 ## Documentation
 
-### Hardware Setup Guides
-- [MILESTONE1_HARDWARE_SETUP_BBGW.md](docs/MILESTONE1_HARDWARE_SETUP_BBGW.md) — I2S/McASP setup
-- [MILESTONE2_HARDWARE_SETUP_BBGW.md](docs/MILESTONE2_HARDWARE_SETUP_BBGW.md) — UART4 setup
-- [MILESTONE3_HARDWARE_SETUP_BBGW.md](docs/MILESTONE3_HARDWARE_SETUP_BBGW.md) — Web UI/Wi-Fi setup
+### Quick Start Guides ⚡
+- **[docs/HARDWARE_SETUP_BBGW.md](docs/HARDWARE_SETUP_BBGW.md)** — Complete hardware configuration (Device Tree, wiring, verification)
+- **[docs/SOFTWARE_SETUP_BBGW.md](docs/SOFTWARE_SETUP_BBGW.md)** — Complete software installation (packages, Python, configuration)
+- **[docs/INTEGRATION_TESTING_GUIDE.md](docs/INTEGRATION_TESTING_GUIDE.md)** — End-to-end testing procedures
 
-### BeagleBone-Specific Guides
-- [BBGW_DEVICE_TREE_GUIDE.md](docs/BBGW_DEVICE_TREE_GUIDE.md) — Device Tree overlay reference
-- [BBGW_PIN_REFERENCE.md](docs/BBGW_PIN_REFERENCE.md) — P8/P9 pin mapping
-- [BBGW_vs_RPI_COMPARISON.md](docs/BBGW_vs_RPI_COMPARISON.md) — Platform comparison
+### BeagleBone-Specific Technical Guides 🔧
+- **[docs/BBGW_DEVICE_TREE_GUIDE.md](docs/BBGW_DEVICE_TREE_GUIDE.md)** — Device Tree overlays (I2S/UART configuration)
+- **[docs/BBGW_PIN_REFERENCE.md](docs/BBGW_PIN_REFERENCE.md)** — P9 header pinout and GPIO numbering
+- **[docs/BBGW_vs_RPI_COMPARISON.md](docs/BBGW_vs_RPI_COMPARISON.md)** — Platform comparison and migration guide
+
+### Milestone-Specific Guides 📚
+- [docs/MILESTONE1_HARDWARE_SETUP_BBGW.md](docs/MILESTONE1_HARDWARE_SETUP_BBGW.md) — I2S/McASP setup
+- [docs/MILESTONE2_HARDWARE_SETUP_BBGW.md](docs/MILESTONE2_HARDWARE_SETUP_BBGW.md) — UART4 setup
+- [docs/MILESTONE3_HARDWARE_SETUP_BBGW.md](docs/MILESTONE3_HARDWARE_SETUP_BBGW.md) — Web UI/Wi-Fi setup
 
 ### Additional Documentation
-- [TODO.md](docs/TODO.md) — Port task list and progress tracking
-- [TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md) — Common issues and solutions
+- [docs/TODO.md](docs/TODO.md) — Port task list and progress tracking
+- [docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md) — Common issues and solutions (coming soon)
 
 ---
 
@@ -299,7 +311,7 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 3. Check McASP configuration: `cat /boot/uEnv.txt | grep mcasp`
 4. Test ALSA playback: `aplay -D hw:0,0 /usr/share/sounds/alsa/Front_Center.wav`
 
-**Fix:** See [docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md) for detailed solutions.
+**Fix:** See [docs/HARDWARE_SETUP_BBGW.md](docs/HARDWARE_SETUP_BBGW.md) Section 5 (Troubleshooting) for detailed solutions.
 
 ### UART Not Working
 
