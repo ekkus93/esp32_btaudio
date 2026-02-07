@@ -490,20 +490,31 @@ During verification, discovered and cleaned 3 additional files with WAV/PLAY stu
 **Goal:** Remove SPIFFS filesystem and partition
 
 ### 5.1 Update main/main.c
-- [ ] Open `main/main.c`
-- [ ] Locate `#include "esp_spiffs.h"` and remove it
-- [ ] Search for SPIFFS mount code:
-  ```c
-  esp_vfs_spiffs_conf_t conf = {
-      .base_path = "/spiffs",
-      // ... rest of config
-  };
-  esp_err_t ret = esp_vfs_spiffs_register(&conf);
-  ```
-- [ ] Remove entire SPIFFS mount block
-- [ ] Remove SPIFFS error handling code
-- [ ] Remove any SPIFFS unmount code (if in cleanup/shutdown)
-- [ ] Save file
+- [x] Open `main/main.c` - ✅ File reviewed
+- [x] Locate `#include "esp_spiffs.h"` and remove it - ✅ No SPIFFS include present
+- [x] Search for SPIFFS mount code - ✅ No SPIFFS mount code found
+- [x] Remove entire SPIFFS mount block - ✅ N/A (no SPIFFS code exists)
+- [x] Remove SPIFFS error handling code - ✅ N/A (no SPIFFS code exists)
+- [x] Remove any SPIFFS unmount code (if in cleanup/shutdown) - ✅ N/A (no SPIFFS code exists)
+- [x] Save file - ✅ No changes needed
+
+**Phase 5.1 Result:** ✅ COMPLETE - No SPIFFS code in main/main.c
+
+**Verification performed (2026-02-07):**
+- Searched entire main/main.c file (452 lines) for SPIFFS references
+- No `#include "esp_spiffs.h"` found
+- No `esp_vfs_spiffs_` function calls found
+- No SPIFFS mount/unmount code found
+- No SPIFFS configuration structures found
+
+**Conclusion:** This application never used SPIFFS in main.c. The SPIFFS partition (removed in Phase 5.2-5.3) was likely for data storage accessed via other means, not mounted at boot. main/main.c is already clean.
+
+**Note:** SPIFFS references exist only in:
+- test/test_app_audio/main/test_main.c (test file)
+- test/test_spiffs_fail/ (dedicated SPIFFS test)
+- esp_i2s_source/components/ (separate ESP-IDF component tests)
+
+None of these affect the main application.
 
 ### 5.2 Update partitions.csv
 - [x] Open `partitions.csv`
