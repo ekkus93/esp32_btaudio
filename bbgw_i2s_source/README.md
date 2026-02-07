@@ -297,6 +297,7 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 - [docs/TODO.md](docs/TODO.md) — Port task list and progress tracking
 - **[docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md)** — Common issues and solutions
 - **[docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)** — Performance tuning guide
+- **[docs/FUTURE_ENHANCEMENTS.md](docs/FUTURE_ENHANCEMENTS.md)** — Advanced features and research directions
 
 ---
 
