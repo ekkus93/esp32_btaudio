@@ -1,9 +1,9 @@
 """
-I2S Driver for RPi I2S Source using ALSA.
+I2S Driver for BBGW I2S Source using ALSA.
 
 This module provides the I2SDriverALSA class for transmitting audio samples
 via I2S interface using ALSA (Advanced Linux Sound Architecture). Designed
-for Raspberry Pi hardware with I2S output.
+for BeagleBone Green Wireless hardware with McASP I2S output.
 
 Classes:
     I2SDriverALSA: I2S driver using ALSA PCM interface.
@@ -16,12 +16,13 @@ Example:
     >>> ring_buffer = RingBuffer(8192)
     >>> driver = I2SDriverALSA(config, ring_buffer)
     >>> driver.start()
-    >>> # ... audio is transmitted via I2S
+    >>> # ... audio is transmitted via McASP I2S
     >>> driver.stop()
 
 Note:
-    This driver requires ALSA hardware support (Raspberry Pi with I2S configured).
-    For development/testing on non-Pi systems, mock the alsaaudio module.
+    This driver requires ALSA hardware support (BeagleBone Green Wireless with McASP configured).
+    ALSA device is hw:CARD=BBGW-I2S,DEV=0 (or hw:0,0 depending on Device Tree configuration).
+    For development/testing on non-BBGW systems, mock the alsaaudio module.
 """
 
 import threading
@@ -42,7 +43,7 @@ except ImportError:
         
         class PCM:
             def __init__(self, *args, **kwargs):
-                raise ImportError("alsaaudio not available - requires Raspberry Pi with ALSA")
+                raise ImportError("alsaaudio not available - requires BeagleBone Green Wireless with ALSA")
             
             def setchannels(self, channels):
                 pass
@@ -107,7 +108,7 @@ class I2SDriverALSA:
         """
         if not ALSAAUDIO_AVAILABLE:
             raise ImportError(
-                "alsaaudio not available. This driver requires Raspberry Pi with ALSA support. "
+                "alsaaudio not available. This driver requires BeagleBone Green Wireless with ALSA support. "
                 "Install with: sudo apt install python3-alsaaudio"
             )
         
@@ -139,19 +140,37 @@ class I2SDriverALSA:
         Initialize ALSA PCM device.
         
         Configures ALSA for stereo 16-bit playback at 48 kHz with specified
-        period size.
+        period size. Uses BeagleBone Green Wireless McASP I2S device.
         
         Raises:
             alsaaudio.ALSAAudioError: If device cannot be opened or configured
         """
         try:
-            # Open ALSA PCM device for playback
-            # hw:0,0 = card 0, device 0 (default I2S on Raspberry Pi)
-            self.device = alsaaudio.PCM(
-                type=alsaaudio.PCM_PLAYBACK,
-                mode=alsaaudio.PCM_NONBLOCK,
-                device='hw:0,0'
-            )
+            # Get ALSA device name from config, or use default
+            # BBGW McASP I2S: hw:CARD=BBGW-I2S,DEV=0 (from Device Tree overlay)
+            # Fallback: hw:0,0 (if overlay creates default card)
+            alsa_device = self.config.get('i2s.device', 'hw:CARD=BBGW-I2S,DEV=0')
+            
+            # Try primary device first
+            try:
+                self.device = alsaaudio.PCM(
+                    type=alsaaudio.PCM_PLAYBACK,
+                    mode=alsaaudio.PCM_NONBLOCK,
+                    device=alsa_device
+                )
+                logger.info(f"Opened ALSA device: {alsa_device}")
+            except alsaaudio.ALSAAudioError as e:
+                # Try fallback device (hw:0,0)
+                if alsa_device != 'hw:0,0':
+                    logger.warning(f"Failed to open {alsa_device}, trying fallback hw:0,0: {e}")
+                    self.device = alsaaudio.PCM(
+                        type=alsaaudio.PCM_PLAYBACK,
+                        mode=alsaaudio.PCM_NONBLOCK,
+                        device='hw:0,0'
+                    )
+                    logger.info("Opened fallback ALSA device: hw:0,0")
+                else:
+                    raise
             
             # Configure PCM parameters
             self.device.setchannels(2)  # Stereo

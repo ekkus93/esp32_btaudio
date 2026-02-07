@@ -1,31 +1,43 @@
-# Raspberry Pi I2S Source - Default Configuration
+# BeagleBone Green Wireless I2S Source - Default Configuration
 # Copy this file to config.yaml and customize as needed
 
-# I2S hardware configuration (BCM GPIO numbering)
+# I2S hardware configuration (McASP via ALSA)
 i2s:
-  gpio_bclk: 18       # Bit clock output (to ESP32 GPIO26)
-  gpio_ws: 19         # Word select output (to ESP32 GPIO25)
-  gpio_dout: 21       # Data output (to ESP32 GPIO22)
-  sample_rate: 48000  # Fixed at 48 kHz for esp_bt_audio_source
-  buffer_size: 8192   # Ring buffer size in samples (2048-16384)
+  device: "hw:CARD=BBGW-I2S,DEV=0"  # ALSA device (from Device Tree overlay BB-BBGW-I2S-00A0)
+                                     # Alternative: "hw:0,0" if overlay creates default card
+  sample_rate: 48000  # Fixed at 48 kHz for esp_bt_audio_source (McASP configured for 48 kHz)
+  channels: 2         # Stereo
+  format: "S16_LE"    # 16-bit little-endian PCM
+  period_size: 1024   # ALSA period size in frames
+  buffer_size: 4096   # ALSA buffer size in frames (ring buffer size in samples: 8192)
+  
+  # McASP I2S pins (defined in Device Tree overlay, documented here for reference):
+  # P9.31 (ACLKX) → BCLK → ESP32 GPIO26
+  # P9.29 (FSX)   → WS   → ESP32 GPIO25
+  # P9.28 (AXR1)  → DOUT → ESP32 GPIO22
+  # P9.1  (GND)   → GND  → ESP32 GND
 
 # UART configuration
 uart:
-  device: /dev/serial0  # Serial device path (RPi UART0)
+  device: /dev/ttyO4    # UART4 on P9.11 (RXD) / P9.13 (TXD)
   baudrate: 115200      # Must match esp_bt_audio_source
   timeout: 5.0          # Command response timeout in seconds
+  
+  # UART4 pins (defined in Device Tree overlay, documented here for reference):
+  # P9.11 (UART4_RXD) → ESP32 GPIO17 (TXD)
+  # P9.13 (UART4_TXD) → ESP32 GPIO16 (RXD)
 
 # Audio generation defaults
 audio:
   default_source: tone     # Initial source: tone, sweep, wav, silence
   tone_freq: 1000          # Default tone frequency in Hz
   tone_amp: 0.5            # Default amplitude (0.0-1.0)
-  wav_directory: /home/pi/audio  # WAV file search path
+  wav_directory: /home/debian/audio  # WAV file search path (adjust for BBGW user)
 
 # Web server configuration
 web:
   port: 5000               # HTTP server port
-  bind_address: 0.0.0.0    # Listen on all interfaces (LAN accessible)
+  bind_address: 0.0.0.0    # Listen on all interfaces (LAN accessible via Wi-Fi)
   log_level: INFO          # Logging level: DEBUG, INFO, WARNING, ERROR
 
 # Bluetooth state (auto-updated by application)

@@ -1,7 +1,8 @@
 """
-Unit tests for I2S Driver (ALSA implementation).
+Unit tests for I2S Driver (ALSA implementation) - BeagleBone Green Wireless.
 
 Tests the I2SDriverALSA class with mocked alsaaudio module (no hardware required).
+Specific to BBGW McASP I2S configuration.
 """
 
 import pytest
@@ -33,15 +34,16 @@ def mock_alsaaudio():
 
 @pytest.fixture
 def config():
-    """Create mock ConfigManager."""
+    """Create mock ConfigManager for BBGW."""
     config = MagicMock()
-    config.get.side_effect = lambda key: {
+    config.get.side_effect = lambda key, default=None: {
         'i2s.sample_rate': 48000,
-        'i2s.gpio_bclk': 18,
-        'i2s.gpio_ws': 19,
-        'i2s.gpio_dout': 21,
-        'i2s.buffer_size': 8192
-    }.get(key, None)
+        'i2s.device': 'hw:CARD=BBGW-I2S,DEV=0',
+        'i2s.channels': 2,
+        'i2s.format': 'S16_LE',
+        'i2s.period_size': 1024,
+        'i2s.buffer_size': 4096
+    }.get(key, default)
     return config
 
 
