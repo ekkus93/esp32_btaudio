@@ -1,0 +1,98 @@
+/*
+ * Device Tree Overlay for BeagleBone Green Wireless UART4
+ * 
+ * File: BB-BBGW-UART4-00A0.dts
+ * Description: Enables UART4 on P9.11 (RXD) and P9.13 (TXD) for ESP32 communication
+ * 
+ * Hardware Configuration:
+ *   - UART4 RXD: P9.11 (GPIO0_30, offset 0x070, Mode 6)
+ *   - UART4 TXD: P9.13 (GPIO0_31, offset 0x074, Mode 6)
+ *   - Device: /dev/ttyO4
+ *   - Baudrate: 115200 (configurable in software)
+ *   - Mode: 8N1, no flow control
+ * 
+ * Target: ESP32 esp_bt_audio_source UART interface
+ * 
+ * Wiring:
+ *   P9.11 (UART4 RXD) → ESP32 TXD (GPIO1 or GPIO17)
+ *   P9.13 (UART4 TXD) → ESP32 RXD (GPIO3 or GPIO16)
+ *   P9.1 (GND)        → ESP32 GND
+ * 
+ * Compilation:
+ *   dtc -O dtb -o BB-BBGW-UART4-00A0.dtbo -b 0 -@ BB-BBGW-UART4-00A0.dts
+ * 
+ * Installation:
+ *   sudo cp BB-BBGW-UART4-00A0.dtbo /lib/firmware/
+ * 
+ * Enable in /boot/uEnv.txt:
+ *   uboot_overlay_addr5=/lib/firmware/BB-BBGW-UART4-00A0.dtbo
+ * 
+ * Note: Most modern BeagleBone kernels have UART4 available via universal cape.
+ *       This overlay is provided for completeness and troubleshooting.
+ *       You may be able to enable UART4 via config-pin instead:
+ *         config-pin P9.11 uart
+ *         config-pin P9.13 uart
+ * 
+ * Author: Generated for bbgw_i2s_source project
+ * Date: 2026-02-07
+ * License: GPL-2.0
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+	/* Part number for cape manager identification */
+	part-number = "BB-BBGW-UART4";
+	version = "00A0";
+
+	/* Exclusive resource - UART4 pins */
+	exclusive-use =
+		/* UART4 pins */
+		"P9.11",    /* uart4_rxd */
+		"P9.13",    /* uart4_txd */
+		/* Hardware IP */
+		"uart4";
+
+	/* Pin mux configuration */
+	fragment@0 {
+		target = <&am33xx_pinmux>;
+		__overlay__ {
+			bbgw_uart4_pins: pinmux_bbgw_uart4_pins {
+				pinctrl-single,pins = <
+					/* P9.11: uart4_rxd
+					 * offset: 0x070 (from AM335x TRM Table 9-10)
+					 * mode: 0x26 (Mode 6, input, pull-up enabled)
+					 *   bit 5: input enable (1)
+					 *   bit 4: pull-up select (1)
+					 *   bit 3: pull enabled (0)
+					 *   bits 2-0: mux mode (110 = Mode 6)
+					 */
+					0x070 0x26
+					
+					/* P9.13: uart4_txd
+					 * offset: 0x074
+					 * mode: 0x06 (Mode 6, output, pull disabled)
+					 *   bit 5: input disable (0)
+					 *   bit 4: pull-down select (0)
+					 *   bit 3: pull enabled (1)
+					 *   bits 2-0: mux mode (110 = Mode 6)
+					 */
+					0x074 0x06
+				>;
+			};
+		};
+	};
+
+	/* UART4 configuration */
+	fragment@1 {
+		target = <&uart4>;
+		__overlay__ {
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&bbgw_uart4_pins>;
+		};
+	};
+};

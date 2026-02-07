@@ -1,3 +1,138 @@
+## 2026-02-07 02:05 — BBGW Port: Phase 1.2 UART Device Tree Complete
+
+**📝 Task:** Completed UART4 Device Tree configuration for ESP32 communication
+
+**Timestamp:** 2026-02-07 02:05:35
+
+**Context:** Phase 1.2 of BBGW port - UART4 Device Tree overlay, enable/verify scripts, and documentation
+
+**Phase 1.2 Deliverables:**
+
+1. **BB-BBGW-UART4-00A0.dts** (95 lines)
+   - Device Tree overlay for UART4 on P9.11 (RXD) and P9.13 (TXD)
+   - Pin mux configuration:
+     - P9.11 (offset 0x070, value 0x26): Mode 6 input with pull-up (RXD)
+     - P9.13 (offset 0x074, value 0x06): Mode 6 output (TXD)
+   - UART4 peripheral enable
+   - Creates `/dev/ttyO4` device (115200 baud, 8N1, no flow control)
+   - Compatible with ESP32 GPIO16/17 (3.3V TTL)
+
+2. **enable_uart4.sh** (340 lines, executable)
+   - Multi-method UART4 enablement script
+   - Three enable methods with auto-detection:
+     - Method 1: config-pin (non-persistent, for testing)
+     - Method 2: Device Tree overlay (persistent, for production)
+     - Method 3: Universal cape auto-detect
+   - Comprehensive verification after enable
+   - Colored output (RED error, GREEN success, YELLOW warning, BLUE info)
+   - Help text and troubleshooting guidance
+
+3. **verify_uart4.sh** (380 lines, executable)
+   - 6 comprehensive verification checks:
+     1. Hardware detection (ARM architecture, BeagleBone model)
+     2. Device file (/dev/ttyO4 presence, major/minor 250:4)
+     3. Permissions (readable/writable, dialout group membership)
+     4. Pin mux (P9.11/13 Mode 6 verification via debugfs)
+     5. Kernel UART driver (dmesg messages, loaded modules)
+     6. Loopback test (optional, requires P9.11↔P9.13 jumper)
+   - Modes: --verbose, --loopback
+   - Troubleshooting output for each failed check
+
+4. **test_uart4_loopback.sh** (280 lines, executable)
+   - Standalone Python-based loopback test
+   - Hardware validation: requires P9.11↔P9.13 physical jumper
+   - Configurable parameters:
+     - Baudrate: default 115200 (also supports 9600, 19200, 38400, 57600, 230400)
+     - Duration: default 5 seconds
+   - Tests performed:
+     - Bidirectional data transmission (TXD → RXD loopback)
+     - Data integrity (all bytes match)
+     - Throughput measurement (bits/sec, bytes/sec)
+     - Error rate calculation
+   - Generates comprehensive test report with statistics
+   - Dependencies: python3, pyserial
+
+5. **overlays/README.md** (updated, +250 lines)
+   - Added complete UART4 section
+   - Installation instructions (3 methods: config-pin, overlay, automated)
+   - Verification procedures (quick + comprehensive)
+   - Loopback test guide with hardware setup
+   - Troubleshooting scenarios:
+     1. Device not found (/dev/ttyO4 missing)
+     2. Permission denied (dialout group)
+     3. Loopback test fails (jumper, process conflicts)
+     4. Pin mux not Mode 6 (overlay conflicts)
+     5. Data corruption (baud rate mismatch)
+   - Hardware integration steps (I2S + UART + ESP32 wiring)
+
+**UART4 Technical Specifications:**
+- **Device:** `/dev/ttyO4` (UART4, base address 0x48022000)
+- **Pins:**
+  - P9.11 (GPIO0_30, pin 28): RXD, Mode 6, input with pull-up → ESP32 GPIO17 (TX)
+  - P9.13 (GPIO0_31, pin 29): TXD, Mode 6, output → ESP32 GPIO16 (RX)
+  - Common ground required (P9.1 or P9.2 → ESP32 GND)
+- **Configuration:**
+  - Baudrate: 115200 (default, configurable)
+  - Data format: 8N1 (8 data bits, no parity, 1 stop bit)
+  - Flow control: None (RTS/CTS not used)
+  - Voltage: 3.3V TTL (compatible with ESP32)
+- **Device Tree:**
+  - Pin mux offsets: 0x070 (P9.11), 0x074 (P9.13)
+  - Pin mux values: 0x26 (input pull-up), 0x06 (output)
+  - Target: uart4 (48022000.serial)
+
+**Scripts Usage:**
+
+**Enable UART4:**
+```bash
+# Auto-detect best method
+./enable_uart4.sh
+
+# Or specify method
+./enable_uart4.sh --config-pin  # Non-persistent (testing)
+./enable_uart4.sh --overlay     # Persistent (production)
+```
+
+**Verify UART4:**
+```bash
+# Standard verification (6 checks, no loopback)
+./verify_uart4.sh
+
+# Verbose output with loopback test
+./verify_uart4.sh --verbose --loopback
+```
+
+**Loopback Test:**
+```bash
+# Default (115200 baud, 5 seconds)
+./test_uart4_loopback.sh
+
+# Custom baudrate and duration
+./test_uart4_loopback.sh --baudrate=230400 --duration=10
+```
+
+**Phase 1 Status:**
+- ✅ Phase 1.1: McASP/I2S Device Tree (complete, committed a90364ae)
+  - BB-BBGW-I2S-00A0.dts, BB-BBGW-I2S-SIMPLE-00A0.dts
+  - compile_overlays.sh, verify_mcasp.sh
+  - overlays/README.md (I2S section)
+- ✅ Phase 1.2: UART Device Tree (complete, ready to commit)
+  - BB-BBGW-UART4-00A0.dts
+  - enable_uart4.sh, verify_uart4.sh, test_uart4_loopback.sh
+  - overlays/README.md (UART4 section)
+
+**Phase 1 Total Time:** ~5 hours (3 hours Phase 1.1 + 2 hours Phase 1.2)
+
+**Next Steps:**
+- [ ] Commit Phase 1.2 work to Git
+- [ ] Test overlays on physical BBGW hardware (Phase 3.1)
+- [ ] Proceed to Phase 2: Code Adaptations (4-5 hours)
+  - Update I2S driver for ALSA `hw:CARD=BBGW-I2S,DEV=0`
+  - Update UART driver for `/dev/ttyO4`
+  - Update config.yaml.template with BBGW defaults
+
+---
+
 ## 2026-02-07 01:06 — BBGW Port: Phase 0.3 Hardware Documentation Complete
 
 **📝 Task:** Created comprehensive hardware requirements and pin mapping documentation

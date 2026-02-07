@@ -521,20 +521,348 @@ And add external clock configuration (advanced, requires ESP32 hardware changes)
 
 ---
 
+## UART4 Device Tree Overlay (ESP32 Communication)
+
+### Overview
+
+The BeagleBone Green Wireless provides 6 UART peripherals (UART0-UART5). For ESP32 communication:
+- **UART0** is reserved for the serial console (avoid)
+- **UART3** may interfere with Bluetooth (avoid)
+- **UART4** is recommended for ESP32 communication (/dev/ttyO4)
+
+This overlay enables UART4 on pins P9.11 (RXD) and P9.13 (TXD) for communication with the ESP32.
+
+### File
+
+**BB-BBGW-UART4-00A0.dts**
+
+**Description:** UART4 Device Tree overlay with pin muxing for P9.11/P9.13.
+
+**Features:**
+- ✅ Pin mux for P9.11 (UART4 RXD, Mode 6)
+- ✅ Pin mux for P9.13 (UART4 TXD, Mode 6)
+- ✅ UART4 peripheral enable
+- ✅ Creates /dev/ttyO4 device
+- ✅ 115200 baud, 8N1, no flow control
+
+**Use When:**
+- You want persistent UART4 enablement (survives reboot)
+- You prefer Device Tree overlay over config-pin
+
+**Device:** `/dev/ttyO4`
+
+---
+
+### Pin Configuration
+
+| Pin   | Function  | UART Signal | Direction | Mode | Value | ESP32 Pin |
+|-------|-----------|-------------|-----------|------|-------|-----------|
+| P9.11 | UART4 RXD | RXD         | Input     | 6    | 0x26  | GPIO17 (TX) |
+| P9.13 | UART4 TXD | TXD         | Output    | 6    | 0x06  | GPIO16 (RX) |
+| P9.1  | GND       | —           | —         | —    | —     | GND       |
+
+**Pin Mux Details:**
+- **P9.11 (offset 0x070):** Mode 6, Input, Pull-up enabled (value 0x26)
+- **P9.13 (offset 0x074):** Mode 6, Output, Pull disabled (value 0x06)
+
+**Signal Specifications:**
+- **Baudrate:** 115200 (default, configurable via application)
+- **Data format:** 8 data bits, no parity, 1 stop bit (8N1)
+- **Flow control:** None (RTS/CTS not used)
+- **Voltage:** 3.3V TTL (compatible with ESP32)
+
+---
+
+### Compilation
+
+Compile the UART4 overlay:
+
+```bash
+cd /home/phil/work/esp32/esp32_btaudio/bbgw_i2s_source/overlays
+
+# Compile
+dtc -O dtb -o BB-BBGW-UART4-00A0.dtbo -b 0 -@ BB-BBGW-UART4-00A0.dts
+
+# Or use the script (compiles all overlays)
+./compile_overlays.sh --all
+```
+
+---
+
+### Installation
+
+Three methods to enable UART4:
+
+#### Method 1: config-pin (Recommended for Testing)
+
+**Pros:** Quick, no reboot required  
+**Cons:** Not persistent (lost on reboot)
+
+```bash
+# Enable UART4 pins
+sudo config-pin P9.11 uart
+sudo config-pin P9.13 uart
+
+# Verify
+ls -l /dev/ttyO4
+```
+
+#### Method 2: Device Tree Overlay (Recommended for Production)
+
+**Pros:** Persistent across reboots  
+**Cons:** Requires compilation and reboot
+
+```bash
+# 1. Compile overlay (if not done)
+./compile_overlays.sh --all
+
+# 2. Copy to firmware directory
+sudo cp BB-BBGW-UART4-00A0.dtbo /lib/firmware/
+
+# 3. Edit /boot/uEnv.txt
+sudo nano /boot/uEnv.txt
+
+# 4. Add overlay (find uboot_overlay_addr4 or similar)
+uboot_overlay_addr4=/lib/firmware/BB-BBGW-UART4-00A0.dtbo
+
+# 5. Reboot
+sudo reboot
+
+# 6. Verify after reboot
+ls -l /dev/ttyO4
+```
+
+#### Method 3: Automated Script (Easiest)
+
+**Pros:** Detects best method automatically  
+**Cons:** May fall back to non-persistent method
+
+```bash
+# Run enable script (auto-detects best method)
+./enable_uart4.sh
+
+# Or specify method explicitly
+./enable_uart4.sh --config-pin    # Non-persistent
+./enable_uart4.sh --overlay       # Persistent
+```
+
+---
+
+### Verification
+
+#### Quick Verification
+
+```bash
+# Check device exists
+ls -l /dev/ttyO4
+
+# Should show:
+# crw-rw---- 1 root dialout 250, 4 Feb  7 12:00 /dev/ttyO4
+```
+
+#### Comprehensive Verification
+
+```bash
+# Run verification script
+./verify_uart4.sh
+
+# Or with verbose output
+./verify_uart4.sh --verbose
+```
+
+**Checks performed:**
+1. ✅ Hardware detection (BeagleBone model, ARM architecture)
+2. ✅ Device file (/dev/ttyO4 presence, major/minor numbers)
+3. ✅ Permissions (readable/writable, dialout group membership)
+4. ✅ Pin mux (P9.11/P9.13 Mode 6 verification via debugfs)
+5. ✅ Kernel UART driver (dmesg messages, loaded modules)
+6. ⚠️ Loopback test (optional, requires P9.11↔P9.13 jumper)
+
+#### Loopback Test (Hardware Validation)
+
+**Prerequisites:**
+- UART4 enabled
+- P9.11 connected to P9.13 with jumper wire
+- python3 and pyserial installed
+
+```bash
+# Install dependencies (if needed)
+sudo apt install python3 python3-pip
+pip3 install pyserial
+
+# Run loopback test
+./test_uart4_loopback.sh
+
+# Or with custom settings
+./test_uart4_loopback.sh --baudrate=230400 --duration=10
+```
+
+**What it tests:**
+- ✅ Bidirectional data transmission
+- ✅ Data integrity (all bytes match)
+- ✅ Throughput measurement
+- ✅ Error rate calculation
+
+**Expected Output:**
+```
+========================================
+Loopback Test Results
+========================================
+Duration:         5.02 seconds
+Packets sent:     100
+Packets received: 100
+Bytes sent:       6400
+Bytes received:   6400
+Success rate:     100.0%
+Error rate:       0.0%
+Throughput:       10195 bits/sec (1274 bytes/sec)
+========================================
+
+✓ PASS: All data transmitted correctly
+```
+
+---
+
+### Troubleshooting UART4
+
+#### Device Not Found (/dev/ttyO4 missing)
+
+**Symptom:** `ls /dev/ttyO4` shows "No such file or directory"
+
+**Possible Causes:**
+1. UART4 not enabled in Device Tree
+2. Universal cape may have different pin configuration
+3. Kernel driver not loaded
+
+**Solution:**
+```bash
+# Check if UART4 is enabled
+dmesg | grep -i uart | grep -i "48022000\|uart4"
+
+# Expected: "48022000.serial: ttyO4 at MMIO 0x48022000"
+
+# If not found, enable via config-pin
+sudo config-pin P9.11 uart
+sudo config-pin P9.13 uart
+
+# Or install overlay (persistent)
+./enable_uart4.sh --overlay
+```
+
+#### Permission Denied When Opening /dev/ttyO4
+
+**Symptom:** "Permission denied" when accessing /dev/ttyO4
+
+**Cause:** User not in `dialout` group
+
+**Solution:**
+```bash
+# Add user to dialout group
+sudo usermod -a -G dialout $USER
+
+# Log out and back in (or reboot)
+# Verify membership
+groups | grep dialout
+```
+
+#### Loopback Test Fails
+
+**Symptom:** Loopback test reports data mismatch or incomplete receive
+
+**Possible Causes:**
+1. Jumper wire not connected between P9.11 and P9.13
+2. Loose connection
+3. Other device using UART4 (e.g., getty, ModemManager)
+
+**Solution:**
+```bash
+# 1. Check jumper wire connection physically
+
+# 2. Verify no other process is using UART4
+sudo lsof /dev/ttyO4
+
+# If found, kill the process:
+sudo killall <process_name>
+
+# 3. Disable getty on ttyO4 (if running)
+sudo systemctl stop serial-getty@ttyO4.service
+sudo systemctl disable serial-getty@ttyO4.service
+
+# 4. Re-run loopback test
+./test_uart4_loopback.sh
+```
+
+#### Pin Mux Not Set to Mode 6
+
+**Symptom:** verify_uart4.sh reports wrong mode for P9.11 or P9.13
+
+**Cause:** Another overlay or config-pin command overrode pin mux
+
+**Solution:**
+```bash
+# Check current pin mux
+cat /sys/kernel/debug/pinctrl/44e10800.pinmux/pins | grep -E "pin 28|pin 29"
+
+# Should show:
+#  pin 28 (PIN28): ... (MUX UNCLAIMED) (GPIO UNCLAIMED)
+#  pin 29 (PIN29): 48022000.serial (MUX UNCLAIMED) (GPIO UNCLAIMED)
+
+# Re-apply pin mux
+sudo config-pin P9.11 uart
+sudo config-pin P9.13 uart
+
+# Or reload overlay
+sudo reboot  # If using Device Tree overlay
+```
+
+#### Data Corruption or Baud Rate Mismatch
+
+**Symptom:** Garbled data, random characters
+
+**Cause:** Baud rate mismatch between BBGW and ESP32
+
+**Solution:**
+```bash
+# Verify UART4 configuration
+stty -F /dev/ttyO4
+
+# Should show: speed 115200 baud; ...
+
+# Set baud rate explicitly
+stty -F /dev/ttyO4 115200
+
+# Match ESP32 baud rate in config.yaml
+# Default: 115200 (8N1, no flow control)
+```
+
+---
+
 ## Next Steps
 
-After successfully loading the overlay:
+After successfully loading the overlays:
 
+### I2S (McASP0)
 1. ✅ Verify ALSA device: `aplay -l`
 2. ✅ Update `bbgw_i2s_source/config.yaml` with correct ALSA device name
 3. ✅ Test with `speaker-test`
-4. ✅ Connect ESP32 hardware
-5. ✅ Run Milestone 1 test (1 kHz tone generation)
-6. ✅ Verify with logic analyzer
-7. ✅ Proceed to Phase 2: Code Adaptations
+
+### UART4
+1. ✅ Verify device: `ls -l /dev/ttyO4`
+2. ✅ Run loopback test: `./test_uart4_loopback.sh`
+3. ✅ Update `bbgw_i2s_source/config.yaml` with `/dev/ttyO4`
+
+### Hardware Integration
+1. ✅ Connect ESP32 hardware
+   - I2S: P9.31 (BCLK) → GPIO26, P9.29 (WS) → GPIO25, P9.28 (DOUT) → GPIO22
+   - UART: P9.13 (TXD) → GPIO16 (ESP32 RX), P9.11 (RXD) → GPIO17 (ESP32 TX)
+   - Power: GND → GND (common ground required)
+2. ✅ Run Milestone 1 test (1 kHz tone generation via I2S)
+3. ✅ Run Milestone 2 test (UART command/response)
+4. ✅ Verify with logic analyzer (optional but recommended)
+5. ✅ Proceed to Phase 2: Code Adaptations
 
 ---
 
 **Last Updated:** 2026-02-07  
-**Status:** Phase 1.1 in progress  
-**Next:** Compile overlays on BBGW and test
+**Status:** Phase 1 (Device Tree Configuration) complete  
+**Next:** Test on hardware, then proceed to Phase 2 (Code Adaptations)

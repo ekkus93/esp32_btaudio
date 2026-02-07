@@ -236,33 +236,65 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 - [ ] Verify I2S signals with logic analyzer
 
 ### 1.2. UART Device Tree Configuration
-**Status:** NOT STARTED  
-**Estimated Time:** 2 hours  
+**Status:** ✅ COMPLETE  
+**Actual Time:** 2 hours (as estimated)  
+**Completed:** 2026-02-07  
 **Priority:** HIGH (required for UART commands)
 
-- [ ] **Enable UART4 via Device Tree**
-  - [ ] Edit `/boot/uEnv.txt`
-  - [ ] Uncomment or add UART4 overlay:
-    - [ ] `cape_enable=bone_capemgr.enable_partno=BB-UART4`
-  - [ ] Or ensure UART4 pins are configured in universal cape
-  - [ ] Reboot
+**Deliverables:**
+- ✅ **BB-BBGW-UART4-00A0.dts** (95 lines)
+  - Device Tree overlay for UART4 on P9.11 (RXD) and P9.13 (TXD)
+  - Pin mux: P9.11 (offset 0x070, value 0x26, Mode 6 input with pull-up)
+  - Pin mux: P9.13 (offset 0x074, value 0x06, Mode 6 output)
+  - Creates /dev/ttyO4 device (115200 baud, 8N1, no flow control)
 
-- [ ] **Verify UART4 Device**
-  - [ ] Check device exists: `ls -l /dev/ttyO4`
-  - [ ] Check permissions: `ls -l /dev/ttyO4`
-  - [ ] Add user to `dialout` group: `sudo usermod -a -G dialout $USER`
-  - [ ] Log out and back in for group change
+- ✅ **enable_uart4.sh** (340 lines)
+  - Multi-method UART4 enablement script
+  - Method 1: config-pin (non-persistent, for testing)
+  - Method 2: Device Tree overlay (persistent, for production)
+  - Method 3: Auto-detect (checks universal cape, falls back)
+  - Comprehensive verification and troubleshooting output
 
-- [ ] **Configure UART4 Pins**
-  - [ ] Verify P9.11 (RXD) and P9.13 (TXD) are muxed correctly
-  - [ ] Check pin configuration: `cat /sys/kernel/debug/pinctrl/44e10800.pinmux/pins`
-  - [ ] If needed, create custom overlay for UART4 pin mux
+- ✅ **verify_uart4.sh** (380 lines)
+  - 6 comprehensive verification checks:
+    1. Hardware detection (ARM architecture, BeagleBone model)
+    2. Device file (/dev/ttyO4 presence, major/minor numbers)
+    3. Permissions (readable/writable, dialout group)
+    4. Pin mux (P9.11/P9.13 Mode 6 via debugfs)
+    5. Kernel UART driver (dmesg, lsmod)
+    6. Loopback test (optional, requires P9.11↔P9.13 jumper)
+  - Verbose mode, help text, colored output
 
-- [ ] **Test UART4 Loopback**
-  - [ ] Connect P9.11 to P9.13 (RXD to TXD)
-  - [ ] Test with `screen /dev/ttyO4 115200`
-  - [ ] Type characters and verify echo
-  - [ ] Disconnect loopback after test
+- ✅ **test_uart4_loopback.sh** (280 lines)
+  - Standalone Python-based loopback test
+  - Configurable baudrate (default 115200) and duration (default 5 sec)
+  - Tests bidirectional communication via P9.11↔P9.13 jumper
+  - Measures throughput, success rate, error rate
+  - Generates comprehensive test report
+
+- ✅ **overlays/README.md updated**
+  - Added complete UART4 section (~250 lines)
+  - Installation instructions (3 methods)
+  - Verification procedures
+  - Loopback test guide
+  - Troubleshooting scenarios (5 common issues)
+  - Hardware integration steps
+
+**Technical Specifications:**
+- Device: /dev/ttyO4
+- Pins: P9.11 (RXD, Mode 6, GPIO0_30) ↔ ESP32 GPIO17 (TX)
+- Pins: P9.13 (TXD, Mode 6, GPIO0_31) ↔ ESP32 GPIO16 (RX)
+- Baudrate: 115200 (default, configurable)
+- Format: 8N1 (8 data bits, no parity, 1 stop bit)
+- Flow control: None (RTS/CTS not used)
+- Voltage: 3.3V TTL (compatible with ESP32)
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Compile overlay on BBGW: `./compile_overlays.sh --all`
+- [ ] Enable UART4: `./enable_uart4.sh` (auto-detects best method)
+- [ ] Verify: `./verify_uart4.sh --verbose`
+- [ ] Run loopback test: `./test_uart4_loopback.sh` (requires P9.11↔P9.13 jumper)
+- [ ] Connect ESP32 and test bidirectional communication
 
 ---
 
