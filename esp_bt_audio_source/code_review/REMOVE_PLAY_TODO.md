@@ -554,10 +554,29 @@ None of these affect the main application.
 **Note:** Phase 5.2 and 5.3 completed early (jumped from Phase 4.2) to fix critical CI build failure. Phase 5.1 was already complete (no SPIFFS mount code in main.c).
 
 ### 5.4 Update CMakeLists.txt (if needed)
-- [ ] Open top-level `CMakeLists.txt`
-- [ ] Check if SPIFFS component explicitly listed in REQUIRES
-- [ ] If found, remove SPIFFS from REQUIRES
-- [ ] Save file (if modified)
+- [x] Open top-level `CMakeLists.txt` - ✅ Reviewed
+- [x] Check if SPIFFS component explicitly listed in REQUIRES - ✅ Found in 2 files
+- [x] If found, remove SPIFFS from REQUIRES - ✅ Removed from both files
+- [x] Save file (if modified) - ✅ Complete
+
+**Phase 5.4 Result:** ✅ COMPLETE (2026-02-07)
+
+**Files Modified (2):**
+
+1. **CMakeLists.txt** (top-level):
+   - Removed `spiffs_create_partition_image()` call (lines 10-12)
+   - Removed comment about building SPIFFS partition image
+   - Added comment: "SPIFFS partition removed (Phase 5) - reclaimed 1MB of flash space"
+
+2. **components/command_interface/CMakeLists.txt**:
+   - Removed `spiffs` from priv_requires list (line 6)
+   - command_interface component no longer depends on SPIFFS
+
+**Remaining SPIFFS References:**
+- test/test_app_audio/CMakeLists.txt: Test-specific SPIFFS (acceptable for test assets)
+- test/test_app_audio/main/CMakeLists.txt: Test component requires SPIFFS (acceptable)
+
+**Next:** Phase 5.5 - Build with new partition table
 
 ### 5.5 Build with New Partition Table
 - [ ] Clean build directory:

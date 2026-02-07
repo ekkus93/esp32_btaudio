@@ -13489,3 +13489,34 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 - Phase 5.2: ✅ Complete (partitions.csv updated, commit 16563647)
 - Phase 5.3: ✅ Complete (spiffs/ directory removed, commit 16563647)
 - Phases 5.4-5.7: Pending
+
+## 2026-02-07 14:52:48 - Phase 5.4: Update CMakeLists.txt (SPIFFS removal)
+
+**Task:** Remove SPIFFS component dependencies from CMakeLists.txt files
+
+**Actions Performed:**
+1. Reviewed top-level CMakeLists.txt and all component CMakeLists files
+2. Removed SPIFFS partition image creation from top-level CMakeLists.txt:
+   - Deleted spiffs_create_partition_image() call
+   - Removed associated comments
+   - Added comment documenting Phase 5 SPIFFS removal
+3. Removed `spiffs` from command_interface component PRIV_REQUIRES list
+
+**Files Modified (2):**
+- CMakeLists.txt (top-level): Removed SPIFFS partition image creation (~3 lines)
+- components/command_interface/CMakeLists.txt: Removed spiffs from priv_requires
+
+**Remaining SPIFFS References:**
+- test/test_app_audio/: Test-specific SPIFFS for test assets (acceptable)
+- esp_i2s_source/: Separate ESP-IDF project (not our concern)
+
+**Results:**
+- ✅ Main application no longer creates SPIFFS partition image
+- ✅ command_interface component no longer depends on SPIFFS
+- ✅ Consistent with Phase 5.2-5.3 (partition and directory removal)
+- ✅ Phase 5.4 documentation updated in REMOVE_PLAY_TODO.md
+
+**Status:** Phase 5.4 COMPLETE ✅
+
+**Next:** Phase 5.5 - Build with new partition table
+
