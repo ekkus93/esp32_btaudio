@@ -206,9 +206,6 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "BEEP") == 0) {
         ctx->type = CMD_TYPE_BEEP;
     }
-    else if (strcasecmp(token, "PLAY") == 0) {
-        ctx->type = CMD_TYPE_PLAY;
-    }
     else if (strcasecmp(token, "PAIR") == 0) {
         ctx->type = CMD_TYPE_PAIR;
     }
@@ -389,8 +386,6 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_disconnect(ctx);
     case CMD_TYPE_START:
         return cmd_handle_start(ctx);
-    case CMD_TYPE_PLAY:
-        return cmd_handle_play(ctx);
     case CMD_TYPE_STOP:
         return cmd_handle_stop(ctx);
     case CMD_TYPE_FILE:

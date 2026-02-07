@@ -50,7 +50,6 @@ static const struct
     {"AUDIO_STATUS", NULL, "Report audio engine stats and ring buffer state"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
-    {"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
     {"RESET", NULL, "Reboot the device"},
 #ifdef ESP_PLATFORM

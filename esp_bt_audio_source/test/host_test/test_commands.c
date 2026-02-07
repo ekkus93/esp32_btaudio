@@ -109,7 +109,6 @@ extern void bt_manager_test_set_force_unpair_failure(int v);
 extern void bt_manager_test_set_force_unpair_all_failure(int v);
 extern int bt_manager_test_get_unpair_all_removed(void);
 extern int bt_manager_test_get_unpair_all_cleared_before(void);
-extern void play_manager_test_set_active(bool active);
 
 // Test fixture
 void setUp(void) {
@@ -605,22 +604,9 @@ int main(void) {
     RUN_TEST(test_beep_command_busy_when_wav_active);
     RUN_TEST(test_beep_command_allowed_when_i2s_active);
     RUN_TEST(test_beep_command_busy_when_beep_active);
-    // Test PLAY command enqueues audio via host stub and makes data available
-    extern void test_play_command_missing_param_should_error(void);
-    extern void test_play_command_missing_file_should_error(void);
-    extern void test_play_command_path_too_long_should_error(void);
-    extern void test_play_command(void);
-    extern void test_play_command_busy_when_beep_active(void);
-    extern void test_play_command_allowed_when_i2s_active(void);
     extern void test_file_command_found(void);
     extern void test_file_command_not_found(void);
     extern void test_file_command_not_file(void);
-    RUN_TEST(test_play_command_missing_param_should_error);
-    RUN_TEST(test_play_command_missing_file_should_error);
-    RUN_TEST(test_play_command_path_too_long_should_error);
-    RUN_TEST(test_play_command);
-    RUN_TEST(test_play_command_busy_when_beep_active);
-    RUN_TEST(test_play_command_allowed_when_i2s_active);
     RUN_TEST(test_file_command_found);
     RUN_TEST(test_file_command_not_found);
     RUN_TEST(test_file_command_not_file);
@@ -862,7 +848,7 @@ void test_start_command(void) {
     TEST_ASSERT_TRUE(strstr(tx, "MOCK_STARTED") != NULL || strstr(tx, "STARTED") != NULL || strstr(tx, "FAILED") != NULL);
 }
 
-/* I2S must override ongoing BEEP/PLAY. When a beep is active, START should
+/* I2S must override ongoing BEEP. When a beep is active, START should
  * clear it and leave I2S running. */
 void test_start_command_stops_beep_and_enables_i2s(void) {
     mock_uart_reset_tx();
@@ -1048,28 +1034,6 @@ void test_beep_command_busy_when_wav_active(void) {
     (void)audio_processor_drain_ring();
 }
 
-void test_beep_command_busy_when_play_active(void) {
-    mock_uart_reset_tx();
-
-    /* Simulate an active PLAY so the busy guard fires. */
-    play_manager_test_set_active(true);
-
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    const char *expected = "ERR|BEEP|BUSY|PLAY_ACTIVE";
-    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
-
-    /* Reset for subsequent tests. */
-    play_manager_test_set_active(false);
-}
-
 void test_beep_command_allowed_when_i2s_active(void) {
     mock_uart_reset_tx();
     reset_spiffs_mount_hook_counter();
@@ -1136,221 +1100,6 @@ void test_beep_command_busy_when_beep_active(void) {
 
     TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
     (void)audio_processor_drain_ring();
-}
-
-void test_play_command_missing_param_should_error(void) {
-    mock_uart_reset_tx();
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|MISSING_PARAM"));
-}
-
-// Test PLAY command: request playback of a spiffs asset (host-mode) and
-// verify the command emitted the mock-enqueued response and that the
-// host audio_processor stub appended audio data readable via
-// audio_processor_read(). Use the asset filename as the parameter so
-// cmd_execute() builds the /spiffs/<name> path as it would on-device.
-void test_play_command(void) {
-    mock_uart_reset_tx();
-    reset_spiffs_mount_hook_counter();
-
-    // Ensure ringbuffer empty before test
-    audio_processor_drain_ring();
-    // Simulate a BT connection so PLAY will enqueue (new behavior: PLAY
-    // requires an A2DP connection instead of falling back to I2S).
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
-
-    cmd_context_t ctx;
-    char play_cmd[64];
-    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    // Expect the mock enqueue response containing the original filename
-    char expected_resp[96];
-    snprintf(expected_resp, sizeof(expected_resp), "OK|PLAY|MOCK_ENQUEUED|%s", k_file_worker_name);
-    TEST_ASSERT_NOT_NULL(strstr(tx, expected_resp));
-
-    // Read some data from the audio_processor ringbuffer to ensure playback
-    uint8_t buf[1024]; size_t read = 0;
-    /* Diagnostic: capture return value so we can see what implementation
-     * is being invoked (useful when linker/headers mismatch) */
-    int ret = audio_processor_read(buf, sizeof(buf), &read);
-    /* Accept either the esp_err_t style (ESP_OK + bytes_read>0) or a
-     * legacy/alternate style where the function returns the number of
-     * bytes read directly (positive int). Be explicit so the test is
-     * resilient across small signature mismatches in host stubs. */
-    if (ret == ESP_OK) {
-        TEST_ASSERT_TRUE(read > 0);
-    } else if (ret > 0) {
-        /* Some builds may return the byte-count directly. Ensure we
-         * actually received data. */
-        TEST_ASSERT_TRUE((size_t)ret == read || read > 0);
-    } else {
-        /* Explicit fail with the numeric code for easier triage. */
-        char msg[64];
-        snprintf(msg, sizeof(msg), "audio_processor_read failed: %d", ret);
-        TEST_FAIL_MESSAGE(msg);
-    }
-    // Data should not be all zeros (stub generates deterministic non-zero pattern)
-    int found_nonzero = 0;
-    for (size_t i = 0; i < read; ++i) { if (buf[i] != 0) { found_nonzero = 1; break; } }
-    TEST_ASSERT_EQUAL_INT(1, found_nonzero);
-    // Ensure beep flag wasn't accidentally set by play
-    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
-
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(1, s_spiffs_mount_hook_count);
-}
-
-void test_play_command_busy_when_beep_active(void) {
-    mock_uart_reset_tx();
-    reset_spiffs_mount_hook_counter();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_16K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_MONO,
-        .volume = 70,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 1000.0));
-
-    cmd_context_t ctx;
-    char play_cmd[64];
-    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|BUSY|BEEP_ACTIVE"));
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
-
-void test_play_command_after_stop_clears_beep_busy(void) {
-    mock_uart_reset_tx();
-    reset_spiffs_mount_hook_counter();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_16K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_MONO,
-        .volume = 70,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(50, 1000.0));
-    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
-
-    /* STOP should now drain beep/audio queues and clear the busy flag. */
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
-    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    char play_cmd[64];
-    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NULL(strstr(tx, "BUSY"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED"));
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
-
-void test_play_command_allowed_when_i2s_active(void) {
-    mock_uart_reset_tx();
-    reset_spiffs_mount_hook_counter();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_16K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_MONO,
-        .volume = 70,
-        .mute = false,
-        .i2s_port = 0,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    audio_processor_set_synth_mode(false); /* simulate live I2S capture */
-
-    cmd_context_t ctx;
-    char play_cmd[64];
-    snprintf(play_cmd, sizeof(play_cmd), "PLAY %s", k_file_worker_name);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(play_cmd, &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|PLAY|MOCK_ENQUEUED"));
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
-
-void test_play_command_missing_file_should_error(void) {
-    mock_uart_reset_tx();
-
-    /* Use a non-existent asset so the WAV enqueue fails on host stub. */
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PLAY missing_asset.wav", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|MOCK_FAILED|missing_asset.wav"));
-    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
-}
-
-void test_play_command_path_too_long_should_error(void) {
-    mock_uart_reset_tx();
-
-    /* Force the host SPIFFS root to be long enough that even a short
-     * filename exceeds the PLAY path buffer. Save/restore the real root
-     * so tearDown still cleans up the temp directory created in setUp. */
-    char saved_root[PATH_MAX];
-    memcpy(saved_root, s_test_spiffs_root, sizeof(saved_root));
-    int saved_ready = s_test_spiffs_root_ready;
-
-    size_t fill = (sizeof(s_test_spiffs_root) > 320) ? 320 : sizeof(s_test_spiffs_root) - 2;
-    memset(s_test_spiffs_root, 'b', fill);
-    s_test_spiffs_root[fill] = '\0';
-    s_test_spiffs_root_ready = 1;
-
-    const char* cmd = "PLAY short.wav";
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(cmd, &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    printf("PLAY path too long response: %s\n", tx ? tx : "<null>");
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PLAY|PATH_TOO_LONG"));
-
-    /* Restore the real root for tearDown cleanup. */
-    memcpy(s_test_spiffs_root, saved_root, sizeof(saved_root));
-    s_test_spiffs_root_ready = saved_ready;
 }
 
 void test_file_command_found(void) {

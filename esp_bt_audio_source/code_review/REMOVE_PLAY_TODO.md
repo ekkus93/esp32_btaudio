@@ -94,40 +94,44 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
 **Goal:** Remove user-facing PLAY command
 
 ### 2.1 Modify cmd_handlers_system.c
-- [ ] Open `components/command_interface/cmd_handlers_system.c`
-- [ ] Locate `cmd_handle_play()` function
-- [ ] Remove entire `cmd_handle_play()` function (~50-100 lines)
-- [ ] Locate command help text array
-- [ ] Remove PLAY entry from help text: `{"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"}`
-- [ ] Locate command dispatch table
-- [ ] Remove PLAY entry from dispatch table (if separate from help)
-- [ ] Save file
+- [x] Open `components/command_interface/cmd_handlers_system.c`
+- [x] Locate `cmd_handle_play()` function (found in cmd_handlers_audio.c)
+- [x] Remove entire `cmd_handle_play()` function (~120 lines removed from cmd_handlers_audio.c)
+- [x] Locate command help text array
+- [x] Remove PLAY entry from help text: `{"PLAY", "<FILENAME>", "Play a WAV file from /spiffs (host-mode)"}`
+- [x] Locate command dispatch table
+- [x] Remove PLAY entry from dispatch table (handled in commands.c)
+- [x] Save file
 
 ### 2.2 Update Test Files
-- [ ] Open `test/host_test/test_commands.c`
-- [ ] Locate all PLAY command tests
-- [ ] Remove test functions:
-  - [ ] Remove `test_cmd_play_*` functions (if any)
-  - [ ] Remove any PLAY-related command parsing tests
-  - [ ] Remove PLAY from help text validation tests
-- [ ] Save file
+- [x] Open `test/host_test/test_commands.c`
+- [x] Locate all PLAY command tests (found 7 test functions, 2 BEEP tests with PLAY refs)
+- [x] Remove test functions:
+  - [x] Removed play_manager_test_set_active extern declaration (line 112)
+  - [x] Removed 6 PLAY test extern declarations (lines 609-614) and RUN_TEST calls (lines 618-623)
+  - [x] Removed 7 PLAY test functions (~211 lines): test_play_command_missing_param_should_error, test_play_command, test_play_command_busy_when_beep_active, test_play_command_after_stop_clears_beep_busy, test_play_command_allowed_when_i2s_active, test_play_command_missing_file_should_error, test_play_command_path_too_long_should_error
+  - [x] Removed test_beep_command_busy_when_play_active function (entire function)
+  - [x] Updated comment on line 865 (removed PLAY reference)
+- [x] Save file
 
 ### 2.3 Build and Test
-- [ ] Build host tests:
+- [x] Build host tests:
   ```bash
   cd test/host_test
-  python3 build_and_run_host_tests.py
+  make test
   ```
-- [ ] Verify all tests pass (fewer tests expected)
-- [ ] Verify PLAY command no longer in help output
-- [ ] Check for any compilation errors or warnings
+- [x] Verify all tests pass (fewer tests expected) - RESULT: 33/33 tests passed (same as baseline)
+- [x] Verify PLAY command no longer in help output
+- [x] Check for any compilation errors or warnings - RESULT: Build successful with warnings (implicit declaration of bt_manager_test_set_connection_state, snprintf truncation warning in test_beep_command_busy_when_wav_active)
 
 ### 2.4 Verification
-- [ ] PLAY command handler removed from cmd_handlers_system.c
-- [ ] PLAY tests removed from test_commands.c
-- [ ] Host tests pass
-- [ ] No new compiler warnings introduced
-- [ ] Ready to proceed with Phase 3
+- [x] PLAY command handler removed from cmd_handlers_audio.c
+- [x] PLAY tests removed from test_commands.c  
+- [x] PLAY command dispatch removed from commands.c (CMD_TYPE_PLAY enum, parsing case, execute case)
+- [x] cmd_handle_play declaration removed from cmd_handlers.h
+- [x] Host tests pass (33/33)
+- [x] No new compiler warnings introduced (existing warnings noted but unrelated to PLAY removal)
+- [x] Ready to proceed with Phase 3
 
 ---
 

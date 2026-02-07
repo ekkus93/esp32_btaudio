@@ -18,7 +18,6 @@ cmd_status_t cmd_handle_diag(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_beep(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_start(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_stop(const cmd_context_t *ctx);
-cmd_status_t cmd_handle_play(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_sample_rate(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_volume(const cmd_context_t *ctx);
