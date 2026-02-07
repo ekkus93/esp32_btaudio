@@ -1,5 +1,5 @@
 """
-Flask Web Server for RPi I2S Source.
+Flask Web Server for BeagleBone Green Wireless I2S Source.
 
 This module provides the WebServer class that implements a Flask-based web interface
 for controlling the I2S audio test jig. Provides REST API endpoints for audio control,

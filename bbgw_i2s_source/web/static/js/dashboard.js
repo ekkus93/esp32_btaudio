@@ -1,5 +1,5 @@
 /**
- * RPi I2S Audio Source Dashboard
+ * BeagleBone Green Wireless I2S Audio Source Dashboard
  * 
  * Handles all client-side logic for the web UI:
  * - Server-Sent Events (SSE) for real-time status updates

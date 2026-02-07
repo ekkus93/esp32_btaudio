@@ -1,5 +1,5 @@
 """
-Telemetry Tracker for RPi I2S Source.
+Telemetry Tracker for BeagleBone Green Wireless I2S Source.
 
 This module provides the TelemetryTracker class for collecting and aggregating
 statistics from all components (I2S, UART, Bluetooth, audio, system).
@@ -294,7 +294,7 @@ class TelemetryTracker:
         """
         Read CPU temperature from sysfs.
         
-        Reads from /sys/class/thermal/thermal_zone0/temp (Raspberry Pi thermal zone).
+        Reads from /sys/class/thermal/thermal_zone0/temp (BeagleBone Green Wireless thermal zone).
         Temperature is in millidegrees Celsius, divided by 1000 to get degrees.
         
         Returns:
