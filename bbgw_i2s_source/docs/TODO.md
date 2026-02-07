@@ -803,21 +803,65 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
   - [ ] Timeout handling works correctly
 
 ### 3.4. Hardware Validation — Milestone 3: Web UI
-**Status:** NOT STARTED  
+**Status:** ✅ COMPLETE (Software Ready)  
 **Estimated Time:** 2 hours  
+**Actual Time:** 1.0 hours (script and documentation)  
+**Completed:** 2026-02-07  
 **Priority:** MEDIUM
 
-- [ ] **Create Milestone 3 Test Script**
-  - [ ] Copy `milestone3_web_ui_test.py` to bbgw_i2s_source
-  - [ ] Update references to BBGW
+- [x] **Create Milestone 3 Test Script**
+  - [x] Created `milestone3_web_ui_test.py` for BBGW
+  - [x] Updated all platform references to BeagleBone Green Wireless
+  - [x] Updated example IP addresses and hostnames
+  - [x] Made script executable (chmod +x)
+
+- [x] **Create Hardware Setup Documentation**
+  - [x] Created `docs/MILESTONE3_HARDWARE_SETUP_BBGW.md` (~650 lines)
+  - [x] Complete network configuration guide (Wi-Fi setup)
+  - [x] Flask server deployment instructions
+  - [x] Manual browser testing procedures
+  - [x] Troubleshooting guide (6 common issues)
+  - [x] Success criteria checklist
+
+**Deliverables:**
+- ✅ **milestone3_web_ui_test.py** (555 lines)
+  - Adapted from rpi_i2s_source for BeagleBone Green Wireless
+  - Tests Flask web UI accessibility and functionality
+  - Tests: Server connectivity, web pages, REST API, tone latency, SSE stream
+  - Validates tone control latency <200ms
+  - Validates SSE updates at ~2 Hz (500ms intervals)
+  - Real-time test statistics and results
+
+- ✅ **docs/MILESTONE3_HARDWARE_SETUP_BBGW.md** (~650 lines)
+  - Complete hardware setup guide for Flask web UI testing
+  - Sections:
+    - Network configuration (Wi-Fi/Ethernet setup)
+    - Software dependencies (Flask, Python packages)
+    - Flask server deployment (foreground and systemd service)
+    - Running Milestone 3 test (automated script)
+    - Manual browser testing procedures
+    - Expected results (successful test output)
+    - Troubleshooting (6 scenarios)
+    - Success validation checklist
+
+**Key Changes from RPi Version:**
+- **Platform**: "Raspberry Pi" → "BeagleBone Green Wireless"
+- **Network**: Updated Wi-Fi setup instructions (connmanctl for BBGW)
+- **Hostname**: raspberrypi.local → beaglebone.local
+- **Example IPs**: Updated for BBGW context
+- **Documentation**: Added BBGW-specific network configuration
+
+**Software Status:** ✅ Ready to run on BBGW hardware
 
 - [ ] **Network Setup**
-  - [ ] Verify BBGW Wi-Fi connection
+  - [ ] Configure BBGW Wi-Fi connection (connmanctl or wpa_supplicant)
   - [ ] Get BBGW IP address: `hostname -I`
   - [ ] Configure firewall (if needed): `sudo ufw allow 5000/tcp`
+  - [ ] Verify LAN connectivity from laptop: `ping <bbgw-ip>`
 
 - [ ] **Run Milestone 3 Test**
-  - [ ] Start Flask server: `python3 main.py`
+  - [ ] Install Python dependencies: `pip3 install -r requirements.txt`
+  - [ ] Start Flask server on BBGW: `python3 main.py`
   - [ ] From laptop: `./milestone3_web_ui_test.py --host <bbgw-ip>`
   - [ ] Verify web UI accessible on LAN
   - [ ] Test tone control latency
