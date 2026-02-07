@@ -1,3 +1,97 @@
+## 2026-02-07 13:48 — ESP32 BT Audio: Phase 4.4 Complete - Verified test_commands.c cleanup ✅
+
+**📝 Task:** Phase 4.4 - Additional cleanup verification for test/host_test/test_commands.c
+
+**Timestamp:** 2026-02-07 13:48:49
+
+**Context:** Verifying Phase 2 cleanup was complete; checking for any missed PLAY/WAV references
+
+**Findings:**
+- **PLAY references:** 0 (case-insensitive search found no matches)
+- **play_manager references:** 0 (completely removed)
+- **WAV references:** 3 matches, all acceptable:
+  - k_file_worker_name = "worker_long_norm.wav" (test data for FILE command)
+  - "missing.wav" in test_file_command_not_found (FILE command error test)
+  - These are FILE command tests (file listing/retrieval), not PLAY tests
+- **SPIFFS references:** Test infrastructure for FILE command (creates mock filesystem directory)
+- **test_help_command():** Uses resilient count-based validation (doesn't check for specific commands like PLAY)
+- **Beep tests:** All 4 beep tests clean (no WAV/PLAY references)
+- **Total tests:** 55 RUN_TEST calls
+
+**Conclusion:** ✅ Phase 2 did thorough cleanup; no additional work needed for Phase 4.4
+
+**Related:**
+- Phase 2.2-2.3: Removed PLAY command tests (commit c0772235)
+- Phase 4.2: Updated host tests (commit 6f7ddf5e)
+- Phase 4.3: Updated device tests (commit e074e441)
+
+**Next:** Phase 4.5 - Update other test files (search for remaining test files with PLAY references)
+
+---
+
+## 2026-02-07 13:41 — ESP32 BT Audio: Phase 4.3 Complete - test_app_audio WAV/PLAY Tests Removed ✅
+
+**📝 Task:** Phase 4.3 - Remove WAV/PLAY-related test functions from test_app_audio device tests
+
+**Timestamp:** 2026-02-07 13:41:47
+
+**Context:** Continuing PLAY/WAV removal project - cleaning up device test suite
+
+**Changes Made:**
+
+1. **Removed 17 WAV/PLAY test functions from test/test_app_audio/main/audio_processor_test.c:**
+   - test_audio_processor_play_wav_api
+   - test_wav_playback_completeness
+   - test_play_wav_command
+   - test_play_command_requires_a2dp_connection
+   - test_wav_resumes_after_a2dp_reconnect
+   - test_play_wav_failure_restores_pipeline
+   - test_wav_prefill_produces_initial_audio
+   - test_beep_then_play_streams_full_wav
+   - test_beep_rejected_while_wav_active
+   - test_play_rejected_while_i2s_running
+   - test_drain_stops_play_manager_and_clears_queue
+   - test_fallback_stop_resume_preserves_tag_alignment (contained PLAY testing)
+   - test_interleaved_play_stop_beep_sequence
+   - test_keepalive_beep_then_play_recovers
+   - test_stop_during_wav_to_beep_transition_keeps_tags_consistent
+   - test_wav_pause_resume_after_disconnect_restarts_playback
+   - test_synth_toggle_mid_wav_keeps_tag_counters_clean
+   - test_wav_playback_duration_baseline
+   - test_queue_backpressure_stress
+
+2. **Removed 3 helper functions (only used by WAV tests):**
+   - get_file_size()
+   - start_pipeline_default()
+   - stop_pipeline_default()
+
+3. **Removed 17 forward declarations and 17 RUN_TEST calls**
+
+4. **Inlined helper code into test_beep_rejected_while_i2s_running** (preserved non-WAV test)
+
+5. **Fixed missing closing braces in test_wait_ticks() and test_delay_ms()**
+
+**Results:**
+- ✅ File size: 1979 → 708 lines (-64% reduction, ~1271 lines removed)
+- ✅ Remaining tests: Device tests for basic audio_processor functionality (init, volume, mute, sample rate, start/stop, read, stats, format conversion, i2s config, buffer management, keepalive, synth, beep, etc.)
+- ✅ Committed: e074e441
+- ✅ Pushed to GitHub: master branch
+
+**Related Work:**
+- Phase 2: cmd_handle_play removal (c0772235)
+- Phase 3: play_manager component removal (5e9dc3be)
+- Phase 4.2: Host test cleanup (6f7ddf5e)
+- Phase 5.2-5.3: SPIFFS partition removal (16563647) - emergency CI fix
+
+**Next Steps:**
+- Phase 4.4: Update test/host_test/test_commands.c (additional cleanup)
+- Phase 4.5: Update other test files
+- Phase 4.6: Rebuild test executables
+- Phase 5.4-5.7: Complete SPIFFS removal tasks
+- Phase 6: Update documentation
+
+---
+
 ## 2026-02-07 13:22 — ESP32 BT Audio: CRITICAL CI FIX - SPIFFS Partition Removed ✅
 
 **📝 Task:** Emergency fix for GitHub Actions CI build failure - removed SPIFFS partition

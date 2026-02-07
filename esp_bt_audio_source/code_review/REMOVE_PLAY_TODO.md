@@ -367,11 +367,21 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
 
 
 ### 4.4 Update test/host_test/test_commands.c (additional cleanup)
-- [ ] Open `test/host_test/test_commands.c` (if not already done in Phase 2)
-- [ ] Search for any remaining PLAY references
-- [ ] Remove any missed PLAY command tests
-- [ ] Update command help tests to not expect PLAY
-- [ ] Save file
+- [x] Open `test/host_test/test_commands.c` (if not already done in Phase 2)
+- [x] Search for any remaining PLAY references
+- [x] Remove any missed PLAY command tests
+- [x] Update command help tests to not expect PLAY
+- [x] Save file
+
+**Phase 4.4 Results:**
+- ✅ NO PLAY references found (case-insensitive search returned 0 matches)
+- ✅ NO play_manager references found
+- ✅ WAV references are only for FILE command test data (3 matches: k_file_worker_name, missing.wav in test_file_command_not_found)
+- ✅ SPIFFS references are test infrastructure for FILE command (mock filesystem, acceptable)
+- ✅ test_help_command() doesn't check for specific commands, uses resilient count-based validation
+- ✅ All 4 beep tests (test_beep_command_not_connected, test_beep_command_connected, test_beep_command_allowed_when_i2s_active, test_beep_command_busy_when_beep_active) are clean
+- ✅ Total tests in file: 55 RUN_TEST calls
+- ✅ **Conclusion:** Phase 2 did thorough cleanup; no additional work needed
 
 ### 4.5 Update Other Test Files
 - [ ] Search for other test files with PLAY references:
