@@ -8,9 +8,8 @@ flask-sse==1.0.0
 # Serial communication
 pyserial==3.5
 
-# GPIO/I2S libraries (choose one based on implementation)
-# pigpio==1.78  # Uncomment if using pigpio for I2S (hardware-timed, precise)
-# pyalsaaudio   # Uncomment if using ALSA for I2S (simpler, recommended for MVP)
+# ALSA audio library for I2S (McASP on BeagleBone)
+pyalsaaudio
 
 # Audio processing
 numpy==1.24.0

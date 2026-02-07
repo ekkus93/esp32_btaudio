@@ -27,7 +27,8 @@ This guide provides solutions to common problems encountered when setting up and
 4. [Performance Issues](#performance-issues)
 5. [Device Tree Issues](#device-tree-issues)
 6. [Application Issues](#application-issues)
-7. [Quick Diagnostic Commands](#quick-diagnostic-commands)
+7. [UDA1334ATS DAC Output Issues](#uda1334ats-dac-output-issues)
+8. [Quick Diagnostic Commands](#quick-diagnostic-commands)
 
 ---
 
@@ -1183,6 +1184,270 @@ python3 -c "import yaml; yaml.safe_load(open('config.yaml'))"
 4. **Validate online:**
    - Copy config.yaml content to https://www.yamllint.com/
    - Check for syntax errors
+
+---
+
+## UDA1334ATS DAC Output Issues
+
+**Context:** Using UDA1334ATS stereo DAC in test mode for direct I2S audio output (no ESP32).
+
+📖 **Full guide:** [UDA1334ATS_SETUP_GUIDE.md](UDA1334ATS_SETUP_GUIDE.md)
+
+---
+
+### Issue 1: No audio output from UDA1334ATS
+
+**Symptoms:**
+- Headphones/speakers connected to DAC are silent
+- Web UI shows I2S active, no errors
+- Application logs show normal operation
+
+**Diagnosis:**
+
+1. **Check power to UDA1334ATS:**
+   ```bash
+   # Verify BBGW 3.3V output (some modules have LED indicator)
+   # Use multimeter: P9.3 to P9.1 should measure ~3.3V
+   ```
+
+2. **Verify I2S signals present:**
+   ```bash
+   # Test ALSA playback directly
+   aplay -D hw:0,0 -f S16_LE -r 48000 -c 2 /dev/zero &
+   sleep 5
+   killall aplay
+   
+   # With logic analyzer or oscilloscope:
+   # - P9.31 (BCLK): Should show 1.536 MHz square wave
+   # - P9.29 (WSEL): Should show 48 kHz square wave
+   # - P9.28 (DOUT): Should show data transitions
+   ```
+
+3. **Check wiring:**
+   ```bash
+   # Verify connections (use continuity tester if available):
+   # P9.31 → UDA1334ATS BCLK
+   # P9.29 → UDA1334ATS WSEL (or WS/LRCLK)
+   # P9.28 → UDA1334ATS DIN
+   # P9.3  → UDA1334ATS VIN
+   # P9.1  → UDA1334ATS GND
+   ```
+
+**Solutions:**
+
+1. **Check jumper wires:**
+   - Replace suspect wires (intermittent connections common)
+   - Ensure firm connection to P9 header
+   - Verify UDA1334ATS pin headers are soldered properly
+
+2. **Verify power:**
+   ```bash
+   # Check BBGW power supply (5V 2A minimum)
+   # Weak USB power can cause issues
+   # Use barrel jack 5V adapter if USB unreliable
+   ```
+
+3. **Test with simple ALSA playback:**
+   ```bash
+   # Play test WAV file
+   aplay -D hw:0,0 /usr/share/sounds/alsa/Front_Center.wav
+   # Should hear "front center" in both ears
+   ```
+
+4. **Check headphones/speakers:**
+   - Test with different headphones (known working)
+   - Verify 3.5mm jack fully inserted into UDA1334ATS
+   - Check volume (some UDA1334ATS modules have output level jumper)
+
+**Related:** See [UDA1334ATS_SETUP_GUIDE.md - Troubleshooting](UDA1334ATS_SETUP_GUIDE.md#troubleshooting)
+
+---
+
+### Issue 2: Distorted or clipped audio from UDA1334ATS
+
+**Symptoms:**
+- Audio is fuzzy, harsh, or clipped
+- Loud pops or crackles
+- Signal sounds overdriven
+
+**Diagnosis:**
+
+1. **Check amplitude setting:**
+   ```bash
+   # In web UI, check tone amplitude
+   # If set to 1.0 (100%), signal may clip
+   ```
+
+2. **Power supply quality:**
+   ```bash
+   # Measure BBGW 5V input with multimeter under load
+   # Should be 5V ±5% (4.75V - 5.25V)
+   # Ripple or voltage sag indicates weak power supply
+   ```
+
+**Solutions:**
+
+1. **Reduce amplitude:**
+   - Set web UI tone amplitude to **0.3 (30%)** or lower
+   - UDA1334ATS has fixed gain; reduce source level instead
+
+2. **Improve power supply:**
+   ```bash
+   # Use quality 5V 2A power adapter (not cheap USB charger)
+   # Barrel jack preferred over USB for stability
+   ```
+
+3. **Check ground connection:**
+   - Verify BBGW GND (P9.1) → UDA1334ATS GND
+   - Avoid ground loops (single point ground)
+   - Use short ground wire (<10 cm)
+
+4. **Increase I2S buffer size** (if pops/clicks):
+   ```yaml
+   # In config.yaml
+   i2s:
+     period_size: 2048  # Increase from 1024
+     buffer_size: 8192  # Increase from 4096
+   ```
+
+---
+
+### Issue 3: Only one channel output (mono instead of stereo)
+
+**Symptoms:**
+- Audio only in left OR right ear
+- Web UI set to stereo mode
+- Dual-tone test plays same frequency in both ears
+
+**Diagnosis:**
+
+1. **Check WSEL (Word Select) connection:**
+   ```bash
+   # P9.29 (McASP0_FSX) MUST be connected to UDA1334ATS WSEL
+   # This signal toggles left/right channels
+   # Without it, DAC stays on one channel
+   ```
+
+2. **Verify config:**
+   ```yaml
+   # In config.yaml, check:
+   i2s:
+     channels: 2  # Must be 2 for stereo
+   ```
+
+**Solutions:**
+
+1. **Rewire WSEL:**
+   ```bash
+   # Ensure P9.29 → UDA1334ATS WSEL (or WS/LRCLK) connected
+   # Use continuity tester to verify
+   ```
+
+2. **Test headphones:**
+   - Try different headphones (verify stereo jack)
+   - Check 3.5mm plug fully inserted (partial insertion = mono)
+
+3. **Check UDA1334ATS module:**
+   - Some modules have WS/WSEL mislabeled
+   - Consult module-specific pinout diagram
+   - Try swapping BCLK/WSEL if stereo still broken (wrong pinout)
+
+---
+
+### Issue 4: Pops, clicks, or glitches in audio
+
+**Symptoms:**
+- Intermittent pops or clicks during playback
+- Audio cuts out briefly
+- Rhythmic ticking noise
+
+**Diagnosis:**
+
+1. **Check for I2S underruns:**
+   ```bash
+   # Monitor application logs
+   grep -i "underrun\|xrun" /var/log/bbgw_i2s_source.log
+   ```
+
+2. **Check CPU load:**
+   ```bash
+   top
+   # Python process should be <25% CPU
+   # If >80%, system overloaded
+   ```
+
+**Solutions:**
+
+1. **Increase buffer sizes:**
+   ```yaml
+   # In config.yaml
+   i2s:
+     period_size: 2048  # Larger = more latency, fewer underruns
+     buffer_size: 8192
+   ```
+
+2. **Disable Wi-Fi (test):**
+   ```bash
+   # Temporarily disable to check for interference
+   sudo ifconfig wlan0 down
+   # Test audio again
+   # Re-enable: sudo ifconfig wlan0 up
+   ```
+
+3. **Reduce CPU load:**
+   - Close unnecessary processes (`sudo systemctl stop <service>`)
+   - Lower web UI refresh rate (if implemented)
+   - Disable debug logging (`log_level: INFO` in config.yaml)
+
+4. **Check wiring for EMI:**
+   - Keep I2S wires away from power cables
+   - Twist BCLK/WSEL/DIN together to reduce crosstalk
+   - Add ferrite bead if high-frequency noise present
+
+---
+
+### Issue 5: Hiss or background noise (high noise floor)
+
+**Symptoms:**
+- Constant background hiss (even during silence mode)
+- Noise increases with volume
+- "Hum" at 60 Hz or 120 Hz (AC interference)
+
+**Diagnosis:**
+
+1. **Measure noise floor:**
+   ```bash
+   # In web UI, select "Silence" mode
+   # Turn up headphones volume to max
+   # Listen for hiss/hum
+   ```
+
+2. **Check ground loop:**
+   ```bash
+   # Disconnect BBGW from all peripherals except UDA1334ATS
+   # If noise disappears, ground loop present
+   ```
+
+**Solutions:**
+
+1. **Improve ground connection:**
+   - Use short, thick ground wire (P9.1 → DAC GND)
+   - Single-point ground (no multiple ground paths)
+   - Star ground configuration if multiple devices
+
+2. **Power supply filtering:**
+   - Use linear power supply (not switching mode) if possible
+   - Add 100µF + 0.1µF capacitors across BBGW 5V input (if comfortable with soldering)
+   - Use USB isolator if ground loop persists
+
+3. **Check UDA1334ATS module quality:**
+   - Cheap modules may have poor noise performance
+   - Adafruit UDA1334A breakout has better filtering than generic clones
+   - SNR should be >85 dB (datasheet spec: 95 dB typical)
+
+4. **Reduce gain path:**
+   - Lower amplitude in web UI (0.3 or less)
+   - Use high-impedance headphones (>32Ω) for better SNR
 
 ---
 

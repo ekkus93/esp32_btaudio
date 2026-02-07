@@ -69,6 +69,25 @@ P9.1  (DGND)         ──► GND
 - No level shifters needed
 - **Pin assignments subject to Device Tree configuration** (see docs/BBGW_PIN_REFERENCE.md)
 
+### Alternative: UDA1334ATS DAC Test Mode
+
+**For I2S testing without ESP32**, you can connect a UDA1334ATS stereo DAC directly to hear audio output:
+
+```
+BBGW P9 Header           UDA1334ATS Breakout
+P9.31 (McASP0_ACLKX) ──► BCLK
+P9.29 (McASP0_FSX)   ──► WSEL (Word Select)
+P9.28 (McASP0_AXR0)  ──► DIN
+P9.3  (3.3V)         ──► VIN
+P9.1  (DGND)         ──► GND
+                          │
+                     3.5mm Jack → Headphones
+```
+
+**Use case:** Validate I2S output, hear test tones directly, debug audio issues without ESP32 complexity.
+
+📖 **Full guide:** [docs/UDA1334ATS_SETUP_GUIDE.md](docs/UDA1334ATS_SETUP_GUIDE.md)
+
 ---
 
 ## Software Dependencies
@@ -278,6 +297,22 @@ Tests UART commands (STATUS, VOLUME, timeout handling, events).
 ```
 Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 
+### UDA1334ATS DAC Test Mode
+
+For I2S-only testing with direct audio output (no ESP32):
+
+```bash
+# 1. Wire BBGW → UDA1334ATS (see docs/UDA1334ATS_SETUP_GUIDE.md)
+# 2. Update config.yaml: target_device: 'uda1334'
+# 3. Run application
+python3 main.py
+
+# 4. Access web UI, play 1 kHz tone
+# 5. Hear audio through headphones connected to UDA1334ATS
+```
+
+**Full guide:** [docs/UDA1334ATS_SETUP_GUIDE.md](docs/UDA1334ATS_SETUP_GUIDE.md)
+
 ---
 
 ## Documentation
@@ -291,6 +326,7 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 - **[docs/BBGW_DEVICE_TREE_GUIDE.md](docs/BBGW_DEVICE_TREE_GUIDE.md)** — Device Tree overlays (I2S/UART configuration)
 - **[docs/BBGW_PIN_REFERENCE.md](docs/BBGW_PIN_REFERENCE.md)** — P9 header pinout and GPIO numbering
 - **[docs/BBGW_vs_RPI_COMPARISON.md](docs/BBGW_vs_RPI_COMPARISON.md)** — Platform comparison and migration guide
+- **[docs/UDA1334ATS_SETUP_GUIDE.md](docs/UDA1334ATS_SETUP_GUIDE.md)** — UDA1334ATS DAC test mode (I2S validation without ESP32)
 
 ### Milestone-Specific Guides 📚
 - [docs/MILESTONE1_HARDWARE_SETUP_BBGW.md](docs/MILESTONE1_HARDWARE_SETUP_BBGW.md) — I2S/McASP setup

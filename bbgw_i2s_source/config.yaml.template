@@ -1,6 +1,13 @@
 # BeagleBone Green Wireless I2S Source - Default Configuration
 # Copy this file to config.yaml and customize as needed
 
+# Target device mode (documentation only - no code changes needed)
+# Options: 'esp32' (default) or 'uda1334' (UDA1334ATS DAC test mode)
+# - 'esp32': Full I2S + UART + Bluetooth (production mode)
+# - 'uda1334': I2S-only output to UDA1334ATS DAC for testing (UART disabled)
+# See docs/UDA1334ATS_SETUP_GUIDE.md for DAC test mode wiring and usage
+target_device: esp32
+
 # I2S hardware configuration (McASP via ALSA)
 i2s:
   device: "hw:CARD=BBGW-I2S,DEV=0"  # ALSA device (from Device Tree overlay BB-BBGW-I2S-00A0)
