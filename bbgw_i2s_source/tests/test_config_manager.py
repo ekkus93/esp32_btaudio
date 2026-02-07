@@ -3,8 +3,8 @@ Unit tests for ConfigManager class
 
 Tests YAML loading, validation, dot-notation access, and persistence.
 
-Author: rpi_i2s_source
-Date: 2026-02-06
+Author: bbgw_i2s_source
+Date: 2026-02-07
 """
 
 import pytest
@@ -27,8 +27,8 @@ class TestConfigManagerInit:
         # Verify file was created
         assert config_file.exists()
         
-        # Verify all default sections present
-        assert cfg.get('i2s.gpio_bclk') == 18
+        # Verify all default sections present (BBGW ALSA configuration)
+        assert cfg.get('i2s.device') == 'hw:CARD=BBGW-I2S,DEV=0'
         assert cfg.get('i2s.sample_rate') == 48000
         assert cfg.get('uart.baudrate') == 115200
         assert cfg.get('audio.tone_freq') == 1000
@@ -38,11 +38,11 @@ class TestConfigManagerInit:
         """Test loading existing config file."""
         config_file = tmp_path / "config.yaml"
         
-        # Create config file with custom values
+        # Create config file with custom values (BBGW ALSA configuration)
         config_data = {
-            'i2s': {'gpio_bclk': 20, 'gpio_ws': 21, 'gpio_dout': 22, 
-                   'sample_rate': 48000, 'buffer_size': 4096},
-            'uart': {'device': '/dev/ttyUSB0', 'baudrate': 115200, 'timeout': 3.0},
+            'i2s': {'device': 'hw:0,0', 'sample_rate': 48000, 'channels': 2,
+                   'format': 'S16_LE', 'period_size': 2048, 'buffer_size': 8192},
+            'uart': {'device': '/dev/ttyO2', 'baudrate': 115200, 'timeout': 3.0},
             'audio': {'default_source': 'wav', 'tone_freq': 440, 'tone_amp': 0.8,
                      'wav_directory': '/tmp/audio'},
             'web': {'port': 8080, 'bind_address': '127.0.0.1', 'log_level': 'DEBUG'},
@@ -54,8 +54,8 @@ class TestConfigManagerInit:
         cfg = ConfigManager(str(config_file))
         
         # Verify custom values loaded
-        assert cfg.get('i2s.gpio_bclk') == 20
-        assert cfg.get('uart.device') == '/dev/ttyUSB0'
+        assert cfg.get('i2s.device') == 'hw:0,0'
+        assert cfg.get('uart.device') == '/dev/ttyO2'
         assert cfg.get('audio.tone_freq') == 440
         assert cfg.get('web.port') == 8080
         
@@ -65,7 +65,7 @@ class TestConfigManagerInit:
         
         # Create partial config (missing some keys)
         partial_config = {
-            'i2s': {'gpio_bclk': 25},  # Only override one key
+            'i2s': {'device': 'hw:1,0'},  # Only override one key
             'web': {'port': 3000},
         }
         with open(config_file, 'w') as f:
@@ -74,11 +74,11 @@ class TestConfigManagerInit:
         cfg = ConfigManager(str(config_file))
         
         # Verify custom values
-        assert cfg.get('i2s.gpio_bclk') == 25
+        assert cfg.get('i2s.device') == 'hw:1,0'
         assert cfg.get('web.port') == 3000
         
         # Verify defaults filled in
-        assert cfg.get('i2s.gpio_ws') == 19  # From defaults
+        assert cfg.get('i2s.channels') == 2  # From defaults
         assert cfg.get('i2s.sample_rate') == 48000
         assert cfg.get('uart.baudrate') == 115200
         
@@ -97,48 +97,48 @@ class TestConfigManagerInit:
 class TestConfigManagerValidation:
     """Test configuration validation."""
     
-    def test_invalid_gpio_pin_raises_error(self, tmp_path):
-        """Test invalid GPIO pin raises ValueError."""
+    def test_invalid_alsa_device_raises_error(self, tmp_path):
+        """Test invalid ALSA device raises ValueError."""
         config_file = tmp_path / "config.yaml"
         
-        # GPIO pin 50 is invalid (BCM only goes to 27)
+        # Invalid ALSA device (doesn't start with hw: or plughw:)
         invalid_config = {
-            'i2s': {'gpio_bclk': 50, 'gpio_ws': 19, 'gpio_dout': 21,
-                   'sample_rate': 48000, 'buffer_size': 8192},
+            'i2s': {'device': 'invalid_device', 'sample_rate': 48000,
+                   'channels': 2, 'format': 'S16_LE'},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
             
-        with pytest.raises(ValueError, match="i2s.gpio_bclk must be 0-27"):
+        with pytest.raises(ValueError, match="i2s.device must start with"):
             ConfigManager(str(config_file))
             
-    def test_negative_gpio_pin_raises_error(self, tmp_path):
-        """Test negative GPIO pin raises ValueError."""
+    def test_invalid_channels_raises_error(self, tmp_path):
+        """Test invalid channel count raises ValueError."""
         config_file = tmp_path / "config.yaml"
         
         invalid_config = {
-            'i2s': {'gpio_bclk': -5, 'gpio_ws': 19, 'gpio_dout': 21,
-                   'sample_rate': 48000, 'buffer_size': 8192},
+            'i2s': {'device': 'hw:0,0', 'sample_rate': 48000,
+                   'channels': 16, 'format': 'S16_LE'},  # Too many channels
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
             
-        with pytest.raises(ValueError, match="i2s.gpio_bclk must be 0-27"):
+        with pytest.raises(ValueError, match="i2s.channels must be 1-8"):
             ConfigManager(str(config_file))
             
-    def test_duplicate_gpio_pins_raises_error(self, tmp_path):
-        """Test duplicate GPIO pins raises ValueError."""
+    def test_invalid_format_raises_error(self, tmp_path):
+        """Test invalid ALSA format raises ValueError."""
         config_file = tmp_path / "config.yaml"
         
-        # BCLK and WS on same pin
+        # Invalid ALSA format
         invalid_config = {
-            'i2s': {'gpio_bclk': 18, 'gpio_ws': 18, 'gpio_dout': 21,
-                   'sample_rate': 48000, 'buffer_size': 8192},
+            'i2s': {'device': 'hw:0,0', 'sample_rate': 48000,
+                   'channels': 2, 'format': 'INVALID_FORMAT'},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
             
-        with pytest.raises(ValueError, match="GPIO pins must be unique"):
+        with pytest.raises(ValueError, match="i2s.format must be one of"):
             ConfigManager(str(config_file))
             
     def test_invalid_sample_rate_raises_error(self, tmp_path):
@@ -146,8 +146,8 @@ class TestConfigManagerValidation:
         config_file = tmp_path / "config.yaml"
         
         invalid_config = {
-            'i2s': {'gpio_bclk': 18, 'gpio_ws': 19, 'gpio_dout': 21,
-                   'sample_rate': 12345, 'buffer_size': 8192},  # Not a standard rate
+            'i2s': {'device': 'hw:0,0', 'sample_rate': 12345,  # Not a standard rate
+                   'channels': 2, 'format': 'S16_LE'},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
@@ -159,15 +159,15 @@ class TestConfigManagerValidation:
         """Test invalid buffer size raises ValueError."""
         config_file = tmp_path / "config.yaml"
         
-        # Buffer size too small
+        # Buffer size too small (ALSA buffer in frames)
         invalid_config = {
-            'i2s': {'gpio_bclk': 18, 'gpio_ws': 19, 'gpio_dout': 21,
-                   'sample_rate': 48000, 'buffer_size': 100},
+            'i2s': {'device': 'hw:0,0', 'sample_rate': 48000,
+                   'channels': 2, 'format': 'S16_LE', 'buffer_size': 100},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
             
-        with pytest.raises(ValueError, match="i2s.buffer_size should be 1024-65536"):
+        with pytest.raises(ValueError, match="i2s.buffer_size should be 256-65536"):
             ConfigManager(str(config_file))
             
     def test_invalid_baudrate_raises_error(self, tmp_path):
@@ -175,7 +175,7 @@ class TestConfigManagerValidation:
         config_file = tmp_path / "config.yaml"
         
         invalid_config = {
-            'uart': {'device': '/dev/serial0', 'baudrate': 12345, 'timeout': 5.0},
+            'uart': {'device': '/dev/ttyO4', 'baudrate': 12345, 'timeout': 5.0},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
@@ -190,7 +190,7 @@ class TestConfigManagerValidation:
         # Frequency too high (ultrasonic)
         invalid_config = {
             'audio': {'default_source': 'tone', 'tone_freq': 30000,
-                     'tone_amp': 0.5, 'wav_directory': '/home/pi/audio'},
+                     'tone_amp': 0.5, 'wav_directory': '/home/debian/audio'},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
@@ -205,7 +205,7 @@ class TestConfigManagerValidation:
         # Amplitude > 1.0
         invalid_config = {
             'audio': {'default_source': 'tone', 'tone_freq': 1000,
-                     'tone_amp': 1.5, 'wav_directory': '/home/pi/audio'},
+                     'tone_amp': 1.5, 'wav_directory': '/home/debian/audio'},
         }
         with open(config_file, 'w') as f:
             yaml.safe_dump(invalid_config, f)
@@ -248,7 +248,7 @@ class TestConfigManagerGetSet:
         config_file = tmp_path / "config.yaml"
         cfg = ConfigManager(str(config_file))
         
-        assert cfg.get('i2s.gpio_bclk') == 18
+        assert cfg.get('i2s.device') == 'hw:CARD=BBGW-I2S,DEV=0'
         assert cfg.get('uart.baudrate') == 115200
         assert cfg.get('audio.tone_freq') == 1000
         
@@ -274,9 +274,9 @@ class TestConfigManagerGetSet:
         config_file = tmp_path / "config.yaml"
         cfg = ConfigManager(str(config_file))
         
-        # Try to set invalid GPIO pin
-        with pytest.raises(ValueError, match="i2s.gpio_bclk must be 0-27"):
-            cfg.set('i2s.gpio_bclk', 100)
+        # Try to set invalid ALSA device
+        with pytest.raises(ValueError, match="i2s.device must start with"):
+            cfg.set('i2s.device', 'invalid_device')
             
     def test_set_creates_intermediate_dicts(self, tmp_path):
         """Test set creates intermediate dictionaries."""
@@ -294,10 +294,10 @@ class TestConfigManagerGetSet:
         config_copy = cfg.get_all()
         
         # Modify copy
-        config_copy['i2s']['gpio_bclk'] = 99
+        config_copy['i2s']['device'] = 'hw:99,99'
         
         # Original unchanged
-        assert cfg.get('i2s.gpio_bclk') == 18
+        assert cfg.get('i2s.device') == 'hw:CARD=BBGW-I2S,DEV=0'
 
 
 class TestConfigManagerPersistence:
@@ -338,7 +338,7 @@ class TestConfigManagerPersistence:
         cfg = ConfigManager(str(config_file))
         
         # Make multiple changes
-        cfg.set('i2s.gpio_bclk', 20)
+        cfg.set('i2s.device', 'hw:1,0')
         cfg.set('uart.baudrate', 230400)
         cfg.set('audio.tone_freq', 440)
         cfg.set('web.port', 3000)
@@ -349,7 +349,7 @@ class TestConfigManagerPersistence:
         cfg.reload()
         
         # Verify all changes persisted
-        assert cfg.get('i2s.gpio_bclk') == 20
+        assert cfg.get('i2s.device') == 'hw:1,0'
         assert cfg.get('uart.baudrate') == 230400
         assert cfg.get('audio.tone_freq') == 440
         assert cfg.get('web.port') == 3000

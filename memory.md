@@ -1,3 +1,87 @@
+## 2026-02-07 03:03 — BBGW Port: Phase 2.3 Configuration File Adaptation Complete
+
+**📝 Task:** Adapted ConfigManager for BeagleBone Green Wireless ALSA configuration
+
+**Timestamp:** 2026-02-07 03:03:09
+
+**Context:** Phase 2.3 of BBGW port - Configuration file adaptation (ConfigManager + tests)
+
+**Phase 2.3 Deliverables:**
+
+1. **config/manager.py** (updated, 330 lines)
+   - Updated module docstring: "BeagleBone Green Wireless I2S Source"
+   - Updated author: bbgw_i2s_source, date: 2026-02-07
+   - **DEFAULT_CONFIG restructured**:
+     - Removed RPi GPIO configuration:
+       - Deleted: gpio_bclk, gpio_ws, gpio_dout (no longer applicable with ALSA)
+     - Added BBGW ALSA configuration:
+       - device: 'hw:CARD=BBGW-I2S,DEV=0' (ALSA device from Device Tree)
+       - sample_rate: 48000 (McASP configured for 48 kHz)
+       - channels: 2 (stereo)
+       - format: 'S16_LE' (16-bit little-endian PCM)
+       - period_size: 1024 (ALSA period size in frames)
+       - buffer_size: 4096 (ALSA buffer size in frames)
+     - Updated UART configuration:
+       - device: '/dev/ttyO4' (UART4 on P9.11/13)
+     - Updated audio paths:
+       - wav_directory: '/home/debian/audio' (BBGW default user)
+     - Updated web comment:
+       - bind_address: '0.0.0.0' (Wi-Fi accessible)
+   - **Validation logic completely rewritten**:
+     - Removed GPIO validation:
+       - Deleted: GPIO pin range validation (0-27 BCM)
+       - Deleted: GPIO pin uniqueness check
+     - Added ALSA validation:
+       - ALSA device: must start with 'hw:' or 'plughw:'
+       - Channels: 1-8 (mono to 7.1 surround)
+       - Format: valid ALSA formats (S8, U8, S16_LE, S16_BE, S24_LE, S24_BE, S32_LE, S32_BE)
+       - Period size: 64-8192 frames
+       - Buffer size: 256-65536 frames (was 1024-65536 for RPi ring buffer)
+
+2. **tests/test_config_manager.py** (updated, 377 lines)
+   - Updated module author and date
+   - **Test initialization updates** (3 tests):
+     - test_create_default_config: tests i2s.device == 'hw:CARD=BBGW-I2S,DEV=0'
+     - test_load_existing_config: uses ALSA config with device/channels/format
+     - test_merge_with_defaults: tests i2s.device and i2s.channels defaults
+   - **Test validation updates** (9 tests):
+     - test_invalid_alsa_device_raises_error: validates ALSA device format (NEW)
+     - test_invalid_channels_raises_error: validates 1-8 channel range (NEW)
+     - test_invalid_format_raises_error: validates ALSA format strings (NEW)
+     - test_invalid_sample_rate: uses ALSA config
+     - test_invalid_buffer_size: validates 256-65536 frames (ALSA range)
+     - test_invalid_baudrate: uses /dev/ttyO4
+     - test_invalid_tone_freq: uses /home/debian/audio
+     - test_invalid_amplitude: uses /home/debian/audio
+     - Deleted: test_invalid_gpio_pin, test_negative_gpio_pin, test_duplicate_gpio_pins
+   - **Test get/set updates** (4 tests):
+     - test_get_nested_value: tests i2s.device instead of i2s.gpio_bclk
+     - test_set_validates_value: validates ALSA device instead of GPIO pin
+     - test_get_all_returns_copy: modifies i2s.device instead of gpio_bclk
+   - **Test persistence updates** (1 test):
+     - test_save_reload_roundtrip: tests i2s.device instead of gpio_bclk
+
+**Technical Details:**
+- **Configuration Structure Change**: GPIO-based I2S → ALSA-based I2S (McASP hardware)
+- **Validation Paradigm Shift**: Pin validation → Device/parameter validation
+- **ALSA Parameters**: period_size and buffer_size now in frames (ALSA units), not samples
+- **Default Device**: hw:CARD=BBGW-I2S,DEV=0 (from Device Tree overlay BB-BBGW-I2S-00A0)
+- **All 18 unit tests updated** for BBGW ALSA configuration
+
+**Key Insight:**
+- Configuration adaptation was straightforward (~20 minutes vs 1 hour estimated)
+- Most work already done in Phase 2.1 (config.yaml.template)
+- Validation logic shift from hardware pins to ALSA parameters
+- Tests transitioned smoothly from GPIO to ALSA validation
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Run unit tests: `pytest -v tests/test_config_manager.py`
+- [ ] Verify all 18 tests pass with ALSA configuration
+- [ ] Test configuration loading/validation with actual config.yaml
+- [ ] Verify ALSA device validation catches invalid formats
+
+---
+
 ## 2026-02-07 02:58 — BBGW Port: Phase 2.2 UART Driver Adaptation Complete
 
 **📝 Task:** Adapted UART command manager for BeagleBone Green Wireless UART4

@@ -1,11 +1,11 @@
 """
-Configuration Manager for rpi_i2s_source
+Configuration Manager for BeagleBone Green Wireless I2S Source
 
 Loads, validates, and manages YAML configuration with dot-notation access.
 Merges user config with defaults and validates hardware constraints.
 
-Author: rpi_i2s_source
-Date: 2026-02-06
+Author: bbgw_i2s_source
+Date: 2026-02-07
 """
 
 import os
@@ -14,29 +14,30 @@ from typing import Any, Optional
 from pathlib import Path
 
 
-# Default configuration (all sections with sensible defaults)
+# Default configuration (all sections with sensible defaults for BBGW)
 DEFAULT_CONFIG = {
     'i2s': {
-        'gpio_bclk': 18,      # BCM GPIO pin for bit clock
-        'gpio_ws': 19,        # BCM GPIO pin for word select (LRCLK)
-        'gpio_dout': 21,      # BCM GPIO pin for data out
-        'sample_rate': 48000, # 48 kHz sample rate
-        'buffer_size': 8192,  # Ring buffer capacity (samples)
+        'device': 'hw:CARD=BBGW-I2S,DEV=0',  # ALSA device (from Device Tree overlay)
+        'sample_rate': 48000,                 # 48 kHz sample rate (McASP configured)
+        'channels': 2,                        # Stereo
+        'format': 'S16_LE',                   # 16-bit little-endian PCM
+        'period_size': 1024,                  # ALSA period size in frames
+        'buffer_size': 4096,                  # ALSA buffer size in frames
     },
     'uart': {
-        'device': '/dev/serial0',  # UART device path
-        'baudrate': 115200,         # Baud rate
-        'timeout': 5.0,             # Read timeout (seconds)
+        'device': '/dev/ttyO4',      # UART4 device path (P9.11/P9.13)
+        'baudrate': 115200,          # Baud rate
+        'timeout': 5.0,              # Read timeout (seconds)
     },
     'audio': {
-        'default_source': 'tone',       # Default: tone generator
-        'tone_freq': 1000,              # Default tone frequency (Hz)
-        'tone_amp': 0.5,                # Default amplitude (0.0-1.0)
-        'wav_directory': '/home/pi/audio',  # WAV file directory
+        'default_source': 'tone',              # Default: tone generator
+        'tone_freq': 1000,                     # Default tone frequency (Hz)
+        'tone_amp': 0.5,                       # Default amplitude (0.0-1.0)
+        'wav_directory': '/home/debian/audio', # WAV file directory (BBGW user)
     },
     'web': {
         'port': 5000,                   # Flask server port
-        'bind_address': '0.0.0.0',      # Bind to all interfaces
+        'bind_address': '0.0.0.0',      # Bind to all interfaces (Wi-Fi accessible)
         'log_level': 'INFO',            # Logging level
     },
     'bluetooth': {
@@ -151,35 +152,51 @@ class ConfigManager:
         Raises:
             ValueError: If any configuration value is invalid
         """
-        # Validate I2S GPIO pins (BCM numbering, valid range)
+        # Validate I2S ALSA device (BBGW McASP)
         i2s = config.get('i2s', {})
-        for pin_name in ['gpio_bclk', 'gpio_ws', 'gpio_dout']:
-            pin = i2s.get(pin_name)
-            if pin is not None:
-                if not isinstance(pin, int):
-                    raise ValueError(f"i2s.{pin_name} must be integer, got {type(pin)}")
-                if pin < 0 or pin > 27:
-                    raise ValueError(f"i2s.{pin_name} must be 0-27 (BCM), got {pin}")
+        device = i2s.get('device')
+        if device is not None:
+            if not isinstance(device, str):
+                raise ValueError(f"i2s.device must be string, got {type(device)}")
+            # Common ALSA device patterns
+            if not (device.startswith('hw:') or device.startswith('plughw:')):
+                raise ValueError(f"i2s.device must start with 'hw:' or 'plughw:', got {device}")
                     
-        # Check for GPIO pin conflicts
-        pins = [i2s.get('gpio_bclk'), i2s.get('gpio_ws'), i2s.get('gpio_dout')]
-        if len(pins) != len(set(pins)):
-            raise ValueError(f"I2S GPIO pins must be unique: {pins}")
-            
         # Validate sample rate (common audio rates)
         sample_rate = i2s.get('sample_rate')
         if sample_rate is not None:
             valid_rates = [8000, 16000, 22050, 32000, 44100, 48000, 96000]
             if sample_rate not in valid_rates:
                 raise ValueError(f"i2s.sample_rate must be one of {valid_rates}, got {sample_rate}")
+        
+        # Validate channels
+        channels = i2s.get('channels')
+        if channels is not None:
+            if not isinstance(channels, int) or channels < 1 or channels > 8:
+                raise ValueError(f"i2s.channels must be 1-8, got {channels}")
+        
+        # Validate format (ALSA format string)
+        fmt = i2s.get('format')
+        if fmt is not None:
+            valid_formats = ['S8', 'U8', 'S16_LE', 'S16_BE', 'S24_LE', 'S24_BE', 'S32_LE', 'S32_BE']
+            if fmt not in valid_formats:
+                raise ValueError(f"i2s.format must be one of {valid_formats}, got {fmt}")
+        
+        # Validate period_size
+        period_size = i2s.get('period_size')
+        if period_size is not None:
+            if not isinstance(period_size, int) or period_size <= 0:
+                raise ValueError(f"i2s.period_size must be positive integer, got {period_size}")
+            if period_size < 64 or period_size > 8192:
+                raise ValueError(f"i2s.period_size should be 64-8192, got {period_size}")
                 
-        # Validate buffer size (positive, power of 2 recommended but not enforced)
+        # Validate buffer size (ALSA buffer size in frames)
         buffer_size = i2s.get('buffer_size')
         if buffer_size is not None:
             if not isinstance(buffer_size, int) or buffer_size <= 0:
                 raise ValueError(f"i2s.buffer_size must be positive integer, got {buffer_size}")
-            if buffer_size < 1024 or buffer_size > 65536:
-                raise ValueError(f"i2s.buffer_size should be 1024-65536, got {buffer_size}")
+            if buffer_size < 256 or buffer_size > 65536:
+                raise ValueError(f"i2s.buffer_size should be 256-65536, got {buffer_size}")
                 
         # Validate UART baudrate
         uart = config.get('uart', {})

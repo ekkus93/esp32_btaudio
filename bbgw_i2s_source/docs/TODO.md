@@ -402,34 +402,68 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 - [ ] Test UART communication with ESP32 via Milestone 2 script
 
 ### 2.3. Configuration File Adaptation (config.yaml)
-**Status:** NOT STARTED  
-**Estimated Time:** 1 hour  
+**Status:** ✅ COMPLETE
+**Actual Time:** 0.3 hours  
+**Completed:** 2026-02-07  
 **Priority:** HIGH
 
-- [ ] **Create config.yaml.template for BBGW**
-  - [ ] Copy `rpi_i2s_source/config.yaml` structure
-  - [ ] Update `i2s` section:
-    ```yaml
-    i2s:
-      device: "hw:0,0"  # Update to actual McASP device name
-      sample_rate: 48000
-      channels: 2
-      format: "S16_LE"
-      period_size: 1024
-      buffer_size: 4096
-    ```
-  - [ ] Update `uart` section:
-    ```yaml
-    uart:
-      device: "/dev/ttyO4"  # BBGW UART4
-      baudrate: 115200
-      timeout: 5.0
-    ```
-  - [ ] Keep other sections unchanged (audio, web, ring_buffer)
+**Note:** Most configuration work was completed in Phase 2.1 (config.yaml.template already updated for BBGW).
 
-- [ ] **Update ConfigManager Comments**
-  - [ ] Update `config/manager.py` docstrings
-  - [ ] Reflect BBGW-specific defaults
+**Deliverables:**
+- ✅ **config.yaml.template** (already updated in Phase 2.1)
+  - ALSA I2S configuration (device, sample_rate, channels, format, period_size, buffer_size)
+  - UART4 configuration (/dev/ttyO4)
+  - BBGW-specific paths (/home/debian/audio)
+  - Complete pin documentation in comments
+
+- ✅ **config/manager.py** updated for BBGW
+  - Updated module docstring: "BeagleBone Green Wireless I2S Source"
+  - Updated author and date (bbgw_i2s_source, 2026-02-07)
+  - **DEFAULT_CONFIG restructured**:
+    - Removed RPi GPIO pins (gpio_bclk, gpio_ws, gpio_dout)
+    - Added ALSA parameters (device, channels, format, period_size, buffer_size)
+    - Updated uart.device to /dev/ttyO4
+    - Updated audio.wav_directory to /home/debian/audio
+    - Updated web.bind_address comment (Wi-Fi accessible)
+  - **Validation logic updated**:
+    - Removed GPIO pin validation (no longer applicable)
+    - Removed GPIO pin conflict check (no longer applicable)
+    - Added ALSA device validation (must start with 'hw:' or 'plughw:')
+    - Added channels validation (1-8)
+    - Added format validation (S8, U8, S16_LE, etc.)
+    - Added period_size validation (64-8192 frames)
+    - Updated buffer_size validation (256-65536 frames for ALSA)
+
+- ✅ **tests/test_config_manager.py** updated for BBGW
+  - Updated module author and date
+  - Updated test_create_default_config: tests i2s.device instead of i2s.gpio_bclk
+  - Updated test_load_existing_config: uses ALSA config (device, channels, format)
+  - Updated test_merge_with_defaults: tests i2s.device instead of gpio_bclk
+  - **Replaced GPIO validation tests** with ALSA tests:
+    - test_invalid_alsa_device_raises_error (replaces test_invalid_gpio_pin)
+    - test_invalid_channels_raises_error (replaces test_negative_gpio_pin)
+    - test_invalid_format_raises_error (replaces test_duplicate_gpio_pins)
+  - Updated test_invalid_sample_rate: uses ALSA config
+  - Updated test_invalid_buffer_size: validates 256-65536 range (ALSA frames)
+  - Updated test_invalid_baudrate: uses /dev/ttyO4
+  - Updated test_invalid_tone_freq: uses /home/debian/audio
+  - Updated test_invalid_amplitude: uses /home/debian/audio
+  - Updated test_get_nested_value: tests i2s.device
+  - Updated test_set_validates_value: validates ALSA device
+  - Updated test_get_all_returns_copy: tests i2s.device
+  - Updated test_save_reload_roundtrip: tests i2s.device
+
+**Key Changes:**
+- **Configuration Structure**: RPi GPIO-based I2S → BBGW ALSA-based I2S (McASP)
+- **UART Device**: /dev/serial0 (RPi) → /dev/ttyO4 (BBGW UART4)
+- **User Paths**: /home/pi → /home/debian (BBGW default user)
+- **Validation**: GPIO pin validation → ALSA device/parameter validation
+- **All 18 unit tests updated** for BBGW configuration structure
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Run unit tests: `pytest -v tests/test_config_manager.py`
+- [ ] Verify all tests pass with BBGW configuration
+- [ ] Test configuration loading/validation with actual config.yaml
 
 ### 2.4. GPIO Adaptations (if needed)
 **Status:** NOT STARTED  
