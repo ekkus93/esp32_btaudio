@@ -69,11 +69,10 @@ static esp_err_t configure_i2s(const audio_config_t* config);
 
 /**
  * Get active audio source (Phase 2, Task 2.2)
- * Priority order: WAV → I2S → Synth → Silence
+ * Priority order: I2S → Synth → Silence
  */
 typedef enum {
-    AUDIO_SOURCE_WAV = 0,
-    AUDIO_SOURCE_I2S,
+    AUDIO_SOURCE_I2S = 0,
     AUDIO_SOURCE_SYNTH,
     AUDIO_SOURCE_SILENCE,
     NUM_AUDIO_SOURCES
@@ -81,12 +80,7 @@ typedef enum {
 
 static audio_source_t get_active_source(void)
 {
-    /* WAV has highest priority */
-    if (play_manager_is_active()) {
-        return AUDIO_SOURCE_WAV;
-    }
-    
-    /* I2S capture second */
+    /* I2S capture has highest priority */
     if (s_is_running) {  /* I2S manager active when audio_processor running */
         return AUDIO_SOURCE_I2S;
     }
@@ -123,14 +117,9 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     size_t produced = 0;
     
     /* Produce base audio from active source
-     * Phase 3.1: WAV uses wav_source_fill() - real audio ✅
-     * Phase 3.2: I2S uses i2s_source_fill() - real I2S capture ✅
-     * Phase 3.4: Synth still TODO - silence placeholder */
+     * I2S uses i2s_source_fill() - real I2S capture ✅
+     * Synth uses synth_source_fill() - synthetic tone ✅ */
     switch (base) {
-        case AUDIO_SOURCE_WAV:
-            produced = wav_source_fill(dst, dst_bytes);
-            break;
-            
         case AUDIO_SOURCE_I2S:
             produced = i2s_source_fill(dst, dst_bytes);
             break;
@@ -337,15 +326,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         return ESP_ERR_NO_MEM;
     }
 
-    play_manager_buffers_t pm_bufs = {
-        .work_bytes = s_runtime_work_bytes,
-    };
-    ret = play_manager_init(&s_audio_config, &pm_bufs);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_init: play_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        return ret;
-    }
-
     i2s_manager_buffers_t i2s_bufs = {
         .raw_buf = s_capture_buffer,
         .raw_buf_bytes = s_runtime_work_bytes,
@@ -356,7 +336,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: i2s_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        play_manager_deinit();
         return ret;
     }
 
@@ -364,7 +343,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: beep_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         i2s_manager_deinit();
-        play_manager_deinit();
         return ret;
     }
 
@@ -386,7 +364,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         ESP_LOGE(TAG, "audio_processor_init: ring buffer init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
         beep_manager_deinit();
         i2s_manager_deinit();
-        play_manager_deinit();
         return ret;
     }
 
@@ -409,7 +386,6 @@ esp_err_t audio_processor_start(void)
      * so capture owns the pipeline. */
     wav_playback_abort(__func__);
     audio_processor_beep_reset();
-    play_manager_abort(false);
 
     esp_err_t ret = i2s_manager_start();
     if (ret != ESP_OK) {
@@ -495,7 +471,6 @@ esp_err_t audio_processor_drain_ring(void)
     s_last_source_was_synth = false;
 
     wav_playback_abort("audio_processor_drain_ring");
-    play_manager_abort(false);
     audio_processor_beep_reset();
     beep_overlay_stop();
 
@@ -523,7 +498,6 @@ esp_err_t audio_processor_deinit(void)
 
     beep_manager_deinit();
     i2s_manager_deinit();
-    play_manager_deinit();
 
     /* Cleanup ring buffer (CODE_REVIEW6 Phase 1, Task 1.3) */
     if (s_audio_ring != NULL) {
@@ -602,8 +576,9 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     }
 
     bool was_running = s_is_running;
+    esp_err_t ret = ESP_OK;
     if (was_running) {
-        esp_err_t ret = audio_processor_stop();
+        ret = audio_processor_stop();
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
@@ -611,16 +586,6 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     }
 
     s_audio_config.sample_rate = sample_rate;
-
-    play_manager_deinit();
-    play_manager_buffers_t pm_bufs = {
-        .work_bytes = s_runtime_work_bytes,
-    };
-    esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
-        return ret;
-    }
 
     i2s_manager_deinit();
     i2s_manager_buffers_t i2s_bufs = {
@@ -633,7 +598,6 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
-        play_manager_deinit();
         return ret;
     }
 
@@ -1014,22 +978,11 @@ esp_err_t audio_processor_play_wav(const char* path)
 
     wav_playback_begin();
 
-    status = play_manager_play_wav(path);
-    if (status != ESP_OK) {
-        wav_playback_abort(__func__);
-        goto cleanup;
-    }
-
-    portENTER_CRITICAL(&s_wav_lock);
-    s_wav_pending_bytes = 0;
-    portEXIT_CRITICAL(&s_wav_lock);
-
-    if (!play_manager_is_active()) {
-        wav_playback_complete_if_idle();
-    }
-
-    ESP_LOGI(TAG, "audio_processor_play_wav: playback streaming for %s", path);  // NOLINT(bugprone-branch-clone)
-    status = ESP_OK;
+    /* WAV playback no longer supported - play_manager removed */
+    ESP_LOGW(TAG, "audio_processor_play_wav: WAV playback not supported (play_manager removed)");
+    status = ESP_ERR_NOT_SUPPORTED;
+    wav_playback_abort(__func__);
+    goto cleanup;
 
 cleanup:
     if (status == ESP_OK) {
@@ -1058,9 +1011,10 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     }
 
     bool was_running = s_is_running;
+    esp_err_t ret = ESP_OK;
 
     if (was_running) {
-        esp_err_t ret = audio_processor_stop();
+        ret = audio_processor_stop();
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
             return ret;
@@ -1068,16 +1022,6 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     }
 
     s_audio_config.bit_depth = bit_depth;
-
-    play_manager_deinit();
-    play_manager_buffers_t pm_bufs = {
-        .work_bytes = s_runtime_work_bytes,
-    };
-    esp_err_t ret = play_manager_init(&s_audio_config, &pm_bufs);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reconfigure play_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
-        return ret;
-    }
 
     i2s_manager_deinit();
     i2s_manager_buffers_t i2s_bufs = {
@@ -1090,7 +1034,6 @@ esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
-        play_manager_deinit();
         return ret;
     }
 

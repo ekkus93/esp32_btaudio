@@ -14,7 +14,6 @@
 #include <string.h>
 
 #include "audio_processor.h"
-#include "play_manager.h"
 #include "bt_manager.h"
 #include "nvs_storage.h"
 #include "esp_err.h"

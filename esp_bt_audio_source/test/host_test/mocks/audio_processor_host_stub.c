@@ -333,51 +333,6 @@ bool audio_processor_is_synth_mode_enabled(void)
     return s_synth_mode;
 }
 
-/* Play a WAV file from the filesystem (host stub).
- * For host tests we don't perform real decoding; instead append a
- * deterministic non-zero pattern to the ring buffer so callers that
- * expect audio data receive something. Return ESP_OK even if the path
- * is NULL to keep tests simple.
- */
-esp_err_t audio_processor_play_wav(const char* path)
-{
-    if (!s_initialized) {
-        s_initialized = true;
-        s_synth_mode = true;
-    }
-
-    /* Clear stale beep flag if prior data was already consumed. */
-    if (s_beep_active && s_ring_len == 0) {
-        s_beep_active = false;
-    }
-
-    /* PLAY should disable synth keepalive regardless of outcome. */
-    s_synth_mode = false;
-    if (s_running && (s_wav_active || s_beep_active)) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (path == NULL || path[0] == '\0')
-    {
-        return ESP_FAIL;
-    }
-
-    struct stat st = {0};
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
-    {
-        s_wav_active = false;
-        s_wav_pending = 0;
-        return ESP_FAIL;
-    }
-
-    const size_t chunk = 512;
-    uint8_t buf[chunk];
-    for (size_t i = 0; i < chunk; ++i) buf[i] = (uint8_t)((i * 17) & 0xFF);
-    ring_append(buf, chunk);
-    s_wav_active = true;
-    s_wav_pending = chunk;
-    return ESP_OK;
-}
-
 void audio_processor_enable_next_beep_diag(void)
 {
     /* No-op for host stub */
@@ -655,9 +610,4 @@ esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
 bool audio_processor_is_i2s_active(void)
 {
     return s_running && !s_synth_mode;
-}
-
-bool audio_processor_is_wav_active(void)
-{
-    return s_wav_active;
 }

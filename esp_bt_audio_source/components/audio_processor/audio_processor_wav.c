@@ -38,11 +38,9 @@ void wav_playback_add_pending(size_t bytes)
 bool wav_playback_consume(size_t bytes)
 {
     (void)bytes;
-    if (!play_manager_is_active()) {
-        wav_playback_complete_if_idle();
-        return true;
-    }
-    return false;
+    // play_manager was removed - always complete WAV playback immediately
+    wav_playback_complete_if_idle();
+    return true;
 }
 
 void wav_playback_abort(const char *caller)
@@ -56,7 +54,7 @@ void wav_playback_abort(const char *caller)
     size_t pending_before = 0;
     size_t beep_remaining_before = 0;
 #endif
-    play_manager_abort(false);
+    // play_manager_abort() removed - play_manager was deleted
     portENTER_CRITICAL(&s_wav_lock);
     if (s_wav_playback_active || s_wav_prev_valid) {
 #if CONFIG_BT_MOCK_TESTING
@@ -99,7 +97,8 @@ void wav_playback_complete_if_idle(void)
 {
     bool restored = false;
     bool synth_mode = false;
-    bool pm_active = play_manager_is_active();
+    // play_manager was removed - pm_active is always false now
+    bool pm_active = false;
 
     portENTER_CRITICAL(&s_wav_lock);
     s_wav_pending_bytes = 0;

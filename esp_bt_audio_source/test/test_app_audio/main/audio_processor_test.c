@@ -9,7 +9,6 @@
 #include "audio_processor.h"
 #include "command_interface.h"
 #include "bt_manager.h"
-#include "play_manager.h"
 #include "driver/i2s_std.h"
 
 /* Internal state needed for stale-beep regression checks. */

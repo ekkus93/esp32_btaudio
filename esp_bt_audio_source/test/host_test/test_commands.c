@@ -596,12 +596,10 @@ int main(void) {
     // Tests for BEEP command
     extern void test_beep_command_not_connected(void);
     extern void test_beep_command_connected(void);
-    extern void test_beep_command_busy_when_wav_active(void);
     extern void test_beep_command_allowed_when_i2s_active(void);
     extern void test_beep_command_busy_when_beep_active(void);
     RUN_TEST(test_beep_command_not_connected);
     RUN_TEST(test_beep_command_connected);
-    RUN_TEST(test_beep_command_busy_when_wav_active);
     RUN_TEST(test_beep_command_allowed_when_i2s_active);
     RUN_TEST(test_beep_command_busy_when_beep_active);
     extern void test_file_command_found(void);
@@ -995,43 +993,6 @@ void test_beep_command_connected(void) {
     audio_processor_get_last_beep_request(&dur_ms, &freq_hz);
     TEST_ASSERT_EQUAL_UINT32(10000U, dur_ms);
     TEST_ASSERT_FLOAT_WITHIN(0.1f, 261.63f, (float)freq_hz);
-}
-
-void test_beep_command_busy_when_wav_active(void) {
-    mock_uart_reset_tx();
-    TEST_ASSERT_TRUE_MESSAGE(s_test_spiffs_root_ready, "spiffs root not prepared in setUp");
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_16K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_MONO,
-        .volume = 60,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    /* Seed a WAV playback to force audio_processor_beep_tone() to report busy. */
-    char wav_path[PATH_MAX];
-    snprintf(wav_path, sizeof(wav_path), "%s/%s", s_test_spiffs_root, k_file_worker_name);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_play_wav(wav_path));
-
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    const char *expected = "ERR|BEEP|BUSY|WAV_ACTIVE";
-    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
 }
 
 void test_beep_command_allowed_when_i2s_active(void) {

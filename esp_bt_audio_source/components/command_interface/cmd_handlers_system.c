@@ -136,64 +136,9 @@ cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx)
     (void)ctx;
     
 #ifdef ESP_PLATFORM
-    play_manager_status_t wav_status = {0};
-    
-    if (!play_manager_get_status(&wav_status)) {
-        cmd_send_response("ERROR", "WAV_STATUS", "NOT_INITIALIZED", "");
-        return CMD_ERROR_NOT_INITIALIZED;
-    }
-    
-    char data[512];
-    int pos = 0;
-    
-    /* Active status */
-    pos += snprintf(data + pos, sizeof(data) - (size_t)pos, "ACTIVE=%s", 
-                    wav_status.active ? "yes" : "no");
-    
-    if (wav_status.active) {
-        /* Source format */
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_RATE=%u", 
-                        (unsigned)wav_status.src_rate);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_CH=%u", 
-                        (unsigned)wav_status.src_channels);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_BITS=%u", 
-                        (unsigned)(audio_bytes_per_sample(wav_status.src_bit_depth) * 8));
-        
-        /* Output format */
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_RATE=%u", 
-                        (unsigned)wav_status.dst_rate);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_CH=%u", 
-                        (unsigned)wav_status.dst_channels);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_BITS=%u", 
-                        (unsigned)(audio_bytes_per_sample(wav_status.dst_bit_depth) * 8));
-        
-        /* Progress */
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",SRC_FRAMES=%zu", 
-                        wav_status.src_frames_read);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",DST_FRAMES=%zu", 
-                        wav_status.dst_frames_produced);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",EXPECTED_FRAMES=%zu", 
-                        wav_status.expected_dst_frames);
-        
-        /* Progress percentage */
-        if (wav_status.expected_dst_frames > 0) {
-            float progress = (float)wav_status.dst_frames_produced / (float)wav_status.expected_dst_frames * 100.0F;
-            pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",PROGRESS_PCT=%.1f", 
-                            (double)progress);
-        }
-        
-        /* Stash buffer */
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",STASH_FRAMES=%zu", 
-                        wav_status.stash_frames);
-        pos += snprintf(data + pos, sizeof(data) - (size_t)pos, ",STASH_CAP=%zu", 
-                        wav_status.stash_capacity);
-        
-        /* Resampler position */
-        (void)snprintf(data + pos, sizeof(data) - (size_t)pos, ",RESAMP_POS=0x%08lX", 
-                       (unsigned long)wav_status.resampler_pos_q16);
-    }
-    
-    cmd_send_response("OK", "WAV_STATUS", "CURRENT", data);
+    // play_manager was removed - WAV_STATUS command no longer supported
+    cmd_send_response("ERROR", "WAV_STATUS", "NOT_SUPPORTED", "play_manager removed");
+    return CMD_ERROR_UNKNOWN;
 #else
     cmd_send_response("OK", "WAV_STATUS", "MOCK", "ACTIVE=no");
 #endif
@@ -248,19 +193,15 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
      * This is heuristic - actual source is only known in audio_engine_task */
     const char *source_name = "UNKNOWN";
     uint64_t max_bytes = 0;
-    if (stats.bytes_by_source[0] > max_bytes) {  /* WAV */
+    if (stats.bytes_by_source[0] > max_bytes) {  /* I2S */
         max_bytes = stats.bytes_by_source[0];
-        source_name = "WAV";
-    }
-    if (stats.bytes_by_source[1] > max_bytes) {  /* I2S */
-        max_bytes = stats.bytes_by_source[1];
         source_name = "I2S";
     }
-    if (stats.bytes_by_source[2] > max_bytes) {  /* SYNTH */
-        max_bytes = stats.bytes_by_source[2];
+    if (stats.bytes_by_source[1] > max_bytes) {  /* SYNTH */
+        max_bytes = stats.bytes_by_source[1];
         source_name = "SYNTH";
     }
-    if (stats.bytes_by_source[3] > max_bytes) {  /* SILENCE */
+    if (stats.bytes_by_source[2] > max_bytes) {  /* SILENCE */
         source_name = "SILENCE";
     }
     

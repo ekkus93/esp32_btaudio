@@ -80,7 +80,7 @@ typedef struct {
     uint32_t peak_buffer_level;
     
     /* Audio engine stats (CODE_REVIEW6 Phase 4, Task 4.2) */
-    uint64_t bytes_by_source[4];  // Per-source byte counts: [WAV, I2S, SYNTH, SILENCE]
+    uint64_t bytes_by_source[3];  // Per-source byte counts: [I2S, SYNTH, SILENCE]
     uint32_t source_switch_count; // Number of times active source changed
     uint32_t beep_overlay_count;  // Number of times beep was overlaid
     uint64_t beep_overlay_bytes;  // Total bytes mixed with beep
@@ -234,11 +234,6 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz);
 bool audio_processor_is_beep_active(void);
 
 /**
- * @brief Query whether WAV playback is currently active.
- */
-bool audio_processor_is_wav_active(void);
-
-/**
  * @brief Query whether the processor is currently consuming live I2S input
  * (i.e., running with the real capture path instead of the synth source).
  */
@@ -367,16 +362,5 @@ void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, si
 uint32_t audio_processor_test_get_tag_miss_count(void);
 void audio_processor_test_reset_tag_miss_count(void);
 void audio_processor_test_reset_tag_recover_window(void);
-
-/**
- * @brief Play a WAV file from the filesystem and inject it into the audio pipeline
- *
- * The path may be absolute (for example "/spiffs/worker_long_norm.wav") or
- * relative (in which case callers should prefix with "/spiffs/" when invoking
- * from the command layer). The implementation supports PCM WAV files and
- * performs conversion/resampling to the configured output format when
- * necessary.
- */
-esp_err_t audio_processor_play_wav(const char* path);
 
 #endif /* AUDIO_PROCESSOR_H_ */

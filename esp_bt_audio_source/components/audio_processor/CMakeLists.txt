@@ -14,7 +14,6 @@ idf_component_register(
         "audio_resampler_stream.c"
         "beep_manager.c"
         "i2s_manager.c"
-        "play_manager.c"
         "synth_manager.c"
     INCLUDE_DIRS
         "include"
