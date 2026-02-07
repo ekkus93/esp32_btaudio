@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Main Application Entry Point for Raspberry Pi I2S Audio Source
+Main Application Entry Point for BeagleBone Green Wireless I2S Audio Source
 
 This application creates an I2S audio test jig for ESP32 Bluetooth testing.
 It provides:
@@ -11,7 +11,7 @@ It provides:
 Components are initialized in dependency order and started in background threads.
 Signal handlers provide graceful shutdown on SIGINT/SIGTERM.
 
-Author: Raspberry Pi I2S Audio Source Project
+Author: BeagleBone Green Wireless I2S Audio Source Project
 License: MIT
 """
 
@@ -154,7 +154,7 @@ def main() -> int:
         # 2. Setup logging
         setup_logging(config)
         logger = logging.getLogger(__name__)
-        logger.info("=== Raspberry Pi I2S Audio Source Starting ===")
+        logger.info("=== BeagleBone Green Wireless I2S Audio Source Starting ===")
         logger.info(f"Configuration loaded from: {config_path}")
         
         # 3. Initialize components in dependency order
