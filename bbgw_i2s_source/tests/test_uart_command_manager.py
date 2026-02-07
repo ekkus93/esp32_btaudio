@@ -18,7 +18,7 @@ def mock_config():
     """Mock ConfigManager."""
     config = Mock()
     config.get.side_effect = lambda key: {
-        'uart.device': '/dev/serial0',
+        'uart.device': '/dev/ttyO4',
         'uart.baudrate': 115200,
         'uart.timeout': 1.0
     }.get(key)
@@ -56,7 +56,7 @@ class TestUARTCommandManagerInit:
         uart = UARTCommandManager(mock_config)
         
         assert uart.config is mock_config
-        assert uart.device == '/dev/serial0'
+        assert uart.device == '/dev/ttyO4'
         assert uart.baudrate == 115200
         assert uart.timeout == 1.0
     
@@ -100,7 +100,7 @@ class TestSerialPortInit:
         uart._init_serial_port()
         
         patch_serial.Serial.assert_called_once_with(
-            port='/dev/serial0',
+            port='/dev/ttyO4',
             baudrate=115200,
             timeout=1.0
         )

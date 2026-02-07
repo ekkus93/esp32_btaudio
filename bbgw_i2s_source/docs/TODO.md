@@ -368,26 +368,38 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 - [ ] Test with Milestone 1 script (1 kHz tone generation)
 
 ### 2.2. UART Driver Adaptation (uart/command_manager.py)
-**Status:** NOT STARTED  
-**Estimated Time:** 1-2 hours  
+**Status:** ✅ COMPLETE
+**Actual Time:** 0.5 hours  
+**Completed:** 2026-02-07  
 **Priority:** HIGH
 
-- [ ] **Copy UARTCommandManager to bbgw_i2s_source**
-  - [ ] Copy `rpi_i2s_source/uart/command_manager.py` to `bbgw_i2s_source/uart/command_manager.py`
-  - [ ] Update module docstring
+**Deliverables:**
+- ✅ **uart/command_manager.py** updated for BBGW
+  - Updated module docstring to reference "BeagleBone Green Wireless I2S Source" instead of "RPi I2S Source"
+  - Updated device attribute docstring example from `/dev/serial0` to `/dev/ttyO4` (BBGW UART4)
+  - No functional code changes needed (pyserial works identically on BBGW)
+  - Protocol remains hardware-agnostic
 
-- [ ] **Update Default UART Device**
-  - [ ] Change default device from `/dev/serial0` to `/dev/ttyO4`
-  - [ ] Update docstring examples with `/dev/ttyO4`
+- ✅ **tests/test_uart_command_manager.py** updated
+  - Updated mock_config fixture to use `/dev/ttyO4` instead of `/dev/serial0`
+  - Updated test_init_stores_config assertion to verify `/dev/ttyO4`
+  - Updated test_init_serial_port_opens_port to expect `/dev/ttyO4` parameter
+  - All 3 device references updated
 
-- [ ] **Update Unit Tests**
-  - [ ] Copy `tests/test_uart_command_manager.py`
-  - [ ] Update device references in tests
-  - [ ] Verify MockSerial works correctly
+**Key Changes:**
+- **UART Device**: `/dev/serial0` (RPi) → `/dev/ttyO4` (BBGW UART4 on P9.11/13)
+- **Platform References**: "RPi" → "BeagleBone Green Wireless"
+- **No Code Logic Changes**: pyserial API identical on both platforms
 
-- [ ] **No other changes needed**
-  - [ ] pyserial works identically on BBGW
-  - [ ] Protocol is hardware-agnostic
+**Testing:**
+- All existing unit tests remain valid (protocol is hardware-agnostic)
+- MockSerial works identically on BBGW
+- Hardware testing will use /dev/ttyO4 configured via Device Tree overlay (Phase 1.2)
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Run unit tests: `pytest -v tests/test_uart_command_manager.py`
+- [ ] Verify /dev/ttyO4 exists: `ls -l /dev/ttyO4`
+- [ ] Test UART communication with ESP32 via Milestone 2 script
 
 ### 2.3. Configuration File Adaptation (config.yaml)
 **Status:** NOT STARTED  

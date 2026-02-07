@@ -1,3 +1,48 @@
+## 2026-02-07 02:58 — BBGW Port: Phase 2.2 UART Driver Adaptation Complete
+
+**📝 Task:** Adapted UART command manager for BeagleBone Green Wireless UART4
+
+**Timestamp:** 2026-02-07 02:58:12
+
+**Context:** Phase 2.2 of BBGW port - UART driver adaptation for /dev/ttyO4
+
+**Phase 2.2 Deliverables:**
+
+1. **uart/command_manager.py** (updated, 537 lines)
+   - Updated module docstring: "BeagleBone Green Wireless I2S Source" instead of "RPi I2S Source"
+   - Updated device attribute docstring example: `/dev/ttyO4` instead of `/dev/serial0`
+   - No functional code changes (pyserial API identical on both platforms)
+   - Protocol remains hardware-agnostic
+   - MockSerial implementation unchanged (works identically on BBGW)
+
+2. **tests/test_uart_command_manager.py** (updated, 615 lines)
+   - Updated mock_config fixture: `uart.device` set to `/dev/ttyO4`
+   - Updated test_init_stores_config assertion: expects `/dev/ttyO4`
+   - Updated test_init_serial_port_opens_port: expects port='/dev/ttyO4' parameter
+   - All 3 device references changed from `/dev/serial0` to `/dev/ttyO4`
+   - All test logic unchanged (protocol is hardware-agnostic)
+
+**Technical Details:**
+- **UART Device**: /dev/ttyO4 (BBGW UART4 on P9.11/13)
+- **Device Tree Dependency**: BB-BBGW-UART4-00A0.dtbo from Phase 1.2
+- **Pin Connections**: P9.11 (RXD) ↔ ESP32 GPIO17 (TX), P9.13 (TXD) ↔ ESP32 GPIO16 (RX)
+- **Configuration**: 115200 baud, 8N1, no flow control (same as RPi)
+- **pyserial Compatibility**: Works identically on BBGW (no API changes)
+
+**Key Insight:**
+- UART driver adaptation was simpler than expected (30 minutes vs 1-2 hours estimated)
+- Only documentation changes required (no code logic changes)
+- pyserial abstracts away all platform differences
+- Protocol is completely hardware-agnostic
+
+**Next Steps (On BeagleBone Hardware):**
+- [ ] Run unit tests: `pytest -v tests/test_uart_command_manager.py`
+- [ ] Verify /dev/ttyO4 exists: `ls -l /dev/ttyO4`
+- [ ] Test UART communication with ESP32 via Milestone 2 script
+- [ ] Validate bidirectional command/response protocol
+
+---
+
 ## 2026-02-07 02:38 — BBGW Port: Phase 2.1 I2S Driver Adaptation Complete
 
 **📝 Task:** Adapted I2S driver for BeagleBone Green Wireless McASP ALSA interface

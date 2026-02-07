@@ -1,5 +1,5 @@
 """
-UART Command Manager for RPi I2S Source.
+UART Command Manager for BeagleBone Green Wireless I2S Source.
 
 This module provides the UARTCommandManager class for serial communication
 with the esp_bt_audio_source over UART. Handles command/response protocol
@@ -90,7 +90,7 @@ class UARTCommandManager:
     
     Attributes:
         config: ConfigManager instance
-        device: Serial port device path (e.g., '/dev/serial0')
+        device: Serial port device path (e.g., '/dev/ttyO4')
         baudrate: Serial baudrate (e.g., 115200)
         timeout: Read timeout in seconds
         
