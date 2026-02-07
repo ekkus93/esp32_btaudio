@@ -73,18 +73,9 @@ static inline bool audio_processor_is_i2s_active(void) {
     return false;
 }
 
-static inline bool audio_processor_is_wav_active(void) {
-    return false;
-}
-
 static inline esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz) {
     (void)duration_ms;
     (void)freq_hz;
-    return ESP_OK;
-}
-
-static inline esp_err_t audio_processor_play_wav(const char *path) {
-    (void)path;
     return ESP_OK;
 }
 

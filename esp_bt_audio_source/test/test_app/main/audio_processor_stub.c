@@ -214,14 +214,6 @@ esp_err_t audio_processor_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, in
  * command handlers can exercise flow-control and responses.
  */
 
-esp_err_t audio_processor_play_wav(const char *path)
-{
-    AUDIO_PROC_STUB_LOG_ONCE();
-    (void)path;
-    /* Treat WAV play requests as accepted in the test stub */
-    return ESP_OK;
-}
-
 void audio_processor_enable_next_beep_diag(void)
 {
     AUDIO_PROC_STUB_LOG_ONCE();

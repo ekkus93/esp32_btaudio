@@ -439,14 +439,49 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
   ```
 
 ### 4.7 Verification
-- [ ] test_play_manager/ directory removed (if existed)
-- [ ] test/component/test_audio_processor.c updated (PLAY tests removed)
-- [ ] test/test_app_audio/main/audio_processor_test.c updated (PLAY tests removed)
-- [ ] test/host_test/test_commands.c fully updated
-- [ ] All test files updated with new audio source enum indices
-- [ ] All unit tests pass
-- [ ] No references to PLAY in test output
-- [ ] Ready to proceed with Phase 5
+- [x] test_play_manager/ directory removed (if existed) - ✅ Verified in Phase 4.1 (directory never existed)
+- [x] test/component/test_audio_processor.c updated (PLAY tests removed) - ✅ Completed in Phase 4.2
+- [x] test/test_app_audio/main/audio_processor_test.c updated (PLAY tests removed) - ✅ Completed in Phase 4.3
+- [x] test/host_test/test_commands.c fully updated - ✅ Verified in Phase 4.4 (no PLAY references)
+- [x] All test files updated with new audio source enum indices - ✅ Verified (only I2S, SYNTH, SILENCE remain)
+- [x] All unit tests pass - ✅ 33/33 host tests passing
+- [x] No references to PLAY in test output - ✅ All PLAY/WAV/play_manager references removed
+- [x] Ready to proceed with Phase 5 - ✅
+
+**Phase 4.7 Results (2026-02-07 14:29):**
+
+During verification, discovered and cleaned 3 additional files with WAV/PLAY stubs:
+
+1. **test/host_test/include/audio_processor.h** - Removed remaining WAV API inline stubs:
+   - Removed `audio_processor_is_wav_active()` inline stub
+   - Removed `audio_processor_play_wav()` inline stub
+   - (Note: Phase 4.5 only removed test helper stubs, missed these main API stubs)
+
+2. **test/test_app/main/audio_processor_stub.c** - Removed PLAY stub:
+   - Removed `audio_processor_play_wav()` stub function (~8 lines)
+
+3. **test/test_app_audio/components/test_command_interface/include/command_interface.h** - Removed PLAY enum:
+   - Removed `CMD_TYPE_PLAY = 0` from cmd_type_t enum
+   - Renumbered: CMD_TYPE_STOP = 0, CMD_TYPE_BEEP = 1
+
+**Final Verification Checks:**
+- ✅ No `play_manager` references in test/ (grep: 0 matches)
+- ✅ No `AUDIO_SOURCE_WAV` references in test/ (grep: 0 matches)
+- ✅ No `audio_processor_play_wav` or `audio_processor_is_wav_active` in test/ (grep: 0 matches)
+- ✅ No `CMD_TYPE_PLAY` or `cmd_handle_play` in test/ (grep: 0 matches)
+- ✅ All audio source enum references are valid (I2S=0, SYNTH=1, SILENCE=2)
+- ✅ All 33/33 host tests passing (1.26 sec test time)
+- ✅ Build successful with no new errors or warnings
+
+**Changes (3 files):**
+- test/host_test/include/audio_processor.h: -9 lines
+- test/test_app/main/audio_processor_stub.c: -8 lines
+- test/test_app_audio/components/test_command_interface/include/command_interface.h: -3 lines, +2 lines
+- **Total**: -18 lines
+
+**Phase 4 Complete!** ✅ All test infrastructure cleaned of PLAY/WAV references.
+
+**Next:** Phase 5 - Remove SPIFFS (Phases 5.1-5.3 already complete, 5.4-5.7 remain)
 
 ---
 
