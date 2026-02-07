@@ -1,13 +1,13 @@
 # Integration Tests
 
-Integration tests for the RPi I2S Audio Test Jig. These tests validate the complete end-to-end system with actual hardware.
+Integration tests for the BBGW I2S Audio Test Jig. These tests validate the complete end-to-end system with actual hardware.
 
 ## Requirements
 
 ### Hardware
-- **Raspberry Pi** (any model with I2S support)
-  - I2S interface configured (BCK, WS, DATA on GPIOs 18, 19, 21)
-  - UART enabled on /dev/ttyAMA0 (GPIOs 14, 15)
+- **BeagleBone Green Wireless**
+  - McASP I2S interface configured via Device Tree overlay
+  - UART4 enabled on /dev/ttyO4 (P9.13, P9.11)
   
 - **ESP32** running `esp_bt_audio_source` firmware
   - Connected via I2S (GPIOs 26, 25, 22)
@@ -27,19 +27,19 @@ Integration tests for the RPi I2S Audio Test Jig. These tests validate the compl
 
 ### I2S Connections
 ```
-Raspberry Pi          ESP32
-GPIO 18 (BCK)    →    GPIO 26 (I2S_BCK)
-GPIO 19 (WS)     →    GPIO 25 (I2S_WS)
-GPIO 21 (DATA)   →    GPIO 22 (I2S_DATA)
-GND              →    GND
+BeagleBone (P9)       ESP32
+P9.31 (ACLKX)    →    GPIO 26 (I2S_BCK)
+P9.29 (FSX)      →    GPIO 25 (I2S_WS)
+P9.28 (AXR0)     →    GPIO 22 (I2S_DATA)
+P9.1  (GND)      →    GND
 ```
 
 ### UART Connections
 ```
-Raspberry Pi          ESP32
-GPIO 14 (TX)     →    GPIO 16 (RX)
-GPIO 15 (RX)     →    GPIO 17 (TX)
-GND              →    GND
+BeagleBone (P9)       ESP32
+P9.13 (TX)       →    GPIO 16 (RX)
+P9.11 (RX)       →    GPIO 17 (TX)
+P9.1  (GND)      →    GND
 ```
 
 ## Running Tests

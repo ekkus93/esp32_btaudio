@@ -1,4 +1,4 @@
-# Raspberry Pi I2S Source - Python Dependencies
+# BeagleBone Green Wireless I2S Source - Python Dependencies
 # Target: Python 3.9+
 
 # Web framework

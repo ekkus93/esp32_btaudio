@@ -1,6 +1,6 @@
 # Performance Tests
 
-Performance tests validate **non-functional requirements (NFRs)** for the rpi_i2s_source audio test jig, including CPU usage, memory consumption, and I2S timing accuracy.
+Performance tests validate **non-functional requirements (NFRs)** for the bbgw_i2s_source audio test jig, including CPU usage, memory consumption, and I2S timing accuracy.
 
 ## Overview
 
@@ -63,8 +63,8 @@ python tests/performance/monitor_resources.py --duration=60 --process=main.py
 ## Hardware Requirements
 
 **Required:**
-- Raspberry Pi (any model with I2S support)
-- I2S interface configured (`dtoverlay=i2s-mmap` in `/boot/config.txt`)
+- BeagleBone Green Wireless
+- McASP I2S interface configured via Device Tree overlay
 - Python 3.9+ with required packages
 
 **Optional:**
@@ -87,14 +87,14 @@ pip install psutil requests pytest
 
 1. **Start the web server:**
    ```bash
-   cd rpi_i2s_source
+   cd bbgw_i2s_source
    python main.py
    ```
 
 2. **Verify I2S is configured:**
    ```bash
-   aplay -l | grep -i i2s
-   # Should show I2S device (snd_rpi_i2s or bcm2835)
+   aplay -l | grep -i mcasp
+   # Should show McASP I2S device (BBGW-I2S)
    ```
 
 ### Run All Performance Tests
@@ -103,7 +103,7 @@ pip install psutil requests pytest
 # Auto-skipped by default (no hardware)
 pytest tests/performance/ -v
 
-# Run on Raspberry Pi with hardware
+# Run on BeagleBone with hardware
 pytest tests/performance/ -v --run-hardware
 ```
 
@@ -172,7 +172,7 @@ pytest tests/performance/ -v --run-hardware
 **Solution:**
 ```bash
 # Start web server in separate terminal
-cd rpi_i2s_source
+cd bbgw_i2s_source
 python main.py
 
 # Verify it's running
