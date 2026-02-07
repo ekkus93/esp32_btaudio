@@ -1,0 +1,98 @@
+name: BBGW I2S Source CI
+
+on:
+  push:
+    branches: [ master, main, develop ]
+    paths:
+      - 'bbgw_i2s_source/**'
+      - '.github/workflows/bbgw_i2s_source_ci.yml'
+  pull_request:
+    branches: [ master, main, develop ]
+    paths:
+      - 'bbgw_i2s_source/**'
+      - '.github/workflows/bbgw_i2s_source_ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev
+    
+    - name: Install Python dependencies
+      working-directory: bbgw_i2s_source
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run unit tests
+      working-directory: bbgw_i2s_source
+      run: |
+        pytest tests/ -v --tb=short --ignore=tests/integration --ignore=tests/performance
+    
+    - name: Generate test coverage report
+      working-directory: bbgw_i2s_source
+      run: |
+        pip install pytest-cov
+        pytest tests/ --cov=. --cov-report=xml --cov-report=term \
+          --ignore=tests/integration --ignore=tests/performance
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./bbgw_i2s_source/coverage.xml
+        flags: unittests
+        name: bbgw-i2s-source-coverage
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort
+    
+    - name: Check code formatting with Black
+      working-directory: bbgw_i2s_source
+      run: |
+        black --check --diff .
+      continue-on-error: true
+    
+    - name: Check import sorting with isort
+      working-directory: bbgw_i2s_source
+      run: |
+        isort --check-only --diff .
+      continue-on-error: true
+    
+    - name: Lint with flake8
+      working-directory: bbgw_i2s_source
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true

@@ -1,5 +1,9 @@
 # BeagleBone Green Wireless I2S Source
 
+[![BBGW I2S Source CI](https://github.com/ekkus93/esp32_btaudio/actions/workflows/bbgw_i2s_source_ci.yml/badge.svg)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/bbgw_i2s_source_ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **I2S audio test jig for esp_bt_audio_source — BeagleBone Green Wireless port**
 
 A Python-based I2S master transmitter running on BeagleBone Green Wireless to accelerate testing of the ESP32 Bluetooth audio sink. Provides tone generation, frequency sweeps, WAV playback, and UART control—all through a web UI.
