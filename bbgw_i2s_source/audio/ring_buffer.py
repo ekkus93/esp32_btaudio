@@ -4,8 +4,8 @@ Ring Buffer for Audio Samples
 Thread-safe circular buffer implementation for storing audio samples between
 the AudioEngine (producer) and I2SDriver (consumer).
 
-Author: rpi_i2s_source
-Date: 2026-02-06
+Author: bbgw_i2s_source
+Date: 2026-02-07
 """
 
 import threading

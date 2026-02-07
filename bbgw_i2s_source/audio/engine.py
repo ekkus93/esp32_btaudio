@@ -1,5 +1,5 @@
 """
-Audio Engine for RPi I2S Source.
+Audio Engine for BeagleBone Green Wireless I2S Source.
 
 This module provides the AudioEngine class for generating audio samples to feed
 the I2S ring buffer. Supports tone generation, frequency sweeps, WAV playback,

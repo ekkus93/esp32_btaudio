@@ -3,8 +3,8 @@ Unit tests for RingBuffer class
 
 Tests FIFO behavior, overflow handling, underrun detection, and thread safety.
 
-Author: rpi_i2s_source
-Date: 2026-02-06
+Author: bbgw_i2s_source
+Date: 2026-02-07
 """
 
 import pytest
