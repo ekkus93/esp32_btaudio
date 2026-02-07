@@ -28,48 +28,48 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
 **Goal:** Understand full scope, backup code, create branch
 
 ### 1.1 Search for References
-- [ ] Search for `play_manager` references in C/H files
+- [x] Search for `play_manager` references in C/H files
   ```bash
   cd esp_bt_audio_source
   grep -r "play_manager" --include="*.c" --include="*.h"
   ```
-- [ ] Search for `PLAY` command references
+- [x] Search for `PLAY` command references
   ```bash
   grep -r "PLAY" --include="*.c" --include="*.h" | grep -i command
   ```
-- [ ] Search for `.wav` file references
+- [x] Search for `.wav` file references
   ```bash
   grep -r "\.wav" --include="*.c" --include="*.h"
   ```
-- [ ] Search for `spiffs` references
+- [x] Search for `spiffs` references
   ```bash
   grep -r "spiffs" --include="*.c" --include="*.h"
   ```
-- [ ] Search for `AUDIO_SOURCE_WAV` references
+- [x] Search for `AUDIO_SOURCE_WAV` references
   ```bash
   grep -r "AUDIO_SOURCE_WAV" --include="*.c" --include="*.h"
   ```
 
 ### 1.2 Document Findings
-- [ ] Create list of all files containing `play_manager` references
-- [ ] Create list of all files containing `PLAY` command references
-- [ ] Create list of all files containing `AUDIO_SOURCE_WAV` references
-- [ ] Create list of all test files that need modification
-- [ ] Update REMOVE_PLAY.md with any additional files discovered
+- [x] Create list of all files containing `play_manager` references
+- [x] Create list of all files containing `PLAY` command references
+- [x] Create list of all files containing `AUDIO_SOURCE_WAV` references
+- [x] Create list of all test files that need modification
+- [x] Update REMOVE_PLAY.md with any additional files discovered
 
 ### 1.3 Git Setup
-- [ ] Ensure current branch is clean (commit or stash any changes)
-- [ ] Create new branch: `git checkout -b remove-play-wav`
-- [ ] Verify branch created: `git branch --show-current`
+- [x] ~~Ensure current branch is clean (commit or stash any changes)~~ SKIPPED - working on master
+- [x] ~~Create new branch: `git checkout -b remove-play-wav`~~ SKIPPED - working on master
+- [x] ~~Verify branch created: `git branch --show-current`~~ SKIPPED - working on master
 
 ### 1.4 Establish Baseline Testing
-- [ ] Run host tests (baseline):
+- [x] Run host tests (baseline):
   ```bash
   cd test/host_test
-  python3 build_and_run_host_tests.py > baseline_host.txt
+  make test > baseline_host.txt
   ```
-- [ ] Save baseline host test results
-- [ ] Record number of passing tests in baseline
+- [x] Save baseline host test results
+- [x] Record number of passing tests in baseline (33/33 tests passed)
 - [ ] (Optional) Run component tests if hardware available:
   ```bash
   cd test/component
@@ -82,10 +82,10 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
   ```
 
 ### 1.5 Verification
-- [ ] All baseline test results saved
-- [ ] Branch `remove-play-wav` created and checked out
-- [ ] List of all files to modify documented
-- [ ] Ready to proceed with Phase 2
+- [x] All baseline test results saved (baseline_host.txt)
+- [x] ~~Branch `remove-play-wav` created and checked out~~ SKIPPED - working on master
+- [x] List of all files to modify documented (REMOVE_PLAY_FINDINGS.md)
+- [x] Ready to proceed with Phase 2
 
 ---
 
