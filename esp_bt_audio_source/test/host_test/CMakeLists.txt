@@ -112,22 +112,21 @@ add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_pro
 # Host-variant: build a native host runner for `test_audio_processor` that
 # uses light-weight host mocks for interfaces not available on the host.
 # This keeps a fast native test while exercising the high-level test logic.
-# TEMPORARILY DISABLED IN PHASE 3 - will be fixed in Phase 4.2 (remove PLAY tests)
-# add_executable(test_audio_processor ../../test/component/test_audio_processor.c
-#     mocks/mock_i2s.c
-#     mocks/test_main_wrapper.c)
-# target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component)
-# # Ensure host test sees the same public headers as device builds
-# target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
-# # Link in a dedicated host-only stub for the production audio_processor
-# # implementation. This avoids pulling in the full production source (which
-# # contains device-specific dependencies) and prevents duplicate symbol
-# # collisions with other host mocks (e.g. mock_audio_and_btstate.c).
-# target_sources(test_audio_processor PRIVATE mocks/audio_processor_host_stub.c)
-# target_sources(test_audio_processor PRIVATE mocks/nvs_storage_mock.c)
-# target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-# target_link_libraries(test_audio_processor unity m util_safe_host)
-# add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
+add_executable(test_audio_processor ../../test/component/test_audio_processor.c
+    mocks/mock_i2s.c
+    mocks/test_main_wrapper.c)
+target_include_directories(test_audio_processor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../test/component)
+# Ensure host test sees the same public headers as device builds
+target_include_directories(test_audio_processor BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+# Link in a dedicated host-only stub for the production audio_processor
+# implementation. This avoids pulling in the full production source (which
+# contains device-specific dependencies) and prevents duplicate symbol
+# collisions with other host mocks (e.g. mock_audio_and_btstate.c).
+target_sources(test_audio_processor PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_audio_processor PRIVATE mocks/nvs_storage_mock.c)
+target_compile_definitions(test_audio_processor PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_processor unity m util_safe_host)
+add_test(NAME test_audio_processor COMMAND $<TARGET_FILE:test_audio_processor>)
 
 add_executable(test_nvs_storage test_nvs_storage.c
     mocks/nvs_storage_mock.c)

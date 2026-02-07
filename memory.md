@@ -1,3 +1,68 @@
+## 2026-02-07 10:16 — ESP32 BT Audio: PLAY Command Removal - Phase 4.2 Complete, Test Suite Updated ✅
+
+**📝 Task:** Phase 4.2 complete - Updated test/component/test_audio_processor.c and re-enabled test_audio_processor suite
+
+**Timestamp:** 2026-02-07 10:16:47
+
+**Context:** PLAY command removal project - Phase 4.2 (Update test/component/test_audio_processor.c) complete
+
+**Changes Made:**
+
+1. **Removed PLAY-related test functions** (3 functions):
+   - test_audio_processor_play_allows_when_i2s_active
+   - test_audio_processor_play_disables_synth_keepalive
+   - test_audio_processor_play_busy_when_beep_active
+
+2. **Removed WAV test helper dependency**:
+   - test_beep_busy_when_wav_active (tested beep rejection when WAV active)
+
+3. **Updated test function**:
+   - Renamed test_audio_processor_start_preempts_beep_and_wav → test_audio_processor_start_preempts_beep
+   - Removed all WAV preemption code, kept only beep preemption testing
+
+4. **Removed WAV-specific test helper functions** (7 functions under CONFIG_BT_MOCK_TESTING):
+   - test_audio_processor_wav_begin_tracks_state
+   - test_audio_processor_wav_consume_requires_completion_signal
+   - test_audio_processor_wav_complete_if_idle_requires_zero_pending
+   - test_audio_processor_wav_abort_clears_state
+   - test_audio_processor_wav_abort_then_restart_resets_pending
+   - test_audio_processor_wav_to_beep_to_synth_transitions
+
+5. **Updated test execution**:
+   - Removed 11 RUN_TEST() calls for deleted PLAY/WAV functions
+   - Updated 1 RUN_TEST() call for renamed function
+
+6. **Re-enabled test suite**:
+   - Uncommented test_audio_processor build in test/host_test/CMakeLists.txt (lines 115-129)
+   - Test suite now contains 9 tests (down from 20):
+     - test_audio_processor_init
+     - test_audio_processor_set_volume
+     - test_audio_processor_volume_application
+     - test_audio_processor_read_buffer_fill
+     - test_audio_processor_beep_bypasses_mute
+     - test_audio_processor_beep_allows_when_i2s_active
+     - test_audio_processor_start_preempts_beep
+     - test_audio_processor_beep_disables_synth_keepalive
+     - test_audio_processor_beep_prefill_releases_after_delay (CONFIG_BT_MOCK_TESTING only)
+
+**Test Results:**
+- ✅ All 33 host tests passing (33/33)
+- ✅ test_audio_processor suite re-enabled and passing
+- ✅ Build successful with no errors or warnings (except pre-existing implicit declaration warning in test_commands.c)
+
+**Code Quality:**
+- File size reduced: 675 → ~415 lines (~260 lines removed)
+- Removed ~460 lines of PLAY/WAV test code
+- Clean separation of WAV playback testing from audio processor core tests
+
+**Status**: Phase 4.2 COMPLETE
+- All WAV/PLAY-related tests removed from test/component/test_audio_processor.c
+- Test suite re-enabled in CMakeLists.txt
+- All host tests passing (33/33)
+- Ready to proceed with Phase 4.3 (Update test/test_app_audio/main/audio_processor_test.c)
+
+---
+
 ## 2026-02-07 09:14 — ESP32 BT Audio: PLAY Command Removal - Phase 2 Complete, All Tests Passing ✅
 
 **📝 Task:** Phase 2 complete with full test validation (404 tests passing)
