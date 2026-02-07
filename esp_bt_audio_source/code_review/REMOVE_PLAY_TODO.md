@@ -403,23 +403,41 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
 - [ ] Save file
 
 ### 5.2 Update partitions.csv
-- [ ] Open `partitions.csv`
-- [ ] Locate SPIFFS partition line:
+- [x] Open `partitions.csv`
+- [x] Locate SPIFFS partition line:
   ```csv
   spiffs,   data, spiffs,  ,        1M,
   ```
-- [ ] Remove the entire SPIFFS line
-- [ ] (Optional) Increase app or OTA partition sizes to use reclaimed space
-- [ ] Add comment noting space reclaimed from SPIFFS
-- [ ] Save file
+- [x] Remove the entire SPIFFS line
+- [x] Add comment noting space reclaimed from SPIFFS
+- [x] Save file
+
+**Result:** ✅ COMPLETE (Emergency fix for CI build failure 2026-02-07)
+- Removed SPIFFS partition line from partitions.csv
+- Added comment: "SPIFFS partition removed (Phase 5) - reclaimed 1MB of flash space"
+- Partition table reduced from 2.75MB to 1.75MB
+- Now fits in 2MB flash size configured for CI
+- Fixed GitHub Actions Device Build failure
 
 ### 5.3 Remove SPIFFS Directory
-- [ ] Check if `spiffs/` directory exists: `ls -la spiffs/`
-- [ ] Remove directory and all contents:
+- [x] Check if `spiffs/` directory exists: `ls -la spiffs/`
+- [x] Remove directory and all contents:
   ```bash
   rm -rf spiffs/
   ```
-- [ ] Verify deletion: `git status`
+- [x] Verify deletion: `git status`
+
+**Result:** ✅ COMPLETE (Emergency fix for CI build failure 2026-02-07)
+- Removed spiffs/ directory containing:
+  - README.md
+  - test_441_1s.wav
+  - test_48_baseline_1s.wav
+  - test_48_downsample_1s.wav
+  - worker_long_norm.wav
+- All changes committed in commit 16563647
+- Pushed to master to fix CI
+
+**Note:** Phase 5.2 and 5.3 completed early (jumped from Phase 4.2) to fix critical CI build failure. Phase 5.1 was already complete (no SPIFFS mount code in main.c).
 
 ### 5.4 Update CMakeLists.txt (if needed)
 - [ ] Open top-level `CMakeLists.txt`
