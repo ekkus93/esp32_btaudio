@@ -1,3 +1,140 @@
+## 2026-02-07 04:23 — BBGW Port: Phase 3.5 Integration Testing (Software Ready) ✅
+
+**📝 Task:** Created integration test orchestration infrastructure and comprehensive documentation
+
+**Timestamp:** 2026-02-07 04:23:00
+
+**Context:** Phase 3.5 of BBGW port - Integration testing orchestration for end-to-end system validation
+
+**Phase 3.5 Deliverables:**
+
+1. **run_integration_tests.py** (439 lines, executable)
+   - IntegrationTestRunner class for orchestrating integration test execution
+   - 3 test suites:
+     - **quick** (5 minutes):
+       - test_i2s_pipeline.py::test_tone_to_bluetooth
+       - test_uart_resilience.py::test_uart_command_resilience
+       - Purpose: Basic functionality validation
+     - **full** (30 minutes):
+       - All test_i2s_pipeline.py tests
+       - All test_uart_resilience.py tests
+       - test_long_duration.py::test_five_minute_baseline
+       - Purpose: Complete system validation
+     - **stability** (1-24 hours configurable):
+       - test_long_duration.py::test_one_hour_stability
+       - Purpose: Extended operation validation
+   - Hardware validation (5 automated checks):
+     1. UART device /dev/ttyO4 exists
+     2. ALSA I2S device detected (BBGW-I2S or card 0)
+     3. Web server running on localhost:5000
+     4. psutil installed (optional, warning only)
+     5. pytest installed and working
+   - Command-line interface:
+     - --suite {quick|full|stability}: Test suite selection
+     - --duration N: Hours for stability tests (default 1)
+     - --list: List all available tests
+     - --verbose: Enable verbose output
+   - Features:
+     - Automated hardware prerequisite validation
+     - pytest orchestration with proper arguments
+     - Environment variable support for test duration
+     - Real-time test progress display
+     - Result reporting with elapsed time and exit codes
+
+2. **docs/INTEGRATION_TEST_SETUP_BBGW.md** (596 lines)
+   - Complete integration testing setup and execution guide
+   - Sections:
+     - Test suites overview (quick, full, stability)
+     - Hardware requirements:
+       - BeagleBone Green Wireless (OS, overlays, power, network)
+       - ESP32 development board (firmware, Bluetooth, power)
+       - Bluetooth speaker (paired, powered, volume)
+       - Physical connections (I2S wiring diagram, UART diagram)
+     - Software prerequisites (system packages, Python dependencies, overlays)
+     - Complete system setup (4-step process):
+       1. Prepare BeagleBone (SSH, project, verify overlays)
+       2. Prepare ESP32 (power, firmware, Bluetooth paired)
+       3. Start Flask web server (foreground or background)
+       4. Verify web server (curl localhost, LAN access)
+     - Running integration tests:
+       - Quick start commands
+       - Test suite commands (quick, full, stability, extended)
+       - Manual test execution (individual tests, markers)
+     - Test suite descriptions (duration, tests included, success criteria)
+     - Expected results (example output for quick, stability tests)
+     - Troubleshooting (6 common issues + solutions):
+       1. Hardware validation fails (DT overlay, I2S, UART)
+       2. Web server not running (Flask start, port conflict, firewall)
+       3. Tests skipped "Hardware not ready" (ESP32, BT, wiring)
+       4. High underrun rate >0.1% (CPU load, buffer size, governor)
+       5. Memory usage grows continuously (leaks, profiling, restart)
+       6. No audio output (speaker volume, BT pairing, I2S signals)
+     - Success validation checklist (hardware, software, test suites)
+     - Final acceptance criteria (5 requirements)
+     - Next steps (documentation, tuning, deployment, extended testing)
+
+**Integration Test Discovery:**
+- Found existing integration tests in tests/integration/ (already updated for BBGW in Phase 3.1):
+  - test_i2s_pipeline.py (301 lines) - End-to-end I2S pipeline validation
+  - test_long_duration.py (262 lines) - 1-hour and 24-hour stability tests
+  - test_uart_resilience.py - UART resilience testing
+  - conftest.py - Test configuration and markers
+  - README.md (212 lines) - Integration test overview
+
+**Key Features:**
+- Leverages existing integration tests (no new test creation needed)
+- Unified test runner for ease of execution
+- Automated hardware validation before test execution
+- Three validation levels (quick, full, stability)
+- Comprehensive troubleshooting guide
+- Clear success criteria and acceptance checklist
+
+**Test Runner Usage:**
+```bash
+# List available tests
+./run_integration_tests.py --list
+
+# Quick validation (5 minutes)
+./run_integration_tests.py --suite quick
+
+# Full integration (30 minutes)
+./run_integration_tests.py --suite full
+
+# 1-hour stability test
+./run_integration_tests.py --suite stability --duration 1
+
+# 24-hour stability test
+./run_integration_tests.py --suite stability --duration 24
+```
+
+**Performance Metrics Monitored:**
+- I2S buffer fill level
+- Buffer underruns (count and rate)
+- CPU usage (system and process)
+- Memory usage (RSS, VMS)
+- Web server responsiveness
+- Success threshold: <0.1% underruns, stable CPU/memory
+
+**Time Tracking:**
+- Estimated: 3-4 hours
+- Actual: 1.0 hours (discovered existing tests, created runner + docs)
+- Efficiency: Reused Phase 3.1 integration test updates
+
+**Phase 3 Testing and Validation Status:**
+- Phase 3.1 Unit Tests: ✅ Complete (559be049)
+- Phase 3.2 Milestone 1 I2S: ✅ Complete (b565fd57)
+- Phase 3.3 Milestone 2 UART: ✅ Complete (beaae97c)
+- Phase 3.4 Milestone 3 Web UI: ✅ Complete (505c3d66)
+- Phase 3.5 Integration Testing: ✅ Complete (pending commit)
+
+**Overall BBGW Port Progress:**
+- Phase 0-2: Complete (12.8 hours)
+- Phase 3.1-3.5: Complete (4.5 hours, pending commit for 3.5)
+- Total: ~17.3 hours of 20-30 hours (~58% complete)
+- Remaining: Phase 4 Documentation, Phase 5 Deployment
+
+---
+
 ## 2026-02-07 04:15 — BBGW Port: Phase 3.4 Milestone 3 Flask Web UI (Software Ready) 🌐
 
 **📝 Task:** Created Milestone 3 test script and comprehensive web UI hardware setup documentation
