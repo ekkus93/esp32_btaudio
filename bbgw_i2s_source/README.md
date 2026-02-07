@@ -295,7 +295,7 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 
 ### Additional Documentation
 - [docs/TODO.md](docs/TODO.md) — Port task list and progress tracking
-- [docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md) — Common issues and solutions (coming soon)
+- **[docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md)** — Common issues and solutions
 
 ---
 
@@ -311,7 +311,7 @@ Tests web UI accessibility, API endpoints, tone latency, SSE stream.
 3. Check McASP configuration: `cat /boot/uEnv.txt | grep mcasp`
 4. Test ALSA playback: `aplay -D hw:0,0 /usr/share/sounds/alsa/Front_Center.wav`
 
-**Fix:** See [docs/HARDWARE_SETUP_BBGW.md](docs/HARDWARE_SETUP_BBGW.md) Section 5 (Troubleshooting) for detailed solutions.
+**Fix:** See [docs/TROUBLESHOOTING_BBGW.md](docs/TROUBLESHOOTING_BBGW.md) or [docs/HARDWARE_SETUP_BBGW.md](docs/HARDWARE_SETUP_BBGW.md) Section 5 for detailed solutions.
 
 ### UART Not Working
 

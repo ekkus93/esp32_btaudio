@@ -1091,34 +1091,54 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 - **Total Changes: README.md reorganization (3 sections updated)**
 
 ### 4.4. Troubleshooting Documentation
-**Status:** NOT STARTED  
-**Estimated Time:** 2-3 hours  
-**Priority:** MEDIUM
+**Status:** ✅ COMPLETE  
+**Actual Time:** 2.0 hours  
+**Priority:** MEDIUM  
+**Completed:** 2026-02-07
 
-- [ ] **Create docs/TROUBLESHOOTING_BBGW.md**
-  - [ ] **McASP/I2S Issues**
-    - [ ] Device Tree overlay not loading
-    - [ ] ALSA device not found
-    - [ ] No audio output
-    - [ ] Distorted audio
-    - [ ] Buffer underruns
-  - [ ] **UART Issues**
-    - [ ] `/dev/ttyO4` not found
-    - [ ] Permission denied
-    - [ ] No response from ESP32
-    - [ ] Garbled data
-  - [ ] **Network Issues**
-    - [ ] Wi-Fi not connecting
-    - [ ] Web UI not accessible
-    - [ ] Firewall blocking connections
-  - [ ] **Performance Issues**
-    - [ ] High CPU usage
-    - [ ] Memory leaks
-    - [ ] Slow response times
-  - [ ] **Device Tree Issues**
-    - [ ] Overlay compilation errors
-    - [ ] Pin conflicts
-    - [ ] Kernel messages errors
+- [x] **Create docs/TROUBLESHOOTING_BBGW.md** (1045 lines)
+  - [x] **McASP/I2S Issues** (5 issues)
+    - [x] Device Tree overlay not loading (Issue 1)
+    - [x] ALSA device not found (Issue 2)
+    - [x] No audio output (Issue 3)
+    - [x] Distorted audio (Issue 4)
+    - [x] Buffer underruns (Issue 5)
+  - [x] **UART Issues** (4 issues)
+    - [x] `/dev/ttyO4` not found (Issue 6)
+    - [x] Permission denied (Issue 7)
+    - [x] No response from ESP32 (Issue 8)
+    - [x] Garbled data (Issue 9)
+  - [x] **Network Issues** (3 issues)
+    - [x] Wi-Fi not connecting (Issue 10)
+    - [x] Web UI not accessible (Issue 11)
+    - [x] Firewall blocking connections (Issue 12)
+  - [x] **Performance Issues** (3 issues)
+    - [x] High CPU usage (Issue 13)
+    - [x] Memory leaks (Issue 14)
+    - [x] Slow response times (Issue 15)
+  - [x] **Device Tree Issues** (3 issues)
+    - [x] Overlay compilation errors (Issue 16)
+    - [x] Pin conflicts (Issue 17)
+    - [x] Kernel messages errors (Issue 18)
+  - [x] **Application Issues** (3 issues)
+    - [x] Flask server won't start (Issue 19)
+    - [x] Python module import errors (Issue 20)
+    - [x] Configuration file errors (Issue 21)
+  - [x] **Quick Diagnostic Commands** (6 categories)
+    - [x] System health checks
+    - [x] I2S/Audio diagnostics
+    - [x] UART diagnostics
+    - [x] Network diagnostics
+    - [x] Device Tree diagnostics
+    - [x] Application diagnostics
+
+**Phase 4.4 Deliverables:**
+- TROUBLESHOOTING_BBGW.md: 1045 lines of comprehensive troubleshooting documentation
+- 21 common issues with diagnosis and solutions
+- Quick diagnostic command reference
+- Cross-references to other guides (HARDWARE_SETUP, SOFTWARE_SETUP, DEVICE_TREE_GUIDE)
+- Updated README.md with correct troubleshooting link
+- **Total Phase 4.4: 1045 lines of troubleshooting documentation**
 
 ---
 

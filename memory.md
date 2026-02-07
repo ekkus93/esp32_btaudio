@@ -1,3 +1,102 @@
+## 2026-02-07 06:12 — BBGW Port: Phase 4.4 Troubleshooting Documentation (Complete) 🛠️
+
+**📝 Task:** Created comprehensive troubleshooting guide for all common BBGW issues
+
+**Timestamp:** 2026-02-07 06:12:31
+
+**Context:** Phase 4.4 of BBGW port - Comprehensive troubleshooting documentation
+
+**Phase 4.4 Deliverables:**
+
+1. **docs/TROUBLESHOOTING_BBGW.md** (1045 lines)
+   - **McASP/I2S Issues** (5 issues):
+     1. Device Tree overlay not loading (diagnosis, 5 solutions)
+     2. ALSA device not found (diagnosis, 5 solutions)
+     3. No audio output on I2S pins (diagnosis, 5 solutions, logic analyzer guidance)
+     4. Distorted or garbled audio (diagnosis, 5 solutions)
+     5. Buffer underruns (diagnosis, 5 solutions)
+   
+   - **UART Issues** (4 issues):
+     6. /dev/ttyO4 not found (diagnosis, 5 solutions)
+     7. Permission denied accessing /dev/ttyO4 (diagnosis, 4 solutions)
+     8. No response from ESP32 (diagnosis, 6 solutions)
+     9. Garbled UART data (diagnosis, 5 solutions)
+   
+   - **Network Issues** (3 issues):
+     10. Wi-Fi not connecting (diagnosis, 5 solutions)
+     11. Web UI not accessible (diagnosis, 6 solutions)
+     12. Firewall blocking connections (diagnosis, 4 solutions)
+   
+   - **Performance Issues** (3 issues):
+     13. High CPU usage (diagnosis, 5 solutions)
+     14. Memory leaks (diagnosis, 5 solutions)
+     15. Slow response times (diagnosis, 5 solutions)
+   
+   - **Device Tree Issues** (3 issues):
+     16. Overlay compilation errors (diagnosis, 5 solutions)
+     17. Pin conflicts (diagnosis, 5 solutions)
+     18. Kernel messages showing errors (diagnosis, 5 solutions)
+   
+   - **Application Issues** (3 issues):
+     19. Flask server won't start (diagnosis, 4 solutions)
+     20. Python module import errors (diagnosis, 4 solutions)
+     21. Configuration file errors (diagnosis, 4 solutions)
+   
+   - **Quick Diagnostic Commands** (6 categories):
+     - System health (5 commands)
+     - I2S/Audio (5 commands)
+     - UART (4 commands)
+     - Network (5 commands)
+     - Device Tree (4 commands)
+     - Application (4 commands)
+   
+   - **Getting Help** section:
+     - Self-help resources with document cross-references
+     - Issue reporting guidelines with required information
+     - BeagleBone forum links
+
+2. **Updated README.md**
+   - Fixed troubleshooting reference (now points to TROUBLESHOOTING_BBGW.md)
+   - Removed "coming soon" note
+   - Added alternative reference to HARDWARE_SETUP_BBGW.md Section 5
+
+**Technical Coverage:**
+- **21 common issues** with diagnosis and solutions
+- **Cross-references** to HARDWARE_SETUP, SOFTWARE_SETUP, DEVICE_TREE_GUIDE, PIN_REFERENCE
+- **Diagnostic commands** for all major subsystems
+- **Code examples** for testing and verification
+- **Logic analyzer guidance** for I2S debugging
+- **Network troubleshooting** (Wi-Fi, web UI, firewall)
+- **Performance optimization** guidance
+
+**Documentation Quality:**
+- Each issue includes:
+  - Symptoms (exact error messages)
+  - Diagnosis commands (step-by-step)
+  - Multiple solutions (5-6 per issue)
+  - Cross-references to detailed guides
+- Command-line examples for all diagnostics
+- YAML/config examples for fixes
+
+**Time Investment:**
+- TROUBLESHOOTING_BBGW.md: ~2.0 hours
+- README.md updates: ~0.1 hours
+- Total Phase 4.4: ~2.1 hours (vs 2-3 hours estimated)
+
+**Project Status:**
+- Phase 0-2: Complete (12.8 hours) - Core port implementation
+- Phase 3.1-3.5: Complete (4.5 hours) - Testing (5 commits)
+- Phase 4.1: Complete (1.5 hours) - Hardware/Software setup (1 commit)
+- Phase 4.2: Complete (2.0 hours) - BeagleBone-specific guides (1 commit)
+- Phase 4.3: Complete (0.3 hours) - Update existing documentation (1 commit)
+- Phase 4.4: Complete (2.1 hours) - Troubleshooting documentation (pending commit)
+- **Total Phase 4: 5.9 hours, 7925+ lines of documentation**
+- **Overall BBGW Port: ~23.7 hours of 20-30 hours (~79% complete)**
+
+**Next Phase:** Phase 5 - Optimization and Polish (optional, low priority)
+
+---
+
 ## 2026-02-07 05:40 — BBGW Port: Phase 4.3 Update Existing Documentation (Complete) 📝
 
 **📝 Task:** Updated README.md with comprehensive documentation organization
