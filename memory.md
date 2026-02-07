@@ -1,3 +1,143 @@
+## 2026-02-07 04:40 — BBGW Port: Phase 4.1 Hardware Setup Guides (Documentation Complete) 📚
+
+**📝 Task:** Created comprehensive hardware and software setup guides consolidating all configuration information
+
+**Timestamp:** 2026-02-07 04:40:00
+
+**Context:** Phase 4.1 of BBGW port - Documentation phase for hardware and software setup
+
+**Phase 4.1 Deliverables:**
+
+1. **docs/HARDWARE_SETUP_BBGW.md** (829 lines)
+   - Comprehensive hardware configuration guide
+   - System architecture diagram (BBGW → ESP32 → Bluetooth speaker)
+   - Hardware components and requirements:
+     - BeagleBone Green Wireless (AM335x, 512 MB, Debian 11+)
+     - ESP32 development board (esp_bt_audio_source firmware)
+     - Bluetooth speaker (paired with ESP32)
+     - Wiring and accessories (jumper wires, breadboard, logic analyzer optional)
+   - Device Tree overlay configuration:
+     - BB-BBGW-I2S-00A0.dtbo (McASP I2S on P9.31/29/28)
+     - BB-BBGW-UART4-00A0.dtbo (UART4 on P9.13/11)
+     - /boot/uEnv.txt configuration
+     - Installation and verification procedures
+   - Physical wiring:
+     - I2S connections (BCLK, WS, DOUT, GND)
+     - UART connections (TX/RX crossover, GND)
+     - Complete wiring diagrams and pin tables
+     - Wiring checklist and best practices
+   - Hardware verification (5-step process):
+     - Device Tree overlay verification
+     - I2S output testing
+     - UART communication testing
+     - ESP32 firmware verification
+     - End-to-end system test
+   - Comprehensive troubleshooting:
+     - I2S issues (no device, signals, distorted audio)
+     - UART issues (device not found, permissions, no response)
+     - General issues (inconsistent behavior, system freezes)
+   - Complete pin reference (P9 header + ESP32)
+   - Success criteria checklist
+
+2. **docs/SOFTWARE_SETUP_BBGW.md** (1005 lines)
+   - Complete software installation and configuration guide
+   - System requirements (OS, storage, memory, network)
+   - System package installation:
+     - Core packages (build-essential, git, curl, vim, screen)
+     - ALSA packages (alsa-utils, libasound2, libasound2-dev)
+     - Python 3 (python3, pip, dev, venv)
+     - Device Tree compiler
+     - Serial tools (minicom, screen optional)
+   - Python environment setup:
+     - pip upgrade
+     - Core dependencies (pyalsaaudio, pyserial, flask, flask-cors, pyyaml)
+     - Testing dependencies (pytest, pytest-timeout, psutil, requests)
+     - Package verification procedures
+     - Virtual environment setup (optional)
+   - Project installation:
+     - Git clone from repository
+     - File transfer alternative (tarball + scp)
+     - Project structure verification
+     - File permissions (executable scripts)
+   - Configuration:
+     - config.yaml creation from template
+     - Sample configuration with all options
+     - Configuration verification
+     - User permissions (audio, dialout groups)
+   - ESP32 firmware setup:
+     - Firmware flashing on development machine
+     - Bluetooth speaker pairing
+     - UART verification
+   - Software verification:
+     - ALSA I2S testing
+     - Python audio module testing
+     - Python UART module testing
+     - Flask web UI testing
+     - Milestone test execution
+   - Comprehensive troubleshooting:
+     - Python package issues (externally-managed-environment, import failures)
+     - Configuration issues (config.yaml not found, ALSA device)
+     - Permission issues (UART, ALSA)
+     - Flask web UI issues (port conflicts, LAN access)
+   - Success criteria checklist
+
+**Documentation Strategy:**
+- Comprehensive guides consolidate essential information from milestone guides
+- HARDWARE_SETUP_BBGW.md: Hardware configuration reference
+- SOFTWARE_SETUP_BBGW.md: Software installation reference
+- Cross-references to detailed milestone guides for step-by-step procedures
+- Quick-start focus with troubleshooting for common issues
+
+**Milestone Guides (Already Exist from Phases 3.2-3.4):**
+- MILESTONE1_HARDWARE_SETUP_BBGW.md (658 lines) - I2S detailed setup
+- MILESTONE2_HARDWARE_SETUP_BBGW.md (807 lines) - UART detailed setup
+- MILESTONE3_HARDWARE_SETUP_BBGW.md (908 lines) - Web UI detailed setup
+- Total milestone documentation: 2373 lines
+
+**Key Features:**
+- **HARDWARE_SETUP_BBGW.md:**
+  - System architecture diagram
+  - Device Tree overlay step-by-step setup
+  - Complete wiring diagrams with pin tables
+  - 5-step hardware verification process
+  - Troubleshooting for I2S, UART, general issues
+  - P9 header and ESP32 pin reference
+
+- **SOFTWARE_SETUP_BBGW.md:**
+  - Complete package installation procedures
+  - Python environment with all dependencies
+  - Project installation options (Git, tarball)
+  - Comprehensive config.yaml setup
+  - ESP32 firmware flashing guide
+  - Software verification procedures
+  - Success criteria for software readiness
+
+**Documentation Coverage:**
+- Phase 4.1 New Guides: 1834 lines
+- Milestone Guides (Phases 3.2-3.4): 2373 lines
+- Integration Test Guide (Phase 3.5): 596 lines
+- **Total Setup Documentation: 4803 lines**
+
+**Time Tracking:**
+- Estimated: 4-5 hours
+- Actual: 1.5 hours (leveraged existing milestone documentation)
+- Efficiency: Consolidation approach reduced time significantly
+
+**Phase 4 Documentation Status:**
+- Phase 4.1 Hardware Setup Guides: ✅ Complete (this entry)
+- Phase 4.2 BeagleBone-Specific Guides: ⏳ Not Started
+- Phase 4.3 Update Existing Documentation: ⏳ Not Started
+- Phase 4.4 Troubleshooting Documentation: ⏳ Not Started
+
+**Overall BBGW Port Progress:**
+- Phase 0-2: Complete (12.8 hours)
+- Phase 3.1-3.5: Complete (4.5 hours)
+- Phase 4.1: Complete (1.5 hours)
+- Total: ~18.8 hours of 20-30 hours (~63% complete)
+- Remaining: Phase 4.2-4.4 Documentation, Phase 5 Deployment
+
+---
+
 ## 2026-02-07 04:23 — BBGW Port: Phase 3.5 Integration Testing (Software Ready) ✅
 
 **📝 Task:** Created integration test orchestration infrastructure and comprehensive documentation
