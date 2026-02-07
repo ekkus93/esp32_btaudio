@@ -82,6 +82,108 @@
 
 ---
 
+## 2026-02-07 03:09 — BBGW Port: Phase 2.4 GPIO Adaptations Assessment
+
+**📝 Task:** Assessed whether GPIO adaptations are needed for BBGW port
+
+**Timestamp:** 2026-02-07 03:09:42  
+**Status:** ✅ SKIPPED (Not Needed)  
+**Actual Time:** 0.1 hours (assessment only)
+
+**Assessment Results:**
+**GPIO adaptations are NOT needed for the BBGW port.**
+
+### Evidence:
+
+1. **rpi_i2s_source Architecture:**
+   - Uses ALSA (Advanced Linux Sound Architecture) for I2S
+   - Confirmed in requirements.txt: `pyalsaaudio` listed (commented)
+   - I2S driver (audio/i2s_driver.py) uses alsaaudio.PCM API
+   - No GPIO control libraries (RPi.GPIO, gpiozero) imported
+   - Searched rpi_i2s_source: 0 matches for "import.*GPIO" or "RPi.GPIO"
+
+2. **GPIO References Analysis:**
+   - Searched rpi_i2s_source: 47+ matches for "gpio", ALL configuration-only
+   - GPIO pins (gpio_bclk, gpio_ws, gpio_dout) were documentation/mapping only
+   - Used in config/manager.py DEFAULT_CONFIG as pin numbers
+   - No actual GPIO control code found (no setup(), output(), input() calls)
+   - Phase 2.3 already removed ALL GPIO config from ConfigManager
+
+3. **BBGW Hardware Peripherals:**
+   - **I2S:** McASP0 hardware via Device Tree overlay (Phase 1.1)
+     - Pins: P9.31 (BCLK), P9.29 (WS), P9.28 (DOUT)
+     - McASP driver handles all pin control automatically in kernel
+     - No user-space GPIO control needed
+   - **UART:** UART4 kernel driver via Device Tree overlay (Phase 1.2)
+     - Pins: P9.11 (RXD), P9.13 (TXD)
+     - UART driver handles pin control automatically in kernel
+     - No user-space GPIO control needed
+
+4. **Remaining GPIO References:**
+   - Found in bbgw_i2s_source: 19 matches (all documentation)
+   - ESP32 GPIO pin numbers in comments (GPIO26/25/22 for I2S)
+   - ESP32 GPIO pin numbers in comments (GPIO16/17 for UART)
+   - These are correct wiring references, not BBGW GPIO control
+   - Also found in config/manager.py docstrings (legacy examples)
+
+### Technical Comparison:
+
+**RPi I2S Approach:**
+- Uses ALSA drivers (kernel snd_bcm2835 module)
+- GPIO config values (gpio_bclk/ws/dout) were for hardware documentation only
+- Device Tree overlay (/boot/overlays/i2s-mmap.dtbo) configures pins
+- No manual GPIO control required in user-space
+- ALSA API provides abstraction over hardware
+
+**BBGW I2S Approach:**
+- Uses ALSA drivers (kernel snd_soc_davinci_mcasp module)
+- Device Tree overlay (BB-BBGW-I2S-00A0.dtbo) configures pins
+- No manual GPIO control required in user-space
+- ALSA API provides abstraction over hardware
+
+**Identical Pattern:** Both platforms use kernel drivers for peripherals; no user-space GPIO control.
+
+### Decision:
+**Phase 2.4 skipped.** No GPIO adaptations needed because:
+1. Source project doesn't use GPIO control (uses ALSA drivers)
+2. Target platform uses hardware peripherals (McASP, UART via Device Tree)
+3. All pin configuration handled by Device Tree overlays at boot
+4. User-space code only interfaces via ALSA/serial APIs
+5. No libraries like Adafruit_BBIO or python-periphery required
+
+**Future Considerations:**
+If future features require GPIO (e.g., LEDs, buttons, sensors):
+1. Install Adafruit_BBIO: `pip install Adafruit_BBIO`
+2. Or use python-periphery: `pip install python-periphery` (more modern, kernel GPIO subsystem)
+3. Or use libgpiod bindings: `pip install gpiod` (current best practice)
+4. Create gpio_wrapper.py for abstraction
+5. Use P8/P9 pin naming (e.g., "P9.12") for Adafruit_BBIO
+6. Or use GPIO chip/line numbers for python-periphery/libgpiod
+
+**Design Philosophy:**
+- Keep code hardware-agnostic using kernel driver APIs
+- Only add GPIO control when application logic requires it
+- Device Tree handles all pin muxing and peripheral initialization
+- User-space code should not manage hardware configuration
+
+### Files Reviewed:
+- rpi_i2s_source/requirements.txt (no GPIO libraries)
+- rpi_i2s_source/audio/i2s_driver.py (uses alsaaudio, not GPIO)
+- rpi_i2s_source/config/manager.py (GPIO config only, no control code)
+- bbgw_i2s_source/config/manager.py (GPIO config removed in Phase 2.3)
+- bbgw_i2s_source/overlays/BB-BBGW-I2S-00A0.dts (McASP pin muxing)
+- bbgw_i2s_source/overlays/BB-BBGW-UART4-00A0.dts (UART4 pin muxing)
+
+### TODO.md Updated:
+- Phase 2.4 marked as "✅ SKIPPED (Not Needed)"
+- Added comprehensive rationale with 4 evidence points
+- Documented technical comparison (RPi vs BBGW)
+- Added future GPIO considerations if needed
+
+**Outcome:** Phase 2.4 complete (assessment confirms no work needed). Ready for Phase 2.5.
+
+---
+
 ## 2026-02-07 02:58 — BBGW Port: Phase 2.2 UART Driver Adaptation Complete
 
 **📝 Task:** Adapted UART command manager for BeagleBone Green Wireless UART4
