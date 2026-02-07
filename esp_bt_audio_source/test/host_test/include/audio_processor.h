@@ -92,7 +92,5 @@ static inline esp_err_t audio_processor_start(void) { return ESP_OK; }
 static inline esp_err_t audio_processor_deinit(void) { return ESP_OK; }
 static inline esp_err_t audio_processor_stop(void) { return ESP_OK; }
 static inline void audio_processor_set_synth_mode(bool enable) { (void)enable; }
-static inline void audio_processor_test_wav_begin(void) {}
-static inline void audio_processor_test_wav_abort(void) {}
 
 #endif /* _AUDIO_PROCESSOR_H_ */

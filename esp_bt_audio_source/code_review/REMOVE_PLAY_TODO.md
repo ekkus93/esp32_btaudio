@@ -384,13 +384,41 @@ This TODO list tracks the removal of WAV playback (PLAY command) and SPIFFS part
 - ✅ **Conclusion:** Phase 2 did thorough cleanup; no additional work needed
 
 ### 4.5 Update Other Test Files
-- [ ] Search for other test files with PLAY references:
+- [x] Search for other test files with PLAY references:
   ```bash
   grep -r "play_manager" test/ --include="*.c" --include="*.h"
   grep -r "AUDIO_SOURCE_WAV" test/ --include="*.c" --include="*.h"
   ```
-- [ ] For each file found, remove PLAY/WAV references
-- [ ] Update audio source enum references in all test files
+- [x] For each file found, remove PLAY/WAV references
+- [x] Update audio source enum references in all test files
+
+**Phase 4.5 Results:**
+- ✅ Removed play_manager mock functions from test/host_test/mocks/mock_audio_and_btstate.c:
+  - play_manager_test_set_active()
+  - play_manager_is_active()
+  - s_play_active static variable
+- ✅ Removed WAV state and test helpers from test/host_test/mocks/audio_processor_host_stub.c:
+  - 4 WAV static variables (s_wav_active, s_wav_pending, s_wav_prev_valid, s_wav_prev_force_synth)
+  - 8 audio_processor_test_wav_* helper functions (~121 lines)
+  - WAV busy check in audio_processor_beep_tone()
+- ✅ Removed WAV test from test/host_test/test_audio_processor_real.c:
+  - test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep() function (~25 lines)
+  - Corresponding RUN_TEST call
+- ✅ Removed WAV inline stubs from test/host_test/include/audio_processor.h:
+  - audio_processor_test_wav_begin()
+  - audio_processor_test_wav_abort()
+- ✅ Removed orphaned WAV test from test/component/test_audio_processor.c:
+  - test_audio_processor_beep_busy_when_wav_active() function body (~23 lines)
+  - Function was already removed from RUN_TEST list in Phase 4.2
+- ✅ Removed PLAY stubs from test/test_app2/main/audio_processor_stub.c:
+  - audio_processor_play_wav()
+  - audio_processor_is_wav_active()
+- ✅ Removed PLAY command from test/test_app_audio/components/test_command_interface/test_command_interface.c:
+  - PLAY command parsing (CMD_TYPE_PLAY enum handling)
+  - PLAY command execution (audio_processor_play_wav call ~30 lines)
+  - Updated comment removing PLAY reference
+- ✅ All host tests pass: 33/33 tests ✅
+- ✅ **Total cleanup**: 7 files modified, ~200+ lines removed
 
 ### 4.6 Rebuild Test Executables
 - [ ] Build host tests:

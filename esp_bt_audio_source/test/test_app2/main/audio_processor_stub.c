@@ -119,14 +119,6 @@ esp_err_t __attribute__((weak)) audio_processor_set_sample_rate(audio_sample_rat
 // invokes higher-level audio_processor helpers that are not needed in
 // the unit-test firmware.
 
-esp_err_t __attribute__((weak)) audio_processor_play_wav(const char *path)
-{
-    AUDIO_PROC_STUB2_LOG_ONCE();
-    (void)path;
-    /* No-op in tests */
-    return ESP_OK;
-}
-
 /* The public header declares this as `void audio_processor_enable_next_beep_diag(void)`
  * so provide the exact signature expected by production code. The test harness
  * doesn't need a return code here.
@@ -205,12 +197,6 @@ __attribute__((used, weak)) bool audio_processor_is_i2s_active(void)
 }
 
 __attribute__((used, weak)) bool audio_processor_is_beep_active(void)
-{
-    AUDIO_PROC_STUB2_LOG_ONCE();
-    return false;
-}
-
-__attribute__((used, weak)) bool audio_processor_is_wav_active(void)
 {
     AUDIO_PROC_STUB2_LOG_ONCE();
     return false;

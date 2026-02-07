@@ -24,7 +24,6 @@ static bool s_beep_active = false;
 static int s_start_audio_calls = 0;
 static int s_last_conn_state = -1;
 static int s_last_audio_state = -1;
-static bool s_play_active = false;
 
 void bt_manager_test_reset_btstate_mock(void) {
     s_mock_connected = 0;
@@ -32,7 +31,6 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_start_audio_calls = 0;
     s_last_conn_state = -1;
     s_last_audio_state = -1;
-    s_play_active = false;
 }
 
 void bt_manager_test_set_connection_state(int v) {
@@ -89,14 +87,6 @@ int bt_manager_test_get_last_conn_state(void) {
 
 int bt_manager_test_get_last_audio_state(void) {
     return s_last_audio_state;
-}
-
-void play_manager_test_set_active(bool active) {
-    s_play_active = active;
-}
-
-__attribute__((weak)) bool play_manager_is_active(void) {
-    return s_play_active;
 }
 
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */

@@ -30,10 +30,6 @@ static audio_bit_depth_t s_bit_depth = AUDIO_BIT_DEPTH_16;
 static audio_channel_t s_channels = AUDIO_CHANNEL_STEREO;
 static bool s_beep_active = false;
 static bool s_synth_mode = true;
-static bool s_wav_active = false;
-static size_t s_wav_pending = 0;
-static bool s_wav_prev_valid = false;
-static bool s_wav_prev_force_synth = false;
 static uint32_t s_last_beep_duration_ms = 0;
 static double s_last_beep_freq_hz = 0.0;
 static size_t s_tag_used = 0;
@@ -92,10 +88,6 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     s_running = false;
     /* Reset transient playback state so host tests start from a clean slate. */
     s_beep_active = false;
-    s_wav_active = false;
-    s_wav_pending = 0;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
     s_ring_len = 0;
     return ESP_OK;
 }
@@ -106,10 +98,6 @@ esp_err_t audio_processor_deinit(void)
     s_running = false;
     s_synth_mode = true;
     s_beep_active = false;
-    s_wav_active = false;
-    s_wav_pending = 0;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
     s_ring_len = 0;
     return ESP_OK;
 }
@@ -122,11 +110,7 @@ esp_err_t audio_processor_start(void)
         s_synth_mode = true;
     }
     /* Starting the processor preempts any pending host-side playback so
-     * tests that seed WAV/beep state observe a clean transition. */
-    s_wav_active = false;
-    s_wav_pending = 0;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
+     * tests that seed beep state observe a clean transition. */
     s_beep_active = false;
     s_ring_len = 0;
     s_running = true;
@@ -265,9 +249,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         s_initialized = true;
         s_synth_mode = true;
     }
-    /* Reject when a WAV is mid-playback while running. Allow capture to
-     * continue because playback now routes exclusively through A2DP. */
-    if (s_running && s_wav_active) return ESP_ERR_INVALID_STATE;
+    /* Allow capture to continue because playback now routes exclusively through A2DP. */
 
     /* Beep should disable the synth keepalive so subsequent reads come from
      * the generated beep rather than the idle synth source. */
@@ -427,131 +409,6 @@ esp_err_t audio_processor_test_inject_audio_data(const uint8_t* data, size_t siz
     /* Append injected data to our ring buffer used by audio_processor_read */
     ring_append(data, size);
     return ESP_OK;
-}
-
-void audio_processor_test_wav_reset_state(void)
-{
-    s_tag_miss_count = 0;
-    s_wav_active = false;
-    s_wav_pending = 0;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
-}
-
-void audio_processor_test_wav_begin(void)
-{
-    s_wav_prev_force_synth = s_synth_mode;
-    s_wav_prev_valid = true;
-    s_wav_pending = 0;
-    s_wav_active = true;
-    s_synth_mode = false;
-}
-
-void audio_processor_test_wav_add_pending(size_t bytes)
-{
-    if (!s_wav_active || bytes == 0) {
-        return;
-    }
-
-    esp_err_t audio_processor_init(const audio_config_t* config)
-    {
-        if (config) {
-            s_sample_rate = config->sample_rate;
-            s_bit_depth = config->bit_depth;
-            s_channels = config->channels;
-            s_volume = config->volume;
-            s_mute = config->mute;
-        }
-        s_initialized = true;
-        s_running = false;
-        return ESP_OK;
-    }
-
-    esp_err_t audio_processor_deinit(void)
-    {
-        s_initialized = false;
-        s_running = false;
-        return ESP_OK;
-    }
-
-    esp_err_t audio_processor_start(void)
-    {
-        if (!s_initialized) return ESP_ERR_INVALID_STATE;
-        s_running = true;
-        return ESP_OK;
-    }
-
-    esp_err_t audio_processor_stop(void)
-    {
-        s_running = false;
-        return ESP_OK;
-    }
-
-    esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate)
-    {
-        s_sample_rate = sample_rate;
-        return ESP_OK;
-    }
-
-    esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
-    {
-        s_bit_depth = bit_depth;
-        return ESP_OK;
-    }
-
-    if (SIZE_MAX - s_wav_pending < bytes) {
-        s_wav_pending = SIZE_MAX;
-    } else {
-        s_wav_pending += bytes;
-    }
-}
-
-bool audio_processor_test_wav_consume(size_t bytes)
-{
-    if (!s_wav_active || bytes == 0) {
-        return false;
-    }
-
-    if (bytes >= s_wav_pending) {
-        s_wav_pending = 0;
-        return true;
-    }
-
-    s_wav_pending -= bytes;
-    return false;
-}
-
-void audio_processor_test_wav_abort(void)
-{
-    s_wav_pending = 0;
-    s_wav_active = false;
-    if (s_wav_prev_valid) {
-        s_synth_mode = s_wav_prev_force_synth;
-        s_wav_prev_valid = false;
-    }
-}
-
-void audio_processor_test_wav_complete_if_idle(void)
-{
-    if (!s_wav_active || s_wav_pending != 0) {
-        return;
-    }
-
-    s_wav_active = false;
-    if (s_wav_prev_valid) {
-        s_synth_mode = s_wav_prev_force_synth;
-        s_wav_prev_valid = false;
-    }
-}
-
-bool audio_processor_test_wav_is_active(void)
-{
-    return s_wav_active;
-}
-
-size_t audio_processor_test_wav_pending_bytes(void)
-{
-    return s_wav_pending;
 }
 
 size_t audio_processor_test_get_tag_used(void)

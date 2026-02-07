@@ -257,29 +257,6 @@ void test_audio_processor_beep_allows_when_i2s_active(void)
     audio_processor_deinit();
 }
 
-void test_audio_processor_beep_busy_when_wav_active(void)
-{
-    audio_config_t config = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 80
-    };
-
-    i2s_new_channel_ExpectAnyArgsAndReturn(ESP_OK);
-    i2s_channel_init_std_mode_ExpectAnyArgsAndReturn(ESP_OK);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&config));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    audio_processor_test_wav_begin();
-    esp_err_t ret = audio_processor_beep_tone(50, 440.0);
-    TEST_ASSERT_NOT_EQUAL(ESP_OK, ret);
-    audio_processor_test_wav_abort();
-
-    audio_processor_stop();
-    audio_processor_deinit();
-}
-
 void test_audio_processor_start_preempts_beep(void)
 {
     audio_config_t config = {

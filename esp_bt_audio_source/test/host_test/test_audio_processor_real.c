@@ -33,30 +33,6 @@ void test_audio_processor_idle_i2s_should_not_reenable_below_threshold(void)
     TEST_ASSERT_EQUAL_INT(5, failures_after);
 }
 
-void test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep(void)
-{
-    audio_processor_test_wav_reset_state();
-    audio_processor_set_synth_mode(true);
-
-    audio_processor_test_wav_begin();
-    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
-
-    audio_processor_test_wav_add_pending(100);
-    TEST_ASSERT_EQUAL_UINT32(100, (uint32_t)audio_processor_test_wav_pending_bytes());
-
-    TEST_ASSERT_FALSE(audio_processor_test_wav_consume(60));
-    TEST_ASSERT_EQUAL_UINT32(40, (uint32_t)audio_processor_test_wav_pending_bytes());
-
-    TEST_ASSERT_TRUE(audio_processor_test_wav_consume(40));
-    audio_processor_test_wav_complete_if_idle();
-
-    TEST_ASSERT_FALSE(audio_processor_test_wav_is_active());
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_wav_pending_bytes());
-    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_processor_test_get_beep_remaining_bytes());
-}
-
-
 void setUp(void) {
     esp_heap_caps_mock_set_psram_available(true);
     esp_heap_caps_mock_reset_allocations();
@@ -161,7 +137,6 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_audio_processor_idle_i2s_should_not_reenable_below_threshold);
-    RUN_TEST(test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep);
     RUN_TEST(test_audio_processor_alloc_with_psram);
     RUN_TEST(test_audio_processor_alloc_without_psram);
     RUN_TEST(test_audio_processor_autostart_cooldown);
