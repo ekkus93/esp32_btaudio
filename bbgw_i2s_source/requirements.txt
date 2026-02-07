@@ -1,0 +1,28 @@
+# Raspberry Pi I2S Source - Python Dependencies
+# Target: Python 3.9+
+
+# Web framework
+Flask==3.0.0
+flask-sse==1.0.0
+
+# Serial communication
+pyserial==3.5
+
+# GPIO/I2S libraries (choose one based on implementation)
+# pigpio==1.78  # Uncomment if using pigpio for I2S (hardware-timed, precise)
+# pyalsaaudio   # Uncomment if using ALSA for I2S (simpler, recommended for MVP)
+
+# Audio processing
+numpy==1.24.0
+scipy==1.11.0
+
+# Configuration management
+pyyaml==6.0
+
+# System monitoring
+psutil
+
+# Testing
+pytest
+pytest-mock
+pytest-cov

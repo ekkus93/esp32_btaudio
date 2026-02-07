@@ -1,3 +1,142 @@
+## 2026-02-07 01:06 — BBGW Port: Phase 0.3 Hardware Documentation Complete
+
+**📝 Task:** Created comprehensive hardware requirements and pin mapping documentation
+
+**Timestamp:** 2026-02-07 01:06:44
+
+**Context:** Phase 0.3 of BBGW port - hardware requirements documentation
+
+**Documentation Created:**
+
+1. **HARDWARE_REQUIREMENTS.md** (~1200 lines)
+   - BeagleBone Green Wireless specifications (AM335x SoC, 512 MB RAM, Wi-Fi)
+   - ESP32 requirements (I2S slave, UART, Bluetooth A2DP)
+   - Complete wiring diagrams (ASCII art):
+     - I2S: P9.31 (BCLK), P9.29 (WS), P9.28 (Data) → ESP32 GPIO26/25/22
+     - UART: P9.11 (RX), P9.13 (TX) ↔ ESP32 UART (crossed)
+     - Power: Separate 5V supplies, common ground
+   - Pin assignment tables (P9 header with GPIO numbers)
+   - Logic level compatibility (both 3.3V, no level shifters needed)
+   - Audio quality considerations (jitter <100 ppm, SNR >90 dB)
+   - Logic analyzer verification (BCLK 1.536 MHz, WS 48 kHz)
+   - Bill of materials (BBGW + ESP32 + cables = $80-$120)
+   - Safety and handling (ESD precautions, voltage limits)
+   - Troubleshooting (I2S, UART, grounding issues)
+
+2. **PIN_MAPPING.md** (~1100 lines)
+   - Complete P9 header pinout (46 pins with all modes)
+   - McASP I2S pin assignments:
+     - P9.31 (GPIO3_14): ACLKX → BCLK (Mode 0, offset 0x190)
+     - P9.29 (GPIO3_15): FSX → WS (Mode 0, offset 0x194)
+     - P9.28 (GPIO3_17): AXR1 → Data (Mode 2, offset 0x19c)
+   - UART4 pin assignments:
+     - P9.11 (GPIO0_30): RXD (Mode 6, offset 0x070, value 0x26)
+     - P9.13 (GPIO0_31): TXD (Mode 6, offset 0x074, value 0x06)
+   - GPIO numbering formula: (bank × 32) + pin
+   - Pin mux mode reference (Mode 0-7, bit field descriptions)
+   - Complete Device Tree overlay example (I2S + UART4)
+   - ESP32 pin mapping (I2S slave, UART configuration)
+   - Pin conflict checking procedures
+   - Verification commands (dmesg, aplay, pin mux checks)
+
+**Key Technical Details:**
+
+**I2S Configuration:**
+- BCLK: 1.536 MHz (48 kHz × 32 bits/frame)
+- WS: 48 kHz (toggles every 16 BCLK cycles)
+- Data: S16_LE, MSB-first, valid on BCLK rising edge
+- Pins: P9.31 (ACLKX), P9.29 (FSX), P9.28 (AXR1 via Mode 2)
+
+**UART Configuration:**
+- Device: `/dev/ttyO4`
+- Baud: 115200, 8N1, no flow control
+- Pins: P9.11 (RXD, input), P9.13 (TXD, output)
+- Wiring: TX ↔ RX crossed between BBGW and ESP32
+
+**Device Tree Pin Mux:**
+```dts
+mcasp0_pins: 0x190 0x00, 0x194 0x00, 0x19c 0x02
+uart4_pins: 0x070 0x26, 0x074 0x06
+```
+
+**Phase 0 Status:**
+- ✅ Phase 0.1: Project Structure Setup (complete)
+- ✅ Phase 0.2: BeagleBone Research (complete, 2.5 hours)
+- ✅ Phase 0.3: Hardware Documentation (complete, 1 hour)
+
+**Total Phase 0 Time:** ~4.5 hours (est. 4-6 hours)
+
+**Next Phase:**
+- Phase 1: Device Tree Configuration (6-8 hours, critical)
+  - Create McASP I2S overlay
+  - Create UART4 overlay
+  - Compile and test overlays
+
+---
+
+## 2026-02-07 00:56 — BBGW Port: Phase 0.2 Research Complete
+
+**📝 Task:** Completed comprehensive BeagleBone Green Wireless research for I2S source port
+
+**Timestamp:** 2026-02-07 00:56:27
+
+**Context:** Porting rpi_i2s_source to BeagleBone Green Wireless platform
+
+**Research Completed:**
+
+1. **I2S/McASP Research** ✅
+   - Identified AM335x McASP0 as I2S hardware interface
+   - Pin assignments: P9.31 (ACLKX/BCLK), P9.29 (FSX/WS), P9.28 (AXR1/DOUT)
+   - Device Tree overlay required (custom, no stock overlay available)
+   - ALSA device: `hw:0,0` (S16_LE, 48 kHz, stereo)
+
+2. **UART Research** ✅
+   - Selected UART4 (`/dev/ttyO4`) on P9.11 (RXD), P9.13 (TXD)
+   - Avoid UART0 (console), UART3 (Bluetooth)
+   - Device Tree pin mux: Mode 6, offsets 0x070/0x074
+   - Wiring: P9.11 → ESP32 TXD, P9.13 → ESP32 RXD
+
+3. **GPIO Research** ✅
+   - GPIO numbering: (bank × 32) + pin
+   - Libraries: Adafruit_BBIO, python-periphery, libgpiod
+   - **Not needed for this port** (McASP handles I2S in hardware)
+
+4. **ALSA Configuration** ✅
+   - Driver: snd_soc_davinci_mcasp
+   - No custom asound.conf needed
+   - Supported: 8 kHz - 192 kHz (48 kHz target confirmed)
+   - Format: S16_LE, channels: 2 (stereo)
+
+5. **Device Tree Overlays** ✅
+   - Cape manager: /boot/uEnv.txt configuration
+   - Compilation: dtc -O dtb -o file.dtbo -b 0 -@ file.dts
+   - Custom overlays needed: UART4 + McASP I2S
+   - Created example overlay structures
+
+**Documentation Created:**
+- `bbgw_i2s_source/docs/RESEARCH_NOTES.md` (~1000 lines)
+  - Complete AM335x McASP reference
+  - Pin mux tables and offsets
+  - Example Device Tree overlays
+  - ALSA configuration details
+  - Debugging procedures
+
+**Key Findings:**
+- **Best Configuration:**
+  - I2S: P9.31 (BCLK), P9.29 (WS), P9.28 (DOUT) → ESP32
+  - UART: P9.11 (RXD), P9.13 (TXD) → ESP32 UART
+  - ALSA: hw:0,0, S16_LE, 48 kHz, stereo
+- **Critical Path:** Device Tree overlay creation (Phase 1, 6-8 hours)
+- **Code Changes:** Minimal (UART device name, config defaults)
+
+**Next Steps:**
+- Phase 0.3: Hardware Requirements Documentation (1 hour)
+- Phase 1: Device Tree Configuration (6-8 hours, critical)
+
+**Phase 0.2 Status:** ✅ COMPLETE (2.5 hours)
+
+---
+
 ## 2026-02-06 13:57 — Milestone 3: Flask Web UI (Test Script & Hardware Guide)
 
 **📝 Task:** Created Milestone 3 web UI test script and hardware setup guide
