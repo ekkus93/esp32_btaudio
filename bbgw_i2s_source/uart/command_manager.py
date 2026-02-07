@@ -169,8 +169,21 @@ class UARTCommandManager:
             )
             logger.info(f"Serial port opened: {self.device} @ {self.baudrate}")
         except serial.SerialException as e:
-            logger.error(f"Failed to open serial port: {e}")
-            raise
+            error_msg = (
+                f"Failed to open UART device {self.device}: {e}\n"
+                "\nBeagleBone Green Wireless Troubleshooting:\n"
+                "1. Verify UART4 Device Tree overlay is enabled:\n"
+                "   ls -l /dev/ttyO4\n"
+                "2. Check /boot/uEnv.txt contains:\n"
+                "   cape_enable=bone_capemgr.enable_partno=BB-UART4\n"
+                "3. Verify user is in dialout group:\n"
+                "   groups | grep dialout\n"
+                "   sudo usermod -a -G dialout $USER\n"
+                "4. Reboot after Device Tree or group changes\n"
+                "5. See docs/TROUBLESHOOTING_BBGW.md for detailed solutions"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
     
     def start(self) -> None:
         """

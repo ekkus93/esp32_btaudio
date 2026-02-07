@@ -16,7 +16,7 @@ These tests validate non-functional requirements (NFRs) such as:
     # Auto-skipped by default (no hardware)
     pytest tests/performance/ -v
 
-    # Run on Raspberry Pi with hardware
+    # Run on BeagleBone Green Wireless with hardware
     pytest tests/performance/ -v --run-hardware
 
     # Run specific test modules

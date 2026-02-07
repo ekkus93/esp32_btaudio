@@ -80,8 +80,9 @@ def verify_hardware():
             text=True,
             timeout=5
         )
-        if "snd_rpi_i2s" not in result.stdout and "bcm2835" not in result.stdout and "BBGW-I2S" not in result.stdout and "davinci-mcasp" not in result.stdout:
-            errors.append("I2S ALSA device not found (check McASP Device Tree overlay)")
+        # Check for BBGW-specific I2S devices (McASP)
+        if "BBGW-I2S" not in result.stdout and "davinci-mcasp" not in result.stdout:
+            errors.append("BBGW I2S ALSA device not found (check McASP Device Tree overlay)")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         errors.append(f"Cannot check ALSA devices: {e}")
     

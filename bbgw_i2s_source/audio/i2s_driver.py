@@ -98,7 +98,7 @@ class I2SDriverALSA:
             ring_buffer: RingBuffer instance containing audio samples
         
         Raises:
-            ImportError: If alsaaudio module not available (not on Raspberry Pi)
+            ImportError: If alsaaudio module not available (not on BeagleBone)
             alsaaudio.ALSAAudioError: If ALSA device cannot be opened
         
         Example:
@@ -182,8 +182,20 @@ class I2SDriverALSA:
             logger.info(f"ALSA I2S device initialized: {self.sample_rate} Hz, {self.period_size} frames/period")
             
         except Exception as e:
-            logger.error(f"Failed to initialize ALSA device: {e}")
-            raise
+            error_msg = (
+                f"Failed to initialize ALSA device: {e}\n"
+                "\nBeagleBone Green Wireless Troubleshooting:\n"
+                "1. Verify McASP Device Tree overlay is loaded:\n"
+                "   dmesg | grep -i mcasp\n"
+                "2. Check ALSA device exists:\n"
+                "   aplay -l\n"
+                "   (should show 'BBGW-I2S' or 'davinci-mcasp')\n"
+                "3. Verify overlay in /boot/uEnv.txt:\n"
+                "   cape_enable=bone_capemgr.enable_partno=BB-I2S0\n"
+                "4. See docs/TROUBLESHOOTING_BBGW.md for detailed solutions"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
     
     def start(self) -> None:
         """

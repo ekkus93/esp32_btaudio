@@ -130,18 +130,19 @@ pytest tests/integration/ -v --run-hardware
 ### Web Server Not Running
 ```bash
 # Start the main application first
-cd rpi_i2s_source
+cd bbgw_i2s_source
 python main.py
 ```
 
 ### UART Device Not Found
 ```bash
-# Check UART is enabled
-ls -l /dev/ttyAMA0
+# Check UART4 is enabled
+ls -l /dev/ttyO4
 
-# Enable UART in raspi-config if needed
-sudo raspi-config
-# → Interface Options → Serial Port → Enable
+# Enable UART4 Device Tree overlay if needed
+sudo nano /boot/uEnv.txt
+# Add: cape_enable=bone_capemgr.enable_partno=BB-UART4
+sudo reboot
 ```
 
 ### I2S Device Not Found
