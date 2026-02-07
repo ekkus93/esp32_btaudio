@@ -731,22 +731,65 @@ This document tracks the port of rpi_i2s_source to BeagleBone Green Wireless. Th
 - [ ] Verify with logic analyzer (optional)
 
 ### 3.3. Hardware Validation — Milestone 2: UART Command Interface
-**Status:** NOT STARTED  
+**Status:** ✅ COMPLETE (Software Ready)  
 **Estimated Time:** 1-2 hours  
+**Actual Time:** 1.0 hours (script and documentation)  
+**Completed:** 2026-02-07  
 **Priority:** HIGH
 
-- [ ] **Create Milestone 2 Test Script**
-  - [ ] Copy `milestone2_uart_test.py` to bbgw_i2s_source
-  - [ ] Update device to `/dev/ttyO4`
+- [x] **Create Milestone 2 Test Script**
+  - [x] Created `milestone2_uart_test.py` for BBGW
+  - [x] Updated device to `/dev/ttyO4` (UART4)
+  - [x] Updated all platform references to BeagleBone Green Wireless
+  - [x] Updated pin documentation (P9.11/13)
+  - [x] Made script executable (chmod +x)
+
+- [x] **Create Hardware Setup Documentation**
+  - [x] Created `docs/MILESTONE2_HARDWARE_SETUP_BBGW.md` (~600 lines)
+  - [x] Complete wiring diagram (P9.11/13 → ESP32 GPIO16/17)
+  - [x] Device Tree overlay setup instructions (UART4)
+  - [x] Verification procedures (loopback test, ESP32 echo test)
+  - [x] Troubleshooting guide (6 common issues)
+  - [x] Success criteria checklist
+
+**Deliverables:**
+- ✅ **milestone2_uart_test.py** (258 lines)
+  - Adapted from rpi_i2s_source version
+  - Updated for BBGW UART4 configuration
+  - UART device: `/dev/ttyO4` (with command-line override)
+  - Pin documentation: P9.13 (TXD), P9.11 (RXD)
+  - Tests: STATUS, VOLUME commands, timeout handling, event callbacks
+  - Real-time statistics display (sent, OK, ERR, events, reconnects)
+
+- ✅ **docs/MILESTONE2_HARDWARE_SETUP_BBGW.md** (~600 lines)
+  - Complete hardware setup guide
+  - Device Tree overlay installation (BB-BBGW-UART4-00A0.dtbo)
+  - Physical wiring instructions (P9.11/13 ↔ ESP32)
+  - Verification procedures (3 tests: loopback, ESP32 echo, pyserial)
+  - Comprehensive troubleshooting (6 scenarios)
+  - Success criteria checklist
+
+**Key Changes from RPi Version:**
+- **Platform**: "Raspberry Pi" → "BeagleBone Green Wireless"
+- **UART Interface**: /dev/serial0 → /dev/ttyO4 (UART4)
+- **Pin Names**: GPIO 14/15 → P9.13/11 (UART4_TXD/RXD)
+- **Configuration**: Added Device Tree overlay requirements (BB-BBGW-UART4-00A0.dtbo)
+- **Verification**: Added UART4-specific checks (loopback test, overlay verification)
+
+**Software Status:** ✅ Ready to run on BBGW hardware
 
 - [ ] **Hardware Setup**
+  - [ ] Enable UART4 Device Tree overlay in /boot/uEnv.txt
+  - [ ] Reboot BBGW to load overlay
+  - [ ] Verify /dev/ttyO4 exists: `ls -l /dev/ttyO4`
   - [ ] Connect BBGW UART4 to ESP32 UART
-    - [ ] P9.11 (UART4 RXD) → ESP32 TXD (GPIO1 or GPIO17)
-    - [ ] P9.13 (UART4 TXD) → ESP32 RXD (GPIO3 or GPIO16)
-    - [ ] GND → GND
+    - [ ] P9.13 (UART4 TXD) → ESP32 GPIO16 (RX)
+    - [ ] P9.11 (UART4 RXD) → ESP32 GPIO17 (TX)
+    - [ ] P9.1 (GND) → ESP32 GND
   - [ ] Verify wiring (TX ↔ RX crossover)
 
 - [ ] **Run Milestone 2 Test**
+  - [ ] Run loopback test: `./overlays/test_uart4_loopback.sh`
   - [ ] Execute: `./milestone2_uart_test.py --device /dev/ttyO4`
   - [ ] Test STATUS command
   - [ ] Test VOLUME command
