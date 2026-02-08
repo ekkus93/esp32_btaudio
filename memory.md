@@ -13569,3 +13569,75 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 
 **Next:** Phase 5.6 - Flash and Test (requires hardware)
 
+
+---
+
+## 2026-02-08 09:10:51
+
+**Task:** Phase 5.6 - Flash and Test (SPIFFS removal verification)
+
+**Actions:**
+1. Flashed new firmware to ESP32-D0WD-V3 hardware
+2. Monitored boot sequence (saved to boot_log.txt)
+3. Verified partition table at boot (only 3 partitions)
+4. Searched boot log for SPIFFS references (0 matches)
+5. Verified all subsystems operational
+6. Marked Phase 5.6 and 5.7 complete
+
+**Flash Results:**
+- Target: ESP32-D0WD-V3 (revision v3.1) via /dev/ttyUSB0
+- Bootloader: 26,240 bytes (16,494 compressed) @ 0x1000
+- Application: 922,144 bytes (549,258 compressed) @ 0x10000
+- Partition table: 3,072 bytes (105 compressed) @ 0x8000
+- Flash operation: Successful (baud 460800)
+
+**Boot Verification:**
+✅ ESP32 boots successfully without errors
+✅ Partition table shows only 3 partitions:
+   - nvs (data/nvs): 24K @ 0x9000
+   - phy_init (data/phy): 4K @ 0xf000
+   - factory (app/factory): 1728K @ 0x10000
+✅ NO SPIFFS partition in partition table (1MB reclaimed)
+✅ NO SPIFFS mount attempts in boot log
+✅ NO SPIFFS errors or warnings (grep -i spiffs: 0 matches)
+
+**Application Status:**
+✅ Command interface: operational (CMD_INIT_SUCCESS)
+✅ Bluetooth manager: initialized (ESP_A2DP_SRC, 1 paired device loaded)
+✅ Audio processor: initialized and running
+   - Sample rate: 44100 Hz
+   - Bit depth: 16 bits
+   - Channels: 2 (stereo)
+   - Volume: 80
+   - Ring buffer: 32768 bytes (DRAM)
+✅ All subsystems operational: cmd=1, bt=1, audio=1
+✅ "ESP32 Bluetooth Audio Source - Ready" message displayed
+
+**Diagnostic Output:**
+```
+DIAG|BOOT|SUBSYSTEM_STATUS|cmd=1|bt=1|audio=1
+DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=44100|bits=16|ch=2
+I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
+```
+
+**Known Issues:**
+⚠️ Task watchdog warnings for IDLE1 (CPU 1) and audio_engine task
+   - Pre-existing condition (unrelated to SPIFFS removal)
+   - Audio engine task keeping CPU 1 busy during audio processing
+
+**Results:**
+- ✅ Phase 5.6 complete - Hardware testing successful
+- ✅ Phase 5.7 complete - All verification checks passed
+- ✅ **Phase 5 COMPLETE** - SPIFFS fully removed from firmware
+
+**Phase 5 Summary:**
+- All 7 subtasks completed (5.1-5.7)
+- 1MB flash space reclaimed (SPIFFS partition removed)
+- Partition count: 4 → 3 (nvs + phy_init + factory)
+- Main application does NOT mount SPIFFS
+- SPIFFS component kept for FILE command (test infrastructure only)
+- Hardware tested and verified operational
+
+**Status:** Phase 5 COMPLETE ✅, Ready for Phase 6 (Update Documentation)
+
+**Next:** Phase 6 - Update Documentation (remove PLAY/WAV references from README, docs, comments)
