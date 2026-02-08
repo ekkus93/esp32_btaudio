@@ -13,21 +13,13 @@ set(EXTRA_COMPONENT_DIRS
     "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )
 
-# Use the repository's partition table (which contains a spiffs partition)
-# so the audio-focused tests can mount /spiffs and access assets.
-set(PARTITION_TABLE_FILENAME "${CMAKE_CURRENT_LIST_DIR}/../../partitions.csv")
+# NOTE: SPIFFS and WAV playback removed in Version 0.3.0 (Phase 5).
+# The partition table no longer contains a SPIFFS partition.
+# This test suite now only contains PSRAM-focused tests.
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(esp_bt_audio_source_audio_test)
-
-# Stage only the WAV asset needed for the audio processor tests into a small
-# SPIFFS image so the partition fits in the test partition table.
-set(TEST_APP_AUDIO_SPIFFS_SRC "${CMAKE_CURRENT_LIST_DIR}/../../main/assets/spiffs/worker_long_norm.wav")
-set(TEST_APP_AUDIO_SPIFFS_DIR "${CMAKE_BINARY_DIR}/spiffs_image_src")
-file(MAKE_DIRECTORY "${TEST_APP_AUDIO_SPIFFS_DIR}")
-file(COPY "${TEST_APP_AUDIO_SPIFFS_SRC}" DESTINATION "${TEST_APP_AUDIO_SPIFFS_DIR}")
-spiffs_create_partition_image(spiffs "${TEST_APP_AUDIO_SPIFFS_DIR}" FLASH_IN_PROJECT)
 
 # The audio tests still rely on the mock-enabled build configuration so they can
 # run against the fake Bluetooth stack when necessary.
