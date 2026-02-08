@@ -5,7 +5,7 @@ idf_component_register(
         "unity_config.c"
         "audio_test_main.c"
         "audio_pipeline_test.c"
-        "audio_processor_test.c"
+        # "audio_processor_test.c"  # Removed: old WAV playback tests (WAV/SPIFFS removed Phase 5)
         "audio_i2s.c"
         "audio_test_helpers.c"
         "bt_manager_stub.c"

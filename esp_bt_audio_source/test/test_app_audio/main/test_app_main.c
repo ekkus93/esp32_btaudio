@@ -45,7 +45,7 @@ void app_test_main(void)
     execute_suite("i2s channel", app_main_i2s_channel_tests, false);
     execute_suite("pcm format", app_main_pcm_format_tests, false);
     execute_suite("audio pipeline", run_audio_pipeline_tests, false);
-    execute_suite("audio processor", run_audio_processor_tests, false);
+    // execute_suite("audio processor", run_audio_processor_tests, false);  // Removed: old WAV playback tests
 
     vTaskDelay(pdMS_TO_TICKS(2000));
     ESP_LOGI(TAG, "Audio test suites completed");
@@ -67,8 +67,8 @@ void run_test_group(const char *test_group)
         execute_suite("pcm_format", app_main_pcm_format_tests, true);
     } else if (strcmp(test_group, "pipeline") == 0) {
         execute_suite("pipeline", run_audio_pipeline_tests, true);
-    } else if (strcmp(test_group, "audio_processor") == 0) {
-        execute_suite("audio_processor", run_audio_processor_tests, true);
+    // } else if (strcmp(test_group, "audio_processor") == 0) {
+    //     execute_suite("audio_processor", run_audio_processor_tests, true);  // Removed: old WAV playback tests
     } else {
         ESP_LOGW(TAG, "Unknown audio test group '%s'", test_group);
     }
