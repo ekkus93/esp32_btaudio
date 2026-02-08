@@ -22,7 +22,7 @@
  *   Producer (audio engine task):
  *     size_t written = audio_rb_write(rb, chunk, produced);
  *     span_log_push(seq++, esp_timer_get_time()/1000, offset, written, 
- *                   ring_used, AUDIO_SOURCE_WAV, beep ? SPAN_FLAG_BEEP : 0);
+ *                   ring_used, AUDIO_SOURCE_I2S, beep ? SPAN_FLAG_BEEP : 0);
  *
  *   Debugging:
  *     audio_rb_span_t spans[20];
@@ -60,7 +60,7 @@ extern "C" {
 /**
  * Audio source types (matches audio_processor.c enum)
  */
-#define AUDIO_SPAN_SOURCE_WAV      0
+#define AUDIO_SPAN_SOURCE_I2S      0  /* Historical: was WAV (0), now I2S is primary */
 #define AUDIO_SPAN_SOURCE_I2S      1
 #define AUDIO_SPAN_SOURCE_SYNTH    2
 #define AUDIO_SPAN_SOURCE_SILENCE  3

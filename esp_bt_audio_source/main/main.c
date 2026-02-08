@@ -426,7 +426,7 @@ void app_main(void)
         /* All critical subsystems operational - device fully functional */
         ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Ready");  // NOLINT(bugprone-branch-clone)
         ESP_LOGI(BT_AV_TAG, "Use SCAN/PAIR/CONNECT commands to control BT");  // NOLINT(bugprone-branch-clone)
-        ESP_LOGI(BT_AV_TAG, "Use PLAY/VOLUME commands to control audio");  // NOLINT(bugprone-branch-clone)
+        ESP_LOGI(BT_AV_TAG, "Use START/STOP/VOLUME/BEEP commands to control audio");  // NOLINT(bugprone-branch-clone)
     } else {
         /* One or more subsystems failed - warn user of limited functionality */
         ESP_LOGI(BT_AV_TAG, "ESP32 Bluetooth Audio Source - Started with limited functionality:");  // NOLINT(bugprone-branch-clone)

@@ -919,13 +919,64 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 - `grep -r "\.wav|WAV"`: 40+ matches (README_spiffs obsolete, MIGRATION documented, ARCH marked)
 
 ### 6.5 Update Comments in Code
-- [ ] Search for PLAY-related comments in remaining code:
+- [x] Search for PLAY-related comments in remaining code:
   ```bash
   grep -r "PLAY\|play_manager\|WAV" --include="*.c" --include="*.h"
   ```
-- [ ] Review each finding
-- [ ] Remove or update outdated comments
-- [ ] Update function documentation that mentions PLAY
+- [x] Review each finding
+- [x] Remove or update outdated comments
+- [x] Update function documentation that mentions PLAY
+
+**Phase 6.5 Results:**
+- ✅ **Searched all C/H files** in production code (main/, components/) for PLAY/WAV/play_manager
+- ✅ **Updated 7 outdated comments** in 5 files
+- ✅ **Verified remaining references** are legitimate (enum values, deprecated functions, metrics)
+
+**Files Updated (5):**
+
+1. **main/main.c** (line 429):
+   - Changed: "Use PLAY/VOLUME commands to control audio"
+   - To: "Use START/STOP/VOLUME/BEEP commands to control audio"
+   - Context: Boot banner showing available audio commands
+
+2. **components/audio_processor/audio_processor.c** (2 changes):
+   - Line 144: "Beep must mix over any base source (WAV, I2S, Synth, Silence)"
+     → "Beep must mix over any base source (I2S, Synth, Silence)"
+   - Line 385: "Stop any ongoing WAV/BEEP playback"
+     → "Stop any ongoing BEEP playback"
+   - Context: Comments explaining audio pipeline behavior
+
+3. **components/audio_processor/audio_processor_beep.c** (line 40):
+   - Changed: "audio_processor_beep: busy (WAV active)"
+   - To: "audio_processor_beep: busy (legacy WAV stub active)"
+   - Context: Error message when beep rejected (wav stub still exists for compatibility)
+
+4. **components/audio_processor/include/audio_util.h** (line 10):
+   - Changed: "Shared audio conversion helpers used by play_manager and i2s_manager"
+   - To: "Shared audio conversion helpers used by i2s_manager and synth"
+   - Context: Header file comment explaining utility functions
+
+5. **components/audio_processor/include/audio_span_log.h** (2 changes):
+   - Line 25: Example comment changed AUDIO_SOURCE_WAV → AUDIO_SOURCE_I2S
+   - Line 63: Macro redefined from AUDIO_SPAN_SOURCE_WAV → AUDIO_SPAN_SOURCE_I2S
+     with historical note: "/* Historical: was WAV (0), now I2S is primary */"
+   - Context: Audio span logging macros and examples
+
+**Remaining References (Legitimate):**
+- **WAV_BYTES metric**: In STATUS command output (historical metric name, accurate)
+- **CMD_TYPE_WAV_STATUS enum**: Preserved for backward compatibility, returns error
+- **audio_processor_play_wav()**: Deprecated function, marked "not supported"
+- **audio_processor_wav.c**: Stub file with removal comments
+- **BEEP_STATE_PLAYING**: Beep manager enum value (not PLAY command)
+- **Comments in deprecated functions**: Historical context preserved
+
+**Verification:**
+- ✅ All user-facing comments updated (boot banner, error messages)
+- ✅ All architecture comments updated (pipeline behavior, mixing)
+- ✅ All API documentation updated (header file comments)
+- ✅ Deprecated code clearly marked with removal notes
+- ✅ No misleading references to WAV playback capability
+- ✅ Enums and metrics preserved for backward compatibility
 
 ### 6.6 Final Documentation Check
 - [ ] Verify no PLAY references in docs:

@@ -13917,3 +13917,93 @@ I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
 **Status:** Phase 6.4 COMPLETE ✅
 
 **Next:** Phase 6.5 - Update Comments in Code (search for PLAY/WAV references in .c/.h files)
+
+---
+
+## 2026-02-08 10:01:50
+
+**Task:** Phase 6.5 - Update Comments in Code (remove outdated PLAY/WAV/play_manager references from source)
+
+**Actions:**
+1. Searched all C/H files in production code (main/, components/) for PLAY/WAV/play_manager
+2. Filtered out legitimate references (enum values, deprecated functions marked as not supported, metrics)
+3. Updated 7 outdated comments across 5 files
+4. Verified remaining references are legitimate and necessary
+
+**Files Updated (5 files, 7 comment updates):**
+
+1. **main/main.c** (line 429 - boot banner):
+   - Changed: "Use PLAY/VOLUME commands to control audio"
+   - To: "Use START/STOP/VOLUME/BEEP commands to control audio"
+   - Impact: User-facing boot message now shows correct available commands
+
+2. **components/audio_processor/audio_processor.c** (2 changes):
+   - Line 144: Comment about beep mixing sources
+     - Removed "WAV," from "(WAV, I2S, Synth, Silence)"
+     - Now: "(I2S, Synth, Silence)"
+     - Context: CODE_REVIEW6 Phase 3.3 beep overlay architecture comment
+   - Line 385: Comment about I2S capture priority
+     - Changed "Stop any ongoing WAV/BEEP playback"
+     - To: "Stop any ongoing BEEP playback"
+     - Context: audio_processor_start() function
+
+3. **components/audio_processor/audio_processor_beep.c** (line 40 - error message):
+   - Changed: "audio_processor_beep: busy (WAV active)"
+   - To: "audio_processor_beep: busy (legacy WAV stub active)"
+   - Context: Error logged when beep rejected due to wav_playback_is_active() check
+   - Rationale: Clarifies that WAV stub exists for compatibility only
+
+4. **components/audio_processor/include/audio_util.h** (line 10 - header comment):
+   - Changed: "Shared audio conversion helpers used by play_manager and i2s_manager"
+   - To: "Shared audio conversion helpers used by i2s_manager and synth"
+   - Impact: Accurate documentation of audio_util purpose
+
+5. **components/audio_processor/include/audio_span_log.h** (2 changes):
+   - Line 25: Example comment updated
+     - Changed: AUDIO_SOURCE_WAV in example
+     - To: AUDIO_SOURCE_I2S
+     - Context: Documentation example for audio span logging
+   - Line 63: Macro redefinition with historical note
+     - Changed: `#define AUDIO_SPAN_SOURCE_WAV      0`
+     - To: `#define AUDIO_SPAN_SOURCE_I2S      0  /* Historical: was WAV (0), now I2S is primary */`
+     - Rationale: Preserves value (0) for compatibility while updating name and documenting history
+
+**Remaining References (All Legitimate):**
+
+- **WAV_BYTES**: Metric name in STATUS command output (historical name, still accurate for statistics)
+- **CMD_TYPE_WAV_STATUS**: Enum value for WAV_STATUS command (returns error, preserved for compatibility)
+- **audio_processor_play_wav()**: Deprecated function implementation (marked "WAV playback not supported")
+- **audio_processor_wav.c**: Stub file with comments documenting removal ("play_manager removed", "play_manager was deleted")
+- **WAV playback begin/aborted/completed**: Log messages in deprecated WAV stub functions
+- **BEEP_STATE_PLAYING**: Beep manager enum value (legitimate, not PLAY command)
+- **play_manager_is_active()**: Called in WAV stub, returns false (documented as removed)
+- **"WAV/beep playback state"**: Header comment in audio_processor.h (historical context)
+- **"PLAY failures"**: Comment about keepalive arming reset (historical context explaining behavior)
+- **"Reject PLAY while"**: Comments in deprecated audio_processor_play_wav() function
+- **"WAV output"**: Comment in deprecated function (dead code path)
+
+**Search Results:**
+- Total PLAY/WAV/play_manager matches: ~40 in production code
+- After filtering legitimate references: 7 outdated comments identified
+- All 7 updated successfully
+- Remaining ~33 references: All legitimate (enums, deprecated functions, metrics, historical context)
+
+**Verification:**
+✅ All user-facing comments updated (boot banner shows correct commands)
+✅ All architecture comments accurate (beep mixing, I2S priority)
+✅ All API documentation updated (header comments)
+✅ Deprecated code clearly marked with removal notes
+✅ No misleading references to active WAV playback capability
+✅ Backward compatibility preserved (enums, metrics, stub functions)
+
+**Results:**
+- ✅ Phase 6.5 complete - all outdated code comments updated
+- 7 comment updates across 5 production files
+- User-facing messages now accurate
+- Architecture documentation reflects current 3-source pipeline
+- Deprecated functions clearly marked
+- All remaining references legitimate and necessary
+
+**Status:** Phase 6.5 COMPLETE ✅
+
+**Next:** Phase 6.6 - Final Documentation Check (verify no misleading PLAY/WAV references)

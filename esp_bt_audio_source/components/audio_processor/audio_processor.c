@@ -141,7 +141,7 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     }
     
     /* Mix beep overlay if active (CODE_REVIEW6 Phase 3.3)
-     * WHY: Beep must mix over any base source (WAV, I2S, Synth, Silence)
+     * WHY: Beep must mix over any base source (I2S, Synth, Silence)
      * HOW: beep_overlay_fill() modifies buffer in-place with clamped mixing
      * CORRECTNESS: beep_overlay_is_active() thread-safe check before mixing */
     bool beep_active = beep_overlay_is_active();
@@ -382,7 +382,7 @@ esp_err_t audio_processor_start(void)
         return ESP_OK;
     }
 
-    /* I2S capture has highest priority. Stop any ongoing WAV/BEEP playback
+    /* I2S capture has highest priority. Stop any ongoing BEEP playback
      * so capture owns the pipeline. */
     wav_playback_abort(__func__);
     audio_processor_beep_reset();

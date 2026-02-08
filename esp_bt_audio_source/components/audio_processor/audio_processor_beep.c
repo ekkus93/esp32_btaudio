@@ -37,7 +37,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
     }
 
     if (wav_playback_is_active()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (WAV active)");  // NOLINT(bugprone-branch-clone)
+        ESP_LOGW(TAG, "audio_processor_beep: busy (legacy WAV stub active)");  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_STATE;
     }
 

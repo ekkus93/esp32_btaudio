@@ -7,7 +7,7 @@
 #include "esp_err.h"
 #include "audio_processor.h"
 
-/* Shared audio conversion helpers used by play_manager and i2s_manager. */
+/* Shared audio conversion helpers used by i2s_manager and synth. */
 typedef struct {
 	const void *src;
 	void *dst;
