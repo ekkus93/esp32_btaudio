@@ -83,6 +83,7 @@ static void test_audio_processor_init(void)
 
     ret = audio_processor_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, ret);
+}
 
 static void test_audio_volume_control(void)
 {
