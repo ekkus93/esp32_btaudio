@@ -13687,3 +13687,64 @@ I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
 **Status:** Phase 6.1 COMPLETE ✅
 
 **Next:** Phase 6.2 - Update docs/FS.md (if exists)
+
+---
+
+## 2026-02-08 09:40:51
+
+**Task:** Phase 6.2 - Update docs/FS.md (remove PLAY/WAV/SPIFFS references from functional specification)
+
+**Actions:**
+1. Located docs/FS.md at esp_bt_audio_source/docs/FS.md (327 lines)
+2. Searched for all PLAY/WAV/SPIFFS references (32 matches found across multiple sections)
+3. Removed all WAV playback and SPIFFS filesystem references
+4. Updated architecture diagrams and data flow descriptions
+5. Removed PLAY command from command table
+6. Simplified audio state machine (removed STREAM_WAV states)
+7. Updated testing and acceptance criteria
+8. Verified cleanup complete (only 4 legitimate playback references remain)
+
+**Changes Made (17 sections in docs/FS.md):**
+
+1. **PRD goals** (line 6) - Removed "I2S/WAV/synth" → "I2S/synth"
+2. **Architecture diagram** (lines 27-34) - Removed "WAV" from audio processor, removed "SPIFFS helper" box
+3. **Data paths** (line 40) - Removed "WAV reader" from audio sources  
+4. **Runtime layers** (line 47) - Removed "WAV refill" from audio_worker_task
+5. **Storage section** (line 54) - Removed entire SPIFFS partition reference
+6. **Command table** (lines 88-89) - Removed PLAY command, updated BEEP (removed "if WAV inactive")
+7. **Event emission** (line 138) - Changed SOURCE=WAV to SOURCE=I2S
+8. **Audio processor responsibilities** (lines 144-146) - Removed "WAV" from buffers, producers, throttling
+9. **Buffers & memory** (line 155) - Removed WAV resampling work buffer reference
+10. **Source behavior** (line 159) - Removed entire WAV section (5 lines describing play_wav)
+11. **State machine** (lines 165-169) - Removed PLAY WAV and STREAM_WAV states (3 lines of transitions)
+12. **Storage helpers** (line 173) - Removed entire SPIFFS mount/flash section
+13. **Internal APIs** (lines 184-186) - Removed audio_processor_play_wav() from API list
+14. **Command sequencing** (line 226) - Removed "WAV playback" from long-running operations
+15. **Audio pipeline** (lines 240-246) - Removed entire "Play WAV" section (7 lines of WAV workflow)
+16. **Testing metrics** (lines 262-263) - Removed test_play_wav_command, removed SPIFFS workflow test
+17. **Acceptance** (line 276) - Removed "WAV +" from manual playback sessions
+18. **Traceability** (line 301) - Removed "SPIFFS +" from storage/assets section
+
+**Verification:**
+✅ Only 4 legitimate references remain:
+   - Line 136: "PLAYING" (audio state, not PLAY command)
+   - Line 167: "DIAG-APLAY" (diagnostic prefix for audio playback, not PLAY command)
+   - Line 247: "playback logs" (legitimate testing reference)  
+   - Line 260: "playback sessions" (legitimate acceptance criteria)
+✅ No PLAY command references remain
+✅ No WAV file references remain  
+✅ No SPIFFS partition/mount references remain
+✅ No play_manager references remain
+✅ Audio sources correctly show 2 sources (I2S, synth)
+✅ State machine simplified to IDLE ↔ STREAM_I2S only
+
+**Results:**
+- ✅ Phase 6.2 complete - docs/FS.md updated
+- Functional specification now accurately reflects 2-source audio architecture
+- All PLAY command, WAV playback, and SPIFFS filesystem references removed
+- State machine diagrams simplified
+- Testing and acceptance criteria updated
+
+**Status:** Phase 6.2 COMPLETE ✅
+
+**Next:** Phase 6.3 - Update Root README.md (remove PLAY from command list and features)

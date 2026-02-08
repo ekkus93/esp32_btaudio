@@ -775,13 +775,46 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 - ✅ Diagrams updated to reflect new architecture
 
 ### 6.2 Update docs/FS.md
-- [ ] Open `docs/FS.md` (if exists)
-- [ ] Search for `AUDIO_SOURCE_WAV` mentions
-- [ ] Remove AUDIO_SOURCE_WAV from architecture descriptions
-- [ ] Update source priority list (I2S → SYNTH → SILENCE)
-- [ ] Remove WAV-related sections
-- [ ] Update any state machine diagrams
-- [ ] Save file
+- [x] Open `docs/FS.md` (if exists)
+- [x] Search for `AUDIO_SOURCE_WAV` mentions
+- [x] Remove AUDIO_SOURCE_WAV from architecture descriptions
+- [x] Update source priority list (I2S → SYNTH only)
+- [x] Remove WAV-related sections
+- [x] Update any state machine diagrams
+- [x] Save file
+
+**Phase 6.2 Results:**
+- ✅ **Updated 12 sections in docs/FS.md:**
+  1. Line 6: PRD goals - removed "I2S/WAV/synth" → "I2S/synth"
+  2. Lines 27-34: Architecture diagram - removed "WAV" from audio processor, removed "SPIFFS helper" box
+  3. Line 40: Data paths - removed "WAV reader" from audio sources
+  4. Line 47: Runtime layers - removed "WAV refill" from audio_worker_task
+  5. Line 54: Storage section - removed entire SPIFFS partition reference
+  6. Lines 88-89: Command table - removed PLAY command, updated BEEP (removed "if WAV inactive")
+  7. Line 138: Event emission - changed SOURCE=WAV to SOURCE=I2S
+  8. Lines 144-146: Audio processor - removed "WAV" from buffers, producers, and work buffer sizing
+  9. Line 159: Source behavior - removed entire WAV section (5 lines)
+  10. Lines 165-169: State machine - removed PLAY WAV and STREAM_WAV states (3 lines)
+  11. Line 173: Storage helpers - removed entire SPIFFS section
+  12. Lines 184-186: Internal APIs - removed audio_processor_play_wav()
+  13. Line 226: Command sequencing - removed "WAV playback" from long-running operations
+  14. Lines 240-246: Audio pipeline - removed entire "Play WAV" section (7 lines)
+  15. Lines 262-263: Testing metrics - removed test_play_wav_command test, removed SPIFFS workflow test
+  16. Line 276: Acceptance - removed "WAV +" from playback sessions
+  17. Line 301: Traceability - removed "SPIFFS +" from storage/assets section
+
+**Verification:**
+- ✅ Only 4 legitimate references remain:
+  - Line 136: "PLAYING" state (legitimate audio state)
+  - Line 167: "DIAG-APLAY" (diagnostic prefix for audio playback, not PLAY command)
+  - Line 247: "playback logs" (legitimate)
+  - Line 260: "playback sessions" (legitimate)
+- ✅ No PLAY command references remain
+- ✅ No WAV file references remain
+- ✅ No SPIFFS partition/mount references remain
+- ✅ No play_manager references remain
+- ✅ Audio sources correctly show 2 sources (I2S, synth)
+- ✅ State machine simplified to IDLE ↔ STREAM_I2S only
 
 ### 6.3 Update Root README.md
 - [ ] Open root `README.md`

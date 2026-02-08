@@ -3,7 +3,7 @@
 **Document purpose**: translate the Product Requirements Document (PRD) into implementable behavior, covering module responsibilities, interfaces, algorithms, state machines, error handling, data flows, and verification hooks for the ESP32 Bluetooth audio source firmware.
 
 **Scope alignment**
-- PRD goals addressed: serial-driven Bluetooth A2DP source with I2S/WAV/synth audio, deterministic command protocol, reproducible test automation, diagnostics suitable for CI/field work.
+- PRD goals addressed: serial-driven Bluetooth A2DP source with I2S/synth audio, deterministic command protocol, reproducible test automation, diagnostics suitable for CI/field work.
 - Out-of-scope here: mobile app UX, BLE sink role, OTA workflows (can be spun out to dedicated specs if needed).
 
 ---
@@ -26,32 +26,31 @@
 │  Components                                                               │
 │  ┌────────────────────┐  ┌────────────────────┐  ┌──────────────────────┐  │
 │  │ Command Interface  │→│   BT Manager        │→│ Audio Processor       │→│A2DP SBC
-│  │  (UART parser,     │  │ (pairing, state,   │  │ (I2S/WAV/synth,      │ │stream
+│  │  (UART parser,     │  │ (pairing, state,   │  │ (I2S/synth,          │ │stream
 │  │   dispatcher)      │  │  controller APIs)  │  │  ringbuffers, tags)  │ │
 │  └────────────────────┘  └────────────────────┘  └──────────────────────┘  │
 │          │                    │                    │                        │
 │          ▼                    ▼                    ▼                        │
-│     SPIFFS helper      NVS storage helper     Diagnostics & tools           │
+│     NVS storage helper     Diagnostics & tools                              │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Key data paths:
 1. Host issues commands over UART → command interface validates → dispatches to Bluetooth manager/audio processor/storage helpers.
-2. Audio sources (I2S ISR, WAV reader, synth tasks) enqueue data into audio ringbuffer → A2DP media callbacks consume and send via SBC encoder.
+2. Audio sources (I2S ISR, synth tasks) enqueue data into audio ringbuffer → A2DP media callbacks consume and send via SBC encoder.
 3. Diagnostics instrumentation emits `DIAG-...` lines consumed by trace tooling.
 
 ### 1.2 Runtime layers
 - **Application tasks**
 	- `cmd_task`: UART RX/TX, command parsing, response formatting.
 	- `bt_manager_task`: handles scanning, pairing, connection state, event stream.
-	- `audio_worker_task`: manages WAV refill, synth generation, metadata tagging.
+	- `audio_worker_task`: manages synth generation, metadata tagging.
 	- `i2s_reader_task`: optional capture path queuing I2S data into audio ringbuffer.
 - **Interrupt/service layers**
 	- I2S DMA ISR (production builds) writes to ping/pong buffers, notifies worker.
 	- A2DP media callback pulls audio frames from ringbuffer.
 - **Storage**
 	- NVS namespace for pairing records, device name, default PIN, audio config.
-	- SPIFFS partition for WAV assets at `0x1C0000`.
 
 ---
 
@@ -85,8 +84,7 @@ Key data paths:
 | `UNPAIR` | `<mac>` | Remove entry + controller bond. |
 | `UNPAIR_ALL` | none | Clear all stored bonds; output count. |
 | `START`/`STOP` | none | Control streaming pipeline (I2S default). |
-| `PLAY` | `<path>` optional | Queue WAV from SPIFFS; default path used if omitted. |
-| `BEEP` | [duration,freq] | Trigger synth beep (if WAV inactive). |
+| `BEEP` | [duration,freq] | Trigger synth beep. |
 | `VOLUME`/`MUTE`/`UNMUTE` | new level | Adjust audio processor state + persist. |
 | `FILES`/`PARTS` | none | File system / partition diagnostics (mount-on-demand). |
 | `STATUS` | none | Print summary (connection, audio state, queue depths). |
@@ -135,42 +133,36 @@ EVENT|PAIR|PIN_REQUEST|MAC=aa:bb:cc:dd:ee:ff,SEQ=42,TS=123456
 EVENT|PAIR|CONFIRM|PIN=1234,SEQ=43,TS=123470
 EVENT|PAIR|RESULT|SUCCESS,MAC=...,SEQ=44,TS=...
 EVENT|CONNECTION|STATE|CONNECTED,MAC=...
-EVENT|AUDIO|STATE|PLAYING|SOURCE=WAV
+EVENT|AUDIO|STATE|PLAYING|SOURCE=I2S
 ```
 
 ### 2.3 Audio Processor (`main/audio_processor.c` + helpers)
 
 **Responsibilities**
-- Manage audio buffers for I2S, WAV, and synth data.
+- Manage audio buffers for I2S and synth data.
 - Maintain metadata tag ringbuffer synchronized with audio ringbuffer for diagnostics.
-- Throttle producers (WAV, synth) based on available headroom; avoid WDT.
+- Throttle producers (synth) based on available headroom; avoid WDT.
 - Integrate with A2DP source callbacks (fill SBC frames from ringbuffer).
-- Provide APIs invoked by commands: `audio_processor_start`, `stop`, `play_wav`, `beep`, `set_volume`, etc.
+- Provide APIs invoked by commands: `audio_processor_start`, `stop`, `beep`, `set_volume`, etc.
 
 **Buffers & memory**
 - `s_audio_buffer`: ringbuffer created via `xRingbufferCreate` with `RINGBUF_TYPE_ALLOWSPLIT`.
-	- PSRAM path: attempt `heap_caps_malloc` with SPIRAM caps for ≥128 KiB.
+	- PSRAM path: attempt `heap_caps_malloc` with SPIRAM caps for ≥28 KiB.
 	- DRAM fallback: allocate ≥32 KiB, log warning `DIAG-AUDIO-BUFFER|DRAM_ONLY|SIZE=<bytes>`.
 - Metadata ringbuffer mirrors audio ringbuffer operations (push on enqueue, drop on discard, reset on flush).
-- Work buffers for WAV resampling sized via `audio_processor_get_work_buffer_bytes()` to match actual allocation.
 
 **Source behavior**
 - **I2S**: Reader task collects DMA frames, enqueues into audio ringbuffer tagged `SRC=I2S`. Sample rate default 44.1 kHz; commands can adjust (subject to validation).
-- **WAV**: `play_wav` verifies SPIFFS file, opens chunked reads sized per runtime buffer size, resamples if necessary, enqueues with backpressure. While WAV active, synth disabled and beep commands return `ERR|BEEP|BUSY`.
 - **Synth**: Idle fallback; generates 256-byte chunks, respects `audio_processor_enable_next_beep_diag()` for instrumentation.
 
 **State machine (simplified)**
 ```
 IDLE ──(START)──▶ STREAM_I2S
-IDLE ──(PLAY WAV)──▶ STREAM_WAV ──(WAV complete)──▶ IDLE
-STREAM_I2S ──(PLAY)──▶ STREAM_WAV (I2S paused)
-STREAM_* ──(STOP/DISCONNECT)──▶ IDLE (buffers drained)
+STREAM_I2S ──(STOP/DISCONNECT)──▶ IDLE (buffers drained)
 ```
-- `STREAM_WAV` holds synth disabled flag; `STOP` re-enables synth.
 - `audio_processor_read()` always attempts to drain ringbuffer and log `DIAG-READ-*` entries with free-before/after metrics.
 
 ### 2.4 Storage, Assets, and Helpers
-- **SPIFFS**: `cmd_mount_spiffs_if_needed()` ensures partition mounted before FILES/PLAY. SPIFFS image path fixed to `main/assets/spiffs/spiffs.bin`; `flash_and_verify_spiffs.py` writes it to `0x1C0000`.
 - **NVS**: `nvs_storage` component wraps key/value operations for pairing table, default PIN, device name, audio settings. All setters persist immediately; getters provide defaults if not found.
 - **Diagnostics tools**: `tools/parse_traces.py` and `tools/trace_stats.py` require DIAG markers in logs. Audio processor and worker tasks must emit consistent prefixes (`DIAG-READ`, `DIAG-WORKER`, `DIAG-APLAY`, etc.).
 
@@ -202,7 +194,6 @@ esp_err_t bt_manager_unpair_all(uint32_t* removed_count);
 // command interface → audio processor
 esp_err_t audio_processor_start(audio_source_t source);
 esp_err_t audio_processor_stop(void);
-esp_err_t audio_processor_play_wav(const char* path);
 esp_err_t audio_processor_beep(beep_params_t params);
 esp_err_t audio_processor_set_volume(int percent);
 
@@ -223,7 +214,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 
 ### 4.1 Command sequencing & concurrency
 - Commands are processed sequentially within the command task; no re-entrancy.
-- Long-running operations (SCAN, CONNECT, WAV playback) post progress via events and update shared state accessible to STATUS command.
+- Long-running operations (SCAN, CONNECT) post progress via events and update shared state accessible to STATUS command.
 - Commands issued in incompatible states respond with `ERR|...|BUSY` or `ERR|...|NOT_CONNECTED` per PRD contract.
 - Incoming events do not cancel commands; only explicit STOP/DISCONNECT requests can abort operations.
 
@@ -237,13 +228,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 
 ### 4.3 Audio pipeline specifics
 - **Start (I2S)**: command triggers `audio_processor_start(SOURCE_I2S)` which ensures I2S driver configured (pins: BCLK26, WCLK25, DATA_IN22) and reader task running; ringbuffer drained before enabling stream.
-- **Play WAV**:
-	1. Command verifies SPIFFS mounted; path defaults to `/spiffs/worker_long_norm.wav` if omitted.
-	2. WAV header parsed to confirm PCM 16-bit stereo 44.1 kHz; if mismatch, return `ERR|PLAY|BAD_PARAM`.
-	3. Data read in chunks sized to `audio_processor_get_work_buffer_bytes()`; resampled if required.
-	4. Each chunk enqueued with metadata tag (sequence, source). If ringbuffer lacks space, chunk is split and re-enqueued later with pacing delay (1 ms) to avoid WDT.
-	5. On completion, synth restored via `wav_playback_complete_if_idle()`.
-- **Synth/beep**: BEEP command arms `audio_processor_enable_next_beep_diag()` optionally and pushes beep job to worker queue. Synth disabled when WAV active; beep command returns `ERR|BEEP|BUSY` in that state.
+- **Synth/beep**: BEEP command arms `audio_processor_enable_next_beep_diag()` optionally and pushes beep job to worker queue.
 
 ### 4.4 Error handling & logging
 - Every ESP-IDF call is `ESP_ERROR_CHECK`’d or translated into user-facing errors.
@@ -259,8 +244,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 | Requirement | Verification |
 | --- | --- |
 | Deterministic command protocol | Host CTest suite `test_commands`, `test_command_parser`, plus targeted Unity tests in `test_app`. |
-| Audio continuity (I2S/WAV) | Unity suites `test_audio_processor_*`, `test_play_wav_command`; manual playback logs archived under `tmp/`. |
-| SPIFFS workflow | `tools/flash_and_verify_spiffs.py` smoke test + Unity tests referencing WAV assets. |
+| Audio continuity (I2S/synth) | Unity suites `test_audio_processor_*`; manual playback logs archived under `tmp/`. |
 | Pairing persistence | Unity tests in `test_app2` + on-device scripts storing logs to `build/pairing_e2_logs/`. |
 | Diagnostics availability | Run `tools/parse_traces.py` against latest `one_run_unity.log`; CI step ensures >1000 records.
 
@@ -273,7 +257,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 
 ### 5.3 Acceptance criteria recap
 - Two consecutive green orchestrator runs (host 259/259 test cases + device tests TBD) before release tagging.
-- Manual WAV + I2S playback sessions (≥5 min) produce no underrun logs.
+- Manual I2S playback sessions (≥5 min) produce no underrun logs.
 - Pairing persistence script demonstrates store, reboot, recall, unpair cycle.
 
 ---
@@ -298,7 +282,7 @@ esp_err_t storage_get_default_pin(char out[8]);
 | Personas & field expectations | §§3.1, 4.1 | Field operation expectations translated to state/response handling. |
 | Bluetooth & pairing requirements | §2.2, §4.2 | Pairing policy, event logging, auto reconnect. |
 | Audio pipeline + reference config | §2.3, §4.3, §4.4 | Buffer sizing, format requirements, jitter measurement. |
-| Storage/assets | §2.4, §4.5 | SPIFFS + NVS handling. |
+| Storage/assets | §2.4 | NVS handling. |
 | Testing/metrics | §5 | Orchestrator + acceptance mapping. |
 | Risks/milestones | §6 + references | FS tracks open issues and defers milestone tracking to PRD. |
 
