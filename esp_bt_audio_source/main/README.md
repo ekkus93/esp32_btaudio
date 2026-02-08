@@ -7,7 +7,7 @@ What the app does
 -----------------
 - Acts as a Bluetooth Classic A2DP **source** with AVRCP controller to a paired speaker/headset.
 - Captures PCM from I2S (or generates synthetic/diagnostic audio), converts/resamples, and pushes it through a shared ring buffer to the BT stack.
-- Plays short beeps and WAV clips through the same pipeline so priority and volume handling remain consistent.
+- Plays short beeps through the same pipeline so priority and volume handling remain consistent.
 - Exposes a small command interface (UART-driven) for diagnostics and control.
 
 Startup and system services
@@ -23,7 +23,6 @@ Audio pipeline (ring buffer core)
 - `audio_ringbuffer.c` implements a single-producer/single-consumer ring buffer used by the audio engine task and the BT stack callback.
 - Sources feeding the ring buffer:
 	- **I2S capture** via `i2s_manager.c`: reads DMA frames, converts bit depth, and resamples to the configured output rate before filling the ring buffer.
-	- **WAV playback** via `play_manager.c`: parses PCM WAV headers, converts/resamples frames into the ring, and tracks residual bytes between chunks to keep frame alignment.
 	- **Beep generation** via `beep_manager.c`: synthesizes short sine beeps with fade-in/out and overlays them during reads.
 	- **Synthetic tone/keepalive** via `synth_manager.c` (and helpers inside `audio_processor.c`): used when capture is unavailable or to keep the BT link alive.
 - `audio_processor` produces into the ring buffer, applies volume/mute, tracks stats, and the BT A2DP data callback reads from the ring. It also exposes diagnostics (probe dumps, tag-miss counters, ring drain helpers) and runtime switches (force synth mode, DRAM-only allocations).
@@ -40,22 +39,16 @@ Tasks, timers, and concurrency
 - Audio processor task: owns the processing loop; manages prefill, draining, resample work buffers, and keepalive timing.
 - I2S capture: pulled on demand by the audio engine loop via `i2s_source_fill()`, which reads DMA with short timeouts.
 - Heart-beat timer: periodic state machine tick for BT connect/retry; also used to gate some diagnostics.
-- Mutexes/critical sections: play/beep managers use mutexes or spinlocks around state transitions; ring buffer access is lock-free (SPSC design).
+- Mutexes/critical sections: audio managers (beep, I2S, synth) use mutexes or spinlocks around state transitions; ring buffer access is lock-free (SPSC design).
 
 Configuration and data formats
 ------------------------------
 - `audio_config_t` (see `include/audio_processor.h`) defines sample rate, bit depth (16/24/32), channel mode (mono/stereo), volume (0–100), mute flag, I2S port, and optional pin assignments. Pins can be updated at runtime via `audio_processor_set_i2s_pins()`; the processor restarts to apply changes.
-- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, WAV, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
-- Producers (beep_manager, i2s_manager, play_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 44.1 kHz, stereo.
+- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
+- Producers (beep_manager, i2s_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 44.1 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
-- The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible (see `play_manager.c`).
+- The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible.
 
-WAV playback details (`play_manager.c`)
----------------------------------------
-- Parses RIFF/WAVE headers, supports PCM only, validates format chunk, and locates the data chunk length.
-- Tracks source format (bit depth, sample rate, channels) and converts to the configured output format.
-- Maintains residual bytes so frame boundaries stay aligned across fill operations.
-- Thread-safety via a mutex; `play_manager_is_active()` reports whether a file is in-flight.
 
 Beep generation details (`beep_manager.c`)
 ------------------------------------------
@@ -72,10 +65,10 @@ I2S capture details (`i2s_manager.c`)
 Audio processor responsibilities (`audio_processor.c`)
 -----------------------------------------------------
 - Initializes shared buffers (capture, work, conversion) with optional DRAM-only mode for boards sensitive to PSRAM.
-- Orchestrates sources: prioritizes beeps and WAV playback, otherwise uses live I2S capture; falls back to synthetic tones/keepalive when no capture data is available or when A2DP is disconnected.
+- Orchestrates sources: prioritizes beeps, otherwise uses live I2S capture; falls back to synthetic tones/keepalive when no capture data is available or when A2DP is disconnected.
 - Applies volume/mute to produced audio, maintains residual ring-buffer bytes, and tracks tag continuity. Provides stats via `audio_processor_get_stats()` and status via `audio_processor_get_status()`.
 - Exposes diagnostics: probe arm/emit for I2S timing, sync worker dump, keepalive arming, and ring drain helpers.
-- Public helpers: `audio_processor_beep[_tone]`, `audio_processor_play_wav`, `audio_processor_read`, `audio_processor_set_synth_mode`, `audio_processor_set_dram_only`, and test-only injection APIs under `CONFIG_BT_MOCK_TESTING`.
+- Public helpers: `audio_processor_beep[_tone]`, `audio_processor_read`, `audio_processor_set_synth_mode`, `audio_processor_set_dram_only`, and test-only injection APIs under `CONFIG_BT_MOCK_TESTING`.
 
 Bluetooth control helpers
 -------------------------
@@ -84,8 +77,8 @@ Bluetooth control helpers
 Diagnostics and testing
 -----------------------
 - Host/unit tests target the pure C logic with mocks; mock builds replace hardware with synthetic data paths (`CONFIG_BT_MOCK_TESTING`).
-- Diagnostic commands can trigger ring buffer drains, beep diagnostics, I2S probes, and WAV playback from SPIFFS (`/spiffs/*.wav`).
-- Logs use consistent module tags (AUDIO_PROC, i2s_manager, play_manager, beep_manager, BT_AV, RC_CT). Warnings/errors include esp_err_t codes; `ESP_RETURN_ON_ERROR` guards most hardware calls.
+- Diagnostic commands can trigger ring buffer drains, beep diagnostics, and I2S probes.
+- Logs use consistent module tags (AUDIO_PROC, i2s_manager, beep_manager, BT_AV, RC_CT). Warnings/errors include esp_err_t codes; `ESP_RETURN_ON_ERROR` guards most hardware calls.
 
 Operational notes
 -----------------
@@ -110,11 +103,11 @@ Audio pipeline (source selection and flow)
 	       +------+-------+                          |
 		      |                                   |
 	  source select order                             |
-	  (beep > WAV > I2S > synth)                      |
+	  (beep > I2S > synth)                            |
 		      v                                   |
     +-----------------+-----------------+                 |
-    |  Beep manager   |  WAV play mgr   |  I2S manager    |
-    |  (tone synth)   |  (file decode)  |  (capture DMA)  |
+    |  Beep manager   |  I2S manager    | Synth manager   |
+    |  (tone synth)   |  (capture DMA)  |  (keepalive)    |
     +--------+--------+--------+--------+--------+-------+
 	     |                 |                 |
 	     v                 v                 v

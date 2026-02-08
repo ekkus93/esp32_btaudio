@@ -718,13 +718,61 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 **Goal:** Remove PLAY references from all documentation
 
 ### 6.1 Update main/README.md
-- [ ] Open `main/README.md`
-- [ ] Search for `PLAY` command mentions
-- [ ] Remove PLAY command description from command list
-- [ ] Remove WAV playback use cases
-- [ ] Update audio source list (remove WAV, show 3 sources)
-- [ ] Update any diagrams or flowcharts showing PLAY
-- [ ] Save file
+- [x] Open `main/README.md`
+- [x] Search for `PLAY` command mentions
+- [x] Remove PLAY command description from command list
+- [x] Remove WAV playback use cases
+- [x] Update audio source list (remove WAV, show 3 sources)
+- [x] Update any diagrams or flowcharts showing PLAY
+- [x] Save file
+
+**Phase 6.1 Result:** ✅ COMPLETE (2026-02-08)
+
+**Changes Made (8 sections updated):**
+
+1. **What the app does** (line 10):
+   - Removed: "and WAV clips"
+   - Updated: "Plays short beeps through the same pipeline..."
+
+2. **Audio pipeline - Sources** (lines 23-29):
+   - Removed: Entire WAV playback bullet point
+   - Updated: List now shows 3 sources: I2S capture, Beep generation, Synthetic tone/keepalive
+
+3. **Configuration section** (lines 47-51):
+   - Removed: "WAV" from sources list in output format description
+   - Removed: "play_manager" from producers list
+   - Removed: Reference to `play_manager.c` in frame alignment comment
+
+4. **WAV playback details section** (lines 53-58):
+   - Removed: Entire section (6 lines) describing play_manager.c functionality
+
+5. **Concurrency section** (line 42):
+   - Updated: "play/beep managers" → "audio managers (beep, I2S, synth)"
+
+6. **Audio processor responsibilities** (line 75):
+   - Removed: "and WAV playback" from source orchestration description
+   - Updated: "prioritizes beeps, otherwise uses live I2S capture"
+
+7. **Public helpers** (line 78):
+   - Removed: `audio_processor_play_wav` from API list
+
+8. **Diagnostics section** (lines 87-88):
+   - Removed: "and WAV playback from SPIFFS (`/spiffs/*.wav`)"
+   - Removed: "play_manager" from log tags list
+
+9. **Audio pipeline diagram** (lines 113-116):
+   - Updated source priority: "beep > WAV > I2S > synth" → "beep > I2S > synth"
+   - Removed: "WAV play mgr (file decode)" column from diagram
+   - Added: "Synth manager (keepalive)" to diagram
+
+**Verification:**
+- ✅ grep -in "PLAY\|play_manager" main/README.md shows only 2 legitimate references:
+  - Line 10: "Plays short beeps" (beep functionality, not PLAY command)
+  - Line 57: "PLAYING" (beep manager state, not PLAY command)
+- ✅ No WAV playback references remain
+- ✅ No play_manager references remain
+- ✅ Audio sources correctly show 3 sources (I2S, beep, synth)
+- ✅ Diagrams updated to reflect new architecture
 
 ### 6.2 Update docs/FS.md
 - [ ] Open `docs/FS.md` (if exists)

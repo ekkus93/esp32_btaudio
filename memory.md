@@ -13641,3 +13641,49 @@ I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
 **Status:** Phase 5 COMPLETE ✅, Ready for Phase 6 (Update Documentation)
 
 **Next:** Phase 6 - Update Documentation (remove PLAY/WAV references from README, docs, comments)
+
+---
+
+## 2026-02-08 09:30:14
+
+**Task:** Phase 6.1 - Update main/README.md (remove PLAY/WAV documentation)
+
+**Actions:**
+1. Searched main/README.md for all PLAY/WAV/play_manager references (16 matches found)
+2. Removed WAV playback section (6 lines)
+3. Updated audio sources from 4 to 3 (removed WAV)
+4. Updated audio pipeline diagram (removed WAV play mgr column)
+5. Removed play_manager from all documentation references
+6. Updated source priority: "beep > WAV > I2S > synth" → "beep > I2S > synth"
+7. Verified cleanup complete (only 2 legitimate references remain)
+
+**Changes Made (9 sections in main/README.md):**
+
+1. **What the app does** - Removed "and WAV clips" reference
+2. **Audio pipeline sources** - Removed entire WAV playback bullet (play_manager.c)
+3. **Configuration section** - Removed WAV from sources, play_manager from producers
+4. **WAV playback details** - Removed entire 6-line section describing play_manager
+5. **Concurrency** - Updated "play/beep managers" → "audio managers (beep, I2S, synth)"
+6. **Audio processor** - Removed "and WAV playback" from orchestration
+7. **Public helpers** - Removed audio_processor_play_wav from API list
+8. **Diagnostics** - Removed WAV playback from SPIFFS reference, play_manager from log tags
+9. **Diagram** - Updated source priority, removed WAV column, added Synth manager
+
+**Verification:**
+✅ Only 2 legitimate PLAY references remain:
+   - "Plays short beeps" (beep functionality)
+   - "PLAYING" (beep manager state)
+✅ No WAV playback documentation
+✅ No play_manager references
+✅ Audio sources: 3 (I2S, beep, synth) instead of 4
+✅ Diagrams reflect current architecture
+
+**Results:**
+- ✅ Phase 6.1 complete - main/README.md updated
+- Documentation now accurately reflects 3-source audio architecture
+- All PLAY command and WAV playback references removed
+- Source priority updated in text and diagrams
+
+**Status:** Phase 6.1 COMPLETE ✅
+
+**Next:** Phase 6.2 - Update docs/FS.md (if exists)
