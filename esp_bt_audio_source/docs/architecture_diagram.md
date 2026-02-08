@@ -1,5 +1,28 @@
 # ESP32 Bluetooth Audio Source - Architecture Diagrams
 
+> **⚠️ PARTIALLY OBSOLETE (as of Version 0.3.0 - February 2026)**
+>
+> These diagrams reflect the architecture **before the PLAY command and play_manager removal**.
+> 
+> **Obsolete elements in diagrams:**
+> - `PLAY_MANAGER` component (removed in Version 0.3.0, lines 125, 144)
+> - References to WAV playback from SPIFFS (removed in Version 0.3.0)
+> - SPIFFS filesystem (partition removed in Version 0.3.0)
+> 
+> **Current architecture (Version 0.3.0):**
+> - Audio sources: **I2S live streaming**, **synth tones**, **silence** (3 sources, no WAV)
+> - Audio managers: `i2s_manager`, `synth_manager`, `beep_manager` (no `play_manager`)
+> - Storage: NVS only (no SPIFFS partition)
+> 
+> For current architecture documentation, see:
+> - [main/README.md](../main/README.md) — current audio pipeline architecture
+> - [ARCH.md](../ARCH.md) — architecture notes (obsolete sections marked)
+> - [MIGRATION.md](../MIGRATION.md) — Version 0.3.0 changes
+> 
+> This document is retained for historical reference.
+
+---
+
 This document contains Mermaid diagrams visualizing the architecture decisions from the CODE_REVIEW2 cleanup (Jan-Feb 2026).
 
 ## Initialization Sequence

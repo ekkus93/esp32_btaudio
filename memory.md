@@ -14007,3 +14007,80 @@ I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
 **Status:** Phase 6.5 COMPLETE ✅
 
 **Next:** Phase 6.6 - Final Documentation Check (verify no misleading PLAY/WAV references)
+
+---
+
+### 2026-02-08 10:10:23 - Phase 6.6: Final Documentation Check - COMPLETE
+
+**Task:** Search all markdown files for PLAY/play_manager/.wav references and update active documentation
+
+**Verification Commands:**
+```bash
+# PLAY command references
+grep -ri "PLAY" --include="*.md" | grep -v "REMOVE_PLAY" | grep -v "DISPLAY"
+
+# play_manager references  
+grep -ri "play_manager" --include="*.md"
+
+# .wav file references
+grep -ri "\.wav" --include="*.md"
+```
+
+**Files Updated (2):**
+
+1. **docs/PRD.md** (Product Requirements Document):
+   - Added deprecation notice at top (26 lines)
+   - Marked document as "PARTIALLY OBSOLETE" as of Version 0.3.0
+   - Listed obsolete sections: PLAY command, WAV playback, SPIFFS, play_manager
+   - Documented current capabilities: I2S and synth only, no PLAY command
+   - Links to current documentation: README, MIGRATION, main/README
+   - Strikethrough obsolete commands in command list: ~~PLAY~~, ~~FILES~~, ~~PARTS~~
+   - Strikethrough obsolete commands in state table (lines 68-71)
+   - Document retained for historical reference
+
+2. **docs/architecture_diagram.md** (Architecture diagrams):
+   - Added deprecation notice at top (21 lines)
+   - Marked diagrams as "PARTIALLY OBSOLETE" as of Version 0.3.0
+   - Listed obsolete elements: PLAY_MANAGER (lines 125, 144), WAV playback, SPIFFS
+   - Documented current architecture: I2S, synth, silence (3 sources)
+   - Documented current managers: i2s_manager, synth_manager, beep_manager (no play_manager)
+   - Links to current architecture docs: main/README, ARCH, MIGRATION
+   - Document retained for historical reference
+
+**Files Already Deprecated (Phase 6.4, no changes needed):**
+- tools/README_spiffs.md: Marked obsolete with deprecation warning
+- MIGRATION.md: Version 0.3.0 section correctly documents PLAY removal
+- ARCH.md: Obsolete sections marked with status notice
+
+**Legitimate References (no changes needed):**
+
+- **main/README.md**: 
+  - "Plays short beeps" (lowercase verb, describing functionality)
+  - "PLAYING" (valid BEEP_STATE_PLAYING enum value)
+  
+- **docs/FS.md**:
+  - "PLAYING" (valid EVENT|AUDIO|STATE|PLAYING state)
+  - "DIAG-APLAY" (diagnostic prefix, not PLAY command)
+
+- **memory.md**: All play_manager references are historical log entries documenting removal process
+
+- **code_review/***: All historical documentation of development phases (acceptable)
+
+- **rpi_i2s_source/**, **bbgw_i2s_source/**: Different projects in workspace (not modified)
+
+- **components/components/***: Third-party ESP-IDF framework code (not modified)
+
+**Verification Results:**
+✅ PLAY command: 2 active docs updated, rest are historical or legitimate
+✅ play_manager: All references are historical records (memory.md, code_review/*)
+✅ .wav files: 0 active docs with misleading references (all deprecated or historical)
+
+**Impact:**
+- Clear deprecation notices prevent confusion about current capabilities
+- Historical content preserved for reference
+- All active documentation now accurate as of Version 0.3.0
+- No misleading PLAY/WAV/play_manager references in user-facing docs
+
+**Status:** Phase 6.6 COMPLETE ✅
+
+**Next:** Phase 6.7 - Verification (confirm all Phase 6 tasks complete)

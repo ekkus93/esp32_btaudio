@@ -979,18 +979,46 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 - ✅ Enums and metrics preserved for backward compatibility
 
 ### 6.6 Final Documentation Check
-- [ ] Verify no PLAY references in docs:
+- [x] Verify no PLAY references in docs:
   ```bash
   grep -ri "PLAY" --include="*.md" | grep -v "REMOVE_PLAY"
   ```
-- [ ] Verify no play_manager references:
+  **Results:**
+  - **docs/PRD.md**: Added deprecation notice at top, marked obsolete commands in command list and state table
+  - **docs/architecture_diagram.md**: Added deprecation notice marking PLAY_MANAGER as obsolete
+  - **tools/README_spiffs.md**: Already deprecated in Phase 6.4
+  - **MIGRATION.md**: Correctly documents PLAY removal (Phase 6.4)
+  - **ARCH.md**: Already marked obsolete sections (Phase 6.4)
+  - **main/README.md**: "plays" and "PLAYING" are legitimate (verb and state)
+  - **docs/FS.md**: "PLAYING" state and "DIAG-APLAY" prefix are legitimate
+  - **code_review/***: All historical documentation (acceptable)
+  - **components/components/***: Third-party ESP-IDF code (not modified)
+
+- [x] Verify no play_manager references:
   ```bash
   grep -ri "play_manager" --include="*.md"
   ```
-- [ ] Verify no misleading WAV references:
+  **Results:**
+  - **memory.md**: All references are historical log entries (acceptable)
+  - **code_review/***: All historical documentation (acceptable)
+  - All play_manager references are historical records of removal process
+
+- [x] Verify no misleading WAV references:
   ```bash
   grep -ri "\.wav" --include="*.md"
   ```
+  **Results:**
+  - **tools/README_spiffs.md**: Already deprecated in Phase 6.4
+  - **ARCH.md**: Already marked obsolete (Phase 6.4)
+  - **code_review/***: Historical documentation (acceptable)
+  - **rpi_i2s_source/**, **bbgw_i2s_source/**: Different projects (not modified)
+  - **components/components/***: Third-party ESP-IDF code (not modified)
+
+**Summary:**
+- ✅ 2 active documentation files updated (PRD.md, architecture_diagram.md)
+- ✅ 3 files already deprecated in Phase 6.4 (README_spiffs, MIGRATION, ARCH)
+- ✅ All remaining references are legitimate (state names, historical records, other projects)
+- ✅ No misleading PLAY/WAV/play_manager references remain in active documentation
 
 ### 6.7 Verification
 - [ ] main/README.md updated (PLAY removed)

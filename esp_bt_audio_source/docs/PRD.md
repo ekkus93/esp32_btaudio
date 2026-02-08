@@ -1,3 +1,29 @@
+## Document Status Notice
+
+> **⚠️ PARTIALLY OBSOLETE (as of Version 0.3.0 - February 2026)**
+>
+> This document reflects the product requirements **before the PLAY command and WAV playback removal**.
+> 
+> **Obsolete sections:**
+> - All references to `PLAY` command (removed in Version 0.3.0)
+> - WAV-from-SPIFFS playback functionality (removed in Version 0.3.0)
+> - SPIFFS filesystem usage (partition removed in Version 0.3.0)
+> - `play_manager` component references (removed in Version 0.3.0)
+> 
+> **Current capabilities (Version 0.3.0):**
+> - Audio sources: **I2S live streaming** and **synthesized tones** only
+> - Commands: `START`, `STOP`, `BEEP`, `VOLUME`, etc. (but NOT `PLAY`)
+> - Storage: NVS only (no SPIFFS partition)
+> 
+> For current documentation, see:
+> - [README.md](../README.md) — current project status
+> - [MIGRATION.md](../MIGRATION.md) — Version 0.3.0 migration guide
+> - [main/README.md](../main/README.md) — current audio architecture
+> 
+> This document is retained for historical reference.
+
+---
+
 ## 1. Overview
 
 `esp_bt_audio_source` is the Bluetooth A2DP source half of a two-ESP32 audio system. It receives audio (I2S, WAV-from-SPIFFS, or synthesized waveforms), manages Bluetooth pairing/connection, and streams audio reliably to consumer speakers/headsets. This PRD retroactively captures the current product intent so engineering, QA, and documentation stay aligned while the firmware continues evolving.
@@ -55,7 +81,7 @@ Representative Use Cases:
 ### 4.1 Command Interface
 - UART transport runs at 115200 baud, 8 data bits, no parity, 1 stop bit (8N1) over the reference board’s USB-to-serial bridge exposed as `/dev/ttyUSB0`.
 - UART protocol parses uppercase tokens terminated by `\n`; tokens are case-sensitive and must reject mixed case.
-- Supported commands: `SCAN`, `CONNECT`, `CONNECT_NAME`, `DISCONNECT`, `PAIR`, `PAIRED`, `UNPAIR`, `UNPAIR_ALL`, `START`, `STOP`, `PLAY`, `BEEP`, `VOLUME`, `MUTE`, `UNMUTE`, `FILES`, `PARTS`, `STATUS`, `VERSION`, `HELP`, `SET_NAME`, `SET_DEFAULT_PIN`, `SAMPLE_RATE`, `I2S_CONFIG`.
+- Supported commands: `SCAN`, `CONNECT`, `CONNECT_NAME`, `DISCONNECT`, `PAIR`, `PAIRED`, `UNPAIR`, `UNPAIR_ALL`, `START`, `STOP`, ~~`PLAY`~~ *(removed V0.3.0)*, `BEEP`, `VOLUME`, `MUTE`, `UNMUTE`, ~~`FILES`~~ *(removed V0.3.0)*, ~~`PARTS`~~ *(removed V0.3.0)*, `STATUS`, `VERSION`, `HELP`, `SET_NAME`, `SET_DEFAULT_PIN`, `SAMPLE_RATE`, `I2S_CONFIG`.
 - Configuration persistence: `SET_NAME` and `SET_DEFAULT_PIN` must store their values in NVS immediately, while `SAMPLE_RATE`, `I2S_CONFIG`, and other tuning commands are runtime-only unless explicitly documented otherwise.
 - HELP command prints the canonical list (with short descriptions) and must be updated whenever behavior changes.
 - Each request must emit exactly one `OK|<COMMAND>|...` or `ERR|<COMMAND>|<CODE>|...` response line even if asynchronous `EVENT|...` logs interleave; scripts assume single-line completion.
@@ -65,10 +91,10 @@ Representative Use Cases:
 
 | State | Entry Condition | Allowed Commands | Notes |
 | --- | --- | --- | --- |
-| IDLE | Controller initialized, no scan/connect/stream pending | `SCAN`, `PAIR`, `PAIRED`, `CONNECT`, configuration commands (`FILES`, `PARTS`, `STATUS`, etc.) | START/PLAY/BEEP must reject with `ERR|...|NOT_CONNECTED`. |
+| IDLE | Controller initialized, no scan/connect/stream pending | `SCAN`, `PAIR`, `PAIRED`, `CONNECT`, configuration commands (~~`FILES`~~, ~~`PARTS`~~, `STATUS`, etc.) | START/~~PLAY~~/BEEP must reject with `ERR|...|NOT_CONNECTED`. |
 | SCANNING | Scan active | `SCAN` (idempotent), `STOP` (cancels scan), `STATUS`, `HELP` | CONNECT/PAIR requests fail fast with `ERR|...|BUSY`. |
-| CONNECTED | ACL + A2DP up, not streaming | `START`, `STOP`, `PLAY`, `BEEP`, `DISCONNECT`, `UNPAIR`, `PAIRED`, diagnostic commands | `SCAN` returns `ERR|SCAN|BUSY` until streaming stops. |
-| STREAMING | Audio pipeline feeding A2DP | `STOP`, `PLAY` (switch source), `DISCONNECT`, `STATUS`, diagnostics | SCAN/PAIR/BEEP requests reject with `ERR|...|BUSY`. |
+| CONNECTED | ACL + A2DP up, not streaming | `START`, `STOP`, ~~`PLAY`~~, `BEEP`, `DISCONNECT`, `UNPAIR`, `PAIRED`, diagnostic commands | `SCAN` returns `ERR|SCAN|BUSY` until streaming stops. |
+| STREAMING | Audio pipeline feeding A2DP | `STOP`, ~~`PLAY` (switch source)~~, `DISCONNECT`, `STATUS`, diagnostics | SCAN/PAIR/BEEP requests reject with `ERR|...|BUSY`. |
 
 - Command handlers must explicitly note whether they queue (rare) or reject when invoked in incompatible states.
 
