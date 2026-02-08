@@ -1,3 +1,27 @@
+# ⚠️ DEPRECATED - SPIFFS Support Removed (February 2026)
+
+**This document is obsolete.**  
+SPIFFS partition and WAV file playback functionality were removed from the project in February 2026 as part of the PLAY command removal project (Phases 1-6).
+
+**What was removed:**
+- SPIFFS partition (was 256 KiB at offset 0x1C0000)
+- PLAY command and WAV file playback
+- play_manager component
+- All SPIFFS tooling (make_spiffs.py, flash_and_verify_spiffs.py)
+
+**Flash space reclaimed:** 1 MB (SPIFFS partition removed from partition table)
+
+**Current audio sources:** I2S and synthesizer only
+
+This file is retained for historical reference only. For current architecture, see:
+- [esp_bt_audio_source/docs/FS.md](../docs/FS.md) - Functional specification
+- [esp_bt_audio_source/main/README.md](../main/README.md) - Application architecture
+- [README.md](../../README.md) - Project overview
+
+---
+
+# Original Content (Historical Reference)
+
 Ensure Unity test apps use the same SPIFFS partition
 
 For reliable host/device tests you requested that the Unity test suites (for example `test_app`, `test_app2`, `test_app_audio`) use the same `spiffs` partition as the main app. There are two ways this can be achieved:

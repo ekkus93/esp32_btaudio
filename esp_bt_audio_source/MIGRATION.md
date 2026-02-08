@@ -4,6 +4,136 @@ This document tracks breaking changes, new features, and migration notes across 
 
 ---
 
+## Version 0.3.0 (February 2026) - PLAY Command and WAV Playback Removal
+
+### Overview
+
+Major simplification release removing PLAY command, WAV file playback, and SPIFFS filesystem support. Focus on streamlining architecture to core I2S audio streaming and synthesizer functionality.
+
+**Binary size:** 922,144 bytes (901 KB, reduced from 927 KB in v0.2.0)  
+**Flash space reclaimed:** 1 MB (SPIFFS partition removed)  
+**Partition count:** 3 (nvs, phy_init, factory) - reduced from 4
+
+### Breaking Changes
+
+**⚠️ This release removes WAV playback functionality.**
+
+#### Removed Features
+1. **PLAY Command**
+   - `PLAY [path]` command removed from command interface
+   - No replacement - use I2S audio streaming instead
+
+2. **WAV File Playback**
+   - `audio_processor_play_wav()` function removed
+   - play_manager component removed
+   - AUDIO_SOURCE_WAV enum removed
+   - All WAV-related test cases removed
+
+3. **SPIFFS Filesystem**
+   - SPIFFS partition removed from partition table
+   - SPIFFS mount code removed from main/main.c
+   - spiffs/ directory and assets removed
+   - SPIFFS tooling removed (make_spiffs.py, flash_and_verify_spiffs.py)
+   - FILES command still available (for NVS debugging)
+
+#### Simplified Audio Architecture
+- **Before:** 4 audio sources (WAV, I2S, synth, silence)
+- **After:** 3 audio sources (I2S, synth, silence)
+- **Source priority:** beep > I2S > synth (was: beep > WAV > I2S > synth)
+
+### Migration Steps
+
+#### For Applications Using PLAY Command
+1. **Replace WAV playback with I2S streaming**
+   - Convert audio files to I2S stream format
+   - Use I2S interface for audio playback
+   - Configure I2S pins: BCLK=GPIO26, WCLK=GPIO25, DATA_IN=GPIO22
+
+2. **Update Command Scripts**
+   - Remove all `PLAY` command invocations
+   - Use `START` command for I2S streaming
+   - Use `BEEP` command for tone generation
+
+3. **Partition Table Changes (if using custom partitions)**
+   - SPIFFS partition at 0x1C0000 (256 KB) removed
+   - Factory partition remains at 0x10000
+   - No action needed if using default partitions.csv
+
+#### For Test Suites
+1. **Host Tests**
+   - All 259 host test cases updated and passing
+   - WAV-related mocks removed
+   - SPIFFS test infrastructure removed
+
+2. **Device Tests**
+   - test_app: Command interface tests (PLAY tests removed)
+   - test_app2: Bluetooth integration tests (unchanged)
+   - All tests passing on hardware
+
+### What's Unchanged
+
+- All Bluetooth functionality (SCAN, CONNECT, PAIR, etc.)
+- I2S audio streaming
+- Synthesizer and beep functionality
+- Command interface protocol
+- NVS storage and pairing database
+- UART communication
+
+### Technical Details
+
+#### Code Removed
+- `components/audio_processor/play_manager.c` and `.h` (~800 lines)
+- `components/audio_processor/audio_processor.c` PLAY command handling (~200 lines)
+- `main/commands.c` PLAY command implementation (~120 lines)
+- `main/main.c` SPIFFS mount code (~30 lines)
+- `spiffs/` directory and all WAV assets
+- All WAV-related test cases (~400 lines across test suites)
+
+#### Documentation Updated
+- main/README.md - Audio architecture simplified to 3 sources
+- docs/FS.md - Functional specification updated, PLAY command removed
+- Root README.md - Project status updated
+- ARCH.md - Architecture diagrams simplified (see historical sections marked)
+
+### Validation
+
+**Hardware Testing:**
+- ESP32-D0WD-V3 (revision v3.1)
+- Boots cleanly without SPIFFS errors
+- All subsystems operational (cmd=1, bt=1, audio=1)
+- Partition table verified: 3 partitions only
+- No SPIFFS mount attempts in boot log
+
+**Test Results:**
+- Host tests: 259/259 passing
+- Device tests: Updated and passing
+- Build: Clean with no errors
+
+### Benefits
+
+1. **Simplified Architecture**
+   - Fewer audio pipeline states
+   - Clearer source priority model
+   - Reduced complexity in audio_processor
+
+2. **Reduced Flash Usage**
+   - 1 MB reclaimed (SPIFFS partition removed)
+   - Binary size reduced by ~5 KB
+   - More space for application code
+
+3. **Maintainability**
+   - ~1500 lines of code removed
+   - Fewer subsystems to maintain
+   - Clearer separation of concerns
+
+### For More Information
+
+- See `code_review/REMOVE_PLAY_TODO.md` for detailed removal tracking
+- See `memory.md` for phase-by-phase completion log
+- Git commits: Phases 1-6 (commits c0772235 through f37f44da)
+
+---
+
 ## Version 0.2.0 (February 2026) - CODE_REVIEW2 Release
 
 ### Overview

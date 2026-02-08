@@ -1,5 +1,16 @@
 # ESP32 Bluetooth + WiFi Split Architecture
 
+> **⚠️ Document Status (February 2026):**  
+> This document contains historical architecture documentation including **obsolete sections** for WAV playback, play_manager, and SPIFFS functionality which were removed in Version 0.3.0.  
+>   
+> **Obsolete sections** (retained for historical reference):
+> - "WAV Playback Lossless Architecture" (line ~204)
+> - play_manager references throughout
+> - SPIFFS partition and filesystem references
+> - AUDIO_SOURCE_WAV enum references
+>  
+> **Current architecture:** 3 audio sources (I2S, synth, silence) - see [main/README.md](main/README.md) and [docs/FS.md](docs/FS.md) for up-to-date documentation.
+
 ## Overview
 
 This project uses two ESP32 devices to overcome the limitations of running WiFi and Bluetooth Classic simultaneously on a single ESP32:
@@ -201,7 +212,11 @@ This separation allows each ESP32 to focus on its primary wireless protocol, ens
   - Generate keepalive tones and beeps
   - **WAV file playback from SPIFFS with zero data loss guarantee**
 
-#### WAV Playback Lossless Architecture (CODE_REVIEW4 Phase 1)
+#### ⚠️ OBSOLETE: WAV Playback Lossless Architecture (CODE_REVIEW4 Phase 1)
+
+> **This section is obsolete as of Version 0.3.0 (February 2026).**  
+> WAV playback, play_manager, and SPIFFS support were removed. This content is retained for historical reference only.  
+> See MIGRATION.md for details.
 
 The audio processor implements a robust WAV playback system with **lossless guarantees** even under memory pressure or queue backpressure conditions. This architecture prevents audio truncation and ensures complete file playback.
 
