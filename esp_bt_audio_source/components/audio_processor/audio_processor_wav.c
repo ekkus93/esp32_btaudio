@@ -30,7 +30,7 @@ void wav_playback_add_pending(size_t bytes)
     } else {
         s_wav_pending_bytes -= bytes;
     }
-    s_wav_playback_active = (s_wav_pending_bytes > 0) || play_manager_is_active();
+    s_wav_playback_active = (s_wav_pending_bytes > 0);  // play_manager removed
     portEXIT_CRITICAL(&s_wav_lock);
 }
 #endif

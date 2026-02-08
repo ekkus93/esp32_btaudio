@@ -24,7 +24,6 @@ idf_component_register(
         "../../../components/audio_processor/audio_ringbuffer.c"
         "../../../components/audio_processor/audio_util.c"
         "../../../components/audio_processor/audio_resampler_stream.c"
-        "../../../components/audio_processor/play_manager.c"
         "../../../components/audio_processor/i2s_manager.c"
         "../../../components/audio_processor/beep_manager.c"
         "../../../components/audio_processor/audio_processor_beep.c"

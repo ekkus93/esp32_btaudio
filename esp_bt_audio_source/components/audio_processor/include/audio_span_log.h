@@ -61,9 +61,8 @@ extern "C" {
  * Audio source types (matches audio_processor.c enum)
  */
 #define AUDIO_SPAN_SOURCE_I2S      0  /* Historical: was WAV (0), now I2S is primary */
-#define AUDIO_SPAN_SOURCE_I2S      1
-#define AUDIO_SPAN_SOURCE_SYNTH    2
-#define AUDIO_SPAN_SOURCE_SILENCE  3
+#define AUDIO_SPAN_SOURCE_SYNTH    1
+#define AUDIO_SPAN_SOURCE_SILENCE  2
 
 /**
  * Span log entry
