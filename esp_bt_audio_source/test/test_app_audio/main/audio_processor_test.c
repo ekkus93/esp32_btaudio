@@ -55,6 +55,7 @@ static void ensure_i2s_stopped(void)
     if (stop_ret != ESP_OK && stop_ret != ESP_ERR_INVALID_STATE) {
         TEST_ASSERT_EQUAL(ESP_OK, stop_ret);
     }
+}
 
 static void test_audio_processor_init(void)
 {
