@@ -3,6 +3,7 @@ set(priv_requires
     bt
     driver
     esp_app_format
+    spiffs
     util_safe)
 
 set(public_requires

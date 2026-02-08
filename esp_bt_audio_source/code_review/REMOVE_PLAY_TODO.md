@@ -579,18 +579,53 @@ None of these affect the main application.
 **Next:** Phase 5.5 - Build with new partition table
 
 ### 5.5 Build with New Partition Table
-- [ ] Clean build directory:
+- [x] Clean build directory:
   ```bash
   cd esp_bt_audio_source
   rm -rf build
   ```
-- [ ] Build with new partition table:
+- [x] Build with new partition table:
   ```bash
   . $HOME/esp/esp-idf/export.sh
   idf.py build
   ```
-- [ ] Verify build succeeds
-- [ ] Check partition table output in build log
+- [x] Verify build succeeds
+- [x] Check partition table output in build log
+
+**Phase 5.5 Result:** ✅ COMPLETE (2026-02-08)
+
+**Build Results:**
+- ✅ Clean build successful (removed build directory, rebuilt from scratch)
+- ✅ Binary size: 922,029 bytes (~900KB)
+- ✅ App partition: 1728K (1.7MB) with 48% free space (845KB available)
+- ✅ Partition table verified - NO SPIFFS partition present
+- ✅ SPIFFS partition removed: Reclaimed 1MB of flash space
+
+**Partition Table:**
+```
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,24K,
+phy_init,data,phy,0xf000,4K,
+factory,app,factory,0x10000,1728K,
+```
+
+**Memory Usage:**
+- Flash Code: 635,710 bytes
+- Flash Data: 153,024 bytes  
+- IRAM: 111,891 bytes (85.37% used, 19,181 bytes free)
+- DRAM: 57,652 bytes (46.28% used, 66,928 bytes free)
+
+**Important Note:**
+- command_interface component still requires spiffs component for FILE command (test/debug feature)
+- FILE command allows listing files in SPIFFS for testing purposes
+- Main application does NOT mount SPIFFS (verified in Phase 5.1)
+- SPIFFS usage is limited to test infrastructure, not production code
+
+**Files Modified (2):**
+1. components/command_interface/CMakeLists.txt: Kept spiffs in priv_requires (needed for FILE command)
+2. components/command_interface/include/commands_priv.h: Kept esp_spiffs.h include
+
+**Next:** Phase 5.6 - Flash and Test (if hardware available)
 
 ### 5.6 Flash and Test (if hardware available)
 - [ ] Flash new firmware with partition table:

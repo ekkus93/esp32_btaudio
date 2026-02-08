@@ -13520,3 +13520,52 @@ python tests/performance/monitor_resources.py --duration=300 --output=perf.csv
 
 **Next:** Phase 5.5 - Build with new partition table
 
+
+## 2026-02-08 09:00:34 - Phase 5.5: Build with new partition table (SPIFFS removal)
+
+**Task:** Clean build with updated partition table (SPIFFS removed)
+
+**Actions Performed:**
+1. Cleaned build directory completely (rm -rf build)
+2. Performed fresh build with ESP-IDF v5.5.1
+3. Verified partition table output
+4. Analyzed binary size and memory usage
+
+**Build Results:**
+- Binary size: 922,029 bytes (~900KB)
+- App partition: 1728K with 48% free (845KB available)
+- Partition table verified (3 partitions only):
+  - nvs (24K)
+  - phy_init (4K)
+  - factory (1728K)
+- **SPIFFS partition successfully removed** - reclaimed 1MB of flash space
+
+**Memory Footprint:**
+- Flash Code: 635,710 bytes
+- Flash Data: 153,024 bytes
+- IRAM: 111,891 bytes (85.37% usage)
+- DRAM: 57,652 bytes (46.28% usage)
+
+**Important Finding:**
+- During build, discovered command_interface component still needs spiffs for FILE command
+- FILE command is test/debug infrastructure for listing files in SPIFFS
+- Kept spiffs component dependency in command_interface (acceptable)
+- Main application does NOT mount SPIFFS (verified Phase 5.1)
+- SPIFFS usage limited to test infrastructure only
+
+**Changes (Phase 5.4 + 5.5 combined):**
+- Top-level CMakeLists.txt: Removed spiffs_create_partition_image()
+- command_interface/CMakeLists.txt: Kept spiffs in priv_requires (for FILE command)
+- command_interface/include/commands_priv.h: Kept esp_spiffs.h include
+
+**Results:**
+- ✅ Clean build successful
+- ✅ SPIFFS partition removed from partition table
+- ✅ 1MB flash space reclaimed
+- ✅ Binary builds and links successfully
+- ✅ Phase 5.5 documentation updated in REMOVE_PLAY_TODO.md
+
+**Status:** Phase 5.5 COMPLETE ✅
+
+**Next:** Phase 5.6 - Flash and Test (requires hardware)
+
