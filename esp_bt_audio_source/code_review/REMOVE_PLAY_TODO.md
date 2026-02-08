@@ -855,20 +855,68 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 - ✅ Active TODOs updated to reflect ongoing work (Phase 6-8)
 
 ### 6.4 Search for Other Documentation
-- [ ] Search for PLAY references in all markdown files:
+- [x] Search for PLAY references in all markdown files:
   ```bash
   grep -r "PLAY" --include="*.md"
   ```
-- [ ] For each file found, review and remove PLAY references
-- [ ] Search for play_manager references:
+- [x] For each file found, review and remove PLAY references
+- [x] Search for play_manager references:
   ```bash
   grep -r "play_manager" --include="*.md"
   ```
-- [ ] Search for WAV references:
+- [x] Search for WAV references:
   ```bash
   grep -r "\.wav" --include="*.md" --include="*.rst" --include="*.txt"
   ```
-- [ ] Update any architecture diagrams or flowcharts
+- [x] Update any architecture diagrams or flowcharts
+
+**Phase 6.4 Results:**
+- ✅ **Searched all markdown files** for PLAY/WAV/play_manager references
+  - Found references in 4 categories: active docs, historical code reviews, other projects, historical logs
+  - 3 active documentation files required updates
+  
+**Files Updated (3):**
+
+1. **esp_bt_audio_source/tools/README_spiffs.md** (+24 lines deprecation notice):
+   - Added prominent deprecation warning at top of file
+   - Marked entire document as obsolete (February 2026)
+   - Listed removed features: SPIFFS partition, PLAY command, WAV playback, play_manager, SPIFFS tooling
+   - Noted 1 MB flash space reclaimed, current 3 audio sources
+   - Provided links to current documentation (FS.md, main/README.md, root README.md)
+   - Retained original 125 lines for historical reference
+
+2. **esp_bt_audio_source/MIGRATION.md** (+130 lines new version section):
+   - Added Version 0.3.0 (February 2026) - PLAY Command and WAV Playback Removal
+   - **Breaking Changes:** PLAY command removed, WAV playback removed, SPIFFS removed
+   - **Simplified Audio Architecture:** 4→3 sources, priority beep>I2S>synth
+   - **Migration Steps:** Replace WAV with I2S, update commands, partition changes, test updates
+   - **What's Unchanged:** All Bluetooth, I2S, synth, commands, NVS, UART functionality
+   - **Technical Details:** ~1500 lines removed, 4 docs updated
+   - **Validation:** Hardware testing (ESP32-D0WD-V3), 259 host tests, device tests passing
+   - **Benefits:** Simplified architecture, 1 MB reclaimed, improved maintainability
+
+3. **esp_bt_audio_source/ARCH.md** (+12 lines status and obsolete markers):
+   - Added document status notice after title
+   - Listed obsolete sections: WAV Playback Lossless Architecture, play_manager, SPIFFS, AUDIO_SOURCE_WAV
+   - Noted current architecture: 3 sources (I2S, synth, silence)
+   - Provided links to current documentation (main/README.md, docs/FS.md)
+   - Marked "WAV Playback Lossless Architecture (CODE_REVIEW4 Phase 1)" section as obsolete
+   - Added Version 0.3.0 reference and link to MIGRATION.md
+   - Retained all 1192 lines of historical content for reference
+
+**Files NOT Updated (acceptable decisions):**
+- **code_review/CODE_REVIEW*.md:** Historical code review documents (CODE_REVIEW2_TODO.md, CODE_REVIEW5.md, CODE_REVIEW6_TODO.md)
+  - Decision: Retain as-is, document past architecture and design decisions
+- **rpi_i2s_source/**, **bbgw_i2s_source/:** Separate Python-based I2S source projects
+  - Decision: Not part of esp_bt_audio_source ESP32 firmware, no changes needed
+- **memory.md:** Historical project log
+  - Decision: Legitimate historical references to PLAY/WAV removal project phases
+- **README.md (root):** Already updated in Phase 6.3
+
+**Search Results Summary:**
+- `grep -r "PLAY"`: 30+ matches (README status, rpi/bbgw projects, memory.md log, code reviews)
+- `grep -r "play_manager"`: 20+ matches (ARCH.md marked obsolete, code review files)
+- `grep -r "\.wav|WAV"`: 40+ matches (README_spiffs obsolete, MIGRATION documented, ARCH marked)
 
 ### 6.5 Update Comments in Code
 - [ ] Search for PLAY-related comments in remaining code:
