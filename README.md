@@ -6,17 +6,19 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
 - Another ESP32 handling WiFi and web server capabilities
 
-## Project Status (2025-11-11)
+## Project Status (2026-02-08)
 
 **Completed recently**
-- `audio_processor_play_wav()` now pauses the pipeline (stop → drain → restart) so WAV commands never fail due to full ringbuffer space; the helper that drains pending beeps also resets the synth state before playback resumes.
-- `idf.py build` for `esp_bt_audio_source/test_app_audio` succeeds after the WAV pipeline changes (Nov 11) with only legacy synth/beep fallback warnings outstanding.
-- SPIFFS tooling remains consolidated across suites (`tools/make_spiffs.py`, shared 256 KiB image) and the runtime ringbuffer floor stays at the full 128 KiB target even on DRAM-only boards.
+- PLAY command and WAV playback functionality removed from codebase (Phase 1-5 complete)
+- SPIFFS partition removed, reclaimed 1MB flash space
+- Audio architecture simplified to 3 sources: I2S, synth, silence (beep)
+- All documentation updated to reflect 2-source architecture (I2S, synth)
+- Hardware validation complete: ESP32 boots cleanly without SPIFFS errors
 
 **Active TODOs**
-- Quiet the remaining compiler warnings in `audio_processor.c` (`s_beep_fallback_phase_*`, `s_synth_phase`, `last_i2s_ret`).
-- Re-run `tools/run_unity.py --project-root esp_bt_audio_source/test_app_audio --timeout 300` to confirm the WAV test passes with the new pause/drain flow, then follow up with the full `tools/run_all_tests.py` sweep.
-- Add a CLI hook for `audio_processor_enable_next_beep_diag()` so beep diagnostics can be captured on demand, and finish migrating the production I2S capture path into `bt_streaming_manager.c`.
+- Complete Phase 6 documentation updates (Phases 6.1-6.2 done, 6.3+ in progress)
+- Final testing phase (Phase 7)
+- Cleanup and merge (Phase 8)
 
 ## System Architecture
 

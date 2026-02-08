@@ -817,12 +817,42 @@ DIAG|AUDIO|STATUS|initialized=1|running=1|autostart=1|volume=80|mute=0|rate=4410
 - ✅ State machine simplified to IDLE ↔ STREAM_I2S only
 
 ### 6.3 Update Root README.md
-- [ ] Open root `README.md`
-- [ ] Search for PLAY command in command list
-- [ ] Remove PLAY from available commands
-- [ ] Update feature list (remove WAV playback)
-- [ ] Update architecture description (3 sources not 4)
-- [ ] Save file
+- [x] Open root `README.md`
+- [x] Search for PLAY command in command list
+- [x] Remove PLAY from available commands
+- [x] Update feature list (remove WAV playback)
+- [x] Update architecture description (3 sources not 4)
+- [x] Save file
+
+**Phase 6.3 Results:**
+- ✅ **Updated Project Status section (dated 2026-02-08):**
+  - Replaced outdated "Completed recently" items:
+    - Removed: `audio_processor_play_wav()` pipeline pause/drain details
+    - Removed: WAV pipeline changes and test_app_audio build status
+    - Removed: SPIFFS tooling consolidation details
+    - Added: PLAY command and WAV playback removal complete (Phase 1-5)
+    - Added: SPIFFS partition removed, 1MB flash reclaimed
+    - Added: Audio architecture simplified to 3 sources (I2S, synth, silence)
+    - Added: Documentation updated to 2-source architecture
+    - Added: Hardware validation complete
+  - Replaced outdated "Active TODOs":
+    - Removed: audio_processor.c compiler warnings (obsolete)
+    - Removed: WAV test validation with pause/drain flow
+    - Removed: audio_processor_enable_next_beep_diag() CLI hook (obsolete)
+    - Added: Complete Phase 6 documentation updates (6.1-6.2 done)
+    - Added: Final testing phase (Phase 7)
+    - Added: Cleanup and merge (Phase 8)
+
+**Verification:**
+- ✅ Only 3 legitimate references remain:
+  - Line 12: "PLAY command and WAV playback functionality removed" (project status update)
+  - Line 233: "Confirmation of numeric code displayed" (Bluetooth pairing, not PLAY command)
+  - Line 395: "displaying live status updates" (general display reference, not PLAY command)
+- ✅ No PLAY command references in feature lists or command documentation
+- ✅ No WAV playback feature descriptions
+- ✅ No play_manager references
+- ✅ Project status updated to reflect current state (Feb 2026)
+- ✅ Active TODOs updated to reflect ongoing work (Phase 6-8)
 
 ### 6.4 Search for Other Documentation
 - [ ] Search for PLAY references in all markdown files:

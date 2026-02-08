@@ -13748,3 +13748,61 @@ I (3340) BT_AV: ESP32 Bluetooth Audio Source - Ready
 **Status:** Phase 6.2 COMPLETE ✅
 
 **Next:** Phase 6.3 - Update Root README.md (remove PLAY from command list and features)
+
+---
+
+## 2026-02-08 09:45:03
+
+**Task:** Phase 6.3 - Update Root README.md (remove PLAY/WAV references from project status)
+
+**Actions:**
+1. Opened root README.md (533 lines total)
+2. Searched for all PLAY/WAV/play_manager references (3 matches found)
+3. Updated Project Status section (dated 2026-02-08)
+4. Removed all obsolete WAV/SPIFFS status items
+5. Added current project status (PLAY removal complete, Phases 1-5 done)
+6. Updated Active TODOs to reflect ongoing Phase 6-8 work
+7. Verified cleanup complete (only 3 legitimate references remain)
+
+**Changes Made (1 section in root README.md):**
+
+1. **Project Status section** (lines 10-20) - Complete replacement:
+   - **Date updated**: 2025-11-11 → 2026-02-08
+   - **Completed recently** (replaced 3 items with 5 new items):
+     - Removed: `audio_processor_play_wav()` pipeline pause/drain implementation
+     - Removed: test_app_audio build success after WAV changes
+     - Removed: SPIFFS tooling consolidation (256 KiB image, 128 KiB ringbuffer)
+     - Added: PLAY command and WAV playback removal complete (Phase 1-5)
+     - Added: SPIFFS partition removed, 1MB flash space reclaimed
+     - Added: Audio architecture simplified to 3 sources (I2S, synth, silence)
+     - Added: Documentation updated to 2-source architecture (I2S, synth)
+     - Added: Hardware validation complete (ESP32 boots without SPIFFS errors)
+   - **Active TODOs** (replaced 3 items with 3 new items):
+     - Removed: Compiler warnings in audio_processor.c (s_beep_fallback_phase_*, s_synth_phase, last_i2s_ret)
+     - Removed: WAV test validation (run_unity.py for test_app_audio)
+     - Removed: CLI hook for audio_processor_enable_next_beep_diag() and I2S capture migration
+     - Added: Complete Phase 6 documentation updates (Phases 6.1-6.2 done, 6.3+ in progress)
+     - Added: Final testing phase (Phase 7)
+     - Added: Cleanup and merge (Phase 8)
+
+**Verification:**
+✅ Only 3 legitimate references remain:
+   - Line 12: "PLAY command and WAV playback functionality removed" (status update, not command)
+   - Line 233: "Confirmation of numeric code displayed" (Bluetooth pairing)
+   - Line 395: "displaying live status updates" (general display reference)
+✅ No PLAY command in feature lists or documentation
+✅ No WAV playback feature descriptions
+✅ No play_manager references
+✅ No SPIFFS tooling references in active status
+✅ Project status reflects current state (Feb 2026, Phase 6 in progress)
+
+**Results:**
+- ✅ Phase 6.3 complete - root README.md updated
+- Project Status section now reflects current work (PLAY/WAV removal project)
+- Obsolete 2025-11-11 status items removed
+- Current TODOs reflect ongoing Phase 6-8 work
+- All PLAY command and WAV feature references removed
+
+**Status:** Phase 6.3 COMPLETE ✅
+
+**Next:** Phase 6.4 - Search for Other Documentation (grep all markdown files)
