@@ -58,6 +58,24 @@ static const char *TAG = "audio_rb";
  * WHY: Protect concurrent access to ring buffer state (head, tail, used_bytes)
  * HOW: Very short critical sections (just pointer arithmetic)
  * CORRECTNESS: Safe for ISR-like contexts (A2DP callback)
+ * 
+ * MEMORY ORDERING (ESP32-specific):
+ * - portENTER_CRITICAL/portEXIT_CRITICAL provide:
+ *   1. Compiler barriers (prevents instruction reordering)
+ *   2. Memory barriers (MEMW on SMP builds)
+ *   3. Interrupt disable (atomicity within core)
+ * - memcpy happens OUTSIDE critical section (safe for SPSC):
+ *   - Producer: memcpy data → CRITICAL(update head/used_bytes)
+ *   - Consumer: snapshot used_bytes → memcpy data → CRITICAL(update tail/used_bytes)
+ * - Critical section acts as memory fence (no explicit atomic_thread_fence needed)
+ * 
+ * PORTABILITY NOTE:
+ * If porting to ARM/RISC-V with weaker memory ordering:
+ *   - Add atomic_thread_fence(memory_order_release) after producer memcpy
+ *   - Add atomic_thread_fence(memory_order_acquire) before consumer memcpy
+ *   - Or switch to lock-free atomic implementation (significant refactor)
+ * 
+ * CODE_REVIEW7 Priority 4, Task 4.2 (Memory ordering analysis)
  */
 static portMUX_TYPE s_rb_spinlock = portMUX_INITIALIZER_UNLOCKED;
 
