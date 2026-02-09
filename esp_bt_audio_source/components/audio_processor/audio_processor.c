@@ -54,6 +54,20 @@ static esp_err_t configure_i2s(const audio_config_t* config);
 
 #ifndef UNIT_TEST
 /**
+ * Volume commit timer callback (CODE_REVIEW8 Task D)
+ * 
+ * WHY: Debounce rapid volume changes to reduce NVS flash wear
+ * HOW: Triggered 500ms after last volume change, commits current value to NVS
+ * CORRECTNESS: Only runs on timer expiration, safe to call nvs_storage from timer context
+ */
+static void volume_commit_timer_callback(void* arg)
+{
+    (void)arg;
+    /* Commit current volume to NVS (deferred from audio_processor_set_volume) */
+    nvs_storage_set_volume(s_volume_gain);
+}
+
+/**
  * Audio engine task (CODE_REVIEW6 Phase 2)
  * 
  * WHY: Single producer for ring buffer - centralizes source arbitration,
@@ -384,6 +398,20 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         return ret;
     }
 
+    /* Create volume commit debounce timer (CODE_REVIEW8 Task D)
+     * Reduces NVS flash wear by delaying commits until volume "settles" */
+    const esp_timer_create_args_t volume_timer_args = {
+        .callback = volume_commit_timer_callback,
+        .name = "volume_nvs_commit"
+    };
+    ret = esp_timer_create(&volume_timer_args, &s_volume_commit_timer);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "audio_processor_init: failed to create volume commit timer (%d)", (int)ret);
+        i2s_manager_deinit();
+        beep_manager_deinit();
+        return ret;
+    }
+
     /* Initialize ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1, Task 1.3)
      * Capacity and PSRAM usage configurable via Kconfig.
      * Ring buffer coexists with old queue during migration (parallel operation). */
@@ -582,6 +610,14 @@ esp_err_t audio_processor_deinit(void)
     beep_manager_deinit();
     i2s_manager_deinit();
 
+    /* Cleanup volume commit timer (CODE_REVIEW8 Task D)
+     * Stop and delete timer to prevent callback firing after deinit */
+    if (s_volume_commit_timer != NULL) {
+        esp_timer_stop(s_volume_commit_timer);  /* Stop any pending callback */
+        esp_timer_delete(s_volume_commit_timer);
+        s_volume_commit_timer = NULL;
+    }
+
     /* Cleanup ring buffer (CODE_REVIEW6 Phase 1, Task 1.3) */
     if (s_audio_ring != NULL) {
         audio_rb_deinit(s_audio_ring);
@@ -718,10 +754,16 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
     s_volume_gain = volume;
     s_audio_config.volume = volume;
 
-    // Persist new volume
-    nvs_storage_set_volume(s_volume_gain);
+    /* CODE_REVIEW8 Task D: Debounce NVS commit to prevent flash wear
+     * Cancel pending timer (if any) and restart with 500ms delay.
+     * Volume persisted only after user "settles" on final value.
+     * Reduces flash writes from "every change" to "once per adjustment session" */
+    if (s_volume_commit_timer != NULL) {
+        esp_timer_stop(s_volume_commit_timer);  /* Cancel pending commit */
+        esp_timer_start_once(s_volume_commit_timer, 500000);  /* 500ms = 500,000 microseconds */
+    }
 
-    ESP_LOGI(TAG, "Audio volume set to %d%%", volume);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "Audio volume set to %d%% (NVS commit debounced)", volume);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
 }
 

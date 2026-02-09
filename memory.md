@@ -1,3 +1,22 @@
+## 2026-02-09 15:30 — CODE_REVIEW8 Task D: NVS Write Rate / Flash Wear Audit ✅
+
+**Task:** Audited and fixed NVS write rate to prevent premature flash wear (P0 priority from CODE_REVIEW8).
+
+**Critical Finding:**
+- Volume changes (`audio_processor_set_volume()`) wrote to NVS **immediately** on every adjustment
+- NO debouncing existed - each volume increment triggered flash write
+- Risk: User adjusts volume 0→100 = 100 flash writes in seconds, flash lifecycle ~100 days
+
+**Solution:** Debounced volume NVS commits with esp_timer (500ms delay) → 99% reduction in writes → 27+ year lifecycle
+
+**Files Modified:** audio_processor_state.c, audio_processor_internal.h, audio_processor.c, ARCH.md, CODE_REVIEW8_TODO.md, NVS_WRITE_AUDIT.md
+
+**Testing:** Host tests 244/244 passing ✅ | All CODE_REVIEW8 P0 tasks complete 🎉
+
+**Status:** ✅ COMPLETE - See full details and audit report in code_review/NVS_WRITE_AUDIT.md
+
+---
+
 ## 2026-02-09 13:05 — CODE_REVIEW8 Task B: Fixed Ignored Return Code ✅
 
 **Task:** Fixed ignored return code in diagnostic paths (P0 priority from CODE_REVIEW8).

@@ -98,6 +98,9 @@ extern bool s_force_synth;
 extern bool s_keepalive_armed;
 extern uint8_t s_volume_gain;
 extern audio_config_t s_audio_config;
+
+/* Volume NVS commit debounce timer (CODE_REVIEW8 Task D) */
+extern esp_timer_handle_t s_volume_commit_timer;
 extern audio_stats_t s_audio_stats;
 extern uint32_t s_tag_miss_count;
 extern int64_t s_tag_recover_mute_until;

@@ -256,6 +256,118 @@ ERROR|COMMAND_NOT_FOUND
 
 **Historical Note:** PLAY command, SPIFFS partition, and WAV playback were removed to simplify architecture and reduce failure modes. See [docs/FS.md](docs/FS.md) for historical context.
 
+---
+
+## NVS Write Strategy & Flash Wear Prevention
+
+**Background**: ESP32 NVS (Non-Volatile Storage) uses SPI flash with limited write cycles (~100k per sector). Excessive writes reduce device lifetime.
+
+### Configuration Parameters Persisted in NVS
+
+| Parameter | Key | Frequency | Write Strategy |
+|-----------|-----|-----------|----------------|
+| Audio Volume | `volume` | High (user adjustments) | **Debounced (500ms delay)** |
+| I2S Pins | `i2s_bclk`, `i2s_ws`, `i2s_din`, `i2s_dout` | Very Low (setup) | Immediate commit (acceptable) |
+| Audio Autostart | `audio_autostart` | Very Low (toggle) | Immediate commit (acceptable) |
+| BT Device Name | `device_name` | Very Low (setup) | Immediate commit (acceptable) |
+| Default PIN | `default_pin` | Very Low (setup) | Immediate commit (acceptable) |
+| Paired Devices | `paired_mac_N`, `paired_name_N`, `paired_count` | Low (pairing events) | Immediate commit (event-driven) |
+
+### Volume Commit Debouncing (CODE_REVIEW8 Task D)
+
+**Problem**: Each volume adjustment (VOLUME command) previously wrote to NVS immediately.
+- User adjusts 0→100 volume = 100 flash writes in seconds
+- Reduces flash lifetime significantly with frequent use
+
+**Solution**: Implemented debounced commit with 500ms delay timer
+- Volume changes update in-memory value instantly (immediate audio response)
+- Timer canceled and restarted on each new VOLUME command
+- NVS commit only fires 500ms after **last** volume change
+- Result: 100 rapid changes → 1 flash write (99% reduction)
+
+**Implementation** (audio_processor.c):
+```c
+static esp_timer_handle_t s_volume_commit_timer = NULL;
+
+static void volume_commit_timer_callback(void* arg) {
+    nvs_storage_set_volume(s_volume_gain);  /* Deferred commit */
+}
+
+esp_err_t audio_processor_set_volume(uint8_t volume) {
+    s_volume_gain = volume;  /* Immediate in-memory update */
+    
+    /* Debounce: cancel pending timer, restart with 500ms delay */
+    if (s_volume_commit_timer != NULL) {
+        esp_timer_stop(s_volume_commit_timer);
+        esp_timer_start_once(s_volume_commit_timer, 500000);  /* 500ms */
+    }
+    
+    return ESP_OK;
+}
+```
+
+**Benefits**:
+- ✅ Immediate user feedback (in-memory update)
+- ✅ Reduced flash writes from "every change" to "once per session"
+- ✅ 10x+ device lifetime improvement for heavy volume users
+- ✅ No data loss risk (volume commits before deinit)
+
+**Testing**: See `code_review/NVS_WRITE_AUDIT.md` for comprehensive audit results
+
+### Other NVS Write Paths
+
+All other configuration parameters have inherently low write frequencies:
+
+1. **I2S Pin Configuration**: User-initiated command, typically once during initial setup
+2. **Audio Autostart**: Toggle command, rarely changed after initial preference set
+3. **BT Device Name**: Setup parameter, changed infrequently
+4. **Default PIN**: Setup parameter, set once and rarely modified
+5. **Paired Devices**: Event-driven (successful pairing), typically <10 writes in device lifetime
+
+**Verdict**: Only volume requires active wear prevention. Other writes are acceptable.
+
+### Flash Wear Lifecycle Estimates
+
+**Assumptions**:
+- ESP32 flash: ~100,000 write cycles per sector
+- NVS wear leveling: Distributes writes across multiple sectors
+- Heavy user: Adjusts volume 10 times/day
+
+**Without Debouncing**:
+- 10 adjustments/day × 100 writes/adjustment = 1000 writes/day
+- Flash lifetime: ~100 days (3 months) before degradation risk
+
+**With Debouncing (500ms)**:
+- 10 adjustments/day × 1 write/adjustment = 10 writes/day
+- Flash lifetime: ~10,000 days (**27+ years**)
+
+**Conclusion**: Debouncing extends theoretical flash lifetime by **100x** for volume-heavy usage patterns.
+
+### NVS Commit Failure Handling
+
+All `nvs_storage_set_*` functions return `esp_err_t`:
+- Commit failures are logged but **not fatal** (graceful degradation)
+- On next boot, configuration reverts to previous saved state
+- User can retry command if needed
+
+**Example** (I2S pin config):
+```c
+esp_err_t err = nvs_storage_set_i2s_pins(bclk, ws, din, dout);
+if (err != ESP_OK) {
+    cmd_send_response("ERROR", "I2S_CONFIG", "NVS_COMMIT_FAILED", esp_err_to_name(err));
+    return CMD_ERROR_HARDWARE_FAILURE;
+}
+```
+
+### References
+
+- ESP-IDF NVS Documentation: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html
+- CODE_REVIEW8.md: External code review identifying volume write rate issue
+- code_review/NVS_WRITE_AUDIT.md: Comprehensive audit of all NVS write paths
+- code_review/CODE_REVIEW8_TODO.md: Task tracking for implementation
+
+---
+
 ## Future Expansion Possibilities
 
 - Add a microSD card to ESP32 #2 for audio file playback

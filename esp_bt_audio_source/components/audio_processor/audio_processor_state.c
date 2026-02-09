@@ -53,6 +53,10 @@ bool s_is_running = false;
 bool s_force_synth = false;
 bool s_keepalive_armed = false;
 uint8_t s_volume_gain = 100;
+
+/* Volume NVS commit debounce timer (CODE_REVIEW8 Task D)
+ * Prevents flash wear from rapid volume changes by delaying commits */
+esp_timer_handle_t s_volume_commit_timer = NULL;
 audio_config_t s_audio_config = {0};
 audio_stats_t s_audio_stats = {0};
 uint32_t s_tag_miss_count = 0;
