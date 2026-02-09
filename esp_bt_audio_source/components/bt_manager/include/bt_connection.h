@@ -43,5 +43,3 @@ bt_err_t bt_connect_by_name(const char* name);
  * @return ESP_OK on success, ESP_FAIL/ESP_ERR_* on error
  */
 bt_err_t bt_disconnect(void);
-
-#endif // BT_CONNECTION_H

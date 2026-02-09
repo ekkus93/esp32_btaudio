@@ -580,7 +580,7 @@ bool bt_manager_is_autostart_enabled(void) {
 
 #ifdef ESP_PLATFORM
     esp_bd_addr_t bda = {0};
-    if (!bt_pairing_parse_mac_string(mac, bda)) {
+    if (!bt_pairing_parse_mac(mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);  // NOLINT(bugprone-branch-clone)
         return ESP_ERR_INVALID_ARG;
     }
@@ -659,7 +659,7 @@ exit:
                         controller_status = err;
                     }
                     char mac[18] = {0};
-                    bt_pairing_format_mac(bond_list[i], mac, sizeof(mac));
+                    util_format_mac(bond_list[i], mac, sizeof(mac));
                     ESP_LOGE(TAG, "Failed to remove bond for %s: %s", mac, esp_err_to_name(err));  // NOLINT(bugprone-branch-clone)
                 }
             }

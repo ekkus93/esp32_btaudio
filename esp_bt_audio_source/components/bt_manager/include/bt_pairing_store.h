@@ -98,5 +98,3 @@ void bt_pairing_prepare_for_initiation(const esp_bd_addr_t bda);
  */
 void bt_pairing_set_mock_state(const esp_bd_addr_t bda, bool is_pin, uint32_t passkey);
 #endif
-
-#endif // BT_PAIRING_STORE_H
