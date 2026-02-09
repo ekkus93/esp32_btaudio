@@ -1,3 +1,44 @@
+## 2026-02-09 14:25 — bt_manager Refactoring: Phase 4 - Connection Logic Extraction ✅
+
+**Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 4: Extract connection logic)
+
+**Objective:** Extract Bluetooth connection initiation and termination logic from bt_manager.c to bt_connection.c for better modularity.
+
+**Changes:**
+1. **Created bt_connection.c** (204 lines) - Bluetooth connection lifecycle implementation
+   - Migrated bt_connect() - Initiates A2DP connection by MAC address
+   - Migrated bt_connect_by_name() - Searches discovered/paired lists then connects by name
+   - Migrated bt_disconnect() - Stops audio if playing, disconnects A2DP connection
+   - Preserved UNIT_TEST weak attribute on bt_disconnect() for test override capability
+   - Preserved CONFIG_BT_MOCK_TESTING diagnostic logging throughout disconnect path (~10 conditional logs)
+   - Forward declaration for bt_stop_audio() (remains in bt_manager.c)
+
+2. **Created bt_connection.h** (47 lines) - Public connection API declarations
+   - Public API (3 functions): bt_connect, bt_connect_by_name, bt_disconnect
+   - Comprehensive doxygen documentation explaining behavior, parameters, return values
+
+3. **Updated CMakeLists.txt** - Added bt_connection.c to SRCS list (after bt_scan.c)
+
+4. **Modified bt_manager.c** - Integrated with extracted connection module
+   - Added `#include "bt_connection.h"`
+   - Removed bt_connect() implementation (~35 lines removed)
+   - Removed bt_connect_by_name() implementation (~20 lines removed)
+   - Removed bt_disconnect() implementation (~105 lines removed including diagnostics)
+
+**Results:**
+- bt_manager.c reduced from ~1380 to ~1220 lines (**~160 lines removed**)
+- Cumulative reduction: 1852 → 1220 lines (**632 lines total removed across phases 2+3+4**)
+- Clear separation of concerns: connection lifecycle now self-contained in dedicated module
+- No functional changes - all existing API contracts preserved
+- Test hooks and diagnostics preserved exactly
+- Host tests: 244/244 passing ✅
+
+**Approach:** Incremental extraction following TDD principles - define API → extract implementation → update integration points → test → commit
+
+**Next Steps:** Phase 5 - Extract event handlers (GAP, A2DP, AVRC callbacks) to bt_events_*.c modules
+
+---
+
 ## 2026-02-09 14:18 — bt_manager Refactoring: Phase 3 - Scan Logic Extraction ✅
 
 **Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 3: Extract scan logic)
