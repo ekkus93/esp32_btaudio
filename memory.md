@@ -1,3 +1,66 @@
+## 2026-02-09 04:38 — ESP32 BT Audio: CODE_REVIEW7 Priority 4 Task 4.1 - Make SPSC Contract Explicit (Complete)
+
+**Context:** Enhanced audio ring buffer documentation to make SPSC (Single Producer Single Consumer) threading constraints impossible to miss
+
+**Implementation: SPSC Contract Documentation Enhancement** (commit 9df8e83c)
+
+**What Was Enhanced:**
+1. **audio_ringbuffer.h header file**:
+   - Added prominent WARNING section with visual markers (⚠️, ✅, 🚫)
+   - Created "CRITICAL SPSC CONTRACT - THREAD SAFETY RESTRICTIONS" section at top of file
+   - Listed UNDEFINED BEHAVIOR scenarios explicitly:
+     - Multiple threads calling audio_rb_write() concurrently (multi-producer)
+     - Multiple threads calling audio_rb_read() concurrently (multi-consumer)
+     - MPMC (multi-producer multi-consumer) scenarios
+   - Added ✅ CORRECT USAGE section with concrete examples:
+     - ONE producer: audio_engine_task (main.c)
+     - ONE consumer: BT A2DP callback (bt_app_core.c)
+   - Added 🚫 INCORRECT USAGE anti-patterns:
+     - Two tasks both calling write()
+     - Two tasks both calling read()
+     - Switching producer/consumer without synchronization
+   - Enhanced existing WHY/HOW/CORRECTNESS documentation
+
+2. **audio_ringbuffer.c implementation file**:
+   - Enhanced file header with SPSC warnings
+   - Added "SINGLE PRODUCER SINGLE CONSUMER (SPSC) ONLY" heading
+   - Listed thread-safety restrictions at top of file
+   - Added guidance for MPMC use cases (use FreeRTOS queue, add external sync, or use different buffer)
+   - Enhanced implementation details documentation
+
+**Files Modified:**
+- `components/audio_processor/include/audio_ringbuffer.h`: Enhanced header (~35 lines added)
+- `components/audio_processor/audio_ringbuffer.c`: Enhanced header (~20 lines added)
+
+**Approach:**
+- Documentation-only enhancement (no code changes)
+- No API changes or function renaming (preserves existing code, no call site updates needed)
+- Made warnings so prominent they cannot be missed by developers
+- Used visual markers (emoji) for immediate recognition
+
+**Rationale:**
+- Prior state: File mentioned SPSC in title and had scattered "CRITICAL: Only one thread" comments
+- Problem: Constraints not immediately visible or prominent enough
+- Solution: Impossible-to-miss WARNING section at top of header with explicit anti-patterns
+- Design choice: Documentation over renaming (simpler, preserves API, no test/code changes)
+
+**Testing:**
+- Build: ✅ SUCCESS (0xe17f0 bytes, no warnings)
+- Host tests: ✅ 33/33 passing
+- Binary size: unchanged (documentation-only, no code changes)
+
+**Code Quality:**
+- No functional changes (documentation-only)
+- Preserves existing SPSC implementation
+- Makes threading contract explicit and unavoidable
+
+**Next Steps:**
+- Optional: Task 4.2 (Atomic fences investigation) - LOW priority, likely SKIP
+- Manual hardware testing recommended (SPANLOG command, WAV_STATUS verification, SYNTH mode)
+- Priority 5: Stats tracking cleanup (define "Overrun" semantics, watermark checks)
+
+---
+
 ## 2026-02-09 04:16 — ESP32 BT Audio: CODE_REVIEW7 Priority 3 - Remove WAV Scaffolding (Complete)
 
 **Context:** After Priority 2 complete (Span log integration + SPANLOG command), cleaned up non-functional WAV playback code (Option A: Complete removal)
