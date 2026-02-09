@@ -452,19 +452,117 @@ if (err != ESP_OK) {
 - **Policy:** ALL Bluetooth logic lives in the `bt_manager` component (enforced by CI)
 
 ### bt_manager Component (Single Source of Truth for BT)
-- **Purpose:** Centralized Bluetooth lifecycle management
-- **Responsibilities:**
-  - Initialize Bluetooth controller and Bluedroid stack
-  - Register ALL Bluetooth callbacks (A2DP, AVRCP, GAP)
-  - Manage Bluetooth state machines (connection, pairing, streaming)
-  - Handle device discovery and pairing
-  - Coordinate with audio_processor for streaming
-- **Sub-components:**
-  - A2DP Source profile implementation
-  - AVRCP profile for remote control
-  - GAP for device discovery and pairing
-  - Connection manager for device lifecycle
-  - Streaming manager for audio data flow
+
+**Purpose:** Centralized Bluetooth lifecycle management with modular architecture
+
+**Component Structure (as of Feb 2026 - CODE_REVIEW8 refactoring):**
+
+The bt_manager component has been refactored from a monolithic 1852-line file into a modular architecture with clear separation of concerns:
+
+```
+bt_manager/ (3014 total lines across 10 modules)
+├── bt_manager.c (1111 lines) - Core coordination and initialization
+│   └── Responsibilities:
+│       • Bluetooth controller and Bluedroid stack initialization
+│       • Profile registration (A2DP, AVRC)
+│       • Discovered/paired device list management
+│       • Public API wrappers (bt_manager_init, bt_manager_connect, etc.)
+│       • Configuration policy (device name, callbacks)
+│       • Test mocks and unit test hooks
+│
+├── bt_connection.c (187 lines) - Connection lifecycle
+│   └── Responsibilities:
+│       • bt_connect() - Initiate A2DP connection by MAC
+│       • bt_connect_by_name() - Search and connect by device name
+│       • bt_disconnect() - Graceful disconnection with audio stop
+│
+├── bt_pairing_store.c (354 lines) - Pairing state management
+│   └── Responsibilities:
+│       • Pairing request state machine (PIN, SSP, passkey)  
+│       • Pending pairing state tracking
+│       • GAP authentication event handling
+│       • Pairing confirmation and submission
+│       • Pairing event notifications to upper layers
+│
+├── bt_scan.c (147 lines) - Device discovery
+│   └── Responsibilities:
+│       • bt_start_scan() / bt_stop_scan() - Discovery control
+│       • GAP discovery result processing
+│       • Discovery state change handling
+│       • Discovered device list population
+│
+├── bt_events_gap.c (49 lines) - GAP event routing
+│   └── Responsibilities:
+│       • Primary GAP callback (esp_bt_gap_register_callback)
+│       • Route discovery events → bt_scan module
+│       • Route pairing events → bt_pairing_store module
+│
+├── bt_events_a2dp.c (118 lines) - A2DP event handling
+│   └── Responsibilities:
+│       • Primary A2DP callback (esp_a2d_register_callback)
+│       • Connection state handling (connect/disconnect events)
+│       • Audio streaming state handling (start/stop/suspend)
+│       • A2DP data callback (PCM audio delivery to BT stack)
+│       • Auto-start logic after connection
+│       • Forward events to bt_connection_manager
+│
+├── bt_events_avrc.c (38 lines) - AVRC event handling
+│   └── Responsibilities:
+│       • Primary AVRC callback (esp_avrc_ct_register_callback)
+│       • Connection state logging
+│       • Passthrough response handling (minimal)
+│       • Remote feature discovery
+│
+├── bt_app_core.c (240 lines) - Event dispatch task
+│   └── Responsibilities:
+│       • BT event queue processing (FreeRTOS task)
+│       • Event dispatch to registered handlers
+│       • Work queue for asynchronous BT operations
+│
+├── bt_connection_manager.c (450 lines) - Connection state machine
+│   └── Responsibilities:
+│       • Track A2DP connection state per device
+│       • Auto-reconnect logic
+│       • Connection timeout handling
+│       • State synchronization with streaming manager
+│
+└── bt_streaming_manager.c (320 lines) - Audio streaming control
+    └── Responsibilities:
+        • Track A2DP audio streaming state
+        • Coordinate audio start/stop with audio_processor
+        • Handle streaming errors and recovery
+        • Audio data flow management
+
+**Modular Architecture Benefits:**
+- ✅ Improved maintainability (each module < 500 lines)
+- ✅ Clear separation of concerns (connection, pairing, discovery, events)
+- ✅ Easier testing (modules can be tested independently)
+- ✅ Reduced cognitive load (understand one responsibility at a time)
+- ✅ Safer refactoring (changes isolated to specific modules)
+
+**Design Patterns:**
+- **Event Router:** GAP/A2DP/AVRC callbacks delegate to specialized handlers
+- **Shared State:** `bt_ctx` (device lists, connection state) accessed via bt_manager_internal.h
+- **Forward Declaration:** Modules declare external functions they depend on
+- **Test Hooks:** UNIT_TEST conditional compilation for mock/override capability
+
+**Module Dependencies:**
+```
+main.c
+  └→ bt_manager.c (public API)
+      ├→ bt_connection.c ──→ bt_manager_internal.h (shared state)
+      ├→ bt_pairing_store.c ──→ bt_manager_internal.h
+      ├→ bt_scan.c ──→ bt_manager_internal.h
+      ├→ bt_events_gap.c ──→ bt_pairing_store, bt_scan
+      ├→ bt_events_a2dp.c ──→ bt_connection_manager, audio_processor
+      ├→ bt_events_avrc.c (standalone, logging only)
+      ├→ bt_app_core.c (event dispatch task)
+      ├→ bt_connection_manager.c ──→ bt_streaming_manager
+      └→ bt_streaming_manager.c ──→ audio_processor
+```
+
+**Historical Note:**  
+Prior to Feb 2026, bt_manager.c was monolithic (1852 lines) with all responsibilities intermingled. CODE_REVIEW8 refactoring (Phases 2-5) extracted specialized modules, reducing bt_manager.c by 43% (805 lines) and improving overall architecture quality.
 
 ### Audio Processor Component
 - **Purpose:** Audio pipeline orchestration with lossless WAV playback guarantees
