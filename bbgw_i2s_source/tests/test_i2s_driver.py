@@ -58,7 +58,11 @@ def ring_buffer():
 def driver(config, ring_buffer):
     """Create I2SDriverALSA instance."""
     from audio.i2s_driver import I2SDriverALSA
-    return I2SDriverALSA(config, ring_buffer)
+    driver = I2SDriverALSA(config, ring_buffer)
+    yield driver
+    # Cleanup: ensure driver is stopped even if test fails
+    if driver.running:
+        driver.stop()
 
 
 class TestI2SDriverInit:
