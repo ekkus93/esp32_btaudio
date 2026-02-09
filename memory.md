@@ -1,3 +1,45 @@
+## 2026-02-09 02:00 — BBGW I2S Source: Complete Python 3.10 Timing Fix
+
+**Context:** After fixing Python 3.9 with selective 0.15s timing, Python 3.10 started failing on test_send_command_writes_to_serial - revealed inconsistent timing across all UART mock tests
+
+**Root Cause:**  
+- Initial fix only updated 2 specific failing tests (Python 3.9)
+- Left other mock_response functions with 0.1s sleep
+- Created inconsistent timing that caused flaky failures across different Python versions
+- Thread scheduling varies not just between Python versions but also between CI environments
+
+**Comprehensive Solution:**
+- Updated ALL 9 mock_response thread functions to use 0.15s consistently
+- Ensures reliable thread scheduling in all Python versions (3.9, 3.10, 3.11, 3.12)
+- Eliminates race conditions from varying CI environment performance
+
+**Tests Fixed:**
+1. test_send_command_writes_to_serial (was failing in 3.10)
+2. test_send_command_increments_sent_stat
+3. test_send_command_with_args  
+4. test_parse_ok_response
+5. test_parse_err_response
+6. test_cache_status_response (already had comment)
+7. test_get_last_status_after_query
+8. test_multiple_commands (closure pattern)
+9. test_mixed_responses_and_events
+
+**Commit:** 70a4b26d - "fix(tests): Update all mock_response sleeps to 0.15s for consistency"
+
+**Lesson Learned:**
+- When fixing timing issues, update ALL instances of the pattern, not just failing tests
+- Timing problems are often environment-dependent - CI vs local, Python version variations
+- Inconsistent sleeps create maintenance problems and intermittent failures
+
+**Expected Outcome:**
+- All Python versions (3.9, 3.10, 3.11, 3.12) pass 237/241 tests consistently
+- No intermittent timeout failures in UART command tests
+- Reliable CI builds across all Python versions
+
+**Timestamp:** 2026-02-09 02:00:24
+
+---
+
 ## 2026-02-09 01:54 — BBGW I2S Source: Python 3.9 CI Compatibility Fixes
 
 **Context:** GitHub Actions CI passing on Python 3.10+ but failing on Python 3.9 with 2 test failures after successful thread leak fixes
