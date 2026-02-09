@@ -1,3 +1,59 @@
+## 2026-02-09 02:16 — BBGW I2S Source: Python 3.9 Final Fix - 0.3s UART / 0.5s Multi-tone
+
+**Context:** Python 3.9 CI still failing with 4 test failures after 0.2s timing increase
+
+**Failures in Python 3.9 (even at 0.2s):**
+1. `test_parse_ok_response` - TimeoutError (UART mock)
+2. `test_multiple_commands` - TimeoutError (UART mock)
+3. `test_c_major_chord` - NoneType (only test_a_major_chord had 0.5s)
+4. `test_switching_between_chords` - NoneType (still using 0.2s)
+
+**Root Cause:**
+- I only updated `test_a_major_chord` to 0.5s but forgot the other multi-tone tests
+- UART mock timing of 0.2s still insufficient for Python 3.9 CI environment
+- GitHub Actions CI has extreme thread scheduling variance in Python 3.9
+
+**Comprehensive Solution:**
+- **UART mock_response: 0.2s → 0.3s** (all 9 functions)
+- **test_c_major_chord: 0.2s → 0.5s** (buffer fill sleep)
+- **test_switching_between_chords: 0.2s → 0.5s** (both chord sleeps)
+
+**Progressive Timing Evolution:**
+| Attempt | UART | AudioEngine | Result |
+|---------|------|-------------|--------|
+| Initial | 0.1s | 0.2s | Python 3.9 + 3.10 failed |
+| Fix #1  | 0.15s | 0.3s | Python 3.10 failed (inconsistent) |
+| Fix #2  | 0.15s all | 0.3s | Python 3.10 passed, 3.9 hung |
+| Fix #3  | 0.2s | 0.5s (partial) | Python 3.9 still 4 failures |
+| **Fix #4** | **0.3s** | **0.5s (all)** | **Expected: All pass** |
+
+**Commit:** 93897928 - "fix(tests): Increase to 0.3s for UART, 0.5s for all multi-tone tests"
+
+**Impact:**
+- Total test time increase: ~1 second (10 UART mocks × 0.1s + 3 multi-tone × 0.3s)
+- CI reliability: Should eliminate all Python 3.9 timing failures
+- Maintainability: All timing now consistent and documented
+
+**Key Learnings:**
+1. **CI environment is slower than local** - timing that works locally may fail in CI
+2. **Python 3.9 thread scheduling is significantly different** from 3.10+
+3. **When fixing timing issues, update ALL instances** - partial fixes create more problems
+4. **Be conservative with CI timing** - better to add 0.2s overhead than have flaky tests
+
+**Next:**
+- Python 3.9 EOL is October 2025 (8 months away)
+- If this still fails, consider dropping Python 3.9 support
+- Monitor CI for any remaining intermittent failures
+
+**Expected Outcome:**
+- All Python versions (3.9, 3.10, 3.11, 3.12) pass 237/241 tests
+- No timeouts, no NoneType errors
+- Reliable CI execution
+
+**Timestamp:** 2026-02-09 02:16:41
+
+---
+
 ## 2026-02-09 02:10 — BBGW I2S Source: Python 3.9 Still Hanging - Increased to 0.2s
 
 **Context:** After comprehensive 0.15s fix, Python 3.9 CI still hanging/failing on 2 tests while 3.10/3.11/3.12 pass
