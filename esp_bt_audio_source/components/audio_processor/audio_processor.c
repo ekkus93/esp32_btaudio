@@ -69,7 +69,14 @@ static esp_err_t configure_i2s(const audio_config_t* config);
 
 /**
  * Get active audio source (Phase 2, Task 2.2)
- * Priority order: I2S → Synth → Silence
+ * 
+ * Priority order (CODE_REVIEW7 Fix):
+ *   1. SYNTH  - User explicitly requested synth mode via SYNTH ON command
+ *   2. I2S    - Capture from I2S source (if manager running)
+ *   3. SILENCE- Default fallback when no active source
+ * 
+ * RATIONALE: s_force_synth must take highest priority so users can override
+ *            I2S capture with SYNTH mode at runtime (e.g., "START" then "SYNTH ON")
  */
 typedef enum {
     AUDIO_SOURCE_I2S = 0,
@@ -80,17 +87,17 @@ typedef enum {
 
 static audio_source_t get_active_source(void)
 {
-    /* I2S capture has highest priority */
-    if (s_is_running) {  /* I2S manager active when audio_processor running */
-        return AUDIO_SOURCE_I2S;
-    }
-    
-    /* Synth if forced or fallback */
+    /* Priority 1: Forced SYNTH mode (user explicitly requested via SYNTH ON) */
     if (s_force_synth) {
         return AUDIO_SOURCE_SYNTH;
     }
     
-    /* Silence as final fallback */
+    /* Priority 2: I2S capture (if I2S manager is running) */
+    if (i2s_manager_is_running()) {
+        return AUDIO_SOURCE_I2S;
+    }
+    
+    /* Priority 3: Silence as final fallback */
     return AUDIO_SOURCE_SILENCE;
 }
 

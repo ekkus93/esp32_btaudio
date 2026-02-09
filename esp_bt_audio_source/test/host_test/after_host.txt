@@ -1,0 +1,548 @@
+==> Cleaning build directory...
+✅ Clean complete
+==> Building standalone host tests (CI parity)...
+-- The C compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests
+gmake[1]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[2]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  0%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands_helpers.c.o
+[  0%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_system.c.o
+[  3%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_audio.c.o
+[  3%] Building C object _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o
+[  3%] Building C object CMakeFiles/util_safe_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[  3%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_files.c.o
+[  3%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_bt.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  3%] Built target util_safe_host
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  3%] Built target command_interface_host
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  3%] Linking C static library libunity.a
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_avrc.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/dump_event_stress_output.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_uart.c.o
+[  6%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/nvs_storage_mock.c.o
+[  6%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/bt_manager_test_hooks.c.o
+[  6%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  6%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_audio_and_btstate.c.o
+[  6%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_a2dp.c.o
+[  7%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_gap.c.o
+[  7%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/audio_processor_host_stub.c.o
+[  8%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/fake_esp_err.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  8%] Built target unity
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  8%] Linking C executable dump_event_stress_output
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[  8%] Building C object CMakeFiles/test_bt_manager_profiles.dir/test_bt_manager_profiles.c.o
+[  8%] Building C object CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o
+[  8%] Building C object CMakeFiles/test_nvs_storage.dir/test_nvs_storage.c.o
+[  8%] Building C object CMakeFiles/test_commands.dir/test_commands.c.o
+[  8%] Building C object CMakeFiles/test_util_safe.dir/test_util_safe_host.c.o
+[  8%] Building C object CMakeFiles/test_nvs_storage_errors.dir/test_nvs_storage_errors.c.o
+[  9%] Building C object CMakeFiles/test_audio_processor.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/component/test_audio_processor.c.o
+[  9%] Building C object CMakeFiles/test_psram.dir/test_psram.c.o
+[ 10%] Building C object CMakeFiles/test_list_ownership.dir/test_list_ownership.c.o
+[ 10%] Building C object CMakeFiles/test_audio_ringbuffer.dir/test_audio_ringbuffer.c.o
+[ 11%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/test_audio_processor_idle_i2s.c.o
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c: In function ‘test_diag_command_reports_state’:
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c:415:5: warning: implicit declaration of function ‘bt_manager_test_set_connection_state’ [-Wimplicit-function-declaration]
+  415 |     bt_manager_test_set_connection_state(1);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 11%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 12%] Building C object CMakeFiles/test_nvs_storage.dir/mocks/nvs_storage_mock.c.o
+[ 12%] Building C object CMakeFiles/test_list_ownership.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/components/bt/common/osi/allocator.c.o
+[ 12%] Building C object CMakeFiles/test_psram.dir/mocks/esp_heap_caps_mock.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 12%] Linking C executable test_util_safe
+[ 12%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/audio_processor_host_stub.c.o
+[ 13%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 14%] Building C object CMakeFiles/test_nvs_storage_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/nvs_storage/nvs_storage.c.o
+[ 14%] Building C object CMakeFiles/test_audio_processor.dir/mocks/mock_i2s.c.o
+[ 15%] Building C object CMakeFiles/test_audio_ringbuffer.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_ringbuffer.c.o
+[ 15%] Built target dump_event_stress_output
+[ 15%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o
+[ 16%] Building C object CMakeFiles/test_psram.dir/mocks/audio_alloc_host.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 16%] Linking C executable test_nvs_storage
+[ 16%] Built target test_util_safe
+[ 17%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/esp_heap_caps_mock.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 18%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 18%] Building C object CMakeFiles/test_list_ownership.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/components/bt/common/osi/list.c.o
+[ 18%] Building C object CMakeFiles/test_audio_processor.dir/mocks/test_main_wrapper.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 18%] Linking C executable test_psram
+[ 19%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_a2dp.c.o
+[ 19%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/fake_log.c.o
+[ 19%] Building C object CMakeFiles/test_audio_engine_stress.dir/test_audio_engine_stress.c.o
+[ 19%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_avrc.c.o
+[ 19%] Linking C executable test_nvs_storage_errors
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 20%] Building C object CMakeFiles/test_bluetooth.dir/mocks/bt_manager_test_hooks.c.o
+[ 21%] Building C object CMakeFiles/test_audio_processor.dir/mocks/audio_processor_host_stub.c.o
+[ 21%] Built target test_nvs_storage
+[ 21%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_i2s.c.o
+[ 22%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/fake_esp_err.c.o
+[ 22%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/nvs_storage_mock.c.o
+[ 23%] Building C object CMakeFiles/test_audio_engine_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_ringbuffer.c.o
+[ 23%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/fake_log.c.o
+[ 23%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 24%] Linking C executable test_list_ownership
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 24%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_audio_and_btstate.c.o
+[ 24%] Built target test_psram
+[ 24%] Built target test_nvs_storage_errors
+[ 24%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_gap.c.o
+[ 24%] Building C object CMakeFiles/test_audio_processor.dir/mocks/nvs_storage_mock.c.o
+[ 24%] Building C object CMakeFiles/test_commands.dir/mocks/mock_uart.c.o
+[ 24%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/esp_heap_caps_mock.c.o
+[ 25%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_audio_and_btstate.c.o
+[ 25%] Building C object CMakeFiles/test_bluetooth.dir/mocks/nvs_storage_mock.c.o
+[ 26%] Building C object CMakeFiles/test_bluetooth.dir/mocks/fake_esp_err.c.o
+[ 26%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_a2dp.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 27%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_audio_and_btstate.c.o
+[ 27%] Built target test_list_ownership
+[ 27%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_avrc.c.o
+[ 27%] Linking C executable test_audio_processor
+[ 28%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/fake_esp_err.c.o
+[ 28%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/bt_manager_test_hooks.c.o
+[ 28%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/esp_heap_caps_mock.c.o
+[ 29%] Building C object CMakeFiles/test_commands.dir/mocks/mock_gap.c.o
+[ 29%] Building C object CMakeFiles/test_commands.dir/mocks/nvs_storage_mock.c.o
+[ 29%] Linking C executable test_audio_ringbuffer
+[ 29%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/nvs_storage_mock.c.o
+[ 29%] Building C object CMakeFiles/test_commands.dir/mocks/bt_manager_test_hooks.c.o
+[ 29%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_task.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 30%] Linking C executable test_bluetooth
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 30%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/fake_esp_err.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 30%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_semphr.c.o
+[ 31%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_queue.c.o
+[ 31%] Linking C executable test_audio_engine_stress
+[ 32%] Building C object CMakeFiles/test_osi_allocator.dir/test_bt_osi_allocator.c.o
+[ 33%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/fake_log.c.o
+[ 33%] Building C object CMakeFiles/test_commands.dir/mocks/audio_processor_host_stub.c.o
+[ 34%] Building C object CMakeFiles/test_commands.dir/mocks/mock_audio_and_btstate.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 34%] Building C object CMakeFiles/test_commands.dir/mocks/fake_esp_err.c.o
+[ 34%] Building C object CMakeFiles/test_osi_allocator.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/components/bt/common/osi/allocator.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 34%] Built target test_audio_processor
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 34%] Built target test_audio_ringbuffer
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 35%] Building C object CMakeFiles/test_commands.dir/mocks/mock_a2dp.c.o
+[ 35%] Linking C executable test_bt_manager_profiles
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 35%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_ringbuf.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 35%] Built target test_bluetooth
+[ 35%] Building C object CMakeFiles/test_commands.dir/mocks/mock_avrc.c.o
+[ 36%] Building C object CMakeFiles/test_dispatch_copy_regression.dir/test_dispatch_copy_regression.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 36%] Building C object CMakeFiles/test_bt_app_core_host.dir/test_bt_app_core_host.c.o
+[ 36%] Building C object CMakeFiles/test_dispatch_copy_regression.dir/mocks/bt_app_core_host_stub.c.o
+[ 36%] Built target test_audio_engine_stress
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 37%] Building C object CMakeFiles/test_bt_app_core_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_app_core.c.o
+[ 37%] Building C object CMakeFiles/test_pairing_confirm.dir/test_pairing_confirm.c.o
+[ 37%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 37%] Building C object CMakeFiles/test_connect_name.dir/test_connect_name.c.o
+[ 37%] Linking C executable test_osi_allocator
+[ 38%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_timer.c.o
+[ 38%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_task.c.o
+[ 39%] Linking C executable test_commands
+[ 39%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 39%] Linking C executable test_dispatch_copy_regression
+[ 39%] Built target test_bt_manager_profiles
+[ 39%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_esp_err.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 40%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_log.c.o
+[ 40%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_queue.c.o
+[ 40%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_debug_helpers.c.o
+[ 41%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_gap.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 41%] Built target test_osi_allocator
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 43%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 43%] Building C object CMakeFiles/test_pairing_enter_pin.dir/test_pairing_enter_pin.c.o
+[ 43%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_gap.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 43%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_uart.c.o
+[ 43%] Built target test_commands
+[ 43%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_uart.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 44%] Building C object CMakeFiles/test_connect_name.dir/mocks/nvs_storage_mock.c.o
+[ 45%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_log.c.o
+[ 45%] Built target test_dispatch_copy_regression
+[ 45%] Linking C executable test_audio_processor_idle_i2s
+[ 46%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/nvs_storage_mock.c.o
+[ 46%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 46%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_gap.c.o
+[ 46%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_esp_err.c.o
+[ 46%] Building C object CMakeFiles/test_connect_name.dir/mocks/bt_manager_test_hooks.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 47%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_uart.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 47%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/nvs_storage_mock.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 48%] Building C object CMakeFiles/test_pairing_negative.dir/test_pairing_negative.c.o
+[ 49%] Building C object CMakeFiles/test_pairing_edge_cases.dir/test_pairing_edge_cases.c.o
+[ 49%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 49%] Building C object CMakeFiles/test_bt_app_core_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 49%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 49%] Building C object CMakeFiles/test_pairing_pending.dir/test_pairing_pending.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 49%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_audio_and_btstate.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 50%] Building C object CMakeFiles/test_connect_name.dir/mocks/audio_processor_host_stub.c.o
+[ 50%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 50%] Built target test_audio_processor_idle_i2s
+[ 50%] Building C object CMakeFiles/test_pairing_event_notifications.dir/test_pairing_event_notifications.c.o
+[ 50%] Building C object CMakeFiles/test_pairing_negative.dir/mocks/mock_gap.c.o
+[ 51%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 51%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 52%] Linking C executable test_bt_app_core_host
+[ 52%] Building C object CMakeFiles/test_connect_name.dir/mocks/fake_esp_err.c.o
+[ 53%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_a2dp.c.o
+[ 54%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_gap.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 54%] Building C object CMakeFiles/test_pairing_negative.dir/mocks/nvs_storage_mock.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 54%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/bt_manager_test_hooks.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 55%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/bt_manager_test_hooks.c.o
+[ 55%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/test_pairing_seq_hardening.c.o
+[ 55%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_avrc.c.o
+[ 55%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/bt_manager_test_hooks.c.o
+[ 56%] Building C object CMakeFiles/test_event_stress.dir/test_event_stress.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 56%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_uart.c.o
+[ 56%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/nvs_storage_mock.c.o
+[ 57%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/bt_manager_test_hooks.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_audio_and_btstate.c.o
+[ 58%] Built target test_bt_app_core_host
+[ 59%] Linking C executable test_pairing_negative
+[ 59%] Linking C executable test_connect_name
+[ 59%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_audio_and_btstate.c.o
+[ 59%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_uart.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_audio_and_btstate.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_audio_and_btstate.c.o
+[ 60%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/audio_processor_host_stub.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_gap.c.o
+[ 62%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/audio_processor_host_stub.c.o
+[ 63%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/nvs_storage_mock.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 63%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/fake_esp_err.c.o
+[ 64%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/nvs_storage_mock.c.o
+[ 64%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/bt_manager_test_hooks.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 64%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/fake_esp_err.c.o
+[ 64%] Built target test_pairing_negative
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 65%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 65%] Built target test_connect_name
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 65%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/fake_esp_err.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 66%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_uart.c.o
+[ 66%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_a2dp.c.o
+[ 66%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/nvs_storage_mock.c.o
+[ 67%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_a2dp.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 67%] Building C object CMakeFiles/test_bt_connection_manager.dir/test_bt_connection_manager.c.o
+[ 67%] Building C object CMakeFiles/test_bt_connection_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection_manager.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 67%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/fake_esp_err.c.o
+[ 68%] Building C object CMakeFiles/test_bt_streaming_manager.dir/test_bt_streaming_manager.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_audio_and_btstate.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_a2dp.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 69%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_avrc.c.o
+[ 69%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_gap.c.o
+[ 69%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_avrc.c.o
+[ 70%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_a2dp.c.o
+[ 70%] Building C object CMakeFiles/test_bt_streaming_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_streaming_manager.c.o
+[ 70%] Building C object CMakeFiles/test_mock_connection_helpers.dir/test_mock_connection_helpers.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/audio_processor_host_stub.c.o
+[ 71%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 72%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/bt_manager_test_hooks.c.o
+[ 73%] Building C object CMakeFiles/test_bt_connection_manager.dir/mocks/mock_a2dp.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_avrc.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_avrc.c.o
+[ 74%] Linking C executable test_pairing_confirm
+[ 74%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 74%] Linking C executable test_pairing_enter_pin
+[ 75%] Building C object CMakeFiles/test_event_stress.dir/mocks/nvs_storage_mock.c.o
+[ 75%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_audio_and_btstate.c.o
+[ 75%] Building C object CMakeFiles/test_bt_connection_manager.dir/mocks/mock_gap.c.o
+[ 75%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/mock_a2dp.c.o
+[ 75%] Linking C executable test_pairing_pending
+[ 75%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/fake_esp_err.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 75%] Linking C executable test_pairing_event_notifications
+[ 76%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_app/main/test_pairing_commands.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/audio_processor_host_stub.c.o
+[ 77%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_a2dp.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 78%] Linking C executable test_bt_connection_manager
+[ 79%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_audio_and_btstate.c.o
+[ 79%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_a2dp.c.o
+[ 79%] Built target test_pairing_confirm
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 80%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/mock_audio_and_btstate.c.o
+[ 80%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_app2/main/test_pairing_adapters.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 80%] Built target test_pairing_enter_pin
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 80%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_avrc.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 80%] Built target test_pairing_pending
+[ 80%] Building C object CMakeFiles/test_event_stress.dir/mocks/bt_manager_test_hooks.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 81%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/fake_esp_err.c.o
+[ 81%] Built target test_pairing_event_notifications
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 82%] Building C object CMakeFiles/test_audio_resampler_stream.dir/test_audio_resampler_stream.c.o
+[ 82%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_a2dp.c.o
+[ 82%] Building C object CMakeFiles/test_audio_resampler_stream.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_resampler_stream.c.o
+[ 83%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_avrc.c.o
+[ 83%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 83%] Linking C executable test_pairing_edge_cases
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 83%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/audio_processor_host_stub.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 83%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_audio_and_btstate.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 84%] Building C object CMakeFiles/test_audio_util.dir/test_audio_util/test_audio_util.c.o
+[ 84%] Built target test_bt_connection_manager
+[ 84%] Building C object CMakeFiles/test_audio_resampler_stream.dir/mocks/fake_log.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 84%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/bt_manager_test_hooks.c.o
+[ 85%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_gap.c.o
+[ 86%] Building C object CMakeFiles/test_synth_manager.dir/test_synth_manager/test_synth_manager.c.o
+[ 86%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_avrc.c.o
+[ 87%] Building C object CMakeFiles/test_event_stress.dir/mocks/audio_processor_host_stub.c.o
+[ 88%] Building C object CMakeFiles/test_audio_resampler_stream.dir/mocks/fake_esp_err.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 88%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_task.c.o
+[ 88%] Built target test_pairing_edge_cases
+[ 88%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/nvs_storage_mock.c.o
+[ 88%] Building C object CMakeFiles/test_synth_manager.dir/test_synth_manager/stub_audio_config.c.o
+[ 88%] Building C object CMakeFiles/test_audio_util.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 88%] Linking C executable test_audio_resampler_stream
+[ 89%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/fake_esp_err.c.o
+[ 90%] Linking C executable test_pairing_seq_hardening
+[ 90%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_uart.c.o
+[ 90%] Building C object CMakeFiles/test_event_stress.dir/mocks/fake_esp_err.c.o
+[ 90%] Building C object CMakeFiles/test_synth_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/synth_manager.c.o
+[ 90%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_a2dp.c.o
+[ 91%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_log.c.o
+[ 92%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_avrc.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 92%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/test_pairing_adapter_main.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 92%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_esp_err.c.o
+gmake[3]: Entering directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 92%] Linking C executable test_mock_connection_helpers
+[ 92%] Building C object CMakeFiles/test_mem_util.dir/test_mem_util/test_mem_util.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 92%] Building C object CMakeFiles/test_audio_util.dir/mocks/fake_log.c.o
+[ 92%] Building C object CMakeFiles/test_mem_util.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[ 92%] Building C object CMakeFiles/test_bt_streaming_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[ 93%] Linking C executable test_synth_manager
+[ 94%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/nvs_storage_mock.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 94%] Built target test_audio_resampler_stream
+[ 94%] Linking C executable test_event_stress
+[ 94%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 94%] Built target test_pairing_seq_hardening
+[ 95%] Building C object CMakeFiles/test_audio_util.dir/mocks/fake_esp_err.c.o
+[ 96%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/bt_manager_test_hooks.c.o
+[ 96%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_audio_and_btstate.c.o
+[ 96%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/audio_processor_host_stub.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 97%] Linking C executable test_bt_streaming_manager
+[ 98%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/fake_esp_err.c.o
+[ 98%] Linking C executable test_audio_util
+[ 98%] Built target test_mock_connection_helpers
+[ 99%] Linking C executable test_mem_util
+[ 99%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_a2dp.c.o
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[ 99%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_avrc.c.o
+[ 99%] Built target test_synth_manager
+[ 99%] Built target test_event_stress
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[100%] Linking C executable test_pairing_adapter_runner
+[100%] Built target test_bt_streaming_manager
+[100%] Built target test_mem_util
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[100%] Built target test_audio_util
+gmake[3]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+[100%] Built target test_pairing_adapter_runner
+gmake[2]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+gmake[1]: Leaving directory '/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests'
+✅ Build successful
+==> Running tests...
+Test project /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/build_host_tests
+      Start  1: test_commands
+ 1/33 Test  #1: test_commands ......................   Passed    0.02 sec
+      Start  2: test_bluetooth
+ 2/33 Test  #2: test_bluetooth .....................   Passed    0.00 sec
+      Start  3: test_bt_manager_profiles
+ 3/33 Test  #3: test_bt_manager_profiles ...........   Passed    0.00 sec
+      Start  4: test_audio_processor
+ 4/33 Test  #4: test_audio_processor ...............   Passed    0.00 sec
+      Start  5: test_nvs_storage
+ 5/33 Test  #5: test_nvs_storage ...................   Passed    0.00 sec
+      Start  6: test_nvs_storage_errors
+ 6/33 Test  #6: test_nvs_storage_errors ............   Passed    0.00 sec
+      Start  7: test_psram
+ 7/33 Test  #7: test_psram .........................   Passed    0.00 sec
+      Start  8: test_util_safe
+ 8/33 Test  #8: test_util_safe .....................   Passed    0.00 sec
+      Start  9: test_audio_processor_idle_i2s
+ 9/33 Test  #9: test_audio_processor_idle_i2s ......   Passed    0.00 sec
+      Start 10: test_list_ownership
+10/33 Test #10: test_list_ownership ................   Passed    0.00 sec
+      Start 11: test_audio_ringbuffer
+11/33 Test #11: test_audio_ringbuffer ..............   Passed    0.00 sec
+      Start 12: test_audio_engine_stress
+12/33 Test #12: test_audio_engine_stress ...........   Passed    0.00 sec
+      Start 13: test_osi_allocator
+13/33 Test #13: test_osi_allocator .................   Passed    0.00 sec
+      Start 14: test_dispatch_copy_regression
+14/33 Test #14: test_dispatch_copy_regression ......   Passed    0.00 sec
+      Start 15: test_bt_app_core_host
+15/33 Test #15: test_bt_app_core_host ..............   Passed    0.00 sec
+      Start 16: test_pairing_confirm
+16/33 Test #16: test_pairing_confirm ...............   Passed    0.00 sec
+      Start 17: test_connect_name
+17/33 Test #17: test_connect_name ..................   Passed    0.00 sec
+      Start 18: test_pairing_enter_pin
+18/33 Test #18: test_pairing_enter_pin .............   Passed    0.00 sec
+      Start 19: test_pairing_negative
+19/33 Test #19: test_pairing_negative ..............   Passed    0.00 sec
+      Start 20: test_pairing_edge_cases
+20/33 Test #20: test_pairing_edge_cases ............   Passed    0.00 sec
+      Start 21: test_pairing_pending
+21/33 Test #21: test_pairing_pending ...............   Passed    0.00 sec
+      Start 22: test_pairing_event_notifications
+22/33 Test #22: test_pairing_event_notifications ...   Passed    0.00 sec
+      Start 23: test_event_stress
+23/33 Test #23: test_event_stress ..................   Passed    0.00 sec
+      Start 24: test_pairing_seq_hardening
+24/33 Test #24: test_pairing_seq_hardening .........   Passed    0.00 sec
+      Start 25: test_bt_connection_manager
+25/33 Test #25: test_bt_connection_manager .........   Passed    0.00 sec
+      Start 26: test_bt_streaming_manager
+26/33 Test #26: test_bt_streaming_manager ..........   Passed    0.00 sec
+      Start 27: test_mock_connection_helpers
+27/33 Test #27: test_mock_connection_helpers .......   Passed    0.00 sec
+      Start 28: dump_event_stress_output
+28/33 Test #28: dump_event_stress_output ...........   Passed    1.10 sec
+      Start 29: test_pairing_adapter_runner
+29/33 Test #29: test_pairing_adapter_runner ........   Passed    0.00 sec
+      Start 30: test_audio_resampler_stream
+30/33 Test #30: test_audio_resampler_stream ........   Passed    0.00 sec
+      Start 31: test_audio_util
+31/33 Test #31: test_audio_util ....................   Passed    0.00 sec
+      Start 32: test_synth_manager
+32/33 Test #32: test_synth_manager .................   Passed    0.00 sec
+      Start 33: test_mem_util
+33/33 Test #33: test_mem_util ......................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 33
+
+Total Test time (real) =   1.20 sec
+✅ Tests passed
