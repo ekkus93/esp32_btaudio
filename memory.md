@@ -1,3 +1,13 @@
+## 2026-02-09 13:46 — Clang-Tidy Fix: Added Missing esp_timer.h Include ✅
+
+**Issue:** Clang-tidy detected missing type declaration for `esp_timer_handle_t` in audio_processor_internal.h (introduced during Task D NVS debounce implementation).
+
+**Fix:** Added `#include "esp_timer.h"` to audio_processor_internal.h to resolve type declaration for volume commit timer.
+
+**Result:** All 26 files pass clang-tidy linting checks ✅ | Commit: d342c713
+
+---
+
 ## 2026-02-09 15:30 — CODE_REVIEW8 Task D: NVS Write Rate / Flash Wear Audit ✅
 
 **Task:** Audited and fixed NVS write rate to prevent premature flash wear (P0 priority from CODE_REVIEW8).
