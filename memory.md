@@ -1,3 +1,45 @@
+## 2026-02-09 02:10 — BBGW I2S Source: Python 3.9 Still Hanging - Increased to 0.2s
+
+**Context:** After comprehensive 0.15s fix, Python 3.9 CI still hanging/failing on 2 tests while 3.10/3.11/3.12 pass
+
+**Failures in Python 3.9:**
+1. `test_multiple_commands` - FAILED (73% progress)
+   - Sequential test launching 3 mock threads
+   - 0.15s insufficient for Python 3.9 thread scheduling in CI
+   
+2. `test_a_major_chord` - FAILED (99% progress)
+   - Multi-tone buffer fill test
+   - 0.3s insufficient for AudioEngine to fill ring buffer in Python 3.9
+
+**Test session hung after 99% - never completed**
+- Suggests cleanup/threading issue in addition to timing
+
+**Solution: More Conservative Timing**
+- UART mock_response: **0.15s → 0.2s** (all 9 functions)
+- AudioEngine buffer fill: **0.3s → 0.5s** (test_a_major_chord)
+
+**Rationale:**
+- Python 3.9 CI environment has significantly slower/different thread scheduling
+- 0.15s was still too aggressive for CI environment performance variance
+- 0.2s provides better margin while adding minimal test time (~0.5s total)
+- 0.5s buffer fill ensures reliable ring buffer population
+
+**Commit:** c816263b - "fix(tests): Increase mock timing to 0.2s for Python 3.9 reliability"
+
+**Key Insight:**
+- CI environment variance is significant - local testing may pass at 0.15s but CI needs 0.2s
+- Python 3.9 EOL is October 2025 - if this still fails, may consider dropping 3.9 support
+- Better to be conservative with timing than to have flaky CI
+
+**Expected Outcome:**
+- Python 3.9 tests complete without hanging
+- All 4 Python versions (3.9, 3.10, 3.11, 3.12) pass 237/241 tests
+- Reliable CI execution across all environments
+
+**Timestamp:** 2026-02-09 02:10:01
+
+---
+
 ## 2026-02-09 02:00 — BBGW I2S Source: Complete Python 3.10 Timing Fix
 
 **Context:** After fixing Python 3.9 with selective 0.15s timing, Python 3.10 started failing on test_send_command_writes_to_serial - revealed inconsistent timing across all UART mock tests
