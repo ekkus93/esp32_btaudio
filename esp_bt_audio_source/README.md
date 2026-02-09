@@ -32,7 +32,7 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
   - **Audio configuration productization (Phase 3):** Centralized audio boot config in `load_audio_boot_config()` function. Made audio autostart runtime-configurable via NVS with `AUDIO_AUTOSTART on|off|get` command. Added Kconfig compile-time defaults for sample rate (8-96kHz), volume (0-100), bit depth (16/24/32), and autostart (bool). Three-level configuration hierarchy: NVS runtime overrides → Kconfig compile-time defaults → hard-coded fallbacks.
   - **Code cleanup and documentation (Phase 4):** Removed unused defines (BT_APP_TASK_STACK_SIZE), unnecessary while(1) loop in app_main. Fixed clang-tidy warnings in application code (variable naming, declarations, braces, nested conditionals). Added comprehensive WHY comments throughout main.c explaining architectural decisions. Documented error handling policy (platform fail-fast, subsystems graceful degradation). Binary size: 927KB (+21KB from Phase 3 features, 48% partition space free).
 - **main.c cleanup (Jan 2026):** Removed ~800 lines of orphaned legacy ESP-IDF A2DP/AVRCP example code from main.c (78% reduction: 1019→226 lines, later grew to ~319 lines with documentation). main.c is now a clean bootstrap that delegates all Bluetooth initialization to the bt_manager component. CI enforcement added via `tools/ci_check_main_no_bt_apis.sh` to prevent regression. All 505 tests passing, zero behavioral changes.
-- Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer.
+- **[OBSOLETE - WAV removed Feb 2026]** Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer. _(Note: WAV playback and PLAY command removed in Version 0.3.0 - only I2S and synth sources remain)_
 - The Unity runner and orchestrator were hardened to run non-interactively: `tools/run_unity.py` (and the helper `tools/flash_and_watch.py`) now run `idf.py flash monitor` inside a pseudo-TTY, detect canonical Unity summary markers reliably, and the aggregator consumes those canonical logs for CI-friendly summaries.
 - Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
    - Host CTest bundle: 22/22 passed (see host CTest output in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, also mirrored in `tmp/host_ctest_output.log`).
@@ -55,7 +55,7 @@ Timing snapshot from the sweep (per-orchestrator timing): `test_app` ~65 s total
 
 Key recent completions:
 - Host tests: all host CTest targets are green (22/22) with pairing and command coverage intact.
-- Audio processor: WAV playback now uses ring buffer architecture with proper watermark-based pacing to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio.
+- **[OBSOLETE - WAV removed Feb 2026]** Audio processor: WAV playback now uses ring buffer architecture with proper watermark-based pacing to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio. _(Note: WAV playback removed in Version 0.3.0 - only I2S and synth sources remain)_
 - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping yields deterministic automation and clean aggregator JSON for CI.
 - SPIFFS flash+verify helper is available at `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` for reproducible SPIFFS flashing and on-device validation (PARTS/FILES checks).
 
@@ -151,7 +151,7 @@ Notes on recent progress:
 Remaining work (short list)
 ---------------------------
 - Test coverage gaps (Priority: High — ETA: 1–2 days):
-   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. Add regression coverage for WAV playback to ensure the non-blocking ringbuffer writes stay watchdog-safe.
+   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. **[OBSOLETE - WAV removed Feb 2026]** ~~Add regression coverage for WAV playback to ensure the non-blocking ringbuffer writes stay watchdog-safe.~~
 
 - On-device end-to-end verification (Priority: High — ETA: 2–3 days):
    Re-run pairing scenarios with real sinks (phone, speaker, car stereo) to validate persistence across reboot and confirm the refreshed event stream sequencing.
