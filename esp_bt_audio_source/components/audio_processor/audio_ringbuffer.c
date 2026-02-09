@@ -2,6 +2,22 @@
  * @file audio_ringbuffer.c
  * @brief SPSC ring buffer implementation
  *
+ * ⚠️  SINGLE PRODUCER SINGLE CONSUMER (SPSC) ONLY ⚠️
+ * 
+ * This implementation is NOT thread-safe for:
+ *   - Multiple producers calling audio_rb_write()
+ *   - Multiple consumers calling audio_rb_read()
+ *   - MPMC (multi-producer multi-consumer) scenarios
+ *
+ * Current usage in this project (CORRECT):
+ *   - Producer: audio_engine_task (main.c) - ONE task only
+ *   - Consumer: BT A2DP callback (bt_app_core.c) - ONE callback context only
+ *
+ * If you need MPMC, you must:
+ *   - Use FreeRTOS queue instead, OR
+ *   - Add external synchronization (mutex/semaphore), OR
+ *   - Use lock-free MPMC ring buffer (more complex)
+ *
  * Implementation details:
  * - head: write position (producer advances)
  * - tail: read position (consumer advances)
@@ -9,7 +25,7 @@
  * - capacity: total buffer size
  * - peak_used: high-water mark for sizing analysis
  *
- * Synchronization strategy:
+ * Synchronization strategy (SPSC only):
  * - Very short critical sections (just state updates)
  * - No blocking operations
  * - Suitable for ISR-like contexts (A2DP callback)
@@ -19,6 +35,7 @@
  * - Backing buffer allocated per use_psram flag (large, bulk storage)
  *
  * CODE_REVIEW6 Phase 1, Task 1.1
+ * CODE_REVIEW7 Priority 4, Task 4.1 (SPSC contract documentation)
  */
 
 #include "audio_ringbuffer.h"

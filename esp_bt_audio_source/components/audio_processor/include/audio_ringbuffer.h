@@ -2,6 +2,24 @@
  * @file audio_ringbuffer.h
  * @brief SPSC (Single Producer Single Consumer) ring buffer for PCM audio
  *
+ * ⚠️  CRITICAL SPSC CONTRACT - THREAD SAFETY RESTRICTIONS ⚠️
+ * 
+ * This ring buffer implementation is ONLY safe for Single-Producer Single-Consumer
+ * use cases. It will exhibit UNDEFINED BEHAVIOR and potential data corruption if:
+ *   - Multiple threads call audio_rb_write() concurrently (multi-producer)
+ *   - Multiple threads call audio_rb_read() concurrently (multi-consumer)
+ *   - MPMC (multi-producer multi-consumer) scenarios
+ *
+ * ✅ CORRECT USAGE:
+ *   - ONE producer context:  audio_engine_task calling audio_rb_write()
+ *   - ONE consumer context:  BT A2DP callback calling audio_rb_read()
+ *   - Query functions (available_to_read/write, capacity, peak) are safe from any context
+ *
+ * 🚫 INCORRECT USAGE (will cause race conditions, data corruption):
+ *   - Two tasks both calling audio_rb_write()
+ *   - Two tasks both calling audio_rb_read()
+ *   - Switching producer/consumer threads without external synchronization
+ *
  * WHY: Decouple audio production (audio engine task) from consumption (A2DP callback)
  *      - Old queue-based design had multiple producers → race conditions, complexity
  *      - Ring buffer provides simple, efficient buffering with single writer
@@ -14,8 +32,8 @@
  *      - Wrap-around handled via modulo arithmetic
  *      - Critical sections very short (just pointer updates)
  *
- * CORRECTNESS: Thread-safety via short critical sections
- *              - portENTER_CRITICAL protects state updates
+ * CORRECTNESS: Thread-safety via short critical sections (SPSC only)
+ *              - portENTER_CRITICAL protects state updates between ONE producer and ONE consumer
  *              - No blocking operations (returns immediately if insufficient space/data)
  *              - A2DP callback safe (never blocks, bounded execution time)
  *              - PSRAM option for large buffers (128KB+) without DRAM pressure
