@@ -89,6 +89,7 @@ extern audio_rb_t *s_audio_ring;
 #ifndef UNIT_TEST
 extern TaskHandle_t s_audio_engine_task_handle;
 extern bool s_audio_engine_paused;
+extern uint32_t s_span_seq;  /* Span log sequence counter (CODE_REVIEW7 Priority 2) */
 #endif
 
 extern bool s_is_initialized;

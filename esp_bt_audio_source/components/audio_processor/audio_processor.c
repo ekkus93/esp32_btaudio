@@ -19,6 +19,7 @@
 #include "nvs_storage.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "audio_span_log.h"
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
@@ -233,6 +234,35 @@ static void audio_engine_task(void *arg)
                     /* Ring filled between check and write (rare but possible) */
                     ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu", written, produced);
                 }
+                
+                /* Log span entry for debugging (CODE_REVIEW7 Priority 2, Task 2.1)
+                 * Captures: sequence, timestamp, bytes written, ring state, source, flags
+                 * Queryable via SPANLOG command for timeline reconstruction */
+                if (written > 0) {
+                    size_t ring_used_after = capacity - audio_rb_available_to_write(s_audio_ring);
+                    audio_source_t active_source = get_active_source();
+                    uint8_t span_flags = 0;
+                    
+                    /* Set BEEP_OVERLAY flag if beep is currently mixing */
+                    if (beep_overlay_is_active()) {
+                        span_flags |= SPAN_FLAG_BEEP_OVERLAY;
+                    }
+                    
+                    /* Set PAUSED flag if we're at high watermark */
+                    if (s_audio_engine_paused) {
+                        span_flags |= SPAN_FLAG_PAUSED;
+                    }
+                    
+                    /* Push span entry (timestamp in milliseconds) */
+                    span_log_push(
+                        s_span_seq++,
+                        (uint32_t)(esp_timer_get_time() / 1000),
+                        written,
+                        ring_used_after,
+                        (uint8_t)active_source,
+                        span_flags
+                    );
+                }
             }
         }
         
@@ -372,6 +402,15 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         beep_manager_deinit();
         i2s_manager_deinit();
         return ret;
+    }
+
+    /* Initialize span log for debugging visibility (CODE_REVIEW7 Priority 2, Task 2.1)
+     * Default capacity: 256 entries (~4KB memory)
+     * Enables SPANLOG command to query recent audio engine behavior */
+    const size_t span_log_entries = 256;
+    if (!span_log_init(span_log_entries)) {
+        ESP_LOGW(TAG, "audio_processor_init: span_log_init failed (non-critical)");
+        /* Continue initialization - span log is debugging aid, not critical */
     }
 
     s_is_initialized = true;
@@ -531,6 +570,9 @@ esp_err_t audio_processor_deinit(void)
         audio_rb_deinit(s_audio_ring);
         s_audio_ring = NULL;
     }
+
+    /* Deinitialize span log (CODE_REVIEW7 Priority 2, Task 2.1) */
+    span_log_deinit();
 
     synth_manager_reset_state();
 

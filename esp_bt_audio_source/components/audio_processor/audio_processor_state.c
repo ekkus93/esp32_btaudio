@@ -28,6 +28,15 @@ audio_rb_t *s_audio_ring = NULL;
 TaskHandle_t s_audio_engine_task_handle = NULL;
 
 /**
+ * Span log sequence counter (CODE_REVIEW7 Priority 2, Task 2.1)
+ * 
+ * WHY: Track chronological order of audio engine writes for debugging
+ * HOW: Monotonic counter incremented on each span_log_push() call
+ * CORRECTNESS: Only modified by audio_engine_task (single producer)
+ */
+uint32_t s_span_seq = 0;
+
+/**
  * Audio engine pause state for watermark management (Phase 2, Task 2.4)
  * 
  * WHY: Stop filling when ring near full (HIGH_WATERMARK), resume when drained (LOW_WATERMARK)
