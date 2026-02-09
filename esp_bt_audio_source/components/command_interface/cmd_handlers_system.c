@@ -1,5 +1,6 @@
 #include "cmd_handlers.h"
 #include "audio_processor_internal.h"
+#include "audio_span_log.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_get_streaming_info() but skip duplicate bt_device_t */
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
 #include "bt_source.h"
@@ -48,6 +49,7 @@ static const struct
     {"BEEP", NULL, "Play 10s middle-C tone when connected"},
     {"DIAG", NULL, "Report connection/stream/I2S/beep state"},
     {"AUDIO_STATUS", NULL, "Report audio engine stats and ring buffer state"},
+    {"SPANLOG", "[N]", "Dump last N span log entries (default 10, max 100)"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
@@ -143,6 +145,77 @@ cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx)
     cmd_send_response("OK", "WAV_STATUS", "MOCK", "ACTIVE=no");
 #endif
     
+    return CMD_SUCCESS;
+}
+
+cmd_status_t cmd_handle_spanlog(const cmd_context_t *ctx)
+{
+#ifdef ESP_PLATFORM
+    /* Parse count parameter (default: 10, max: 100) */
+    size_t count = 10;  /* Default count */
+    if (ctx->param_count > 0) {
+        long parsed = strtol(ctx->params[0], NULL, 10);
+        if (parsed > 0 && parsed <= 100) {
+            count = (size_t)parsed;
+        } else if (parsed > 100) {
+            count = 100;  /* Clamp to max */
+        } else {
+            cmd_send_response("ERROR", "SPANLOG", "INVALID_PARAM", "Count must be 1-100");
+            return CMD_ERROR_INVALID_PARAM;
+        }
+    }
+
+    /* Allocate buffer for span entries */
+    audio_rb_span_t *spans = (audio_rb_span_t *)malloc(count * sizeof(audio_rb_span_t));
+    if (!spans) {
+        cmd_send_response("ERROR", "SPANLOG", "NO_MEMORY", "Failed to allocate buffer");
+        return CMD_ERROR_INIT_FAILED;
+    }
+
+    /* Retrieve span log entries */
+    size_t actual = 0;
+    if (!span_log_get_last_n(spans, count, &actual)) {
+        free(spans);
+        cmd_send_response("ERROR", "SPANLOG", "NOT_INITIALIZED", "Span log not initialized");
+        return CMD_ERROR_NOT_INITIALIZED;
+    }
+
+    /* Send CSV header */
+    cmd_send_response("OK", "SPANLOG", "", "seq,timestamp_ms,bytes,ring_used_kb,source,flags");
+
+    /* Send each span entry as CSV line */
+    for (size_t i = 0; i < actual; i++) {
+        const audio_rb_span_t *s = &spans[i];
+        
+        /* Decode source enum to string */
+        const char *source_str = "UNKNOWN";
+        if (s->source == AUDIO_SPAN_SOURCE_I2S) {
+            source_str = "I2S";
+        } else if (s->source == AUDIO_SPAN_SOURCE_SYNTH) {
+            source_str = "SYNTH";
+        } else if (s->source == AUDIO_SPAN_SOURCE_SILENCE) {
+            source_str = "SILENCE";
+        }
+        
+        /* Format flags as hex */
+        char data_line[256];
+        snprintf(data_line, sizeof(data_line), "%lu,%lu,%zu,%u,%s,0x%02X",
+                 (unsigned long)s->seq,
+                 (unsigned long)s->timestamp_ms,
+                 s->bytes,
+                 (unsigned)s->ring_used_kb,
+                 source_str,
+                 (unsigned)s->flags);
+        
+        /* Send row as INFO response (not OK to avoid confusion with header) */
+        cmd_send_response("INFO", "SPANLOG", "ENTRY", data_line);
+    }
+
+    free(spans);
+#else
+    (void)ctx;
+    cmd_send_response("ERROR", "SPANLOG", "NOT_SUPPORTED", "Span log only available on ESP32");
+#endif
     return CMD_SUCCESS;
 }
 

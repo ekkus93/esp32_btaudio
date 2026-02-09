@@ -239,6 +239,9 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "DIAG") == 0) {
         ctx->type = CMD_TYPE_DIAG;
     }
+    else if (strcasecmp(token, "SPANLOG") == 0) {
+        ctx->type = CMD_TYPE_SPANLOG;
+    }
     else if (strcasecmp(token, "HELP") == 0) {
         ctx->type = CMD_TYPE_HELP;
     }
@@ -431,6 +434,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_unpair(ctx);
     case CMD_TYPE_UNPAIR_ALL:
         return cmd_handle_unpair_all(ctx);
+    case CMD_TYPE_SPANLOG:
+        return cmd_handle_spanlog(ctx);
     case CMD_TYPE_HELP:
         return cmd_handle_help(ctx);
     default:
