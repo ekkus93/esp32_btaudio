@@ -3,6 +3,9 @@
 #include "bt_pairing_store.h"
 #include "bt_scan.h"
 #include "bt_connection.h"
+#include "bt_events_gap.h"
+#include "bt_events_a2dp.h"
+#include "bt_events_avrc.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
@@ -109,12 +112,6 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 #ifdef ESP_PLATFORM
 #include <inttypes.h>
 #include "nvs_flash.h"
-// Callback declarations
-static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
-static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
-static void bt_app_avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
-// esp_a2d_source_data_cb_t signature: int32_t (*)(uint8_t *buf, int32_t len)
-static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len);
 static esp_err_t bt_manager_init_profiles(void);
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
@@ -136,7 +133,11 @@ __attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_be
 
 // Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
 __attribute__((weak)) void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
-static int s_autostart_attempts = 0;
+
+#ifdef UNIT_TEST
+/* Unit test tracking for auto-start attempts - accessed by event handlers */
+int s_autostart_attempts = 0;
+#endif
 
 int bt_manager_test_get_autostart_attempts(void) {
     return s_autostart_attempts;
@@ -250,7 +251,7 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     }
 
     // Register GAP callback
-    esp_bt_gap_register_callback(bt_app_gap_callback);
+    esp_bt_gap_register_callback(bt_events_gap_callback);
 
     ret = bt_manager_init_profiles();
     if (ret != ESP_OK) {
@@ -833,165 +834,7 @@ int bt_manager_stop_audio(void) {
 }
 
 
-#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
-static void bt_manager_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
-    if (!param) {
-        return;
-    }
-
-    if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-        char bda_str[18];
-        safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                      param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
-                      param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
-                      param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
-
-        ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
-
-        bt_ctx.connected = true;
-        safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
-
-        if (bt_ctx.connected_callback != NULL) {
-            bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
-        }
-
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
-        bt_connection_state_cb(param->conn_stat.state, tmp_addr);
-
-        if (s_autostart_enabled) {
-    #if defined(UNIT_TEST)
-            s_autostart_attempts++;
-    #endif
-            bt_err_t start_ret = bt_start_audio();
-            ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));  // NOLINT(bugprone-branch-clone)
-        }
-    } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);  // NOLINT(bugprone-branch-clone)
-
-        if (bt_ctx.disconnected_callback != NULL) {
-            bt_ctx.disconnected_callback(bt_ctx.connected_mac);
-        }
-
-        bt_ctx.connected = false;
-        bt_ctx.audio_playing = false;
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
-        bt_connection_state_cb(param->conn_stat.state, tmp_addr);
-    }
-}
-
-static void bt_manager_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
-    if (!param) {
-        return;
-    }
-
-    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
-        ESP_LOGI(TAG, "Audio streaming started");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = true;
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
-    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
-        ESP_LOGI(TAG, "Audio streaming stopped");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = false;
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
-    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
-        ESP_LOGI(TAG, "Audio streaming remote suspend");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = false;
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
-    }
-}
-#endif
-
 #ifdef ESP_PLATFORM
-// GAP callback for Bluetooth events
-static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
-    switch (event) {
-        case ESP_BT_GAP_DISC_RES_EVT: {
-            // Device discovery result
-            bt_scan_handle_discovery_result(param->disc_res.bda, 
-                                            param->disc_res.num_prop,
-                                            param->disc_res.prop);
-            break;
-        }
-        
-        case ESP_BT_GAP_DISC_STATE_CHANGED_EVT:
-            // Discovery state changed
-            bt_scan_handle_state_change(param->disc_st_chg.state);
-            break;
-            
-        case ESP_BT_GAP_PIN_REQ_EVT: {
-            // Remote device is requesting a PIN code (legacy pairing)
-            bt_pairing_handle_pin_request(param->pin_req.bda);
-            break;
-        }
-
-        case ESP_BT_GAP_CFM_REQ_EVT: {
-            // SSP confirmation request (numeric comparison)
-            bt_pairing_handle_ssp_confirm(param->cfm_req.bda, param->cfm_req.num_val);
-            break;
-        }
-
-        case ESP_BT_GAP_AUTH_CMPL_EVT: {
-            // Authentication complete (pairing result)
-            bt_pairing_handle_auth_complete(param->auth_cmpl.bda, param->auth_cmpl.stat);
-            break;
-        }
-
-        default:
-            break;
-    }
-}
-
-// A2DP callback for audio events
-static void bt_app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
-    switch (event) {
-        case ESP_A2D_CONNECTION_STATE_EVT:
-            bt_manager_handle_a2dp_connection(param);
-            break;
-        case ESP_A2D_AUDIO_STATE_EVT:
-            bt_manager_handle_a2dp_audio(param);
-            break;
-        default:
-            break;
-    }
-}
-
-// Minimal AVRCP controller callback: log connection state and ignore others
-static void bt_app_avrc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param)
-{
-    if (param == NULL) {
-        return;
-    }
-
-    switch (event) {
-        case ESP_AVRC_CT_CONNECTION_STATE_EVT: {
-            /* IDF provides 'connected' bool in conn_stat; avoid accessing
-             * non-existent fields on older/newer headers. */
-            bool connected = false;
-#if defined(ESP_AVRC_CT_CONNECTION_STATE_EVT)
-            connected = param->conn_stat.connected;
-#endif
-            ESP_LOGI(TAG, "AVRCP connection state: %d", connected ? 1 : 0);  // NOLINT(bugprone-branch-clone)
-            break;
-        }
-        case ESP_AVRC_CT_PASSTHROUGH_RSP_EVT:  // NOLINT(bugprone-branch-clone)
-            ESP_LOGD(TAG, "AVRCP passthrough rsp key=%d state=%d", param->psth_rsp.key_code, param->psth_rsp.key_state);  // NOLINT(bugprone-branch-clone)
-            break;
-        case ESP_AVRC_CT_REMOTE_FEATURES_EVT:
-            ESP_LOGD(TAG, "AVRCP remote features: 0x%x", (unsigned int)param->rmt_feats.feat_mask);  // NOLINT(bugprone-branch-clone)
-            break;
-        default:
-            ESP_LOGD(TAG, "AVRCP event: %d", event);  // NOLINT(bugprone-branch-clone)
-            break;
-    }
-}
-
 static esp_err_t bt_manager_init_profiles(void)
 {
     esp_err_t ret = esp_avrc_ct_init();
@@ -1000,7 +843,7 @@ static esp_err_t bt_manager_init_profiles(void)
         return ESP_FAIL;
     }
 
-    ret = esp_avrc_ct_register_callback(bt_app_avrc_ct_callback);
+    ret = esp_avrc_ct_register_callback(bt_events_avrc_callback);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
@@ -1012,35 +855,19 @@ static esp_err_t bt_manager_init_profiles(void)
         return ESP_FAIL;
     }
 
-    ret = esp_a2d_register_callback(bt_app_a2d_callback);
+    ret = esp_a2d_register_callback(bt_events_a2dp_callback);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
 
-    ret = esp_a2d_source_register_data_callback(bt_app_a2d_data_callback);
+    ret = esp_a2d_source_register_data_callback(bt_events_a2dp_data_callback);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
 
     return ESP_OK;
-}
-
-// Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
-static int32_t bt_app_a2d_data_callback(uint8_t *buf, int32_t len)
-{
-    if (len <= 0 || buf == NULL) {
-        return 0;
-    }
-
-    size_t bytes_read = 0;
-    esp_err_t ret = audio_processor_read(buf, (size_t)len, &bytes_read);
-    if (ret != ESP_OK) {
-        return 0;
-    }
-
-    return (int32_t)bytes_read;
 }
 #endif
 

@@ -1,3 +1,69 @@
+## 2026-02-09 14:35 — bt_manager Refactoring: Phase 5 - Event Handler Extraction ✅
+
+**Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 5: Extract event handlers)
+
+**Objective:** Extract Bluetooth event handler callbacks (GAP, A2DP, AVRC) from bt_manager.c to dedicated modules for better modularity.
+
+**Changes:**
+1. **Created bt_events_gap.c** (48 lines) - GAP event handler implementation
+   - Migrated bt_app_gap_callback() - handles PIN requests, SSP confirmation, authentication
+   - Delegates to bt_pairing_store (pairing events) and bt_scan (discovery events)
+
+2. **Created bt_events_gap.h** (33 lines) - GAP event handler API
+   - Public API: bt_events_gap_callback()
+   - Comprehensive documentation for all handled GAP events
+
+3. **Created bt_events_a2dp.c** (129 lines) - A2DP event handler implementation  
+   - Migrated bt_app_a2d_callback() - dispatches connection/audio events
+   - Migrated bt_manager_handle_a2dp_connection() - handles connect/disconnect, auto-start
+   - Migrated bt_manager_handle_a2dp_audio() - handles audio state changes
+   - Migrated bt_app_a2d_data_callback() - provides PCM audio to BT stack
+   - Accesses shared state via bt_manager_internal.h
+   - Preserves auto-start logic and UNIT_TEST tracking
+
+4. **Created bt_events_a2dp.h** (61 lines) - A2DP event handler API  
+   - Public API: bt_events_a2dp_callback(), bt_events_a2dp_data_callback()
+   - Internal API: bt_events_handle_a2dp_connection(), bt_events_handle_a2dp_audio()
+   - Comprehensive documentation
+
+5. **Created bt_events_avrc.c** (41 lines) - AVRC event handler implementation
+   - Migrated bt_app_avrc_ct_callback() - logs connection state and passthrough events
+   - Minimal functionality (logging only, no substantive action)
+
+6. **Created bt_events_avrc.h** (28 lines) - AVRC event handler API  
+   - Public API: bt_events_avrc_callback()
+   - Documents current minimal implementation
+
+7. **Updated CMakeLists.txt** - Added bt_events_gap.c, bt_events_a2dp.c, bt_events_avrc.c to SRCS
+
+8. **Modified bt_manager.c** - Integrated with extracted event modules
+   - Added includes for bt_events_gap.h, bt_events_a2dp.h, bt_events_avrc.h
+   - Removed forward declarations for old callback functions
+   - Updated callback registrations to use new module functions
+   - Removed bt_app_gap_callback() implementation (~36 lines)
+   - Removed bt_app_a2d_callback() implementation (~12 lines)  
+   - Removed bt_app_avrc_ct_callback() implementation (~28 lines)
+   - Removed bt_manager_handle_a2dp_connection() implementation (~47 lines)
+   - Removed bt_manager_handle_a2dp_audio() implementation (~28 lines)
+   - Removed bt_app_a2d_data_callback() implementation (~15 lines)
+   - Exposed s_autostart_attempts (removed static) for event handler access
+
+9. **Modified bt_manager_internal.h** - Added s_autostart_attempts extern declaration for UNIT_TEST builds
+
+**Results:**
+- bt_manager.c reduced from 1284 to 1111 lines (**173 lines removed**)
+- Cumulative reduction: 1852 → 1111 lines (**805 lines total removed across phases 2-5, 43% reduction**)
+- Clear separation of concerns: event handling now in dedicated modules by protocol (GAP/A2DP/AVRC)
+- No functional changes - all existing behavior preserved
+- Auto-start logic preserved with proper test tracking
+- Host tests: 244/244 passing ✅
+
+**Approach:** Incremental extraction following TDD principles - define API → extract implementation → update integration points → test → commit
+
+**Next Steps:** Phase 6 - Finalize and document (update ARCH.md, mark CODE_REVIEW8 task complete)
+
+---
+
 ## 2026-02-09 14:25 — bt_manager Refactoring: Phase 4 - Connection Logic Extraction ✅
 
 **Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 4: Extract connection logic)

@@ -45,6 +45,11 @@ typedef struct {
 extern bt_manager_context_t bt_ctx;
 extern bool s_autostart_enabled;
 
+#ifdef UNIT_TEST
+/* Unit test tracking for auto-start attempts - accessed by event handlers */
+extern int s_autostart_attempts;
+#endif
+
 /* Utility function aliases (from util_safe) */
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
