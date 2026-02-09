@@ -226,8 +226,11 @@ static void audio_engine_task(void *arg)
                 s_audio_stats.engine_write_bytes += written;
                 
                 if (written < produced) {
-                    /* Ring filled between check and write (rare but possible) */
-                    ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu", written, produced);
+                    /* Ring filled between check and write (rare but possible)
+                     * Count as buffer overrun - producer ahead of consumer (CODE_REVIEW7 Priority 5, Task 5.1) */
+                    s_audio_stats.buffer_overruns++;
+                    ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu (overrun #%u)", 
+                             written, produced, (unsigned)s_audio_stats.buffer_overruns);
                 }
                 
                 /* Log span entry for debugging (CODE_REVIEW7 Priority 2, Task 2.1)
@@ -386,6 +389,22 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 #else
     size_t rb_capacity = 32 * 1024;  /* Fallback: 32KB default */
 #endif
+
+    /* Watermark sanity checks (CODE_REVIEW7 Priority 5, Task 5.2)
+     * Validate watermark configuration at compile-time to catch misconfigurations */
+    _Static_assert(AUDIO_RB_LOW_WATERMARK > 0, 
+                   "AUDIO_RB_LOW_WATERMARK must be > 0");
+    _Static_assert(AUDIO_RB_LOW_WATERMARK < AUDIO_RB_HIGH_WATERMARK, 
+                   "AUDIO_RB_LOW_WATERMARK must be < AUDIO_RB_HIGH_WATERMARK");
+    
+    /* Runtime validation that HIGH watermark fits within configured capacity */
+    if (AUDIO_RB_HIGH_WATERMARK >= rb_capacity) {
+        ESP_LOGE(TAG, "Invalid watermarks: HIGH=%u >= capacity=%zu. Check sdkconfig.",
+                 AUDIO_RB_HIGH_WATERMARK, rb_capacity);
+        beep_manager_deinit();
+        i2s_manager_deinit();
+        return ESP_ERR_INVALID_ARG;
+    }
 #ifdef CONFIG_AUDIO_RB_USE_PSRAM
     bool use_psram = true;
 #else

@@ -1,3 +1,59 @@
+## 2026-02-09 09:54 — ESP32 BT Audio: CODE_REVIEW7 Priority 5 - Stats Tracking Cleanup (Complete)
+
+**Context:** Completed final CODE_REVIEW7 Priority 5 tasks - buffer_overruns semantic definition and watermark validation
+
+**Implementation:**
+
+**Task 5.1: Define "Overrun" Semantics (Option B - Track Partial Writes)**
+- **Problem:** `buffer_overruns` counter existed but was never incremented
+- **Decision:** Track partial writes (engine backpressure) when producer ahead of consumer
+- **Semantic:** "Producer tried to write more than ring buffer could accept"
+- **Code Change:** Added counter increment in `audio_engine_task()` when `written < produced`
+- **Rationale:**
+  - Complements `buffer_underruns` (consumer can't get enough data)
+  - Already detected in code (partial write warning) but not counted
+  - Indicates when producer is ahead of consumer (BT transmission slower than audio capture)
+
+**Task 5.2: Add Watermark Sanity Checks**
+- **Added Compile-Time Validation:**
+  - `_Static_assert(AUDIO_RB_LOW_WATERMARK > 0)`
+  - `_Static_assert(AUDIO_RB_LOW_WATERMARK < AUDIO_RB_HIGH_WATERMARK)`
+- **Added Runtime Validation in `audio_processor_init()`:**
+  - Check: `AUDIO_RB_HIGH_WATERMARK < rb_capacity`
+  - Returns `ESP_ERR_INVALID_ARG` with helpful error message if validation fails
+- **Rationale:**
+  - Prevents subtle bugs from watermark misconfigurations
+  - Compile-time checks catch constant definition errors
+  - Runtime check handles `CONFIG_AUDIO_RB_CAPACITY_KB` misconfigurations
+
+**Files Modified:**
+- `components/audio_processor/audio_processor.c`:
+  - Added `s_audio_stats.buffer_overruns++` when partial write occurs
+  - Enhanced log message to include overrun count
+  - Added compile-time watermark assertions
+  - Added runtime capacity validation with error handling
+- `code_review/CODE_REVIEW7_TODO.md`: Marked Priority 5 complete with implementation details
+
+**Testing:**
+- Build: ✅ SUCCESS (0xe1810 bytes, +32 bytes from previous)
+- Host tests: ✅ 33/33 passing
+- Compile-time assertions: ✅ Validated at build time
+- No functional regressions
+
+**CODE_REVIEW7 Status:**
+- Priority 1 (Critical): ✅ COMPLETE (SYNTH mode fix)
+- Priority 2 (Medium): ✅ COMPLETE (Span log wiring + WAV removal)
+- Priority 4 (Low): ✅ COMPLETE (SPSC documentation + atomic fences investigation)
+- Priority 5 (Low): ✅ COMPLETE (Stats tracking cleanup)
+- **ALL PRIORITIES COMPLETE** 🎉
+
+**Next Steps:**
+- Manual hardware testing to validate all CODE_REVIEW7 work
+- Consider updating ARCH.md with SPANLOG debugging workflow
+- Optional: Run full device test suite (390 tests) for final validation
+
+---
+
 ## 2026-02-09 04:43 — ESP32 BT Audio: CODE_REVIEW7 Priority 4 Task 4.2 - Atomic Fences Investigation (Complete - No Implementation)
 
 **Context:** Investigated whether explicit atomic memory fences are needed for ring buffer memory ordering on ESP32

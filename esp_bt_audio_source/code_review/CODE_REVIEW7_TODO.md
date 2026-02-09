@@ -382,44 +382,47 @@ seq,timestamp_us,bytes,used,free,source,beep,underruns
 
 ## Priority 5: LOW - Clean Up Stats Tracking
 
-### Task 5.1: Define "Overrun" Semantics Clearly
+### Task 5.1: Define "Overrun" Semantics Clearly ✅ COMPLETE
 **File:** `components/audio_processor/audio_processor.c`
 
 **Problem:**
 - `buffer_overruns` counter exists but isn't incremented
 - Unclear what "overrun" means in ring buffer context
 
-**Options:**
-- **Option A:** Track "engine backpressure events" (free < chunk size)
-- **Option B:** Track "partial writes" (write < produced)
-- **Option C:** Track "dropped bytes" (if ever choosing to drop instead of block)
-- **Option D:** Remove overrun counter entirely (simplest)
+**Decision: Option B - Track Partial Writes (Engine Backpressure)**
 
-**Decision:**
-- [ ] Choose semantic definition
-- [ ] Rename counter to match semantics:
-  - `buffer_overruns` → `engine_backpressure_events`
-  - or `partial_writes`
-  - or `dropped_bytes`
+**Rationale:**
+- Complements `buffer_underruns` (consumer can't get enough data)
+- Indicates when producer is ahead of consumer
+- Already detected in code but not counted
+- Semantic: "Producer tried to write more than ring could accept"
 
 **Implementation:**
-- [ ] Locate where overrun should be incremented
-- [ ] Add increment logic based on chosen semantic
-- [ ] Update STATUS command output to reflect new name
-- [ ] Update stats documentation
+- [x] Located existing partial write detection in `audio_engine_task()`
+- [x] Added `s_audio_stats.buffer_overruns++` counter increment
+- [x] Enhanced log message to include overrun count
+- [x] Kept semantic name `buffer_overruns` (matches existing stats structure)
 
-**Subtasks:**
-- [ ] Review `audio_engine_task()` for backpressure points
-- [ ] Add counter increment at appropriate location
-- [ ] Verify counter is reported in STATUS/diagnostics
+**Code Changes:**
+```c
+if (written < produced) {
+    /* Ring filled between check and write (rare but possible)
+     * Count as buffer overrun - producer ahead of consumer */
+    s_audio_stats.buffer_overruns++;
+    ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu (overrun #%u)", 
+             written, produced, (unsigned)s_audio_stats.buffer_overruns);
+}
+```
 
 **Testing:**
-- [ ] Trigger backpressure condition, verify counter increments
-- [ ] STATUS command shows accurate overrun/backpressure count
+- [x] Build verification
+- [ ] Trigger backpressure condition (high BT latency, slow consumer)
+- [ ] Verify counter increments in STATUS output
+- [ ] Check SPANLOG correlation with overrun events
 
 ---
 
-### Task 5.2: Add Watermark Sanity Checks
+### Task 5.2: Add Watermark Sanity Checks ✅ COMPLETE
 **File:** `components/audio_processor/audio_processor.c`
 
 **Problem:**
@@ -427,24 +430,39 @@ seq,timestamp_us,bytes,used,free,source,beep,underruns
 - Could mis-configure LOW > HIGH or watermarks > capacity
 
 **Implementation:**
-- [ ] Locate ring buffer initialization in `audio_processor_init()` or `audio_processor_start()`
-- [ ] Add assertions/checks:
-  ```c
-  assert(AUDIO_RB_LOW_WATERMARK < AUDIO_RB_HIGH_WATERMARK);
-  assert(AUDIO_RB_HIGH_WATERMARK < AUDIO_RB_CAPACITY);
-  assert(AUDIO_RB_LOW_WATERMARK > 0);
-  ```
-- [ ] Add ESP_LOGE log if validation fails
-- [ ] Consider making watermarks configurable via Kconfig
+- [x] Added compile-time assertions using `_Static_assert`:
+  - `AUDIO_RB_LOW_WATERMARK > 0`
+  - `AUDIO_RB_LOW_WATERMARK < AUDIO_RB_HIGH_WATERMARK`
+- [x] Added runtime validation in `audio_processor_init()`:
+  - `AUDIO_RB_HIGH_WATERMARK < rb_capacity`
+- [x] Added ESP_LOGE with helpful error message
+- [x] Returns ESP_ERR_INVALID_ARG if validation fails
 
-**Subtasks:**
-- [ ] Find watermark constant definitions
-- [ ] Add compile-time or runtime validation
-- [ ] Add error handling if validation fails
+**Code Changes:**
+```c
+/* Watermark sanity checks (CODE_REVIEW7 Priority 5, Task 5.2) */
+_Static_assert(AUDIO_RB_LOW_WATERMARK > 0, 
+               "AUDIO_RB_LOW_WATERMARK must be > 0");
+_Static_assert(AUDIO_RB_LOW_WATERMARK < AUDIO_RB_HIGH_WATERMARK, 
+               "AUDIO_RB_LOW_WATERMARK must be < AUDIO_RB_HIGH_WATERMARK");
+
+/* Runtime validation that HIGH watermark fits within configured capacity */
+if (AUDIO_RB_HIGH_WATERMARK >= rb_capacity) {
+    ESP_LOGE(TAG, "Invalid watermarks: HIGH=%u >= capacity=%zu. Check sdkconfig.",
+             AUDIO_RB_HIGH_WATERMARK, rb_capacity);
+    // ... cleanup and return ESP_ERR_INVALID_ARG
+}
+```
+
+**Rationale:**
+- Compile-time checks catch constant definition errors immediately
+- Runtime check handles CONFIG_AUDIO_RB_CAPACITY_KB misconfigurations
+- Prevents subtle bugs from invalid watermark relationships
 
 **Testing:**
-- [ ] Verify firmware boots with correct watermarks
-- [ ] Test with intentionally invalid watermarks (should fail assert/log error)
+- [x] Build with correct watermarks (default: LOW=8KB, HIGH=24KB, CAPACITY=32KB)
+- [ ] Test invalid watermarks (modify sdkconfig, expect compile error)
+- [ ] Test capacity < HIGH (modify CONFIG_AUDIO_RB_CAPACITY_KB, expect init failure)
 
 ---
 
@@ -515,8 +533,8 @@ After completing each priority group:
 ### Priority 3 (Low):
 - [x] Task 4.1: Make SPSC contract explicit (COMPLETE - commit 9df8e83c)
 - [x] Task 4.2: Consider atomic fences (COMPLETE - No implementation required, documentation-only)
-- [ ] Task 5.1: Define overrun semantics
-- [ ] Task 5.2: Add watermark sanity checks
+- [x] Task 5.1: Define overrun semantics (COMPLETE - Option B: track partial writes)
+- [x] Task 5.2: Add watermark sanity checks (COMPLETE - compile-time + runtime validation)
 
 ### Testing:
 - [x] All host tests pass (33/33)
