@@ -1,3 +1,56 @@
+## 2026-02-09 04:16 — ESP32 BT Audio: CODE_REVIEW7 Priority 3 - Remove WAV Scaffolding (Complete)
+
+**Context:** After Priority 2 complete (Span log integration + SPANLOG command), cleaned up non-functional WAV playback code (Option A: Complete removal)
+
+**Implementation: WAV Scaffolding Removal** (commit 0c3188ee)
+
+**What Was Removed:**
+1. **WAV_STATUS command** from command interface:
+   - Removed cmd_handle_wav_status() implementation (returned NOT_SUPPORTED)
+   - Removed CMD_TYPE_WAV_STATUS enum from command_interface.h
+   - Removed parser case for "WAV_STATUS" in commands.c
+   - Removed execute case for CMD_TYPE_WAV_STATUS in commands.c
+   - Removed function declaration from cmd_handlers.h
+   
+2. **audio_processor_play_wav()** function:
+   - Entire 81-line function removed from audio_processor.c
+   - Was returning ESP_ERR_NOT_SUPPORTED since play_manager removal
+   - Extensive validation/state checks (A2DP connected, I2S running, beep active)
+   - All non-functional scaffolding
+   
+3. **audio_processor_is_a2dp_connected()** helper:
+   - 4-line static helper function
+   - Only caller was audio_processor_play_wav()
+   - Simple wrapper around bt_manager_is_a2dp_connected()
+
+**Files Modified:**
+- `components/command_interface/include/cmd_handlers.h`: Removed handler declaration
+- `components/command_interface/cmd_handlers_system.c`: Removed 19-line handler implementation
+- `components/command_interface/include/command_interface.h`: Removed enum value
+- `components/command_interface/commands.c`: Removed parser case (4 lines) and execute case (3 lines)
+- `components/audio_processor/audio_processor.c`: Removed play_wav function (81 lines) and helper (4 lines)
+- `esp_bt_audio_source/code_review/CODE_REVIEW7_TODO.md`: Updated to document decision
+
+**Rationale:**
+- WAV playback was part of old PLAY infrastructure removed in previous commits
+- All functions returned NOT_SUPPORTED error since play_manager removal
+- No current use case for file-based audio playback (I2S capture is primary mode)
+- Removal simplifies codebase and reduces binary size
+- Can be cleanly re-implemented if future need arises
+
+**Results:**
+- Binary size: 0xe17f0 bytes (176 bytes saved from 0xe1860 before)
+- Build: Successful, 0 warnings (removed unused function warning)
+- Host tests: 33/33 passing
+- Code removed: 111 lines deleted, 8 lines added (net -103 lines)
+
+**Next Steps:**
+- Manual testing to verify WAV_STATUS command returns unknown/error
+- Continue to Priority 4 (ring buffer SPSC contract) or Priority 5 (stats tracking)
+- Or shift to other CODE_REVIEW7 tasks
+
+---
+
 ## 2026-02-09 03:51 — ESP32 BT Audio: CODE_REVIEW7 Task 2.1 - Wire Span Log (Complete)
 
 **Context:** After Priority 1 completion (SYNTH fix + I2S decision), implemented debugging infrastructure by wiring span log into audio engine task
