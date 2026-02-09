@@ -555,6 +555,7 @@ int main(void) {
     extern void test_unpair_all_command(void);
     extern void test_unpair_all_command_failure(void);
     extern void test_status_command(void);
+    extern void test_status_command_streaming_info_unavailable(void);  /* CODE_REVIEW8 Task B */
     extern void test_reset_command(void);
 
     // New tests for mute/unmute and unpair_all
@@ -571,6 +572,7 @@ int main(void) {
     RUN_TEST(test_paired_command);
     RUN_TEST(test_sample_rate_command);
     RUN_TEST(test_status_command);
+    RUN_TEST(test_status_command_streaming_info_unavailable);  /* CODE_REVIEW8 Task B */
     RUN_TEST(test_reset_command);
     
     // Test DISCONNECT command
@@ -808,6 +810,35 @@ void test_status_command(void) {
     TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
     TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL || strstr(tx, "SAMPLE") != NULL);
     TEST_ASSERT_TRUE(strstr(tx, "PAIRED_COUNT") != NULL || strstr(tx, "COUNT") != NULL);
+    /* When streaming info is available, should include streaming stats */
+    TEST_ASSERT_TRUE(strstr(tx, "BYTES_REQ") != NULL || strstr(tx, "STREAM_INFO") != NULL);
+}
+
+/* CODE_REVIEW8 Task B: Test STATUS handles bt_get_streaming_info failure gracefully */
+void test_status_command_streaming_info_unavailable(void) {
+    extern void bt_manager_test_force_streaming_info_failure(bool force);
+    
+    bt_manager_test_force_streaming_info_failure(true);
+    
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STATUS", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    /* Should still return basic status */
+    TEST_ASSERT_TRUE(strstr(tx, "STATUS") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "PAIRED_COUNT") != NULL);
+    /* Should indicate streaming info is unavailable */
+    TEST_ASSERT_TRUE(strstr(tx, "STREAM_INFO=UNAVAILABLE") != NULL);
+    /* Should NOT include detailed streaming stats */
+    TEST_ASSERT_TRUE(strstr(tx, "BYTES_REQ") == NULL);
+    TEST_ASSERT_TRUE(strstr(tx, "UNDERRUNS") == NULL);
+    
+    /* Clean up */
+    bt_manager_test_force_streaming_info_failure(false);
 }
 
 // Test RESET in host-mode returns a mock reboot response

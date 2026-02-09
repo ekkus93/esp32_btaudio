@@ -1,3 +1,32 @@
+## 2026-02-09 13:05 — CODE_REVIEW8 Task B: Fixed Ignored Return Code ✅
+
+**Task:** Fixed ignored return code in diagnostic paths (P0 priority from CODE_REVIEW8).
+
+**Changes:**
+1. **cmd_handlers_system.c:** Modified `cmd_handle_status()` to check `bt_get_streaming_info()` return value
+   - On success: Print full streaming statistics (existing behavior)
+   - On failure: Print basic status with "STREAM_INFO=UNAVAILABLE" indicator
+   - Prevents printing uninitialized/garbage streaming data on failures
+
+2. **Test infrastructure:**
+   - Added `s_force_streaming_info_failure` flag to mock_audio_and_btstate.c
+   - Added `bt_manager_test_force_streaming_info_failure()` helper function
+   - Enhanced `bt_get_streaming_info()` mock to support failure injection
+
+3. **New test:** Added `test_status_command_streaming_info_unavailable()` in test_commands.c
+   - Verifies STATUS command gracefully handles bt_get_streaming_info() failures
+   - Confirms STREAM_INFO=UNAVAILABLE is present in output
+   - Ensures detailed streaming stats are NOT printed when unavailable
+
+**Risk addressed:** Previously, if `bt_get_streaming_info()` failed, code would print partially uninitialized data, misleading debugging efforts.
+
+**Full test results (run_all_tests.py):**
+- Host: 244/244 passed (added 1 new test, up from 243)
+- Device: 147/147 passed (8 suites: test_app 46, test_app2 45, test_app_audio 29, test_app3 3, test_beep_manager 5, test_i2s_manager 6, test_synth_manager 7, test_spiffs_fail 6)
+- **Total: 391/391 tests passing ✅**
+
+**Status:** ✅ COMPLETE — CODE_REVIEW8_TODO.md updated, all tests passing.
+
 ## 2026-02-09 11:21 — run_all_tests.py Full Test Run
 
 **Action:** Ran `python /home/phil/work/esp32/esp32_btaudio/tools/run_all_tests.py`.

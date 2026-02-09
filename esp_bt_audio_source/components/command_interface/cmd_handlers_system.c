@@ -109,8 +109,9 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     (void)nvs_storage_get_paired_count(&paired_count);
     
     /* CODE_REVIEW5 Task 3.1: Include streaming stats in STATUS output */
+    /* CODE_REVIEW8 Task B: Check bt_get_streaming_info return value */
     bt_streaming_info_t stream_info = {0};
-    (void)bt_get_streaming_info(&stream_info);
+    esp_err_t stream_info_err = bt_get_streaming_info(&stream_info);
     
     /* CODE_REVIEW5 Task 3.2: Calculate underrun rate */
     float underrun_rate = 0.0f;
@@ -119,16 +120,24 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     }
     
     char data[512];
-    snprintf(data, sizeof(data), 
-             "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
-             "BYTES_REQ=%lu,BYTES_PROD=%lu,BYTES_SILENCE=%lu,PKTS=%lu,PKT_ERR=%lu,DUR=%lu,"
-             "UNDERRUNS=%lu,CALLBACKS=%lu,UNDERRUN_RATE=%.2f",
-             mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume,
-             (unsigned long)stream_info.bytes_requested, (unsigned long)stream_info.bytes_produced,
-             (unsigned long)stream_info.bytes_silence, (unsigned long)stream_info.packets_sent,
-             (unsigned long)stream_info.packet_errors, (unsigned long)stream_info.stream_duration,
-             (unsigned long)stream_info.underrun_count, (unsigned long)stream_info.total_callbacks,
-             underrun_rate);
+    if (stream_info_err == ESP_OK) {
+        snprintf(data, sizeof(data), 
+                 "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
+                 "BYTES_REQ=%lu,BYTES_PROD=%lu,BYTES_SILENCE=%lu,PKTS=%lu,PKT_ERR=%lu,DUR=%lu,"
+                 "UNDERRUNS=%lu,CALLBACKS=%lu,UNDERRUN_RATE=%.2f",
+                 mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume,
+                 (unsigned long)stream_info.bytes_requested, (unsigned long)stream_info.bytes_produced,
+                 (unsigned long)stream_info.bytes_silence, (unsigned long)stream_info.packets_sent,
+                 (unsigned long)stream_info.packet_errors, (unsigned long)stream_info.stream_duration,
+                 (unsigned long)stream_info.underrun_count, (unsigned long)stream_info.total_callbacks,
+                 underrun_rate);
+    } else {
+        /* Streaming info unavailable - report basic status only */
+        snprintf(data, sizeof(data), 
+                 "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
+                 "STREAM_INFO=UNAVAILABLE",
+                 mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume);
+    }
     cmd_send_response("OK", "STATUS", "CURRENT", data);
     return CMD_SUCCESS;
 }

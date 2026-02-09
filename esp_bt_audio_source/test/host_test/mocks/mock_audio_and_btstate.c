@@ -24,6 +24,7 @@ static bool s_beep_active = false;
 static int s_start_audio_calls = 0;
 static int s_last_conn_state = -1;
 static int s_last_audio_state = -1;
+static bool s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
 
 void bt_manager_test_reset_btstate_mock(void) {
     s_mock_connected = 0;
@@ -31,6 +32,12 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_start_audio_calls = 0;
     s_last_conn_state = -1;
     s_last_audio_state = -1;
+    s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
+}
+
+/* CODE_REVIEW8 Task B: Test helper to force bt_get_streaming_info failure */
+void bt_manager_test_force_streaming_info_failure(bool force) {
+    s_force_streaming_info_failure = force;
 }
 
 void bt_manager_test_set_connection_state(int v) {
@@ -51,8 +58,13 @@ __attribute__((weak)) int bt_get_streaming_state_int(void) {
 }
 
 /* CODE_REVIEW5 Task 3.1: Stub for bt_get_streaming_info() */
+/* CODE_REVIEW8 Task B: Enhanced to support failure injection for testing */
 __attribute__((weak)) esp_err_t bt_get_streaming_info(bt_streaming_info_t* info) {
     if (info == NULL) {
+        return ESP_FAIL;
+    }
+    /* CODE_REVIEW8 Task B: Allow tests to force failure */
+    if (s_force_streaming_info_failure) {
         return ESP_FAIL;
     }
     /* Return zeroed streaming info for host tests */
