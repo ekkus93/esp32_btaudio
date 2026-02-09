@@ -107,7 +107,7 @@ class TestI2SDriverALSAInit:
         mock_alsaaudio.PCM.assert_called_once_with(
             type=mock_alsaaudio.PCM_PLAYBACK,
             mode=mock_alsaaudio.PCM_NONBLOCK,
-            device='hw:0,0'
+            device='hw:CARD=BBGW-I2S,DEV=0'
         )
     
     def test_init_alsa_device_configures_pcm(self, driver, mock_alsaaudio):
@@ -403,7 +403,7 @@ class TestI2SDriverErrorHandling:
         # Mock ALSA PCM to raise exception
         mock_alsaaudio.PCM.side_effect = Exception("ALSA init failed")
         
-        with pytest.raises(Exception, match="ALSA init failed"):
+        with pytest.raises(Exception, match="Failed to initialize ALSA device"):
             driver._init_alsa_device()
     
     def test_alsa_write_failure_continues_loop(self, driver, ring_buffer, mock_alsaaudio):
