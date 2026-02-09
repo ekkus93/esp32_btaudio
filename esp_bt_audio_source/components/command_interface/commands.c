@@ -331,9 +331,14 @@ cmd_status_t cmd_process(void)
         }
 
         cmd_context_t ctx;
-        if (cmd_parse(start, &ctx) == CMD_SUCCESS)
+        cmd_status_t parse_status = cmd_parse(start, &ctx);
+        if (parse_status == CMD_SUCCESS)
         {
             cmd_execute(&ctx);
+        }
+        else if (parse_status == CMD_ERROR_UNKNOWN)
+        {
+            cmd_send_response("ERR", "UNKNOWN", "COMMAND_NOT_FOUND", NULL);
         }
 
         start = term + 1;

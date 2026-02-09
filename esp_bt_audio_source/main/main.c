@@ -354,7 +354,11 @@ void app_main(void)
      */
 #ifdef ESP_PLATFORM
     {
+#ifdef CONFIG_AUDIO_AUTOSTART_DEFAULT
         uint8_t autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Kconfig default */
+#else
+        uint8_t autostart = 0; /* Default to disabled if not configured */
+#endif
         esp_err_t autostart_err = nvs_storage_get_audio_autostart(&autostart);
         
         /* Explicit error handling: handle all possible NVS error codes */
@@ -367,10 +371,16 @@ void app_main(void)
                      autostart ? "enabled" : "disabled");
         } else {
             /* Other NVS error (corruption, flash failure, etc.) - log warning and fall back to default */
+#ifdef CONFIG_AUDIO_AUTOSTART_DEFAULT
             ESP_LOGW(BT_AV_TAG, "Failed to read audio_autostart from NVS (%s), using Kconfig default: %s",  // NOLINT(bugprone-branch-clone)
                      esp_err_to_name(autostart_err),
                      (CONFIG_AUDIO_AUTOSTART_DEFAULT ? "enabled" : "disabled"));
             autostart = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0; /* Reset to default on error */
+#else
+            ESP_LOGW(BT_AV_TAG, "Failed to read audio_autostart from NVS (%s), using default: disabled",  // NOLINT(bugprone-branch-clone)
+                     esp_err_to_name(autostart_err));
+            autostart = 0; /* Reset to disabled on error */
+#endif
             printf("DIAG|AUDIO|NVS_READ_ERROR|key=autostart|err=%s|fallback=kconfig_default\r\n",
                    esp_err_to_name(autostart_err));
         }
