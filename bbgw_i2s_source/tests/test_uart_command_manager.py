@@ -173,7 +173,7 @@ class TestStartStop:
         
         assert uart.running is False
         # Thread should finish
-        time.sleep(0.2)
+        time.sleep(0.3)
         assert not uart.rx_thread.is_alive()
     
     def test_stop_closes_serial(self, mock_config, mock_serial):
@@ -208,7 +208,7 @@ class TestCommandSending:
         
         # Mock response in separate thread
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("OK|STATUS|IDLE")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -229,7 +229,7 @@ class TestCommandSending:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("OK|STATUS|IDLE")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -247,7 +247,7 @@ class TestCommandSending:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("OK|CONNECT|CONNECTED")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -293,7 +293,7 @@ class TestResponseParsing:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("OK|SCAN|2")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -314,7 +314,7 @@ class TestResponseParsing:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("ERR|CONNECT|NOT_FOUND|Device not found")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -336,7 +336,7 @@ class TestResponseParsing:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)  # Python 3.9 needs slightly more time for thread scheduling
+            time.sleep(0.3)  # Python 3.9 needs slightly more time for thread scheduling
             uart._process_line("OK|STATUS|CONNECTED|AA:BB:CC:DD:EE:FF")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -469,7 +469,7 @@ class TestStatisticsAndStatus:
         
         # Mock response
         def mock_response():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("OK|STATUS|IDLE")
         
         threading.Thread(target=mock_response, daemon=True).start()
@@ -570,7 +570,7 @@ class TestIntegration:
         for i, cmd in enumerate(commands):
             # Mock response for each command
             def mock_response(command=cmd, idx=i):
-                time.sleep(0.2)
+                time.sleep(0.3)
                 uart._process_line(f"OK|{command}|result_{idx}")
             
             threading.Thread(target=mock_response, daemon=True).start()
@@ -593,7 +593,7 @@ class TestIntegration:
         
         # Send command
         def mock_responses():
-            time.sleep(0.2)
+            time.sleep(0.3)
             uart._process_line("EVENT|BT|SCANNING|")
             time.sleep(0.05)
             uart._process_line("OK|SCAN|2")

@@ -409,7 +409,7 @@ class TestMultiToneChordGeneration:
         
         engine.set_source('tone')
         engine.start()
-        time.sleep(0.2)
+        time.sleep(0.5)
         engine.stop()
         
         samples = ring_buffer.read(4096)
@@ -426,13 +426,13 @@ class TestMultiToneChordGeneration:
         engine.set_multi_tone_params(0, freq=440.00, amp=0.5, enabled=True)
         engine.set_multi_tone_params(1, freq=554.37, amp=0.5, enabled=True)
         engine.set_multi_tone_params(2, freq=659.25, amp=0.5, enabled=True)
-        time.sleep(0.2)
+        time.sleep(0.5)
         
         # Switch to C major (parameter changes should be atomic)
         engine.set_multi_tone_params(0, freq=261.63)
         engine.set_multi_tone_params(1, freq=329.63)
         engine.set_multi_tone_params(2, freq=392.00)
-        time.sleep(0.2)
+        time.sleep(0.5)
         
         engine.stop()
         
