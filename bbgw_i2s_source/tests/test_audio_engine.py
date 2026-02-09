@@ -53,7 +53,11 @@ def ring_buffer():
 @pytest.fixture
 def engine(mock_config, ring_buffer):
     """Create AudioEngine instance for testing."""
-    return AudioEngine(mock_config, ring_buffer)
+    engine = AudioEngine(mock_config, ring_buffer)
+    yield engine
+    # Cleanup: ensure engine is stopped even if test fails
+    if engine.running:
+        engine.stop()
 
 
 class TestAudioEngineInit:
