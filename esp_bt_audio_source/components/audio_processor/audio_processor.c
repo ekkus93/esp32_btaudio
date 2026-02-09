@@ -24,11 +24,6 @@
 #include "esp_psram.h"
 #endif
 
-static bool audio_processor_is_a2dp_connected(void)
-{
-    return bt_manager_is_a2dp_connected();
-}
-
 #ifdef CONFIG_BT_MOCK_TESTING
 typedef struct {
     bool enabled;
@@ -982,87 +977,6 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
     return ESP_OK;
 }
 
-
-/**
- * @brief Play a WAV file by reading PCM frames, converting/resampling as needed
- * and writing into the shared ring buffer.
- */
-esp_err_t audio_processor_play_wav(const char* path)
-{
-    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    /* Diagnostic: record initialization/running state to help trace
-     * unexpected INVALID_STATE returns observed in unit tests. Use both
-     * ESP_LOG and a plain printf so the test monitor captures the output
-     * regardless of log configuration. */
-        size_t ring_free = s_audio_ring ? audio_rb_available_to_write(s_audio_ring) : 0;
-        ESP_LOGD(TAG, "audio_processor_play_wav: entry (s_is_initialized=%d, s_is_running=%d, ring_free=%zu)",  // NOLINT(bugprone-branch-clone)
-              (int)s_is_initialized, (int)s_is_running, ring_free);
-        printf("DIAG-APLAY-STATE: init=%d run=%d ring_free=%zu path=%s\n",
-            (int)s_is_initialized, (int)s_is_running, ring_free, path ? path : "(null)");
-    if (!s_is_initialized) {
-    	return ESP_ERR_INVALID_STATE;
-    }
-    if (!path) {
-    	return ESP_ERR_INVALID_ARG;
-    }
-
-    /* Drop any synthetic keepalive so WAV output is audible immediately. */
-    if (s_force_synth) {
-        s_last_source_was_synth = false;
-    }
-
-    /* Reject PLAY while A2DP is disconnected to avoid queueing audio that
-     * cannot be consumed. */
-    if (!audio_processor_is_a2dp_connected()) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: A2DP not connected; rejecting PLAY");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    /* I2S capture has priority over PLAY; reject when capture is active. */
-    if (i2s_manager_is_running()) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: I2S running; rejecting PLAY");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    /* Reject WAV playback while a beep is active or queued to keep the
-     * paths isolated and avoid audible contention. */
-    bool beep_active = beep_overlay_is_active();
-    portENTER_CRITICAL(&s_beep_lock);
-    if (!beep_active && s_beep_remaining_bytes > 0) {
-        beep_active = true;
-    }
-    portEXIT_CRITICAL(&s_beep_lock);
-    if (beep_active) {
-        ESP_LOGW(TAG, "audio_processor_play_wav: busy (beep active)");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    s_trace_next_read_call = true;
-    ESP_LOGI(TAG, "audio_processor_play_wav: armed one-shot trace for next audio_processor_read call");  // NOLINT(bugprone-branch-clone)
-
-    esp_err_t status = ESP_OK;
-
-    /* Clear any beep state before WAV playback. */
-    audio_processor_beep_reset();
-
-    wav_playback_begin();
-
-    /* WAV playback no longer supported - play_manager removed */
-    ESP_LOGW(TAG, "audio_processor_play_wav: WAV playback not supported (play_manager removed)");
-    status = ESP_ERR_NOT_SUPPORTED;
-    wav_playback_abort(__func__);
-    goto cleanup;
-
-cleanup:
-    if (status == ESP_OK) {
-        /* Only arm the synth keepalive once real playback has succeeded. */
-        s_keepalive_armed = true;
-        /* Disable synth once real playback is active. */
-        s_force_synth = false;
-    }
-
-    return status;
-}
 
 /**
  * @brief Set the audio bit depth

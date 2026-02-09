@@ -197,9 +197,14 @@ seq,timestamp_us,bytes,used,free,source,beep,underruns
 - Add Kconfig option to enable WAV support
 - Allows easy re-enabling if needed
 
-**Decision:**
-- [ ] Choose Option A or B (recommend A unless WAV needed soon)
-- [ ] Document choice in commit message
+**Decision: Option A (2026-02-09)** ✅
+
+**Rationale:**
+- WAV playback functionality was part of the old PLAY infrastructure that has been removed
+- WAV_STATUS command currently returns "NOT_SUPPORTED" placeholder
+- No current use case for file-based audio playback
+- Complete removal simplifies codebase and reduces binary size
+- Can be re-implemented if needed in the future with cleaner architecture
 
 ---
 

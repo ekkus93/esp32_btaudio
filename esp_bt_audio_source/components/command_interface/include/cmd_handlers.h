@@ -5,7 +5,6 @@
 #include "commands_priv.h"
 
 cmd_status_t cmd_handle_status(const cmd_context_t *ctx);
-cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_spanlog(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_mem(const cmd_context_t *ctx);

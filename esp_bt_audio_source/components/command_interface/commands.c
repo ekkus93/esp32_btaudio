@@ -179,9 +179,6 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "STATUS") == 0) {
         ctx->type = CMD_TYPE_STATUS;
     }
-    else if (strcasecmp(token, "WAV_STATUS") == 0) {
-        ctx->type = CMD_TYPE_WAV_STATUS;
-    }
     else if (strcasecmp(token, "VERSION") == 0) {
         ctx->type = CMD_TYPE_VERSION;
     }
@@ -370,8 +367,6 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
     {
     case CMD_TYPE_STATUS:
         return cmd_handle_status(ctx);
-    case CMD_TYPE_WAV_STATUS:
-        return cmd_handle_wav_status(ctx);
     case CMD_TYPE_AUDIO_STATUS:
         return cmd_handle_audio_status(ctx);
     case CMD_TYPE_MEM:

@@ -133,21 +133,6 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     return CMD_SUCCESS;
 }
 
-cmd_status_t cmd_handle_wav_status(const cmd_context_t *ctx)
-{
-    (void)ctx;
-    
-#ifdef ESP_PLATFORM
-    // play_manager was removed - WAV_STATUS command no longer supported
-    cmd_send_response("ERROR", "WAV_STATUS", "NOT_SUPPORTED", "play_manager removed");
-    return CMD_ERROR_UNKNOWN;
-#else
-    cmd_send_response("OK", "WAV_STATUS", "MOCK", "ACTIVE=no");
-#endif
-    
-    return CMD_SUCCESS;
-}
-
 cmd_status_t cmd_handle_spanlog(const cmd_context_t *ctx)
 {
 #ifdef ESP_PLATFORM
