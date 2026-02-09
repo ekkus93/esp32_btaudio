@@ -1,3 +1,46 @@
+## 2026-02-09 14:09 — bt_manager Refactoring: Phase 2 - Pairing Logic Extraction ✅
+
+**Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 2: Extract pairing logic)
+
+**Objective:** Extract pairing logic from monolithic bt_manager.c (1852 lines) to bt_pairing_store.c for better modularity and maintainability.
+
+**Changes:**
+1. **Created bt_pairing_store.c** (280 lines) - Bluetooth pairing state management implementation
+   - Migrated pairing state: `bt_pairing_pending_t` and `s_pair_pending`
+   - Migrated internal helpers: format_mac, set_pending_addr, clear_pending_flags, parse_mac_string, addr_is_zero, prepare_pending_for_event, send_event
+   - Migrated GAP event handlers: bt_pairing_handle_pin_request, bt_pairing_handle_ssp_confirm, bt_pairing_handle_auth_complete
+   - Migrated public API: bt_pairing_get_pending_request, bt_pairing_confirm, bt_pairing_submit_pin
+   - Added internal API for bt_pair(): bt_pairing_parse_mac, bt_pairing_prepare_for_initiation, bt_pairing_set_mock_state
+
+2. **Created bt_pairing_store.h** (100 lines) - Public and internal pairing API declarations
+   - Public API (3 functions): get_pending_request, confirm, submit_pin
+   - Internal API (7 functions): handle_pin_request, handle_ssp_confirm, handle_auth_complete, clear_pending, parse_mac, prepare_for_initiation, set_mock_state
+   - Comprehensive doxygen documentation for all functions
+
+3. **Updated CMakeLists.txt** - Added bt_pairing_store.c to SRCS list
+
+4. **Modified bt_manager.c** - Integrated with extracted pairing module
+   - Added `#include "bt_pairing_store.h"`
+   - Removed bt_pairing_pending_t typedef and s_pair_pending state variable (migrated to bt_pairing_store.c)
+   - Removed all pairing helper functions (~150 lines of code removed)
+   - Removed public API implementations (get_pending_request, confirm, submit_pin)
+   - Updated bt_app_gap_callback() to call new handler functions (bt_pairing_handle_*)
+   - Updated bt_pair() to use new internal API (bt_pairing_parse_mac, bt_pairing_prepare_for_initiation, bt_pairing_set_mock_state)
+   - Updated bt_manager_test_reset_pending() to call bt_pairing_clear_pending()
+
+**Results:**
+- bt_manager.c reduced from 1852 to ~1500 lines (352 lines removed)
+- Clear separation of concerns: pairing logic now self-contained in dedicated module
+- No functional changes - all existing API contracts preserved
+- Host tests: 244/244 passing ✅
+- Clean module boundaries with well-defined internal and public APIs
+
+**Approach:** Incremental extraction following TDD principles - define API → extract implementation → update integration points → test → commit
+
+**Next Steps:** Phase 3 - Extract scan logic to bt_scan.c, Phase 4 - Extract connection logic to bt_connection.c
+
+---
+
 ## 2026-02-09 13:46 — Clang-Tidy Fix: Added Missing esp_timer.h Include ✅
 
 **Issue:** Clang-tidy detected missing type declaration for `esp_timer_handle_t` in audio_processor_internal.h (introduced during Task D NVS debounce implementation).
