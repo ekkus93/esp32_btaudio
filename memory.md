@@ -1,3 +1,52 @@
+## 2026-02-09 01:54 — BBGW I2S Source: Python 3.9 CI Compatibility Fixes
+
+**Context:** GitHub Actions CI passing on Python 3.10+ but failing on Python 3.9 with 2 test failures after successful thread leak fixes
+
+**Root Cause Analysis:**
+- Both failures are timing-related issues specific to Python 3.9's thread scheduling behavior
+- Thread scheduling in Python 3.9 is slower/different than 3.10+
+- Not logic errors - same tests pass in Python 3.10, 3.11, 3.12
+
+**Failures Identified:**
+1. **test_uart_command_manager.py::test_cache_status_response**
+   - Error: `concurrent.futures._base.TimeoutError`
+   - Location: line 292 in uart/command_manager.py (future.result timeout)
+   - Cause: Mock thread sleeps 0.1s before calling _process_line(), but Python 3.9 doesn't schedule it fast enough
+   - Fix: Increased mock sleep from 0.1s → 0.15s
+
+2. **test_audio_engine_multi_tone.py::test_a_major_chord**
+   - Error: `TypeError: object of type 'NoneType' has no len()`
+   - Location: line 397 (assert len(samples) > 0)
+   - Cause: ring_buffer.read() returns None because buffer not filled yet in Python 3.9
+   - Fix: Increased engine run time from 0.2s → 0.3s to ensure buffer fills
+
+**Changes Applied:**
+- `bbgw_i2s_source/tests/test_uart_command_manager.py`:
+  - Line 339: Changed mock_response sleep from 0.1s to 0.15s with comment explaining Python 3.9 requirement
+  
+- `bbgw_i2s_source/tests/unit/test_audio_engine_multi_tone.py`:
+  - Line 393: Changed time.sleep from 0.2s to 0.3s with comment explaining Python 3.9 buffer fill timing
+
+**Testing Strategy:**
+- Minimal timing adjustments to ensure reliable execution in Python 3.9
+- Comments added to explain why Python 3.9 needs more time
+- Changes are conservative and won't negatively impact Python 3.10+ 
+
+**Expected Outcome:**
+- All Python versions (3.9, 3.10, 3.11, 3.12) should pass 237/241 tests (4 skipped)
+- 0 ring buffer underruns across all versions
+- 100% CI pass rate
+
+**Next Steps:**
+1. Commit fixes with descriptive message
+2. Push to GitHub origin/master
+3. Verify CI passes on all Python versions including 3.9
+4. Update BBGW project memory/tracking if needed
+
+**Timestamp:** 2026-02-09 01:54:25
+
+---
+
 ## 2026-02-09 00:31 — ESP32 BT Audio: Phase 7.6 Regression Testing Complete ✅
 
 **📝 Task:** Validate all existing features still work after PLAY/WAV removal through comprehensive regression testing

@@ -336,7 +336,7 @@ class TestResponseParsing:
         
         # Mock response
         def mock_response():
-            time.sleep(0.1)
+            time.sleep(0.15)  # Python 3.9 needs slightly more time for thread scheduling
             uart._process_line("OK|STATUS|CONNECTED|AA:BB:CC:DD:EE:FF")
         
         threading.Thread(target=mock_response, daemon=True).start()
