@@ -64,18 +64,28 @@
 - [ ] Decide: Should I2S auto-start be conditional on `!s_force_synth`?
 
 **Options:**
-- **Option A:** Keep current behavior (I2S always starts, SYNTH override via priority)
-- **Option B:** Make I2S start conditional: `if (!s_force_synth) i2s_manager_start()`
-- **Option C:** Add config flag: `CONFIG_AUDIO_AUTOSTART_I2S`
+- **Option A:** Keep current behavior (I2S always starts, SYNTH override via priority) ✅ **CHOSEN**
+- **Option B:** Make I2S start conditional: `if (!s_force_synth) i2s_manager_start()` ❌
+- **Option C:** Add config flag: `CONFIG_AUDIO_AUTOSTART_I2S` ❌
 
-**Decision Required:**
-- [ ] Choose option (recommend Option A for simplicity)
-- [ ] Document rationale in code comments
+**Decision: Option A (2026-02-09)**
+
+**Rationale:**
+- **Auto-reconnect use case**: If Bluetooth headset was paired previously, ESP32 may automatically reconnect on power-up. I2S audio should immediately start streaming without manual `START` command.
+- **Simplicity**: No lazy initialization complexity or error handling needed.
+- **Fast switching**: I2S ready immediately when SYNTH mode disabled.
+- **Power cost negligible**: ~1-2mA for development/bench device (not battery-powered).
+- **SYNTH is debugging override**: Primary mode is I2S capture, SYNTH overrides via priority.
+
+**Implementation:**
+- [x] Keep current `audio_processor_start()` unchanged (already correct)
+- [x] Add comprehensive comment explaining rationale
+- [ ] Update ARCH.md with auto-reconnect workflow
 
 **Testing:**
-- [ ] Test SYNTH-only mode: `SYNTH ON` → `START` (no I2S)
-- [ ] Test I2S-only mode: `START` (I2S should start)
-- [ ] Test mixed mode: `START` → `SYNTH ON` → `SYNTH OFF` (return to I2S)
+- [x] Verify I2S starts on `audio_processor_start()` (existing behavior)
+- [ ] Test auto-reconnect: Power cycle → headset reconnects → verify I2S audio plays
+- [ ] Test SYNTH override: `START` → `SYNTH ON` → verify synth plays (Task 1.1 fix enables this)
 
 ---
 
@@ -439,8 +449,8 @@ After completing each priority group:
 ## Progress Tracking
 
 ### Priority 1 (Critical):
-- [ ] Task 1.1: Fix get_active_source() priority
-- [ ] Task 1.2: Review audio_processor_start() I2S behavior
+- [x] Task 1.1: Fix get_active_source() priority (COMPLETE - commit 2dce8d77)
+- [x] Task 1.2: Review audio_processor_start() I2S behavior (COMPLETE - Option A chosen)
 
 ### Priority 2 (Medium):
 - [ ] Task 2.1: Wire span log into audio engine

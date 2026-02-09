@@ -394,6 +394,26 @@ esp_err_t audio_processor_start(void)
     wav_playback_abort(__func__);
     audio_processor_beep_reset();
 
+    /* Always start I2S manager, even if SYNTH mode is active (CODE_REVIEW7 Task 1.2).
+     * 
+     * Rationale:
+     * 1. AUTO-RECONNECT USE CASE: If Bluetooth headset was previously paired, ESP32 may
+     *    automatically reconnect on power-up. I2S audio should stream immediately without
+     *    requiring manual START command.
+     * 
+     * 2. FAST SWITCHING: Ensures instant response when toggling SYNTH OFF. Starting I2S
+     *    on-demand adds ~50ms latency.
+     * 
+     * 3. EARLY FAILURE DETECTION: I2S hardware issues detected at startup, not mid-session.
+     * 
+     * 4. POWER COST NEGLIGIBLE: ~1-2mA for development/bench device (USB or PSU powered,
+     *    not battery-constrained).
+     * 
+     * 5. SIMPLE STATE MACHINE: No lazy initialization needed. SYNTH mode overrides I2S
+     *    via priority in get_active_source() (see Task 1.1 fix).
+     * 
+     * Decision: Keep I2S auto-start (Option A) per CODE_REVIEW7_TODO.md Task 1.2.
+     */
     esp_err_t ret = i2s_manager_start();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)

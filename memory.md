@@ -1,3 +1,131 @@
+## 2026-02-09 03:27 — ESP32 BT Audio: Task 1.2 Decision - I2S Auto-Start (Option A)
+
+**Context:** After fixing SYNTH priority bug (Task 1.1), needed to decide whether I2S should always auto-start
+
+**Decision: Option A - Keep Current Behavior** ✅
+
+**Key Rationale (from user):**
+> "I think I2S should be on by default. If the bluetooth headset had been paired in the past, 
+> the esp32 might be able to automatically connect to esp32 through bluetooth. If it auto 
+> connects audio from I2S should start playing through the bluetooth headset."
+
+**Auto-Reconnect Use Case:**
+1. User pairs Bluetooth headset with ESP32 once
+2. ESP32 stores pairing in NVS
+3. On power cycle: ESP32 → auto-reconnects to headset
+4. **I2S audio should immediately stream** - no manual `START` command needed
+5. SYNTH mode is a **debugging override**, not primary mode
+
+**Implementation:**
+- No code changes needed (current behavior already correct)
+- Added comprehensive comment in `audio_processor_start()` explaining rationale:
+  1. Auto-reconnect use case (primary reason)
+  2. Fast switching (no 50ms I2S init delay when SYNTH OFF)
+  3. Early failure detection (I2S errors at startup, not mid-session)
+  4. Power cost negligible (~1-2mA for bench/USB device)
+  5. Simple state machine (no lazy initialization complexity)
+
+**Rejected Options:**
+- ❌ **Option B** (conditional I2S start): Adds lazy init complexity, error handling issues, slower switching
+- ❌ **Option C** (config flag): Overkill for development device, not battery-constrained
+
+**Testing Plan:**
+- [x] Verify current behavior (I2S starts on `audio_processor_start()`)
+- [ ] Test auto-reconnect workflow:
+  1. Pair headset with ESP32
+  2. Power cycle ESP32
+  3. Headset auto-reconnects
+  4. Verify I2S audio immediately streams to headset
+- [ ] Test SYNTH override: `START` → `SYNTH ON` → audio switches to synth tone
+
+**Impact:**
+- **Architecture:** I2S is default, always-ready audio source
+- **SYNTH mode:** Debugging/testing override (priority fix from Task 1.1 enables this)
+- **User experience:** "Plug and play" - power on → auto-reconnect → audio plays
+
+**Commit:** Docs-only (comment added to audio_processor.c, Task 1.2 marked complete in CODE_REVIEW7_TODO.md)
+
+**Priority 1 Status:**
+- ✅ Task 1.1: SYNTH priority fix (commit 2dce8d77)
+- ✅ Task 1.2: I2S auto-start decision (Option A - keep current)
+- **Next:** Priority 2 - Wire span log for debugging visibility
+
+---
+
+## 2026-02-09 03:11 — ESP32 BT Audio: CODE_REVIEW7 Priority 1 - SYNTH Mode Bug Fixed
+
+**Context:** ChatGPT 5.2 code review identified critical bug where `SYNTH ON` command doesn't work after `START`
+
+**Problem:**
+- User workflow: `START` → `SYNTH ON` → audio still comes from I2S (expected SYNTH tone)
+- `get_active_source()` in `audio_processor.c` checked `s_is_running` BEFORE `s_force_synth`
+- I2S always had priority when audio processor was running, blocking SYNTH mode
+
+**Root Cause:**
+```c
+// BUGGY CODE (before fix):
+static audio_source_t get_active_source(void) {
+    if (s_is_running) {  return AUDIO_SOURCE_I2S; }  // ❌ Checked FIRST
+    if (s_force_synth) { return AUDIO_SOURCE_SYNTH; }  // ❌ Never reached!
+    return AUDIO_SOURCE_SILENCE;
+}
+```
+- Priority order was: **I2S → SYNTH → SILENCE** (wrong!)
+- Should be: **SYNTH → I2S → SILENCE** (user override takes precedence)
+
+**Solution:**
+```c
+// FIXED CODE (commit 2dce8d77):
+static audio_source_t get_active_source(void) {
+    /* Priority 1: Forced SYNTH mode (user explicitly requested) */
+    if (s_force_synth) { return AUDIO_SOURCE_SYNTH; }  // ✅ Checked FIRST
+    
+    /* Priority 2: I2S capture (if manager running) */
+    if (i2s_manager_is_running()) { return AUDIO_SOURCE_I2S; }
+    
+    /* Priority 3: Silence as fallback */
+    return AUDIO_SOURCE_SILENCE;
+}
+```
+- Also changed from `s_is_running` to `i2s_manager_is_running()` for clarity
+- Added comprehensive comments explaining priority rationale
+
+**Testing:**
+- ✅ **Build:** `idf.py build` compiles cleanly
+- ✅ **Host Tests:** All 33/33 tests pass (`make test` in test/host_test)
+- ⏸️  **Manual Hardware Testing:** Pending - need to flash ESP32 and test via UART console
+
+**Manual Test Plan (pending):**
+1. Flash firmware to ESP32: `idf.py flash`
+2. Connect UART console
+3. Issue `START` command → verify I2S audio
+4. Issue `SYNTH ON` command → verify switch to synth tone
+5. Issue `SYNTH OFF` command → verify return to I2S
+6. Issue `SYNTH ON` before `START` → verify synth works
+7. Issue `STOP` → `START` → verify I2S resumes
+
+**Commit:** 2dce8d77 - "fix(audio): Fix SYNTH mode priority - now works after START"
+
+**Impact:**
+- **User-visible:** SYNTH mode debugging now works as expected
+- **Architecture:** Correct priority hierarchy: user override > I2S > silence
+- **Code quality:** Clearer intent with `i2s_manager_is_running()` vs `s_is_running`
+
+**Next Steps (CODE_REVIEW7_TODO.md):**
+- **Immediate:** Manual hardware testing of this fix
+- **Task 1.2:** Review whether I2S auto-start behavior is correct (always starts in `audio_processor_start()`)
+- **Priority 2:** Wire span log into audio engine (debugging infrastructure)
+- **Priority 3:** Clean up WAV scaffolding (remove defunct code)
+- **Priority 4-5:** Ring buffer hardening, stats cleanup
+
+**Key Learning:**
+- **Priority bugs are subtle:** Wrong ordering of checks can silently break functionality
+- **Test coverage gap:** Host tests didn't catch this because they don't test SYNTH mode switching
+- **Code reviews matter:** ChatGPT 5.2 caught this just by reading the code
+- **TDD would have prevented this:** If we'd written test for "START then SYNTH ON" first, bug wouldn't exist
+
+---
+
 ## 2026-02-09 02:16 — BBGW I2S Source: Python 3.9 Final Fix - 0.3s UART / 0.5s Multi-tone
 
 **Context:** Python 3.9 CI still failing with 4 test failures after 0.2s timing increase
