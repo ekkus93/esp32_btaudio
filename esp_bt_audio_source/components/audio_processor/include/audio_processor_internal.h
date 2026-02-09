@@ -7,7 +7,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#ifndef UNIT_TEST
 #include "esp_timer.h"
+#endif
 #include "audio_processor.h"
 #include "audio_ringbuffer.h"
 #include "beep_manager.h"
@@ -100,8 +102,11 @@ extern bool s_keepalive_armed;
 extern uint8_t s_volume_gain;
 extern audio_config_t s_audio_config;
 
-/* Volume NVS commit debounce timer (CODE_REVIEW8 Task D) */
+/* Volume NVS commit debounce timer (CODE_REVIEW8 Task D)
+ * Only available in device builds (esp_timer required) */
+#ifndef UNIT_TEST
 extern esp_timer_handle_t s_volume_commit_timer;
+#endif
 extern audio_stats_t s_audio_stats;
 extern uint32_t s_tag_miss_count;
 extern int64_t s_tag_recover_mute_until;
