@@ -25,6 +25,11 @@ CONFIG_APP_NO_BLOBS=n
 # development and CI when no hardware source is attached.
 CONFIG_AUDIO_USE_SYNTH_SOURCE=y
 
+# Enable audio autostart by default for production use (auto-reconnect workflow)
+# When enabled, audio initializes on boot and ESP32 auto-plays I2S audio
+# when a previously paired Bluetooth headset reconnects.
+CONFIG_AUDIO_AUTOSTART_DEFAULT=y
+
 
 
 

@@ -177,7 +177,10 @@ static void audio_engine_task(void *arg)
 {
     (void)arg;
     
-    const TickType_t delay_ticks = pdMS_TO_TICKS(AUDIO_ENGINE_TICK_MS);
+    TickType_t delay_ticks = pdMS_TO_TICKS(AUDIO_ENGINE_TICK_MS);
+    if (delay_ticks == 0) {
+        delay_ticks = 1;  /* Prevent zero-delay spin when tick rate is coarse */
+    }
     
     /* Allocate chunk buffer (DMA-capable for future I2S reads) */
     uint8_t *chunk_buf = heap_caps_malloc(AUDIO_ENGINE_CHUNK_BYTES, MALLOC_CAP_DMA);
