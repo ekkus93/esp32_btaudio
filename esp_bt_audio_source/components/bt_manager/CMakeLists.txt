@@ -13,6 +13,7 @@ idf_component_register(
     SRCS
         "bt_manager.c"
         "bt_pairing_store.c"
+        "bt_scan.c"
         "bt_app_core.c"
         "bt_connection_manager.c"
         "bt_streaming_manager.c"

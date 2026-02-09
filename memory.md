@@ -1,3 +1,46 @@
+## 2026-02-09 14:18 — bt_manager Refactoring: Phase 3 - Scan Logic Extraction ✅
+
+**Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 3: Extract scan logic)
+
+**Objective:** Extract Bluetooth device discovery (scanning) logic from bt_manager.c to bt_scan.c for better modularity.
+
+**Changes:**
+1. **Created bt_scan.c** (158 lines) - Bluetooth device discovery implementation
+   - Migrated bt_start_scan() and bt_stop_scan() functions
+   - Migrated discovery result processing logic
+   - Migrated discovery state change handling
+   - Migrated test hook (bt_manager_test_record_scan_start)
+   - Internal helpers: bt_scan_handle_discovery_result, bt_scan_handle_state_change
+
+2. **Created bt_scan.h** (72 lines) - Public and internal scan API declarations
+   - Public API (2 functions): bt_start_scan, bt_stop_scan
+   - Internal API (2 functions): handle_discovery_result, handle_state_change
+   - Comprehensive doxygen documentation
+
+3. **Updated CMakeLists.txt** - Added bt_scan.c to SRCS list
+
+4. **Modified bt_manager.c** - Integrated with extracted scan module
+   - Added `#include "bt_scan.h"`
+   - Removed bt_start_scan() and bt_stop_scan() implementations (~70 lines removed)
+   - Removed ESP_BT_GAP_DISC_RES_EVT handler code (~40 lines removed)
+   - Removed ESP_BT_GAP_DISC_STATE_CHANGED_EVT handler code (~9 lines removed)
+   - Updated GAP callback to call new handler functions
+   - Cleaned up bt_manager_start_scan() wrapper (removed redundant test hook)
+   - Removed test hook weak definition (moved to bt_scan.c)
+
+**Results:**
+- bt_manager.c reduced from ~1500 to ~1380 lines (**~120 lines removed**)
+- Cumulative reduction: 1852 → 1380 lines (**472 lines total removed across phases 2+3**)
+- Clear separation of concerns: scanning logic now self-contained in dedicated module
+- No functional changes - all existing API contracts preserved
+- Host tests: 244/244 passing ✅
+
+**Approach:** Incremental extraction following TDD principles - define API → extract implementation → update integration points → test → commit
+
+**Next Steps:** Phase 4 - Extract connection logic to bt_connection.c (may be partially done already)
+
+---
+
 ## 2026-02-09 14:09 — bt_manager Refactoring: Phase 2 - Pairing Logic Extraction ✅
 
 **Task:** CODE_REVIEW8 P1 - "Split bt_manager.c into Smaller Modules" (Phase 2: Extract pairing logic)

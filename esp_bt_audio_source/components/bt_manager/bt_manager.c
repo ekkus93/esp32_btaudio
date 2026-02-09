@@ -1,6 +1,7 @@
 #include "bt_manager.h"
 #include "bt_api.h"
 #include "bt_pairing_store.h"
+#include "bt_scan.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
@@ -132,9 +133,6 @@ __attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_be
     (void)removed;
 }
 
-// Unit-test hook: record when a scan is started. Provided by host mocks.
-__attribute__((weak)) void bt_manager_test_record_scan_start(void) { }
-#
 // Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
 __attribute__((weak)) void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
 static int s_autostart_attempts = 0;
@@ -336,71 +334,6 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 int bt_manager_is_connected(void) {
     return bt_ctx.connected ? 1 : 0;
 }
-
-// Start device scanning
- bt_err_t bt_start_scan(void) {
-    if (!bt_ctx.initialized) {
-        return ESP_FAIL;
-    }
-    
-    if (bt_ctx.scanning) {
-        return ESP_OK; // Already scanning
-    }
-    
-    // Clear previous discovered devices
-    safe_memset(&bt_ctx.discovered_devices, sizeof(bt_ctx.discovered_devices), 0, sizeof(bt_ctx.discovered_devices));
-    
-#ifdef ESP_PLATFORM
-    // Start discovery
-    if (esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0) != ESP_OK) {
-        ESP_LOGE(TAG, "Start device discovery failed");  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
-    }
-    
-    ESP_LOGI(TAG, "Started Bluetooth device scanning");  // NOLINT(bugprone-branch-clone)
-#endif
-    
-    bt_ctx.scanning = true;
-    /* Unit-test hook: notify test shim that a scan started so host tests can
-     * assert the command layer invoked the manager. The test shim provides
-     * bt_manager_test_record_scan_start() in the mocks; declare as weak
-     * and call it here so only unit-test builds attempt the symbol. */
-#ifdef UNIT_TEST
-    /* The weak symbol is declared at file scope (above); call it here so
-     * host-mode tests can observe that a scan was initiated. Using an
-     * extern declaration avoids redeclaring the weak attribute inside the
-     * function (which some toolchains reject). */
-    extern void bt_manager_test_record_scan_start(void);
-    bt_manager_test_record_scan_start();
-#endif
-
-    return ESP_OK;
-}
-
-// Stop device scanning
- bt_err_t bt_stop_scan(void) {
-    if (!bt_ctx.initialized) {
-        return ESP_FAIL;
-    }
-    
-    if (!bt_ctx.scanning) {
-        return ESP_OK; // Not scanning
-    }
-    
-#ifdef ESP_PLATFORM
-    // Stop discovery
-    if (esp_bt_gap_cancel_discovery() != ESP_OK) {
-        ESP_LOGE(TAG, "Stop device discovery failed");  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
-    }
-    
-    ESP_LOGI(TAG, "Stopped Bluetooth device scanning");  // NOLINT(bugprone-branch-clone)
-#endif
-    
-    bt_ctx.scanning = false;
-    return ESP_OK;
-}
-    /* (scan test hook moved into bt_start_scan()) */
 
 // Connect to a device
  bt_err_t bt_connect(const char* mac) {
@@ -1002,26 +935,7 @@ int bt_manager_start_scan(void) {
     if (bt_manager_forced_start_failure()) return -1;
 #endif
     int ret = (bt_start_scan() == ESP_OK) ? 0 : -1;
-
-#if defined(UNIT_TEST)
-    /* In unit-test/host builds, ensure the test hook is invoked when a
-     * scan is started. Some host build configs may not execute the
-     * internal bt_start_scan() hook due to differing compilation flags;
-     * calling the test hook here guarantees the host-mode mock observes
-     * the scan-start regardless. The hook is weakly linked in the test
-     * harness (`mocks/bt_manager_test_hooks.c`) so this call is a no-op
-     * in production builds. */
-    if (ret == 0) {
-        extern void bt_manager_test_record_scan_start(void);
-        /* Call the weak test hook unconditionally — production builds
-         * provide a no-op weak definition at file scope, and host tests
-         * provide an overriding implementation. Checking the function
-         * pointer value triggers -Werror=address on newer GCCs, so
-         * avoid that pattern and call directly. */
-        bt_manager_test_record_scan_start();
-    }
-#endif
-
+    /* Note: bt_start_scan() in bt_scan.c handles the test hook call */
     return ret;
 }
 
@@ -1158,52 +1072,15 @@ static void bt_app_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param
     switch (event) {
         case ESP_BT_GAP_DISC_RES_EVT: {
             // Device discovery result
-            char bda_str[18];
-            char name[32] = {0};
-            uint32_t cod = 0;
-            int8_t rssi = 0;
-            
-            // Get device address
-                 safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                         param->disc_res.bda[0], param->disc_res.bda[1], param->disc_res.bda[2],
-                         param->disc_res.bda[3], param->disc_res.bda[4], param->disc_res.bda[5]);
-            
-            // Get device name
-            for (int i = 0; i < param->disc_res.num_prop; i++) {
-                if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_BDNAME) {
-                    safe_memcpy(name, sizeof(name), param->disc_res.prop[i].val, param->disc_res.prop[i].len);
-                    name[sizeof(name) - 1] = '\0';
-                } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_COD) {
-                    safe_memcpy(&cod, sizeof(cod), param->disc_res.prop[i].val, sizeof(uint32_t));
-                } else if (param->disc_res.prop[i].type == ESP_BT_GAP_DEV_PROP_RSSI) {
-                    safe_memcpy(&rssi, sizeof(rssi), param->disc_res.prop[i].val, sizeof(int8_t));
-                }
-            }
-            
-            ESP_LOGI(TAG, "Device found: %s, name: %s, RSSI: %d", bda_str, name, rssi);  // NOLINT(bugprone-branch-clone)
-            
-            // Add to discovered devices list
-            if (bt_ctx.discovered_devices.count < 20) {
-                int idx = bt_ctx.discovered_devices.count;
-                safe_copy_str(bt_ctx.discovered_devices.devices[idx].mac,
-                          sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
-                safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
-                          sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
-                bt_ctx.discovered_devices.devices[idx].rssi = (int)(unsigned char)rssi;
-                bt_ctx.discovered_devices.count++;
-            }
+            bt_scan_handle_discovery_result(param->disc_res.bda, 
+                                            param->disc_res.num_prop,
+                                            param->disc_res.prop);
             break;
         }
         
         case ESP_BT_GAP_DISC_STATE_CHANGED_EVT:
             // Discovery state changed
-            if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STOPPED) {
-                ESP_LOGI(TAG, "Device discovery stopped");  // NOLINT(bugprone-branch-clone)
-                bt_ctx.scanning = false;
-            } else if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STARTED) {
-                ESP_LOGI(TAG, "Device discovery started");  // NOLINT(bugprone-branch-clone)
-                bt_ctx.scanning = true;
-            }
+            bt_scan_handle_state_change(param->disc_st_chg.state);
             break;
             
         case ESP_BT_GAP_PIN_REQ_EVT: {
