@@ -390,7 +390,7 @@ class TestMultiToneChordGeneration:
         
         engine.set_source('tone')
         engine.start()
-        time.sleep(0.3)  # Python 3.9 needs more time for AudioEngine to fill ring buffer
+        time.sleep(0.5)  # Python 3.9 needs more time for AudioEngine to fill ring buffer
         engine.stop()
         
         samples = ring_buffer.read(4096)
