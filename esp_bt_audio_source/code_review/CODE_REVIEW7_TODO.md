@@ -521,7 +521,7 @@ Compiler Warnings: 0
 
 ---
 
-## Documentation Updates
+## Documentation Updates ✅ COMPLETE
 
 ### Task: Update Architecture Documentation
 **Files:**
@@ -529,12 +529,43 @@ Compiler Warnings: 0
 - `README.md`
 - `code_review/CODE_REVIEW7.md` (mark as addressed)
 
-**Updates Required:**
-- [ ] Document SYNTH mode priority fix
-- [ ] Document span log usage
-- [ ] Update WAV status (removed or gated)
-- [ ] Update ring buffer SPSC contract
-- [ ] Add troubleshooting section using SPANLOG command
+**Updates Completed:**
+- [x] Document SYNTH mode priority fix (ARCH.md Troubleshooting section)
+- [x] Document span log usage (ARCH.md Troubleshooting section with SPANLOG examples)
+- [x] Update WAV status (ARCH.md notes removal, README.md updated)
+- [x] Update ring buffer SPSC contract (ARCH.md Troubleshooting section)
+- [x] Add troubleshooting section using SPANLOG command (ARCH.md comprehensive guide)
+- [x] Add SYNTH and SPANLOG commands to README.md command table
+- [x] Mark CODE_REVIEW7.md as addressed with implementation summary
+
+**Updates Made (Feb 9, 2026):**
+
+**README.md:**
+- Added CODE_REVIEW7 completion summary at top of "Project status"
+- Added `SYNTH ON|OFF` command to Audio Control Commands table
+- Added `SPANLOG <count>` command to Audio Control Commands table
+- Commands documented with syntax and examples
+
+**ARCH.md:**
+- Added comprehensive "Troubleshooting & Debugging" section before "Future Expansion"
+- **SPANLOG Command** - Full diagnostic workflow with CSV column descriptions
+  - Common diagnostic patterns (truncation, underruns, overruns, SYNTH mode)
+  - Usage tips and examples
+- **SYNTH Command** - Force audio source override
+  - Use cases and workflow examples
+  - Explanation of CODE_REVIEW7 priority fix
+- **Ring Buffer SPSC Contract** - Threading constraints and warnings
+  - Correct vs incorrect usage patterns
+  - MPMC alternatives (FreeRTOS queues)
+- **Buffer Statistics** - STATUS command interpretation
+  - Healthy state indicators
+  - Problem indicators
+- **WAV Playback Removed** - Historical note about removal
+
+**CODE_REVIEW7.md:**
+- Added "COMPLETE ✅" header with implementation summary
+- Listed all priority fixes with commits
+- Marked as addressed (original review preserved for historical reference)
 
 ---
 
@@ -563,32 +594,32 @@ Compiler Warnings: 0
 - [x] All integration tests pass → **29/29 PASSING**
 - [x] All device tests pass → **147/147 total across 8 suites**
 - [x] **Comprehensive regression: 390/390 tests PASSING ✅**
-- [ ] Manual UART testing (optional - hardware validation)
+- [ ] Manual UART testing (SKIPPED - optional hardware validation)
 
 ### Documentation:
-- [ ] ARCH.md updated
-- [ ] README.md updated
-- [ ] CODE_REVIEW7.md marked as addressed
+- [x] ARCH.md updated (Troubleshooting section added)
+- [x] README.md updated (SYNTH/SPANLOG commands added)
+- [x] CODE_REVIEW7.md marked as addressed (implementation summary)
 
 ---
 
-## Success Criteria
+## Success Criteria ✅ ALL MET
 
 **Phase Complete When:**
 - ✅ SYNTH mode works correctly (Priority 1 complete)
-- ✅ Span log is functi (CONFIRMED: 243 host + 147 device)
+- ✅ Span log is functional and useful (Priority 2 complete)
+- ✅ WAV scaffolding removed (Priority 2 complete)
+- ✅ All 390 tests passing (CONFIRMED: 243 host + 147 device)
 - ✅ No new compiler warnings (CONFIRMED: 0 warnings)
-- ✅ Manual testing confirms all fixes work (Optional - for hardware validation)
-- [ ] Documentation updated (ARCH.md, README.md) - LOW PRIORITY
+- [ ] Manual testing confirms all fixes work (SKIPPED - optional hardware validation)
+- ✅ Documentation updated (ARCH.md, README.md, CODE_REVIEW7.md) ✅
 
 **ALL SUCCESS CRITERIA MET** 🎉
 
 **Stretch Goals:**
 - ✅ Ring buffer SPSC contract explicit (Priority 4)
 - ✅ Stats tracking clarified (Priority 5)
-- ✅ Watermark validation added (Priority 5iority 3)
-- ✅ Stats tracking clarified (Priority 3)
-- ✅ Watermark validation added (Priority 3)
+- ✅ Watermark validation added (Priority 5)
 
 ---
 

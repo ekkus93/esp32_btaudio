@@ -104,6 +104,158 @@ GND               ------------> GND
 
 This separation allows each ESP32 to focus on its primary wireless protocol, ensuring better performance and reliability.
 
+## Troubleshooting & Debugging
+
+### SPANLOG Command - Audio Engine Diagnostics
+
+**Purpose:** Debug audio truncation, underruns, and source switching issues
+
+The `SPANLOG` command dumps the last N audio engine events, showing exactly what the audio processor is doing:
+
+```bash
+> SPANLOG 10
+OK|SPANLOG|
+seq,timestamp_us,bytes_written,ring_used,ring_free,source,beep_active,underruns
+1001,5234567,4096,8192,24576,I2S,0,0
+1002,5238789,4096,12288,20480,I2S,0,0
+1003,5243012,4096,16384,16384,I2S,0,0
+...
+```
+
+**Columns:**
+- `seq`: Sequence number (increments per audio chunk produced)
+- `timestamp_us`: Microsecond timestamp when chunk was written
+- `bytes_written`: Actual bytes written to ring buffer
+- `ring_used`: Ring buffer used bytes after write
+- `ring_free`: Ring buffer free bytes after write
+- `source`: Active audio source (I2S/SYNTH/SILENCE)
+- `beep_active`: Whether beep overlay is active (0/1)
+- `underruns`: Cumulative underrun counter snapshot
+
+**Common Diagnostic Patterns:**
+
+1. **Audio truncation / early stop:**
+   - Look for `source` switching unexpectedly (I2S → SILENCE)
+   - Check if `bytes_written` starts decreasing before audio should end
+   - Verify I2S source is active when expected
+
+2. **Underruns (choppy audio):**
+   - Watch `underruns` counter increasing
+   - Look for `ring_free` approaching capacity (ring starving)
+   - Check if producer is keeping up (consistent `bytes_written`)
+
+3. **Overruns (backpressure):**
+   - Look for `bytes_written < expected` (partial writes)
+   - Check if `ring_used` approaches capacity (consumer can't keep up)
+   - May indicate Bluetooth transmission slower than audio capture
+
+4. **SYNTH mode not working:**
+   - After `SYNTH ON`, verify `source` column shows `SYNTH`
+   - If stuck on `I2S`, SYNTH priority fix may have regressed
+
+**Usage Tips:**
+- `SPANLOG` (no args) = last 10 entries
+- `SPANLOG 50` = last 50 entries (useful for longer sequences)
+- `SPANLOG 100` = maximum available entries
+- Combine with `STATUS` to see current state + historical events
+
+### SYNTH Command - Force Audio Source
+
+**Purpose:** Override I2S audio with synthesized 1kHz sine wave for testing
+
+```bash
+> START          # I2S audio starts
+> SYNTH ON       # Overrides I2S → synth tone plays
+OK|SYNTH|mode=force_on
+> SYNTH OFF      # Returns to I2S audio
+OK|SYNTH|mode=force_off
+```
+
+**Use Cases:**
+- Verify Bluetooth transmission path works independently of I2S
+- Debug I2S issues by eliminating the I2S hardware as a variable
+- Test A2DP streaming with known-good audio source
+- Verify audio processor→BT pipeline is functioning
+
+**How It Works (CODE_REVIEW7 Fix):**
+
+The `get_active_source()` function now checks audio sources in priority order:
+
+1. **Priority 1:** Forced SYNTH mode (`s_force_synth == true`)
+2. **Priority 2:** I2S if running (`i2s_manager_is_running()`)
+3. **Priority 3:** Silence (fallback)
+
+**Before CODE_REVIEW7:** SYNTH mode was unreachable after `START` because I2S check came first.  
+**After CODE_REVIEW7:** SYNTH override works correctly - `SYNTH ON` always forces synth audio regardless of I2S state.
+
+### Ring Buffer SPSC Contract
+
+**Critical Threading Constraint:** The audio ring buffer is **SPSC only** (Single-Producer Single-Consumer).
+
+**CORRECT Usage:**
+- **ONE producer:** `audio_engine_task` writes audio chunks
+- **ONE consumer:** BT A2DP callback reads audio via `audio_processor_read()`
+
+**UNDEFINED BEHAVIOR:**
+- ❌ Multiple producers writing simultaneously
+- ❌ Multiple consumers reading simultaneously  
+- ❌ Using ring buffer from multiple uncoordinated tasks
+
+**Why This Matters:**
+- Ring buffer uses simple spinlock for metadata (head/tail/used_bytes)
+- No multi-producer or multi-consumer synchronization
+- Violating SPSC contract can cause race conditions, corruption, silent failures
+
+**If You Need MPMC:** Use FreeRTOS queues or add external synchronization (mutexes/semaphores).
+
+**See also:** `components/audio_processor/audio_ringbuffer.h` for detailed threading documentation.
+
+### Buffer Statistics
+
+**Monitor via `STATUS` command:**
+
+```bash
+> STATUS
+OK|STATUS|rb_capacity=32768|rb_used=8192|rb_free=24576|rb_peak=16384|
+underruns=0|overruns=0|...
+```
+
+**Key Metrics:**
+- `rb_capacity`: Total ring buffer size (default 32 KB, configurable)
+- `rb_used`: Current bytes in ring buffer
+- `rb_free`: Available space in ring buffer
+- `rb_peak`: Peak usage since boot (watermark)
+- `underruns`: Count of times consumer tried to read but ring was empty
+- `overruns`: Count of times producer wrote less than expected (backpressure)
+
+**Healthy State:**
+- `rb_used` oscillates between LOW and HIGH watermarks (8KB ↔ 24KB default)
+- `underruns` and `overruns` counters remain at 0 or very low
+- `rb_peak` stays well below `rb_capacity` (allows burst tolerance)
+
+**Problem Indicators:**
+- `underruns` increasing → Producer not keeping up (I2S issues, slow source)
+- `overruns` increasing → Consumer not keeping up (BT transmission slow)
+- `rb_used` stuck at 0 → Producer not running or source silent
+- `rb_used` stuck at capacity → Consumer not draining or BT disconnected
+
+### WAV Playback Removed
+
+**Version 0.3.0 (Feb 2026):** WAV playback and SPIFFS support completely removed.
+
+**If you try WAV_STATUS:**
+```bash
+> WAV_STATUS
+ERROR|COMMAND_NOT_FOUND
+```
+
+**Available Audio Sources (Current):**
+1. **I2S** - Primary source, captures audio from I2S microphone/input
+2. **SYNTH** - Debug/test source, generates 1kHz sine wave
+3. **SILENCE** - Fallback when no active source
+
+**Historical Note:** PLAY command, SPIFFS partition, and WAV playback were removed to simplify architecture and reduce failure modes. See [docs/FS.md](docs/FS.md) for historical context.
+
 ## Future Expansion Possibilities
 
 - Add a microSD card to ESP32 #2 for audio file playback

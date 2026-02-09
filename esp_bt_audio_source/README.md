@@ -26,6 +26,15 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
 <a id="project-status--november-2025"></a>
 ## Project status — recent (finalized run)
 
+- **CODE_REVIEW7 Completion (Feb 2026):**
+  - **Critical bug fix:** Fixed SYNTH mode priority logic - `SYNTH ON` now correctly overrides I2S audio source during runtime. Fixed `get_active_source()` to check `s_force_synth` first before I2S running state.
+  - **Debugging infrastructure:** Wired up span log (audio_span_log) to engine - `SPANLOG` command now dumps last N audio engine events (seq, timestamp, bytes, ring state, source, beep overlay). Invaluable for diagnosing truncation and underrun issues.
+  - **Code cleanup:** Removed WAV playback scaffolding completely - `audio_processor_play_wav()` and `WAV_STATUS` command removed (176 bytes saved). Only I2S, synth, and silence sources remain.
+  - **Ring buffer hardening:** Added explicit SPSC (single-producer single-consumer) contract documentation with prominent warnings. Added watermark sanity checks (compile-time + runtime validation).
+  - **Stats tracking cleanup:** Defined `buffer_overruns` semantic clearly (tracks partial writes when producer ahead of consumer). Complements existing `buffer_underruns` tracking.
+  - **Testing:** All 390 tests passing (243 host + 147 device), 0 warnings, 0 regressions. Binary: 0xe1810 bytes (923 KB, 48% free).
+  - **Commits:** 12 implementation commits pushed (latest: bc51bca2). See [CODE_REVIEW7_TODO.md](code_review/CODE_REVIEW7_TODO.md) for complete implementation details.
+
 - **Architecture cleanup and stabilization (Jan-Feb 2026):**
   - **Critical bug fixes (Phase 1):** Fixed invalid preprocessor guards in main.c that caused undefined behavior on different ESP32 targets. Changed `#ifdef esp_rom_printf` (invalid - functions can't be used as preprocessor tokens) to `#ifdef CONFIG_IDF_TARGET_ESP32` (correct target detection). All 505 tests passing after fixes.
   - **Initialization layering stabilization (Phase 2):** Clarified NVS and UART ownership - main.c owns platform service initialization (NVS via `nvs_storage_init()`, UART driver install for early diagnostics). Removed dangerous `uart_driver_delete()` call that was breaking esp-console and logging. Fixed init order contradiction: moved CMD init BEFORE BT init (control plane before data plane) so SCAN/PAIR commands are available immediately when Bluetooth becomes ready. All ownership contracts documented in ARCH.md.
@@ -307,6 +316,8 @@ Next steps to finish these flows on-device:
 | `VOLUME` | Set volume level | 0-100 | `OK\|VOLUME\|SET\|<LEVEL>` | `VOLUME 75` |
 | `MUTE` | Mute audio output | None | `OK\|MUTE\|SUCCESS` | `MUTE` |
 | `UNMUTE` | Unmute audio output | None | `OK\|UNMUTE\|SUCCESS` | `UNMUTE` |
+| `SYNTH` | Force synth audio mode (debugging) | ON\|OFF | `OK\|SYNTH\|mode=force_on/off` | `SYNTH ON` |
+| `SPANLOG` | Dump audio engine span log | Optional: count (default 10) | CSV log entries | `SPANLOG 25` |
 
 ### Pairing Commands
 
