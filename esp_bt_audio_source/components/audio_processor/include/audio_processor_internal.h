@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "audio_processor.h"
 #include "audio_ringbuffer.h"
 #include "beep_manager.h"
