@@ -21,6 +21,13 @@
 #define TAG "BT_SCAN"
 #endif
 
+#ifdef UNIT_TEST
+/* Weak stub for test hook - host tests can override with strong symbol */
+__attribute__((weak)) void bt_manager_test_record_scan_start(void) {
+    /* No-op default implementation */
+}
+#endif
+
 /* Public API implementation */
 
 bt_err_t bt_start_scan(void)

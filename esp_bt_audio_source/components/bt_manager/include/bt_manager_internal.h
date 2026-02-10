@@ -11,6 +11,7 @@
 
 #include "bt_manager.h"
 #include "bt_api.h"
+#include "util_safe.h"
 #include <stdbool.h>
 #include <stdint.h>
 

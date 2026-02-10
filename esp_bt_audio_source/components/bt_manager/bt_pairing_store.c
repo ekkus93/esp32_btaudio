@@ -26,6 +26,7 @@
 
 #if CONFIG_BT_MOCK_TESTING
 /* Forward declarations from bt_mock component for testing */
+typedef enum bt_pairing_method bt_pairing_method_t;  /* Forward decl from bt_source.h */
 extern esp_err_t bt_mock_send_pin(const char* pin);
 extern bt_pairing_method_t bt_mock_get_pairing_method(void);
 extern esp_err_t bt_mock_get_ssp_passkey(char* passkey, size_t size);
