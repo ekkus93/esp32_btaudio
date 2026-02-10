@@ -86,16 +86,11 @@ bt_err_t bt_connect_by_name(const char* name)
     return ESP_FAIL;
 }
 
-#if defined(UNIT_TEST)
 // Allow test code to override the manager disconnect implementation by
 // marking this symbol weak in unit test builds. This keeps production
 // behavior unchanged while allowing test-only mocks/stubs in
 // `test_app` to take precedence during linking.
-__attribute__((weak))
-bt_err_t bt_disconnect(void)
-#else
-bt_err_t bt_disconnect(void)
-#endif
+MAYBE_WEAK bt_err_t bt_disconnect(void)
 {
 #if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
     const char *task_name = pcTaskGetName(NULL);

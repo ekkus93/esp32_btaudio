@@ -45,7 +45,7 @@ static bt_pairing_pending_t s_pair_pending = {0};
 
 /* Test hooks - weak symbols overridden by tests */
 #ifdef UNIT_TEST
-__attribute__((weak)) void bt_manager_test_record_pair_event(const char* subtype, const char* data) {
+MAYBE_WEAK void bt_manager_test_record_pair_event(const char* subtype, const char* data) {
     (void)subtype;
     (void)data;
 }

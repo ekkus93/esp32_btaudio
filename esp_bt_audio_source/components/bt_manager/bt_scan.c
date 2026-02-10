@@ -23,7 +23,7 @@
 
 #ifdef UNIT_TEST
 /* Weak stub for test hook - host tests can override with strong symbol */
-__attribute__((weak)) void bt_manager_test_record_scan_start(void) {
+MAYBE_WEAK void bt_manager_test_record_scan_start(void) {
     /* No-op default implementation */
 }
 #endif

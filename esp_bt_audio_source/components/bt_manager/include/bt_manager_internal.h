@@ -15,6 +15,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/*
+ * MAYBE_WEAK macro - Marks symbols as weak in unit test builds to allow
+ * test overrides, while keeping them strong in production builds.
+ * This avoids brittle #ifdef blocks that split function signatures across
+ * preprocessor directives.
+ */
+#ifdef UNIT_TEST
+#define MAYBE_WEAK __attribute__((weak))
+#else
+#define MAYBE_WEAK
+#endif
+
 #ifdef ESP_PLATFORM
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"

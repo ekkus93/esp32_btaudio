@@ -46,9 +46,9 @@
  * fall back to these no-op implementations so linking succeeds when the test
  * overrides are absent.
  */
-__attribute__((weak)) int bt_manager_forced_disconnect_failure(void) { return 0; }
-__attribute__((weak)) int bt_manager_forced_start_failure(void) { return 0; }
-__attribute__((weak)) int bt_manager_forced_stop_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_forced_disconnect_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_forced_start_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_forced_stop_failure(void) { return 0; }
 
 // Private data
 bt_manager_context_t bt_ctx = {
@@ -106,21 +106,21 @@ static esp_err_t bt_manager_init_profiles(void);
 #endif
 
 #ifdef UNIT_TEST
-__attribute__((weak)) void bt_manager_test_record_unpair(const char* mac) {
+MAYBE_WEAK void bt_manager_test_record_unpair(const char* mac) {
     (void)mac;
 }
 
-__attribute__((weak)) int bt_manager_test_should_force_unpair_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_test_should_force_unpair_failure(void) { return 0; }
 
-__attribute__((weak)) int bt_manager_test_should_force_unpair_all_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_test_should_force_unpair_all_failure(void) { return 0; }
 
-__attribute__((weak)) void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
+MAYBE_WEAK void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
     (void)cleared_before;
     (void)removed;
 }
 
 // Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
-__attribute__((weak)) void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
+MAYBE_WEAK void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
 
 #ifdef UNIT_TEST
 /* Unit test tracking for auto-start attempts - accessed by event handlers */
@@ -1000,7 +1000,7 @@ bool bt_manager_test_is_audio_playing(void) {
  * unit-test builds that don't need this behavior don't have to provide
  * their own definition. Tests which want to simulate a forced failure
  * may provide a strong symbol overriding this. */
-__attribute__((weak)) int bt_manager_forced_pair_failure(void) { return 0; }
+MAYBE_WEAK int bt_manager_forced_pair_failure(void) { return 0; }
 
 /* Unit-test helper: simulate the auto-start path executed after a
  * successful connection. Returns true if bt_start_audio() was invoked
@@ -1028,7 +1028,7 @@ bool bt_manager_test_autostart_on_connect(void) {
  * behaviour without ESP_PLATFORM callbacks. */
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Optional mock-side hook to keep device test streaming state in sync. */
-void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state) __attribute__((weak));
+MAYBE_WEAK void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state);
 #endif
 void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     if (!param) {
