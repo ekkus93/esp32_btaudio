@@ -21,11 +21,6 @@
 #define TAG "BT_SCAN"
 #endif
 
-/* Test hooks - weak symbols overridden by tests */
-#ifdef UNIT_TEST
-__attribute__((weak)) void bt_manager_test_record_scan_start(void) { }
-#endif
-
 /* Public API implementation */
 
 bt_err_t bt_start_scan(void)

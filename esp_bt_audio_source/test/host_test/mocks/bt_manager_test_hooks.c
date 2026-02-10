@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
+#include "bt_manager_internal.h"
 
 static char g_last_unpair_mac[18] = {0};
 
@@ -55,6 +57,9 @@ void bt_manager_test_reset_forces(void) {
     g_pair_event_count = 0;
     g_last_pair_event_subtype[0] = '\0';
     g_last_pair_event_data[0] = '\0';
+    
+    // Reset bt_ctx state that affects subsequent tests
+    bt_ctx.scanning = false;
 }
 
 void bt_manager_test_record_unpair(const char* mac) {
