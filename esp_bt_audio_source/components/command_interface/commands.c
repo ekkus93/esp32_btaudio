@@ -138,7 +138,6 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     if (!token) {
         return CMD_ERROR_UNKNOWN;
     }
-    printf("PARSE-DIAG: token='%s'\n", token);
 
     if (strcasecmp(token, "SCAN") == 0) {
         ctx->type = CMD_TYPE_SCAN;

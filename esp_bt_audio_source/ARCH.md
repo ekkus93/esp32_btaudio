@@ -368,6 +368,173 @@ if (err != ESP_OK) {
 
 ---
 
+## Logging Policy & Hot Path Guidelines
+
+**Updated**: 2026-02-09 (CODE_REVIEW8 Task P1.C)
+
+### Overview
+
+Logging in embedded systems must balance diagnostic value against timing constraints. Blocking I/O operations (printf, ESP_LOG*) can violate real-time deadlines and cause audio glitches in hot paths.
+
+**Hot Path Definition**: Code paths executed at audio frame rate or higher (>100 Hz), including:
+- Audio data callbacks (A2DP, I2S)
+- Audio state callbacks (frequent state changes)
+- ISR handlers
+
+### Logging Severity Hierarchy
+
+ESP-IDF provides compile-time and runtime log level control:
+
+```c
+ESP_LOGE(TAG, "..."); // Error - always enabled
+ESP_LOGW(TAG, "..."); // Warning - enabled if level >= ESP_LOG_WARN
+ESP_LOGI(TAG, "..."); // Info - enabled if level >= ESP_LOG_INFO
+ESP_LOGD(TAG, "..."); // Debug - enabled if level >= ESP_LOG_DEBUG
+ESP_LOGV(TAG, "..."); // Verbose - enabled if level >= ESP_LOG_VERBOSE
+```
+
+**Default Production Config**: `CONFIG_LOG_MAXIMUM_LEVEL=ESP_LOG_INFO`
+- ESP_LOGD and ESP_LOGV are compile-time eliminated
+- ESP_LOGI/LOGW/LOGE compile in but can be runtime-filtered
+
+### Hot Path Logging Rules
+
+#### ⚠️ CRITICAL HOT PATHS (Audio Data Callback, ISRs)
+
+**FORBIDDEN**: Any ESP_LOG* calls without compile-time gates
+**TIMING**: Must complete within audio frame deadline (2.9ms @ 44.1kHz)
+
+**Example - Audio Data Callback**:
+```c
+static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
+{
+    esp_err_t result = audio_processor_read(data, len, &bytes_read);
+    if (result != ESP_OK) {
+        // ❌ FORBIDDEN: ESP_LOGW blocks for 1-5ms (exceeds 2.9ms deadline)
+        // ESP_LOGW(TAG, "audio_processor_read error: %d", result);
+        
+        // ✅ ALLOWED: Gated verbose logging (OFF by default)
+        #if CONFIG_BT_VERBOSE_AUDIO_LOGGING
+            ESP_LOGW(TAG, "audio_processor_read error: %d", result);
+        #endif
+        
+        // ✅ PREFERRED: Silent error handling + statistics tracking
+        s_error_count++;  // Track errors, log in slower path
+    }
+}
+```
+
+**Configuration**:
+```kconfig
+config BT_VERBOSE_AUDIO_LOGGING
+    bool "Enable Verbose Audio Logging (Development Only)"
+    default n
+    help
+        WARNING: Can cause audio glitches! Only for development.
+```
+
+#### HIGH FREQUENCY PATHS (10-100 Hz)
+
+**ALLOWED**: ESP_LOGD only (compile-time disabled in production)
+**TIMING**: Should complete quickly (<50ms typical)
+
+**Example - Audio State Callbacks**:
+```c
+void bt_audio_state_cb(esp_a2d_audio_state_t state)
+{
+    // ✅ ALLOWED: Debug logging (disabled in production builds)
+    ESP_LOGD(TAG, "Audio state changed: %d", state);
+    
+    // ❌ AVOID: Verbose info logging in frequent callbacks
+    // ESP_LOGI(TAG, "Audio state changed: %d", state);
+}
+```
+
+#### MEDIUM FREQUENCY PATHS (1-10 Hz)
+
+**ALLOWED**: ESP_LOGI for state changes, ESP_LOGW for errors
+**TIMING**: No strict constraints (100ms acceptable)
+
+**Example - Connection Events**:
+```c
+void bt_connection_state_cb(esp_a2d_connection_state_t state)
+{
+    if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+        // ✅ ALLOWED: Connection events are infrequent
+        ESP_LOGI(TAG, "Connected to device: %s", bda_str);
+    }
+}
+```
+
+#### INITIALIZATION PATHS (Boot/One-Time)
+
+**ALLOWED**: Any logging (printf, ESP_LOG*, DIAG_MARKER)
+**TIMING**: No constraints (happens before audio starts)
+
+**Example - Boot Diagnostics**:
+```c
+void app_main(void)
+{
+    // ✅ ALLOWED: Boot-time diagnostics
+    printf("DIAG|AUDIO|STATUS|initialized=1|running=1|volume=%u\r\n", vol);
+    ESP_LOGI(TAG, "Audio processor initialized successfully");
+}
+```
+
+### Test/Mock Code Logging
+
+Test and mock code paths can use printf freely since they:
+1. Only compile in test builds (CONFIG_BT_MOCK_TESTING)
+2. Never run in production
+3. Are essential for test diagnostics
+
+**Example**:
+```c
+#if defined(CONFIG_BT_MOCK_TESTING)
+    printf("Mock BT: Device found: %s, RSSI: %d\n", bda_str, rssi);
+#endif
+```
+
+### Diagnostic Output Best Practices
+
+1. **Use DIAG_MARKER for critical boot diagnostics** (survives crashes):
+   ```c
+   #define DIAG_MARKER(msg, ...) do { \
+       printf(msg "\r\n", ##__VA_ARGS__); \
+       esp_rom_printf(msg "\r\n", ##__VA_ARGS__); \
+   } while(0)
+   ```
+
+2. **Track errors silently in hot paths, log in slower paths**:
+   ```c
+   // In audio callback (hot path)
+   if (underrun) s_underrun_count++;
+   
+   // In status command (slow path)
+   ESP_LOGI(TAG, "Underrun count: %lu", s_underrun_count);
+   ```
+
+3. **Use structured format for parseable diagnostics**:
+   ```c
+   printf("DIAG|AUDIO|STATUS|underruns=%lu|rate=%.2f%%\r\n", ...);
+   ```
+
+### Enforcement in Code Reviews
+
+**Required checks before merge**:
+1. No ESP_LOG* in audio data callback without CONFIG_BT_VERBOSE_AUDIO_LOGGING gate
+2. No printf() in production code outside boot/init paths without explanation
+3. All new hot path logging must be compile-time gated
+
+### References
+
+- ESP-IDF Logging Documentation: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/log.html
+- CODE_REVIEW8.md: External audit identifying hot path logging issues
+- code_review/LOGGING_AUDIT.md: Comprehensive logging audit report
+- Audio timing constraints: 44.1kHz / 128 bytes = 2.9ms frame deadline
+
+---
+
 ## Future Expansion Possibilities
 
 - Add a microSD card to ESP32 #2 for audio file playback

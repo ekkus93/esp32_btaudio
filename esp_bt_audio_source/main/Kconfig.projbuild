@@ -81,4 +81,24 @@ menu "A2DP Example Configuration"
                 Requires PSRAM to be enabled and available.
                 Note: Ring buffer structure itself is always in DRAM (small overhead).
     endmenu
+
+    menu "Bluetooth Logging Configuration"
+        config BT_VERBOSE_AUDIO_LOGGING
+            bool "Enable Verbose Audio Logging (Development Only)"
+            default n
+            help
+                WARNING: Enabling this option can cause audio glitches!
+                
+                When enabled, logs detailed audio data callback events including:
+                - Audio processor read errors
+                - Buffer underruns with byte counts
+                - Underrun rate statistics
+                
+                This is a BLOCKING I/O operation that can exceed the 2.9ms 
+                audio frame deadline at 44.1kHz, causing audio glitches.
+                
+                Only enable for development/debugging. NEVER enable in production.
+                
+                Recommended: Keep DISABLED (default) for normal operation.
+    endmenu
 endmenu

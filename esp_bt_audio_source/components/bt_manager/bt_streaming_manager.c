@@ -61,13 +61,17 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     size_t bytes_read = 0;
     esp_err_t result = audio_processor_read(data, (size_t)len, &bytes_read);
     if (result != ESP_OK) {
+#if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         ESP_LOGW(TAG, "audio_processor_read error: %d", result);  // NOLINT(bugprone-branch-clone)
+#endif
         safe_memset(data, (size_t)len, 0, (size_t)len);
         bytes_read = 0;
     } else if (bytes_read < (size_t)len) {
         /* Underflow — zero-fill remainder */
         safe_memset(data + bytes_read, (size_t)(len - bytes_read), 0, (size_t)(len - bytes_read));
+#if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);  // NOLINT(bugprone-branch-clone)
+#endif
     }
 
     /* Update streaming statistics (CODE_REVIEW5 Task 3.1) */
@@ -81,11 +85,13 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     s_streaming_info.total_callbacks++;
     if (bytes_read < len) {
         s_streaming_info.underrun_count++;
+#if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         float underrun_rate = (float)s_streaming_info.underrun_count / (float)s_streaming_info.total_callbacks;
         ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
                  (unsigned long)s_streaming_info.underrun_count,
                  underrun_rate * 100.0f,
                  len, bytes_read);
+#endif
     }
     
     /* Calculate streaming duration */
