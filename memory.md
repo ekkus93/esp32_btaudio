@@ -1,3 +1,27 @@
+## 2026-02-09 21:26: Removed obsolete test_spiffs_fail test suite ✅
+
+**Status**: Test suite cleanup complete (commit c0242cc3)
+
+**Rationale**: SPIFFS partition was removed from main project, making test_spiffs_fail obsolete
+
+**Changes**:
+- Deleted entire `/esp_bt_audio_source/test/test_spiffs_fail/` directory (~2500 lines)
+- Removed test_spiffs_fail from 4 locations in `tools/run_all_tests.py`:
+  - Cleanup artifacts list (line 103)
+  - Log aggregation list (line 554)
+  - Device suite execution list (line 755)
+  - Special handling logic for blank SPIFFS partition (line 800)
+
+**Impact**:
+- Saves ~30 seconds per full test run (6 SPIFFS error tests eliminated)
+- Eliminates confusion from ESP32 running old test firmware
+- Cleaner test suite focused on active components
+- Device test count: 195 → 189 tests (6 SPIFFS tests removed)
+
+**Time**: ~5 minutes
+
+---
+
 ## 2026-02-09 20:45: MAYBE_WEAK macro refactoring complete ✅
 
 **Status**: ✅ P1 task "Fix MAYBE_WEAK macro" from CODE_REVIEW8_TODO.md **COMPLETE**
