@@ -391,6 +391,30 @@ bt_streaming_state_t bt_get_streaming_state(void);
  */
 esp_err_t bt_get_streaming_info(bt_streaming_info_t* info);
 
+/* BT Manager status - returned by bt_manager_get_status() (CODE_REVIEW8 P2) */
+typedef struct {
+    bool initialized;       /* BT manager initialized */
+    bool connected;         /* Device connected */
+    bool audio_playing;     /* Audio streaming active */
+    bool scanning;          /* Device scan in progress */
+    char connected_mac[18]; /* Connected device MAC (empty if not connected) */
+    char connected_name[32];/* Connected device name (empty if not connected) */
+} bt_manager_status_t;
+
+/**
+ * @brief Get BT manager status from ANY task (thread-safe)
+ * 
+ * This function provides thread-safe access to BT manager state by posting
+ * a request to BtAppTask and waiting for a consistent snapshot. Safe to call
+ * from any task context.
+ * 
+ * @param[out] status Pointer to status structure (filled on success)
+ * @return ESP_OK on success, ESP_ERR_TIMEOUT if BtAppTask doesn't respond,
+ *         ESP_ERR_INVALID_ARG if status is NULL, ESP_FAIL on queue/semaphore error
+ * @note Blocks up to 100ms waiting for response. Do not call from ISR.
+ */
+esp_err_t bt_manager_get_status(bt_manager_status_t *status);
+
 /* ----------------- Pairing API ----------------- */
 
 /**

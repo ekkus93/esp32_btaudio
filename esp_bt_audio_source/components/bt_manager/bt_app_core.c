@@ -12,6 +12,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
+#include "bt_manager_internal.h"  /* For bt_mgr_request_handler */
 #include "osi/allocator.h"
 #include "util_safe.h"
 #include <stdarg.h>
@@ -129,6 +130,16 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
     return true;
 }
 
+bool bt_app_send_mgr_request(void *request)
+{
+    bt_app_msg_t msg;
+    safe_memset(&msg, sizeof(msg), 0, sizeof(msg));
+    msg.sig = BT_APP_SIG_MGR_REQUEST;
+    msg.param = request;  /* Caller retains ownership - no param_free_cb */
+    
+    return bt_app_send_msg(msg, request);
+}
+
 static void bt_app_task_handler(void *arg)
 {
     bt_app_evt_msg_t evt_msg;
@@ -146,6 +157,16 @@ static void bt_app_task_handler(void *arg)
                 if (evt_msg.msg.cb) {
                     evt_msg.msg.cb(evt_msg.msg.event, evt_msg.param);
                 }
+                break;
+            case BT_APP_SIG_MGR_REQUEST:
+                /* BT Manager state request (CODE_REVIEW8 P2: State Access Contract)
+                 * Route to dedicated handler which processes request and signals
+                 * completion semaphore. No param_free_cb needed - caller owns
+                 * request struct and waits on semaphore. */
+                ESP_LOGD(TAG, "%s: processing MGR_REQUEST", __func__);  // NOLINT(bugprone-branch-clone)
+#ifdef ESP_PLATFORM
+                bt_mgr_request_handler(evt_msg.msg.event, evt_msg.param);
+#endif
                 break;
             default:
                 ESP_LOGW(TAG, "%s: unhandled signal 0x%x", __func__, evt_msg.msg.sig);  // NOLINT(bugprone-branch-clone)

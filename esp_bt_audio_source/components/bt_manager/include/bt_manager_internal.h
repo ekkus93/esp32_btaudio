@@ -63,6 +63,68 @@ extern bool s_autostart_enabled;
 extern int s_autostart_attempts;
 #endif
 
+/* BT Manager Request/Response System (CODE_REVIEW8 P2: BT State Access Contract)
+ * 
+ * PURPOSE: Thread-safe access to bt_ctx from command handlers.
+ * PROBLEM: bt_ctx updated from BtAppTask, read from cmd_proc without sync.
+ * SOLUTION: Route all reads through BtAppTask via request/response queue.
+ * 
+ * USAGE:
+ *   1. Create request with response buffer and semaphore
+ *   2. Post to BtAppTask via bt_app_work_dispatch()
+ *   3. Wait on semaphore (with timeout)
+ *   4. Read response from buffer
+ * 
+ * See: code_review/BT_STATE_ACCESS_CONTRACT.md for design details.
+ */
+
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#endif
+
+/* Request types for BT manager state queries */
+typedef enum {
+    BT_MGR_REQUEST_GET_STATUS = 0,      /* Get connection/audio status */
+    BT_MGR_REQUEST_GET_STREAMING_INFO,  /* Get streaming statistics */
+} bt_mgr_request_type_t;
+
+/* Request message for thread-safe state access */
+typedef struct {
+    bt_mgr_request_type_t type;    /* Type of request */
+    void *response_buf;             /* Caller-provided response buffer */
+    size_t response_size;           /* Size of response buffer (for validation) */
+#ifdef ESP_PLATFORM
+    SemaphoreHandle_t done_sem;     /* Semaphore to signal completion */
+#else
+    void *done_sem;                 /* Placeholder for host builds */
+#endif
+} bt_mgr_request_t;
+
+/* Response structures for each request type */
+
+/* Response for BT_MGR_REQUEST_GET_STATUS */
+typedef struct {
+    bool initialized;
+    bool connected;
+    bool audio_playing;
+    bool scanning;
+    char connected_mac[18];
+    char connected_name[32];
+} bt_mgr_status_response_t;
+
+/* Response for BT_MGR_REQUEST_GET_STREAMING_INFO */
+typedef struct {
+    uint32_t total_callbacks;
+    uint32_t underrun_count;
+    uint32_t total_bytes_read;
+} bt_mgr_streaming_info_response_t;
+
+/* Request handler function - processes requests in BtAppTask context */
+#ifdef ESP_PLATFORM
+void bt_mgr_request_handler(uint16_t event, void *param);
+#endif
+
 /* Utility function aliases (from util_safe) */
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
