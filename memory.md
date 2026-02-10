@@ -1,3 +1,55 @@
+## 2026-02-09 20:45: MAYBE_WEAK macro refactoring complete ✅
+
+**Status**: ✅ P1 task "Fix MAYBE_WEAK macro" from CODE_REVIEW8_TODO.md **COMPLETE**
+
+**Goal**: Eliminate brittle #ifdef blocks that split function signatures across preprocessor directives
+
+**Changes (commit bf13e809)**:
+- Defined MAYBE_WEAK macro in bt_manager_internal.h:
+  ```c
+  #ifdef UNIT_TEST
+  #define MAYBE_WEAK __attribute__((weak))
+  #else
+  #define MAYBE_WEAK
+  #endif
+  ```
+- Replaced all 13 instances of __attribute__((weak)) in bt_manager component:
+  - bt_manager.c: 10 instances (test hooks, forced failure functions)
+  - bt_connection.c: 1 instance (bt_disconnect - the problematic split pattern)
+  - bt_pairing_store.c: 1 instance (test hook)
+  - bt_scan.c: 1 instance (test hook)
+
+**Problematic Pattern Eliminated**:
+```c
+// BEFORE (brittle):
+#if defined(UNIT_TEST)
+__attribute__((weak))
+bt_err_t bt_disconnect(void) {
+#else
+bt_err_t bt_disconnect(void) {
+#endif
+
+// AFTER (clean):
+MAYBE_WEAK bt_err_t bt_disconnect(void)
+{
+```
+
+**Validation**:
+- Host tests: 244/244 passing (100%) ✅ (verified with run_all_tests.py)
+- clang-tidy: 26 files, 0 warnings, 0 errors ✅
+- All weak symbol test override functionality preserved
+- Test execution time: 6.90s wall time, 1.20s ctest
+
+**Benefits**:
+- More readable and maintainable code
+- Consistent pattern across all test hooks
+- Easier to understand at-a-glance which functions can be overridden
+- No behavioral changes, purely structural improvement
+
+**Time**: ~15 minutes (as estimated)
+
+---
+
 ## 2026-02-09 19:44: bt_manager refactoring 100% COMPLETE - All tests passing! 🎉✅
 
 **Status**: ✅ bt_manager refactoring **100% COMPLETE** with **full test validation** across both builds!
