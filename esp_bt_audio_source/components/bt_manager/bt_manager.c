@@ -16,6 +16,7 @@
 #include "esp_bt.h"
 #include "util_safe.h"
 #include "audio_processor.h"
+#include "platform_sync.h"  /* CODE_REVIEW8 P2.2 Phase 1: Platform shim for sync */
 #undef TAG
 #include "command_interface.h"
 #include <stdio.h>
@@ -207,7 +208,7 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     }
     
     /* Create semaphore for request/response synchronization */
-    SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
+    platform_binary_sem_t done_sem = platform_binary_sem_create();
     if (!done_sem) {
         ESP_LOGE(TAG, "Failed to create semaphore for status request");
         return ESP_ERR_NO_MEM;
@@ -226,19 +227,19 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     
     /* Post request to BtAppTask */
     if (!bt_app_send_mgr_request(&req)) {
-        vSemaphoreDelete(done_sem);
+        platform_binary_sem_delete(done_sem);
         ESP_LOGE(TAG, "Failed to post status request to BtAppTask");
         return ESP_FAIL;
     }
     
     /* Wait for response (100ms timeout to prevent deadlock if BtAppTask dies) */
-    if (xSemaphoreTake(done_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
-        vSemaphoreDelete(done_sem);
+    if (platform_binary_sem_take(done_sem, 100) != ESP_OK) {
+        platform_binary_sem_delete(done_sem);
         ESP_LOGE(TAG, "Timeout waiting for status response from BtAppTask");
         return ESP_ERR_TIMEOUT;
     }
     
-    vSemaphoreDelete(done_sem);
+    platform_binary_sem_delete(done_sem);
     
     /* Copy internal response to public API structure */
     status->initialized = internal_resp.initialized;
@@ -262,7 +263,7 @@ static void bt_mgr_handle_get_status(bt_mgr_request_t *req)
     if (!req || !req->response_buf) {
         ESP_LOGE(TAG, "Invalid GET_STATUS request (NULL pointers)");
         if (req && req->done_sem) {
-            xSemaphoreGive(req->done_sem);
+            platform_binary_sem_give(req->done_sem);
         }
         return;
     }
@@ -271,7 +272,7 @@ static void bt_mgr_handle_get_status(bt_mgr_request_t *req)
         ESP_LOGE(TAG, "GET_STATUS response buffer too small (%zu < %zu)",
                  req->response_size, sizeof(bt_mgr_status_response_t));
         if (req->done_sem) {
-            xSemaphoreGive(req->done_sem);
+            platform_binary_sem_give(req->done_sem);
         }
         return;
     }
@@ -292,7 +293,7 @@ static void bt_mgr_handle_get_status(bt_mgr_request_t *req)
 
     /* Signal completion */
     if (req->done_sem) {
-        xSemaphoreGive(req->done_sem);
+        platform_binary_sem_give(req->done_sem);
     }
 }
 
@@ -320,14 +321,14 @@ void bt_mgr_request_handler(uint16_t event, void *param)
         /* TODO: Implement in Phase 3 when converting streaming info reads */
         ESP_LOGW(TAG, "GET_STREAMING_INFO not yet implemented");
         if (req->done_sem) {
-            xSemaphoreGive(req->done_sem);  /* Signal to prevent deadlock */
+            platform_binary_sem_give(req->done_sem);  /* Signal to prevent deadlock */
         }
         break;
 
     default:
         ESP_LOGE(TAG, "Unknown request type: %d", req->type);
         if (req->done_sem) {
-            xSemaphoreGive(req->done_sem);
+            platform_binary_sem_give(req->done_sem);
         }
         break;
     }

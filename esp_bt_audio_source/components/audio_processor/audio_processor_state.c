@@ -126,7 +126,10 @@ int audio_bytes_per_sample(audio_bit_depth_t bit_depth)
     }
 }
 
+/* Weak stub for BT connection state check. Returns false (disconnected) by
+ * default to avoid optimistically assuming connection exists. Production code
+ * or tests must provide the real implementation. */
 bool __attribute__((weak)) bt_manager_is_a2dp_connected(void)
 {
-    return true;
+    return false;
 }

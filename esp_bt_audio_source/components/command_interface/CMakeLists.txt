@@ -4,7 +4,8 @@ set(priv_requires
     driver
     esp_app_format
     spiffs
-    util_safe)
+    util_safe
+    platform_shim)
 
 set(public_requires
     audio_processor

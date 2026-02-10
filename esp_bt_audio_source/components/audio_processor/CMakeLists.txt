@@ -25,4 +25,5 @@ idf_component_register(
         freertos
         driver
         esp_timer
+        platform_shim
 )

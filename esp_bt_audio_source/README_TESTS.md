@@ -108,7 +108,43 @@ Common mocks that need updates:
 - `test/host_test/mocks/nvs_storage_mock.c` - NVS storage functions
 - `test/host_test/mocks/mock_*.c` - Various ESP-IDF peripherals
 
-### 3. Install pre-push hook (RECOMMENDED)
+### 3. Understand weak stub strategy (CODE_REVIEW8 P2.B)
+
+**IMPORTANT:** Weak stubs now return **ERRORS** by default, not success.
+
+**Philosophy:**
+- **Fail-safe design**: Weak stubs should fail loudly (return error) rather than
+  silently succeed when the real implementation is missing.
+- **Explicit mocking**: Tests must explicitly link production code or provide mocks.
+- **Catch missing implementations**: If a test forgets to link required code, it fails
+  immediately rather than passing with no-op behavior.
+
+**Implementation:**
+- `command_interface.c`: Weak stubs return `CMD_ERROR_NOT_INITIALIZED`
+  - cmd_init(), cmd_deinit(), cmd_parse(), cmd_execute(), cmd_send_response(), cmd_process()
+  - Tests MUST link `commands.c` or provide explicit mocks
+- `audio_processor_state.c`: `bt_manager_is_a2dp_connected()` returns `false`
+  - Conservative default: assume disconnected unless proven otherwise
+  - Tests override when simulating connected state
+
+**Safe weak symbols** (test instrumentation, NOT production APIs):
+- `bt_manager.c`: Test hooks like `bt_manager_forced_disconnect_failure()` return 0
+  - These inject failures when needed; default = no forced failure (safe)
+- `nvs_storage.c`: Wrappers forward to `platform_storage_*()` functions
+  - Pass-through to real implementation (safe, allows fault injection)
+
+**How to verify your test has correct mocks:**
+```bash
+# Build standalone (clean build) - catches missing links immediately
+cd esp_bt_audio_source/test/host_test
+make test
+```
+
+**Common mistake:** Forgetting to add new functions to CMakeLists.txt when they're
+needed by tests. Weak stubs prevent silent success - build will fail or tests will
+error instead of passing incorrectly.
+
+### 4. Install pre-push hook (RECOMMENDED)
 
 Automatically run standalone tests before every push:
 

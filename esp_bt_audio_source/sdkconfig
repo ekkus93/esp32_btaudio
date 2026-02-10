@@ -448,6 +448,12 @@ CONFIG_AUDIO_DEFAULT_BIT_DEPTH=16
 CONFIG_AUDIO_AUTOSTART_DEFAULT=y
 CONFIG_AUDIO_RB_CAPACITY_KB=32
 # end of Audio Configuration Defaults
+
+#
+# Bluetooth Logging Configuration
+#
+# CONFIG_BT_VERBOSE_AUDIO_LOGGING is not set
+# end of Bluetooth Logging Configuration
 # end of A2DP Example Configuration
 
 #

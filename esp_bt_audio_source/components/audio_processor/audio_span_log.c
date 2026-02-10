@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
-#include "esp_heap_caps.h"
+#include "platform_memory.h"
 #include "esp_log.h"
 
 #define TAG "SPAN_LOG"
@@ -55,7 +55,7 @@ bool span_log_init(size_t max_entries)
 
     /* Allocate span entry buffer (DRAM for fast access, small size ~4-8KB) */
     size_t alloc_size = max_entries * sizeof(audio_rb_span_t);
-    s_span_log.entries = (audio_rb_span_t *)heap_caps_malloc(alloc_size, MALLOC_CAP_8BIT);
+    s_span_log.entries = (audio_rb_span_t *)platform_malloc(alloc_size, PLATFORM_MEM_CAP_8BIT);
     
     if (s_span_log.entries == NULL) {
         ESP_LOGE(TAG, "span_log_init: failed to allocate %zu bytes", alloc_size);
@@ -77,7 +77,7 @@ void span_log_deinit(void)
     portENTER_CRITICAL(&s_span_log.lock);
     
     if (s_span_log.entries != NULL) {
-        free(s_span_log.entries);
+        platform_free(s_span_log.entries);
         s_span_log.entries = NULL;
     }
     

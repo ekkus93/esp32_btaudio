@@ -3,7 +3,8 @@ set(priv_requires
     nvs_storage
     command_interface
     util_safe
-    audio_processor)
+    audio_processor
+    platform_shim)
 
 if(CONFIG_APP_NO_BLOBS)
     list(APPEND priv_requires bt_stack_stub)

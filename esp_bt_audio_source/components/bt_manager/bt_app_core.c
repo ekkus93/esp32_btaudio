@@ -16,6 +16,7 @@
 #include "osi/allocator.h"
 #include "util_safe.h"
 #include <stdarg.h>
+#include "platform_timing.h"
 
 
 /* Convenience aliases for safe memory functions */
@@ -179,7 +180,7 @@ static void bt_app_task_handler(void *arg)
             }
         } else {
             // If queue receive times out, sleep a bit to prevent tight loop
-            vTaskDelay(pdMS_TO_TICKS(10));
+            platform_delay_ms(10);
         }
     }
 }

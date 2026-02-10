@@ -12,6 +12,7 @@
 #include "bt_manager.h"
 #include "bt_api.h"
 #include "util_safe.h"
+#include "platform_sync.h"  /* CODE_REVIEW8 P2.2 Phase 1: Platform shim for sync */
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -78,11 +79,6 @@ extern int s_autostart_attempts;
  * See: code_review/BT_STATE_ACCESS_CONTRACT.md for design details.
  */
 
-#ifdef ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#endif
-
 /* Request types for BT manager state queries */
 typedef enum {
     BT_MGR_REQUEST_GET_STATUS = 0,      /* Get connection/audio status */
@@ -94,11 +90,7 @@ typedef struct {
     bt_mgr_request_type_t type;    /* Type of request */
     void *response_buf;             /* Caller-provided response buffer */
     size_t response_size;           /* Size of response buffer (for validation) */
-#ifdef ESP_PLATFORM
-    SemaphoreHandle_t done_sem;     /* Semaphore to signal completion */
-#else
-    void *done_sem;                 /* Placeholder for host builds */
-#endif
+    platform_binary_sem_t done_sem; /* Semaphore to signal completion (platform-agnostic) */
 } bt_mgr_request_t;
 
 /* Response structures for each request type */

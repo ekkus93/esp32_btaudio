@@ -10,6 +10,7 @@ set(EXTRA_COMPONENT_DIRS
 	"${CMAKE_SOURCE_DIR}/../../components/audio_processor"
 	"${CMAKE_SOURCE_DIR}/../../components/util_safe"
 	"${CMAKE_SOURCE_DIR}/../../components/nvs_storage"
+	"${CMAKE_SOURCE_DIR}/../../components/platform_shim"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

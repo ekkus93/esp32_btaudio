@@ -1,5 +1,6 @@
 #include "commands_priv.h"
 #include "util_safe.h"
+#include "platform_timing.h"
 
 #if !defined(ESP_PLATFORM)
 int g_mock_log_level = ESP_LOG_INFO;
@@ -157,24 +158,7 @@ bool cmd_parse_log_level(const char *level_str, int *out_level)
 
 uint64_t cmd_get_timestamp_ms(void)
 {
-#ifdef ESP_PLATFORM
-    return (uint64_t)(esp_timer_get_time() / 1000ULL);
-#else
-#if defined(CLOCK_MONOTONIC)
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-    {
-        return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000ULL);
-    }
-#endif
-    struct timeval tv;
-    if (gettimeofday(&tv, NULL) == 0)
-    {
-        return (uint64_t)tv.tv_sec * 1000ULL + (uint64_t)(tv.tv_usec / 1000ULL);
-    }
-    static uint64_t fallback_ms;
-    return ++fallback_ms;
-#endif
+    return platform_get_time_ms();
 }
 
 void cmd_append_metadata(char *buf, size_t buf_len, const char *key, const char *value)

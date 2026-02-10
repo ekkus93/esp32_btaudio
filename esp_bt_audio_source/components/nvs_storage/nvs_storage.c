@@ -1,6 +1,5 @@
 #include "nvs_storage.h"
-#include "nvs_flash.h"
-#include "nvs.h"
+#include "platform_storage.h"
 #include <string.h>
 #include "esp_log.h"
 #include <ctype.h>
@@ -14,19 +13,19 @@ static const char* TAG = "nvs_storage";
 static void __attribute__((unused)) nvs_storage_suppress_unused_tag(void) { (void)TAG; }
 static const char* NVS_NAMESPACE = "bt_audio_cfg";
 
-/* Overridable wrappers so tests can inject NVS behavior without the real driver. */
-__attribute__((weak)) esp_err_t nvs_storage_flash_init(void) { return nvs_flash_init(); }
-__attribute__((weak)) esp_err_t nvs_storage_flash_erase(void) { return nvs_flash_erase(); }
-__attribute__((weak)) esp_err_t nvs_storage_open(const char* ns, nvs_open_mode_t mode, nvs_handle_t* h) { return nvs_open(ns, mode, h); }
-__attribute__((weak)) esp_err_t nvs_storage_close(nvs_handle_t h) { nvs_close(h); return ESP_OK; }
-__attribute__((weak)) esp_err_t nvs_storage_get_i32(nvs_handle_t h, const char* key, int32_t* out) { return nvs_get_i32(h, key, out); }
-__attribute__((weak)) esp_err_t nvs_storage_set_i32(nvs_handle_t h, const char* key, int32_t val) { return nvs_set_i32(h, key, val); }
-__attribute__((weak)) esp_err_t nvs_storage_get_str(nvs_handle_t h, const char* key, char* buf, size_t* len) { return nvs_get_str(h, key, buf, len); }
-__attribute__((weak)) esp_err_t nvs_storage_set_str(nvs_handle_t h, const char* key, const char* val) { return nvs_set_str(h, key, val); }
-__attribute__((weak)) esp_err_t nvs_storage_get_blob(nvs_handle_t h, const char* key, void* buf, size_t* len) { return nvs_get_blob(h, key, buf, len); }
-__attribute__((weak)) esp_err_t nvs_storage_set_blob(nvs_handle_t h, const char* key, const void* buf, size_t len) { return nvs_set_blob(h, key, buf, len); }
-__attribute__((weak)) esp_err_t nvs_storage_erase_key(nvs_handle_t h, const char* key) { return nvs_erase_key(h, key); }
-__attribute__((weak)) esp_err_t nvs_storage_commit(nvs_handle_t h) { return nvs_commit(h); }
+/* Platform storage wrappers - weak so tests can override for fault injection */
+__attribute__((weak)) esp_err_t nvs_storage_flash_init(void) { return platform_storage_init(); }
+__attribute__((weak)) esp_err_t nvs_storage_flash_erase(void) { return platform_storage_erase(); }
+__attribute__((weak)) esp_err_t nvs_storage_open(const char* ns, platform_storage_mode_t mode, platform_storage_handle_t* h) { return platform_storage_open(ns, mode, h); }
+__attribute__((weak)) esp_err_t nvs_storage_close(platform_storage_handle_t h) { return platform_storage_close(h); }
+__attribute__((weak)) esp_err_t nvs_storage_get_i32(platform_storage_handle_t h, const char* key, int32_t* out) { return platform_storage_get_i32(h, key, out); }
+__attribute__((weak)) esp_err_t nvs_storage_set_i32(platform_storage_handle_t h, const char* key, int32_t val) { return platform_storage_set_i32(h, key, val); }
+__attribute__((weak)) esp_err_t nvs_storage_get_str(platform_storage_handle_t h, const char* key, char* buf, size_t* len) { return platform_storage_get_str(h, key, buf, len); }
+__attribute__((weak)) esp_err_t nvs_storage_set_str(platform_storage_handle_t h, const char* key, const char* val) { return platform_storage_set_str(h, key, val); }
+__attribute__((weak)) esp_err_t nvs_storage_get_blob(platform_storage_handle_t h, const char* key, void* buf, size_t* len) { return platform_storage_get_blob(h, key, buf, len); }
+__attribute__((weak)) esp_err_t nvs_storage_set_blob(platform_storage_handle_t h, const char* key, const void* buf, size_t len) { return platform_storage_set_blob(h, key, buf, len); }
+__attribute__((weak)) esp_err_t nvs_storage_erase_key(platform_storage_handle_t h, const char* key) { return platform_storage_erase_key(h, key); }
+__attribute__((weak)) esp_err_t nvs_storage_commit(platform_storage_handle_t h) { return platform_storage_commit(h); }
 
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
@@ -36,7 +35,7 @@ __attribute__((weak)) esp_err_t nvs_storage_commit(nvs_handle_t h) { return nvs_
 esp_err_t nvs_storage_init(void)
 {
     esp_err_t err = nvs_storage_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (err == PLATFORM_ERR_STORAGE_NO_FREE_PAGES || err == PLATFORM_ERR_STORAGE_NEW_VERSION) {
         esp_err_t erase_err = nvs_storage_flash_erase();
         if (erase_err != ESP_OK) {
             return erase_err;
@@ -51,8 +50,8 @@ esp_err_t nvs_storage_get_volume(uint8_t* volume)
     if (!volume) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -67,8 +66,8 @@ esp_err_t nvs_storage_get_volume(uint8_t* volume)
 
 esp_err_t nvs_storage_set_volume(uint8_t volume)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -83,8 +82,8 @@ esp_err_t nvs_storage_set_volume(uint8_t volume)
 
 esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* word_select, int* din, int* dout)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -127,8 +126,8 @@ esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* word_select, int* din, int* d
 
 esp_err_t nvs_storage_set_i2s_pins(int bclk, int word_select, int din, int dout)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -154,8 +153,8 @@ esp_err_t nvs_storage_get_device_name(char* buf, size_t buf_len)
     if (!buf || buf_len == 0) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -170,8 +169,8 @@ esp_err_t nvs_storage_set_device_name(const char* name)
     if (!name) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -188,8 +187,8 @@ esp_err_t nvs_storage_get_default_pin(char* buf, size_t buf_len)
     if (!buf || buf_len == 0) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -204,8 +203,8 @@ esp_err_t nvs_storage_set_default_pin(const char* pin)
     if (!pin) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -222,8 +221,8 @@ esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
     if (!autostart) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -239,8 +238,8 @@ esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
 
 esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -292,8 +291,8 @@ esp_err_t nvs_storage_get_paired_count(int* count)
     if (!count) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -313,8 +312,8 @@ esp_err_t nvs_storage_get_paired_device_by_index(int index, char* mac, size_t ma
     if (index < 0 || mac == NULL || mac_len == 0) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -352,8 +351,8 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
     if (!parse_mac_str(mac, mac_bin)) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -404,8 +403,8 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
     if (!parse_mac_str(mac, mac_bin)) {
     	return ESP_ERR_INVALID_ARG;
     }
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }
@@ -471,8 +470,8 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac)
 
 esp_err_t nvs_storage_clear_paired_devices(void)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
     if (err != ESP_OK) {
     	return err;
     }

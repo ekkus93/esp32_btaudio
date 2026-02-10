@@ -9,6 +9,7 @@ set(EXTRA_COMPONENT_DIRS
     "../../components/audio_processor"
     "../../components/util_safe"
     "../../components/nvs_storage"
+    "../../components/platform_shim"
     "../test_app/components"
     "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )

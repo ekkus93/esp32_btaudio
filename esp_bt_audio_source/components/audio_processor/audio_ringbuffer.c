@@ -47,7 +47,7 @@
 #else
 #include "freertos/semphr.h"  /* For portENTER_CRITICAL/portEXIT_CRITICAL macros */
 #endif
-#include "esp_heap_caps.h"
+#include "platform_memory.h"
 #include "esp_log.h"
 
 static const char *TAG = "audio_rb";
@@ -103,26 +103,26 @@ esp_err_t audio_rb_init(audio_rb_t **rb, size_t capacity_bytes, bool use_psram)
     }
 
     /* Allocate ring buffer structure (always DRAM, small) */
-    audio_rb_t *new_rb = heap_caps_malloc(sizeof(audio_rb_t), MALLOC_CAP_8BIT);
+    audio_rb_t *new_rb = platform_malloc(sizeof(audio_rb_t), PLATFORM_MEM_CAP_8BIT);
     if (new_rb == NULL) {
         ESP_LOGE(TAG, "Failed to allocate ring buffer struct");
         return ESP_ERR_NO_MEM;
     }
 
     /* Allocate backing buffer (DRAM or PSRAM) */
-    uint32_t caps = use_psram ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : MALLOC_CAP_8BIT;
-    uint8_t *buffer = heap_caps_malloc(capacity_bytes, caps);
+    uint32_t caps = use_psram ? (PLATFORM_MEM_CAP_SPIRAM | PLATFORM_MEM_CAP_8BIT) : PLATFORM_MEM_CAP_8BIT;
+    uint8_t *buffer = platform_malloc(capacity_bytes, caps);
     if (buffer == NULL) {
         /* If PSRAM allocation fails, try DRAM fallback */
         if (use_psram) {
             ESP_LOGW(TAG, "PSRAM allocation failed, falling back to DRAM");
-            buffer = heap_caps_malloc(capacity_bytes, MALLOC_CAP_8BIT);
+            buffer = platform_malloc(capacity_bytes, PLATFORM_MEM_CAP_8BIT);
             use_psram = false;  /* Update flag to reflect actual allocation */
         }
         
         if (buffer == NULL) {
             ESP_LOGE(TAG, "Failed to allocate ring buffer backing store (%zu bytes)", capacity_bytes);
-            heap_caps_free(new_rb);
+            platform_free(new_rb);
             return ESP_ERR_NO_MEM;
         }
     }
@@ -151,10 +151,10 @@ void audio_rb_deinit(audio_rb_t *rb)
     }
 
     if (rb->buffer != NULL) {
-        heap_caps_free(rb->buffer);
+        platform_free(rb->buffer);
     }
 
-    heap_caps_free(rb);
+    platform_free(rb);
 }
 
 size_t audio_rb_write(audio_rb_t *rb, const uint8_t *src, size_t len)

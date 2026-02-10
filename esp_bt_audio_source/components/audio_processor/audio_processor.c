@@ -18,8 +18,9 @@
 #include "util_safe.h"
 #include "nvs_storage.h"
 #include "esp_timer.h"
-#include "esp_heap_caps.h"
+#include "platform_memory.h"
 #include "audio_span_log.h"
+#include "platform_timing.h"
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
@@ -197,7 +198,7 @@ static void audio_engine_task(void *arg)
     }
     
     /* Allocate chunk buffer (DMA-capable for future I2S reads) */
-    uint8_t *chunk_buf = heap_caps_malloc(AUDIO_ENGINE_CHUNK_BYTES, MALLOC_CAP_DMA);
+    uint8_t *chunk_buf = platform_malloc(AUDIO_ENGINE_CHUNK_BYTES, PLATFORM_MEM_CAP_DMA);
     if (chunk_buf == NULL) {
         ESP_LOGE(TAG, "audio_engine_task: failed to allocate chunk buffer");
         vTaskDelete(NULL);
@@ -271,7 +272,7 @@ static void audio_engine_task(void *arg)
                     /* Push span entry (timestamp in milliseconds) */
                     span_log_push(
                         s_span_seq++,
-                        (uint32_t)(esp_timer_get_time() / 1000),
+                        (uint32_t)platform_get_time_ms(),
                         written,
                         ring_used_after,
                         (uint8_t)active_source,
@@ -285,7 +286,7 @@ static void audio_engine_task(void *arg)
     }
     
     /* Cleanup (unreachable in normal operation) */
-    heap_caps_free(chunk_buf);
+    platform_free(chunk_buf);
     vTaskDelete(NULL);
 }
 #endif /* UNIT_TEST */
@@ -357,18 +358,18 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     esp_err_t ret = ESP_FAIL;
     while (try_work_bytes >= min_work_bytes && s_runtime_work_bytes == 0U) {
-        const uint32_t caps = runtime_psram_ready ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : MALLOC_CAP_8BIT;
-        s_capture_buffer = heap_caps_malloc(try_work_bytes, caps);
-        s_proc_buffer = heap_caps_malloc(try_work_bytes, caps);
-        s_proc_buffer2 = heap_caps_malloc(try_work_bytes, caps);
+        const uint32_t caps = runtime_psram_ready ? (PLATFORM_MEM_CAP_SPIRAM | PLATFORM_MEM_CAP_8BIT) : PLATFORM_MEM_CAP_8BIT;
+        s_capture_buffer = platform_malloc(try_work_bytes, caps);
+        s_proc_buffer = platform_malloc(try_work_bytes, caps);
+        s_proc_buffer2 = platform_malloc(try_work_bytes, caps);
         if (s_capture_buffer != NULL && s_proc_buffer != NULL && s_proc_buffer2 != NULL) {
             s_runtime_work_bytes = try_work_bytes;
             break;
         }
 
-        if (s_capture_buffer) { heap_caps_free(s_capture_buffer); s_capture_buffer = NULL; }
-        if (s_proc_buffer) { heap_caps_free(s_proc_buffer); s_proc_buffer = NULL; }
-        if (s_proc_buffer2) { heap_caps_free(s_proc_buffer2); s_proc_buffer2 = NULL; }
+        if (s_capture_buffer) { platform_free(s_capture_buffer); s_capture_buffer = NULL; }
+        if (s_proc_buffer) { platform_free(s_proc_buffer); s_proc_buffer = NULL; }
+        if (s_proc_buffer2) { platform_free(s_proc_buffer2); s_proc_buffer2 = NULL; }
 
         try_work_bytes /= 2U;
     }
@@ -630,15 +631,15 @@ esp_err_t audio_processor_deinit(void)
     synth_manager_reset_state();
 
     if (s_capture_buffer) {
-        heap_caps_free(s_capture_buffer);
+        platform_free(s_capture_buffer);
         s_capture_buffer = NULL;
     }
     if (s_proc_buffer) {
-        heap_caps_free(s_proc_buffer);
+        platform_free(s_proc_buffer);
         s_proc_buffer = NULL;
     }
     if (s_proc_buffer2) {
-        heap_caps_free(s_proc_buffer2);
+        platform_free(s_proc_buffer2);
         s_proc_buffer2 = NULL;
     }
 

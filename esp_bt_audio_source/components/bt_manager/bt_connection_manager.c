@@ -16,6 +16,7 @@
 #include "bt_source.h"
 #include "esp_rom_sys.h"
 #include "util_safe.h"
+#include "platform_timing.h"
 
 static const char *TAG = "BT_CONNECTION_MGR";
 
@@ -161,7 +162,7 @@ static void bt_audio_state_handler(esp_a2d_audio_state_t state, esp_bd_addr_t bd
                 
                 // After a short delay, transition to streaming state
                 // In a real implementation, this would typically be handled by data flow
-                vTaskDelay(pdMS_TO_TICKS(100));
+                platform_delay_ms(100);
                 update_streaming_state(BT_STREAMING_STATE_STREAMING);
                 ESP_LOGI(TAG, "Audio streaming started");  // NOLINT(bugprone-branch-clone)
             } else {
@@ -196,7 +197,7 @@ static void attempt_reconnection(void)
 
     /* Wait before trying to reconnect */
     if (s_reconnect_delay_ms > 0U) {
-        vTaskDelay(pdMS_TO_TICKS(s_reconnect_delay_ms));
+        platform_delay_ms(s_reconnect_delay_ms);
     }
     
     /* Attempt reconnection */
