@@ -39,6 +39,7 @@ bt_err_t bt_start_scan(void);
  */
 bt_err_t bt_stop_scan(void);
 
+#ifdef ESP_PLATFORM
 /* Internal functions used by bt_manager GAP callback */
 
 /**
@@ -68,3 +69,4 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
  * @param state Discovery state (STARTED or STOPPED)
  */
 void bt_scan_handle_state_change(esp_bt_gap_discovery_state_t state);
+#endif  // ESP_PLATFORM

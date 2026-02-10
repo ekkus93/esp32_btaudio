@@ -94,6 +94,7 @@ bt_err_t bt_stop_scan(void)
     return ESP_OK;
 }
 
+#ifdef ESP_PLATFORM
 /* Internal API for GAP callback */
 
 void bt_scan_handle_discovery_result(const esp_bd_addr_t bda, 
@@ -145,3 +146,4 @@ void bt_scan_handle_state_change(esp_bt_gap_discovery_state_t state)
         bt_ctx.scanning = true;
     }
 }
+#endif  // ESP_PLATFORM

@@ -58,4 +58,3 @@ extern int s_autostart_attempts;
 #define safe_memset util_safe_memset
 #define parse_mac_bytes util_parse_mac
 
-#endif // BT_MANAGER_INTERNAL_H

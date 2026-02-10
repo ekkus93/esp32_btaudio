@@ -1,4 +1,5 @@
 #include "bt_manager.h"
+#include "bt_manager_internal.h"
 #include "bt_api.h"
 #include "bt_pairing_store.h"
 #include "bt_scan.h"
@@ -50,20 +51,7 @@ __attribute__((weak)) int bt_manager_forced_start_failure(void) { return 0; }
 __attribute__((weak)) int bt_manager_forced_stop_failure(void) { return 0; }
 
 // Private data
-static struct {
-    bool initialized;
-    char device_name[32];
-    bool scanning;
-    bool connected;
-    bool audio_playing;
-    int volume;
-    bt_device_list_t discovered_devices;
-    bt_device_list_t paired_devices;
-    bt_connected_cb connected_callback;
-    bt_disconnected_cb disconnected_callback;
-    char connected_mac[18];
-    char connected_name[32];
-} bt_ctx = {
+bt_manager_context_t bt_ctx = {
     .initialized = false,
     .scanning = false,
     .connected = false,
@@ -73,7 +61,7 @@ static struct {
 
 /* Runtime preference: automatically issue START once connected/when audio is
  * requested so the sink begins draining without manual intervention. */
-static bool s_autostart_enabled = true;
+bool s_autostart_enabled = true;
 
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
@@ -155,30 +143,30 @@ void bt_manager_test_reset_pending(void)
 bool bt_manager_test_gap_pin_request(const char* mac)
 {
     esp_bd_addr_t addr = {0};
-    if (!bt_pairing_parse_mac_string(mac, addr)) {
+    if (!bt_pairing_parse_mac(mac, addr)) {
         return false;
     }
-    bt_gap_handle_pin_req(addr);
+    bt_pairing_handle_pin_request(addr);
     return true;
 }
 
 bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey)
 {
     esp_bd_addr_t addr = {0};
-    if (!bt_pairing_parse_mac_string(mac, addr)) {
+    if (!bt_pairing_parse_mac(mac, addr)) {
         return false;
     }
-    bt_gap_handle_ssp_confirm(addr, passkey);
+    bt_pairing_handle_ssp_confirm(addr, passkey);
     return true;
 }
 
 void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 {
     esp_bd_addr_t addr = {0};
-    if (!bt_pairing_parse_mac_string(mac, addr)) {
+    if (!bt_pairing_parse_mac(mac, addr)) {
         return;
     }
-    bt_gap_handle_auth_cmpl(addr, success ? ESP_BT_STATUS_SUCCESS : ESP_BT_STATUS_AUTH_FAILURE);
+    bt_pairing_handle_auth_complete(addr, success ? ESP_BT_STATUS_SUCCESS : ESP_BT_STATUS_AUTH_FAILURE);
 }
 #endif
 
@@ -1049,10 +1037,10 @@ void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_para
 
     switch (event) {
         case ESP_A2D_CONNECTION_STATE_EVT:
-            bt_manager_handle_a2dp_connection(param);
+            bt_events_handle_a2dp_connection(param);
             break;
         case ESP_A2D_AUDIO_STATE_EVT:
-            bt_manager_handle_a2dp_audio(param);
+            bt_events_handle_a2dp_audio(param);
 #ifdef CONFIG_BT_MOCK_TESTING
             if (bt_source_mock_handle_audio_state) {
                 bt_source_mock_handle_audio_state(param->audio_stat.state);

@@ -1,6 +1,6 @@
 #include "bt_events_a2dp.h"
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 #include "esp_log.h"
 #include "bt_manager_internal.h"
 #include "bt_manager.h"
@@ -99,6 +99,7 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
     }
 }
 
+#ifdef ESP_PLATFORM
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 {
@@ -114,5 +115,6 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 
     return (int32_t)bytes_read;
 }
-
 #endif // ESP_PLATFORM
+
+#endif // ESP_PLATFORM || UNIT_TEST

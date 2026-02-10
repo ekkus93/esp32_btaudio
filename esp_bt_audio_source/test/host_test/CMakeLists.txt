@@ -52,6 +52,12 @@ endif()
 add_executable(test_commands test_commands.c 
     ../../components/command_interface/commands.c
     ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
 target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
@@ -69,6 +75,12 @@ add_test(NAME test_commands COMMAND $<TARGET_FILE:test_commands>)
 
 add_executable(test_bluetooth test_bluetooth.c 
     ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_i2s.c)
 # Ensure test hooks are linked for bt_manager tests
 target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
@@ -85,6 +97,12 @@ add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 add_executable(test_bt_manager_profiles
     test_bt_manager_profiles.c
     ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
     mocks/nvs_storage_mock.c
@@ -264,6 +282,24 @@ add_executable(test_pairing_confirm test_pairing_confirm.c
 target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_confirm unity util_safe_host command_interface_host)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_confirm PRIVATE mocks/audio_processor_host_stub.c)
@@ -294,6 +330,18 @@ add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
 target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_enter_pin unity util_safe_host command_interface_host)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/audio_processor_host_stub.c)
@@ -316,6 +364,18 @@ add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
 target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_edge_cases unity util_safe_host command_interface_host)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/audio_processor_host_stub.c)
@@ -359,6 +419,18 @@ add_test(NAME test_event_stress COMMAND $<TARGET_FILE:test_event_stress>)
 target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
 # Ensure commands.c links with bt_manager and nvs storage for host tests
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
@@ -374,6 +446,18 @@ add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
     mocks/mock_gap.c)
 target_link_libraries(test_pairing_seq_hardening unity util_safe_host command_interface_host)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
@@ -386,6 +470,18 @@ add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
@@ -447,6 +543,18 @@ add_executable(dump_event_stress_output dump_event_stress_output.c
     mocks/mock_avrc.c)
 target_link_libraries(dump_event_stress_output m util_safe_host command_interface_host)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
 target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
 target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
@@ -474,6 +582,18 @@ add_executable(test_pairing_adapter_runner
 target_sources(test_pairing_adapter_runner PRIVATE test_pairing_adapter_main.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_manager.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_adapter_runner PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(PREV_TARGET PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_pairing_adapter_runner unity util_safe_host command_interface_host)
 add_test(NAME test_pairing_adapter_runner COMMAND $<TARGET_FILE:test_pairing_adapter_runner>)
