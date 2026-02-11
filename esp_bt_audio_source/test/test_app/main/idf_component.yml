@@ -1,3 +1,0 @@
-dependencies:
-  test_utils:
-    override_path: "$IDF_PATH/tools/unit-test-app/components/test_utils"

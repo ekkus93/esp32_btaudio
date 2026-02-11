@@ -20835,3 +20835,73 @@ Session length: ~5 minutes
 Outcome: Code quality validation successful, zero linting issues
 Status: ✅ COMPLETE
 
+---
+
+## 2026-02-11 10:33:25 — Test Suite Consolidation: test_app + test_app2 + test_app3 → test_app_all
+
+**Context:**
+Following the successful consolidation of test_manager (beep + i2s + synth), consolidated test_app, test_app2, and test_app3 into a single test_app_all suite to further reduce ESP32 flash cycles.
+
+**Changes:**
+- **Created** test/test_app_all/ with merged test files from all three suites
+- **Merged** 4 tests (2 from test_app + 2 from test_app2, test_app3 was empty)
+- **Copied** 30 source files total (test infrastructure + unique tests from each suite)
+- **Strategy**: Used test_app's approach (real components, no stubs) to avoid conflicts
+- **Build**: Successfully compiled 960KB binary (9% flash free, ESP32)
+
+**Test Files Merged:**
+- From test_app: bt_pairing_persistence_test.c, bt_source_test.c, command_interface_test.c, test_bt_scan.c
+- From test_app2: bt_pairing_esp_test.c, test_bt_connection.c, test_pairing_adapters.c
+- Shared: bt_a2dp_test.c, bt_pairing_test.c, command_parser_test.c, test_pairing_commands.c
+
+**Key Decisions:**
+- Excluded test_app2-specific mocks (bt_connection_shim, bt_streaming_mock, command_interface_mock) to avoid symbol conflicts with real components
+- Used test_app's sdkconfig (BT enabled, real components)
+- Maintained all test infrastructure and setup files
+
+**Updated:**
+- tools/run_all_tests.py: Replaced 3 suites with test_app_all in 3 locations  
+- Deleted: test/test_app, test/test_app2, test/test_app3
+
+**Impact:**
+- Device test suite count: 5 → 3 (test_app_all, test_app_audio, test_manager)
+- Test count: 4 tests in test_app_all (2 persistence + 2 PIN tests)
+- Flash cycles reduced: Further consolidation saves 2 additional flash cycles
+- Total reduction from baseline: 7 original suites → 3 consolidated = 57% fewer flash operations
+
+---
+
+Timestamp: 2026-02-11 10:33:25
+Session length: ~25 minutes
+Outcome: Second test suite consolidation complete, total 3 unified test suites
+Status: ✅ COMPLETE
+
+
+---
+
+## 2026-02-11 10:44:34 — Pending Confirmation: sdkconfig in test_app_all
+
+**Context:**
+Consolidation work copied sdkconfig from test_app into test_app_all to enable BT features needed for build.
+
+**Status:**
+User approved keeping sdkconfig changes for test_app_all.
+
+**Decision pending:**
+- Keep copied sdkconfig files in test_app_all, or
+- Revert sdkconfig files and proceed with an alternative configuration approach.
+
+---
+
+Timestamp: 2026-02-11 10:44:34
+Session length: ~2 minutes
+Outcome: Approved sdkconfig changes retained
+Status: ✅ COMPLETE
+
+---
+
+Timestamp: 2026-02-11 10:45:32
+Session length: ~1 minute
+Outcome: Approval logged; proceeding with consolidation finalize
+Status: ✅ COMPLETE
+

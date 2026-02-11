@@ -1,6 +1,0 @@
-menu "test_app3 options"
-
-comment "Moved options"
-	comment "See components/audio_test/Kconfig.projbuild for option definitions"
-
-endmenu

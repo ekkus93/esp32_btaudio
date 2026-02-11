@@ -1,25 +1,23 @@
-# ESP-IDF BT Audio Source Test App
+# ESP-IDF BT Audio Source Test App (Consolidated)
 cmake_minimum_required(VERSION 3.16)
 
 # Set extra components directory
 set(EXTRA_COMPONENT_DIRS
     "../../components"
     "../../test/component"
-    "${CMAKE_SOURCE_DIR}/../test_app/components"
+    "${CMAKE_SOURCE_DIR}/components"
     "$ENV{IDF_PATH}/tools/unit-test-app/components"
 )
-
-# Exclude the real audio_processor component to avoid conflicts with stubs
-set(EXCLUDE_COMPONENTS audio_processor)
 
 # Include ESP-IDF build system
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # Set project name
-project(esp_bt_audio_source_test2)
+project(esp_bt_audio_source_test_all)
 
 # Optionally add compile definitions for testing mode
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)
+target_compile_definitions(${PROJECT_NAME}.elf PRIVATE ESP_PLATFORM)
 
 # Add bt_mock component to include directories
 idf_component_get_property(bt_mock_dir bt_mock COMPONENT_DIR)
@@ -37,7 +35,8 @@ target_include_directories(${PROJECT_NAME}.elf PUBLIC
 
 # Ensure components expose their unit-test hooks when building the Unity firmware.
 idf_component_get_property(bt_manager_lib bt_manager COMPONENT_LIB)
-target_compile_definitions(${bt_manager_lib} PRIVATE UNIT_TEST)
+# Enable test-only paths inside bt_manager when building the Unity firmware.
+target_compile_definitions(${bt_manager_lib} PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING)
 
 # Ensure linker pulls in the command_interface symbols when resolving
 # references from bt_mock by explicitly linking the component libraries
@@ -50,7 +49,3 @@ target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_mock_lib} ${command_inter
 # on-device test images that don't include the full main application.
 idf_component_get_property(bt_test_stubs_lib bt_test_stubs COMPONENT_LIB)
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE ${bt_test_stubs_lib})
-# Add device-side Unity test that exercises the real command parser.
-# The component's own CMakeLists already registers the `main/` sources. Do
-# not add them again here or the linker will see duplicate symbols.
-

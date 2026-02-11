@@ -93,10 +93,8 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
 
     if remove_device:
         unity_projects = [
-            root / "esp_bt_audio_source" / "test" / "test_app",
-            root / "esp_bt_audio_source" / "test" / "test_app2",
+            root / "esp_bt_audio_source" / "test" / "test_app_all",
             root / "esp_bt_audio_source" / "test" / "test_app_audio",
-            root / "esp_bt_audio_source" / "test" / "test_app3",
             root / "esp_bt_audio_source" / "test" / "test_manager",
         ]
         for proj in unity_projects:
@@ -541,10 +539,8 @@ def aggregate_summary(root: Path) -> dict:
             return None
         return None
 
-    files = [root / "esp_bt_audio_source" / "test" / "test_app" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_app2" / "build" / "one_run_unity.log",
+    files = [root / "esp_bt_audio_source" / "test" / "test_app_all" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_manager" / "build" / "one_run_unity.log"]
 
     for f in files:
@@ -739,10 +735,8 @@ def main(argv: list[str] | None = None):
                 pass
         runner = ROOT / "tools" / "run_unity.py"
         suites = [
-            ROOT / "esp_bt_audio_source" / "test" / "test_app",
-            ROOT / "esp_bt_audio_source" / "test" / "test_app2",
+            ROOT / "esp_bt_audio_source" / "test" / "test_app_all",
             ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
-            ROOT / "esp_bt_audio_source" / "test" / "test_app3",
             ROOT / "esp_bt_audio_source" / "test" / "test_manager",
         ]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
