@@ -126,16 +126,7 @@ cmd_status_t cmd_handle_beep(const cmd_context_t *ctx)
         }
     }
 #endif
-#ifdef ESP_PLATFORM
-    bool _prev_synth = audio_processor_is_synth_mode_enabled();
-    audio_processor_set_synth_mode(true);
-#endif
     esp_err_t _beep_res = audio_processor_beep_tone(CMD_BEEP_DURATION_MS, CMD_BEEP_FREQ_HZ);
-#ifdef ESP_PLATFORM
-    if (!_prev_synth) {
-        audio_processor_set_synth_mode(false);
-    }
-#endif
     if (_beep_res == ESP_OK) {
         cmd_send_response("OK", "BEEP", "SENT", NULL);
     } else {

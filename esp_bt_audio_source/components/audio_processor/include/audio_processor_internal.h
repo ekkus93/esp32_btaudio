@@ -140,6 +140,8 @@ extern bool s_beep_prefill_active;
 extern size_t s_beep_prefill_accum_bytes;
 extern size_t s_beep_prefill_goal_bytes;
 extern bool s_beep_restore_synth;
+extern bool s_beep_restore_i2s;  /* F1.2: Restore I2S after beep if it was active */
+extern volatile bool s_drop_ring_audio;  /* F1.4: Drain ring buffer on beep start */
 extern bool s_trace_next_read_call;
 extern bool s_trace_read_until_beep_done;
 extern bool s_last_source_was_synth;

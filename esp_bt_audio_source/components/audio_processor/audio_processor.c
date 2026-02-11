@@ -98,6 +98,16 @@ typedef enum {
 
 static audio_source_t get_active_source(void)
 {
+    /* F1.5.1: BEEP Priority - Return silence during beep (F1: BEEP Priority Mode)
+     * WHY: BEEP must play pure, not mixed with I2S or SYNTH audio.
+     * HOW: Check beep state before source priority, return SILENCE if active.
+     *      beep_overlay_fill() will mix the beep tone over silence in produce_audio_chunk().
+     * CORRECTNESS: beep_overlay_is_active() checks beep_manager state,
+     *              s_beep_remaining_bytes tracks audio engine's beep duration estimate. */
+    if (beep_overlay_is_active() || s_beep_remaining_bytes > 0) {
+        return AUDIO_SOURCE_SILENCE;
+    }
+    
     /* Priority 1: Forced SYNTH mode (user explicitly requested via SYNTH ON) */
     if (s_force_synth) {
         return AUDIO_SOURCE_SYNTH;
@@ -562,30 +572,27 @@ esp_err_t audio_processor_start(void)
     wav_playback_abort(__func__);
     audio_processor_beep_reset();
 
-    /* Always start I2S manager, even if SYNTH mode is active (CODE_REVIEW7 Task 1.2).
+    /* F1.6.2: I2S/SYNTH mutual exclusion - don't start I2S if SYNTH mode active
+     * WHY: I2S and SYNTH must never run simultaneously (F1: BEEP Priority Mode).
+     * HOW: Check s_force_synth before starting I2S. If SYNTH active, skip I2S start.
      * 
-     * Rationale:
-     * 1. AUTO-RECONNECT USE CASE: If Bluetooth headset was previously paired, ESP32 may
-     *    automatically reconnect on power-up. I2S audio should stream immediately without
-     *    requiring manual START command.
-     * 
-     * 2. FAST SWITCHING: Ensures instant response when toggling SYNTH OFF. Starting I2S
-     *    on-demand adds ~50ms latency.
-     * 
-     * 3. EARLY FAILURE DETECTION: I2S hardware issues detected at startup, not mid-session.
-     * 
-     * 4. POWER COST NEGLIGIBLE: ~1-2mA for development/bench device (USB or PSU powered,
-     *    not battery-constrained).
-     * 
-     * 5. SIMPLE STATE MACHINE: No lazy initialization needed. SYNTH mode overrides I2S
-     *    via priority in get_active_source() (see Task 1.1 fix).
-     * 
-     * Decision: Keep I2S auto-start (Option A) per CODE_REVIEW7_TODO.md Task 1.2.
-     */
-    esp_err_t ret = i2s_manager_start();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        return ret;
+     * UPDATED from CODE_REVIEW7 Task 1.2: Previous policy was "always start I2S" for
+     * auto-reconnect and fast switching. Now enforcing strict mutual exclusion per F1.6.
+     * Trade-off: SYNTH mode users must explicitly disable SYNTH before I2S audio.
+     * Benefit: Clear source ownership, no simultaneous hardware access. */
+    if (s_force_synth) {
+        ESP_LOGI(TAG, "audio_processor_start: skipping I2S start (SYNTH mode active)");
+    } else {
+        /* Start I2S manager for capture (CODE_REVIEW7 Task 1.2 rationale still applies):
+         * 1. AUTO-RECONNECT: I2S streams immediately on BT reconnect
+         * 2. FAST SWITCHING: No on-demand startup latency
+         * 3. EARLY FAILURE DETECTION: Hardware issues found at startup
+         * 4. POWER COST NEGLIGIBLE: ~1-2mA for dev/bench device */
+        esp_err_t ret = i2s_manager_start();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
+            return ret;
+        }
     }
 
 #ifndef UNIT_TEST
@@ -1305,7 +1312,30 @@ bool audio_processor_is_synth_mode_enabled(void)
 void audio_processor_set_synth_mode(bool enable)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    s_force_synth = enable;
+    
+    /* F1.6.1: Enforce I2S/SYNTH mutual exclusion (F1: BEEP Priority Mode)
+     * WHY: I2S and SYNTH must never run simultaneously - they're mutually exclusive sources.
+     * HOW: When enabling SYNTH, stop I2S if running. When disabling SYNTH, start I2S if processor running.
+     * CORRECTNESS: Source priority in get_active_source() ensures only one active at a time. */
+    if (enable) {
+        /* Enabling SYNTH mode - stop I2S if running */
+        if (i2s_manager_is_running()) {
+            ESP_LOGI(TAG, "audio_processor_set_synth_mode: stopping I2S (SYNTH mode enabled)");
+            i2s_manager_stop();
+        }
+        s_force_synth = true;
+    } else {
+        /* Disabling SYNTH mode - start I2S if processor is running */
+        s_force_synth = false;
+        if (s_is_running) {
+            ESP_LOGI(TAG, "audio_processor_set_synth_mode: starting I2S (SYNTH mode disabled)");
+            esp_err_t ret = i2s_manager_start();
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "audio_processor_set_synth_mode: i2s_manager_start failed (%d)", (int)ret);
+            }
+        }
+    }
+    
     ESP_LOGI(TAG, "audio_processor: synth mode %s", enable ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
 }
 

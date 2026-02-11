@@ -9,14 +9,34 @@ static void audio_processor_beep_done_cb(void *ctx)
     s_beep_remaining_bytes = 0;
     portEXIT_CRITICAL(&s_beep_lock);
 
-    /* Re-enable and prefill synth keepalive after a beep so the audio queue
-     * stays fed and A2DP doesn't underrun after the tone ends. Only do this
-     * when A2DP is connected to avoid injecting tone when idle. Prefill up
-     * to a low watermark to bridge the handoff. */
-    if (bt_manager_is_a2dp_connected()) {
-        s_keepalive_armed = true;
+    /* F1.3.1: Restore exactly what was active before beep (replaces old keepalive logic).
+     *
+     * Old behavior: Force SYNTH ON when A2DP connected, regardless of prior state.
+     * This trampled user intent - if they had I2S active, it stayed off after beep.
+     *
+     * New behavior: Restore the source that was preempted by beep.
+     * - If SYNTH was active → restore SYNTH
+     * - If I2S was active → restart I2S
+     * - If neither was active → leave silent (correct behavior for idle state)
+     */
+    bool restore_synth = false;
+    bool restore_i2s = false;
+
+    portENTER_CRITICAL(&s_beep_lock);
+    restore_synth = s_beep_restore_synth;
+    restore_i2s = s_beep_restore_i2s;
+    s_beep_restore_synth = false;  /* F1.3.2: Clear restore flags */
+    s_beep_restore_i2s = false;
+    portEXIT_CRITICAL(&s_beep_lock);
+
+    if (restore_synth) {
+        ESP_LOGI(TAG, "audio_processor_beep: restoring SYNTH source");  // NOLINT(bugprone-branch-clone)
         s_force_synth = true;
         s_trace_next_read_call = true; /* log next read summary once */
+    } else if (restore_i2s && s_is_running) {
+        ESP_LOGI(TAG, "audio_processor_beep: restoring I2S source");  // NOLINT(bugprone-branch-clone)
+        i2s_manager_start();
+        s_trace_next_read_call = true;
     }
 
     ESP_LOGI(TAG, "audio_processor_beep: generation completed");  // NOLINT(bugprone-branch-clone)
@@ -31,9 +51,15 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (i2s_manager_is_running()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (I2S active)");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_INVALID_STATE;
+    /* F1.2.2: Snapshot active source state for restoration after beep */
+    bool was_synth = s_force_synth;
+    bool was_i2s = i2s_manager_is_running();
+
+    /* F1.2.3: Enforce mutual exclusion invariant - I2S and SYNTH should never both be active.
+     * If both are active, treat as protocol violation and prioritize SYNTH (safer). */
+    if (was_synth && was_i2s) {
+        ESP_LOGW(TAG, "audio_processor_beep: invariant violation - both SYNTH and I2S active, forcing I2S off");  // NOLINT(bugprone-branch-clone)
+        was_i2s = false;  /* Deterministic priority: SYNTH wins */
     }
 
     if (wav_playback_is_active()) {
@@ -55,11 +81,29 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ESP_ERR_INVALID_STATE;
     }
 
-    /* Arm keepalive for post-beep synth if we are connected so the queue
-     * stays fed after the tone drains. */
-    if (bt_manager_is_a2dp_connected()) {
-        s_keepalive_armed = true;
+    /* F1.2.4: Stop active source before playing beep (BEEP has priority) */
+    if (was_i2s) {
+        ESP_LOGI(TAG, "audio_processor_beep: preempting I2S source");  // NOLINT(bugprone-branch-clone)
+        i2s_manager_stop();
     }
+    if (was_synth) {
+        ESP_LOGI(TAG, "audio_processor_beep: preempting SYNTH source");  // NOLINT(bugprone-branch-clone)
+        s_force_synth = false;
+    }
+
+    /* F1.2.5: Set restore flags for post-beep recovery */
+    portENTER_CRITICAL(&s_beep_lock);
+    s_beep_restore_synth = was_synth;
+    s_beep_restore_i2s = was_i2s;
+    portEXIT_CRITICAL(&s_beep_lock);
+
+    /* F1.4.2: Set drain flag to discard buffered audio from previous source.
+     * WHY: Without draining, old audio from I2S/SYNTH plays before beep,
+     *      causing "late beep" perception. Ring buffer can hold ~32KB (several
+     *      hundred milliseconds of audio at 44.1kHz stereo 16-bit).
+     * HOW: audio_processor_read() checks this flag, drains ring, returns silence.
+     * SAFETY: Set after stopping sources, before starting beep generation. */
+    s_drop_ring_audio = true;
 
     if (duration_ms == 0) {
         duration_ms = 50;
@@ -67,8 +111,10 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         duration_ms = 20000U;
     }
 
-    s_force_synth = false;
-    s_keepalive_armed = false;
+    /* F1.2.6: Removed state-breaking lines - keepalive managed independently
+     * Old code: s_force_synth = false; s_keepalive_armed = false;
+     * Why removed: These lines trampled user-intended source state and conflicted
+     * with restoration logic. Source preemption is now explicit (above). */
 
     uint32_t channels = (s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U;
     uint32_t sample_bytes = (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) ? 4U : 2U;
@@ -157,5 +203,6 @@ void audio_processor_beep_reset(void)
     s_beep_prefill_accum_bytes = 0;
     s_beep_prefill_goal_bytes = 0;
     s_beep_restore_synth = false;
+    s_beep_restore_i2s = false;  /* F1.2: Clear I2S restore flag */
     portEXIT_CRITICAL(&s_beep_lock);
 }

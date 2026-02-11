@@ -13,8 +13,6 @@ endif()
 idf_component_register(
     SRCS
         "main.c"
-    INCLUDE_DIRS
-        "../components/components/unity/unity/extras/memory/src"
     REQUIRES
         ${main_requires}
     PRIV_REQUIRES

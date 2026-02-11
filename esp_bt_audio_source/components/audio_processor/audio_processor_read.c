@@ -64,6 +64,34 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* F1.4.3: Drain ring buffer if beep is starting (drop old audio from previous source)
+     * WHY: Ensures beep plays immediately without old I2S/SYNTH audio first.
+     * HOW: Discard all buffered audio, return silence this callback.
+     * SAFETY: Bounded iteration (max ring capacity), flag cleared after drain. */
+    if (s_drop_ring_audio) {
+        size_t drained = 0;
+        uint8_t drain_buf[512];
+        size_t ring_capacity = s_audio_ring ? audio_rb_capacity(s_audio_ring) : 0;
+        size_t max_iterations = (ring_capacity / sizeof(drain_buf)) + 1;  /* Prevent infinite loop */
+        size_t iterations = 0;
+        
+        while (audio_rb_available_to_read(s_audio_ring) > 0 && iterations < max_iterations) {
+            size_t chunk = audio_rb_read(s_audio_ring, drain_buf, sizeof(drain_buf));
+            drained += chunk;
+            iterations++;
+        }
+        
+        s_drop_ring_audio = false;  /* Clear flag after drain */
+        
+        ESP_LOGI(TAG, "audio_processor_read: drained %zu bytes from ring buffer (beep starting)", drained);  // NOLINT(bugprone-branch-clone)
+        
+        /* Return silence for this callback - beep overlay will mix over it */
+        util_safe_memset(buffer, size, 0, size);
+        *bytes_read = size;
+        log_read_summary("drain", size, size);
+        return ESP_OK;
+    }
+
     /* Ring buffer read (CODE_REVIEW6 Phase 3.5)
      * WHY: Ring buffer architecture replaces queue + residual buffer
      * HOW: Direct non-blocking read from ring, zero-fill on underrun

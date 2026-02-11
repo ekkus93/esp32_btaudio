@@ -44,6 +44,7 @@ idf_component_register(
         test_utils
     PRIV_REQUIRES
         driver
+        nvs_flash
 )
 
 # Component-specific compile definitions
