@@ -27,6 +27,10 @@
 - Fixed test_app_audio I2S shim to include missing slot width and slot mask constants.
 - Re-ran tools/run_all_tests.py: host tests 246/246, test_bluetooth 46/46, test_app_audio 35/35, test_manager 18/18; all passed.
 
+## 2026-02-11 12:15:24: commit and push
+
+- Committed and pushed: fix: align BBGW I2S profile and test shim (df761cee).
+
 ## 2026-02-11 11:40:08: run_all_tests timing
 
 - Ran tools/run_all_tests.py with /usr/bin/time -p.
