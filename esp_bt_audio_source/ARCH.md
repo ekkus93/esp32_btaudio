@@ -1,15 +1,8 @@
 # ESP32 Bluetooth + WiFi Split Architecture
 
-> **⚠️ Document Status (February 2026):**  
-> This document contains historical architecture documentation including **obsolete sections** for WAV playback, play_manager, and SPIFFS functionality which were removed in Version 0.3.0.  
->   
-> **Obsolete sections** (retained for historical reference):
-> - "WAV Playback Lossless Architecture" (line ~204)
-> - play_manager references throughout
-> - SPIFFS partition and filesystem references
-> - AUDIO_SOURCE_WAV enum references
->  
-> **Current architecture:** 3 audio sources (I2S, synth, silence) - see [main/README.md](main/README.md) and [docs/FS.md](docs/FS.md) for up-to-date documentation.
+> **Last Updated:** February 11, 2026  
+> **Note:** WAV playback, play_manager, and SPIFFS functionality were removed in Version 0.3.0. Obsolete sections have been deleted from this document (preserved in git history if needed).  
+> **Current architecture:** 3 audio sources (I2S, synth, silence) - see [main/README.md](main/README.md) and [docs/FS.md](docs/FS.md) for complete documentation.
 
 ## Overview
 
@@ -732,238 +725,21 @@ main.c
 Prior to Feb 2026, bt_manager.c was monolithic (1852 lines) with all responsibilities intermingled. CODE_REVIEW8 refactoring (Phases 2-5) extracted specialized modules, reducing bt_manager.c by 43% (805 lines) and improving overall architecture quality.
 
 ### Audio Processor Component
-- **Purpose:** Audio pipeline orchestration with lossless WAV playback guarantees
+
+> **Last Updated:** February 11, 2026
+
+- **Purpose:** Audio pipeline orchestration with ring buffer architecture
 - **Responsibilities:**
-  - I2S slave configuration and management
-  - Audio buffer management and ring buffer
-  - Audio queue for multiple sources (I2S, WAV, beep, synth)
+  - I2S slave configuration and management (external audio input)
+  - Audio buffer management via SPSC ring buffer
+  - Three audio sources: I2S (primary), synth (test/keepalive), silence (fallback)
+  - Beep overlay support (mixes over active source)
   - Coordinate with bt_manager for A2DP streaming
-  - Generate keepalive tones and beeps
-  - **WAV file playback from SPIFFS with zero data loss guarantee**
-
-#### ⚠️ OBSOLETE: WAV Playback Lossless Architecture (CODE_REVIEW4 Phase 1)
-
-> **This section is obsolete as of Version 0.3.0 (February 2026).**  
-> WAV playback, play_manager, and SPIFFS support were removed. This content is retained for historical reference only.  
-> See MIGRATION.md for details.
-
-The audio processor implements a robust WAV playback system with **lossless guarantees** even under memory pressure or queue backpressure conditions. This architecture prevents audio truncation and ensures complete file playback.
-
-**Core Data Loss Prevention Mechanisms:**
-
-1. **File Rewind on Enqueue Failure (play_manager.c)**
-   - When `audio_chunk_enqueue_block()` fails due to queue full or out-of-memory, the file pointer is rewound to the last successful position
-   - Bytes are re-read on the next fill iteration, ensuring zero data loss
-   - Instrumentation tracks retry attempts via `s_enqueue_fail_count`
-   - **Guarantee:** No bytes are lost when enqueue operations fail; playback automatically retries
-
-2. **Frame Boundary Alignment (play_manager.c)**
-   - All reads are aligned to audio frame boundaries (e.g., 4 bytes for stereo 16-bit)
-   - Two-step alignment: (1) clamp to remaining bytes, (2) align down to frame size
-   - Prevents partial frames that would cause glitches, corruption, or misaligned samples
-   - **Guarantee:** Every chunk delivered to Bluetooth contains only complete audio frames
-
-3. **WAV Chunk Padding Handling (play_manager.c)**
-   - WAV/RIFF specification requires word-alignment (even byte offsets)
-   - Odd-sized chunks have 1 padding byte that must be skipped: `skip = chunk_size + (chunk_size & 1)`
-   - Prevents file pointer drift that would cause chunk header misinterpretation
-   - **Guarantee:** File parsing is accurate regardless of chunk sizes
-
-4. **Residual Buffer Flush Ordering (audio_processor_read.c)**
-   - Residual buffer holds leftover bytes from previous read operations
-   - Early-return check MUST verify residual buffer is empty before skipping reads
-   - Prevents tail truncation where final bytes are lost when sources become inactive
-   - **Guarantee:** All buffered data is flushed before playback is considered complete
-
-5. **Instrumentation and Verification (play_manager.c, Task 0.2/6.1)**
-   - Tracks `s_expected_data_bytes` (from WAV header), `s_bytes_read_from_file_total`, `s_bytes_enqueued_total`
-   - Public API `play_manager_get_instrumentation()` exposes counters for test verification
-   - Device test `test_wav_playback_completeness()` validates: expected == bytes_read (no file errors)
-   - **Guarantee:** Data loss is detectable and tracked; regression tests prevent future truncation bugs
-
-**Queue Backpressure Handling:**
-
-The audio queue can experience backpressure when:
-- Bluetooth transmission is slower than audio generation
-- Queue fills up faster than A2DP can drain it
-- Temporary memory pressure prevents new chunk allocation
-
-**Backpressure Response Strategy:**
-1. **Enqueue Blocking:** `audio_chunk_enqueue_block()` waits up to 1 second for queue space
-2. **Automatic Retry:** If enqueue fails after timeout, file pointer rewinds and retry occurs on next fill
-3. **Transparent to Caller:** play_manager handles retry internally; caller sees eventual success
-4. **No Data Loss:** Retry mechanism ensures all bytes are eventually queued (unless file read errors occur)
-5. **Graceful Degradation:** Under sustained backpressure, playback may slow but will not truncate
-
-**Error Propagation:**
-- File read errors: Propagated to caller as `ESP_ERR_INVALID_STATE`
-- Enqueue failures: Returned as `ESP_ERR_NO_MEM` after retry exhausted (caller can retry later)
-- All errors logged with `ESP_LOGE` for diagnostics
-
-**Correctness Invariants:**
-- `s_bytes_read_from_file_total == s_expected_data_bytes` when playback completes successfully
-- Data loss percentage = 0% for functioning subsystems
-- Retry operations are transparent and do not alter audio content
-- Frame alignment is maintained across all chunk boundaries
-
-**Testing:**
-- **Host tests:** Verify data flow through audio_queue under normal conditions
-- **Device tests:** `test_wav_playback_completeness()` validates complete file drainage and instrumentation accuracy
-- **Stress tests:** Validate behavior under memory pressure and queue backpressure (manual testing)
-
-**Benefits:**
-- **Lossless playback:** Complete audio files play without truncation or glitches
-- **Robust under pressure:** Handles queue full and OOM conditions gracefully
-- **Verifiable:** Instrumentation allows automated regression testing
-- **Maintainable:** Clear separation of concerns (file I/O, alignment, queueing, error handling)
-
-#### Stateful Streaming Resampler Architecture (CODE_REVIEW5 Phase 1)
-
-The audio processor implements a **stateful streaming resampler** that eliminates cumulative frame loss during sample rate conversion. This architecture replaces the previous block-local resampling that suffered from rounding errors accumulating over multiple blocks.
-
-**Problem Statement:**
-
-Previous resampler implementation:
-- Processed audio in fixed 1024-byte blocks independently
-- Used block-local `floor()` for output frame calculation
-- Lost ~0.64 frames per block for 44.1kHz→48kHz upsampling
-- Cumulative loss: ~55 frames (1.15ms) per 500ms WAV file
-- Scaled linearly: 10-second files would lose ~23ms of audio
-- Caused audible "ends early" behavior on longer playback
-
-**Solution Architecture:**
-
-**1. Fixed-Output, Variable-Input Pipeline**
-
-The streaming resampler inverts the traditional processing model:
-- **Output:** Always produces exactly 256 frames (1024 bytes) per block
-- **Input:** Reads variable number of frames based on resampling ratio
-- **Benefit:** Predictable output size simplifies downstream queue management
-
-**Pipeline Flow:**
-```
-WAV File → PCM Stash → Streaming Resampler → Fixed 1KB Blocks → Audio Queue
-         (variable)   (phase-preserving)      (constant size)
-```
-
-**2. Q16.16 Fixed-Point Phase Accumulator**
-
-Core resampling algorithm:
-- **Phase tracking:** 32-bit Q16.16 fixed-point position (16 integer bits, 16 fractional bits)
-- **Step calculation:** `step_q16 = (src_rate << 16) / dst_rate`
-- **Phase carry:** Fractional position carries across block boundaries
-- **No rounding loss:** Cumulative error eliminated by preserving phase state
-
-Example (44.1kHz → 48kHz):
-```c
-step_q16 = (44100 << 16) / 48000 = 60293 (0.91875 in Q16.16)
-// For each output frame:
-pos_q16 += step_q16;  // Position advances by 0.91875 input frames
-in_idx = pos_q16 >> 16;  // Integer part = input frame index
-frac = pos_q16 & 0xFFFF;  // Fractional part for interpolation
-```
-
-**3. Linear Interpolation**
-
-Sample interpolation between adjacent input frames:
-```c
-// For stereo 16-bit:
-left_sample = ((0x10000 - frac) * in[i0].left + frac * in[i0+1].left) >> 16;
-right_sample = ((0x10000 - frac) * in[i0].right + frac * in[i0+1].right) >> 16;
-```
-
-- Smooth transitions between samples (prevents aliasing)
-- Simple implementation (no division, only multiplication + shift)
-- Sufficient quality for audio playback (higher-order filters not needed for this use case)
-
-**4. PCM Stash Buffer**
-
-Input buffer decouples file reads from resampling:
-- **Purpose:** Accumulate variable input frames needed for fixed output
-- **Capacity:** 2048 frames (~8KB for stereo 16-bit)
-- **Operations:**
-  - `pcm_stash_append_frames()`: Add converted frames from WAV file
-  - `pcm_stash_consume_frames()`: Remove frames consumed by resampler
-  - `pcm_stash_free_frames()`: Query available space
-
-**Stash Flow:**
-```
-1. Resampler calculates: "I need ≥N input frames for 256 output frames"
-2. ensure_stash_frames(N): Reads from WAV until stash has ≥N frames
-3. Resampler processes: Consumes exactly M frames, produces 256 frames
-4. Stash updated: memmove() to shift unconsumed frames to buffer start
-```
-
-**5. Variable Input Frame Calculation**
-
-Minimum input frames required for N output frames:
-```c
-size_t audio_resampler_stream_min_in_frames(const audio_resampler_stream_t *rs, size_t out_frames) {
-    // Account for current phase position
-    uint32_t next_pos = rs->pos_q16 + (rs->step_q16 * out_frames);
-    size_t in_frames = (next_pos >> 16) + 1;  // +1 for interpolation buffer
-    return in_frames;
-}
-```
-
-Example (44.1kHz → 48kHz, 256 output frames):
-- Step: 0.91875 input frames per output frame
-- Total position advance: 256 × 0.91875 = 235.2 frames
-- Minimum input needed: 236 frames (⌈235.2⌉ + 1 for interpolation)
-
-**6. EOF Handling with Zero-Padding**
-
-When input exhausted before reaching desired output count:
-- Resampler produces exactly 256 output frames (never short blocks)
-- Remaining output filled with silence (zero samples)
-- Ensures consistent block size for audio queue
-- No glitches or pops at end of file
-
-**Implementation Files:**
-
-1. **audio_resampler_stream.h/c** (new module)
-   - `audio_resampler_stream_init()`: Initialize resampler state, compute step_q16
-   - `audio_resampler_stream_min_in_frames()`: Calculate input frames needed
-   - `audio_resampler_stream_process()`: Perform resampling with phase carry
-
-2. **play_manager.c** (PCM stash + integration)
-   - `pcm_stash_t`: Input buffer structure
-   - `pcm_stash_*()`: Buffer management functions
-   - `ensure_stash_frames()`: Read from WAV to fill stash
-   - `produce_one_output_block()`: Orchestrate stash → resampler → queue
-   - `play_manager_fill()`: Main loop producing fixed 1KB blocks
-
-**Correctness Guarantees:**
-
-1. **Frame accuracy:** Q16.16 accumulator prevents cumulative rounding loss
-2. **Exact ratio:** Total output frames = ⌊input frames × (dst_rate / src_rate)⌋
-3. **Lossless:** All input frames consumed (verified by instrumentation)
-4. **Smooth interpolation:** No aliasing or glitches from sample rate conversion
-5. **Predictable output:** Always produces 256-frame blocks (simplifies queue management)
-
-**Validation:**
-
-- **Unit tests (19 tests):** Verify step_q16 calculation, min_in_frames accuracy, phase carry, frame ratios
-- **Device test (baseline):** 500ms WAV plays in 500ms (0ms error, 1.0000 frame ratio)
-- **Frame instrumentation:** Completion report shows 0.00% frame loss, "Duration accuracy: EXCELLENT"
-- **Stress test:** Queue backpressure test validates lossless behavior under slow consumption
-
-**Performance:**
-
-- **Binary size:** +4224 bytes (streaming resampler + stash buffer + instrumentation)
-- **Heap usage:** ~8KB for PCM stash (allocated on WAV start, freed on stop)
-- **CPU overhead:** Minimal (linear interpolation, no division, simple fixed-point math)
-- **Latency:** <1ms added latency from stash buffering (negligible for audio playback)
-
-**Benefits:**
-
-- **Mathematically correct:** No cumulative frame loss over any playback duration
-- **Verifiable:** Instrumentation tracks exact frame counts (src vs dst vs expected)
-- **Robust:** Handles any sample rate pair (upsampling, downsampling, no-op)
-- **Maintainable:** Clear separation of concerns (file I/O, stash, resampling, queue)
-- **Testable:** Fast host tests validate correctness without hardware
+  - Cooperative task shutdown (no deadlocks or leaks)
 
 #### Ring Buffer Architecture (CODE_REVIEW6 Phase 1-3)
+
+> **Last Updated:** February 5, 2026 (CODE_REVIEW6 completion)
 
 The audio processor implements a **Single Producer Single Consumer (SPSC) ring buffer** that replaced the previous multi-producer queue architecture. This eliminates race conditions, simplifies reasoning about correctness, and provides natural backpressure via watermarks.
 
@@ -1095,6 +871,8 @@ Source selection priority (audio_engine_task):
 4. **Silence:** Fallback (zero-fill when no source active)
 
 **3a. Audio Engine Task Lifecycle: Cooperative Shutdown**
+
+> **Last Updated:** February 11, 2026 (CODE_REVIEW 2602101453, P0.1)
 
 > **Critical Design Decision (CODE_REVIEW 2602101453, P0.1)**  
 > The audio engine task uses **cooperative shutdown** instead of external `vTaskDelete()` to prevent deadlocks, resource leaks, and state corruption.
