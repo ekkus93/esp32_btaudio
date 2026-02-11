@@ -97,9 +97,7 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
             root / "esp_bt_audio_source" / "test" / "test_app2",
             root / "esp_bt_audio_source" / "test" / "test_app_audio",
             root / "esp_bt_audio_source" / "test" / "test_app3",
-            root / "esp_bt_audio_source" / "test" / "test_beep_manager",
-            root / "esp_bt_audio_source" / "test" / "test_i2s_manager",
-            root / "esp_bt_audio_source" / "test" / "test_synth_manager",
+            root / "esp_bt_audio_source" / "test" / "test_manager",
         ]
         for proj in unity_projects:
             _unlink_artifact(proj / "build" / "one_run_unity.log")
@@ -547,9 +545,7 @@ def aggregate_summary(root: Path) -> dict:
              root / "esp_bt_audio_source" / "test" / "test_app2" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app3" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_beep_manager" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_i2s_manager" / "build" / "one_run_unity.log",
-             root / "esp_bt_audio_source" / "test" / "test_synth_manager" / "build" / "one_run_unity.log"]
+             root / "esp_bt_audio_source" / "test" / "test_manager" / "build" / "one_run_unity.log"]
 
     for f in files:
         if not f.exists():
@@ -747,9 +743,7 @@ def main(argv: list[str] | None = None):
             ROOT / "esp_bt_audio_source" / "test" / "test_app2",
             ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
             ROOT / "esp_bt_audio_source" / "test" / "test_app3",
-            ROOT / "esp_bt_audio_source" / "test" / "test_beep_manager",
-            ROOT / "esp_bt_audio_source" / "test" / "test_i2s_manager",
-            ROOT / "esp_bt_audio_source" / "test" / "test_synth_manager",
+            ROOT / "esp_bt_audio_source" / "test" / "test_manager",
         ]
         # attempt to detect an in-tree SPIFFS image and partition offset so the
         # runner can flash it before the monitor step. Prefer the canonical
