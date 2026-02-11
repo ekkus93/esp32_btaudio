@@ -43,6 +43,8 @@
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #ifndef UNIT_TEST
+/* WHY excluded: portmacro.h provides portMUX_TYPE (ESP32 spinlock primitive).
+ * Host tests use semphr.h instead for portENTER_CRITICAL/portEXIT_CRITICAL macros. */
 #include "freertos/portmacro.h"
 #else
 #include "freertos/semphr.h"  /* For portENTER_CRITICAL/portEXIT_CRITICAL macros */

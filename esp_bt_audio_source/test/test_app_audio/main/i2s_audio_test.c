@@ -1,5 +1,8 @@
 /**
  * I2S Audio Tests
+ * 
+ * NOTE: This is a DEVICE test (runs on ESP32 with FreeRTOS).
+ *       Do NOT define UNIT_TEST here - that's for host tests only.
  */
 #include <stdio.h>
 #include <string.h>
@@ -8,10 +11,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "i2s_audio_test.h"
-
-#ifndef UNIT_TEST
-#define UNIT_TEST
-#endif
 
 #include "i2s_audio.h"
 #include "audio_test_helpers.h"
