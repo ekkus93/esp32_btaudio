@@ -2,6 +2,7 @@
 #include <inttypes.h> // Add for PRIu32 macros
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h" // For portENTER_CRITICAL/portEXIT_CRITICAL (P1.2.2)
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -21,6 +22,16 @@ static const char *TAG = "BT_STREAM_MGR";
 /* State tracking */
 static bt_streaming_state_t s_streaming_state = BT_STREAMING_STATE_STOPPED;
 static bt_streaming_info_t s_streaming_info = {0};
+
+/* Synchronization for stats access (CODE_REVIEW 2602101453, P1.2.2)
+ * WHY: s_streaming_info is accessed from multiple contexts:
+ *      - ISR context: bt_audio_data_callback() (A2DP data callback)
+ *      - Task context: update_streaming_state(), bt_get_streaming_info()
+ *      Without synchronization, torn reads of 32-bit fields are possible.
+ * SAFETY: portMUX_TYPE spinlock protects against data races and ensures
+ *         atomic access to the struct. Works from both ISR and task contexts.
+ */
+static portMUX_TYPE s_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* Audio buffer for streaming data */
 /* Use the shared audio processor for I2S capture and buffering.
@@ -100,7 +111,9 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
 #endif
     }
 
-    /* Update streaming statistics (CODE_REVIEW5 Task 3.1) */
+    /* Update streaming statistics (CODE_REVIEW5 Task 3.1)
+     * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.2) */
+    portENTER_CRITICAL(&s_stats_lock);
     s_streaming_info.bytes_sent += req;          /* Legacy - keep for compatibility */
     s_streaming_info.bytes_requested += req;     /* Total bytes A2DP asked for */
     s_streaming_info.bytes_produced += bytes_read;  /* Actual audio from queue */
@@ -109,15 +122,9 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     
     /* CODE_REVIEW5 Task 3.2: Track underrun rate */
     s_streaming_info.total_callbacks++;
-    if (bytes_read < req) {
+    bool is_underrun = (bytes_read < req);
+    if (is_underrun) {
         s_streaming_info.underrun_count++;
-#if CONFIG_BT_VERBOSE_AUDIO_LOGGING
-        float underrun_rate = (float)s_streaming_info.underrun_count / (float)s_streaming_info.total_callbacks;
-        ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
-                 (unsigned long)s_streaming_info.underrun_count,
-                 underrun_rate * 100.0f,
-                 len, bytes_read);
-#endif
     }
     
     /* Calculate streaming duration */
@@ -125,6 +132,21 @@ static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
     if (s_stream_start_time > 0) {
         s_streaming_info.stream_duration = current_time - s_stream_start_time;
     }
+    portEXIT_CRITICAL(&s_stats_lock);
+    
+    /* Log outside critical section to minimize interrupt disabled time */
+#if CONFIG_BT_VERBOSE_AUDIO_LOGGING
+    if (is_underrun) {
+        portENTER_CRITICAL(&s_stats_lock);
+        float underrun_rate = (float)s_streaming_info.underrun_count / (float)s_streaming_info.total_callbacks;
+        uint32_t underrun_count_snapshot = s_streaming_info.underrun_count;
+        portEXIT_CRITICAL(&s_stats_lock);
+        ESP_LOGW(TAG, "A2DP underrun #%lu (rate: %.2f%%, requested: %d, got: %zu)",
+                 (unsigned long)underrun_count_snapshot,
+                 underrun_rate * 100.0f,
+                 len, bytes_read);
+    }
+#endif
     
     return len;
 }
@@ -144,6 +166,9 @@ static void update_streaming_state(bt_streaming_state_t new_state)
 {
     ESP_LOGI(TAG, "Streaming state changing: %d -> %d", s_streaming_state, new_state);  // NOLINT(bugprone-branch-clone)
     s_streaming_state = new_state;
+    
+    /* Update stats struct state (CODE_REVIEW 2602101453, P1.2.2) */
+    portENTER_CRITICAL(&s_stats_lock);
     s_streaming_info.state = new_state;
     
     /* Handle state transitions */
@@ -157,14 +182,12 @@ static void update_streaming_state(bt_streaming_state_t new_state)
             s_streaming_info.packets_sent = 0;
             s_streaming_info.packet_errors = 0;
             s_streaming_info.stream_duration = 0;
-            s_stream_start_time = get_current_time_ms();
+            s_streaming_info.underrun_count = 0;
+            s_streaming_info.total_callbacks = 0;
             s_streaming_info.paused = false;
             break;
             
         case BT_STREAMING_STATE_STREAMING:
-            if (s_stream_start_time == 0) {
-                s_stream_start_time = get_current_time_ms();
-            }
             s_streaming_info.paused = false;
             break;
             
@@ -173,16 +196,30 @@ static void update_streaming_state(bt_streaming_state_t new_state)
             break;
             
         case BT_STREAMING_STATE_STOPPED:
-            s_stream_start_time = 0;
             s_streaming_info.paused = false;
             break;
             
         case BT_STREAMING_STATE_ERROR:
-            ESP_LOGE(TAG, "Streaming error occurred");  // NOLINT(bugprone-branch-clone)
+            /* No additional state changes needed */
             break;
             
         default:
             break;
+    }
+    portEXIT_CRITICAL(&s_stats_lock);
+    
+    /* Update s_stream_start_time outside lock (not part of stats struct) */
+    if (new_state == BT_STREAMING_STATE_STARTING) {
+        s_stream_start_time = get_current_time_ms();
+    } else if (new_state == BT_STREAMING_STATE_STREAMING && s_stream_start_time == 0) {
+        s_stream_start_time = get_current_time_ms();
+    } else if (new_state == BT_STREAMING_STATE_STOPPED) {
+        s_stream_start_time = 0;
+    }
+    
+    /* Log outside critical section */
+    if (new_state == BT_STREAMING_STATE_ERROR) {
+        ESP_LOGE(TAG, "Streaming error occurred");  // NOLINT(bugprone-branch-clone)
     }
     
     /* Notify application via callback */
@@ -304,7 +341,11 @@ esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
         return ESP_FAIL;
     }
     
+    /* Protect read access (CODE_REVIEW 2602101453, P1.2.2)
+     * WHY: Ensure atomic snapshot of all fields to prevent torn reads */
+    portENTER_CRITICAL(&s_stats_lock);
     safe_memcpy(info, sizeof(*info), &s_streaming_info, sizeof(bt_streaming_info_t));
+    portEXIT_CRITICAL(&s_stats_lock);
     return ESP_OK;
 }
 

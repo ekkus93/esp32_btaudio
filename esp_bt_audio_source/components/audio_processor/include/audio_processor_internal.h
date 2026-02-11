@@ -120,6 +120,7 @@ extern audio_config_t s_audio_config;
 extern esp_timer_handle_t s_volume_commit_timer;
 #endif
 extern audio_stats_t s_audio_stats;
+extern portMUX_TYPE s_audio_stats_lock;
 extern uint32_t s_tag_miss_count;
 extern int64_t s_tag_recover_mute_until;
 extern size_t s_runtime_work_bytes;

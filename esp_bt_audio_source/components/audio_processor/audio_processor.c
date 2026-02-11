@@ -125,10 +125,13 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     
     audio_source_t base = get_active_source();
     
-    /* Track source switches (Phase 4.2) */
+    /* Track source switches (Phase 4.2)
+     * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
     static audio_source_t s_last_source = AUDIO_SOURCE_SILENCE;
     if (base != s_last_source) {
+        portENTER_CRITICAL(&s_audio_stats_lock);
         s_audio_stats.source_switch_count++;
+        portEXIT_CRITICAL(&s_audio_stats_lock);
         s_last_source = base;
     }
     
@@ -153,9 +156,12 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
             break;
     }
     
-    /* Track per-source bytes (Phase 4.2) */
+    /* Track per-source bytes (Phase 4.2)
+     * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
     if (produced > 0 && base < NUM_AUDIO_SOURCES) {
+        portENTER_CRITICAL(&s_audio_stats_lock);
         s_audio_stats.bytes_by_source[base] += produced;
+        portEXIT_CRITICAL(&s_audio_stats_lock);
     }
     
     /* Mix beep overlay if active (CODE_REVIEW6 Phase 3.3)
@@ -166,9 +172,12 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     if (beep_active && produced > 0) {
         beep_overlay_fill(dst, produced, &s_audio_config);
         
-        /* Track beep overlay stats (Phase 4.2) */
+        /* Track beep overlay stats (Phase 4.2)
+         * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
+        portENTER_CRITICAL(&s_audio_stats_lock);
         s_audio_stats.beep_overlay_count++;
         s_audio_stats.beep_overlay_bytes += produced;
+        portEXIT_CRITICAL(&s_audio_stats_lock);
 
         /* Decrement remaining bytes for diagnostics/CLI gating. */
         portENTER_CRITICAL(&s_beep_lock);
@@ -238,17 +247,23 @@ static void audio_engine_task(void *arg)
         size_t free = audio_rb_available_to_write(s_audio_ring);
         size_t used = capacity - free;
         
-        /* Track peak ring buffer usage (Phase 4.2) */
+        /* Track peak ring buffer usage (Phase 4.2)
+         * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
+        portENTER_CRITICAL(&s_audio_stats_lock);
         if (used > s_audio_stats.ring_peak_used) {
             s_audio_stats.ring_peak_used = used;
         }
+        portEXIT_CRITICAL(&s_audio_stats_lock);
         
         /* Watermark logic with pause tracking */
         bool was_paused = s_audio_engine_paused;
         if (used >= AUDIO_RB_HIGH_WATERMARK) {
             s_audio_engine_paused = true;
             if (!was_paused) {
+                /* Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
+                portENTER_CRITICAL(&s_audio_stats_lock);
                 s_audio_stats.engine_pause_count++;  /* Count transitions to paused */
+                portEXIT_CRITICAL(&s_audio_stats_lock);
             }
         }
         if (used <= AUDIO_RB_LOW_WATERMARK) {
@@ -262,7 +277,9 @@ static void audio_engine_task(void *arg)
             if (produced > 0) {
                 size_t written = audio_rb_write(s_audio_ring, chunk_buf, produced);
                 
-                /* Track write stats (Phase 4.2) */
+                /* Track write stats (Phase 4.2)
+                 * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
+                portENTER_CRITICAL(&s_audio_stats_lock);
                 s_audio_stats.engine_write_calls++;
                 s_audio_stats.engine_write_bytes += written;
                 
@@ -270,8 +287,13 @@ static void audio_engine_task(void *arg)
                     /* Ring filled between check and write (rare but possible)
                      * Count as buffer overrun - producer ahead of consumer (CODE_REVIEW7 Priority 5, Task 5.1) */
                     s_audio_stats.buffer_overruns++;
+                }
+                uint32_t overruns_snapshot = s_audio_stats.buffer_overruns;
+                portEXIT_CRITICAL(&s_audio_stats_lock);
+                
+                if (written < produced) {
                     ESP_LOGW(TAG, "audio_engine_task: partial write %zu/%zu (overrun #%u)", 
-                             written, produced, (unsigned)s_audio_stats.buffer_overruns);
+                             written, produced, (unsigned)overruns_snapshot);
                 }
                 
                 /* Log span entry for debugging (CODE_REVIEW7 Priority 2, Task 2.1)
@@ -954,7 +976,11 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Protect read access (CODE_REVIEW 2602101453, P1.2.4)
+     * WHY: Ensure atomic snapshot of all fields to prevent torn reads */
+    portENTER_CRITICAL(&s_audio_stats_lock);
     safe_memcpy(stats, sizeof(*stats), &s_audio_stats, sizeof(audio_stats_t));
+    portEXIT_CRITICAL(&s_audio_stats_lock);
     return ESP_OK;
 }
 

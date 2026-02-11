@@ -71,17 +71,17 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     
     size_t read = audio_rb_read(s_audio_ring, buffer, size);
     
+    /* Update statistics (CODE_REVIEW 2602101453, P1.2.4)
+     * Protected by spinlock - audio_processor_read() called from ISR-like context */
+    portENTER_CRITICAL(&s_audio_stats_lock);
     if (read < size) {
         /* Underrun - zero-fill remainder
          * WHY: Prevent glitches from stale data
          * HOW: util_safe_memset remaining bytes to silence
          * CORRECTNESS: Only fills what wasn't read from ring */
-        util_safe_memset(buffer + read, size - read, 0, size - read);
         s_audio_stats.buffer_underruns++;
         s_audio_stats.underrun_bytes += (size - read);
     }
-    
-    /* Update statistics */
     s_audio_stats.bytes_read += size;
     
     int bytes_per_sample = audio_bytes_per_sample(s_audio_config.bit_depth);
@@ -91,8 +91,12 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     size_t frame_bytes = (size_t)bytes_per_sample * (size_t)((s_audio_config.channels == AUDIO_CHANNEL_MONO) ? 1U : 2U);
     if (frame_bytes > 0) {
         s_audio_stats.samples_processed += (uint32_t)(size / frame_bytes);
-    }
+    }    portEXIT_CRITICAL(&s_audio_stats_lock);
     
+    /* Zero-fill underrun bytes outside critical section to minimize interrupt latency */
+    if (read < size) {
+        util_safe_memset(buffer + read, size - read, 0, size - read);
+    }    
     *bytes_read = size;  /* Always return full size (zero-filled if needed) */
     
     /* Trace/log if enabled */

@@ -2,6 +2,7 @@
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "audio_ringbuffer.h"
+#include "freertos/semphr.h" // For portENTER_CRITICAL/portEXIT_CRITICAL (P1.2.4)
 #if (defined(CONFIG_SPIRAM) && CONFIG_SPIRAM) || (defined(CONFIG_SPIRAM_SUPPORT) && CONFIG_SPIRAM_SUPPORT)
 #include "esp_psram.h"
 #endif
@@ -74,6 +75,16 @@ uint8_t s_volume_gain = 100;
 esp_timer_handle_t s_volume_commit_timer = NULL;
 audio_config_t s_audio_config = {0};
 audio_stats_t s_audio_stats = {0};
+
+/* Synchronization for stats access (CODE_REVIEW 2602101453, P1.2.4)
+ * WHY: s_audio_stats is accessed from multiple contexts:
+ *      - ISR-like context: audio_processor_read() (called from bt_audio_data_callback - A2DP callback)
+ *      - Task context: audio_engine_task(), audio_processor_get_stats()
+ *      Without synchronization, torn reads of 32-bit/64-bit fields are possible.
+ * SAFETY: portMUX_TYPE spinlock protects against data races and ensures
+ *         atomic access to the struct. Works from both ISR-like and task contexts.
+ */
+portMUX_TYPE s_audio_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 uint32_t s_tag_miss_count = 0;
 int64_t s_tag_recover_mute_until = 0;
 size_t s_runtime_work_bytes = 0;
