@@ -72,6 +72,25 @@ extern volatile bool s_audio_diag_enabled;
 #define AUDIO_ENGINE_TICK_MS          2   /* 2ms tick rate */
 #define AUDIO_ENGINE_CHUNK_BYTES      1024  /* Produce 1KB chunks */
 
+/* I2S read timeout relationship (CODE_REVIEW 2602101453, A1)
+ * 
+ * DOCUMENTED HERE for architecture visibility, but DEFINED IN i2s_manager.c
+ * to avoid circular include (this header includes i2s_manager.h).
+ * 
+ * RELATIONSHIP: I2S_READ_TIMEOUT_MS = AUDIO_ENGINE_TICK_MS - 1
+ *               Current: 1ms timeout, 2ms tick → 1ms headroom for processing
+ * 
+ * WHY: I2S read timeout must be < engine tick period to prevent task overrun.
+ *      If i2s_channel_read() consumes full tick + processing overhead exceeds
+ *      tick rate, causing audio engine jitter and timing violations.
+ * 
+ * MAINTENANCE: When changing AUDIO_ENGINE_TICK_MS, must manually update
+ *              I2S_READ_TIMEOUT_MS in i2s_manager.c to maintain relationship.
+ * 
+ * BEHAVIOR: Quick timeout ensures i2s_source_fill() returns promptly. On timeout,
+ *           returns 0 (silence) allowing engine to proceed without blocking.
+ */
+
 /* Cooperative shutdown event bits (CODE_REVIEW 2602101453, P0.1.1) */
 #define ENGINE_RUNNING_BIT   (1 << 0)  /* Set by task when running, cleared on stop request */
 #define ENGINE_STOPPED_BIT   (1 << 1)  /* Set by task just before self-delete */

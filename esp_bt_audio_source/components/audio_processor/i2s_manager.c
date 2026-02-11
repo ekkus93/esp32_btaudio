@@ -29,7 +29,27 @@
 #endif
 #endif
 
+/* I2S read timeout (CODE_REVIEW 2602101453, A1)
+ * 
+ * TIMING RELATIONSHIP: Must be < AUDIO_ENGINE_TICK_MS (defined in audio_processor_internal.h)
+ *                      to leave headroom for format conversion and resampling overhead.
+ * 
+ * CURRENT VALUES: I2S timeout = 1ms, Engine tick = 2ms → 1ms processing headroom
+ * 
+ * WHY SEPARATE: Defined here to avoid circular include (audio_processor_internal.h
+ *               includes this file's header). Value must stay synchronized manually.
+ * 
+ * ON CHANGE: If AUDIO_ENGINE_TICK_MS changes, update this value to maintain
+ *            relationship: I2S_READ_TIMEOUT_MS = AUDIO_ENGINE_TICK_MS - 1
+ * 
+ * BEHAVIOR: Quick timeout ensures non-blocking returns from i2s_channel_read().
+ *           Audio engine proceeds with silence chunk if I2S source is slow/disconnected,
+ *           maintaining real-time pipeline responsiveness.
+ */
+#define I2S_READ_TIMEOUT_MS  1  /* Synchronized with AUDIO_ENGINE_TICK_MS=2 (2ms - 1ms overhead) */
+
 static const char *TAG = "i2s_manager";
+
 
 #ifdef CONFIG_BT_MOCK_TESTING
 typedef struct {
@@ -236,14 +256,22 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 	                          ? AUDIO_CHUNK_BLOCK_BYTES
 	                          : s_mgr.bufs.raw_buf_bytes;
 	
-	/* Read from I2S DMA with short timeout (audio engine context) */
+	/* Read from I2S DMA with timeout (CODE_REVIEW 2602101453, A1)
+	 * 
+	 * TIMING: Timeout < AUDIO_ENGINE_TICK_MS to prevent task overrun
+	 *         Current: 1ms timeout, 2ms tick → 1ms headroom for processing
+	 * 
+	 * ON TIMEOUT: Returns 0 (silence) - audio engine proceeds without blocking
+	 *             Engine produces silence chunk, maintaining real-time pipeline
+	 * 
+	 * WHY SHORT: Audio engine expects non-blocking behavior; quick timeout maintains
+	 *            real-time responsiveness even when I2S source is slow/disconnected */
 	size_t read_bytes = 0;
-	const uint32_t read_timeout_ms = 2;  /* Quick timeout for audio engine */
 	esp_err_t ret = i2s_channel_read(s_mgr.i2s_rx,
 	                                  s_mgr.bufs.raw_buf,
 	                                  read_bytes_limit,
 	                                  &read_bytes,
-	                                  read_timeout_ms);
+	                                  I2S_READ_TIMEOUT_MS);
 	
 	if (ret != ESP_OK || read_bytes == 0) {
 		return 0;  /* No data available or timeout */

@@ -490,14 +490,31 @@
 
 ## Additional Observations (Lower Priority)
 
-### A1: Engine Tick + I2S Timeout Interplay
+### A1: Engine Tick + I2S Timeout Interplay ✅ COMPLETE
 
-**Location:** `components/audio_processor/i2s_source.c`
+**Completed:** 2026-02-11  
+**Location:** `components/audio_processor/i2s_manager.c`, `include/audio_processor_internal.h`
 
-- [ ] Review `i2s_source_fill()` timeout vs engine tick timing
-- [ ] Document timeout/tick coupling or make relationship explicit
-- [ ] Consider deriving one from the other for robustness
-- [ ] Test under BT stack load / task jitter conditions
+- [x] Review `i2s_source_fill()` timeout vs engine tick timing ✅
+- [x] Document timeout/tick coupling or make relationship explicit ✅
+- [x] Consider deriving one from the other for robustness ✅
+- [ ] Test under BT stack load / task jitter conditions (deferred - requires hardware stress testing)
+
+**Implementation:**
+- Defined explicit relationship: `I2S_READ_TIMEOUT_MS = AUDIO_ENGINE_TICK_MS - 1`
+- Current values: 1ms I2S timeout, 2ms engine tick → 1ms processing headroom
+- Documented in both `i2s_manager.c` (definition) and `audio_processor_internal.h` (architecture reference)
+- Timeout defined locally in `i2s_manager.c` to avoid circular include with `audio_processor_internal.h`
+- Comprehensive WHY/HOW/CORRECTNESS documentation explains timing relationship and maintenance requirements
+
+**Rationale:**
+- I2S timeout must be < engine tick to prevent task iteration overrun
+- Quick timeout ensures non-blocking behavior - audio engine proceeds with silence on timeout
+- 1ms headroom allows for format conversion and resampling overhead without jitter
+- Manual synchronization required due to circular include constraints - documented clearly
+
+**Test Results:** All 349 tests passing (250 host + 99 device)  
+**Build:** Firmware compiles cleanly with new timeout relationship
 
 ---
 
@@ -534,8 +551,10 @@
     - F1.5: Make audio engine return silence during beep: **COMPLETE** ✅ (3/3)
     - F1.6: Enforce I2S/SYNTH mutual exclusion: **COMPLETE** ✅ (4/4)
     - F1.7: Integration testing: **COMPLETE** ✅ (3/3)
+- **Additional Observations:** 3 / 4 subtasks complete (75%) ✅
+  - A1: Engine Tick + I2S Timeout Interplay: **COMPLETE** ✅ (3/4 - BT stress testing deferred)
 
-**Overall Progress:** 51 / 56 total subtasks complete (91.1%)
+**Overall Progress:** 54 / 60 total subtasks complete (90.0%)
 
 ---
 
