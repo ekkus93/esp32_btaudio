@@ -19,7 +19,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/nvs_storage
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/platform_shim
 )
@@ -210,9 +210,9 @@ add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_pro
 
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
-    ../../components/components/bt/common/osi/allocator.c
-    ../../components/components/bt/common/osi/list.c)
-target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/allocator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/list.c)
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/include)
 target_link_libraries(test_list_ownership unity)
 add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
 
@@ -247,17 +247,17 @@ target_link_libraries(test_audio_engine_stress unity util_safe_host platform_shi
 add_test(NAME test_audio_engine_stress COMMAND $<TARGET_FILE:test_audio_engine_stress>)
 
 # allocator.c and list.c depend on bt_common.h which lives in the bt common include path
-target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
-target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common)
+target_include_directories(test_list_ownership PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/include)
 
 # Osi allocator debug tests (host)
 add_executable(test_osi_allocator test_bt_osi_allocator.c 
-    ../../components/components/bt/common/osi/allocator.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/allocator.c)
 target_compile_definitions(test_osi_allocator PRIVATE HEAP_MEMORY_DEBUG)
-target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/osi/include)
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/include)
 # allocator.c depends on bt_common.h which lives in the bt common include path
-target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common)
-target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../components/components/bt/common/include)
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common)
+target_include_directories(test_osi_allocator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/include)
 target_link_libraries(test_osi_allocator unity)
 add_test(NAME test_osi_allocator COMMAND $<TARGET_FILE:test_osi_allocator>)
 

@@ -82,3 +82,6 @@ tmp/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
+# Prevent accidentally re-creating the old ESP-IDF component mirror
+# (Replaced by test/host_test/esp_idf_stubs/ in 2026-02-11)
+esp_bt_audio_source/components/components/

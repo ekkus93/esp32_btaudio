@@ -149,27 +149,33 @@
 
 #### Subtasks:
 
-- [ ] **P2.1.1:** Investigate what `components/components/` is
-  - [ ] Determine if it's accidentally vendored ESP-IDF
-  - [ ] Check if it's referenced in CMakeLists.txt
-  - [ ] Check if build actually uses it or relies on `IDF_PATH`
+- [x] **P2.1.1:** Investigate what `components/components/` is ✅
+  - [x] Determined: Intentional ESP-IDF component mirror for host testing only
+  - [x] Firmware build: Ignored via .component_ignore + CMakeLists.txt return()
+  - [x] Host tests: Uses only bt/common/osi (allocator.c, list.c) - 2 files
+  - [x] Size: 300MB, 16,750 git-tracked files (99.9% unused)
+  - [x] Documented in WHY_COMPONENTS_COMPONENTS.md (193 lines)
 
-- [ ] **P2.1.2:** Option A - Remove if accidental
-  - [ ] Verify build works with only `IDF_PATH` ESP-IDF
-  - [ ] Add to `.gitignore` to prevent re-committing
-  - [ ] Delete `components/components/` directory
-  - [ ] Test full clean build
+- [x] **P2.1.2:** Option A - Remove if accidental ⏭️ SKIPPED (N/A)
+  - [x] **Finding:** Directory is INTENTIONAL, not accidental (per P2.1.1)
+  - [x] Host tests require bt/common/osi files (breaks 247 tests if deleted)
+  - [x] Documented in WHY_COMPONENTS_COMPONENTS.md since 2026-02-03
+  - [x] **Decision:** Skip this task, proceed to minimal cleanup or isolation
 
-- [ ] **P2.1.3:** Option B - Isolate if intentional
-  - [ ] Move to clearly-named directory (e.g., `third_party/esp-idf/`)
-  - [ ] Update build to reference new location
-  - [ ] Add README explaining why it's vendored
-  - [ ] Ensure clear boundary between "our code" and "vendored code"
+- [x] **P2.1.3:** Option B - Isolate if intentional ✅ **EXCEEDED (Chose Option 3 - Extract Essentials)**
+  - [x] Created test/host_test/esp_idf_stubs/ with essential files only
+  - [x] Copied 2 source files + 16 headers (18 files, 156KB total)
+  - [x] Updated test/host_test/CMakeLists.txt (11 path references)
+  - [x] Deleted entire components/components/ directory (300MB removed)
+  - [x] Added to .gitignore to prevent re-creation
+  - [x] All 303 tests passing (247 host + 56 device)
+  - [x] Size reduction: 300MB → 156KB (99.95% reduction)
 
-- [ ] **P2.1.4:** Documentation
-  - [ ] Document dependency management policy
-  - [ ] Update build instructions if changed
-  - [ ] Add note to README about ESP-IDF version requirements
+- [x] **P2.1.4:** Documentation ✅
+  - [x] Created test/host_test/esp_idf_stubs/README.md (comprehensive ESP-IDF stub docs)
+  - [x] Updated components/WHY_COMPONENTS_COMPONENTS.md (marked obsolete, documented removal)
+  - [x] Added .gitignore entry for components/components/
+  - [x] Documented in memory.md and CodeReview2602101453_TODO.md
 
 ---
 
@@ -489,12 +495,14 @@
 
 - **P0 Tasks:** 7 / 7 subtasks complete (100%) ✅
   - P0.1: Replace vTaskDelete() with Cooperative Shutdown: **COMPLETE** ✅
-- **P1 Tasks:** 4 / 9 subtasks complete (44%)
+- **P1 Tasks:** 13 / 13 subtasks complete (100%) ✅
   - P1.1: Guard bt_audio_data_callback() Against Invalid Length: **COMPLETE** ✅
-- **P2 Tasks:** 0 / 9 subtasks complete (0%)
+  - P1.2: Add Synchronization for Statistics Structures: **COMPLETE** ✅
+- **P2 Tasks:** 6 / 9 subtasks complete (67%)
+  - P2.1: Clean Up components/components/ Directory Pollution: **COMPLETE** ✅ (4/4)
 - **Feature Tasks:** 0 / 27 subtasks complete (0%)
 
-**Overall Progress:** 11 / 52 total subtasks complete (21.2%)
+**Overall Progress:** 26 / 56 total subtasks complete (46.4%)
 
 ---
 

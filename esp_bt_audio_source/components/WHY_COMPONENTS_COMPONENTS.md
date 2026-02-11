@@ -1,8 +1,52 @@
-# Why `components/components/` exists
+# ~~Why `components/components/` exists~~ **OBSOLETE - DIRECTORY REMOVED**
 
-## TL;DR
+## **⚠️ THIS DIRECTORY NO LONGER EXISTS ⚠️**
 
-The `components/components/` directory is a **local mirror of ESP-IDF core components** used **exclusively for host testing**. It is **ignored during firmware builds** but provides essential headers and source files for compiling host-based unit tests that need to link against ESP-IDF primitives (like Bluetooth stack utilities) on x86/x64 Linux.
+**Date Removed:** 2026-02-11  
+**Task:** CODE_REVIEW 2602101453 P2.1 - Extract Essentials (Option 3)  
+**Replacement:** `test/host_test/esp_idf_stubs/` (156KB vs 300MB)
+
+---
+
+## What Happened
+
+The `components/components/` directory (300MB, 16,750 files) has been **deleted** and replaced with a minimal stub directory containing only the files needed for host testing.
+
+**Old Location:** `components/components/bt/common/` (full ESP-IDF mirror)  
+**New Location:** `test/host_test/esp_idf_stubs/bt/common/` (extracted essentials only)  
+**Size Reduction:** 300MB → 156KB (99.95% reduction)  
+**Files:** 16,750 → 18 (99.89% reduction)
+
+**Prevention:** Added to `.gitignore` to prevent accidental re-creation
+
+---
+
+## Replacement Details
+
+**What was extracted:**
+```
+test/host_test/esp_idf_stubs/
+└── bt/common/
+    ├── include/
+    │   ├── bt_common.h
+    │   └── bt_user_config.h
+    └── osi/
+        ├── allocator.c    (used by test_list_ownership, test_osi_allocator)
+        ├── list.c         (used by test_list_ownership)
+        └── include/osi/   (14 header files)
+```
+
+**Total:** 2 source files + 16 headers = 18 files, 156KB
+
+**See:** `test/host_test/esp_idf_stubs/README.md` for full documentation
+
+---
+
+## Historical Context (Why it existed)
+
+### TL;DR
+
+The `components/components/` directory was a **local mirror of ESP-IDF core components** used **exclusively for host testing**. It was **ignored during firmware builds** but provided headers and source files for compiling host-based unit tests on x86/x64 Linux.
 
 ---
 
