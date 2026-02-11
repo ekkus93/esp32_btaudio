@@ -349,6 +349,9 @@ TEST_CASE("i2s_source_fill_consumes_mock_queue", "[i2s_manager]")
     size_t filled = i2s_source_fill(s_raw_buf, sizeof(samples));
     TEST_ASSERT_EQUAL(sizeof(samples), filled);
     TEST_ASSERT_EQUAL_MEMORY(samples, s_raw_buf, filled);
+
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_stop());
+    i2s_manager_deinit();
 }
 #endif
 
@@ -366,6 +369,8 @@ TEST_CASE("i2s_manager_start_is_idempotent", "[i2s_manager]")
 
     TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_stop());
     TEST_ASSERT_FALSE(i2s_manager_is_running());
+
+    i2s_manager_deinit();
 }
 
 TEST_CASE("i2s_manager_start_and_stop_toggle_running", "[i2s_manager]")
@@ -381,6 +386,8 @@ TEST_CASE("i2s_manager_start_and_stop_toggle_running", "[i2s_manager]")
 
     TEST_ASSERT_EQUAL(ESP_OK, i2s_manager_stop());
     TEST_ASSERT_FALSE(i2s_manager_is_running());
+
+    i2s_manager_deinit();
 }
 
 /* ========================================================================== */

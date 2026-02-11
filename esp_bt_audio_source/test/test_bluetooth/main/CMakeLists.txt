@@ -1,4 +1,4 @@
-# Main component for the consolidated test application (test_app_all)
+# Main component for the consolidated test application (test_bluetooth)
 # Merges test_app, test_app2, and test_app3
 
 # Notes: Using test_app approach (real components, not mocks)  

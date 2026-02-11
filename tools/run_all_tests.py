@@ -93,7 +93,7 @@ def cleanup_previous_artifacts(root: Path, remove_host: bool, remove_device: boo
 
     if remove_device:
         unity_projects = [
-            root / "esp_bt_audio_source" / "test" / "test_app_all",
+            root / "esp_bt_audio_source" / "test" / "test_bluetooth",
             root / "esp_bt_audio_source" / "test" / "test_app_audio",
             root / "esp_bt_audio_source" / "test" / "test_manager",
         ]
@@ -539,7 +539,7 @@ def aggregate_summary(root: Path) -> dict:
             return None
         return None
 
-    files = [root / "esp_bt_audio_source" / "test" / "test_app_all" / "build" / "one_run_unity.log",
+    files = [root / "esp_bt_audio_source" / "test" / "test_bluetooth" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_app_audio" / "build" / "one_run_unity.log",
              root / "esp_bt_audio_source" / "test" / "test_manager" / "build" / "one_run_unity.log"]
 
@@ -735,7 +735,7 @@ def main(argv: list[str] | None = None):
                 pass
         runner = ROOT / "tools" / "run_unity.py"
         suites = [
-            ROOT / "esp_bt_audio_source" / "test" / "test_app_all",
+            ROOT / "esp_bt_audio_source" / "test" / "test_bluetooth",
             ROOT / "esp_bt_audio_source" / "test" / "test_app_audio",
             ROOT / "esp_bt_audio_source" / "test" / "test_manager",
         ]

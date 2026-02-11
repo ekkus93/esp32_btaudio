@@ -1,3 +1,66 @@
+## 2026-02-11 11:31:31: commit all changes
+
+- User confirmed commit/push should include everything currently modified/deleted.
+
+## 2026-02-11 11:30:48: commit request
+
+- User asked to commit and push; git status shows many unrelated changes and temp artifacts.
+- Need user confirmation on commit scope before proceeding.
+
+## 2026-02-11 11:29:06: run_all_tests timing
+
+- Ran tools/run_all_tests.py with /usr/bin/time -p.
+- Total wall time: 229.81s.
+- All host/device suites passed (99 device tests, 246 host tests).
+
+## 2026-02-11 11:24:31: test_bluetooth rerun
+
+- Re-ran esp_bt_audio_source/test/test_bluetooth via run_unity.py; Unity tests passed.
+
+## 2026-02-11 11:21:57: test_bluetooth build cleanup
+
+- Deleted esp_bt_audio_source/test/test_bluetooth/build to clear stale test_app_all configuration.
+
+## 2026-02-11 11:19:13: run_all_tests timing
+
+- Ran tools/run_all_tests.py with /usr/bin/time -p.
+- Total wall time: 198.80s.
+- Standalone host tests passed; test_bluetooth device suite still failed with monitor error (0 tests).
+
+## 2026-02-11 11:15:16: host_test CMakeLists update
+
+- Switched pairing adapter runner sources from test_app/test_app2 to test_bluetooth paths.
+- Removed stale test_app references in host_test/CMakeLists.txt.
+
+## 2026-02-11 11:13:59: run_all_tests failures triage
+
+- Standalone host configure fails: host_test CMakeLists.txt references missing ../../test_app/main/test_pairing_commands.c.
+- host_test ctest also reports missing executables for pairing adapter/audio resampler/audio util/synth/mem util.
+- test_bluetooth device run fails: build dir configured for old project name test_app_all; needs clean rebuild.
+
+## 2026-02-11 11:12:31: run_all_tests.py timing
+
+- Ran tools/run_all_tests.py with /usr/bin/time -p.
+- Total wall time: 155.49s.
+- Failures: standalone host configure failed; test_bluetooth zero tests; test_bluetooth monitor error.
+
+## 2026-02-11 11:07:46: mock_i2s_std.h usage check
+
+- Confirmed mock_i2s_std.h is included by test_audio_processor and host audio I2S tests.
+- File is still used by device and host test builds.
+
+## 2026-02-11 11:06:59: Removed test_audio_queue suite
+
+- Deleted esp_bt_audio_source/test/test_audio_queue directory.
+- Cleaned tmp artifacts: run_all_tests_summary*.json, canonical_unity_summary*.json, runner_*_stdout.log, host_ctest_output*.log.
+
+## 2026-02-11 11:05:46: test_audio_queue usage check
+
+- Searched for references to `test_audio_queue` in sources and tooling.
+- No current source references; only build artifacts in host_test/build and tmp summaries.
+- run_all_tests.py device suites are test_bluetooth, test_app_audio, test_manager.
+- Conclusion: test/test_audio_queue appears unused in current automation.
+
 ## 2026-02-11 08:02: CODE_REVIEW 2602101453 P2.1 - Committed and Pushed to GitHub ✅
 
 **Status**: ✅ COMMITTED - P2.1 complete and pushed to origin/master
@@ -20797,6 +20860,92 @@ Session length: ~20 minutes
 Outcome: Test suite optimization complete, 60-67% faster test execution
 Status: ✅ COMPLETE
 
+
+---
+
+## 2026-02-11 11:00:29 — Full Test Run (Post-Fix)
+
+**Results:**
+- Host tests: 214 passed, 0 failed
+- test_app_all: 46 passed, 0 failed
+- test_app_audio: 35 passed, 0 failed
+- test_manager: 18 passed, 0 failed
+
+**Issue:**
+- Standalone host tests (CI parity check) failed at configure step (cmake ..)
+
+**Summary:**
+All device suites passed; run_all_tests.py exited non-zero due to standalone host tests configure failure.
+
+---
+
+Timestamp: 2026-02-11 11:00:29
+Session length: ~5 minutes
+Outcome: Device suites pass; standalone host tests config failure remains
+Status: ❌ FAILED
+
+
+---
+
+## 2026-02-11 11:03:23 — Rename test_app_all to test_bluetooth
+
+**Changes:**
+- Renamed suite directory: test_app_all → test_bluetooth
+- Updated test_app_audio EXTRA_COMPONENT_DIRS path
+- Updated tools/run_all_tests.py suite paths
+- Updated suite CMake project name and comments
+
+---
+
+Timestamp: 2026-02-11 11:03:23
+Session length: ~5 minutes
+Outcome: Suite rename completed
+Status: ✅ COMPLETE
+
+
+---
+
+## 2026-02-11 10:48:22 — Test Runner Attempt (run_all_tests.py)
+
+**Context:**
+User requested full test run via tools/run_all_tests.py.
+
+**Result:**
+- Direct execution failed with: permission denied (script not executable).
+- Python environment setup tool failed: "Workspace not found".
+
+**Next step:**
+Awaiting user guidance to run via Python interpreter or fix workspace/environment selection.
+
+---
+
+Timestamp: 2026-02-11 10:48:22
+Session length: ~2 minutes
+Outcome: Tests not run due to execution permissions and env setup failure
+Status: ⏳ PENDING
+
+
+---
+
+## 2026-02-11 10:46:53 — Clang-Tidy Validation (Post Consolidation)
+
+**Context:**
+Ran clang-tidy after consolidating test_app suites to ensure no code quality regressions.
+
+**Action taken:**
+- Executed: `/home/phil/work/esp32/esp32_btaudio/tools/run_clang_tidy_xtensa.sh`
+- Analyzed: 37 source files from compilation database
+
+**Result:**
+✅ **ZERO warnings/errors** — clang-tidy completed cleanly
+
+---
+
+Timestamp: 2026-02-11 10:46:53
+Session length: ~2 minutes
+Outcome: Linting pass, no issues found
+Status: ✅ COMPLETE
+
 ---
 
 ## 2026-02-11 10:06:54 — Code Quality Validation (Clang-Tidy)
@@ -20903,5 +21052,55 @@ Status: ✅ COMPLETE
 Timestamp: 2026-02-11 10:45:32
 Session length: ~1 minute
 Outcome: Approval logged; proceeding with consolidation finalize
+Status: ✅ COMPLETE
+
+
+---
+
+## 2026-02-11 10:53:11 — Full Test Run (run_all_tests.py)
+
+**Context:**
+Executed the full test runner after consolidations.
+
+**Results:**
+- Host tests: 243 passed, 0 failed
+- test_app_all: 46 passed, 0 failed
+- test_app_audio: 0 tests (monitor error; no canonical log)
+- test_manager: 17 passed, 1 failed
+
+**Failure details:**
+- test_app_audio: "Error running monitor"; see one_run_unity.log
+- test_manager: 1 failing test; see one_run_unity.log
+
+**Paths:**
+- test_app_audio log: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log
+- test_manager log: /home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_manager/build/one_run_unity.log
+- Summary: /home/phil/work/esp32/esp32_btaudio/tmp/run_all_tests_summary.json
+
+---
+
+Timestamp: 2026-02-11 10:53:11
+Session length: ~5 minutes
+Outcome: Test run completed with failures
+Status: ❌ FAILED
+
+
+---
+
+## 2026-02-11 10:56:03 — Fixes for Test Failures
+
+**Changes:**
+- test_app_audio: updated EXTRA_COMPONENT_DIRS to point to test_app_all components
+- test_manager: added i2s_manager_deinit after i2s tests to release channels
+
+**Files:**
+- esp_bt_audio_source/test/test_app_audio/CMakeLists.txt
+- esp_bt_audio_source/test/test_manager/main/test_manager.c
+
+---
+
+Timestamp: 2026-02-11 10:56:03
+Session length: ~5 minutes
+Outcome: Fixes applied; ready to rerun tests
 Status: ✅ COMPLETE
 

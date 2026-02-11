@@ -1,4 +1,4 @@
-# ESP-IDF BT Audio Source Test App (Consolidated)
+# ESP-IDF BT Audio Source Test App (Bluetooth Suite)
 cmake_minimum_required(VERSION 3.16)
 
 # Set extra components directory
@@ -13,7 +13,7 @@ set(EXTRA_COMPONENT_DIRS
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # Set project name
-project(esp_bt_audio_source_test_all)
+project(esp_bt_audio_source_test_bluetooth)
 
 # Optionally add compile definitions for testing mode
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE CONFIG_BT_MOCK_TESTING)

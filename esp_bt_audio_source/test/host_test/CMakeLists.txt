@@ -551,17 +551,14 @@ target_sources(dump_event_stress_output PRIVATE mocks/audio_processor_host_stub.
 target_sources(dump_event_stress_output PRIVATE mocks/fake_esp_err.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
-## Adapter runner: compile test_app pairing test and the adapter code so we can
+## Adapter runner: compile test_bluetooth pairing test and the adapter code so we can
 # exercise the host-mode adapter instrumentation (`test_pairing_adapters.c`) as
 # a native host binary. This helps capture the `TEST_ADAPT` logs and in-memory
 # event queue behavior without flashing a device.
-set(TEST_PAIRING_ADAPTER_SRC ../../test_app/main/test_pairing_adapters.c)
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_PAIRING_ADAPTER_SRC}")
-    set(TEST_PAIRING_ADAPTER_SRC ../../test_app2/main/test_pairing_adapters.c)
-endif()
+set(TEST_PAIRING_ADAPTER_SRC ../../test_bluetooth/main/test_pairing_adapters.c)
 
 add_executable(test_pairing_adapter_runner
-    ../../test_app/main/test_pairing_commands.c
+    ../../test_bluetooth/main/test_pairing_commands.c
     ${TEST_PAIRING_ADAPTER_SRC}
     ../../components/command_interface/commands.c
     mocks/mock_gap.c
