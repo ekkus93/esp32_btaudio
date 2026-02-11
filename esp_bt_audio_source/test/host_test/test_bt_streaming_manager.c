@@ -327,6 +327,100 @@ void test_media_ctrl_failure_on_start_reports_error_and_callback(void)
     TEST_ASSERT_EQUAL_PTR(&g_cb_ctx, g_cb_ctx.last_user_data);
 }
 
+/* P1.1.3: Input validation tests (CODE_REVIEW 2602101453) */
+
+void test_data_callback_rejects_negative_length(void)
+{
+    /* Test that negative length is rejected immediately (P1.1.1) */
+    bt_streaming_manager_force_state_for_test(BT_STREAMING_STATE_STREAMING);
+
+    esp_a2d_source_data_cb_t data_cb = mock_a2dp_get_registered_data_callback();
+    TEST_ASSERT_NOT_NULL(data_cb);
+
+    uint8_t out[32];
+    memset(out, 0xAB, sizeof(out)); /* Fill with non-zero pattern */
+
+    /* Call with negative length - should return 0 immediately */
+    int32_t written = data_cb(out, -1);
+    TEST_ASSERT_EQUAL_INT32(0, written);
+
+    /* Buffer should be unchanged (not written to) */
+    for (size_t i = 0; i < sizeof(out); ++i) {
+        TEST_ASSERT_EQUAL_UINT8(0xAB, out[i]);
+    }
+
+    /* Stats should not be updated */
+    bt_streaming_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_streaming_info(&info));
+    TEST_ASSERT_EQUAL_UINT32(0, info.bytes_sent);
+    TEST_ASSERT_EQUAL_UINT32(0, info.packets_sent);
+}
+
+void test_data_callback_rejects_zero_length(void)
+{
+    /* Test that zero length is rejected immediately (P1.1.1) */
+    bt_streaming_manager_force_state_for_test(BT_STREAMING_STATE_STREAMING);
+
+    esp_a2d_source_data_cb_t data_cb = mock_a2dp_get_registered_data_callback();
+    TEST_ASSERT_NOT_NULL(data_cb);
+
+    uint8_t out[32];
+    memset(out, 0xAB, sizeof(out)); /* Fill with non-zero pattern */
+
+    /* Call with zero length - should return 0 immediately */
+    int32_t written = data_cb(out, 0);
+    TEST_ASSERT_EQUAL_INT32(0, written);
+
+    /* Buffer should be unchanged (not written to) */
+    for (size_t i = 0; i < sizeof(out); ++i) {
+        TEST_ASSERT_EQUAL_UINT8(0xAB, out[i]);
+    }
+
+    /* Stats should not be updated */
+    bt_streaming_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_streaming_info(&info));
+    TEST_ASSERT_EQUAL_UINT32(0, info.bytes_sent);
+    TEST_ASSERT_EQUAL_UINT32(0, info.packets_sent);
+}
+
+void test_data_callback_normal_positive_length_unchanged(void)
+{
+    /* Test that normal positive lengths work correctly after validation (P1.1.1, P1.1.2) */
+    bt_streaming_manager_force_state_for_test(BT_STREAMING_STATE_STREAMING);
+
+    esp_a2d_source_data_cb_t data_cb = mock_a2dp_get_registered_data_callback();
+    TEST_ASSERT_NOT_NULL(data_cb);
+
+    /* Inject sample audio data */
+    const int16_t sample_data[] = {15000, -15000, 8000, -8000, 12000, -12000};
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_test_inject_audio_data((const uint8_t*)sample_data, sizeof(sample_data)));
+
+    uint8_t out[sizeof(sample_data)] = {0};
+    
+    /* Call with normal positive length */
+    int32_t written = data_cb(out, (int32_t)sizeof(out));
+    
+    /* Should return the requested length */
+    TEST_ASSERT_EQUAL_INT32((int32_t)sizeof(out), written);
+
+    /* Stats should be updated correctly */
+    bt_streaming_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_streaming_info(&info));
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)sizeof(out), info.bytes_sent);
+    TEST_ASSERT_EQUAL_UINT32(1, info.packets_sent);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)sizeof(out), info.bytes_produced);
+
+    /* Buffer should contain the audio data (non-zero) */
+    bool any_nonzero = false;
+    for (size_t i = 0; i < sizeof(out); ++i) {
+        if (out[i] != 0) {
+            any_nonzero = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(any_nonzero);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -342,5 +436,9 @@ int main(void)
     RUN_TEST(test_data_callback_zero_fills_on_underrun);
     RUN_TEST(test_resume_after_underrun_updates_duration);
     RUN_TEST(test_media_ctrl_failure_on_start_reports_error_and_callback);
+    /* P1.1.3: Input validation tests */
+    RUN_TEST(test_data_callback_rejects_negative_length);
+    RUN_TEST(test_data_callback_rejects_zero_length);
+    RUN_TEST(test_data_callback_normal_positive_length_unchanged);
     return UNITY_END();
 }

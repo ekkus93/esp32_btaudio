@@ -107,12 +107,37 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 {
-    if (len <= 0 || buf == NULL) {
+    /* Input validation (CODE_REVIEW 2602101453, P1.1.4)
+     * 
+     * WHY: Negative or zero length indicates a bug in the Bluetooth stack.
+     *      Null buffer pointer is invalid and would cause crashes.
+     *      Same defensive programming pattern as bt_audio_data_callback().
+     * 
+     * SAFETY: Guard against upstream bugs by rejecting invalid parameters immediately.
+     */
+    if (buf == NULL) {
+        ESP_LOGE(TAG, "bt_events_a2dp_data_callback: NULL buffer pointer");
+        return 0;
+    }
+    
+    if (len < 0) {
+        ESP_LOGE(TAG, "bt_events_a2dp_data_callback: INVALID negative length=%d (BT stack bug!)", len);
+        return 0;
+    }
+    
+    if (len == 0) {
+        ESP_LOGW(TAG, "bt_events_a2dp_data_callback: zero-length request (should never happen)");
         return 0;
     }
 
+    /* Cast to size_t once after validation (CODE_REVIEW 2602101453, P1.1.4)
+     * WHY: len is now known to be positive, so safe to cast to size_t.
+     *      Using size_t for audio_processor_read() eliminates signed/unsigned issues.
+     */
+    size_t req = (size_t)len;
+
     size_t bytes_read = 0;
-    esp_err_t ret = audio_processor_read(buf, (size_t)len, &bytes_read);
+    esp_err_t ret = audio_processor_read(buf, req, &bytes_read);
     if (ret != ESP_OK) {
         return 0;
     }

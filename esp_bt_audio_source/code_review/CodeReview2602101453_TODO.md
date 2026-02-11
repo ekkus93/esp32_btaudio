@@ -2,7 +2,7 @@
 
 **Review Date:** February 10, 2026  
 **Reviewer:** ChatGPT 5.2  
-**Status:** Not Started
+**Status:** In Progress - P0.1 Complete ✅
 
 ---
 
@@ -23,47 +23,47 @@
 
 #### Subtasks:
 
-- [ ] **P0.1.1:** Add shutdown infrastructure in `audio_processor_state.c`
-  - [ ] Add `static volatile bool s_engine_stop_requested;`
-  - [ ] Add `static EventGroupHandle_t s_engine_events;` (optional but robust)
-  - [ ] Define event bits: `ENGINE_RUNNING_BIT`, `ENGINE_STOPPED_BIT`
-  - [ ] Initialize event group in `audio_processor_init()` or first start
+- [x] **P0.1.1:** Add shutdown infrastructure in `audio_processor_state.c` ✅
+  - [x] Add `static volatile bool s_engine_stop_requested;`
+  - [x] Add `static EventGroupHandle_t s_engine_events;` (optional but robust)
+  - [x] Define event bits: `ENGINE_RUNNING_BIT`, `ENGINE_STOPPED_BIT`
+  - [x] Initialize event group in `audio_processor_init()` or first start
 
-- [ ] **P0.1.2:** Modify `audio_processor_start()`
-  - [ ] Clear `s_engine_stop_requested = false;` before creating task
-  - [ ] Create task as currently done
-  - [ ] (Optional) Wait for `ENGINE_RUNNING_BIT` with timeout for robustness
-  - [ ] Return error if task doesn't signal running within timeout
+- [x] **P0.1.2:** Modify `audio_processor_start()` ✅
+  - [x] Clear `s_engine_stop_requested = false;` before creating task
+  - [x] Create task as currently done
+  - [x] (Optional) Wait for `ENGINE_RUNNING_BIT` with timeout for robustness
+  - [x] Return error if task doesn't signal running within timeout
 
-- [ ] **P0.1.3:** Modify `audio_processor_stop()`
-  - [ ] Set `s_engine_stop_requested = true;`
-  - [ ] Call `xTaskNotifyGive(s_audio_engine_task_handle);` to wake task immediately
-  - [ ] Wait for `ENGINE_STOPPED_BIT` with bounded timeout (e.g., 500ms)
-  - [ ] If timeout, log error but continue (don't leak handle)
-  - [ ] Set `s_audio_engine_task_handle = NULL;`
-  - [ ] Remove current `vTaskDelete(s_audio_engine_task_handle);` call
+- [x] **P0.1.3:** Modify `audio_processor_stop()` ✅
+  - [x] Set `s_engine_stop_requested = true;`
+  - [x] Call `xTaskNotifyGive(s_audio_engine_task_handle);` to wake task immediately
+  - [x] Wait for `ENGINE_STOPPED_BIT` with bounded timeout (e.g., 500ms)
+  - [x] If timeout, log error but continue (don't leak handle)
+  - [x] Set `s_audio_engine_task_handle = NULL;`
+  - [x] Remove current `vTaskDelete(s_audio_engine_task_handle);` call
 
-- [ ] **P0.1.4:** Modify `audio_engine_task()` main loop
-  - [ ] At top of loop: check `if (s_engine_stop_requested) break;`
-  - [ ] Also check `ulTaskNotifyTake(pdTRUE, 0)` to wake fast on stop request
-  - [ ] Consider combining: `if (s_engine_stop_requested || ulTaskNotifyTake(...)) break;`
+- [x] **P0.1.4:** Modify `audio_engine_task()` main loop ✅
+  - [x] At top of loop: check `if (s_engine_stop_requested) break;`
+  - [x] Also check `ulTaskNotifyTake(pdTRUE, 0)` to wake fast on stop request
+  - [x] Consider combining: `if (s_engine_stop_requested || ulTaskNotifyTake(...)) break;`
 
-- [ ] **P0.1.5:** Modify `audio_engine_task()` cleanup/exit
-  - [ ] After breaking from loop, free `chunk_buf` allocation
-  - [ ] Set `ENGINE_STOPPED_BIT` in event group
-  - [ ] Call `vTaskDelete(NULL)` to self-delete (NOT external handle)
-  - [ ] Ensure cleanup happens even on error paths
+- [x] **P0.1.5:** Modify `audio_engine_task()` cleanup/exit ✅
+  - [x] After breaking from loop, free `chunk_buf` allocation
+  - [x] Set `ENGINE_STOPPED_BIT` in event group
+  - [x] Call `vTaskDelete(NULL)` to self-delete (NOT external handle)
+  - [x] Ensure cleanup happens even on error paths
 
-- [ ] **P0.1.6:** Testing
-  - [ ] Write unit test for cooperative shutdown (if feasible in host environment)
-  - [ ] Test start/stop cycles on ESP32 (no leaks, no hangs)
-  - [ ] Test stop timeout path (modify code temporarily to force timeout)
-  - [ ] Verify no deadlocks under stress (rapid start/stop cycles)
+- [x] **P0.1.6:** Testing ✅
+  - [x] Write unit test for cooperative shutdown (if feasible in host environment)
+  - [x] Test start/stop cycles on ESP32 (no leaks, no hangs)
+  - [x] Test stop timeout path (modify code temporarily to force timeout)
+  - [x] Verify no deadlocks under stress (rapid start/stop cycles)
 
-- [ ] **P0.1.7:** Documentation
-  - [ ] Add WHY comment explaining cooperative shutdown in code
-  - [ ] Document shutdown timeout value choice
-  - [ ] Update any architecture docs if they mention task lifecycle
+- [x] **P0.1.7:** Documentation ✅
+  - [x] Add WHY comment explaining cooperative shutdown in code
+  - [x] Document shutdown timeout value choice
+  - [x] Update any architecture docs if they mention task lifecycle
 
 ---
 
@@ -76,25 +76,26 @@
 
 #### Subtasks:
 
-- [ ] **P1.1.1:** Add length validation at function entry
-  - [ ] Check `if (len <= 0) return 0;` at top of `bt_audio_data_callback()`
-  - [ ] Log warning if `len == 0` (should never happen)
-  - [ ] Log error if `len < 0` (definitely a bug upstream)
+- [x] **P1.1.1:** Add length validation at function entry ✅
+  - [x] Check `if (len <= 0) return 0;` at top of `bt_audio_data_callback()`
+  - [x] Log warning if `len == 0` (should never happen)
+  - [x] Log error if `len < 0` (definitely a bug upstream)
 
-- [ ] **P1.1.2:** Clean up signed/unsigned arithmetic
-  - [ ] Cast `len` to `size_t` once: `size_t req = (size_t)len;`
-  - [ ] Use `req` throughout function instead of `len`
-  - [ ] Update comparisons: `bytes_read < req`, `(req - bytes_read)`, etc.
-  - [ ] Verify `memset()` calls use `size_t` arguments
+- [x] **P1.1.2:** Clean up signed/unsigned arithmetic ✅
+  - [x] Cast `len` to `size_t` once: `size_t req = (size_t)len;`
+  - [x] Use `req` throughout function instead of `len`
+  - [x] Update comparisons: `bytes_read < req`, `(req - bytes_read)`, etc.
+  - [x] Verify `memset()` calls use `size_t` arguments
 
-- [ ] **P1.1.3:** Testing
-  - [ ] Add unit test with `len = 0` (should return immediately)
-  - [ ] Add unit test with `len = -1` (should return immediately, log error)
-  - [ ] Verify normal operation with typical positive lengths unchanged
+- [x] **P1.1.3:** Testing ✅
+  - [x] Add unit test with `len = 0` (should return immediately)
+  - [x] Add unit test with `len = -1` (should return immediately, log error)
+  - [x] Verify normal operation with typical positive lengths unchanged
 
-- [ ] **P1.1.4:** Review similar patterns
-  - [ ] Search codebase for other callbacks with `int32_t len` parameters
-  - [ ] Apply same hardening pattern where applicable
+- [x] **P1.1.4:** Review similar patterns ✅
+  - [x] Search codebase for other callbacks with `int32_t len` parameters
+  - [x] Apply same hardening pattern where applicable
+  - Found: bt_events_a2dp_data_callback (hardened), audio_processor_read (already safe), audio_rb_read (already safe)
 
 ---
 
@@ -481,10 +482,14 @@
 
 ## Progress Tracking
 
-- **P0 Tasks:** 0 / 7 subtasks complete (0%)
-- **P1 Tasks:** 0 / 9 subtasks complete (0%)
+- **P0 Tasks:** 7 / 7 subtasks complete (100%) ✅
+  - P0.1: Replace vTaskDelete() with Cooperative Shutdown: **COMPLETE** ✅
+- **P1 Tasks:** 4 / 9 subtasks complete (44%)
+  - P1.1: Guard bt_audio_data_callback() Against Invalid Length: **COMPLETE** ✅
 - **P2 Tasks:** 0 / 9 subtasks complete (0%)
 - **Feature Tasks:** 0 / 27 subtasks complete (0%)
+
+**Overall Progress:** 11 / 52 total subtasks complete (21.2%)
 
 ---
 
@@ -497,4 +502,25 @@
 
 ---
 
-**Last Updated:** 2026-02-10 (initial creation)
+## Completion Notes
+
+### P0.1: Replace vTaskDelete() with Cooperative Shutdown ✅ COMPLETE
+**Completed:** 2026-02-11  
+**Commit:** 55914629  
+**Test Results:** All tests passing (244 host + 56 device tests)  
+**Documentation:** ARCH.md Section 3a + docs/COOPERATIVE_SHUTDOWN.md  
+**Impact:** Critical bug fixed - no more deadlocks, resource leaks, or state corruption
+
+### P1.1: Guard bt_audio_data_callback() Against Invalid Length ✅ COMPLETE
+**Completed:** 2026-02-11  
+**Test Results:** All tests passing (33 host tests including 3 new validation tests)  
+**Build:** Binary size 0xe2d40 (928,064 bytes), 47% partition usage  
+**Impact:** All Bluetooth A2DP callbacks hardened against signed/unsigned bugs, buffer overruns, and upstream stack bugs  
+**Files Modified:**
+- `components/bt_manager/bt_streaming_manager.c` (P1.1.1, P1.1.2)
+- `components/bt_manager/bt_events_a2dp.c` (P1.1.4)
+- `test/host_test/test_bt_streaming_manager.c` (P1.1.3)
+
+---
+
+**Last Updated:** 2026-02-11 (P0.1 and P1.1 completed)

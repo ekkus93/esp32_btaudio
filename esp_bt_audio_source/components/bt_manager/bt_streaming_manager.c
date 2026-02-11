@@ -44,46 +44,72 @@ static uint32_t get_current_time_ms(void);
  */
 static int32_t bt_audio_data_callback(uint8_t *data, int32_t len)
 {
+    /* Input validation (CODE_REVIEW 2602101453, P1.1.1)
+     * 
+     * WHY: Negative or zero length indicates a bug in the Bluetooth stack.
+     *      Processing invalid lengths could cause signed/unsigned conversion issues,
+     *      buffer overruns, or arithmetic errors in subsequent calculations.
+     * 
+     * SAFETY: Guard against upstream bugs by rejecting invalid lengths immediately.
+     */
+    if (len < 0) {
+        ESP_LOGE(TAG, "bt_audio_data_callback: INVALID negative length=%d (BT stack bug!)", len);
+        return 0;  /* Cannot fulfill request - return 0 bytes */
+    }
+    
+    if (len == 0) {
+        ESP_LOGW(TAG, "bt_audio_data_callback: zero-length request (should never happen)");
+        return 0;  /* Nothing to do - return 0 bytes */
+    }
+
+    /* Cast to size_t once after validation (CODE_REVIEW 2602101453, P1.1.2)
+     * WHY: len is now known to be positive, so safe to cast to size_t.
+     *      Using size_t throughout eliminates repeated casts and prevents
+     *      signed/unsigned comparison warnings and potential arithmetic bugs.
+     */
+    size_t req = (size_t)len;
+
     /* If not streaming, return silence immediately */
     if (s_streaming_state != BT_STREAMING_STATE_STREAMING &&
         s_streaming_state != BT_STREAMING_STATE_PAUSED) {
-        safe_memset(data, (size_t)len, 0, (size_t)len);
+        safe_memset(data, req, 0, req);
         return len;
     }
 
     if (s_streaming_state == BT_STREAMING_STATE_PAUSED) {
-        safe_memset(data, (size_t)len, 0, (size_t)len);
+        safe_memset(data, req, 0, req);
         return len;
     }
 
     /* Read from shared audio_processor. audio_processor_read() will
-     * return available bytes up to 'len' from its internal ring buffer. */
+     * return available bytes up to 'req' from its internal ring buffer. */
     size_t bytes_read = 0;
-    esp_err_t result = audio_processor_read(data, (size_t)len, &bytes_read);
+    esp_err_t result = audio_processor_read(data, req, &bytes_read);
     if (result != ESP_OK) {
 #if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         ESP_LOGW(TAG, "audio_processor_read error: %d", result);  // NOLINT(bugprone-branch-clone)
 #endif
-        safe_memset(data, (size_t)len, 0, (size_t)len);
+        safe_memset(data, req, 0, req);
         bytes_read = 0;
-    } else if (bytes_read < (size_t)len) {
+    } else if (bytes_read < req) {
         /* Underflow — zero-fill remainder */
-        safe_memset(data + bytes_read, (size_t)(len - bytes_read), 0, (size_t)(len - bytes_read));
+        size_t remainder = req - bytes_read;
+        safe_memset(data + bytes_read, remainder, 0, remainder);
 #if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         ESP_LOGW(TAG, "Audio buffer underrun (%zu/%d bytes)", bytes_read, (int)len);  // NOLINT(bugprone-branch-clone)
 #endif
     }
 
     /* Update streaming statistics (CODE_REVIEW5 Task 3.1) */
-    s_streaming_info.bytes_sent += len;          /* Legacy - keep for compatibility */
-    s_streaming_info.bytes_requested += len;     /* Total bytes A2DP asked for */
+    s_streaming_info.bytes_sent += req;          /* Legacy - keep for compatibility */
+    s_streaming_info.bytes_requested += req;     /* Total bytes A2DP asked for */
     s_streaming_info.bytes_produced += bytes_read;  /* Actual audio from queue */
-    s_streaming_info.bytes_silence += (len - bytes_read);  /* Zero-fill (underruns) */
+    s_streaming_info.bytes_silence += (req - bytes_read);  /* Zero-fill (underruns) */
     s_streaming_info.packets_sent++;
     
     /* CODE_REVIEW5 Task 3.2: Track underrun rate */
     s_streaming_info.total_callbacks++;
-    if (bytes_read < len) {
+    if (bytes_read < req) {
         s_streaming_info.underrun_count++;
 #if CONFIG_BT_VERBOSE_AUDIO_LOGGING
         float underrun_rate = (float)s_streaming_info.underrun_count / (float)s_streaming_info.total_callbacks;
