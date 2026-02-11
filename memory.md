@@ -1,3 +1,13 @@
+## 2026-02-11 12:28:28: run_all_tests.py
+
+- Ran tools/run_all_tests.py via python3 after ESP-IDF export.
+- Results: host 250/250; test_bluetooth 46/46; test_app_audio 35/35; test_manager 18/18; aggregate device 99/99.
+
+## 2026-02-11 12:22:24: F2.4 runtime I2S_CONFIG extension
+
+- Extended I2S_CONFIG to accept optional rate/bit depth/channels and validate them.
+- Added audio_processor_set_channels and updated command help/docs/tests accordingly.
+
 ## 2026-02-11 11:46:23: test policy clarification
 
 - User directive: treat any "CRITICAL: zero tests" as a failure and act on it.

@@ -1,6 +1,29 @@
 #include "cmd_handlers.h"
 #include "bt_manager.h"
 
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+static bool cmd_parse_int(const char *value, int *out)
+{
+    if (value == NULL || out == NULL) {
+        return false;
+    }
+
+    char *end = NULL;
+    long parsed = strtol(value, &end, 10);
+    if (end == value || *end != '\0') {
+        return false;
+    }
+    if (parsed < INT_MIN || parsed > INT_MAX) {
+        return false;
+    }
+
+    *out = (int)parsed;
+    return true;
+}
+
 static const char *TAG = "cmd";
 
 #if defined(ESP_PLATFORM) && !defined(UNIT_TEST)
@@ -258,6 +281,11 @@ cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx)
         cmd_send_response("ERR", "I2S_CONFIG", "MISSING_PARAM", NULL);
         return CMD_SUCCESS;
     }
+    if (ctx->param_count > 4)
+    {
+        cmd_send_response("ERR", "I2S_CONFIG", "TOO_MANY_PARAMS", NULL);
+        return CMD_SUCCESS;
+    }
     int pins[4] = {-1, -1, -1, -1};
     char param_copy[128];
     cmd_safe_copy(param_copy, sizeof(param_copy), ctx->params[0]);
@@ -268,14 +296,98 @@ cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx)
         pins[idx++] = atoi(tok);
         tok = strtok(NULL, ",");
     }
-#ifdef ESP_PLATFORM
-    if (audio_processor_set_i2s_pins(pins[0], pins[1], pins[2], pins[3]) == ESP_OK) {
-        cmd_send_response("OK", "I2S_CONFIG", "APPLIED", ctx->params[0]);
-    } else {
-    	cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+
+    int rate = 0;
+    int bit_depth = 0;
+    int channels = 0;
+    bool has_rate = false;
+    bool has_bit_depth = false;
+    bool has_channels = false;
+
+    if (ctx->param_count >= 2)
+    {
+        if (!cmd_parse_int(ctx->params[1], &rate))
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_RATE", ctx->params[1]);
+            return CMD_SUCCESS;
+        }
+        if (rate != 8000 && rate != 16000 && rate != 22050 && rate != 32000 && rate != 44100 && rate != 48000 && rate != 96000)
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_RATE", ctx->params[1]);
+            return CMD_SUCCESS;
+        }
+        has_rate = true;
     }
+
+    if (ctx->param_count >= 3)
+    {
+        if (!cmd_parse_int(ctx->params[2], &bit_depth))
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_BIT_DEPTH", ctx->params[2]);
+            return CMD_SUCCESS;
+        }
+        if (bit_depth != 16 && bit_depth != 24 && bit_depth != 32)
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_BIT_DEPTH", ctx->params[2]);
+            return CMD_SUCCESS;
+        }
+        has_bit_depth = true;
+    }
+
+    if (ctx->param_count >= 4)
+    {
+        if (!cmd_parse_int(ctx->params[3], &channels))
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_CHANNELS", ctx->params[3]);
+            return CMD_SUCCESS;
+        }
+        if (channels != 1 && channels != 2)
+        {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_CHANNELS", ctx->params[3]);
+            return CMD_SUCCESS;
+        }
+        has_channels = true;
+    }
+
+    char data[128];
+    if (has_rate || has_bit_depth || has_channels)
+    {
+        snprintf(data, sizeof(data), "PINS=%s%s%s%s%s%s%s%s", ctx->params[0],
+                 has_rate ? ",RATE=" : "", has_rate ? ctx->params[1] : "",
+                 has_bit_depth ? ",BIT=" : "", has_bit_depth ? ctx->params[2] : "",
+                 has_channels ? ",CH=" : "", has_channels ? ctx->params[3] : "",
+                 "");
+    }
+#ifdef ESP_PLATFORM
+    esp_err_t res = audio_processor_set_i2s_pins(pins[0], pins[1], pins[2], pins[3]);
+    if (res != ESP_OK) {
+        cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+        return CMD_SUCCESS;
+    }
+    if (has_rate) {
+        res = audio_processor_set_sample_rate((audio_sample_rate_t)rate);
+        if (res != ESP_OK) {
+            cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+            return CMD_SUCCESS;
+        }
+    }
+    if (has_bit_depth) {
+        res = audio_processor_set_bit_depth((audio_bit_depth_t)bit_depth);
+        if (res != ESP_OK) {
+            cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+            return CMD_SUCCESS;
+        }
+    }
+    if (has_channels) {
+        res = audio_processor_set_channels((audio_channel_t)channels);
+        if (res != ESP_OK) {
+            cmd_send_response("ERR", "I2S_CONFIG", "FAILED", NULL);
+            return CMD_SUCCESS;
+        }
+    }
+    cmd_send_response("OK", "I2S_CONFIG", "APPLIED", (has_rate || has_bit_depth || has_channels) ? data : ctx->params[0]);
 #else
-    cmd_send_response("OK", "I2S_CONFIG", "MOCK_APPLIED", ctx->params[0]);
+    cmd_send_response("OK", "I2S_CONFIG", "MOCK_APPLIED", (has_rate || has_bit_depth || has_channels) ? data : ctx->params[0]);
 #endif
     return CMD_SUCCESS;
 }

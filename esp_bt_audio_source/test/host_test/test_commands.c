@@ -185,6 +185,17 @@ void test_parse_i2s_config_command(void) {
     TEST_ASSERT_EQUAL_STRING("26,25,22,21", ctx.params[0]);
 }
 
+void test_parse_i2s_config_command_with_format(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 16 2", &ctx));
+    TEST_ASSERT_EQUAL(CMD_TYPE_I2S_CONFIG, ctx.type);
+    TEST_ASSERT_EQUAL(4, ctx.param_count);
+    TEST_ASSERT_EQUAL_STRING("26,25,22,21", ctx.params[0]);
+    TEST_ASSERT_EQUAL_STRING("48000", ctx.params[1]);
+    TEST_ASSERT_EQUAL_STRING("16", ctx.params[2]);
+    TEST_ASSERT_EQUAL_STRING("2", ctx.params[3]);
+}
+
 void test_parse_file_command(void) {
     cmd_context_t ctx;
     TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("FILE alpha.txt", &ctx));
@@ -503,6 +514,36 @@ void test_volume_missing_param_should_error(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|VOLUME|MISSING_PARAM"));
 }
 
+void test_i2s_config_invalid_rate_should_error(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 12345", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_RATE"));
+}
+
+void test_i2s_config_invalid_bit_depth_should_error(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 20", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_BIT_DEPTH"));
+}
+
+void test_i2s_config_invalid_channels_should_error(void) {
+    mock_uart_reset_tx();
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 16 3", &ctx));
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_CHANNELS"));
+}
+
 void test_debug_mock_add_missing_param_errors(void) {
     mock_uart_reset_tx();
     cmd_context_t ctx;
@@ -520,6 +561,7 @@ int main(void) {
     RUN_TEST(test_parse_scan_command);
     RUN_TEST(test_parse_connect_command);
     RUN_TEST(test_parse_i2s_config_command);
+    RUN_TEST(test_parse_i2s_config_command_with_format);
     RUN_TEST(test_parse_file_command);
     RUN_TEST(test_parse_file_truncates_overlong_name);
     RUN_TEST(test_parse_invalid_command);
@@ -545,6 +587,9 @@ int main(void) {
     RUN_TEST(test_enter_pin_command);
     RUN_TEST(test_volume_invalid_param_should_error);
     RUN_TEST(test_volume_missing_param_should_error);
+    RUN_TEST(test_i2s_config_invalid_rate_should_error);
+    RUN_TEST(test_i2s_config_invalid_bit_depth_should_error);
+    RUN_TEST(test_i2s_config_invalid_channels_should_error);
     RUN_TEST(test_debug_mock_add_missing_param_errors);
     
     // Forward-declare tests implemented below

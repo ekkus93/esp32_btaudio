@@ -1212,6 +1212,65 @@ esp_err_t audio_processor_emit_sync_worker_diag(void)
 /**
  * @brief Set the audio bit depth
  */
+esp_err_t audio_processor_set_channels(audio_channel_t channels)
+{
+    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
+    if (!s_is_initialized) {
+        ESP_LOGE(TAG, "Audio processor not initialized");  // NOLINT(bugprone-branch-clone)
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (channels != AUDIO_CHANNEL_MONO && channels != AUDIO_CHANNEL_STEREO) {
+        ESP_LOGE(TAG, "Invalid channel configuration: %d", (int)channels);  // NOLINT(bugprone-branch-clone)
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_audio_config.channels == channels) {
+        return ESP_OK;
+    }
+
+    bool was_running = s_is_running;
+    esp_err_t ret = ESP_OK;
+
+    if (was_running) {
+        ret = audio_processor_stop();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to stop audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
+            return ret;
+        }
+    }
+
+    s_audio_config.channels = channels;
+
+    i2s_manager_deinit();
+    i2s_manager_buffers_t i2s_bufs = {
+        .raw_buf = s_capture_buffer,
+        .raw_buf_bytes = s_runtime_work_bytes,
+        .proc_buf = s_proc_buffer,
+        .proc_buf2 = s_proc_buffer2,
+        .work_bytes = s_runtime_work_bytes,
+    };
+    ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to reconfigure I2S via i2s_manager: %d", ret);  // NOLINT(bugprone-branch-clone)
+        return ret;
+    }
+
+    if (was_running) {
+        ret = audio_processor_start();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to restart audio processor: %d", ret);  // NOLINT(bugprone-branch-clone)
+            return ret;
+        }
+    }
+
+    ESP_LOGI(TAG, "Audio channels changed to %d", (int)channels);  // NOLINT(bugprone-branch-clone)
+    return ESP_OK;
+}
+
+/**
+ * @brief Set the audio bit depth
+ */
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)

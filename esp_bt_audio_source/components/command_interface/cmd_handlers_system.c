@@ -51,7 +51,7 @@ static const struct
     {"AUDIO_STATUS", NULL, "Report audio engine stats and ring buffer state"},
     {"SPANLOG", "[N]", "Dump last N span log entries (default 10, max 100)"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
-    {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN", "Configure I2S pins"},
+    {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN [RATE] [BIT_DEPTH] [CHANNELS]", "Configure I2S pins and format"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
     {"RESET", NULL, "Reboot the device"},
 #ifdef ESP_PLATFORM

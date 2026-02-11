@@ -92,7 +92,7 @@ Key data paths:
 | `HELP` | none | Emit canonical help text. |
 | `SET_NAME` | `<string>` | Set local BT device name + persist. |
 | `SET_DEFAULT_PIN` | `<pin>` | Update stored default PIN. |
-| `SAMPLE_RATE` / `I2S_CONFIG` | numbers | Update audio configuration; reinit I2S if needed. |
+| `SAMPLE_RATE` / `I2S_CONFIG` | numbers | Update audio configuration (pins + optional rate/bit depth/channels); reinit I2S if needed. |
 
 Configuration persistence rules:
 - `SET_NAME` and `SET_DEFAULT_PIN` write directly to the `nvs_storage` namespace so the values survive reboot.

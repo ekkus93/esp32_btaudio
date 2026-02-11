@@ -344,7 +344,7 @@ Next steps to finish these flows on-device:
 | Command | Description | Parameters | Response | Example |
 |---------|-------------|------------|----------|---------|
 | `SAMPLE_RATE` | Set I2S sample rate | Rate in Hz | `OK\|SAMPLE_RATE\|SET\|<RATE>` | `SAMPLE_RATE 48000` |
-| `I2S_CONFIG` | Configure I2S pins | BCLK,WCLK,DOUT,DIN | `OK\|I2S_CONFIG\|SUCCESS` | `I2S_CONFIG 26,25,22,21` |
+| `I2S_CONFIG` | Configure I2S pins and format | BCLK,WCLK,DOUT,DIN [RATE] [BIT_DEPTH] [CHANNELS] | `OK\|I2S_CONFIG\|APPLIED` | `I2S_CONFIG 26,25,22,21 48000 16 2` |
 | `AUDIO_AUTOSTART` | Enable/disable audio autostart at boot | on\|off\|get | `OK\|AUDIO_AUTOSTART\|<STATE>` | `AUDIO_AUTOSTART on` |
 
 ## Audio Configuration
@@ -363,7 +363,7 @@ Run `idf.py menuconfig` and navigate to "A2DP Example Configuration" → "Audio 
 
 **Runtime Configuration (NVS overrides):**
 
-- **I2S pins:** Use `I2S_CONFIG` command to override default pins. Persisted to NVS, applied on next boot.
+- **I2S pins + format:** Use `I2S_CONFIG` to override default pins and optionally set sample rate/bit depth/channels. Pins are persisted to NVS and apply immediately; format changes apply immediately but are not persisted.
 - **Audio autostart:** Use `AUDIO_AUTOSTART on|off` to enable/disable audio initialization at boot. Requires reboot to take effect. Query current setting with `AUDIO_AUTOSTART get`.
 
 **Configuration Hierarchy (highest precedence first):**

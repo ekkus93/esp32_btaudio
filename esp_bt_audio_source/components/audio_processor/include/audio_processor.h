@@ -136,6 +136,14 @@ esp_err_t audio_processor_set_sample_rate(audio_sample_rate_t sample_rate);
 esp_err_t audio_processor_set_bit_depth(audio_bit_depth_t bit_depth);
 
 /**
+ * @brief Set the output channel count
+ *
+ * @param channels New channel mode (mono or stereo)
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t audio_processor_set_channels(audio_channel_t channels);
+
+/**
  * @brief Set audio volume
  * 
  * @param volume Volume level (0-100%)
