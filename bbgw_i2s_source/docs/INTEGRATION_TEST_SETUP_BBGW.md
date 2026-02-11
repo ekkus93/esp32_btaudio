@@ -732,7 +732,7 @@ Underruns: 1523 (0.15%)
    ```
 
 4. **Check I2S signals with oscilloscope/logic analyzer:**
-   - BCLK should be 1.536 MHz (for 48 kHz sample rate)
+   - BCLK should be 3.072 MHz (for 48 kHz sample rate, 32-bit slots)
    - WS (LRCLK) should be 48 kHz
    - DATA should toggle
 

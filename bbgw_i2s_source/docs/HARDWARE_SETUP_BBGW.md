@@ -254,7 +254,7 @@ dmesg | grep ttyO4
 
 | Signal | BBGW Pin | BBGW GPIO | ESP32 Pin | Notes |
 |--------|----------|-----------|-----------|-------|
-| **BCLK** (Bit Clock) | P9.31 | GPIO110 | GPIO26 | I2S bit clock (1.536 MHz @ 48 kHz) |
+| **BCLK** (Bit Clock) | P9.31 | GPIO110 | GPIO26 | I2S bit clock (3.072 MHz @ 48 kHz, 32-bit slots) |
 | **WS** (Word Select) | P9.29 | GPIO111 | GPIO25 | Left/Right channel select (48 kHz) |
 | **DOUT** (Data Out) | P9.28 | GPIO112 | GPIO22 | I2S audio data (BBGW → ESP32) |
 | **GND** (Ground) | P9.1, P9.2 | GND | GND | Common ground (use 2 wires minimum) |
@@ -758,7 +758,7 @@ Hardware setup is complete when all of the following criteria are met:
 ### Hardware Verification
 
 - [ ] I2S signals visible on logic analyzer (if available)
-  - BCLK: 1.536 MHz square wave @ 48 kHz
+   - BCLK: 3.072 MHz square wave @ 48 kHz (32-bit slots)
   - WS: 48 kHz square wave
   - DOUT: Data toggles during audio playback
 - [ ] UART communication working (loopback or ESP32 response)

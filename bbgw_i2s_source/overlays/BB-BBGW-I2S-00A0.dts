@@ -9,7 +9,7 @@
  *   - BCLK: P9.31 (McASP0_ACLKX, GPIO3_14)
  *   - WS:   P9.29 (McASP0_FSX, GPIO3_15)
  *   - DOUT: P9.28 (McASP0_AXR1, GPIO3_17)
- *   - Sample Rate: 48 kHz, 16-bit stereo
+ *   - Sample Rate: 48 kHz, 16-bit samples in 32-bit slots
  * 
  * Target: ESP32 esp_bt_audio_source (I2S slave receiver)
  * 
@@ -78,6 +78,7 @@
 			/* McASP operating mode */
 			op-mode = <0>;  /* MCASP_IIS_MODE (I2S mode) */
 			tdm-slots = <2>;  /* Stereo: left + right channels */
+			tdm-slot-width = <32>;  /* 32-bit slots for 16-bit samples */
 			
 			/* Number of serializers (AXR pins) */
 			num-serializer = <16>;  /* AM335x has 16 serializers */

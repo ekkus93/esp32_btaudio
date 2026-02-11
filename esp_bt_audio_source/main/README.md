@@ -44,8 +44,8 @@ Tasks, timers, and concurrency
 Configuration and data formats
 ------------------------------
 - `audio_config_t` (see `include/audio_processor.h`) defines sample rate, bit depth (16/24/32), channel mode (mono/stereo), volume (0–100), mute flag, I2S port, and optional pin assignments. Pins can be updated at runtime via `audio_processor_set_i2s_pins()`; the processor restarts to apply changes.
-- Default output format (A2DP payload): 16-bit, 44.1 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
-- Producers (beep_manager, i2s_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 44.1 kHz, stereo.
+- Default output format (A2DP payload): 16-bit, 48 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
+- Producers (beep_manager, i2s_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 48 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
 - The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible.
 
@@ -59,6 +59,8 @@ Beep generation details (`beep_manager.c`)
 I2S capture details (`i2s_manager.c`)
 --------------------------------------
 - Configures an I2S RX channel as slave, sets DMA descriptors/counts, and assigns pins from `audio_config_t` (with `GPIO_NUM_NC` / `I2S_GPIO_UNUSED` fallbacks under mock builds).
+- Standard capture profile: Philips I2S framing, 48 kHz stereo, 16-bit samples in 32-bit slots, WS low = left / WS high = right, ESP32 as RX slave (external master provides BCLK/WS).
+- Other sample rates/bit depths can be selected via Kconfig defaults or runtime commands; multi-profile I2S presets are future work.
 - Reads into a caller-supplied raw buffer, converts bit depth, resamples to the output rate, and fills the ring buffer with capture audio.
 - Mock/testing mode (`CONFIG_BT_MOCK_TESTING`) bypasses hardware by generating synthetic frames and uses a relaxed clock config.
 

@@ -364,9 +364,9 @@ I2S McASP Pins (BeagleBone P9 Header):
   GND:          P9.1  → ESP32 GND
 
 Expected I2S Signals:
-  BCLK: 1.536 MHz (48 kHz × 32 bits)
+   BCLK: 3.072 MHz (48 kHz × 64 bits, 32-bit slots)
   WS:   48 kHz (left/right channel clock)
-  DOUT: 16-bit PCM sine wave data
+   DOUT: 16-bit PCM samples (S16_LE) in 32-bit slots
 
 ----------------------------------------------------------------------
 
@@ -439,14 +439,14 @@ If you have a logic analyzer, you can verify the I2S signals are correct.
    - **GND:** P9.1 or P9.2
 
 2. **Logic analyzer settings:**
-   - **Sample rate:** 24 MHz or higher (to capture 1.536 MHz BCLK)
+   - **Sample rate:** 24 MHz or higher (to capture 3.072 MHz BCLK)
    - **Trigger:** Rising edge on BCLK
    - **Duration:** 10-100 ms
 
 ### Expected Signals
 
 **BCLK (Bit Clock):**
-- **Frequency:** 1.536 MHz (48 kHz sample rate × 32 bits/frame)
+- **Frequency:** 3.072 MHz (48 kHz sample rate × 64 bits/frame)
 - **Duty cycle:** 50%
 - **Voltage:** 3.3V TTL (0V low, 3.3V high)
 
@@ -463,7 +463,7 @@ If you have a logic analyzer, you can verify the I2S signals are correct.
 ### Verification Steps
 
 1. **Capture I2S signals** during milestone test
-2. **Measure BCLK frequency:** Should be 1.536 MHz ± 0.1%
+2. **Measure BCLK frequency:** Should be 3.072 MHz ± 0.1%
 3. **Measure WS frequency:** Should be 48 kHz ± 0.1%
 4. **Verify I2S timing:** Data transitions 1 BCLK cycle after WS edge
 5. **Decode DOUT:** Should show 16-bit signed PCM samples

@@ -105,13 +105,13 @@ This project requires two Device Tree overlays:
 |-----|----------|------|--------|
 | P9.31 | McASP0_ACLKX | Mode 4 | BCLK (Bit Clock) |
 | P9.29 | McASP0_FSX | Mode 4 | WS (Word Select / LRCLK) |
-| P9.28 | McASP0_AXR2 | Mode 4 | DOUT (Data Out) |
+| P9.28 | McASP0_AXR1 | Mode 4 | DOUT (Data Out) |
 
 **Peripheral Configuration:**
 - McASP0 in master mode (generates BCLK and WS)
 - I2S format (standard stereo audio)
 - Sample rate: 48 kHz (configurable)
-- Bit depth: 16-bit signed (S16_LE)
+- Sample format: 16-bit signed (S16_LE) in 32-bit slots
 
 **ALSA Device Created:**
 - Card name: `BBGW-I2S`

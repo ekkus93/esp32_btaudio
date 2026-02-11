@@ -29,7 +29,7 @@ This directory provides two overlay options:
 - ✅ Full ALSA integration (accessible via `aplay -l`)
 - ✅ Configures McASP0 as I2S master (generates BCLK and WS)
 - ✅ 48 kHz sample rate support
-- ✅ 16-bit stereo PCM
+- ✅ 16-bit samples in 32-bit slots
 - ✅ Transmit on AXR1 (P9.28)
 
 **Use When:**
@@ -72,9 +72,9 @@ Both overlays configure the same pins:
 | P9.1  | GND            | —            | —         | —    | GND       |
 
 **Signal Specifications:**
-- **BCLK (Bit Clock):** 1.536 MHz (48 kHz × 32 bits/frame)
+- **BCLK (Bit Clock):** 3.072 MHz (48 kHz × 64 bits/frame)
 - **WS (Word Select):** 48 kHz, 50% duty cycle
-- **DOUT (Data Out):** I2S format, MSB-first, 16-bit samples
+- **DOUT (Data Out):** I2S format, MSB-first, 16-bit samples in 32-bit slots
 
 ---
 

@@ -7,7 +7,12 @@ typedef int i2s_port_t;
 #define I2S_NUM_0 0
 typedef void* i2s_chan_handle_t;
 typedef enum { I2S_ROLE_SLAVE = 0, I2S_ROLE_MASTER = 1 } i2s_role_t;
-typedef enum { I2S_DATA_BIT_WIDTH_16BIT = 0, I2S_DATA_BIT_WIDTH_24BIT = 1, I2S_DATA_BIT_WIDTH_32BIT = 2 } i2s_data_bit_width_t;
+typedef enum {
+	I2S_DATA_BIT_WIDTH_8BIT = 8,
+	I2S_DATA_BIT_WIDTH_16BIT = 16,
+	I2S_DATA_BIT_WIDTH_24BIT = 24,
+	I2S_DATA_BIT_WIDTH_32BIT = 32
+} i2s_data_bit_width_t;
 #define I2S_STD_CLK_DEFAULT_CONFIG(rate) (0)
 #define I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bit_width, slot_mode) (0)
 /* Channel configuration used by tests (minimal, for build only) */
@@ -24,10 +29,15 @@ typedef struct {
  * compiled test code and the audio component agree at runtime.
  */
 typedef enum { I2S_SLOT_MODE_MONO = 1, I2S_SLOT_MODE_STEREO = 2 } i2s_slot_mode_t;
-typedef enum { I2S_SLOT_BIT_WIDTH_AUTO = 0 } i2s_std_slot_bit_width_t;
+typedef enum {
+	I2S_SLOT_BIT_WIDTH_AUTO = 0,
+	I2S_SLOT_BIT_WIDTH_32BIT = 32
+} i2s_std_slot_bit_width_t;
 typedef enum { I2S_CLK_SRC_DEFAULT = 0 } i2s_clk_src_t;
 #define I2S_MCLK_MULTIPLE_256 256
-#define I2S_STD_SLOT_BOTH 0
+#define I2S_STD_SLOT_LEFT 1
+#define I2S_STD_SLOT_RIGHT 2
+#define I2S_STD_SLOT_BOTH (I2S_STD_SLOT_LEFT | I2S_STD_SLOT_RIGHT)
 
 /* (i2s_data_bit_width_t already declared above) */
 

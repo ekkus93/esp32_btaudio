@@ -109,7 +109,7 @@ This document provides a comprehensive pin reference for the BeagleBone Green Wi
 | P9.25 | GPIO3_21 | GPIO | GPIO3_21 | General purpose |
 | P9.26 | UART1_RXD | UART1 RX | GPIO0_14 | Alt: CAN |
 | P9.27 | GPIO3_19 | GPIO | GPIO3_19 | General purpose |
-| **P9.28** | **McASP0_AXR2** | **I2S DOUT** | **GPIO3_17** | **Used for I2S Data** |
+| **P9.28** | **McASP0_AXR1** | **I2S DOUT** | **GPIO3_17** | **Used for I2S Data** |
 | **P9.29** | **McASP0_FSX** | **I2S WS** | **GPIO3_15** | **Used for I2S Word Select** |
 | P9.30 | SPI1_D1 | SPI MOSI | GPIO3_16 | Alt: GPIO |
 | **P9.31** | **McASP0_ACLKX** | **I2S BCLK** | **GPIO3_14** | **Used for I2S Bit Clock** |
@@ -139,14 +139,14 @@ This document provides a comprehensive pin reference for the BeagleBone Green Wi
 |-----|--------|----------|------|------|-----------|
 | **P9.31** | **BCLK** | Bit Clock (ACLKX) | GPIO3_14 (GPIO110) | Mode 4 | Output (Master) |
 | **P9.29** | **WS** | Word Select (FSX) | GPIO3_15 (GPIO111) | Mode 4 | Output (Master) |
-| **P9.28** | **DOUT** | Data Out (AXR2) | GPIO3_17 (GPIO112) | Mode 4 | Output (TX) |
+| **P9.28** | **DOUT** | Data Out (AXR1) | GPIO3_17 (GPIO112) | Mode 4 | Output (TX) |
 
 ### I2S Signal Characteristics
 
 **Bit Clock (BCLK) - P9.31:**
-- **Frequency:** 1.536 MHz @ 48 kHz sample rate
-- **Formula:** `BCLK = Sample Rate × Channels × Bit Depth`
-  - `48000 Hz × 2 channels × 16 bits = 1.536 MHz`
+- **Frequency:** 3.072 MHz @ 48 kHz sample rate (32-bit slots)
+- **Formula:** `BCLK = Sample Rate × Channels × Slot Width`
+  - `48000 Hz × 2 channels × 32 bits = 3.072 MHz`
 - **Waveform:** Square wave, 50% duty cycle
 - **Voltage:** 3.3V logic level
 - **Load:** Drives ESP32 GPIO26 input
@@ -162,8 +162,8 @@ This document provides a comprehensive pin reference for the BeagleBone Green Wi
 
 **Data Out (DOUT) - P9.28:**
 - **Format:** I2S standard format
-- **Bit Depth:** 16-bit signed (S16_LE)
-- **Data Rate:** 1.536 Mbps
+- **Bit Depth:** 16-bit samples (S16_LE) in 32-bit slots
+- **Data Rate:** 3.072 Mbps (bit clock)
 - **Alignment:** MSB first
 - **Voltage:** 3.3V logic level
 - **Load:** Drives ESP32 GPIO22 input
@@ -175,7 +175,7 @@ mcasp0_pins: pinmux_mcasp0_pins {
     pinctrl-single,pins = <
         0x190 0x20  /* P9.31: mcasp0_aclkx, MODE0 | OUTPUT | PULLDOWN */
         0x194 0x20  /* P9.29: mcasp0_fsx, MODE0 | OUTPUT | PULLDOWN */
-        0x19c 0x22  /* P9.28: mcasp0_axr2, MODE2 | OUTPUT | PULLDOWN */
+        0x19c 0x22  /* P9.28: mcasp0_axr1, MODE2 | OUTPUT | PULLDOWN */
     >;
 };
 ```

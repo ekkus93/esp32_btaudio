@@ -447,43 +447,44 @@
 
 #### Subtasks:
 
-- [ ] **F2.1:** Document target configuration
-  - [ ] Format: Philips I2S standard (1-bit delay)
-  - [ ] Sample rate: 48,000 Hz
-  - [ ] Channels: Stereo (2)
-  - [ ] Bit depth: 16-bit samples
-  - [ ] Slot width: 32-bit slots
-  - [ ] BCLK: 64×Fs = 3.072 MHz
-  - [ ] WS polarity: WS low = Left, WS high = Right
-  - [ ] Role: ESP32 slave RX, external master (Beaglebone)
+- [x] **F2.1:** Document target configuration
+  - [x] Format: Philips I2S standard (1-bit delay)
+  - [x] Sample rate: 48,000 Hz
+  - [x] Channels: Stereo (2)
+  - [x] Bit depth: 16-bit samples
+  - [x] Slot width: 32-bit slots
+  - [x] BCLK: 64×Fs = 3.072 MHz
+  - [x] WS polarity: WS low = Left, WS high = Right
+  - [x] Role: ESP32 slave RX, external master (Beaglebone)
 
-- [ ] **F2.2:** Verify current `i2s_manager.c` configuration
-  - [ ] Check if slot format is already Philips I2S (expect: yes, using default macro)
-  - [ ] Check sample rate default (should be 48kHz based on history)
-  - [ ] Check bit depth handling (16-bit)
-  - [ ] Check slot width configuration
+- [x] **F2.2:** Verify current `i2s_manager.c` configuration
+  - [x] Check if slot format is already Philips I2S (expect: yes, using default macro)
+  - [x] Check sample rate default (should be 48kHz based on history)
+  - [x] Check bit depth handling (16-bit)
+  - [x] Check slot width configuration
 
-- [ ] **F2.3:** Update configuration if needed
-  - [ ] Set sample rate to 48kHz in defaults
-  - [ ] Ensure 16-bit sample / 32-bit slot configuration
-  - [ ] Verify SLAVE mode for RX channel
-  - [ ] Verify Philips I2S framing selected
+- [x] **F2.3:** Update configuration if needed
+  - [x] Set sample rate to 48kHz in defaults
+  - [x] Ensure 16-bit sample / 32-bit slot configuration
+  - [x] Verify SLAVE mode for RX channel
+  - [x] Verify Philips I2S framing selected
 
 - [ ] **F2.4:** Add runtime configuration capability (optional)
   - [ ] Extend `I2S_CONFIG` command to support format selection?
   - [ ] Or keep format fixed for V1, defer to future work
 
 - [ ] **F2.5:** Beaglebone source testing
+  - [x] Align BBGW overlay/docs to 32-bit slots (AXR1, BCLK 3.072 MHz)
   - [ ] Configure BBGW I2S output to match profile
   - [ ] Verify LRCLK = 48 kHz on scope
   - [ ] Verify BCLK = 3.072 MHz on scope
   - [ ] Verify 1-bit delay (Philips standard)
   - [ ] Test audio capture and playback through BT
 
-- [ ] **F2.6:** Documentation
-  - [ ] Document supported I2S configuration in README
-  - [ ] Add notes for future multi-profile support (44.1k, 24-bit, etc.)
-  - [ ] Document how to configure external I2S master to match
+- [x] **F2.6:** Documentation
+  - [x] Document supported I2S configuration in README
+  - [x] Add notes for future multi-profile support (44.1k, 24-bit, etc.)
+  - [x] Document how to configure external I2S master to match
 
 ---
 

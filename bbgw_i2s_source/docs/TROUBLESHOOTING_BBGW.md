@@ -1218,7 +1218,7 @@ python3 -c "import yaml; yaml.safe_load(open('config.yaml'))"
    killall aplay
    
    # With logic analyzer or oscilloscope:
-   # - P9.31 (BCLK): Should show 1.536 MHz square wave
+   # - P9.31 (BCLK): Should show 3.072 MHz square wave (32-bit slots)
    # - P9.29 (WSEL): Should show 48 kHz square wave
    # - P9.28 (DOUT): Should show data transitions
    ```

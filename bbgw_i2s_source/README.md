@@ -51,7 +51,7 @@ A Python-based I2S master transmitter running on BeagleBone Green Wireless to ac
 BBGW P9 Header           ESP32
 P9.31 (McASP0_ACLKX) ──► GPIO26 (BCLK)
 P9.29 (McASP0_FSX)   ──► GPIO25 (WS)
-P9.28 (McASP0_AXR0)  ──► GPIO22 (DIN)
+P9.28 (McASP0_AXR1)  ──► GPIO22 (DIN)
 P9.1  (DGND)         ──► GND
 ```
 
@@ -77,7 +77,7 @@ P9.1  (DGND)         ──► GND
 BBGW P9 Header           UDA1334ATS Breakout
 P9.31 (McASP0_ACLKX) ──► BCLK
 P9.29 (McASP0_FSX)   ──► WSEL (Word Select)
-P9.28 (McASP0_AXR0)  ──► DIN
+P9.28 (McASP0_AXR1)  ──► DIN
 P9.3  (3.3V)         ──► VIN
 P9.1  (DGND)         ──► GND
                           │

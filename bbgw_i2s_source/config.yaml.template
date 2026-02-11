@@ -14,7 +14,7 @@ i2s:
                                      # Alternative: "hw:0,0" if overlay creates default card
   sample_rate: 48000  # Fixed at 48 kHz for esp_bt_audio_source (McASP configured for 48 kHz)
   channels: 2         # Stereo
-  format: "S16_LE"    # 16-bit little-endian PCM
+  format: "S16_LE"    # 16-bit samples (packed into 32-bit I2S slots)
   period_size: 1024   # ALSA period size in frames
   buffer_size: 4096   # ALSA buffer size in frames (ring buffer size in samples: 8192)
   

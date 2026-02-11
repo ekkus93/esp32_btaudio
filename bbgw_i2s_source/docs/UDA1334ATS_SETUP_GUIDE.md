@@ -90,7 +90,7 @@ Connect the BeagleBone P9 header to the UDA1334ATS breakout module:
 ├──────────────────────┤        ├──────────────────────┤
 │ P9.31 (McASP0_ACLKX) │───────▶│ BCLK  (Bit Clock)    │
 │ P9.29 (McASP0_FSX)   │───────▶│ WSEL  (Word Select)  │
-│ P9.28 (McASP0_AXR0)  │───────▶│ DIN   (Data In)      │
+│ P9.28 (McASP0_AXR1)  │───────▶│ DIN   (Data In)      │
 │ P9.3  (3.3V)         │───────▶│ VIN   (Power 3-5V)   │
 │ P9.1  (GND)          │───────▶│ GND   (Ground)       │
 └──────────────────────┘        └──────────────────────┘
@@ -104,9 +104,9 @@ Connect the BeagleBone P9 header to the UDA1334ATS breakout module:
 
 | BBGW Pin | Signal Name | Function | UDA1334ATS Pin | Notes |
 |----------|-------------|----------|----------------|-------|
-| **P9.31** | McASP0_ACLKX | I2S Bit Clock | **BCLK** | 1.536 MHz @ 48 kHz |
+| **P9.31** | McASP0_ACLKX | I2S Bit Clock | **BCLK** | 3.072 MHz @ 48 kHz (32-bit slots) |
 | **P9.29** | McASP0_FSX | I2S Word Select | **WSEL** (or WS/LRCLK) | 48 kHz frame sync |
-| **P9.28** | McASP0_AXR0 | I2S Data Out | **DIN** | Serial audio data |
+| **P9.28** | McASP0_AXR1 | I2S Data Out | **DIN** | Serial audio data |
 | **P9.3** | 3.3V Power | Power Supply | **VIN** | 3.3V or 5V (regulator onboard) |
 | **P9.1** | DGND | Ground | **GND** | Common ground |
 

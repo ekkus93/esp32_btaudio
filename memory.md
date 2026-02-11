@@ -1,3 +1,48 @@
+## 2026-02-11 11:46:23: test policy clarification
+
+- User directive: treat any "CRITICAL: zero tests" as a failure and act on it.
+
+## 2026-02-11 11:50:43: F2.5 setup context
+
+- User reported BBGW and scope/logic analyzer not available right now.
+- ESP target for BBGW testing: ESP32-WROOM32.
+- Pin mapping and config details are in bbgw_i2s_source README/config template.
+
+## 2026-02-11 11:56:22: F2.5 prep - BBGW slot alignment
+
+- Updated BBGW overlay and docs to align with 16-bit samples in 32-bit slots.
+- Standardized DOUT pin naming to AXR1 (P9.28) in setup docs and guides.
+- Updated BCLK expectations to 3.072 MHz where documented.
+
+## 2026-02-11 11:58:06: UDA1334ATS compatibility question
+
+- User asked whether the WCMCU-1334/UDA1334ATS module supports the ESP32 I2S settings.
+
+## 2026-02-11 11:59:07: bbgw_i2s_source unit tests question
+
+- User asked which unit tests to run for bbgw_i2s_source.
+
+## 2026-02-11 12:13:18: run_all_tests after test_app_audio fix
+
+- Fixed test_app_audio I2S shim to include missing slot width and slot mask constants.
+- Re-ran tools/run_all_tests.py: host tests 246/246, test_bluetooth 46/46, test_app_audio 35/35, test_manager 18/18; all passed.
+
+## 2026-02-11 11:40:08: run_all_tests timing
+
+- Ran tools/run_all_tests.py with /usr/bin/time -p.
+- Total wall time: 238.88s.
+- test_app_audio device suite failed with monitor error (0 tests); others passed.
+
+## 2026-02-11 11:37:28: clang-tidy run
+
+- Ran tools/run_clang_tidy_xtensa.sh (37 files). No issues reported in output.
+
+## 2026-02-11 11:36:54: F2 standard I2S configuration
+
+- Updated i2s_manager slot config to enforce 16-bit samples in 32-bit slots and Philips framing in both normal and mock builds.
+- Updated main/README.md to document the standard I2S capture profile and default 48 kHz output format.
+- Marked F2.1, F2.2, F2.3, and F2.6 complete in CodeReview2602101453_TODO.md.
+
 ## 2026-02-11 11:31:31: commit all changes
 
 - User confirmed commit/push should include everything currently modified/deleted.

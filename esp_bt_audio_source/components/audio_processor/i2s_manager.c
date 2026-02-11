@@ -97,15 +97,21 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 	std_cfg.slot_cfg = (i2s_std_slot_config_t)I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
 		bit_width,
 		cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO);
+	std_cfg.slot_cfg.data_bit_width = bit_width;
+	std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+	std_cfg.slot_cfg.slot_mask = (cfg->channels == AUDIO_CHANNEL_MONO) ? I2S_STD_SLOT_LEFT : I2S_STD_SLOT_BOTH;
+	std_cfg.slot_cfg.ws_width = 32;
+	std_cfg.slot_cfg.ws_pol = false;
+	std_cfg.slot_cfg.bit_shift = true;
 #else
 	std_cfg.clk_cfg.sample_rate_hz = cfg->sample_rate;
 	std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
 	std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
 	std_cfg.slot_cfg.data_bit_width = bit_width;
-	std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO;
+	std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 	std_cfg.slot_cfg.slot_mode = cfg->channels == AUDIO_CHANNEL_MONO ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO;
-	std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
-	std_cfg.slot_cfg.ws_width = bit_width;
+	std_cfg.slot_cfg.slot_mask = (cfg->channels == AUDIO_CHANNEL_MONO) ? I2S_STD_SLOT_LEFT : I2S_STD_SLOT_BOTH;
+	std_cfg.slot_cfg.ws_width = 32;
 	std_cfg.slot_cfg.ws_pol = false;
 	std_cfg.slot_cfg.bit_shift = true;
 #endif
