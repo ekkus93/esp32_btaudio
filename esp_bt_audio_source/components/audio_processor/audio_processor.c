@@ -201,6 +201,12 @@ static void audio_engine_task(void *arg)
     uint8_t *chunk_buf = platform_malloc(AUDIO_ENGINE_CHUNK_BYTES, PLATFORM_MEM_CAP_DMA);
     if (chunk_buf == NULL) {
         ESP_LOGE(TAG, "audio_engine_task: failed to allocate chunk buffer");
+#ifndef UNIT_TEST
+        /* Signal stopped on error path so audio_processor_start() doesn't timeout (P0.1.5) */
+        if (s_engine_events != NULL) {
+            xEventGroupSetBits(s_engine_events, ENGINE_STOPPED_BIT);
+        }
+#endif
         vTaskDelete(NULL);
         return;
     }
@@ -208,7 +214,24 @@ static void audio_engine_task(void *arg)
     ESP_LOGI(TAG, "audio_engine_task: started (tick=%dms, chunk=%d bytes)", 
              AUDIO_ENGINE_TICK_MS, AUDIO_ENGINE_CHUNK_BYTES);
     
+#ifndef UNIT_TEST
+    /* Signal task is running (CODE_REVIEW 2602101453, P0.1.2/P0.1.5)
+     * Allows audio_processor_start() to confirm successful startup */
+    if (s_engine_events != NULL) {
+        xEventGroupSetBits(s_engine_events, ENGINE_RUNNING_BIT);
+    }
+#endif
+    
     for (;;) {
+        /* Cooperative shutdown check (CODE_REVIEW 2602101453, P0.1.4)
+         * Stop flag is set by audio_processor_stop() along with task notification.
+         * Breaking here allows clean resource cleanup before self-delete.
+         * WHY: Prevents deadlock/leak/corruption from external vTaskDelete(). */
+        if (s_engine_stop_requested) {
+            ESP_LOGI(TAG, "audio_engine_task: stop requested, breaking from main loop");
+            break;
+        }
+        
         /* Watermark management (Phase 2, Task 2.4)
          * Check ring occupancy and apply hysteresis to prevent thrashing */
         size_t capacity = audio_rb_capacity(s_audio_ring);
@@ -282,11 +305,30 @@ static void audio_engine_task(void *arg)
             }
         }
         
-        vTaskDelay(delay_ticks);
+        /* Cooperative shutdown wait (CODE_REVIEW 2602101453, P0.1.4)
+         * Use task notification instead of vTaskDelay for immediate wake on stop.
+         * xTaskNotifyGive() from audio_processor_stop() wakes task instantly.
+         * Timeout: 20ms tick maintains same polling rate as before. */
+        ulTaskNotifyTake(pdTRUE, delay_ticks);
     }
     
-    /* Cleanup (unreachable in normal operation) */
+    /* Cleanup on cooperative shutdown (CODE_REVIEW 2602101453, P0.1.5)
+     * We reach here when s_engine_stop_requested causes loop break.
+     * Free resources, signal completion, then self-delete.
+     * WHY: External vTaskDelete() prevented cleanup and could leak chunk_buf. */
+    ESP_LOGI(TAG, "audio_engine_task: shutting down, freeing resources");
+    
     platform_free(chunk_buf);
+    
+#ifndef UNIT_TEST
+    /* Signal task has stopped (P0.1.5)
+     * Allows audio_processor_stop() to return without timeout */
+    if (s_engine_events != NULL) {
+        xEventGroupSetBits(s_engine_events, ENGINE_STOPPED_BIT);
+    }
+#endif
+    
+    ESP_LOGI(TAG, "audio_engine_task: exiting");
     vTaskDelete(NULL);
 }
 #endif /* UNIT_TEST */
@@ -459,6 +501,25 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         /* Continue initialization - span log is debugging aid, not critical */
     }
 
+#ifndef UNIT_TEST
+    /* Create event group for cooperative task shutdown (CODE_REVIEW 2602101453, P0.1.1)
+     * Prevents deadlock/leaks from vTaskDelete() - enables clean handshake between
+     * audio_processor_stop() and audio_engine_task() */
+    if (s_engine_events == NULL) {
+        s_engine_events = xEventGroupCreate();
+        if (s_engine_events == NULL) {
+            ESP_LOGE(TAG, "audio_processor_init: failed to create engine event group");
+            span_log_deinit();
+            audio_rb_deinit(s_audio_ring);
+            s_audio_ring = NULL;
+            beep_manager_deinit();
+            i2s_manager_deinit();
+            return ESP_ERR_NO_MEM;
+        }
+        ESP_LOGI(TAG, "audio_processor_init: engine event group created");
+    }
+#endif
+
     s_is_initialized = true;
     ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s ring_buf=%zu", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no", rb_capacity);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
@@ -506,9 +567,17 @@ esp_err_t audio_processor_start(void)
     }
 
 #ifndef UNIT_TEST
-    /* Create audio engine task (CODE_REVIEW6 Phase 2, Task 2.1)
-     * Task produces audio chunks into ring buffer from active source */
+    /* Create audio engine task with cooperative shutdown support (CODE_REVIEW 2602101453, P0.1.2)
+     * Clear stop flag and wait for task to signal it's running for robust startup */
     if (s_audio_engine_task_handle == NULL) {
+        /* Clear stop request flag before creating task */
+        s_engine_stop_requested = false;
+        
+        /* Clear event bits from any previous run */
+        if (s_engine_events != NULL) {
+            xEventGroupClearBits(s_engine_events, ENGINE_RUNNING_BIT | ENGINE_STOPPED_BIT);
+        }
+        
         BaseType_t task_ret = xTaskCreate(
             audio_engine_task,
             "audio_engine",
@@ -522,6 +591,23 @@ esp_err_t audio_processor_start(void)
             ESP_LOGE(TAG, "audio_processor_start: failed to create audio engine task");
             i2s_manager_stop();
             return ESP_FAIL;
+        }
+        
+        /* Wait for task to signal it's running (robustness check, P0.1.2)
+         * Timeout: 100ms should be more than enough for task to start */
+        if (s_engine_events != NULL) {
+            EventBits_t bits = xEventGroupWaitBits(
+                s_engine_events,
+                ENGINE_RUNNING_BIT,
+                pdFALSE,  /* don't clear on exit */
+                pdFALSE,  /* wait for any bit */
+                pdMS_TO_TICKS(100)
+            );
+            
+            if ((bits & ENGINE_RUNNING_BIT) == 0) {
+                ESP_LOGW(TAG, "audio_processor_start: task did not signal RUNNING within timeout (non-fatal)");
+                /* Continue anyway - task may still be initializing */
+            }
         }
         
         ESP_LOGI(TAG, "audio_processor_start: audio engine task created (priority=%d)", 
@@ -540,16 +626,54 @@ esp_err_t audio_processor_stop(void)
         return ESP_ERR_INVALID_STATE;
     }
     if (!s_is_running) {
-        return ESP_OK;
+        return ESP_ERR_INVALID_STATE;  /* Already stopped - caller should track state */
     }
 
 #ifndef UNIT_TEST
-    /* Stop audio engine task (CODE_REVIEW6 Phase 2, Task 2.1) */
+    /* Cooperative shutdown (CODE_REVIEW 2602101453, P0.1.3)
+     * 
+     * WHY: vTaskDelete(handle) from external context is UNSAFE - can deadlock if task
+     *      holds spinlock, leaks resources (chunk_buf malloc), corrupts state mid-update.
+     * 
+     * HOW: Signal task to stop via flag, wake it with notification, wait for clean exit.
+     *      Task checks flag, releases resources, sets STOPPED bit, then self-deletes.
+     * 
+     * SAFETY: Prevents deadlock (task completes critical sections), prevents leaks
+     *         (task frees its own allocations), prevents corruption (task controls exit timing).
+     */
     if (s_audio_engine_task_handle != NULL) {
-        vTaskDelete(s_audio_engine_task_handle);
+        /* Signal task to stop */
+        s_engine_stop_requested = true;
+        
+        /* Wake task immediately (in case it's blocked on delay/notification) */
+        xTaskNotifyGive(s_audio_engine_task_handle);
+        
+        /* Wait for task to signal it has stopped (cooperative handshake)
+         * Timeout: 500ms - generous but bounded. Task should exit within one tick cycle (2ms)
+         * plus time to complete current iteration. 500ms allows for worst-case BT stack delays. */
+        if (s_engine_events != NULL) {
+            EventBits_t bits = xEventGroupWaitBits(
+                s_engine_events,
+                ENGINE_STOPPED_BIT,
+                pdTRUE,   /* clear bit on exit (cleanup for next start) */
+                pdFALSE,  /* wait for this bit only */
+                pdMS_TO_TICKS(500)
+            );
+            
+            if ((bits & ENGINE_STOPPED_BIT) == 0) {
+                /* Task didn't stop in time - serious error but don't hang forever */
+                ESP_LOGE(TAG, "audio_processor_stop: task did not stop within 500ms timeout!");
+                ESP_LOGE(TAG, "  This may indicate task is deadlocked or system is overloaded.");
+                ESP_LOGE(TAG, "  Continuing anyway to avoid blocking caller indefinitely.");
+                /* Handle will be leaked but system can continue - better than hard hang */
+            } else {
+                ESP_LOGI(TAG, "audio_processor_stop: audio engine task stopped cleanly");
+            }
+        }
+        
+        /* Task has self-deleted (or timed out), clear our handle reference */
         s_audio_engine_task_handle = NULL;
-        s_audio_engine_paused = false;  /* Reset pause state */
-        ESP_LOGI(TAG, "audio_processor_stop: audio engine task deleted");
+        s_audio_engine_paused = false;  /* Reset pause state for next start */
     }
 #endif
 
@@ -627,6 +751,15 @@ esp_err_t audio_processor_deinit(void)
 
     /* Deinitialize span log (CODE_REVIEW7 Priority 2, Task 2.1) */
     span_log_deinit();
+
+#ifndef UNIT_TEST
+    /* Cleanup engine event group (CODE_REVIEW 2602101453, P0.1.1)
+     * Clean up cooperative shutdown infrastructure */
+    if (s_engine_events != NULL) {
+        vEventGroupDelete(s_engine_events);
+        s_engine_events = NULL;
+    }
+#endif
 
     synth_manager_reset_state();
 

@@ -12,6 +12,9 @@
 #include "audio_pipeline_test.h"
 #include "audio_processor_test.h"
 
+/* CODE_REVIEW 2602101453 P0.1.6: Cooperative shutdown tests */
+extern void run_cooperative_shutdown_tests(void);
+
 static const char *TAG = "TEST_APP_AUDIO";
 
 typedef void (*audio_suite_fn_t)(void);
@@ -46,6 +49,7 @@ void app_test_main(void)
     execute_suite("pcm format", app_main_pcm_format_tests, false);
     execute_suite("audio pipeline", run_audio_pipeline_tests, false);
     // execute_suite("audio processor", run_audio_processor_tests, false);  // Removed: old WAV playback tests
+    execute_suite("cooperative shutdown", run_cooperative_shutdown_tests, false);  // CODE_REVIEW 2602101453 P0.1.6
 
     vTaskDelay(pdMS_TO_TICKS(2000));
     ESP_LOGI(TAG, "Audio test suites completed");
@@ -69,6 +73,8 @@ void run_test_group(const char *test_group)
         execute_suite("pipeline", run_audio_pipeline_tests, true);
     // } else if (strcmp(test_group, "audio_processor") == 0) {
     //     execute_suite("audio_processor", run_audio_processor_tests, true);  // Removed: old WAV playback tests
+    } else if (strcmp(test_group, "coop_shutdown") == 0) {
+        execute_suite("cooperative shutdown", run_cooperative_shutdown_tests, true);  // CODE_REVIEW 2602101453 P0.1.6
     } else {
         ESP_LOGW(TAG, "Unknown audio test group '%s'", test_group);
     }

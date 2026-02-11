@@ -6,6 +6,9 @@
 #include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#ifndef UNIT_TEST
+#include "freertos/event_groups.h"
+#endif
 #include "esp_log.h"
 #ifndef UNIT_TEST
 #include "esp_timer.h"
@@ -69,6 +72,10 @@ extern volatile bool s_audio_diag_enabled;
 #define AUDIO_ENGINE_TICK_MS          2   /* 2ms tick rate */
 #define AUDIO_ENGINE_CHUNK_BYTES      1024  /* Produce 1KB chunks */
 
+/* Cooperative shutdown event bits (CODE_REVIEW 2602101453, P0.1.1) */
+#define ENGINE_RUNNING_BIT   (1 << 0)  /* Set by task when running, cleared on stop request */
+#define ENGINE_STOPPED_BIT   (1 << 1)  /* Set by task just before self-delete */
+
 /* Ring buffer watermarks (Phase 2, Task 2.4) */
 #define AUDIO_RB_LOW_WATERMARK   (8 * 1024)   /* Resume filling below 8KB used */
 #define AUDIO_RB_HIGH_WATERMARK  (24 * 1024)  /* Stop filling above 24KB used */
@@ -93,6 +100,11 @@ extern audio_rb_t *s_audio_ring;
 extern TaskHandle_t s_audio_engine_task_handle;
 extern bool s_audio_engine_paused;
 extern uint32_t s_span_seq;  /* Span log sequence counter (CODE_REVIEW7 Priority 2) */
+
+/* Cooperative shutdown infrastructure (CODE_REVIEW 2602101453, P0.1.1)
+ * Event group for task lifecycle handshake - prevent deadlock/leaks from vTaskDelete() */
+extern volatile bool s_engine_stop_requested;
+extern EventGroupHandle_t s_engine_events;
 #endif
 
 extern bool s_is_initialized;

@@ -19,6 +19,7 @@ idf_component_register(
         "test_psram_integration.c"
         "test_psram_fragmentation.c"
         "test_psram_audio_stress.c"
+        "test_cooperative_shutdown.c"
         "../../../components/audio_processor/audio_processor.c"
         "../../../components/audio_processor/audio_processor_state.c"
         "../../../components/audio_processor/audio_ringbuffer.c"

@@ -28,6 +28,21 @@ audio_rb_t *s_audio_ring = NULL;
 TaskHandle_t s_audio_engine_task_handle = NULL;
 
 /**
+ * Cooperative task shutdown infrastructure (CODE_REVIEW 2602101453, P0.1.1)
+ * 
+ * WHY: vTaskDelete() from external context is unsafe - can deadlock if task holds
+ *      spinlock, leaks resources (chunk_buf malloc), corrupts state mid-update.
+ * HOW: stop_requested flag + task notification for fast wake + event group for
+ *      handshake between stopper and task. Task checks flag each iteration, then
+ *      self-deletes cleanly after releasing all resources.
+ * CORRECTNESS: Prevents deadlock (no forced kill mid-critical-section), prevents
+ *      leaks (task frees its own allocations), prevents corruption (task completes
+ *      current iteration before exiting).
+ */
+volatile bool s_engine_stop_requested = false;
+EventGroupHandle_t s_engine_events = NULL;
+
+/**
  * Span log sequence counter (CODE_REVIEW7 Priority 2, Task 2.1)
  * 
  * WHY: Track chronological order of audio engine writes for debugging
