@@ -178,11 +178,11 @@ def run_with_pty(cmd, shell=False, timeout=None, capture_path: str | None = None
     return rc, ''
 
 
-def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0) -> dict:
+def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0, valgrind: bool = False) -> dict:
     host_dir = root / "esp_bt_audio_source" / "test" / "host_test"
     build_dir = host_dir / build_dir_name
     build_dir.mkdir(parents=True, exist_ok=True)
-    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None}}
+    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None, "valgrind_enabled": valgrind}}
 
     # configure
     rc, out = run_cmd(["cmake", ".."], cwd=str(build_dir))
@@ -229,6 +229,7 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     total_failures = 0
     total_ignored = 0
     zero_test_binaries = []
+    valgrind_errors = {}
     try:
         for entry in build_dir.iterdir():
             if not entry.is_file():
@@ -237,14 +238,39 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
                 continue
             if not os.access(entry, os.X_OK):
                 continue
-            rc_bin, out_bin = run_cmd([str(entry)], cwd=str(build_dir))
+            
+            # Build command with optional Valgrind wrapper
+            if valgrind:
+                cmd = [
+                    "valgrind",
+                    "--leak-check=full",
+                    "--error-exitcode=1",
+                    "--track-origins=yes",
+                    "--errors-for-leak-kinds=definite,possible",
+                    str(entry)
+                ]
+                print(f"  Running {entry.name} under Valgrind...")
+            else:
+                cmd = [str(entry)]
+            
+            rc_bin, out_bin = run_cmd(cmd, cwd=str(build_dir))
             counts = _unity_counts_from_output(out_bin)
+            
+            # Track Valgrind-specific failures
+            valgrind_failed = False
+            if valgrind and rc_bin == 1:
+                # Exit code 1 from Valgrind means memory errors detected
+                if "ERROR SUMMARY:" in out_bin or "LEAK SUMMARY:" in out_bin:
+                    valgrind_failed = True
+                    valgrind_errors[entry.name] = out_bin
+            
             per_binary[entry.name] = {
                 "rc": rc_bin,
                 "stdout": out_bin,
                 "tests": counts.get("tests", 0),
                 "failures": counts.get("failures", 0),
                 "ignored": counts.get("ignored", 0),
+                "valgrind_failed": valgrind_failed,
             }
             if counts.get("tests", 0) == 0:
                 zero_test_binaries.append(entry.name)
@@ -260,7 +286,15 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
         "ignored": total_ignored,
         "per_binary": per_binary,
         "zero_test_binaries": zero_test_binaries,
+        "valgrind_errors": valgrind_errors,
     }
+    
+    # Print Valgrind summary if enabled
+    if valgrind and valgrind_errors:
+        print(f"\n⚠️  Valgrind detected memory errors in {len(valgrind_errors)} test(s):")
+        for binary_name in valgrind_errors.keys():
+            print(f"  - {binary_name}")
+    
     return summary
 
 
@@ -640,6 +674,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--no-standalone", action="store_true", help="Skip standalone host test build (CI parity check)")
     p.add_argument("--source-idf", help="Path to ESP-IDF export.sh to source before device commands")
     p.add_argument("--jobs", type=int, default=0, help="Parallel jobs for host build (passed to cmake --build)")
+    p.add_argument("--valgrind", action="store_true", help="Run host tests under Valgrind for memory leak detection")
     args = p.parse_args(argv)
 
     report = {"host": None, "standalone_host": None, "devices": {}, "aggregate": None}
@@ -653,8 +688,10 @@ def main(argv: list[str] | None = None):
     # Host tests
     if not args.no_host:
         print("\n== Running host tests ==")
+        if args.valgrind:
+            print("  ⚠️  Valgrind enabled - tests will run slower but with memory leak detection")
         host_start = time.time()
-        report["host"] = run_host_tests(ROOT, jobs=args.jobs)
+        report["host"] = run_host_tests(ROOT, jobs=args.jobs, valgrind=args.valgrind)
         host_end = time.time()
         # run_host_tests historically returned a wrapper dict {"host": {...}}
         # unwrap it if present so downstream code can treat report['host'] as

@@ -1050,6 +1050,12 @@ target_compile_definitions(test_platform_shim PRIVATE UNIT_TEST)
 target_link_libraries(test_platform_shim unity platform_shim_host)
 add_test(NAME test_platform_shim COMMAND $<TARGET_FILE:test_platform_shim>)
 
+# Valgrind integration verification test
+# This test intentionally leaks memory to verify --valgrind flag works
+add_executable(test_valgrind_check test_valgrind_check.c)
+target_link_libraries(test_valgrind_check unity)
+add_test(NAME test_valgrind_check COMMAND $<TARGET_FILE:test_valgrind_check>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands
