@@ -178,14 +178,123 @@ def run_with_pty(cmd, shell=False, timeout=None, capture_path: str | None = None
     return rc, ''
 
 
-def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0, valgrind: bool = False) -> dict:
+def generate_coverage_report(build_dir: Path, output_dir: Path) -> dict:
+    """
+    Generate code coverage report using lcov/genhtml.
+    
+    Args:
+        build_dir: Build directory containing .gcda files
+        output_dir: Directory to store coverage reports
+        
+    Returns:
+        dict with success status, report paths, and summary
+    """
+    result = {
+        "success": False,
+        "lcov_available": False,
+        "genhtml_available": False,
+        "coverage_info": None,
+        "html_report": None,
+        "summary": None,
+        "error": None,
+    }
+    
+    # Check if lcov is available
+    rc_lcov, _ = run_cmd(["which", "lcov"])
+    result["lcov_available"] = (rc_lcov == 0)
+    
+    rc_genhtml, _ = run_cmd(["which", "genhtml"])
+    result["genhtml_available"] = (rc_genhtml == 0)
+    
+    if not result["lcov_available"]:
+        result["error"] = "lcov not found - install with: sudo apt-get install lcov"
+        return result
+    
+    try:
+        # Capture coverage data
+        coverage_info = output_dir / "coverage.info"
+        coverage_filtered = output_dir / "coverage_filtered.info"
+        html_dir = output_dir / "coverage_html"
+        
+        print(f"  Capturing coverage data from {build_dir}...")
+        rc, out = run_cmd([
+            "lcov",
+            "--capture",
+            "--directory", str(build_dir),
+            "--output-file", str(coverage_info),
+            "--quiet"
+        ])
+        
+        if rc != 0:
+            result["error"] = f"lcov capture failed (rc={rc})"
+            return result
+        
+        # Filter out system files, build artifacts, and mocks
+        print(f"  Filtering coverage data...")
+        rc, out = run_cmd([
+            "lcov",
+            "--remove", str(coverage_info),
+            "/usr/*",
+            "*/build/*",
+            "*/mocks/*",
+            "*/test_*",
+            "*/_deps/*",
+            "--output-file", str(coverage_filtered),
+            "--quiet"
+        ])
+        
+        if rc != 0:
+            result["error"] = f"lcov filter failed (rc={rc})"
+            return result
+        
+        result["coverage_info"] = str(coverage_filtered)
+        
+        # Extract summary statistics
+        rc, summary_out = run_cmd([
+            "lcov",
+            "--summary", str(coverage_filtered)
+        ])
+        
+        # Parse summary for lines coverage percentage
+        import re
+        match = re.search(r"lines\.*:\s*([\d.]+)%", summary_out)
+        if match:
+            result["summary"] = f"Line coverage: {match.group(1)}%"
+        
+        # Generate HTML report if genhtml is available
+        if result["genhtml_available"]:
+            print(f"  Generating HTML report...")
+            rc, out = run_cmd([
+                "genhtml",
+                str(coverage_filtered),
+                "--output-directory", str(html_dir),
+                "--quiet"
+            ])
+            
+            if rc == 0:
+                result["html_report"] = str(html_dir / "index.html")
+            else:
+                result["error"] = f"genhtml failed (rc={rc})"
+        
+        result["success"] = True
+        
+    except Exception as e:
+        result["error"] = f"Exception during coverage generation: {str(e)}"
+    
+    return result
+
+
+def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0, valgrind: bool = False, coverage: bool = False) -> dict:
     host_dir = root / "esp_bt_audio_source" / "test" / "host_test"
     build_dir = host_dir / build_dir_name
     build_dir.mkdir(parents=True, exist_ok=True)
-    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None, "valgrind_enabled": valgrind}}
+    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None, "valgrind_enabled": valgrind, "coverage_enabled": coverage}}
 
     # configure
-    rc, out = run_cmd(["cmake", ".."], cwd=str(build_dir))
+    cmake_cmd = ["cmake", ".."]
+    if coverage:
+        cmake_cmd.insert(1, "-DENABLE_COVERAGE=ON")
+    rc, out = run_cmd(cmake_cmd, cwd=str(build_dir))
     summary["host"]["configured"] = (rc == 0)
     summary["host"]["configure_output"] = out
 
@@ -294,6 +403,18 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
         print(f"\n⚠️  Valgrind detected memory errors in {len(valgrind_errors)} test(s):")
         for binary_name in valgrind_errors.keys():
             print(f"  - {binary_name}")
+    
+    # Generate coverage report if enabled
+    if coverage:
+        print("\n📊 Generating code coverage report...")
+        coverage_result = generate_coverage_report(build_dir, TMP_DIR)
+        summary["host"]["coverage"] = coverage_result
+        if coverage_result.get("success"):
+            print(f"  ✅ Coverage report generated: {coverage_result.get('html_report')}")
+            if coverage_result.get("summary"):
+                print(f"  📈 {coverage_result.get('summary')}")
+        else:
+            print(f"  ⚠️  Coverage generation had issues: {coverage_result.get('error', 'unknown error')}")
     
     return summary
 
@@ -675,6 +796,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--source-idf", help="Path to ESP-IDF export.sh to source before device commands")
     p.add_argument("--jobs", type=int, default=0, help="Parallel jobs for host build (passed to cmake --build)")
     p.add_argument("--valgrind", action="store_true", help="Run host tests under Valgrind for memory leak detection")
+    p.add_argument("--coverage", action="store_true", help="Enable code coverage reporting (gcov/lcov)")
     args = p.parse_args(argv)
 
     report = {"host": None, "standalone_host": None, "devices": {}, "aggregate": None}
@@ -690,8 +812,10 @@ def main(argv: list[str] | None = None):
         print("\n== Running host tests ==")
         if args.valgrind:
             print("  ⚠️  Valgrind enabled - tests will run slower but with memory leak detection")
+        if args.coverage:
+            print("  📊 Coverage reporting enabled - will generate HTML report after tests")
         host_start = time.time()
-        report["host"] = run_host_tests(ROOT, jobs=args.jobs, valgrind=args.valgrind)
+        report["host"] = run_host_tests(ROOT, jobs=args.jobs, valgrind=args.valgrind, coverage=args.coverage)
         host_end = time.time()
         # run_host_tests historically returned a wrapper dict {"host": {...}}
         # unwrap it if present so downstream code can treat report['host'] as

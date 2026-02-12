@@ -9,6 +9,14 @@ add_compile_definitions(UNIT_TEST)
 add_compile_definitions(ESP_PLATFORM_UNDEFINED)
 add_compile_options(-UESP_PLATFORM)
 
+# Code coverage support (gcov/lcov)
+option(ENABLE_COVERAGE "Enable code coverage reporting with gcov/lcov" OFF)
+if(ENABLE_COVERAGE)
+    message(STATUS "Code coverage enabled - adding --coverage flags")
+    add_compile_options(--coverage -fprofile-arcs -ftest-coverage)
+    add_link_options(--coverage)
+endif()
+
 # Add include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
