@@ -395,6 +395,89 @@ void test_i2s_pins_set_commit_failure(void)
     TEST_ASSERT_EQUAL(1, commit_calls);
 }
 
+void test_add_paired_device_open_failure(void)
+{
+    open_result = ESP_ERR_NO_MEM;
+
+    esp_err_t err = nvs_storage_add_paired_device("AA:BB:CC:DD:EE:FF", "TestDevice");
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_add_paired_device_commit_failure(void)
+{
+    open_result = ESP_OK;
+    set_i32_entry("paired_count", ESP_OK, 0);  // empty list
+    commit_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_add_paired_device("11:22:33:44:55:66", "NewDevice");
+    
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
+void test_remove_paired_device_open_failure(void)
+{
+    open_result = ESP_ERR_NO_MEM;
+
+    esp_err_t err = nvs_storage_remove_paired_device("AA:BB:CC:DD:EE:FF");
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_remove_paired_device_count_not_found(void)
+{
+    open_result = ESP_OK;
+    set_i32_entry("paired_count", PLATFORM_ERR_STORAGE_NOT_FOUND, 0);
+
+    esp_err_t err = nvs_storage_remove_paired_device("AA:BB:CC:DD:EE:FF");
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_remove_paired_device_count_zero(void)
+{
+    open_result = ESP_OK;
+    set_i32_entry("paired_count", ESP_OK, 0);
+
+    esp_err_t err = nvs_storage_remove_paired_device("AA:BB:CC:DD:EE:FF");
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_clear_paired_devices_open_failure(void)
+{
+    open_result = ESP_ERR_NO_MEM;
+
+    esp_err_t err = nvs_storage_clear_paired_devices();
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_clear_paired_devices_commit_failure(void)
+{
+    open_result = ESP_OK;
+    set_i32_entry("paired_count", ESP_OK, 2);  // two devices to clear
+    commit_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_clear_paired_devices();
+    
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -415,5 +498,12 @@ int main(void)
     RUN_TEST(test_i2s_pins_get_partial_failure);
     RUN_TEST(test_i2s_pins_set_open_failure);
     RUN_TEST(test_i2s_pins_set_commit_failure);
+    RUN_TEST(test_add_paired_device_open_failure);
+    RUN_TEST(test_add_paired_device_commit_failure);
+    RUN_TEST(test_remove_paired_device_open_failure);
+    RUN_TEST(test_remove_paired_device_count_not_found);
+    RUN_TEST(test_remove_paired_device_count_zero);
+    RUN_TEST(test_clear_paired_devices_open_failure);
+    RUN_TEST(test_clear_paired_devices_commit_failure);
     return UNITY_END();
 }
