@@ -381,18 +381,31 @@ void test_mock_push_queue_full(void);
 **Host tests:** 44 passing (+1 from Phase 5.1)
 **Coverage:** Reconnection retry logic, NULL callback safety, streaming state transitions validated
 
-### 5.3 bt_streaming_manager.c Missing Coverage
+### 5.3 bt_streaming_manager.c Missing Coverage ✅ **COMPLETE**
 
-**Existing:** ⚠️ Basic streaming state transitions tested
+**Status:** ✅ **COMPLETE** (2026-02-12) - 7 tests created and passing
 
-#### Missing:
-- ❌ `bt_audio_data_callback()` - Negative length (already guarded, needs test)
-- ❌ `bt_audio_data_callback()` - Zero length request
-- ❌ `bt_audio_data_callback()` - audio_processor_read() returns error
-- ❌ `bt_audio_data_callback()` - Underrun statistics accuracy
-- ❌ `bt_streaming_start()` - audio_processor not initialized
-- ❌ `bt_streaming_stop()` - Already stopped
-- ❌ State machine: START → PAUSE → RESUME → STOP sequences
+**Existing:** ✅ Basic streaming state transitions tested + edge cases
+
+#### Tests Created in test_bt_streaming_manager_edge_cases.c:
+- ✅ `test_bt_audio_data_callback_handles_audio_processor_read_error()` - ESP_FAIL error handling
+- ✅ `test_bt_underrun_statistics_accuracy()` - Underrun count, total callbacks, underrun rate validation
+- ✅ `test_bt_streaming_stop_when_already_stopped_is_idempotent()` - Stop when STOPPED state
+- ✅ `test_bt_state_machine_complete_sequence_start_pause_resume_stop()` - Full state machine sequence
+- ✅ `test_bt_multiple_underruns_accumulate_stats()` - Sequential underruns accumulation
+- ✅ `test_bt_underrun_rate_calculation()` - Underrun rate formula validation
+- ✅ `test_bt_stream_duration_across_pause_resume()` - Duration tracking across pause/resume
+
+**Test file:** `test_bt_streaming_manager_edge_cases.c` (7/7 passing, 400+ lines)
+**Host tests:** 45 passing (+1 from Phase 5.2)
+**Coverage:** Audio data callback errors, underrun statistics, state machine sequences, stream duration validated
+
+**Production code insights discovered:**
+- audio_processor_read() error → zero-fill, bytes_produced=0, bytes_silence=full
+- Underrun stats updated in critical section per CODE_REVIEW5 Task 3.2
+- Stream duration only calculated if s_stream_start_time > 0
+- bt_streaming_stop() idempotent (returns ESP_OK when already STOPPED)
+
 
 ### 5.4 bt_scan.c Missing Coverage
 

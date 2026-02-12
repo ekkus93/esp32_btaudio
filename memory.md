@@ -1,3 +1,88 @@
+## 2026-02-12 00:36:00: Phase 5.3 COMPLETE - BT Streaming Manager Edge Cases (TDD) ✅
+
+**Completed:** Phase 5.3 - bt_streaming_manager.c audio data callback error handling, underrun statistics, state machine sequences  
+**TDD Methodology:** Kent Beck Red-Green-Refactor applied  
+**Result:** 7/7 tests passing - bt_streaming_manager edge cases fully validated  
+**Achievement:** 45/45 host tests passing (was 44 after Phase 5.2)
+
+**Phase 5.3 Achievement:**
+- ✅ **test_bt_streaming_manager_edge_cases.c** (7 tests, 400+ lines)
+- **Coverage:** Audio data callback error handling, underrun statistics accuracy, state machine pause/resume/stop sequences, stream duration tracking
+- **Pass rate:** 100% (7 Tests 0 Failures 0 Ignored)
+- **Total host tests:** 45 passing (+1 from Phase 5.2)
+
+**Tests Created:**
+1. ✅ test_bt_audio_data_callback_handles_audio_processor_read_error
+2. ✅ test_bt_underrun_statistics_accuracy
+3. ✅ test_bt_streaming_stop_when_already_stopped_is_idempotent
+4. ✅ test_bt_state_machine_complete_sequence_start_pause_resume_stop
+5. ✅ test_bt_multiple_underruns_accumulate_stats
+6. ✅ test_bt_underrun_rate_calculation
+7. ✅ test_bt_stream_duration_across_pause_resume
+
+**Key Test Insights (Production Code Behavior):**
+- **audio_processor_read() error handling:** When ESP_FAIL returned, callback zero-fills buffer and updates stats with full bytes_silence
+- **Underrun statistics:** total_callbacks increments on every data callback, underrun_count only when bytes_read < requested
+- **Underrun rate calculation:** Validates underrun_count / total_callbacks ratio (e.g., 1/3 = 33.3%)
+- **bt_streaming_stop() idempotency:** Returns ESP_OK when already stopped, no media_ctrl call
+- **State machine sequences:** START → PAUSE → RESUME → STOP tested with proper media_ctrl calls
+- **Stream duration tracking:** Calculated in data callback as current_time - s_stream_start_time (requires s_stream_start_time > 0)
+
+**Production Code Discoveries:**
+1. **bt_audio_data_callback() error path:**
+   - Checks audio_processor_read() result
+   - On ESP_FAIL: zero-fills, bytes_produced=0, bytes_silence=full request
+   - Still returns requested length to A2DP stack
+
+2. **Underrun statistics (CODE_REVIEW5 Task 3.2):**
+   - total_callbacks: Counts every data callback
+   - underrun_count: Increments when bytes_read < requested
+   - Underrun rate = underrun_count / total_callbacks
+   - Updated inside portENTER_CRITICAL/portEXIT_CRITICAL
+
+3. **Stream duration calculation:**
+   - Updated in bt_audio_data_callback()
+   - `duration = get_current_time_ms() - s_stream_start_time`
+   - **CRITICAL:** Only calculated if `s_stream_start_time > 0`
+   - Start time set during STARTING or STREAMING state transitions
+
+4. **State machine behavior:**
+   - bt_streaming_stop() when already STOPPED: logs warning, returns ESP_OK, no media_ctrl call
+   - PAUSE → RESUME: Calls ESP_A2D_MEDIA_CTRL_SUSPEND then ESP_A2D_MEDIA_CTRL_START
+   - Duration persists across PAUSE/RESUME (not reset)
+
+**Test Infrastructure Enhancements:**
+- **audio_processor_host_stub.c additions:**
+  - `audio_processor_test_set_read_error(esp_err_t error)` - Inject read errors
+  - `audio_processor_test_clear_read_error()` - Clear error injection
+  - Modified audio_processor_read() to check s_read_error state
+
+**CMakeLists.txt Integration:**
+```cmake
+add_executable(test_bt_streaming_manager_edge_cases
+    test_bt_streaming_manager_edge_cases.c
+    ../../components/bt_manager/bt_streaming_manager.c
+    mocks/mock_a2dp.c
+    mocks/mock_gap.c
+    mocks/fake_log.c
+    mocks/fake_task.c
+    mocks/audio_processor_host_stub.c
+    mocks/mock_audio_and_btstate.c
+)
+```
+
+**Production Code Status:**
+- **No changes needed** - All tests GREEN without any fixes ✅
+- **bt_streaming_manager.c:** Error handling, underrun stats, state machine logic validated
+- **Stream duration edge case:** Discovered s_stream_start_time > 0 check requirement
+
+**TDD Debugging Journey:**
+- **Initial failure:** test_bt_stream_duration_across_pause_resume
+- **Root cause:** s_stream_start_time == 0 when tick starts at 0, skips duration calculation due to `if (s_stream_start_time > 0)` guard
+- **Solution:** Start mock tick at 1 instead of 0 to ensure s_stream_start_time > 0
+
+**Next Phase:** 5.4 - bt_scan.c (NEW MODULE - discovery, filtering, device list management)
+
 ## 2026-02-11 23:53:14: Phase 5.2 COMPLETE - BT Connection Manager Edge Cases (TDD) ✅
 
 **Completed:** Phase 5.2 - bt_connection_manager.c reconnection, NULL callback safety, streaming state transitions  

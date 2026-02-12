@@ -37,6 +37,9 @@ static uint32_t s_tag_miss_count = 0;
 static uint16_t s_tag_counter = 0;
 static bool s_skip_scale_once = false;
 
+/* Error injection for testing */
+static esp_err_t s_read_error = ESP_OK;
+
 /* Simple host-side FIFO for injected/produced audio data. */
 static uint8_t* s_ring = NULL;
 static size_t s_ring_capacity = 0;
@@ -178,6 +181,11 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
 {
     if (bytes_read) *bytes_read = 0;
     if (!buffer || size == 0) return ESP_OK;
+
+    /* Error injection for testing */
+    if (s_read_error != ESP_OK) {
+        return s_read_error;
+    }
 
     /* If muted and no active beep, we should still consume data but return
      * zeros (tests expect sized reads even when muted). If a beep is active,
@@ -462,6 +470,17 @@ esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
         *captured_out = 0;
     }
     return ESP_OK;
+}
+
+/* Test helper functions for error injection */
+void audio_processor_test_set_read_error(esp_err_t error)
+{
+    s_read_error = error;
+}
+
+void audio_processor_test_clear_read_error(void)
+{
+    s_read_error = ESP_OK;
 }
 
 bool audio_processor_is_i2s_active(void)
