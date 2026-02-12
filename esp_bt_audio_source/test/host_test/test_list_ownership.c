@@ -1,12 +1,11 @@
 #include "unity.h"
-#include "unity.h"
 #include "osi/list.h"
 #include "osi/allocator.h"
 
 static bool freed = false;
 
 static void my_free(void *p) {
-    (void)p;
+    osi_free(p);  // Actually free the memory to prevent ASan leak
     freed = true;
 }
 

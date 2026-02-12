@@ -104,17 +104,26 @@ void test_cmd_file_should_report_not_found(void) {
 // Test 3: cmd_handle_file() should reject path too long
 // ============================================================================
 void test_cmd_file_should_reject_path_too_long(void) {
-    // Arrange - Create a very long filename
+    // Arrange - Make root very long so combined path exceeds 256 bytes
+    // fullpath buffer in cmd_handle_file is 256 bytes
+    // Set root to 240 chars + "/" + filename (20 chars) = 261 total > 256
+    char long_root[245];
+    memset(long_root, 'x', sizeof(long_root) - 1);
+    long_root[sizeof(long_root) - 1] = '\0';
+    
+    // Temporarily replace the test root with our long path
+    strncpy(s_test_root, long_root, sizeof(s_test_root) - 1);
+    s_test_root[sizeof(s_test_root) - 1] = '\0';
+    s_test_root_ready = 1;
+    
     cmd_context_t ctx = {
         .type = CMD_TYPE_FILE,
         .param_count = 1
     };
     
-    // Generate 200+ character filename to exceed buffer
-    char long_name[300];
-    memset(long_name, 'a', sizeof(long_name) - 1);
-    long_name[sizeof(long_name) - 1] = '\0';
-    strcpy(ctx.params[0], long_name);
+    // Use a filename that will cause overflow: 240 + 1 + 20 = 261 > 256
+    strncpy(ctx.params[0], "very_long_filename12", CMD_MAX_PARAM_LEN - 1);
+    ctx.params[0][CMD_MAX_PARAM_LEN - 1] = '\0';
     
     // Act
     cmd_status_t result = cmd_handle_file(&ctx);

@@ -311,7 +311,17 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 #endif
 
 #if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
-	ESP_RETURN_ON_ERROR(configure_i2s(&s_mgr.cfg), TAG, "configure_i2s failed");  // NOLINT(bugprone-branch-clone)
+	esp_err_t ret = configure_i2s(&s_mgr.cfg);
+	if (ret != ESP_OK) {
+		ESP_LOGE(TAG, "configure_i2s failed");
+#ifdef CONFIG_BT_MOCK_TESTING
+		if (s_mgr.mock_queue) {
+			vQueueDelete(s_mgr.mock_queue);
+			s_mgr.mock_queue = NULL;
+		}
+#endif
+		return ret;
+	}
 #endif
 
 	s_mgr.initialized = true;
