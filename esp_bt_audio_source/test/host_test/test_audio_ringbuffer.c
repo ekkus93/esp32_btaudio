@@ -15,6 +15,8 @@
 #include "unity.h"
 #include "audio_ringbuffer.h"
 #include <string.h>
+#include <pthread.h>
+#include <sched.h>
 
 /* Test fixtures */
 static audio_rb_t *rb = NULL;
@@ -327,6 +329,186 @@ void test_rb_split_writes_across_wrap(void)
     TEST_ASSERT_EQUAL_UINT8_ARRAY(write_data2, final_read, 150);
 }
 
+void test_rb_wrap_around_read_write_integrity_under_boundary_crossing(void)
+{
+    const size_t capacity = 64;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+
+    uint8_t data_a[48];
+    uint8_t data_b[32];
+    uint8_t out[64] = {0};
+
+    for (size_t i = 0; i < sizeof(data_a); i++) {
+        data_a[i] = (uint8_t)(0xA0 + i);
+    }
+    for (size_t i = 0; i < sizeof(data_b); i++) {
+        data_b[i] = (uint8_t)(0x10 + i);
+    }
+
+    TEST_ASSERT_EQUAL_UINT(sizeof(data_a), audio_rb_write(rb, data_a, sizeof(data_a)));
+
+    /* Advance tail near end so subsequent read must wrap. */
+    TEST_ASSERT_EQUAL_UINT(40, audio_rb_read(rb, out, 40));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(data_a, out, 40);
+
+    /* This write wraps: 16 bytes to end + 16 bytes to start. */
+    TEST_ASSERT_EQUAL_UINT(sizeof(data_b), audio_rb_write(rb, data_b, sizeof(data_b)));
+
+    TEST_ASSERT_EQUAL_UINT(40, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity - 40, audio_rb_available_to_write(rb));
+
+    memset(out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_UINT(40, audio_rb_read(rb, out, 40));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(data_a + 40, out, 8);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(data_b, out + 8, 32);
+
+    TEST_ASSERT_EQUAL_UINT(0, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity, audio_rb_available_to_write(rb));
+}
+
+void test_rb_watermark_exact_threshold_occupancy_edges(void)
+{
+    const size_t capacity = 32768;
+    const size_t low_watermark = 8 * 1024;
+    const size_t high_watermark = 24 * 1024;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+
+    uint8_t chunk[512];
+    memset(chunk, 0x5A, sizeof(chunk));
+
+    while (audio_rb_available_to_read(rb) < low_watermark) {
+        size_t remaining = low_watermark - audio_rb_available_to_read(rb);
+        size_t n = (remaining < sizeof(chunk)) ? remaining : sizeof(chunk);
+        TEST_ASSERT_EQUAL_UINT(n, audio_rb_write(rb, chunk, n));
+    }
+    TEST_ASSERT_EQUAL_UINT(low_watermark, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity - low_watermark, audio_rb_available_to_write(rb));
+
+    while (audio_rb_available_to_read(rb) < high_watermark) {
+        size_t remaining = high_watermark - audio_rb_available_to_read(rb);
+        size_t n = (remaining < sizeof(chunk)) ? remaining : sizeof(chunk);
+        TEST_ASSERT_EQUAL_UINT(n, audio_rb_write(rb, chunk, n));
+    }
+    TEST_ASSERT_EQUAL_UINT(high_watermark, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity - high_watermark, audio_rb_available_to_write(rb));
+    TEST_ASSERT_EQUAL_UINT(high_watermark, audio_rb_peak_used(rb));
+
+    while (audio_rb_available_to_read(rb) > low_watermark) {
+        size_t above = audio_rb_available_to_read(rb) - low_watermark;
+        size_t n = (above < sizeof(chunk)) ? above : sizeof(chunk);
+        TEST_ASSERT_EQUAL_UINT(n, audio_rb_read(rb, chunk, n));
+    }
+    TEST_ASSERT_EQUAL_UINT(low_watermark, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity - low_watermark, audio_rb_available_to_write(rb));
+}
+
+typedef struct {
+    audio_rb_t *rb;
+    pthread_mutex_t *rb_lock;
+    size_t total_bytes;
+    size_t chunk_max;
+    volatile size_t produced;
+    volatile size_t consumed;
+    volatile int errors;
+} rb_thread_ctx_t;
+
+static void* rb_producer_thread(void *arg)
+{
+    rb_thread_ctx_t *ctx = (rb_thread_ctx_t *)arg;
+    uint8_t chunk[128];
+
+    while (ctx->produced < ctx->total_bytes) {
+        size_t remaining = ctx->total_bytes - ctx->produced;
+        size_t want = (remaining < ctx->chunk_max) ? remaining : ctx->chunk_max;
+        for (size_t i = 0; i < want; i++) {
+            chunk[i] = (uint8_t)((ctx->produced + i) & 0xFF);
+        }
+
+        pthread_mutex_lock(ctx->rb_lock);
+        size_t wrote = audio_rb_write(ctx->rb, chunk, want);
+        pthread_mutex_unlock(ctx->rb_lock);
+
+        if (wrote > want) {
+            ctx->errors++;
+            break;
+        }
+
+        ctx->produced += wrote;
+        if (wrote == 0) {
+            sched_yield();
+        }
+    }
+
+    return NULL;
+}
+
+static void* rb_consumer_thread(void *arg)
+{
+    rb_thread_ctx_t *ctx = (rb_thread_ctx_t *)arg;
+    uint8_t chunk[128];
+
+    while (ctx->consumed < ctx->total_bytes) {
+        size_t remaining = ctx->total_bytes - ctx->consumed;
+        size_t want = (remaining < ctx->chunk_max) ? remaining : ctx->chunk_max;
+
+        pthread_mutex_lock(ctx->rb_lock);
+        size_t got = audio_rb_read(ctx->rb, chunk, want);
+        pthread_mutex_unlock(ctx->rb_lock);
+
+        for (size_t i = 0; i < got; i++) {
+            uint8_t expected = (uint8_t)((ctx->consumed + i) & 0xFF);
+            if (chunk[i] != expected) {
+                ctx->errors++;
+                break;
+            }
+        }
+        if (ctx->errors > 0) {
+            break;
+        }
+
+        ctx->consumed += got;
+        if (got == 0) {
+            sched_yield();
+        }
+    }
+
+    return NULL;
+}
+
+void test_rb_concurrent_producer_consumer_stress(void)
+{
+    const size_t capacity = 1024;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_rb_init(&rb, capacity, false));
+
+    pthread_t producer;
+    pthread_t consumer;
+    pthread_mutex_t rb_lock = PTHREAD_MUTEX_INITIALIZER;
+
+    rb_thread_ctx_t ctx = {
+        .rb = rb,
+        .rb_lock = &rb_lock,
+        .total_bytes = 64U * 1024U,
+        .chunk_max = 128,
+        .produced = 0,
+        .consumed = 0,
+        .errors = 0,
+    };
+
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&producer, NULL, rb_producer_thread, &ctx));
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&consumer, NULL, rb_consumer_thread, &ctx));
+
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(producer, NULL));
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(consumer, NULL));
+
+    TEST_ASSERT_EQUAL_INT(0, ctx.errors);
+    TEST_ASSERT_EQUAL_UINT(ctx.total_bytes, ctx.produced);
+    TEST_ASSERT_EQUAL_UINT(ctx.total_bytes, ctx.consumed);
+    TEST_ASSERT_EQUAL_UINT(0, audio_rb_available_to_read(rb));
+    TEST_ASSERT_EQUAL_UINT(capacity, audio_rb_available_to_write(rb));
+
+    pthread_mutex_destroy(&rb_lock);
+}
+
 //-----------------------------------------------------------------------------
 // Aggressive stress tests (Phase 5)
 //-----------------------------------------------------------------------------
@@ -525,6 +707,9 @@ void run_all_tests(void)
     /* Stress */
     RUN_TEST(test_rb_alternating_write_read_many_times);
     RUN_TEST(test_rb_split_writes_across_wrap);
+    RUN_TEST(test_rb_wrap_around_read_write_integrity_under_boundary_crossing);
+    RUN_TEST(test_rb_watermark_exact_threshold_occupancy_edges);
+    RUN_TEST(test_rb_concurrent_producer_consumer_stress);
     
     /* Aggressive stress (Phase 5) */
     RUN_TEST(test_rb_stress_random_size_operations);

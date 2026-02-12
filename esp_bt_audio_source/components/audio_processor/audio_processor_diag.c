@@ -1,4 +1,5 @@
 #include "audio_processor_internal.h"
+#include <string.h>
 
 static int16_t clamp_int16(int32_t value)
 {

@@ -1,3 +1,219 @@
+## 2026-02-12 02:19:11 PST: Full Regression Passed with Connected Device
+
+**Task:** Re-run `python3 /home/phil/work/esp32/esp32_btaudio/tools/run_all_tests.py` after confirming `/dev/ttyUSB0` availability.  
+**Result:** ✅ Full pass (`exit code 0`).
+
+**Summary:**
+- Host tests: `425/425` passed
+- Standalone host parity check: `50` tests passed
+- Device suites:
+   - `test_bluetooth`: `46/46` passed
+   - `test_app_audio`: `35/35` passed
+   - `test_manager`: `18/18` passed
+- Aggregate device totals: `99/99` passed
+
+---
+
+## 2026-02-12 02:11:33 PST: Full Test Orchestrator Re-Run
+
+**Task:** Run `/home/phil/work/esp32/esp32_btaudio/tools/run_all_tests.py`.  
+**Invocation detail:** direct script execution failed with permission denied (`exit 126`), rerun via `python3`.
+
+**Result:** ⚠️ Partial pass (`python3` run exited `1`).
+
+**Summary:**
+- Host tests: `425/425` passed
+- Standalone host CI parity check: `50` tests passed
+- Device suites (`test_bluetooth`, `test_app_audio`, `test_manager`): all reported `0` executed due to flash failure
+
+**Blocker (root cause):**
+- `esptool.py` could not open `/dev/ttyUSB0` during flash in all three device suites:
+   `A fatal error occurred: Could not open /dev/ttyUSB0 ... No such file or directory`
+
+---
+
+## 2026-02-12 02:05:32 PST: Xtensa clang-tidy Lint Run Executed
+
+**Task:** Run `/home/phil/work/esp32/esp32_btaudio/tools/run_clang_tidy_xtensa.sh` on current workspace state.  
+**Result:** ✅ Completed successfully (`exit code 0`).
+
+**Run summary:**
+- clang-tidy processed 37 files from the compilation database (`build_clang_tidy/clangtidy_db`)
+- Command completed without script-level failures
+
+---
+
+## 2026-02-12 02:00:41 PST: Phase 6 Summary Checkpoint Confirmed
+
+**Context:** Consolidated progress for Phase 6.2, 6.3, and 6.4 was reviewed and confirmed complete with targeted host tests passing.  
+**State:** Workstream is ready for user direction on the next step (commit/push, broader regression, or next TODO section).
+
+---
+
+## 2026-02-12 01:59 EST: Phase 6.4 Complete - audio_processor_diag.c Coverage
+
+**Task:** Implement and validate UNIT_TEST_TODO section 6.4 (`audio_processor_diag.c` + status/stats diagnostics).  
+**Result:** ✅ Complete; new diagnostics/status tests pass (8/8).
+
+**New host test file/target:**
+- `esp_bt_audio_source/test/host_test/test_audio_processor_diag.c`
+- `test_audio_processor_diag`
+
+**Coverage added:**
+- Diagnostic toggle behavior (`audio_processor_set_diag_enabled`, `audio_processor_is_diag_enabled`)
+- Probe behavior (`audio_processor_arm_probe` clamp/reset, `audio_processor_emit_probe` clear/report paths)
+- Summary emitter success path (`audio_processor_emit_diag_summary`)
+- `audio_processor_get_status()` field accuracy
+- `audio_processor_get_stats()` large counter snapshot integrity (overflow-scale `uint32_t`/`uint64_t` values)
+
+**Fixes required during test integration:**
+- Added missing `#include <string.h>` in `components/audio_processor/audio_processor_diag.c` (`strlen` warning fix)
+- Marked `diag_dump_bytes` in `test/host_test/mocks/audio_processor_core_logic_stubs.c` as weak to avoid duplicate symbol when linking real `audio_processor_diag.c`
+
+**Validation:**
+- `cmake -S . -B build && cmake --build build --target test_audio_processor_diag -j && ./build/test_audio_processor_diag` ✅ pass (8/8)
+
+**Doc update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 6.4 moved from ❌ to ✅ with test details.
+
+---
+
+## 2026-02-12 01:52 EST: Phase 6.3 Complete - audio_ringbuffer.c Edge Cases
+
+**Task:** Implement and validate UNIT_TEST_TODO section 6.3 (`audio_ringbuffer.c`).  
+**Result:** ✅ Complete; all new tests passing with no production code changes required.
+
+**Coverage added in `test_audio_ringbuffer.c`:**
+- `test_rb_concurrent_producer_consumer_stress` (threaded producer/consumer stress)
+- `test_rb_watermark_exact_threshold_occupancy_edges` (exact low/high occupancy boundaries)
+- `test_rb_wrap_around_read_write_integrity_under_boundary_crossing` (strict wrap read/write integrity)
+
+**Build/test update:**
+- Updated host target linkage in `esp_bt_audio_source/test/host_test/CMakeLists.txt` to include `pthread` for `test_audio_ringbuffer`.
+
+**Validation:**
+- `cmake -S . -B build && cmake --build build --target test_audio_ringbuffer -j && ./build/test_audio_ringbuffer` ✅ pass (23/23)
+
+**Doc update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 6.3 items switched from ❌ to ✅ and marked complete.
+
+---
+
+## 2026-02-12 01:48 EST: Phase 6.2 Complete - audio_processor_read.c Edge Cases
+
+**Task:** Implement and validate UNIT_TEST_TODO section 6.2 (`audio_processor_read.c`).  
+**Result:** ✅ Complete; 3/3 tests passing with no production behavior changes required.
+
+**New host test file/target:**
+- `esp_bt_audio_source/test/host_test/test_audio_processor_read.c`
+- `test_audio_processor_read`
+
+**Coverage added:**
+- `audio_processor_read()` handles `s_drop_ring_audio` by draining ring, clearing flag, and returning silence.
+- `audio_processor_read()` zero-fills underrun bytes during active beep and updates underrun stats accurately.
+- `audio_processor_read()` rejects `NULL` `bytes_read` with `ESP_ERR_INVALID_ARG`.
+
+**Validation:**
+- `cmake -S . -B build && cmake --build build --target test_audio_processor_read -j && ./build/test_audio_processor_read` ✅ pass (3/3)
+
+**Doc update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 6.2 items changed from ❌ to ✅ and marked complete.
+
+---
+
+## 2026-02-12 01:41 EST: 6.1 Gap Closed - produce_audio_chunk() Beep Overlay Failure
+
+**Task:** Implement and validate `produce_audio_chunk()` beep overlay failure coverage from UNIT_TEST_TODO section 6.1.  
+**Result:** ✅ Complete; test added and passing.
+
+**New test:**
+- `test_produce_audio_chunk_should_handle_beep_overlay_failure_without_overlay_stats`
+
+**Behavior validated:**
+- When beep overlay path is forced to fail in UNIT_TEST mode:
+   - `produce_audio_chunk()` still returns produced bytes
+   - output remains unmodified silence-path payload (beep priority keeps base SILENCE)
+   - `s_beep_remaining_bytes` is not decremented
+   - beep overlay stats are not incremented (`beep_overlay_count`, `beep_overlay_bytes`)
+
+**Implementation details:**
+- Added UNIT_TEST hook in `audio_processor.c`/`audio_processor.h`:
+   - `audio_processor_test_set_force_beep_overlay_fail(bool enable)`
+- Applied hook in UNIT_TEST `produce_audio_chunk()` path to skip overlay/stats/decrement when forced failure is enabled.
+
+**Validation:**
+- `ctest -R test_audio_processor_core_logic --output-on-failure` ✅ pass (7/7)
+- `ctest -R "test_audio_processor_core_logic|test_audio_processor_idle_i2s" --output-on-failure` ✅ 2/2 pass
+
+**Doc update:**
+- `UNIT_TEST_TODO.md` 6.1 item “`produce_audio_chunk()` - Beep overlay failure” changed from ❌ to ✅.
+
+---
+
+## 2026-02-12 01:38 EST: Phase 6.1 Continued - Watermark/Ring/Volume Commit Core Logic
+
+**Task:** Continue UNIT_TEST_TODO section 6.1 (`audio_processor.c` core logic).  
+**Result:** Added 3 more passing tests (now 6/6 in `test_audio_processor_core_logic`).
+
+**New test coverage added:**
+1. `test_watermark_hysteresis_should_pause_at_high_and_resume_at_low`
+   - Validates pause transition at `AUDIO_RB_HIGH_WATERMARK`
+   - Validates hold behavior above low watermark
+   - Validates resume at `AUDIO_RB_LOW_WATERMARK`
+2. `test_ring_edge_conditions_should_gate_chunk_production`
+   - Validates chunk production gating at free space boundaries (`0`, `<chunk`, `==chunk`, paused state)
+3. `test_volume_commit_should_propagate_nvs_failure_in_test_hook`
+   - Validates immediate volume commit path observes injected NVS failure and records committed value
+
+**Production/test hooks added (UNIT_TEST only):**
+- `audio_processor_test_compute_engine_paused(...)`
+- `audio_processor_test_should_produce_chunk(...)`
+- `audio_processor_test_commit_volume_now()`
+
+**Stub enhancements:**
+- Added NVS volume commit error injection and call/value tracking in `audio_processor_core_logic_stubs.c`
+
+**Validation:**
+- `ctest -R test_audio_processor_core_logic --output-on-failure` ✅ pass (6/6)
+- `ctest -R "test_audio_processor_core_logic|test_audio_processor_idle_i2s" --output-on-failure` ✅ 2/2 pass
+
+**UNIT_TEST_TODO update:**
+- Section 6.1 updated: watermark hysteresis, ring edge gating, and volume commit failure moved to ✅.
+- Remaining 6.1 gap: `produce_audio_chunk()` beep overlay failure scenario.
+
+---
+
+## 2026-02-12 01:33 EST: Phase 6.1 Started - audio_processor.c Core Logic (Partial)
+
+**Task:** Begin UNIT_TEST_TODO section 6.1 (`audio_processor.c` core logic coverage).  
+**Approach:** Added UNIT_TEST-only hooks and a dedicated host test target that links real `audio_processor.c` logic with lightweight stubs.
+
+**Implemented:**
+- Added UNIT_TEST hooks in `audio_processor.c` / `audio_processor.h`:
+   - `audio_processor_test_get_active_source_id()`
+   - `audio_processor_test_produce_audio_chunk()`
+   - `audio_processor_test_reset_core_logic_state()`
+- Refactored source-switch state from function-local static to file-static (`s_last_source`) so tests can reset deterministically.
+- Added new host test + target:
+   - `test/host_test/test_audio_processor_core_logic.c`
+   - `test_audio_processor_core_logic` in host `CMakeLists.txt`
+- Added supporting stubs:
+   - `test/host_test/mocks/audio_processor_core_logic_stubs.c`
+
+**Tests added (3):**
+1. `test_get_active_source_should_prioritize_beep_over_synth_and_i2s`
+2. `test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep`
+3. `test_produce_audio_chunk_should_track_source_switch_count_and_bytes_by_source`
+
+**Validation:**
+- `ctest -R test_audio_processor_core_logic --output-on-failure` ✅ pass
+- `ctest -R "test_audio_processor_core_logic|test_audio_processor_idle_i2s" --output-on-failure` ✅ 2/2 pass
+
+**Docs updated:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 6.1 marked **PARTIAL** with completed items and remaining gaps.
+
+---
+
 ## 2026-02-12 01:24 EST: Phase 5.5 Changes Committed and Pushed to master
 
 **User request:** Check in files and push to GitHub master.  

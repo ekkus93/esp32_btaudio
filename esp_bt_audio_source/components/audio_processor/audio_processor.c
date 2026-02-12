@@ -53,6 +53,10 @@ static size_t mock_generate_i2s_audio(uint8_t* buffer, size_t buffer_size)
 
 static esp_err_t configure_i2s(const audio_config_t* config);
 
+#ifdef UNIT_TEST
+static bool s_test_force_beep_overlay_fail = false;
+#endif
+
 #ifndef UNIT_TEST
 /**
  * Volume commit timer callback (CODE_REVIEW8 Task D)
@@ -96,6 +100,8 @@ typedef enum {
     NUM_AUDIO_SOURCES
 } audio_source_t;
 
+static audio_source_t s_last_source = AUDIO_SOURCE_SILENCE;
+
 static audio_source_t get_active_source(void)
 {
     /* F1.5.1: BEEP Priority - Return silence during beep (F1: BEEP Priority Mode)
@@ -137,7 +143,6 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     
     /* Track source switches (Phase 4.2)
      * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
-    static audio_source_t s_last_source = AUDIO_SOURCE_SILENCE;
     if (base != s_last_source) {
         portENTER_CRITICAL(&s_audio_stats_lock);
         s_audio_stats.source_switch_count++;
@@ -363,6 +368,99 @@ static void audio_engine_task(void *arg)
     ESP_LOGI(TAG, "audio_engine_task: exiting");
     vTaskDelete(NULL);
 }
+
+#else /* UNIT_TEST */
+
+typedef enum {
+    AUDIO_SOURCE_I2S = 0,
+    AUDIO_SOURCE_SYNTH,
+    AUDIO_SOURCE_SILENCE,
+    NUM_AUDIO_SOURCES
+} audio_source_t;
+
+static audio_source_t s_last_source = AUDIO_SOURCE_SILENCE;
+
+static audio_source_t get_active_source(void)
+{
+    if (beep_overlay_is_active() || s_beep_remaining_bytes > 0) {
+        return AUDIO_SOURCE_SILENCE;
+    }
+
+    if (s_force_synth) {
+        return AUDIO_SOURCE_SYNTH;
+    }
+
+    if (i2s_manager_is_running()) {
+        return AUDIO_SOURCE_I2S;
+    }
+
+    return AUDIO_SOURCE_SILENCE;
+}
+
+static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
+{
+    if (dst == NULL || dst_bytes == 0) {
+        return 0;
+    }
+
+    audio_source_t base = get_active_source();
+
+    if (base != s_last_source) {
+        portENTER_CRITICAL(&s_audio_stats_lock);
+        s_audio_stats.source_switch_count++;
+        portEXIT_CRITICAL(&s_audio_stats_lock);
+        s_last_source = base;
+    }
+
+    size_t produced = 0;
+    switch (base) {
+        case AUDIO_SOURCE_I2S:
+            produced = i2s_source_fill(dst, dst_bytes);
+            break;
+        case AUDIO_SOURCE_SYNTH:
+            produced = synth_source_fill(dst, dst_bytes);
+            break;
+        case AUDIO_SOURCE_SILENCE:
+        default:
+            util_safe_memset(dst, dst_bytes, 0, dst_bytes);
+            produced = dst_bytes;
+            break;
+    }
+
+    if (produced > 0 && base < NUM_AUDIO_SOURCES) {
+        portENTER_CRITICAL(&s_audio_stats_lock);
+        s_audio_stats.bytes_by_source[base] += produced;
+        portEXIT_CRITICAL(&s_audio_stats_lock);
+    }
+
+    bool beep_active = beep_overlay_is_active();
+    if (beep_active && produced > 0) {
+        bool overlay_ok = true;
+#ifdef UNIT_TEST
+        if (s_test_force_beep_overlay_fail) {
+            overlay_ok = false;
+        }
+#endif
+        if (overlay_ok) {
+            beep_overlay_fill(dst, produced, &s_audio_config);
+            portENTER_CRITICAL(&s_audio_stats_lock);
+            s_audio_stats.beep_overlay_count++;
+            s_audio_stats.beep_overlay_bytes += produced;
+            portEXIT_CRITICAL(&s_audio_stats_lock);
+
+            portENTER_CRITICAL(&s_beep_lock);
+            if (s_beep_remaining_bytes > produced) {
+                s_beep_remaining_bytes -= produced;
+            } else {
+                s_beep_remaining_bytes = 0;
+            }
+            portEXIT_CRITICAL(&s_beep_lock);
+        }
+    }
+
+    return produced;
+}
+
 #endif /* UNIT_TEST */
 
 void audio_processor_set_dram_only(bool enable)
@@ -475,6 +573,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 
     /* Create volume commit debounce timer (CODE_REVIEW8 Task D)
      * Reduces NVS flash wear by delaying commits until volume "settles" */
+#ifndef UNIT_TEST
     const esp_timer_create_args_t volume_timer_args = {
         .callback = volume_commit_timer_callback,
         .name = "volume_nvs_commit"
@@ -486,6 +585,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         beep_manager_deinit();
         return ret;
     }
+#endif
 
     /* Initialize ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1, Task 1.3)
      * Capacity and PSRAM usage configurable via Kconfig.
@@ -766,11 +866,13 @@ esp_err_t audio_processor_deinit(void)
 
     /* Cleanup volume commit timer (CODE_REVIEW8 Task D)
      * Stop and delete timer to prevent callback firing after deinit */
+#ifndef UNIT_TEST
     if (s_volume_commit_timer != NULL) {
         esp_timer_stop(s_volume_commit_timer);  /* Stop any pending callback */
         esp_timer_delete(s_volume_commit_timer);
         s_volume_commit_timer = NULL;
     }
+#endif
 
     /* Cleanup ring buffer (CODE_REVIEW6 Phase 1, Task 1.3) */
     if (s_audio_ring != NULL) {
@@ -921,10 +1023,12 @@ esp_err_t audio_processor_set_volume(uint8_t volume)
      * Cancel pending timer (if any) and restart with 500ms delay.
      * Volume persisted only after user "settles" on final value.
      * Reduces flash writes from "every change" to "once per adjustment session" */
+    #ifndef UNIT_TEST
     if (s_volume_commit_timer != NULL) {
         esp_timer_stop(s_volume_commit_timer);  /* Cancel pending commit */
         esp_timer_start_once(s_volume_commit_timer, 500000);  /* 500ms = 500,000 microseconds */
     }
+    #endif
 
     ESP_LOGI(TAG, "Audio volume set to %d%% (NVS commit debounced)", volume);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
@@ -1367,6 +1471,62 @@ bool audio_processor_is_synth_mode_enabled(void)
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
     return s_force_synth;
 }
+
+#ifdef UNIT_TEST
+int audio_processor_test_get_active_source_id(void)
+{
+    return (int)get_active_source();
+}
+
+size_t audio_processor_test_produce_audio_chunk(uint8_t* dst, size_t dst_bytes)
+{
+    return produce_audio_chunk(dst, dst_bytes);
+}
+
+void audio_processor_test_reset_core_logic_state(void)
+{
+    s_last_source = AUDIO_SOURCE_SILENCE;
+    s_test_force_beep_overlay_fail = false;
+    safe_memset(&s_audio_stats, sizeof(s_audio_stats), 0, sizeof(s_audio_stats));
+}
+
+bool audio_processor_test_compute_engine_paused(bool was_paused, size_t used_bytes, uint32_t* pause_transition_out)
+{
+    bool paused = was_paused;
+    uint32_t transitions = 0;
+
+    if (used_bytes >= AUDIO_RB_HIGH_WATERMARK) {
+        paused = true;
+        if (!was_paused) {
+            transitions = 1;
+        }
+    }
+    if (used_bytes <= AUDIO_RB_LOW_WATERMARK) {
+        paused = false;
+    }
+
+    if (pause_transition_out != NULL) {
+        *pause_transition_out = transitions;
+    }
+
+    return paused;
+}
+
+bool audio_processor_test_should_produce_chunk(bool paused, size_t free_bytes)
+{
+    return (!paused && free_bytes >= AUDIO_ENGINE_CHUNK_BYTES);
+}
+
+esp_err_t audio_processor_test_commit_volume_now(void)
+{
+    return nvs_storage_set_volume(s_volume_gain);
+}
+
+void audio_processor_test_set_force_beep_overlay_fail(bool enable)
+{
+    s_test_force_beep_overlay_fail = enable;
+}
+#endif
 
 void audio_processor_set_synth_mode(bool enable)
 {

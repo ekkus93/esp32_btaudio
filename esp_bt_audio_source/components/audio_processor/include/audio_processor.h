@@ -252,6 +252,47 @@ bool audio_processor_is_i2s_active(void);
  * @brief Retrieve the most recent beep request (for tests only).
  */
 void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_hz);
+
+/**
+ * @brief Test hook: return active source ID from core audio source arbitration.
+ * Values map to audio_stats_t bytes_by_source indexes: 0=I2S, 1=SYNTH, 2=SILENCE.
+ */
+int audio_processor_test_get_active_source_id(void);
+
+/**
+ * @brief Test hook: invoke core chunk production path from audio_processor.c.
+ */
+size_t audio_processor_test_produce_audio_chunk(uint8_t* dst, size_t dst_bytes);
+
+/**
+ * @brief Test hook: reset core logic transient state and stats used by 6.1 tests.
+ */
+void audio_processor_test_reset_core_logic_state(void);
+
+/**
+ * @brief Test hook: apply engine watermark hysteresis logic for one iteration.
+ *
+ * @param was_paused Previous paused state.
+ * @param used_bytes Current ring used-bytes value.
+ * @param pause_transition_out Optional out param incremented when transitioning to paused.
+ * @return New paused state after applying hysteresis.
+ */
+bool audio_processor_test_compute_engine_paused(bool was_paused, size_t used_bytes, uint32_t* pause_transition_out);
+
+/**
+ * @brief Test hook: evaluate whether engine should produce a chunk this iteration.
+ */
+bool audio_processor_test_should_produce_chunk(bool paused, size_t free_bytes);
+
+/**
+ * @brief Test hook: invoke immediate volume commit behavior.
+ */
+esp_err_t audio_processor_test_commit_volume_now(void);
+
+/**
+ * @brief Test hook: force beep overlay application failure path in produce_audio_chunk().
+ */
+void audio_processor_test_set_force_beep_overlay_fail(bool enable);
 #endif
 
 /**

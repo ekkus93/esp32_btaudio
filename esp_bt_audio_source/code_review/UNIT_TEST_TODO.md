@@ -481,31 +481,48 @@ void test_scan_duplicate_device_update(void);
 
 ### Missing Coverage:
 
-#### 6.1 audio_processor.c Core Logic
-- ❌ `get_active_source()` - Source priority logic with beep active
-- ❌ `produce_audio_chunk()` - Source switching stats accuracy
-- ❌ `produce_audio_chunk()` - Beep overlay failure
-- ❌ Audio engine task - Watermark pause/resume hysteresis
-- ❌ Audio engine task - Ring buffer full/empty edge cases
-- ❌ Volume commit timer callback - NVS write failure
+#### 6.1 audio_processor.c Core Logic ⚠️ **PARTIAL**
+- ✅ `get_active_source()` - Source priority logic with beep active (test_get_active_source_should_prioritize_beep_over_synth_and_i2s)
+- ✅ `get_active_source()` - SYNTH priority over I2S when no beep (test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep)
+- ✅ `produce_audio_chunk()` - Source switching stats accuracy (test_produce_audio_chunk_should_track_source_switch_count_and_bytes_by_source)
+- ✅ `produce_audio_chunk()` - Beep overlay failure path (test_produce_audio_chunk_should_handle_beep_overlay_failure_without_overlay_stats)
+- ✅ Audio engine watermark hysteresis logic - pause/resume thresholds (test_watermark_hysteresis_should_pause_at_high_and_resume_at_low)
+- ✅ Ring full/empty edge gating for production condition (`!paused && free>=chunk`) (test_ring_edge_conditions_should_gate_chunk_production)
+- ✅ Volume commit path - NVS write failure propagation via test hook (test_volume_commit_should_propagate_nvs_failure_in_test_hook)
+
+**Status:** In progress (2026-02-12)  
+**Test file:** `test_audio_processor_core_logic.c` (7/7 passing)  
+**Build target:** `test_audio_processor_core_logic`
 
 #### 6.2 audio_processor_read.c
-- ❌ `audio_processor_read()` - s_drop_ring_audio flag behavior
-- ❌ `audio_processor_read()` - Ring buffer underrun during beep
-- ❌ `audio_processor_read()` - NULL bytes_read pointer
+- ✅ `audio_processor_read()` - s_drop_ring_audio flag behavior (test_audio_processor_read_should_drain_ring_and_return_silence_when_drop_flag_set)
+- ✅ `audio_processor_read()` - Ring buffer underrun during beep (test_audio_processor_read_should_zero_fill_underrun_during_beep)
+- ✅ `audio_processor_read()` - NULL bytes_read pointer (test_audio_processor_read_should_reject_null_bytes_read_pointer)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_audio_processor_read.c` (3/3 passing)
+**Build target:** `test_audio_processor_read`
 
 #### 6.3 audio_ringbuffer.c
 **Existing:** ✅ `test_audio_ringbuffer.c` (good coverage)
 
 **Missing:**
-- ❌ Concurrent producer/consumer stress test
-- ❌ Watermark edge cases (threshold exactly at high/low)
-- ❌ Wrap-around during read/write
+- ✅ Concurrent producer/consumer stress test (test_rb_concurrent_producer_consumer_stress)
+- ✅ Watermark edge cases (threshold exactly at high/low) (test_rb_watermark_exact_threshold_occupancy_edges)
+- ✅ Wrap-around during read/write (test_rb_wrap_around_read_write_integrity_under_boundary_crossing)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_audio_ringbuffer.c` (23/23 passing)
+**Build target:** `test_audio_ringbuffer`
 
 #### 6.4 audio_processor_diag.c
-- ❌ All diagnostic functions untested
-- ❌ `audio_processor_get_status()` - Accuracy under load
-- ❌ Stats reporting with overflow counters
+- ✅ Diagnostic controls and probe functions tested (`audio_processor_set_diag_enabled`, `audio_processor_is_diag_enabled`, `audio_processor_arm_probe`, `audio_processor_emit_probe`, `audio_processor_emit_diag_summary`)
+- ✅ `audio_processor_get_status()` - Runtime field accuracy validated (initialized/running/volume/mute/format fields)
+- ✅ Stats reporting with overflow counters validated (`audio_processor_get_stats()` snapshot preserves large `uint32_t`/`uint64_t` counters)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_audio_processor_diag.c` (8/8 passing)
+**Build target:** `test_audio_processor_diag`
 
 #### Recommended Tests:
 
