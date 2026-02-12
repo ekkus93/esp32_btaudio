@@ -16,7 +16,7 @@
 #define ESP_RETURN_ON_ERROR(x, tag, msg) do { esp_err_t __err = (x); if (__err != ESP_OK) { ESP_LOGE(tag, "%s: %d", msg, __err); return __err; } } while (0)
 #endif
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM)
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -27,6 +27,9 @@
 #define I2S_GPIO_UNUSED GPIO_NUM_NC
 #endif
 #endif
+#elif defined(CONFIG_BT_MOCK_TESTING)
+/* Host test build - use mock headers */
+#include "driver/i2s_std.h"
 #endif
 
 /* I2S read timeout (CODE_REVIEW 2602101453, A1)
@@ -66,7 +69,7 @@ typedef struct {
 	bool i2s_enabled;
 	audio_config_t cfg;
 	i2s_manager_buffers_t bufs;
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 	i2s_chan_handle_t i2s_rx;
 #endif
 #ifdef CONFIG_BT_MOCK_TESTING
@@ -76,7 +79,7 @@ typedef struct {
 
 static i2s_manager_state_t s_mgr = {0};
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 static esp_err_t configure_i2s(const audio_config_t *cfg)
 {
 	if (cfg == NULL) {
@@ -307,7 +310,7 @@ esp_err_t i2s_manager_init(const audio_config_t *config, const i2s_manager_buffe
 	}
 #endif
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 	ESP_RETURN_ON_ERROR(configure_i2s(&s_mgr.cfg), TAG, "configure_i2s failed");  // NOLINT(bugprone-branch-clone)
 #endif
 
@@ -330,7 +333,7 @@ void i2s_manager_deinit(void)
 	}
 #endif
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 	if (s_mgr.i2s_rx != NULL) {
 		i2s_channel_disable(s_mgr.i2s_rx);
 		i2s_del_channel(s_mgr.i2s_rx);
@@ -350,7 +353,7 @@ esp_err_t i2s_manager_start(void)
 		return ESP_OK;
 	}
 
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 	if (s_mgr.i2s_rx != NULL) {
 		ESP_RETURN_ON_ERROR(i2s_channel_enable(s_mgr.i2s_rx), TAG, "i2s_channel_enable failed");  // NOLINT(bugprone-branch-clone)
 		s_mgr.i2s_enabled = true;
@@ -367,7 +370,7 @@ esp_err_t i2s_manager_stop(void)
 		return ESP_ERR_INVALID_STATE;
 	}
 	s_mgr.running = false;
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 	if (s_mgr.i2s_rx != NULL && s_mgr.i2s_enabled) {
 		i2s_channel_disable(s_mgr.i2s_rx);
 		s_mgr.i2s_enabled = false;

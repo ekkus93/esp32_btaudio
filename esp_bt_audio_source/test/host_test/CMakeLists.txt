@@ -308,6 +308,70 @@ target_compile_definitions(test_beep_manager_edge_cases PRIVATE UNIT_TEST)
 target_link_libraries(test_beep_manager_edge_cases unity m)
 add_test(NAME test_beep_manager_edge_cases COMMAND $<TARGET_FILE:test_beep_manager_edge_cases>)
 
+# I2S Manager configuration error tests (Phase 4.1 - TDD)
+add_executable(test_i2s_manager_config_errors test_i2s_manager_config_errors.c
+    ../../components/audio_processor/i2s_manager.c
+    ../../components/audio_processor/audio_util.c
+    mocks/mock_i2s_std.c
+    mocks/fake_queue.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_manager_config_errors PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_i2s_manager_config_errors PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_i2s_manager_config_errors unity m util_safe_host)
+add_test(NAME test_i2s_manager_config_errors COMMAND $<TARGET_FILE:test_i2s_manager_config_errors>)
+
+# I2S Manager runtime error tests (Phase 4.2 - TDD)
+add_executable(test_i2s_manager_runtime_errors test_i2s_manager_runtime_errors.c
+    ../../components/audio_processor/i2s_manager.c
+    ../../components/audio_processor/audio_util.c
+    mocks/mock_i2s_std.c
+    mocks/fake_queue.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_manager_runtime_errors PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_i2s_manager_runtime_errors PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_i2s_manager_runtime_errors unity m util_safe_host)
+add_test(NAME test_i2s_manager_runtime_errors COMMAND $<TARGET_FILE:test_i2s_manager_runtime_errors>)
+
+# I2S Manager cleanup error tests (Phase 4.3 - TDD)
+add_executable(test_i2s_manager_cleanup_errors test_i2s_manager_cleanup_errors.c
+    ../../components/audio_processor/i2s_manager.c
+    ../../components/audio_processor/audio_util.c
+    mocks/mock_i2s_std.c
+    mocks/fake_queue.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_manager_cleanup_errors PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_i2s_manager_cleanup_errors PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_i2s_manager_cleanup_errors unity m util_safe_host)
+add_test(NAME test_i2s_manager_cleanup_errors COMMAND $<TARGET_FILE:test_i2s_manager_cleanup_errors>)
+
+# I2S Manager mock queue tests (Phase 4.4 - TDD)
+add_executable(test_i2s_manager_mock_queue test_i2s_manager_mock_queue.c
+    ../../components/audio_processor/i2s_manager.c
+    ../../components/audio_processor/audio_util.c
+    mocks/mock_i2s_std.c
+    mocks/fake_queue.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_manager_mock_queue PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_i2s_manager_mock_queue PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_i2s_manager_mock_queue unity m util_safe_host)
+add_test(NAME test_i2s_manager_mock_queue COMMAND $<TARGET_FILE:test_i2s_manager_mock_queue>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/allocator.c

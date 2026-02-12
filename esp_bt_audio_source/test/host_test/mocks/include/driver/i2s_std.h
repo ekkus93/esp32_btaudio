@@ -21,10 +21,14 @@ typedef enum {
 
 typedef enum {
     I2S_SLOT_BIT_WIDTH_AUTO = 0,
+    I2S_SLOT_BIT_WIDTH_16BIT = 16,
+    I2S_SLOT_BIT_WIDTH_24BIT = 24,
+    I2S_SLOT_BIT_WIDTH_32BIT = 32,
 } i2s_slot_bit_width_t;
 
 typedef enum {
     I2S_ROLE_MASTER = 0,
+    I2S_ROLE_SLAVE = 1,
 } i2s_role_t;
 
 typedef enum {
@@ -37,6 +41,8 @@ typedef enum {
 
 typedef enum {
     I2S_STD_SLOT_BOTH = 0,
+    I2S_STD_SLOT_LEFT = 1,
+    I2S_STD_SLOT_RIGHT = 2,
 } i2s_std_slot_mask_t;
 
 typedef struct {
@@ -50,6 +56,10 @@ typedef struct {
 /* Common I2S port constants used in production code */
 #define I2S_NUM_0 0
 #define I2S_NUM_1 1
+
+#ifndef I2S_GPIO_UNUSED
+#define I2S_GPIO_UNUSED (-1)
+#endif
 
 typedef struct {
     struct {
