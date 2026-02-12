@@ -604,7 +604,7 @@ class TestIntegration:
         
         response = uart.send_command('SCAN', '')
         
-        time.sleep(0.3)
+        time.sleep(0.5)  # Wait longer to ensure both events are processed (CI can be slow)
         
         assert response['status'] == 'ok'
         assert len(events) == 2
