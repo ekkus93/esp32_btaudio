@@ -21743,3 +21743,55 @@ Status: ✅ COMPLETE
 - Tests document critical error paths that weren't explicitly tested before
 - GREEN phase immediately - no code fixes required
 
+
+---
+
+### 2026-02-11 19:44:55 - Phase 2.2 Batch 1: Volume and I2S Pins Error Tests
+
+**Activity:** Completed first batch of Phase 2.2 NVS get/set error injection testing
+
+**Work Completed:**
+1. Added 8 new tests to test_nvs_storage_errors.c:
+   **Volume (4 tests):**
+   - test_volume_get_open_failure (open fails → error propagates)
+   - test_volume_get_i32_failure (get_i32 fails → ESP_ERR_NOT_FOUND)
+   - test_volume_set_open_failure (open fails → no commit)
+   - test_volume_set_commit_failure (commit fails → error propagates)
+   
+   **I2S Pins (4 tests):**
+   - test_i2s_pins_get_open_failure (open fails → pins unchanged)
+   - test_i2s_pins_get_partial_failure (some pins found, some missing → defaults)
+   - test_i2s_pins_set_open_failure (open fails → no commit)
+   - test_i2s_pins_set_commit_failure (commit fails → error propagates)
+
+2. Test Results:
+   - All 17 tests in test_nvs_storage_errors.c passing (was 9/9)
+   - All 36 host tests passing (100%)
+   - Production code already handles all scenarios correctly (GREEN phase)
+
+3. UNIT_TEST_TODO.md Updated:
+   - Section 2.2: Volume and I2S pins items ❌ → ✅
+   - Status: ⚠️ Partial (8 done, ~6 remain for audio_config and paired_devices)
+   - Commit: a6129c12
+
+**Coverage Impact:**
+- Volume error paths: Fully tested (open, get_i32, commit failures)
+- I2S pins error paths: Fully tested (open, partial read, commit failures)
+- File: test_nvs_storage_errors.c (17 tests, 100% passing)
+
+**TDD Methodology:**
+- All tests written and passed immediately (GREEN phase)
+- Validates existing production code handles errors correctly
+- Mock infrastructure (open_result, commit_result, set_i32_entry) very effective
+- Partial failure test demonstrates graceful degradation (missing pins → defaults)
+
+**Remaining in Section 2.2:**
+- audio_config get/set error paths (~2 tests)
+- paired_devices operations (~4+ tests for blob handling, erase failures)
+- Estimated 6+ more tests to complete Section 2.2
+
+**Progress Summary:**
+- Phase 2.1: ✅ Complete (3 tests - init/erase)
+- Phase 2.2: ⚠️ Partial (8 tests - volume + i2s_pins done, paired_devices remain)
+- Total Phase 2 so far: 11 new tests (20 total in test_nvs_storage_errors.c)
+

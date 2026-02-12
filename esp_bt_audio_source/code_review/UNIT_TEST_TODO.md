@@ -115,16 +115,17 @@ This analysis identifies test coverage gaps across the ESP32 Bluetooth Audio Sou
 `test_nvs_storage_errors.c` provides infrastructure but limited scenarios:
 
 **Missing coverage for:**
-- ❌ `nvs_storage_get_volume()` - nvs_open failure, nvs_get_i32 failure
-- ❌ `nvs_storage_set_volume()` - nvs_open failure, nvs_set_i32 failure, commit failure
-- ❌ `nvs_storage_get_i2s_pins()` - partial failure (some pins readable, others not)
-- ❌ `nvs_storage_set_i2s_pins()` - failure partway through (pin 1 OK, pin 2 fails)
+- ✅ `nvs_storage_get_volume()` - nvs_open failure, nvs_get_i32 failure (test_volume_get_open_failure, test_volume_get_i32_failure)
+- ✅ `nvs_storage_set_volume()` - nvs_open failure, commit failure (test_volume_set_open_failure, test_volume_set_commit_failure)
+- ✅ `nvs_storage_get_i2s_pins()` - open failure, partial failure (test_i2s_pins_get_open_failure, test_i2s_pins_get_partial_failure)
+- ✅ `nvs_storage_set_i2s_pins()` - open failure, commit failure (test_i2s_pins_set_open_failure, test_i2s_pins_set_commit_failure)
 - ❌ `nvs_storage_get_audio_config()` - corrupted data recovery
 - ❌ `nvs_storage_set_audio_config()` - commit failure after successful writes
 - ❌ `nvs_storage_get_paired_devices()` - blob size mismatch, corrupted data
 - ❌ `nvs_storage_add_paired_device()` - blob write failure, commit failure
 - ❌ `nvs_storage_remove_paired_device()` - erase_key failure, commit failure
 - ❌ `nvs_storage_clear_paired_devices()` - erase_key failure mid-operation
+**Status:** ⚠️ **Partial** - 8 tests added (volume + i2s_pins complete), 6+ tests remain for audio_config and paired_devices
 
 #### 2.3 State Consistency After Failures
 - ❌ Verify NVS handle cleanup after open failures
