@@ -256,7 +256,14 @@ cmd_status_t cmd_handle_volume(const cmd_context_t *ctx)
         cmd_send_response("ERR", "VOLUME", "MISSING_PARAM", NULL);
         return CMD_SUCCESS;
     }
-    int vol = atoi(ctx->params[0]);
+    
+    int vol = 0;
+    if (!cmd_parse_int(ctx->params[0], &vol))
+    {
+        cmd_send_response("ERR", "VOLUME", "BAD_PARAM", ctx->params[0]);
+        return CMD_SUCCESS;
+    }
+    
     if (vol < 0 || vol > 100)
     {
         cmd_send_response("ERR", "VOLUME", "OUT_OF_RANGE", NULL);

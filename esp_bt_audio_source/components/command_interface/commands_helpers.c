@@ -191,8 +191,9 @@ const char *cmd_files_get_root(void)
     if (override_fn != NULL)
     {
         const char *override = override_fn();
-        if (override != NULL && override[0] != '\0')
+        if (override != NULL)
         {
+            // Trust override even if empty - allows tests to simulate "no root"
             return override;
         }
     }

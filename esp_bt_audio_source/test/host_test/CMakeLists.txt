@@ -83,6 +83,75 @@ target_compile_definitions(test_commands PRIVATE UNIT_TEST)
 enable_testing()
 add_test(NAME test_commands COMMAND $<TARGET_FILE:test_commands>)
 
+# Command handler audio tests (Phase 1 - error paths and edge cases)
+add_executable(test_cmd_handlers_audio test_cmd_handlers_audio.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_cmd_handlers_audio PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_cmd_handlers_audio PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_cmd_handlers_audio PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_cmd_handlers_audio PRIVATE mocks/fake_esp_err.c)
+target_sources(test_cmd_handlers_audio PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_cmd_handlers_audio unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_cmd_handlers_audio PRIVATE UNIT_TEST)
+add_test(NAME test_cmd_handlers_audio COMMAND $<TARGET_FILE:test_cmd_handlers_audio>)
+
+# Command handler Bluetooth tests (Phase 1 - BT command error paths)
+add_executable(test_cmd_handlers_bt test_cmd_handlers_bt.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_cmd_handlers_bt PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_cmd_handlers_bt PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_cmd_handlers_bt PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_cmd_handlers_bt PRIVATE mocks/fake_esp_err.c)
+target_sources(test_cmd_handlers_bt PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_cmd_handlers_bt unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_cmd_handlers_bt PRIVATE UNIT_TEST)
+add_test(NAME test_cmd_handlers_bt COMMAND $<TARGET_FILE:test_cmd_handlers_bt>)
+
+# Command handler files tests (Phase 1 - File/partition command error paths)
+add_executable(test_cmd_handlers_files test_cmd_handlers_files.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_cmd_handlers_files PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_cmd_handlers_files PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_cmd_handlers_files PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_cmd_handlers_files PRIVATE mocks/fake_esp_err.c)
+target_sources(test_cmd_handlers_files PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_cmd_handlers_files unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_cmd_handlers_files PRIVATE UNIT_TEST)
+add_test(NAME test_cmd_handlers_files COMMAND $<TARGET_FILE:test_cmd_handlers_files>)
+
 add_executable(test_bluetooth test_bluetooth.c 
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_pairing_store.c
