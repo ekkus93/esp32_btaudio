@@ -203,11 +203,14 @@ void test_nvs_init_erase_recovery_failure(void);
 **Test file:** `test_beep_manager_edge_cases.c` (13/13 passing)
 **Coverage impact:** beep_manager.c ~40% → ~80%+
 
-#### 3.3 Integration with Audio Processor
-- ❌ Beep drops ring buffer audio correctly (s_drop_ring_audio flag)
-- ❌ Beep preempts I2S and resumes correctly
-- ❌ Beep done callback fires reliably
-- ❌ Multiple rapid beep requests (queue, reject, or restart?)
+#### 3.3 Integration with Audio Processor ✅ **COMPLETE** (Covered in Phases 3.1 & 3.2)
+**Status:** ✅ **COMPLETE** - All integration scenarios already validated
+- ✅ Beep drops ring buffer audio correctly (s_drop_ring_audio flag) → test_beep_drops_ring_audio (Phase 3.1)
+- ✅ Beep preempts I2S and resumes correctly → test_beep_restore_i2s_source (Phase 3.1)
+- ✅ Beep done callback fires reliably → test_beep_done_callback_clears_remaining_bytes (Phase 3.1), test_beep_done_callback_fires_on_completion (Phase 3.2)
+- ✅ Multiple rapid beep requests → test_beep_concurrent_request_returns_invalid_state (Phase 3.2)
+
+**Note:** All Section 3.3 requirements were already covered during Phases 3.1 and 3.2 testing. No additional tests needed.
 
 #### Recommended Tests:
 
@@ -544,13 +547,17 @@ void test_command_flood(void);
 - ✅ **Test file: test_nvs_storage_errors.c (24/24 passing, was 6)**
 - ✅ **Achievement: NVS error path coverage ~50% → ~85%+**
 
-### Phase 3: Beep Manager Edge Cases (Week 3)
+### ✅ Phase 3: Beep Manager Edge Cases — **COMPLETE**
+**Status: COMPLETE** (2026-02-11)
 **Priority: HIGH**
-- Create `test_beep_manager_extended.c` (10+ tests)
-- Test source restoration logic
-- Test ring buffer drain behavior
-- Test integration with audio processor
-- Goal: Validate F1.x features (beep priority, source restore)
+- ✅ Created `test_audio_processor_beep_edge_cases.c` (12 tests) — Phase 3.1
+- ✅ Created `test_beep_manager_edge_cases.c` (13 tests) — Phase 3.2
+- ✅ Section 3.3 requirements covered by Phases 3.1 & 3.2
+- ✅ **Total Phase 3: 25 tests (12 + 13 + 0 new for 3.3)**
+- ✅ **Test files: 2 new files, 38/38 host tests passing**
+- ✅ **Achievement: Beep subsystem coverage ~40% → ~80%+**
+- ✅ Goal achieved: Validated F1.x features (beep priority, source restore, ring buffer interaction)
+- ✅ Committed to GitHub (e6a6477d, 2a0356e5)
 
 ### Phase 4: BT Manager State Machines (Week 3-4)
 **Priority: HIGH**
