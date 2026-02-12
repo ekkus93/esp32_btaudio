@@ -277,6 +277,25 @@ target_compile_definitions(test_audio_processor_idle_i2s PRIVATE CONFIG_BT_MOCK_
 target_link_libraries(test_audio_processor_idle_i2s unity m util_safe_host)
 add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_processor_idle_i2s>)
 
+# Audio processor beep edge case tests (Phase 3.1 - TDD)
+add_executable(test_audio_processor_beep_edge_cases test_audio_processor_beep_edge_cases.c
+    ../../components/audio_processor/audio_processor_beep.c
+    ../../components/audio_processor/audio_processor_state.c
+    mocks/esp_heap_caps_mock.c
+    mocks/nvs_storage_mock.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/fake_debug_helpers.c
+    mocks/fake_task.c
+    mocks/fake_queue.c
+    mocks/fake_semphr.c)
+target_include_directories(test_audio_processor_beep_edge_cases PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_audio_processor_beep_edge_cases PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_processor_beep_edge_cases unity m util_safe_host)
+add_test(NAME test_audio_processor_beep_edge_cases COMMAND $<TARGET_FILE:test_audio_processor_beep_edge_cases>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/allocator.c

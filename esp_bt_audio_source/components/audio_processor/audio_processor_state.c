@@ -1,5 +1,7 @@
 #include "audio_processor_internal.h"
+#ifndef UNIT_TEST
 #include "esp_timer.h"
+#endif
 #include "esp_heap_caps.h"
 #include "audio_ringbuffer.h"
 #include "freertos/semphr.h" // For portENTER_CRITICAL/portEXIT_CRITICAL (P1.2.4)
@@ -72,7 +74,9 @@ uint8_t s_volume_gain = 100;
 
 /* Volume NVS commit debounce timer (CODE_REVIEW8 Task D)
  * Prevents flash wear from rapid volume changes by delaying commits */
+#ifndef UNIT_TEST
 esp_timer_handle_t s_volume_commit_timer = NULL;
+#endif
 audio_config_t s_audio_config = {0};
 audio_stats_t s_audio_stats = {0};
 
