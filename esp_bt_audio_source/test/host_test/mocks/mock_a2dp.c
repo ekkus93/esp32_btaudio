@@ -10,6 +10,8 @@ static struct {
     esp_bt_status_t init_result;
     esp_bt_status_t deinit_result;
     esp_bt_status_t media_ctrl_result;
+    esp_bt_status_t callback_result;
+    esp_bt_status_t data_callback_result;
     esp_a2d_media_ctrl_t last_media_ctrl;
     int connect_calls;
     int disconnect_calls;
@@ -26,6 +28,8 @@ static struct {
     .init_result = ESP_BT_STATUS_SUCCESS,
     .deinit_result = ESP_BT_STATUS_SUCCESS,
     .media_ctrl_result = ESP_BT_STATUS_SUCCESS,
+    .callback_result = ESP_BT_STATUS_SUCCESS,
+    .data_callback_result = ESP_BT_STATUS_SUCCESS,
     .last_media_ctrl = ESP_A2D_MEDIA_CTRL_STOP,
 };
 
@@ -54,6 +58,8 @@ void mock_a2dp_reset(void)
     s_a2dp_state.init_result = ESP_BT_STATUS_SUCCESS;
     s_a2dp_state.deinit_result = ESP_BT_STATUS_SUCCESS;
     s_a2dp_state.media_ctrl_result = ESP_BT_STATUS_SUCCESS;
+    s_a2dp_state.callback_result = ESP_BT_STATUS_SUCCESS;
+    s_a2dp_state.data_callback_result = ESP_BT_STATUS_SUCCESS;
     s_a2dp_state.last_media_ctrl = ESP_A2D_MEDIA_CTRL_STOP;
     s_a2dp_state.connect_calls = 0;
     s_a2dp_state.disconnect_calls = 0;
@@ -89,6 +95,16 @@ void mock_a2dp_set_init_result(esp_bt_status_t result)
 void mock_a2dp_set_deinit_result(esp_bt_status_t result)
 {
     s_a2dp_state.deinit_result = result;
+}
+
+void mock_a2dp_set_callback_result(esp_bt_status_t result)
+{
+    s_a2dp_state.callback_result = result;
+}
+
+void mock_a2dp_set_data_callback_result(esp_bt_status_t result)
+{
+    s_a2dp_state.data_callback_result = result;
 }
 
 int mock_a2dp_get_connect_calls(void)
@@ -179,12 +195,12 @@ esp_bt_status_t esp_a2d_register_callback(esp_a2d_cb_t callback)
 {
     s_a2dp_state.registered_cb = callback;
     mock_bt_call_log("esp_a2d_register_callback");
-    return ESP_BT_STATUS_SUCCESS;
+    return s_a2dp_state.callback_result;
 }
 
 esp_bt_status_t esp_a2d_source_register_data_callback(esp_a2d_source_data_cb_t callback)
 {
     s_a2dp_state.registered_data_cb = callback;
     mock_bt_call_log("esp_a2d_source_register_data_callback");
-    return ESP_BT_STATUS_SUCCESS;
+    return s_a2dp_state.data_callback_result;
 }

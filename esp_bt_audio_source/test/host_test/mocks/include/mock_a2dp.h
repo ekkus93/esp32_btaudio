@@ -13,6 +13,8 @@ void mock_a2dp_set_disconnect_result(esp_bt_status_t result);
 void mock_a2dp_set_media_ctrl_result(esp_bt_status_t result);
 void mock_a2dp_set_init_result(esp_bt_status_t result);
 void mock_a2dp_set_deinit_result(esp_bt_status_t result);
+void mock_a2dp_set_callback_result(esp_bt_status_t result);
+void mock_a2dp_set_data_callback_result(esp_bt_status_t result);
 int mock_a2dp_get_connect_calls(void);
 int mock_a2dp_get_disconnect_calls(void);
 const char *mock_a2dp_get_last_connect_addr(void);

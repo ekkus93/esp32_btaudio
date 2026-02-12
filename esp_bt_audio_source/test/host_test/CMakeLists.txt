@@ -195,6 +195,28 @@ target_compile_definitions(test_bt_manager_profiles PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_manager_profiles unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_profiles>)
 
+# Phase 5.1: bt_manager edge cases (profile init partial failures, connection, pairing)
+add_executable(test_bt_manager_edge_cases
+    test_bt_manager_edge_cases.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c)
+target_sources(test_bt_manager_edge_cases PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_compile_definitions(test_bt_manager_edge_cases PRIVATE UNIT_TEST)
+target_link_libraries(test_bt_manager_edge_cases unity util_safe_host platform_shim_host)
+add_test(NAME test_bt_manager_edge_cases COMMAND $<TARGET_FILE:test_bt_manager_edge_cases>)
+
 ## Audio processor test is intentionally a device/component Unity test only.
 ## The test file lives under `test/component/` and is picked up by the
 ## on-device test runner. Building it as a native host executable links the

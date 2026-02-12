@@ -1,3 +1,105 @@
+## 2026-02-11 23:05:41: Phase 5.1 COMPLETE - BT Manager Profile Init Edge Cases (TDD) ✅
+
+**Completed:** Phase 5.1 - bt_manager.c profile initialization partial failure scenarios  
+**TDD Methodology:** Kent Beck Red-Green-Refactor applied  
+**Result:** 6/6 tests passing - bt_manager_init_profiles() fully validated  
+**Achievement:** 43/43 host tests passing (was 42 before Phase 5.1)
+
+**Phase 5.1 Achievement:**
+- ✅ **test_bt_manager_edge_cases.c** (6 tests)
+- **Coverage:** bt_manager_init_profiles() error propagation for all 5 init steps
+- **Pass rate:** 100% (6 Tests 0 Failures 0 Ignored)
+- **Total host tests:** 43 passing (+1 from Phase 4)
+
+**Tests Created:**
+1. ✅ test_bt_manager_profiles_init_avrc_init_fails
+2. ✅ test_bt_manager_profiles_init_avrc_callback_fails
+3. ✅ test_bt_manager_profiles_init_a2dp_init_fails
+4. ✅ test_bt_manager_profiles_init_a2dp_callback_fails
+5. ✅ test_bt_manager_profiles_init_a2dp_data_callback_fails
+6. ✅ test_bt_manager_profiles_init_all_succeed
+
+**5-Step Profile Init Sequence Tested:**
+```c
+// Each step can fail independently
+1. esp_avrc_ct_init()                         ← Test 1
+2. esp_avrc_ct_register_callback()            ← Test 2
+3. esp_a2d_source_init()                      ← Test 3
+4. esp_a2d_register_callback()                ← Test 4
+5. esp_a2d_source_register_data_callback()    ← Test 5
+```
+
+**Production Code Status:**
+- **No changes needed** - All tests GREEN without any fixes ✅
+- **bt_manager_init_profiles():** Already has robust error handling
+  - Each step returns ESP_FAIL on error ✅
+  - Early return pattern (no further init if step fails) ✅
+  - Validates the test hook bt_manager_test_init_profiles() ✅
+
+**Mock Enhancements (Infrastructure Improvements):**
+1. **mock_avrc.c** - Added error injection capability:
+   - Created **mock_avrc.h** (new file) with full API declaration
+   - Added mock_avrc_set_init_result() for esp_avrc_ct_init()
+   - Added mock_avrc_set_callback_result() for esp_avrc_ct_register_callback()
+   - Updated mock_avrc_reset() to reset error injection state
+
+2. **mock_a2dp.c** - Enhanced existing mock with callback error injection:
+   - Added mock_a2dp_set_callback_result() for esp_a2d_register_callback()
+   - Added mock_a2dp_set_data_callback_result() for esp_a2d_source_register_data_callback()
+   - Updated mock_a2dp.h with new function declarations
+   - Updated mock_a2dp_reset() to reset new error injection state
+
+**Test Coverage Validated:**
+1. **AVRC init failure:** esp_avrc_ct_init() returns ESP_FAIL → bt_manager_init_profiles() returns ESP_FAIL
+   - Verified: A2DP init NOT attempted (early return)
+2. **AVRC callback failure:** esp_avrc_ct_register_callback() returns ESP_FAIL → propagates ESP_FAIL
+   - Verified: A2DP init NOT attempted (early return)
+3. **A2DP init failure:** esp_a2d_source_init() returns ESP_BT_STATUS_FAIL → propagates ESP_FAIL
+   - Verified: Existing mock_a2dp_set_init_result() worked correctly
+4. **A2DP callback failure:** esp_a2d_register_callback() returns ESP_BT_STATUS_FAIL → propagates ESP_FAIL
+5. **A2DP data callback failure:** esp_a2d_source_register_data_callback() returns ESP_BT_STATUS_FAIL → propagates ESP_FAIL
+6. **Happy path:** All 5 steps succeed → returns ESP_OK
+   - Verified: Both AVRC and A2DP init completed
+
+**Build Integration:**
+- Added test_bt_manager_edge_cases target to CMakeLists.txt
+- Dependencies: Same as test_bt_manager_profiles (bt_manager.c, bt_pairing_store.c, bt_scan.c, bt_connection.c, bt_events_*.c)
+- Mocks: mock_a2dp.c, mock_avrc.c, nvs_storage_mock.c, mock_audio_and_btstate.c, bt_manager_test_hooks.c
+- Compile flags: UNIT_TEST
+- Link libraries: unity, util_safe_host, platform_shim_host
+
+**Coverage Impact:**
+- **bt_manager_init_profiles():** All 5 error paths now tested (was 0% error coverage, now 100%)
+- **Mock infrastructure:** Error injection now available for all profile init steps
+- **Regression protection:** Ensures profile init error handling remains robust
+
+**TDD Outcome:**
+- **GREEN phase immediately** - Production code already correct
+- **Test 3 passed first:** Used existing mock_a2dp_set_init_result()
+- **Tests 1, 2, 4, 5 initially ignored:** Required mock enhancements
+- **After mock enhancements:** All 6 tests GREEN ✅
+
+**Files Modified (6):**
+- test_bt_manager_edge_cases.c (NEW - 184 lines, 6 tests)
+- mock_avrc.h (NEW - 52 lines, API declarations)
+- mock_avrc.c (ENHANCED - 2 new error injection functions, updated struct and reset)
+- mock_a2dp.h (ENHANCED - 2 new function declarations)
+- mock_a2dp.c (ENHANCED - 2 new error injection functions, updated struct and reset)
+- CMakeLists.txt (ENHANCED - added test_bt_manager_edge_cases target)
+
+**Next Steps for Phase 5:**
+- Section 5.2: bt_connection_manager.c (reconnection logic, retry strategies)
+- Section 5.3: bt_streaming_manager.c (audio callback edge cases)
+- Section 5.4: bt_scan.c (NEW MODULE - discovery, filtering)
+
+**Session Progress:**
+- Phase 4 completed and committed (77e3e50f)
+- Linting validated (0 warnings/errors)
+- Phase 5.1 completed (6 new tests)
+- 📊 Total tests: 113 (107 from Phases 1-4 + 6 from Phase 5.1)
+
+---
+
 ## 2026-02-11 22:41:38: Linting Validation PASSED - Phase 4 Code Quality Verified ✅
 
 **Action:** Executed clang-tidy validation on all production code
