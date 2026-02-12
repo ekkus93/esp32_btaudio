@@ -12,6 +12,8 @@ static int g_force_unpair_failure = 0;
 static int g_force_unpair_all_failure = 0;
 static int g_unpair_all_removed = 0;
 static int g_unpair_all_cleared_before = 0;
+static int g_unpair_all_temp_alloc_outstanding = 0;
+static int g_unpair_all_temp_alloc_peak = 0;
 static int g_scan_start_count = 0;
 static int g_pair_event_count = 0;
 static char g_last_pair_event_subtype[16] = {0};
@@ -53,6 +55,8 @@ void bt_manager_test_reset_forces(void) {
     g_last_unpair_mac[0] = '\0';
     g_unpair_all_removed = 0;
     g_unpair_all_cleared_before = 0;
+    g_unpair_all_temp_alloc_outstanding = 0;
+    g_unpair_all_temp_alloc_peak = 0;
     g_scan_start_count = 0;
     g_pair_event_count = 0;
     g_last_pair_event_subtype[0] = '\0';
@@ -78,6 +82,13 @@ const char* bt_manager_test_get_last_unpair_mac(void) {
 void bt_manager_test_record_unpair_all_call(int cleared_before, int removed) {
     g_unpair_all_cleared_before = cleared_before;
     g_unpair_all_removed = removed;
+}
+
+void bt_manager_test_record_unpair_all_temp_alloc(int delta) {
+    g_unpair_all_temp_alloc_outstanding += delta;
+    if (g_unpair_all_temp_alloc_outstanding > g_unpair_all_temp_alloc_peak) {
+        g_unpair_all_temp_alloc_peak = g_unpair_all_temp_alloc_outstanding;
+    }
 }
 
 // Record that a scan was started (called from bt_manager in unit tests)
@@ -119,4 +130,12 @@ int bt_manager_test_get_unpair_all_removed(void) {
 
 int bt_manager_test_get_unpair_all_cleared_before(void) {
     return g_unpair_all_cleared_before;
+}
+
+int bt_manager_test_get_unpair_all_temp_alloc_outstanding(void) {
+    return g_unpair_all_temp_alloc_outstanding;
+}
+
+int bt_manager_test_get_unpair_all_temp_alloc_peak(void) {
+    return g_unpair_all_temp_alloc_peak;
 }

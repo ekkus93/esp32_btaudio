@@ -152,6 +152,52 @@ target_link_libraries(test_cmd_handlers_files unity util_safe_host command_inter
 target_compile_definitions(test_cmd_handlers_files PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_handlers_files COMMAND $<TARGET_FILE:test_cmd_handlers_files>)
 
+# Phase 7.1: component integration flows (command -> BT -> audio, pairing persistence)
+add_executable(test_integration_flows test_integration_flows.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_integration_flows PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_integration_flows PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_integration_flows PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_integration_flows PRIVATE mocks/fake_esp_err.c)
+target_sources(test_integration_flows PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_integration_flows unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_integration_flows PRIVATE UNIT_TEST)
+add_test(NAME test_integration_flows COMMAND $<TARGET_FILE:test_integration_flows>)
+
+# Phase 7.2: concurrency/race behavior (command+BT events, audio callback+volume+beep, command flood)
+add_executable(test_concurrency test_concurrency.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_concurrency PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_concurrency PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_concurrency PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_concurrency PRIVATE mocks/fake_esp_err.c)
+target_sources(test_concurrency PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_concurrency unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_concurrency PRIVATE UNIT_TEST)
+add_test(NAME test_concurrency COMMAND $<TARGET_FILE:test_concurrency>)
+
 add_executable(test_bluetooth test_bluetooth.c 
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_pairing_store.c

@@ -126,6 +126,10 @@ MAYBE_WEAK void bt_manager_test_record_unpair_all_call(int cleared_before, int r
     (void)removed;
 }
 
+MAYBE_WEAK void bt_manager_test_record_unpair_all_temp_alloc(int delta) {
+    (void)delta;
+}
+
 // Unit-test hook: record when a pairing attempt is started. Provided by host mocks.
 MAYBE_WEAK void bt_manager_test_record_pair_start(const char* mac) { (void)mac; }
 
@@ -806,6 +810,9 @@ exit:
             ESP_LOGE(TAG, "Insufficient memory to retrieve bonded device list");  // NOLINT(bugprone-branch-clone)
             return ESP_ERR_NO_MEM;
         }
+#ifdef UNIT_TEST
+        bt_manager_test_record_unpair_all_temp_alloc(+1);
+#endif
 
         esp_err_t list_err = esp_bt_gap_get_bond_device_list(&list_capacity, bond_list);
         if (list_err != ESP_OK) {
@@ -828,6 +835,9 @@ exit:
         }
 
         free(bond_list);
+    #ifdef UNIT_TEST
+        bt_manager_test_record_unpair_all_temp_alloc(-1);
+    #endif
     }
 
     if (controller_status == ESP_OK) {

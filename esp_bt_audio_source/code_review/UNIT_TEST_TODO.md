@@ -552,22 +552,34 @@ void test_ringbuffer_watermark_exact_threshold(void);
 **Existing:** ⚠️ `test_audio_engine_stress.c` (excellent stress tests)
 
 **Missing:**
-- ❌ Command → BT Manager → Audio Processor complete flow
-- ❌ Beep → I2S restore → BT streaming integration
-- ❌ NVS → BT Manager → Pairing persistence integration
-- ❌ Scan → Connect → Pair → Stream end-to-end
-- ❌ Error propagation across component boundaries
-- ❌ Memory leak testing during error recovery
+- ✅ Command → BT Manager → Audio Processor complete flow (`test_scan_connect_pair_start_flow_should_bridge_command_bt_and_audio_layers`)
+- ✅ Beep → I2S/stream continuity integration (`test_beep_flow_should_preserve_running_stream_after_beep_drain`)
+- ✅ NVS → BT Manager → Pairing persistence integration (`test_pairing_persistence_flow_should_reflect_in_paired_and_unpair_commands`)
+- ✅ Scan → Connect → Pair → Stream end-to-end (host mock flow in `test_scan_connect_pair_start_flow_should_bridge_command_bt_and_audio_layers`)
+- ✅ Error propagation across component boundaries (`test_start_should_report_error_when_bt_layer_start_fails`)
+- ✅ Memory leak testing during error recovery (`test_unpair_all_error_recovery_should_not_leak_temp_bond_allocations`)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_integration_flows.c` (5 integration tests)
+**Build target:** `test_integration_flows`
 
 ### 7.2 Concurrency & Race Conditions
-- ❌ Command interface + BT events arriving simultaneously
-- ❌ Audio callback + volume change + beep start
-- ❌ Multiple rapid command invocations (flood test)
+- ✅ Command interface + BT events arriving simultaneously (`test_command_interface_and_bt_events_interleaving_should_remain_responsive`)
+- ✅ Audio callback + volume change + beep start (`test_audio_callback_volume_and_beep_interleaving_should_keep_stream_running`)
+- ✅ Multiple rapid command invocations (flood test) (`test_command_flood_should_process_all_injected_lines_without_error`)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_concurrency.c` (3 tests)
+**Build target:** `test_concurrency`
 
 ### 7.3 Recovery Scenarios
-- ❌ BT disconnect → reconnect → resume streaming
-- ❌ I2S source failure → fallback to synth → recovery
-- ❌ NVS corruption → defaults → re-pair → persist
+- ✅ BT disconnect → reconnect → resume streaming (`test_bt_disconnect_reconnect_should_resume_streaming_when_start_retried`)
+- ✅ I2S source failure → fallback to synth → recovery (`test_i2s_failure_should_fallback_to_synth_and_recover_back_to_i2s_mode`)
+- ✅ NVS corruption → defaults → re-pair → persist (`test_nvs_corruption_should_recover_with_repair_and_persist_pairing`)
+
+**Status:** ✅ Complete (2026-02-12)
+**Test file:** `test_integration_flows.c` (8 integration/recovery tests total)
+**Build target:** `test_integration_flows`
 
 #### Recommended Tests:
 

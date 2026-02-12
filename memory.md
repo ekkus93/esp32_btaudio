@@ -1,3 +1,123 @@
+## 2026-02-12 03:20:51 PST: Full Test Orchestrator Run Completed Clean
+
+**Task:** Run `/home/phil/work/esp32/esp32_btaudio/tools/run_all_tests.py` end-to-end.  
+**Execution detail:** Direct script invocation returned permission denied (`exit 126`), then rerun via `python3`.
+
+**Result:** ✅ All host and device suites passed.
+
+**Summary:**
+- Host tests: `436/436` passed
+- Standalone host parity check: `52` tests passed
+- Device suites:
+   - `test_bluetooth`: `46/46` passed
+   - `test_app_audio`: `35/35` passed
+   - `test_manager`: `18/18` passed
+- Aggregate device totals: `99/99` passed
+
+---
+
+## 2026-02-12 03:13:43 PST: Xtensa clang-tidy Re-Run Verified Clean
+
+**Task:** Run `/home/phil/work/esp32/esp32_btaudio/tools/run_clang_tidy_xtensa.sh` and confirm result details.  
+**Result:** ✅ Completed successfully (`EXIT_CODE:0`) with no `warning:`/`error:` diagnostics in captured output.
+
+**Run summary:**
+- clang-tidy processed `37` files from the compilation database.
+- Output contained execution/progress lines only (no lint findings reported).
+
+---
+
+## 2026-02-12 03:08:31 PST: Section 7.3 Complete - Recovery Scenarios Added
+
+**Task:** Implement `UNIT_TEST_TODO.md` section 7.3 recovery scenarios.  
+**Result:** ✅ Added 3 recovery tests and validated pass (`8/8` in integration flow target).
+
+**Tests added in `esp_bt_audio_source/test/host_test/test_integration_flows.c`:**
+- `test_bt_disconnect_reconnect_should_resume_streaming_when_start_retried`
+   - Validates START fails after disconnect, then succeeds after reconnect.
+- `test_i2s_failure_should_fallback_to_synth_and_recover_back_to_i2s_mode`
+   - Uses host idle-I2S failure helper to validate fallback-to-synth and explicit recovery to I2S mode.
+- `test_nvs_corruption_should_recover_with_repair_and_persist_pairing`
+   - Injects NVS read corruption for `PAIRED`, then verifies re-pair + persisted listing after mock recovery.
+
+**Validation:**
+- `cmake --build build --target test_integration_flows -j4 && ./build/test_integration_flows` ✅ pass (`8 Tests 0 Failures`)
+
+**Docs update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 7.3 marked **Complete** with test references.
+
+---
+
+## 2026-02-12 03:01:10 PST: Section 7.2 Complete - Concurrency/Race Host Tests Added
+
+**Task:** Implement `UNIT_TEST_TODO.md` section 7.2 (Concurrency & Race Conditions).  
+**Result:** ✅ Added dedicated concurrency test target and validated pass (`3/3`).
+
+**New test file/target:**
+- `esp_bt_audio_source/test/host_test/test_concurrency.c`
+- `test_concurrency`
+
+**Coverage added:**
+- Command interface + BT event interleaving (`STATUS`/`SCAN`/`PAIRED` while connection events toggle)
+- Audio callback + volume change + beep interleaving under active streaming
+- Rapid command flood processing over UART input burst (`STATUS`/`SCAN`/`VOLUME` lines)
+
+**Build wiring:**
+- Added `test_concurrency` target to `esp_bt_audio_source/test/host_test/CMakeLists.txt` with command interface, bt_manager modules, and host mocks.
+
+**Validation:**
+- `cmake -S . -B build && cmake --build build --target test_concurrency -j4 && ./build/test_concurrency` ✅ pass (`3 Tests 0 Failures`)
+
+**Docs update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 7.2 marked **Complete** with test references.
+
+---
+
+## 2026-02-12 02:48:26 PST: Section 7.1 Complete - Memory Leak Recovery Test Added
+
+**Task:** Complete `UNIT_TEST_TODO.md` section 7.1 remaining item: memory leak testing during error recovery.  
+**Result:** ✅ Added leak-regression integration test and validated pass (`5/5`).
+
+**Code changes:**
+- `esp_bt_audio_source/test/host_test/test_integration_flows.c`
+   - Added `test_unpair_all_error_recovery_should_not_leak_temp_bond_allocations`
+   - Exercises repeated `UNPAIR_ALL` failures with controller removal errors and asserts temp-allocation balance returns to zero each cycle.
+- `esp_bt_audio_source/components/bt_manager/bt_manager.c`
+   - Added UNIT_TEST hook calls around `bt_unpair_all()` temporary bond-list allocation/free.
+- `esp_bt_audio_source/test/host_test/mocks/bt_manager_test_hooks.c`
+   - Added tracking counters/getters for outstanding and peak temp allocations in unpair-all path.
+
+**Validation:**
+- `cmake --build build --target test_integration_flows -j4 && ./build/test_integration_flows` ✅ pass (`5 Tests 0 Failures`)
+
+**Docs update:**
+- `esp_bt_audio_source/code_review/UNIT_TEST_TODO.md` section 7.1 updated to **Complete** and test count updated to 5.
+
+---
+
+## 2026-02-12 02:31:27 PST: Section 7.1 Started - Host Component Integration Flows
+
+**Task:** Begin `UNIT_TEST_TODO.md` section 7.1 (Component Integration Missing).  
+**Result:** ✅ Added first integration-flow host test target and validated pass (`4/4`).
+
+**New test file/target:**
+- `esp_bt_audio_source/test/host_test/test_integration_flows.c`
+- `test_integration_flows`
+
+**Coverage added:**
+- Command → BT manager → audio processor integration path (`SCAN`, `CONNECT`, `PAIR`, `START` flow)
+- Beep + running-stream continuity (`BEEP` while streaming remains active after beep drain)
+- NVS pairing persistence integration (`PAIRING_COMPLETE` reflected by `PAIRED` and removed by `UNPAIR`)
+- Error propagation across component boundaries (`START` command reports error when BT start is forced to fail)
+
+**Validation:**
+- `cmake --build build --target test_integration_flows -j && ./build/test_integration_flows` ✅ pass (`4 Tests 0 Failures`)
+
+**Docs update:**
+- `UNIT_TEST_TODO.md` section 7.1 marked **Partial** with completed bullets and remaining memory-leak item.
+
+---
+
 ## 2026-02-12 02:22:35 PST: Phase 6 Changes Committed and Pushed
 
 **User request:** Check in files and push to GitHub `master`.  
