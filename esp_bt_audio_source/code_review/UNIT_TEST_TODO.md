@@ -1108,17 +1108,20 @@ The test harness now has **complete infrastructure** with timeout enforcement, d
 
 ### 10.1 Quick Wins (Low Effort, High Value)
 
-#### Add AddressSanitizer Support (2 hours) - Complement to Valgrind
+#### Add AddressSanitizer Support ✅ **IMPLEMENTED**
+
+**Status:** AddressSanitizer is now fully implemented as a complement to Valgrind.
 
 **Note:** Automated Valgrind integration is already implemented (see Section 9.2.1). AddressSanitizer provides a faster alternative for development with different trade-offs:
 
 | Tool | Speed | Detection | Use Case |
 |------|-------|-----------|----------|
 | **Valgrind** (✅ Implemented) | 10-30x slower | Most thorough, all leak types | Pre-commit, CI, release testing |
-| **AddressSanitizer** (Optional) | 2-3x slower | Fast, catches most issues | Development, rapid iteration |
+| **AddressSanitizer** (✅ Implemented) | 2-3x slower | Fast, catches most issues | Development, rapid iteration |
 
+**Implementation:**
 ```cmake
-# Add to test/host_test/CMakeLists.txt
+# In test/host_test/CMakeLists.txt
 option(ENABLE_ASAN "Enable AddressSanitizer for memory error detection" OFF)
 
 if(ENABLE_ASAN)
@@ -1128,20 +1131,39 @@ if(ENABLE_ASAN)
 endif()
 ```
 
-Usage:
+**Usage:**
+
+Via run_all_tests.py (recommended):
 ```bash
-cmake -DENABLE_ASAN=ON ..
-cmake --build .
-ctest --output-on-failure
+# Run tests with AddressSanitizer
+python3 tools/run_all_tests.py --no-device --asan
+
+# Skip standalone build for faster execution
+python3 tools/run_all_tests.py --no-device --asan --no-standalone
 ```
 
-Benefits:
+Direct CMake usage:
+```bash
+cd esp_bt_audio_source/test/host_test
+cmake -Bbuild_asan -DENABLE_ASAN=ON ..
+cmake --build build_asan
+cd build_asan && ctest --output-on-failure
+```
+
+**Benefits:**
 - ✅ Much faster than Valgrind (2-3x vs 10-30x slowdown)
-- ✅ Catches use-after-free, buffer overflows, memory leaks during test runs
-- ✅ Better for development iterations
+- ✅ Catches use-after-free, buffer overflows, memory leaks, stack overflows
+- ✅ Better for rapid development iterations
+- ✅ Integrated with run_all_tests.py via --asan flag
 - ⚠️  Requires recompilation (Valgrind doesn't)
 
-Recommendation: Use AddressSanitizer during active development, Valgrind for final validation.
+**Tool Comparison & Recommendations:**
+- **Development:** Use `--asan` for fast feedback (2-3x slower)
+- **Pre-commit:** Use `--valgrind` for thorough validation (10-30x slower)
+- **CI:** Consider both - ASan for speed, Valgrind for comprehensiveness
+- **Conflicts:** If both --asan and --valgrind specified, ASan takes precedence
+
+**Status:** ✅ **COMPLETE** - AddressSanitizer fully integrated
 
 #### Code Coverage Reporting ✅ **IMPLEMENTED**
 

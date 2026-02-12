@@ -284,16 +284,18 @@ def generate_coverage_report(build_dir: Path, output_dir: Path) -> dict:
     return result
 
 
-def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0, valgrind: bool = False, coverage: bool = False) -> dict:
+def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: int = 0, valgrind: bool = False, coverage: bool = False, asan: bool = False) -> dict:
     host_dir = root / "esp_bt_audio_source" / "test" / "host_test"
     build_dir = host_dir / build_dir_name
     build_dir.mkdir(parents=True, exist_ok=True)
-    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None, "valgrind_enabled": valgrind, "coverage_enabled": coverage}}
+    summary = {"host": {"configured": False, "build": False, "ctest_rc": None, "ctest_output": None, "lasttest_path": None, "valgrind_enabled": valgrind, "coverage_enabled": coverage, "asan_enabled": asan}}
 
     # configure
     cmake_cmd = ["cmake", ".."]
     if coverage:
         cmake_cmd.insert(1, "-DENABLE_COVERAGE=ON")
+    if asan:
+        cmake_cmd.insert(1, "-DENABLE_ASAN=ON")
     rc, out = run_cmd(cmake_cmd, cwd=str(build_dir))
     summary["host"]["configured"] = (rc == 0)
     summary["host"]["configure_output"] = out
@@ -797,6 +799,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--jobs", type=int, default=0, help="Parallel jobs for host build (passed to cmake --build)")
     p.add_argument("--valgrind", action="store_true", help="Run host tests under Valgrind for memory leak detection")
     p.add_argument("--coverage", action="store_true", help="Enable code coverage reporting (gcov/lcov)")
+    p.add_argument("--asan", action="store_true", help="Enable AddressSanitizer for fast memory error detection (requires rebuild)")
     args = p.parse_args(argv)
 
     report = {"host": None, "standalone_host": None, "devices": {}, "aggregate": None}
@@ -814,8 +817,12 @@ def main(argv: list[str] | None = None):
             print("  ⚠️  Valgrind enabled - tests will run slower but with memory leak detection")
         if args.coverage:
             print("  📊 Coverage reporting enabled - will generate HTML report after tests")
+        if args.asan:
+            print("  🛡️  AddressSanitizer enabled - fast memory error detection (2-3x slower)")
+        if args.asan and args.valgrind:
+            print("  ⚠️  WARNING: Both ASan and Valgrind enabled - Valgrind will be skipped")
         host_start = time.time()
-        report["host"] = run_host_tests(ROOT, jobs=args.jobs, valgrind=args.valgrind, coverage=args.coverage)
+        report["host"] = run_host_tests(ROOT, jobs=args.jobs, valgrind=args.valgrind and not args.asan, coverage=args.coverage, asan=args.asan)
         host_end = time.time()
         # run_host_tests historically returned a wrapper dict {"host": {...}}
         # unwrap it if present so downstream code can treat report['host'] as

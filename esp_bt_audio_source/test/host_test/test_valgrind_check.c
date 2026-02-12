@@ -1,12 +1,17 @@
 /**
- * test_valgrind_check.c - Quick test to verify Valgrind integration
+ * test_valgrind_check.c - Memory error detection verification
  * 
- * This test deliberately leaks memory to verify that Valgrind correctly
- * detects and reports memory leaks when the --valgrind flag is used.
+ * This test verifies that memory error detection tools (Valgrind, AddressSanitizer)
+ * work correctly when enabled via run_all_tests.py flags.
  * 
  * Expected behavior:
- * - Without --valgrind: Test passes (memory leak not detected)
- * - With --valgrind: Test fails with exit code 1 (memory leak detected)
+ * - Normal run (no flags): All enabled tests pass
+ * - With --valgrind: Detects memory leaks (exit code 1 if leak tests uncommented)
+ * - With --asan: Detects memory leaks and buffer overflows (runtime abort if error tests uncommented)
+ * 
+ * Tool comparison:
+ * - Valgrind: Slower (10-30x), most thorough, no recompilation needed
+ * - AddressSanitizer: Faster (2-3x), good detection, requires rebuild with -fsanitize=address
  */
 
 #include "unity.h"
@@ -35,18 +40,38 @@ void test_no_leak(void) {
 /**
  * Test: Deliberate memory leak (DISABLED for normal runs)
  * This test should:
- * - Pass without --valgrind (Unity doesn't detect leaks)
+ * - Pass without --valgrind or --asan (Unity doesn't detect leaks)
  * - Fail with --valgrind (Valgrind detects leak and returns exit code 1)
+ * - Fail with --asan (AddressSanitizer detects leak and aborts)
  * 
  * IMPORTANT: This test is commented out in main() to avoid false failures.
- * Uncomment it only for manual Valgrind integration testing.
+ * Uncomment it only for manual memory error detection testing.
  */
-void test_intentional_leak_for_valgrind_check(void) {
+void test_intentional_leak(void) {
     char *leaked = malloc(42);
     TEST_ASSERT_NOT_NULL(leaked);
     strcpy(leaked, "This memory is intentionally leaked");
     // Deliberate leak: 'leaked' is never freed
-    // Valgrind should detect this and fail the test
+    // Both Valgrind and AddressSanitizer should detect this
+}
+
+/**
+ * Test: Buffer overflow (DISABLED for normal runs)
+ * This test should:
+ * - May crash or succeed unpredictably without sanitizers
+ * - Fail with --asan (AddressSanitizer detects overflow immediately)
+ * - May or may not be detected by Valgrind (depends on timing)
+ * 
+ * IMPORTANT: This test is commented out in main() to avoid false failures.
+ * Uncomment it only for manual AddressSanitizer testing.
+ */
+void test_intentional_buffer_overflow(void) {
+    char *buffer = malloc(10);
+    TEST_ASSERT_NOT_NULL(buffer);
+    // Deliberate overflow: write past the end of buffer
+    strcpy(buffer, "This string is way too long for a 10-byte buffer!");
+    free(buffer);
+    // AddressSanitizer should catch the overflow before we get here
 }
 
 int main(void) {
@@ -54,9 +79,14 @@ int main(void) {
     
     RUN_TEST(test_no_leak);
     
-    // Intentional leak test is disabled for normal runs
-    // Uncomment the line below ONLY for manual Valgrind integration testing:
-    // RUN_TEST(test_intentional_leak_for_valgrind_check);
+    // Intentional error tests are disabled for normal runs
+    // Uncomment the lines below ONLY for manual testing:
+    // 
+    // For Valgrind or ASan leak detection:
+    // RUN_TEST(test_intentional_leak);
+    // 
+    // For AddressSanitizer buffer overflow detection:
+    // RUN_TEST(test_intentional_buffer_overflow);
     
     return UNITY_END();
 }

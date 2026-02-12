@@ -17,6 +17,17 @@ if(ENABLE_COVERAGE)
     add_link_options(--coverage)
 endif()
 
+# AddressSanitizer support (fast memory error detection)
+option(ENABLE_ASAN "Enable AddressSanitizer for memory error detection" OFF)
+if(ENABLE_ASAN)
+    if(ENABLE_COVERAGE)
+        message(WARNING "AddressSanitizer and coverage are both enabled - this may cause conflicts")
+    endif()
+    message(STATUS "AddressSanitizer enabled - adding -fsanitize=address flags")
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
+endif()
+
 # Add include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
