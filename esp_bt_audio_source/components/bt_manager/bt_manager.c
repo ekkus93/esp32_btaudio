@@ -42,6 +42,7 @@
 #define TAG "BT_MGR"
 #else
 #include "esp_log.h"
+#include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"
 #define TAG "BT_MGR"
@@ -744,7 +745,6 @@ bool bt_manager_is_autostart_enabled(void) {
     }
 #endif
 
-#ifdef ESP_PLATFORM
     esp_bd_addr_t bda = {0};
     if (!bt_pairing_parse_mac(mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);  // NOLINT(bugprone-branch-clone)
@@ -771,9 +771,6 @@ bool bt_manager_is_autostart_enabled(void) {
         result = storage_err;
         goto exit;
     }
-#else
-    esp_err_t result = nvs_storage_remove_paired_device(mac);
-#endif
 
 exit:
 #ifdef UNIT_TEST
@@ -797,8 +794,7 @@ exit:
         return ESP_FAIL;
     }
 #endif
-
-#ifdef ESP_PLATFORM
+    
     int bonded_devices = esp_bt_gap_get_bond_device_num();
     if (bonded_devices < 0) {
         ESP_LOGW(TAG, "Unable to query bonded device count");  // NOLINT(bugprone-branch-clone)
@@ -837,7 +833,6 @@ exit:
     if (controller_status == ESP_OK) {
         ESP_LOGI(TAG, "Removed %d bonded device(s) from controller", removed_count);  // NOLINT(bugprone-branch-clone)
     }
-#endif
 
     int cleared_before = 0;
     (void)nvs_storage_get_paired_count(&cleared_before);

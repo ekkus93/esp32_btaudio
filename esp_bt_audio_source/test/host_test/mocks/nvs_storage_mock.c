@@ -11,6 +11,9 @@ static char s_default_pin[ESP_BT_PIN_CODE_LEN + 1] = {0};
 static esp_err_t s_init_result = ESP_OK;
 static esp_err_t s_get_count_result = ESP_OK;
 static esp_err_t s_get_device_result = ESP_OK;
+static esp_err_t s_remove_paired_device_result = ESP_OK;
+static esp_err_t s_clear_paired_devices_result = ESP_OK;
+static bool s_clear_paired_devices_called = false;
 static uint8_t s_audio_autostart = 1; // default enabled
 
 // In-memory paired devices mock (simulates binary blob storage)
@@ -46,6 +49,21 @@ void nvs_storage_mock_set_get_count_result(esp_err_t err)
 void nvs_storage_mock_set_get_device_result(esp_err_t err)
 {
     s_get_device_result = err;
+}
+
+void nvs_storage_mock_set_remove_paired_device_result(esp_err_t err)
+{
+    s_remove_paired_device_result = err;
+}
+
+void nvs_storage_mock_set_clear_paired_devices_result(esp_err_t err)
+{
+    s_clear_paired_devices_result = err;
+}
+
+bool nvs_storage_mock_was_clear_paired_devices_called(void)
+{
+    return s_clear_paired_devices_called;
 }
 
 void nvs_storage_mock_reset(void)
@@ -144,6 +162,9 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name) {
 }
 
 esp_err_t nvs_storage_remove_paired_device(const char* mac) {
+    if (s_remove_paired_device_result != ESP_OK) {
+        return s_remove_paired_device_result;
+    }
     if (!mac) return ESP_ERR_INVALID_ARG;
     uint8_t mac_bin[6];
     if (!parse_mac(mac, mac_bin)) return ESP_ERR_INVALID_ARG;
@@ -161,6 +182,10 @@ esp_err_t nvs_storage_remove_paired_device(const char* mac) {
 }
 
 esp_err_t nvs_storage_clear_paired_devices(void) {
+    s_clear_paired_devices_called = true;
+    if (s_clear_paired_devices_result != ESP_OK) {
+        return s_clear_paired_devices_result;
+    }
     mock_paired_count = 0;
     return ESP_OK;
 }

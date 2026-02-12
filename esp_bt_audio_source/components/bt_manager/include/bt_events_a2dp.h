@@ -9,10 +9,11 @@
 #ifndef BT_EVENTS_A2DP_H
 #define BT_EVENTS_A2DP_H
 
-#ifdef ESP_PLATFORM
 #include "esp_a2dp_api.h"
 #include <stdint.h>
 
+// Expose callbacks for both ESP_PLATFORM and UNIT_TEST
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 /**
  * @brief A2DP callback for audio connection and streaming events
  * 
@@ -56,6 +57,14 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param);
  */
 void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param);
 
-#endif // ESP_PLATFORM
+#else
+// Stub implementations for non-ESP builds
+static inline void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
+    (void)event; (void)param;
+}
+static inline int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len) {
+    (void)buf; (void)len; return 0;
+}
+#endif // defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
 #endif // BT_EVENTS_A2DP_H

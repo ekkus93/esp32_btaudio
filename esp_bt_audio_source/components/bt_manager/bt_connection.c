@@ -38,23 +38,22 @@ bt_err_t bt_connect(const char* mac)
         return ESP_FAIL;
     }
     
-#ifdef ESP_PLATFORM
-    // Convert MAC string to address
+    // Convert MAC string to address - validate in all builds
     esp_bd_addr_t bda;
     if (!parse_mac_bytes(mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC address format: %s", mac);  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
-    // Connect to device
-    if (esp_a2d_source_connect(bda) != ESP_OK) {
+    // Connect to device - call A2DP in all builds
+    esp_err_t result = esp_a2d_source_connect(bda);
+    if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to connect to device: %s", mac);  // NOLINT(bugprone-branch-clone)
         return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Connecting to device: %s", mac);  // NOLINT(bugprone-branch-clone)
     safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
-#endif
     
     return ESP_OK;
 }
@@ -126,41 +125,45 @@ MAYBE_WEAK bt_err_t bt_disconnect(void)
 #ifdef ESP_PLATFORM
     // Stop audio if playing
     if (bt_ctx.audio_playing) {
-#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+#if defined(CONFIG_BT_MOCK_TESTING)
         ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect stopping audio before disconnect");
 #endif
         // Forward declaration - bt_stop_audio is in bt_manager.c
         extern bt_err_t bt_stop_audio(void);
         bt_stop_audio();
     }
+#endif
     
     // Convert MAC string to address
     esp_bd_addr_t bda;
     if (!parse_mac_bytes(bt_ctx.connected_mac, bda)) {
         ESP_LOGE(TAG, "Invalid MAC format in stored address: %s", bt_ctx.connected_mac);  // NOLINT(bugprone-branch-clone)
-#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+#if defined(CONFIG_BT_MOCK_TESTING)
         ESP_LOGE(TAG, "DIAG: mgr_bt_disconnect aborting due to invalid MAC string");
 #endif
         return ESP_ERR_INVALID_ARG;
     }
     
-    // Disconnect device
-    if (esp_a2d_source_disconnect(bda) != ESP_OK) {
+    // Disconnect device - call in both ESP_PLATFORM and UNIT_TEST builds
+    esp_err_t result = esp_a2d_source_disconnect(bda);
+    if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to disconnect from device: %s", bt_ctx.connected_mac);  // NOLINT(bugprone-branch-clone)
-#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
-        ESP_LOGE(TAG, "DIAG: mgr_bt_disconnect esp_a2d_source_disconnect() returned error");
+#if defined(CONFIG_BT_MOCK_TESTING)
+        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect esp_a2d_source_disconnect() returned error");
 #endif
         return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "Disconnecting from device: %s", bt_ctx.connected_mac);  // NOLINT(bugprone-branch-clone)
-#if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
+    
+#ifdef ESP_PLATFORM
+#if defined(CONFIG_BT_MOCK_TESTING)
     ESP_LOGI(TAG,
              "DIAG: mgr_bt_disconnect invoked esp_a2d_source_disconnect(), bt_ctx.connected=%d",
              bt_ctx.connected);
 #endif
 #else
-    // For testing without ESP-IDF
+    // For testing without ESP-IDF, manually update state
     bt_ctx.connected = false;
     
     if (bt_ctx.disconnected_callback != NULL) {

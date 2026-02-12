@@ -24,3 +24,8 @@ void mock_gap_set_start_discovery_result(esp_err_t result);
 void mock_gap_set_cancel_discovery_result(esp_err_t result);
 bool mock_gap_was_start_discovery_called(void);
 bool mock_gap_was_cancel_discovery_called(void);
+
+/* Bond management mock control functions */
+void mock_gap_set_remove_bond_result(esp_err_t result);
+void mock_gap_set_bond_device_count(int count);
+void mock_gap_set_remove_bond_fail_at_index(int index);

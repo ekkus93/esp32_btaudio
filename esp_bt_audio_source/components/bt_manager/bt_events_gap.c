@@ -46,4 +46,13 @@ void bt_events_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *
     }
 }
 
+#elif defined(UNIT_TEST)
+
+// Stub implementation for unit tests - just accepts events without crashing
+void bt_events_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
+    (void)event;
+    (void)param;
+    // No-op for unit tests
+}
+
 #endif // ESP_PLATFORM

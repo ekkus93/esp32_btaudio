@@ -9,9 +9,10 @@
 #ifndef BT_EVENTS_AVRC_H
 #define BT_EVENTS_AVRC_H
 
-#ifdef ESP_PLATFORM
 #include "esp_avrc_api.h"
 
+// Expose callback for both ESP_PLATFORM and UNIT_TEST
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 /**
  * @brief AVRC controller callback for remote control events
  * 
@@ -27,6 +28,6 @@
  */
 void bt_events_avrc_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
 
-#endif // ESP_PLATFORM
+#endif // defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
 #endif // BT_EVENTS_AVRC_H

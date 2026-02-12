@@ -168,6 +168,7 @@ target_link_libraries(test_bluetooth unity m util_safe_host platform_shim_host)
 target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_bluetooth PRIVATE mocks/fake_esp_err.c)
+target_sources(test_bluetooth PRIVATE mocks/mock_gap.c)
 target_sources(test_bluetooth PRIVATE mocks/mock_a2dp.c)
 target_sources(test_bluetooth PRIVATE mocks/mock_avrc.c)
 target_compile_definitions(test_bluetooth PRIVATE UNIT_TEST)
@@ -185,6 +186,7 @@ add_executable(test_bt_manager_profiles
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
+    mocks/mock_gap.c
     mocks/nvs_storage_mock.c
     mocks/mock_audio_and_btstate.c
     mocks/bt_manager_test_hooks.c
@@ -207,6 +209,7 @@ add_executable(test_bt_manager_edge_cases
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
+    mocks/mock_gap.c
     mocks/nvs_storage_mock.c
     mocks/mock_audio_and_btstate.c
     mocks/bt_manager_test_hooks.c
@@ -614,6 +617,7 @@ target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_pending unity util_safe_host platform_shim_host)
 target_sources(test_pairing_pending PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_pending PRIVATE mocks/mock_gap.c)
 target_sources(test_pairing_pending PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_pending PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
@@ -632,6 +636,7 @@ target_sources(test_pairing_event_notifications PRIVATE mocks/mock_audio_and_bts
 target_sources(test_pairing_event_notifications PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_pairing_event_notifications unity util_safe_host platform_shim_host)
 target_sources(test_pairing_event_notifications PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_event_notifications PRIVATE mocks/mock_gap.c)
 target_sources(test_pairing_event_notifications PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_event_notifications PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_event_notifications COMMAND $<TARGET_FILE:test_pairing_event_notifications>)
@@ -736,6 +741,7 @@ add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
     ../../components/bt_manager/bt_manager.c
     mocks/mock_audio_and_btstate.c
     mocks/mock_a2dp.c
+    mocks/mock_gap.c
     mocks/mock_avrc.c)
 # Provide test hooks used by bt_manager wrappers (forced-failure hooks)
 target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_pairing_store.c)
@@ -771,6 +777,7 @@ target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(dump_event_stress_output PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(dump_event_stress_output PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(dump_event_stress_output PRIVATE mocks/fake_esp_err.c)
+target_sources(dump_event_stress_output PRIVATE mocks/mock_gap.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
 ## Adapter runner: compile test_bluetooth pairing test and the adapter code so we can
@@ -803,6 +810,7 @@ target_compile_definitions(test_pairing_adapter_runner PRIVATE TEST_INCLUDE_SEQ)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_audio_and_btstate.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/audio_processor_host_stub.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/fake_esp_err.c)
+target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_gap.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_a2dp.c)
 target_sources(test_pairing_adapter_runner PRIVATE mocks/mock_avrc.c)
 
@@ -884,6 +892,32 @@ target_include_directories(test_bt_scan PRIVATE
 target_compile_definitions(test_bt_scan PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_scan unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_scan COMMAND $<TARGET_FILE:test_bt_scan>)
+
+# Phase 5.5: bt_manager connection/pairing/events edge cases (14 tests)
+add_executable(test_bt_manager_connection_pairing_events
+    test_bt_manager_connection_pairing_events.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/mock_gap.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c
+)
+target_include_directories(test_bt_manager_connection_pairing_events PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
+)
+target_compile_definitions(test_bt_manager_connection_pairing_events PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING=1)
+target_link_libraries(test_bt_manager_connection_pairing_events unity util_safe_host platform_shim_host)
+add_test(NAME test_bt_manager_connection_pairing_events COMMAND $<TARGET_FILE:test_bt_manager_connection_pairing_events>)
 
 # Create a consolidated test runner
 add_custom_target(run_tests

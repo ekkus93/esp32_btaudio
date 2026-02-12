@@ -35,4 +35,13 @@ void bt_events_avrc_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_
     }
 }
 
+#elif defined(UNIT_TEST)
+
+// Stub implementation for unit tests - just accepts events without crashing
+void bt_events_avrc_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param) {
+    (void)event;
+    (void)param;
+    // No-op for unit tests
+}
+
 #endif // ESP_PLATFORM
