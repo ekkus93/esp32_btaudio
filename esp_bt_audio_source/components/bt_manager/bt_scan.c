@@ -44,15 +44,19 @@ bt_err_t bt_start_scan(void)
     safe_memset(&bt_ctx.discovered_devices, sizeof(bt_ctx.discovered_devices), 
                 0, sizeof(bt_ctx.discovered_devices));
     
-#ifdef ESP_PLATFORM
-    // Start discovery
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
+    // Start discovery (ESP_PLATFORM for device, UNIT_TEST for host testing)
     if (esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0) != ESP_OK) {
+#ifdef ESP_PLATFORM
         ESP_LOGE(TAG, "Start device discovery failed");  // NOLINT(bugprone-branch-clone)
+#endif
         return ESP_FAIL;
     }
     
+#ifdef ESP_PLATFORM
     ESP_LOGI(TAG, "Started Bluetooth device scanning");  // NOLINT(bugprone-branch-clone)
 #endif
+#endif  // ESP_PLATFORM || UNIT_TEST
     
     bt_ctx.scanning = true;
     
@@ -82,22 +86,27 @@ bt_err_t bt_stop_scan(void)
         return ESP_OK; // Not scanning
     }
     
-#ifdef ESP_PLATFORM
-    // Stop discovery
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
+    // Stop discovery (ESP_PLATFORM for device, UNIT_TEST for host testing)
     if (esp_bt_gap_cancel_discovery() != ESP_OK) {
+#ifdef ESP_PLATFORM
         ESP_LOGE(TAG, "Stop device discovery failed");  // NOLINT(bugprone-branch-clone)
+#endif
+        bt_ctx.scanning = false;  // Clear flag even on failure
         return ESP_FAIL;
     }
     
+#ifdef ESP_PLATFORM
     ESP_LOGI(TAG, "Stopped Bluetooth device scanning");  // NOLINT(bugprone-branch-clone)
 #endif
+#endif  // ESP_PLATFORM || UNIT_TEST
     
     bt_ctx.scanning = false;
     return ESP_OK;
 }
 
-#ifdef ESP_PLATFORM
-/* Internal API for GAP callback */
+/* Internal API for GAP callback - also available for UNIT_TEST */
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
 void bt_scan_handle_discovery_result(const esp_bd_addr_t bda, 
                                      int num_prop,
@@ -133,7 +142,7 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
                       sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
         safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
                       sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
-        bt_ctx.discovered_devices.devices[idx].rssi = (int)(unsigned char)rssi;
+        bt_ctx.discovered_devices.devices[idx].rssi = (int)rssi;  // Direct cast from int8_t to int
         bt_ctx.discovered_devices.count++;
     }
 }
@@ -148,4 +157,4 @@ void bt_scan_handle_state_change(esp_bt_gap_discovery_state_t state)
         bt_ctx.scanning = true;
     }
 }
-#endif  // ESP_PLATFORM
+#endif  // ESP_PLATFORM || UNIT_TEST

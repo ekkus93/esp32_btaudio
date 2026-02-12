@@ -860,6 +860,31 @@ target_include_directories(test_mem_util PRIVATE
 target_link_libraries(test_mem_util unity)
 add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 
+# Phase 5.4: bt_scan edge cases (NEW MODULE - device discovery, scan start/stop, state sync)
+add_executable(test_bt_scan
+    test_bt_scan.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_bt_scan PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
+)
+target_compile_definitions(test_bt_scan PRIVATE UNIT_TEST)
+target_link_libraries(test_bt_scan unity util_safe_host platform_shim_host)
+add_test(NAME test_bt_scan COMMAND $<TARGET_FILE:test_bt_scan>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

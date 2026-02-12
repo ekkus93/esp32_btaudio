@@ -1,3 +1,105 @@
+## 2026-02-12 00:38 EST: Phase 5.4 COMPLETE - bt_scan.c Full Coverage (TDD) ✅
+
+**Completed:** Phase 5.4 - bt_scan.c (NEW MODULE) - device discovery, scan start/stop, state sync  
+**TDD Methodology:** Kent Beck Red-Green-Refactor applied  
+**Result:** 13/13 tests passing - bt_scan.c fully validated (was 0 tests)  
+**Achievement:** 46/46 host tests passing (was 45 after Phase 5.3)
+
+**Phase 5.4 Achievement:**
+- ✅ **test_bt_scan.c** (13 tests NEW MODULE, 442 lines)
+-  **Coverage:** Scan start/stop (initialized checks, GAP mocks, idempotency), discovery result handling (device list full, missing name, duplicates), state change sync
+- **Pass rate:** 100% (13 Tests 0 Failures 0 Ignored)
+- **Total host tests:** 46 passing (+1 from Phase 5.3)
+
+**Tests Created:**
+1. ✅ test_bt_start_scan_not_initialized_should_fail
+2. ✅ test_bt_start_scan_already_scanning_should_return_ok
+3. ✅ test_bt_start_scan_gap_failure_should_propagate_error
+4. ✅ test_bt_start_scan_success_should_clear_devices_and_set_scanning
+5. ✅ test_bt_stop_scan_not_initialized_should_fail
+6. ✅ test_bt_stop_scan_not_scanning_should_return_ok
+7. ✅ test_bt_stop_scan_gap_failure_should_propagate_error
+8. ✅ test_bt_stop_scan_success_should_clear_scanning_flag
+9. ✅ test_bt_scan_handle_discovery_result_device_list_full_should_drop
+10. ✅ test_bt_scan_handle_discovery_result_missing_name_should_use_empty_string
+11. ✅ test_bt_scan_handle_discovery_result_duplicate_device_adds_new_entry
+12. ✅ test_bt_scan_handle_state_change_started_should_set_scanning
+13. ✅ test_bt_scan_handle_state_change_stopped_should_clear_scanning
+
+**Production Code Enhancements (TDD-Driven):**
+1. **RSSI casting bug fix (bt_scan.c line 139):**
+   - **Before:** `rssi = (int)(unsigned char)rssi` → sign lost (-45 became 211)
+   - **After:** `rssi = (int)rssi` → preserves sign correctly
+   - **Impact:** Fixed RSSI display for all discovered devices
+
+2. **Unit test visibility (bt_scan.c):**
+   - Made bt_scan_handle_discovery_result() and bt_scan_handle_state_change() available for UNIT_TEST mode
+   - Added `#if defined(ESP_PLATFORM) || defined(UNIT_TEST)` guards
+   - Enables comprehensive edge case testing of internal GAP handlers
+
+3. **GAP error propagation in host tests:**
+   - Extended ESP_PLATFORM guards to include UNIT_TEST for GAP function calls
+   - Allows error injection via mock_gap in host tests
+   - Validates bt_start_scan() and bt_stop_scan() failure paths
+
+4. **Failure recovery semantics (bt_stop_scan):**
+   - When esp_bt_gap_cancel_discovery() fails, bt_stop_scan() now clears bt_ctx.scanning flag
+   - Rationale: Even if GAP call fails, application state should reflect stop attempt
+   - Returns ESP_FAIL with consistent state
+
+**Mock Infrastructure Extensions:**
+1. **mock_gap.c additions:**
+   - `esp_bt_gap_start_discovery()` mock with error injection
+   - `esp_bt_gap_cancel_discovery()` mock with error injection
+   - `mock_gap_set_start_discovery_result()` - Configure start discovery result
+   - `mock_gap_set_cancel_discovery_result()` - Configure cancel discovery result
+   - `mock_gap_was_start_discovery_called()` - Verify start discovery invocation
+   - `mock_gap_was_cancel_discovery_called()` - Verify cancel discovery invocation
+
+2. **mock_gap.h (NEW):**
+   - Header created for GAP mock functions
+   - Exposes pairing and discovery mock control APIs
+   - Consistent with mock_a2dp.h, mock_avrc.h patterns
+
+3. **esp_gap_bt_api.h extensions:**
+   - Added esp_bt_gap_discovery_state_t enum (STARTED/STOPPED)
+   - Added esp_bt_inq_mode_t enum (GENERAL_INQUIRY/LIMITED_INQUIRY)
+   - Added esp_bt_gap_dev_prop_type_t enum (BDNAME/COD/RSSI/EIR)
+   - Added esp_bt_gap_dev_prop_t structure (type, val, len)
+   - Added function declarations for start/cancel discovery
+
+**Test Insights (Production Code Behavior):**
+- **bt_start_scan() idempotency:** Returns ESP_OK when already scanning (no-op)
+- **bt_stop_scan() idempotency:** Returns ESP_OK when not scanning (no-op)
+- **bt_start_scan() not initialized:** Returns ESP_FAIL before any GAP calls
+- **Device list limit:** Silently drops devices beyond 20 (count remains 20)
+- **Missing device name:** Discovery results with no BDNAME property → empty string name
+- **Duplicate devices:** Current implementation does NOT deduplicate by MAC - adds as new entry (documents existing behavior for future enhancement)
+- **State sync:** bt_scan_handle_state_change() keeps bt_ctx.scanning in sync with GAP events
+
+**CMakeLists.txt Integration:**
+```cmake
+add_executable(test_bt_scan
+    test_bt_scan.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_manager.c  # For bt_ctx
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+```
+
+**Next Phase:** 5.5+ - BT Manager extended edge cases (connection, pairing, events)
+
 ## 2026-02-12 00:36:00: Phase 5.3 COMPLETE - BT Streaming Manager Edge Cases (TDD) ✅
 
 **Completed:** Phase 5.3 - bt_streaming_manager.c audio data callback error handling, underrun statistics, state machine sequences  
