@@ -217,6 +217,21 @@ target_compile_definitions(test_bt_manager_edge_cases PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_manager_edge_cases unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_manager_edge_cases COMMAND $<TARGET_FILE:test_bt_manager_edge_cases>)
 
+# Phase 5.2: bt_connection_manager edge cases (reconnect retry, NULL callbacks, state persistence)
+add_executable(test_bt_connection_manager_edge_cases
+    test_bt_connection_manager_edge_cases.c
+    ../../components/bt_manager/bt_connection_manager.c
+    mocks/mock_a2dp.c
+    mocks/mock_gap.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_bt_connection_manager_edge_cases PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
+)
+target_compile_definitions(test_bt_connection_manager_edge_cases PRIVATE UNIT_TEST CONFIG_BT_MOCK_TESTING=1)
+target_link_libraries(test_bt_connection_manager_edge_cases unity util_safe_host platform_shim_host)
+add_test(NAME test_bt_connection_manager_edge_cases COMMAND $<TARGET_FILE:test_bt_connection_manager_edge_cases>)
+
 ## Audio processor test is intentionally a device/component Unity test only.
 ## The test file lives under `test/component/` and is picked up by the
 ## on-device test runner. Building it as a native host executable links the
