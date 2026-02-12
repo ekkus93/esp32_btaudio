@@ -291,6 +291,110 @@ void test_erase_succeeds_but_reinit_fails(void)
     TEST_ASSERT_EQUAL(1, flash_erase_calls);
 }
 
+void test_volume_get_open_failure(void)
+{
+    uint8_t vol = 50;
+    open_result = ESP_ERR_NOT_FOUND;
+
+    esp_err_t err = nvs_storage_get_volume(&vol);
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, err);
+    TEST_ASSERT_EQUAL(50, vol);  // unchanged on error
+    TEST_ASSERT_EQUAL(1, open_calls);
+}
+
+void test_volume_get_i32_failure(void)
+{
+    uint8_t vol = 50;
+    open_result = ESP_OK;
+    set_i32_entry("volume", ESP_ERR_NOT_FOUND, 0);
+
+    esp_err_t err = nvs_storage_get_volume(&vol);
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, err);
+    TEST_ASSERT_EQUAL(50, vol);  // unchanged on error
+}
+
+void test_volume_set_open_failure(void)
+{
+    open_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_set_volume(75);
+    
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);  // never reached commit
+}
+
+void test_volume_set_commit_failure(void)
+{
+    open_result = ESP_OK;
+    commit_result = ESP_ERR_NO_MEM;
+
+    esp_err_t err = nvs_storage_set_volume(75);
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
+void test_i2s_pins_get_open_failure(void)
+{
+    int bclk = 5, ws = 6, din = 7, dout = 8;
+    open_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout);
+    
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    // Values unchanged on open failure
+    TEST_ASSERT_EQUAL(5, bclk);
+    TEST_ASSERT_EQUAL(6, ws);
+    TEST_ASSERT_EQUAL(7, din);
+    TEST_ASSERT_EQUAL(8, dout);
+}
+
+void test_i2s_pins_get_partial_failure(void)
+{
+    int bclk = 99, ws = 99, din = 99, dout = 99;
+    open_result = ESP_OK;
+    set_i32_entry("i2s_bclk", ESP_OK, 26);
+    set_i32_entry("i2s_ws", PLATFORM_ERR_STORAGE_NOT_FOUND, 0);
+    set_i32_entry("i2s_din", ESP_OK, 22);
+    set_i32_entry("i2s_dout", PLATFORM_ERR_STORAGE_NOT_FOUND, 0);
+
+    esp_err_t err = nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout);
+    
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(26, bclk);   // found
+    TEST_ASSERT_EQUAL(-1, ws);     // not found, default
+    TEST_ASSERT_EQUAL(22, din);    // found
+    TEST_ASSERT_EQUAL(-1, dout);   // not found, default
+}
+
+void test_i2s_pins_set_open_failure(void)
+{
+    open_result = ESP_ERR_NO_MEM;
+
+    esp_err_t err = nvs_storage_set_i2s_pins(26, 25, 22, 21);
+    
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(0, commit_calls);
+}
+
+void test_i2s_pins_set_commit_failure(void)
+{
+    open_result = ESP_OK;
+    commit_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_set_i2s_pins(26, 25, 22, 21);
+    
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, open_calls);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -303,5 +407,13 @@ int main(void)
     RUN_TEST(test_repeated_no_free_pages_after_erase);
     RUN_TEST(test_new_version_with_erase_failure);
     RUN_TEST(test_erase_succeeds_but_reinit_fails);
+    RUN_TEST(test_volume_get_open_failure);
+    RUN_TEST(test_volume_get_i32_failure);
+    RUN_TEST(test_volume_set_open_failure);
+    RUN_TEST(test_volume_set_commit_failure);
+    RUN_TEST(test_i2s_pins_get_open_failure);
+    RUN_TEST(test_i2s_pins_get_partial_failure);
+    RUN_TEST(test_i2s_pins_set_open_failure);
+    RUN_TEST(test_i2s_pins_set_commit_failure);
     return UNITY_END();
 }
