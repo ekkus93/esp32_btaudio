@@ -21701,3 +21701,45 @@ Status: ✅ COMPLETE
 
 **Status:** Analysis complete, ready for team review and Phase 1 implementation kickoff.
 
+
+---
+
+### 2026-02-11 16:29:53 - Phase 2.1 Complete: NVS Init/Erase Error Tests
+
+**Activity:** Completed Phase 2.1 of UNIT_TEST_TODO.md - NVS Storage init/erase error sequence testing
+
+**Work Completed:**
+1. Added 3 new tests to test_nvs_storage_errors.c:
+   - test_repeated_no_free_pages_after_erase (NO_FREE_PAGES persists after erase)
+   - test_new_version_with_erase_failure (NEW_VERSION → erase fails)
+   - test_erase_succeeds_but_reinit_fails (erase OK → re-init returns ESP_ERR_NO_MEM)
+
+2. Test Results:
+   - All 9 tests in test_nvs_storage_errors.c passing (was 6/6)
+   - All 36 host tests passing (100%)
+   - Production code already handles all scenarios correctly (GREEN phase)
+
+3. Documentation Updates:
+   - UNIT_TEST_TODO.md Section 2.1: ❌ → ✅ COMPLETE
+   - Updated executive summary, phase tracking, and conclusion
+   - Commit: 9d4b697e
+
+**TDD Methodology:**
+- Followed RED-GREEN-REFACTOR cycle per .github/copilot-instructions.md
+- Used existing fault injection infrastructure (flash_init_seq[], push_flash_init())
+- Tests verify error propagation and recovery behavior
+- No production code changes needed - validation of existing implementation
+
+**Coverage Impact:**
+- NVS init/erase error paths: Now fully tested
+- File: test_nvs_storage_errors.c (9 tests total, 100% passing)
+- Regression protection for critical recovery scenarios
+
+**Next Phase:** Phase 2.2 - NVS get/set error injection (10+ tests covering partial failures, commit failures, corrupted data)
+
+**Lessons Learned:**
+- Production code (nvs_storage_init) was already robust
+- Fault injection infrastructure highly reusable (push_flash_init pattern)
+- Tests document critical error paths that weren't explicitly tested before
+- GREEN phase immediately - no code fixes required
+

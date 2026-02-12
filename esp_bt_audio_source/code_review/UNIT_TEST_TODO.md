@@ -97,18 +97,19 @@ This analysis identifies test coverage gaps across the ESP32 Bluetooth Audio Sou
 
 ---
 
-## 2. NVS Storage Error Injection Gaps ⚠️ **HIGH PRIORITY**
+## 2. NVS Storage Error Injection Gaps ⚠️ **HIGH PRIORITY** (Section 2.1 ✅ Complete)
 
 **Files:** `nvs_storage.c` (497 lines)
 
-**Existing Coverage:** ✅ `test_nvs_storage.c` (happy paths), ⚠️ `test_nvs_storage_errors.c` (partial fault injection)
+**Existing Coverage:** ✅ `test_nvs_storage.c` (happy paths), ⚠️ `test_nvs_storage_errors.c` (9/9 tests passing, init/erase complete)
 
 ### Missing Error Path Coverage:
 
 #### 2.1 Init/Erase Sequence Errors
-- ❌ `nvs_storage_init()` - Repeated NO_FREE_PAGES → erase failures
-- ❌ `nvs_storage_init()` - NEW_VERSION with erase failure recovery
-- ❌ Multiple init failure scenarios (what if erase succeeds but re-init fails?)
+- ✅ `nvs_storage_init()` - Repeated NO_FREE_PAGES → erase failures (test_repeated_no_free_pages_after_erase)
+- ✅ `nvs_storage_init()` - NEW_VERSION with erase failure recovery (test_new_version_with_erase_failure)
+- ✅ Multiple init failure scenarios (test_erase_succeeds_but_reinit_fails - erase OK, re-init fails with ESP_ERR_NO_MEM)
+**Status:** ✅ **COMPLETE** - 3 tests added to test_nvs_storage_errors.c, all passing (9/9 total in file)
 
 #### 2.2 Get/Set Error Injections
 `test_nvs_storage_errors.c` provides infrastructure but limited scenarios:
@@ -667,10 +668,18 @@ This analysis identifies **~91 new unit tests** needed across **7 priority phase
 5. ✅ Production code improved via TDD
 6. ✅ Commited to GitHub (73a52425)
 
+**Phase 2.1 Complete (2026-02-11):**
+1. ✅ Added 3 NVS init/erase error tests to test_nvs_storage_errors.c
+2. ✅ Tests cover: repeated NO_FREE_PAGES, NEW_VERSION with erase failure, erase OK but re-init fails
+3. ✅ All tests passing: 9/9 in test_nvs_storage_errors.c (was 6/6)
+4. ✅ Production code validation: already handles all scenarios correctly (GREEN phase)
+5. ✅ Committed to GitHub (9d4b697e)
+
 **Next Actions (Phase 2):**
 1. ⚠️ Set up CI to track coverage metrics
-2. ⚠️ Begin Phase 2: NVS error injection (12+ tests)
-3. ⚠️ Goal: NVS error paths **50% → 85%+**
+2. ✅ **Phase 2.1 Complete:** NVS init/erase error tests (3 tests, 9/9 total passing in file)
+3. ⚠️ Continue Phase 2.2: NVS get/set error injection (10+ tests)
+4. ⚠️ Goal: NVS error paths **50% → 85%+**
 
 **Success Criteria Progress:**
 - Command handler coverage: **15% → 60%+** ✅ (target 80%+)
@@ -682,7 +691,7 @@ This analysis identifies **~91 new unit tests** needed across **7 priority phase
 
 ---
 
-**Document Status:** Phase 1 Complete — Updated for Phase 2  
-**Next Review:** After Phase 2 completion (NVS error injection)  
+**Document Status:** Phase 2.1 Complete — Ready for Phase 2.2  
+**Next Review:** After Phase 2.2 completion (NVS get/set error injection)  
 **Owner:** Development Team  
-**Last Updated:** 2026-02-11 (Phase 1 complete)
+**Last Updated:** 2026-02-11 (Phase 2.1 complete - NVS init/erase tests)
