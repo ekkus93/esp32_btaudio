@@ -286,38 +286,7 @@ void __attribute__((weak)) diag_dump_bytes(const void* data, size_t len, const c
     (void)tag;
 }
 
-bool wav_playback_is_active(void)
-{
-    return false;
-}
-
-void wav_playback_begin(void)
-{
-}
-
-bool wav_playback_consume(size_t bytes)
-{
-    (void)bytes;
-    return true;
-}
-
-void wav_playback_complete_if_idle(void)
-{
-}
-
-void wav_playback_abort(const char* caller)
-{
-    (void)caller;
-}
-
-void wav_refill_from_manager(void)
-{
-}
-
-void wav_playback_add_pending(size_t bytes)
-{
-    (void)bytes;
-}
+/* WAV playback stubs removed (play_manager deleted) */
 
 void audio_processor_beep_reset(void)
 {

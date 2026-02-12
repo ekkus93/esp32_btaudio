@@ -1019,6 +1019,37 @@ target_compile_definitions(test_bt_manager_connection_pairing_events PRIVATE UNI
 target_link_libraries(test_bt_manager_connection_pairing_events unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_manager_connection_pairing_events COMMAND $<TARGET_FILE:test_bt_manager_connection_pairing_events>)
 
+# ============================================================================
+# Section 8.3 Tests - Untested Supporting Code (Phase 8.3 - Comprehensive)
+# ============================================================================
+
+# Audio span log tests (circular buffer diagnostic logging)
+add_executable(test_audio_span_log
+    test_audio_span_log.c
+    ../../components/audio_processor/audio_span_log.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_audio_span_log PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/platform_shim)
+target_compile_definitions(test_audio_span_log PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_span_log unity platform_shim_host)
+add_test(NAME test_audio_span_log COMMAND $<TARGET_FILE:test_audio_span_log>)
+
+# Platform shim tests (memory, timing wrappers)
+add_executable(test_platform_shim
+    test_platform_shim.c
+    mocks/fake_log.c)
+target_include_directories(test_platform_shim PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/platform_shim)
+target_compile_definitions(test_platform_shim PRIVATE UNIT_TEST)
+target_link_libraries(test_platform_shim unity platform_shim_host)
+add_test(NAME test_platform_shim COMMAND $<TARGET_FILE:test_platform_shim>)
+
 # Create a consolidated test runner
 add_custom_target(run_tests
     COMMAND test_commands

@@ -4,7 +4,6 @@ idf_component_register(
         "audio_processor_state.c"
        
         "audio_processor_beep.c"
-        "audio_processor_wav.c"
         "audio_processor_read.c"
         "audio_processor_diag.c"
        

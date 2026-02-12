@@ -119,11 +119,7 @@ unsigned s_i2s_timeout_count = 0;
 unsigned s_probe_captured = 0;
 unsigned s_probe_target = 0;
 bool s_dram_only_alloc = false;
-portMUX_TYPE s_wav_lock = portMUX_INITIALIZER_UNLOCKED;
-volatile bool s_wav_playback_active = false;
-volatile size_t s_wav_pending_bytes = 0;
-bool s_wav_prev_valid = false;
-bool s_wav_prev_force_synth = false;
+/* WAV state removed (play_manager deleted): s_wav_lock, s_wav_playback_active, s_wav_pending_bytes, s_wav_prev_* */
 portMUX_TYPE s_beep_lock = portMUX_INITIALIZER_UNLOCKED;
 size_t s_beep_remaining_bytes = 0;
 bool s_dump_next_beep_diag = false;

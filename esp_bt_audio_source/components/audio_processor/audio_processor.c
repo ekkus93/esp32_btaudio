@@ -669,7 +669,6 @@ esp_err_t audio_processor_start(void)
 
     /* I2S capture has highest priority. Stop any ongoing BEEP playback
      * so capture owns the pipeline. */
-    wav_playback_abort(__func__);
     audio_processor_beep_reset();
 
     /* F1.6.2: I2S/SYNTH mutual exclusion - don't start I2S if SYNTH mode active
@@ -835,7 +834,6 @@ esp_err_t audio_processor_drain_ring(void)
     s_force_synth = false;
     s_last_source_was_synth = false;
 
-    wav_playback_abort("audio_processor_drain_ring");
     audio_processor_beep_reset();
     beep_overlay_stop();
 
@@ -855,7 +853,6 @@ esp_err_t audio_processor_deinit(void)
     }
 
     /* Reset playback state so re-init starts cleanly. */
-    wav_playback_abort("audio_processor_deinit");
     audio_processor_beep_reset();
     s_keepalive_armed = false;
     s_force_synth = false;
@@ -914,10 +911,7 @@ esp_err_t audio_processor_deinit(void)
     s_beep_prefill_accum_bytes = 0;
     s_beep_prefill_goal_bytes = 0;
     s_beep_remaining_bytes = 0;
-    s_wav_pending_bytes = 0;
-    s_wav_playback_active = false;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
+    /* WAV state variables removed (play_manager deleted) */
     s_trace_next_read_call = false;
     s_trace_read_until_beep_done = false;
     s_diag_next_log_tick = 0;
@@ -1435,7 +1429,7 @@ bool audio_processor_is_i2s_active(void)
 bool audio_processor_is_wav_active(void)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    return wav_playback_is_active();
+    return false;  /* WAV playback removed (play_manager deleted) */
 }
 
 void audio_processor_set_diag_enabled(bool enable)
@@ -1596,7 +1590,7 @@ void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, si
     s_force_synth = synth_enabled;
     s_beep_remaining_bytes = beep_remaining;
     s_keepalive_armed = true;
-    s_wav_playback_active = false;
+    /* s_wav_playback_active removed (play_manager deleted) */
     s_last_i2s_failure_log = -I2S_FAILURE_LOG_THROTTLE;
     if (s_i2s_consecutive_failures >= I2S_FAILURE_THRESHOLD &&
         (s_i2s_consecutive_failures - s_last_i2s_failure_log) >= I2S_FAILURE_LOG_THROTTLE &&
@@ -1613,52 +1607,7 @@ void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, si
     }
 }
 
-void audio_processor_test_wav_reset_state(void)
-{
-    AUDIO_PROC_LOG_ONCE();
-    portENTER_CRITICAL(&s_wav_lock);
-    s_wav_playback_active = false;
-    s_wav_pending_bytes = 0;
-    s_wav_prev_valid = false;
-    s_wav_prev_force_synth = false;
-    portEXIT_CRITICAL(&s_wav_lock);
-}
-
-void audio_processor_test_wav_begin(void)
-{
-    AUDIO_PROC_LOG_ONCE();
-    wav_playback_begin();
-}
-
-void audio_processor_test_wav_add_pending(size_t bytes)
-{
-    AUDIO_PROC_LOG_ONCE();
-    wav_playback_add_pending(bytes);
-}
-
-bool audio_processor_test_wav_consume(size_t bytes)
-{
-    AUDIO_PROC_LOG_ONCE();
-    return wav_playback_consume(bytes);
-}
-
-void audio_processor_test_wav_abort(void)
-{
-    AUDIO_PROC_LOG_ONCE();
-    wav_playback_abort(__func__);
-}
-
-void audio_processor_test_wav_complete_if_idle(void)
-{
-    AUDIO_PROC_LOG_ONCE();
-    wav_playback_complete_if_idle();
-}
-
-bool audio_processor_test_wav_is_active(void)
-{
-    AUDIO_PROC_LOG_ONCE();
-    return wav_playback_is_active();
-}
+/* WAV playback test functions removed (play_manager deleted) */
 #endif /* CONFIG_BT_MOCK_TESTING */
 
 #ifdef CONFIG_BT_MOCK_TESTING

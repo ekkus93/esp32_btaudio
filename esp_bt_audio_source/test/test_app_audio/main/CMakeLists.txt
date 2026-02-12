@@ -28,7 +28,7 @@ idf_component_register(
         "../../../components/audio_processor/i2s_manager.c"
         "../../../components/audio_processor/beep_manager.c"
         "../../../components/audio_processor/audio_processor_beep.c"
-        "../../../components/audio_processor/audio_processor_wav.c"
+        # "../../../components/audio_processor/audio_processor_wav.c"  # Removed: Phase 5 WAV cleanup
         "../../../components/audio_processor/audio_processor_read.c"
         "../../../components/audio_processor/audio_processor_diag.c"
         "../../../components/audio_processor/synth_manager.c"

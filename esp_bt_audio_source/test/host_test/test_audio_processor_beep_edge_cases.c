@@ -31,15 +31,10 @@ extern size_t s_beep_remaining_bytes;
 extern audio_config_t s_audio_config;  /* Production audio config */
 
 /* Mock/stub control for testing */
-static bool mock_wav_playback_active = false;
 static esp_err_t mock_beep_manager_play_result = ESP_OK;
 static bool mock_i2s_manager_running = false;
 
-/* Override wav_playback_is_active() for testing */
-bool wav_playback_is_active(void)
-{
-    return mock_wav_playback_active;
-}
+/* WAV playback override removed (play_manager deleted) */
 
 /* Mock i2s_manager functions */
 bool i2s_manager_is_running(void)
@@ -118,8 +113,7 @@ esp_err_t audio_processor_deinit(void)
 /* Test fixture */
 void setUp(void)
 {
-    /* Reset all mocks */
-    mock_wav_playback_active = false;
+    /* Reset all mocks (WAV mock removed - play_manager deleted) */
     mock_beep_manager_play_result = ESP_OK;
     mock_i2s_manager_running = false;
     mock_beep_done_callback = NULL;
@@ -164,22 +158,7 @@ void test_beep_not_initialized(void)
 }
 
 /* ============================================================================
- * Test 2: Beep while WAV playback active
- * ============================================================================ */
-void test_beep_during_wav_playback(void)
-{
-    /* Arrange: Simulate WAV playback active */
-    mock_wav_playback_active = true;
-    
-    /* Act */
-    esp_err_t result = audio_processor_beep_tone(100, 1000.0);
-    
-    /* Assert */
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, result);
-}
-
-/* ============================================================================
- * Test 3: Beep interrupts SYNTH, restores SYNTH after
+ * Test 2: Beep interrupts SYNTH, restores SYNTH after (test_beep_during_wav_playback removed)
  * ============================================================================ */
 void test_beep_restore_synth_source(void)
 {
@@ -418,9 +397,8 @@ int main(void)
 {
     UNITY_BEGIN();
     
-    /* Edge case tests */
+    /* Edge case tests (test_beep_during_wav_playback removed - WAV deleted) */
     RUN_TEST(test_beep_not_initialized);
-    RUN_TEST(test_beep_during_wav_playback);
     RUN_TEST(test_beep_restore_synth_source);
     RUN_TEST(test_beep_restore_i2s_source);
     RUN_TEST(test_beep_synth_i2s_both_active_invariant);

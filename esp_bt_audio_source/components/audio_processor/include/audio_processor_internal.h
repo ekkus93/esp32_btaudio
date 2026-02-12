@@ -170,11 +170,7 @@ extern unsigned s_i2s_timeout_count;
 extern unsigned s_probe_captured;
 extern unsigned s_probe_target;
 extern bool s_dram_only_alloc;
-extern portMUX_TYPE s_wav_lock;
-extern volatile bool s_wav_playback_active;
-extern volatile size_t s_wav_pending_bytes;
-extern bool s_wav_prev_valid;
-extern bool s_wav_prev_force_synth;
+/* WAV externs removed (play_manager deleted): s_wav_lock, s_wav_playback_active, s_wav_pending_bytes, s_wav_prev_* */
 extern portMUX_TYPE s_beep_lock;
 extern size_t s_beep_remaining_bytes;
 extern bool s_dump_next_beep_diag;
@@ -193,16 +189,7 @@ size_t audio_get_runtime_work_bytes(void);
 int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 void apply_volume(void* buffer, size_t size, uint8_t volume);
 
-/* WAV helpers */
-bool wav_playback_is_active(void);
-void wav_playback_begin(void);
-bool wav_playback_consume(size_t bytes);
-void wav_playback_complete_if_idle(void);
-void wav_playback_abort(const char *caller);
-void wav_refill_from_manager(void);
-#if defined(CONFIG_BT_MOCK_TESTING) || defined(UNIT_TEST)
-void wav_playback_add_pending(size_t bytes);
-#endif
+/* WAV helpers removed (play_manager deleted) */
 
 /* Beep helpers */
 void audio_processor_beep_reset(void);

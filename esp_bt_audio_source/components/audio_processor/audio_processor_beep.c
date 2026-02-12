@@ -62,10 +62,7 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         was_i2s = false;  /* Deterministic priority: SYNTH wins */
     }
 
-    if (wav_playback_is_active()) {
-        ESP_LOGW(TAG, "audio_processor_beep: busy (legacy WAV stub active)");  // NOLINT(bugprone-branch-clone)
-        return ESP_ERR_INVALID_STATE;
-    }
+    /* WAV playback removed (play_manager deleted) */
 
     /* Allow BEEP even when the I2S manager is running; any stale capture
      * content will be drained when the beep is enqueued. */
