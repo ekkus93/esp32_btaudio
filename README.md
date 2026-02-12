@@ -1,6 +1,7 @@
 # ESP32 Audio Project
 [![CI - Host Unit Tests](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml)
 [![CI - Device Build](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml)
+[![Coverage](https://img.shields.io/badge/coverage-62.9%25-yellow.svg)](#code-coverage)
 
 This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
@@ -61,6 +62,37 @@ Outputs:
 - Aggregated counts: `tmp/run_all_tests_summary.json` (authoritative totals) and `tmp/canonical_unity_summary.json`
 
 The script cleans prior artifacts before each run and reports pass/fail counts for every suite. Update the `--port` or `--timeout` arguments if you are using a different device path or need longer runs.
+
+## Code Coverage
+
+The project maintains **62.9% line coverage** across production code, measured using gcov/lcov. Coverage reports are automatically generated in CI and can be generated locally.
+
+### Generate Coverage Report Locally
+
+```bash
+# Run tests with coverage enabled
+python3 tools/run_all_tests.py --no-device --coverage --no-standalone
+
+# View HTML report
+xdg-open tmp/coverage_html/index.html
+```
+
+### Coverage Details
+
+The coverage report includes:
+- **Line coverage** across all production components
+- Excludes: test code, mocks, system headers, build artifacts
+- Components covered: audio_processor, bt_manager, command_interface, nvs_storage, platform_shim, util_safe
+
+### CI Coverage Checks
+
+GitHub Actions automatically:
+- Runs coverage analysis on every pull request
+- Comments coverage percentage on PRs
+- Uploads detailed HTML reports as artifacts
+- Prevents coverage regressions through visibility
+
+For detailed coverage analysis, download the HTML report artifact from the CI run.
 
 ### ESP32 Bluetooth Audio Source
 - **Function**: Captures audio input and transmits it over Bluetooth A2DP
