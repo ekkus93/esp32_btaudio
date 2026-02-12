@@ -259,6 +259,38 @@ void test_schema_upgrade_reinit(void)
     TEST_ASSERT_EQUAL(1, flash_erase_calls);
 }
 
+void test_repeated_no_free_pages_after_erase(void)
+{
+    push_flash_init(PLATFORM_ERR_STORAGE_NO_FREE_PAGES);
+    push_flash_init(PLATFORM_ERR_STORAGE_NO_FREE_PAGES);
+    flash_erase_result = ESP_OK;
+
+    TEST_ASSERT_EQUAL(PLATFORM_ERR_STORAGE_NO_FREE_PAGES, nvs_storage_init());
+    TEST_ASSERT_EQUAL(2, flash_init_calls);
+    TEST_ASSERT_EQUAL(1, flash_erase_calls);
+}
+
+void test_new_version_with_erase_failure(void)
+{
+    push_flash_init(PLATFORM_ERR_STORAGE_NEW_VERSION);
+    flash_erase_result = ESP_FAIL;
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, nvs_storage_init());
+    TEST_ASSERT_EQUAL(1, flash_init_calls);
+    TEST_ASSERT_EQUAL(1, flash_erase_calls);
+}
+
+void test_erase_succeeds_but_reinit_fails(void)
+{
+    push_flash_init(PLATFORM_ERR_STORAGE_NO_FREE_PAGES);
+    push_flash_init(ESP_ERR_NO_MEM);
+    flash_erase_result = ESP_OK;
+
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, nvs_storage_init());
+    TEST_ASSERT_EQUAL(2, flash_init_calls);
+    TEST_ASSERT_EQUAL(1, flash_erase_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -268,5 +300,8 @@ int main(void)
     RUN_TEST(test_i2s_pins_missing_use_defaults);
     RUN_TEST(test_paired_count_missing_returns_not_found);
     RUN_TEST(test_schema_upgrade_reinit);
+    RUN_TEST(test_repeated_no_free_pages_after_erase);
+    RUN_TEST(test_new_version_with_erase_failure);
+    RUN_TEST(test_erase_succeeds_but_reinit_fails);
     return UNITY_END();
 }
