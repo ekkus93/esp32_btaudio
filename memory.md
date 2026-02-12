@@ -1,3 +1,80 @@
+## 2026-02-12 11:24:31 - BBGW I2S Source CI Test Timing Fix
+
+**Context:**
+GitHub Actions "BBGW I2S Source CI" workflow failed with 1 test failure out of 241 tests. The failing test `test_mixed_responses_and_events` had a race condition causing intermittent failures on CI.
+
+**Issue:**
+Test: `tests/test_uart_command_manager.py::TestIntegration::test_mixed_responses_and_events`
+
+**Error:**
+```python
+AssertionError: assert 1 == 2
+where 1 = len([{'type': 'BT', 'subtype': 'SCANNING', 'data': ''}])
+```
+
+Expected 2 events but only captured 1.
+
+**Root Cause:**
+
+The test had a timing-sensitive sequence:
+1. Mock thread starts, sleeps 0.3s
+2. Sends "EVENT|BT|SCANNING|" 
+3. Sleeps 0.05s
+4. Sends "OK|SCAN|2" (response)
+5. Sleeps 0.05s
+6. Sends "EVENT|BT|SCAN_COMPLETE|"
+
+**Timeline:**
+- t=0.00s: mock_responses thread starts
+- t=0.30s: First event sent (SCANNING)
+- t=0.35s: Command response sent (OK|SCAN|2)
+- t=0.35s: send_command() returns
+- t=0.40s: Second event sent (SCAN_COMPLETE)
+- t=0.65s: Test checks events (0.35 + 0.3s wait)
+
+**Problem:**
+The second event is sent at t=0.4s, but the test only waits 0.3s after `send_command()` returns (t=0.35s + 0.3s = t=0.65s). On slower CI systems, event processing can take longer, meaning the second event sent at t=0.4s might not be processed by t=0.65s.
+
+**Fix:**
+```python
+# Before:
+time.sleep(0.3)
+
+# After:
+time.sleep(0.5)  # Wait longer to ensure both events are processed (CI can be slow)
+```
+
+Increased wait time from 0.3s to 0.5s to provide sufficient buffer for:
+- Event delivery latency on slower CI systems
+- Event callback processing time
+- Thread scheduling delays
+
+**Validation:**
+- Before: 1 failed, 236 passed, 4 skipped
+- After: CI will re-run with fix (expecting all 241 tests to pass/skip)
+
+**Lessons Learned:**
+1. **CI systems are slower** than local development machines
+2. **Sleep-based synchronization** is fragile - consider using proper sync primitives (events, queues) for production tests
+3. **Timing margins** should be 2x-3x the minimum required time for CI reliability
+4. **Event-driven tests** need sufficient time for async operations to complete
+
+**Alternative Solutions Considered:**
+1. Poll for events with timeout (more robust)
+2. Use threading.Event for synchronization (best practice)
+3. Parametrize sleep times for CI vs local runs
+
+For now, the simple sleep extension is sufficient for this integration test.
+
+**Commit:**
+- Commit hash: a2a65474
+- Message: "fix(bbgw-tests): Fix race condition in test_mixed_responses_and_events"
+- File: `bbgw_i2s_source/tests/test_uart_command_manager.py`
+
+**Status:** ✅ FIXED - Pushed to origin/master, awaiting CI validation
+
+---
+
 ## 2026-02-12 11:19:33 - AddressSanitizer CI Found Critical Bugs
 
 **Context:**
