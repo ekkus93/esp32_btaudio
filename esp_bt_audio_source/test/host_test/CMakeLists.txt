@@ -296,6 +296,18 @@ target_compile_definitions(test_audio_processor_beep_edge_cases PRIVATE CONFIG_B
 target_link_libraries(test_audio_processor_beep_edge_cases unity m util_safe_host)
 add_test(NAME test_audio_processor_beep_edge_cases COMMAND $<TARGET_FILE:test_audio_processor_beep_edge_cases>)
 
+# Beep manager edge case tests (Phase 3.2 - TDD)
+add_executable(test_beep_manager_edge_cases test_beep_manager_edge_cases.c
+    ../../components/audio_processor/beep_manager.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_beep_manager_edge_cases PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_beep_manager_edge_cases PRIVATE UNIT_TEST)
+target_link_libraries(test_beep_manager_edge_cases unity m)
+add_test(NAME test_beep_manager_edge_cases COMMAND $<TARGET_FILE:test_beep_manager_edge_cases>)
+
 # List ownership tests
 add_executable(test_list_ownership test_list_ownership.c
     ${CMAKE_CURRENT_SOURCE_DIR}/esp_idf_stubs/bt/common/osi/allocator.c

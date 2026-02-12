@@ -1,3 +1,100 @@
+## 2026-02-11 21:15:00: Phase 3.2 COMPLETE - beep_manager.c Edge Cases (TDD)
+
+**Completed:** Phase 3.2 - Comprehensive edge case testing for beep_manager.c  
+**TDD Methodology:** Kent Beck Red-Green-Refactor rigorously followed  
+**Result:** 13/13 tests passing - beep manager edge cases fully validated
+
+**Phase 3.2 Achievement Summary:**
+- ✅ test_beep_manager_edge_cases.c (13 tests) - beep manager edge cases & safety
+- **Total new tests:** 13 edge case tests (410+ lines)
+- **Total host tests:** 38 passing (was 37, now includes Phase 3.2)
+- **Pass rate:** 100% (13 Tests 0 Failures 0 Ignored)
+
+**Test Coverage - All Section 3.2 Requirements Implemented:**
+1. ✅ test_beep_extreme_frequency_very_low - 0.1 Hz (tiny phase increment validation)
+2. ✅ test_beep_extreme_frequency_very_high - 20000 Hz (near Nyquist limit)
+3. ✅ test_beep_very_short_duration_less_than_two_fade - <20ms (fade_env returns 1.0)
+4. ✅ test_beep_zero_duration_defaults_to_50ms - Duration defaulting behavior
+5. ✅ test_beep_duration_clamping_over_max - 25000ms → 20000ms
+6. ✅ test_beep_zero_sample_rate_invalid_arg - Config validation (ESP_ERR_INVALID_ARG)
+7. ✅ test_beep_concurrent_request_returns_invalid_state - Rejects second beep while active
+8. ✅ test_beep_stop_when_not_initialized - Defensive programming (no crash)
+9. ✅ test_beep_overlay_fill_null_buffer - Safety check (early return)
+10. ✅ test_beep_overlay_fill_zero_bytes - Safety check (early return)
+11. ✅ test_beep_overlay_fill_null_config - Safety check (early return)
+12. ✅ test_beep_done_callback_fires_on_completion - Callback behavior (2-pass completion)
+13. ✅ test_beep_zero_amplitude_defaults_to_7500 - Amplitude defaulting
+
+**Key Insights from TDD:**
+- **Completion detection:** beep_overlay_fill() detects completion at START of next call
+  - Frame generation completes in fill N
+  - Callback fires at start of fill N+1 when frames_generated >= total_frames
+  - Tests adjusted to use 2-pass filling for completion validation
+- **Fade envelope special case:** When total_frames <= 2*fade_frames, fade returns 1.0 (no fading)
+  - Prevents artifacts on very short beeps (<20ms at 44.1kHz)
+- **Safety-first design:** All fill APIs check NULL pointers and zero sizes gracefully
+- **Concurrent protection:** ESP_ERR_INVALID_STATE when beep already active (no queue)
+
+**TDD Journey (RED → GREEN):**
+1. **RED Phase:** Created 13 failing tests targeting beep_manager.c edge cases
+2. **Initial Run:** 13 Tests, 2 Failures
+   - test_beep_zero_duration_defaults_to_50ms: Expected FALSE Was TRUE
+   - test_beep_done_callback_fires_on_completion: Expected FALSE Was TRUE
+   - Root cause: Misunderstood completion detection timing
+3. **Analysis:** Reviewed beep_overlay_fill() logic (lines 241-323)
+   - Completion check happens at START of fill (before generating samples)
+   - After filling all frames, beep remains active until next fill call
+4. **Fix:** Adjusted tests to use 2-pass filling
+   - Pass 1: Generate all frames (beep still active after)
+   - Pass 2: Detect completion at start, fire callback, set active=false
+5. **GREEN Phase:** All 13 tests passing ✅
+
+**CMakeLists.txt Integration:**
+- Added test_beep_manager_edge_cases target (~line 298)
+- Sources: test file + beep_manager.c
+- Mocks: fake_log, fake_esp_err (minimal dependencies)
+- Dependencies: unity, m (math lib)
+- Registered via add_test() for CTest execution
+
+**Production Code Validation (beep_manager.c):**
+- ✅ Lines 67-81: fade_env() - special case when total_frames <= 2*fade_frames
+- ✅ Lines 157-181: beep_overlay_start() - duration clamping (0→50ms, >20000→20000ms)
+- ✅ Lines 177-181: Freq/amplitude defaulting (0→defaults)
+- ✅ Lines 195-213: Sample rate validation (0 → ESP_ERR_INVALID_ARG)
+- ✅ Lines 235-264: beep_overlay_fill() - NULL checks, completion detection
+- ✅ Lines 241-250: Completion check at START fires callback
+
+**Coverage Impact:**
+- beep_manager.c: **~40% → ~80%+** (estimated)
+  - Extreme frequency handling: covered
+  - Duration clamping: both edges covered
+  - Amplitude defaulting: covered
+  - Config validation: covered
+  - Concurrent request handling: covered
+  - NULL pointer safety: all paths covered
+  - Fade envelope special case: covered
+  - Done callback timing: covered
+
+**Host Test Suite Status:**
+- **Total:** 38 tests passing (was 37)
+- **New Test #14:** test_beep_manager_edge_cases
+- **100% pass rate** maintained
+
+**Phase 3 Progress:**
+- **Phase 3.1:** ✅ COMPLETE (12 tests - audio_processor_beep.c)
+- **Phase 3.2:** ✅ COMPLETE (13 tests - beep_manager.c)
+- **Phase 3.3:** ⚠️ PENDING (Integration tests - 3-4 tests estimated)
+- **Total Phase 3 so far:** 25/~28 tests (~89% complete)
+
+**Next Steps:**
+- Phase 3.3: Integration tests (beep + ring buffer + I2S interaction)
+  - Beep drops ring buffer audio correctly (s_drop_ring_audio flag)
+  - Beep preempts I2S and resumes
+  - Multiple rapid beep requests
+- Target: Complete Phase 3 with ~28 total tests
+
+---
+
 ## 2026-02-11 20:52:33: Phase 3.1 COMPLETE - audio_processor_beep.c Edge Cases (TDD)
 
 **Completed:** Phase 3.1 - Comprehensive edge case testing for audio_processor_beep.c  

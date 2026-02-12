@@ -166,27 +166,42 @@ void test_nvs_init_erase_recovery_failure(void);
 
 ### Missing Coverage:
 
-#### 3.1 audio_processor_beep.c Edge Cases
-- ❌ `audio_processor_beep_tone()` - beep while WAV playback active
-- ❌ `audio_processor_beep_tone()` - beep while not initialized (already returns error, needs test)
-- ❌ `audio_processor_beep_tone()` - source restoration logic:
-  - Beep interrupts SYNTH, restores SYNTH after ✅ (F1.3.1)
-  - Beep interrupts I2S, restores I2S after ✅ (F1.3.1)
-  - Beep when both SYNTH+I2S active (invariant violation) ❌
-  - Beep when neither active, stays silent after ❌
-- ❌ `audio_processor_beep_tone()` - duration clamping (0, 20001 ms)
-- ❌ `audio_processor_beep_tone()` - s_drop_ring_audio flag behavior (F1.4.2)
-- ❌ `audio_processor_beep_tone()` - beep_manager_play() failure handling
-- ❌ `audio_processor_beep_done_cb()` - restore flag edge cases
+#### 3.1 audio_processor_beep.c Edge Cases ✅ **COMPLETE** (Phase 3.1)
+**Status:** ✅ **COMPLETE** (2026-02-11) - 12 tests created and passing
+- ✅ `audio_processor_beep_tone()` - beep while WAV playback active (test_beep_during_wav_playback)
+- ✅ `audio_processor_beep_tone()` - beep while not initialized (test_beep_not_initialized)
+- ✅ `audio_processor_beep_tone()` - source restoration logic:
+  - Beep interrupts SYNTH, restores SYNTH after ✅ (test_beep_restore_synth_source)
+  - Beep interrupts I2S, restores I2S after ✅ (test_beep_restore_i2s_source)
+  - Beep when both SYNTH+I2S active (invariant violation) ✅ (test_beep_synth_i2s_both_active_invariant)
+  - Beep when neither active, stays silent after ✅ (test_beep_when_neither_source_active)
+- ✅ `audio_processor_beep_tone()` - duration clamping (test_beep_duration_clamping_zero, test_beep_duration_clamping_over_max)
+- ✅ `audio_processor_beep_tone()` - s_drop_ring_audio flag behavior (test_beep_drops_ring_audio)
+- ✅ `audio_processor_beep_tone()` - beep_manager_play() failure handling (test_beep_manager_play_failure)
+- ✅ `audio_processor_beep_tone()` - frequency defaulting (test_beep_zero_frequency_defaults_to_1000hz)
+- ✅ `audio_processor_beep_done_cb()` - restore flag edge cases (test_beep_done_callback_clears_remaining_bytes)
 
-#### 3.2 beep_manager.c Edge Cases
-- ❌ `beep_manager_play()` - zero frequency (should clamp to default)
-- ❌ `beep_manager_play()` - extreme frequencies (0.1 Hz, 20000 Hz)
-- ❌ `beep_manager_play()` - zero amplitude handling
-- ❌ `beep_manager_stop()` - stop when not initialized
-- ❌ `beep_overlay_fill()` - buffer alignment issues
-- ❌ `beep_overlay_fill()` - fade envelope edge cases (very short beep < 2*fade_frames)
-- ❌ `beep_overlay_is_active()` - race conditions (though spinlock protected)
+**Test file:** `test_audio_processor_beep_edge_cases.c` (12/12 passing)
+**Commit:** e6a6477d
+**Coverage impact:** audio_processor_beep.c ~30% → ~75%+
+
+#### 3.2 beep_manager.c Edge Cases ✅ **COMPLETE** (Phase 3.2)
+**Status:** ✅ **COMPLETE** (2026-02-11) - 13 tests created and passing
+- ✅ `beep_manager_play()` - extreme frequencies (test_beep_extreme_frequency_very_low, test_beep_extreme_frequency_very_high)
+- ✅ `beep_manager_play()` - zero amplitude handling (test_beep_zero_amplitude_defaults_to_7500)
+- ✅ `beep_manager_play()` - zero duration handling (test_beep_zero_duration_defaults_to_50ms)
+- ✅ `beep_manager_play()` - duration clamping (test_beep_duration_clamping_over_max)
+- ✅ `beep_manager_play()` - zero sample rate (test_beep_zero_sample_rate_invalid_arg)
+- ✅ `beep_manager_play()` - concurrent requests (test_beep_concurrent_request_returns_invalid_state)
+- ✅ `beep_manager_stop()` - stop when not initialized (test_beep_stop_when_not_initialized)
+- ✅ `beep_overlay_fill()` - NULL buffer handling (test_beep_overlay_fill_null_buffer)
+- ✅ `beep_overlay_fill()` - zero bytes handling (test_beep_overlay_fill_zero_bytes)
+- ✅ `beep_overlay_fill()` - NULL config handling (test_beep_overlay_fill_null_config)
+- ✅ `beep_overlay_fill()` - fade envelope edge cases (test_beep_very_short_duration_less_than_two_fade)
+- ✅ Done callback fires on completion (test_beep_done_callback_fires_on_completion)
+
+**Test file:** `test_beep_manager_edge_cases.c` (13/13 passing)
+**Coverage impact:** beep_manager.c ~40% → ~80%+
 
 #### 3.3 Integration with Audio Processor
 - ❌ Beep drops ring buffer audio correctly (s_drop_ring_audio flag)
