@@ -1,3 +1,70 @@
+## 2026-02-12 10:56:14 - Coverage Badge Added to README
+
+**Context:**
+Added 62.9% coverage badge to README and created comprehensive "Code Coverage" documentation section. This completes the optional enhancement suggested in Section 10.2 of UNIT_TEST_TODO.md.
+
+**Implementation Details:**
+
+1. **Coverage badge added to README header:**
+   - Badge: `[![Coverage](https://img.shields.io/badge/coverage-62.9%25-yellow.svg)](#code-coverage)`
+   - Positioned after existing CI badges (Host Unit Tests, Device Build)
+   - Links to #code-coverage anchor for detailed information
+   - Yellow color indicates good but room-for-improvement status
+
+2. **New "Code Coverage" section added:**
+   - Position: After testing sections, before architecture (line ~67)
+   - Content includes:
+     * Current coverage: 62.9% line coverage
+     * Local generation instructions using `run_all_tests.py --coverage`
+     * Coverage report details (what's included/excluded)
+     * CI automation features (automatic PR comments, artifact uploads)
+     * Component breakdown: audio_processor, bt_manager, command_interface, nvs_storage, platform_shim, util_safe
+
+**Badge Design:**
+- Color: Yellow (62.9% is good but below 75% threshold for green)
+- Format: Standard shields.io badge
+- Interactive: Clicking badge jumps to detailed coverage section
+
+**Documentation Structure:**
+```markdown
+## Code Coverage
+
+The project maintains **62.9% line coverage** across production code...
+
+### Generate Coverage Report Locally
+[commands for local generation]
+
+### Coverage Details
+[what's included/excluded]
+
+### CI Coverage Checks
+[automated CI features]
+```
+
+**Benefits:**
+1. ✅ Visible coverage status at top of README
+2. ✅ Encourages developers to maintain/improve coverage
+3. ✅ Provides clear instructions for local coverage generation
+4. ✅ Documents CI automation features
+5. ✅ Makes coverage a first-class project metric
+
+**Files modified:**
+- README.md (added badge + 28-line coverage section)
+
+**Commit:**
+- Commit hash: 4146ad17
+- Message: "docs: Add 62.9% coverage badge and coverage section to README"
+- Pushed to origin/master
+
+**Future considerations:**
+- Update badge percentage if coverage improves
+- Consider green badge threshold at 75%+
+- Update UNIT_TEST_TODO.md to mark coverage badge as implemented (if not already)
+
+**Status:** ✅ COMPLETE - Coverage badge and documentation added
+
+---
+
 ## 2026-02-12 10:52:06 - Section 10.2: CI Integration for Sanitizers and Coverage
 
 **Context:**
