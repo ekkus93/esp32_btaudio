@@ -1188,37 +1188,72 @@ No further action needed - feature complete.
 
 ---
 
-### 10.2 Future Enhancements (Optional)
+### 10.2 CI Integration for Sanitizers and Coverage ✅ **IMPLEMENTED**
 
-#### CI Integration for Sanitizers
-Add to GitHub Actions workflow:
+**Status:** ✅ **COMPLETE** (2026-02-12)
+
+Automated sanitizer checks and coverage reporting integrated into GitHub Actions CI workflow (`.github/workflows/pairing-harness.yml`).
+
+#### Implemented Jobs:
+
+**1. test-with-sanitizers (runs on all pushes/PRs):**
 ```yaml
 - name: Run tests with AddressSanitizer
   run: |
-    cd esp_bt_audio_source/test/host_test
-    cmake -Bbuild_asan -DENABLE_ASAN=ON ..
-    cmake --build build_asan
-    cd build_asan && ctest --output-on-failure
+    cd esp_bt_audio_source
+    python3 ../tools/run_all_tests.py --no-device --asan --no-standalone
+  timeout-minutes: 10
 ```
+- **Purpose:** Fast memory error detection on every commit (2-3x slower)
+- **Benefits:** Continuous validation, no hardware dependencies
+- **Artifacts:** Uploads ASan test results
 
-#### Coverage Badge for README
-Add coverage badge to repository README (current measured coverage):
+**2. test-with-valgrind (runs only on master branch):**
+```yaml
+- name: Run Valgrind checks (slow)
+  if: github.ref == 'refs/heads/master'
+  run: |
+    cd esp_bt_audio_source
+    python3 ../tools/run_all_tests.py --no-device --valgrind --no-standalone
+  timeout-minutes: 30
+```
+- **Purpose:** Thorough memory leak detection for release validation (10-30x slower)
+- **Benefits:** Most comprehensive leak detection, validates production-ready code
+- **Artifacts:** Uploads Valgrind test results
+
+**3. test-with-coverage (runs on all pushes/PRs):**
+```yaml
+- name: Run tests with coverage
+  run: |
+    cd esp_bt_audio_source
+    python3 ../tools/run_all_tests.py --no-device --coverage --no-standalone
+```
+- **Purpose:** Generate code coverage reports and track trends
+- **Benefits:** Quantifies test coverage, prevents regressions, visible to reviewers
+- **Features:**
+  * Generates HTML coverage report (uploaded as artifact)
+  * Extracts coverage percentage from lcov summary
+  * Comments coverage % on pull requests automatically
+- **Current coverage:** 62.9% line coverage (measured)
+
+#### CI Strategy:
+
+| Job | Trigger | Speed | Purpose |
+|-----|---------|-------|---------|
+| **AddressSanitizer** | Every push/PR | Fast (2-3x) | Continuous memory error detection |
+| **Valgrind** | Master only | Slow (10-30x) | Release validation |
+| **Coverage** | Every push/PR | Normal (~5%) | Track coverage trends |
+
+#### Future Optional Enhancements:
+
+**Coverage Badge for README:**
 ```markdown
 [![Coverage](https://img.shields.io/badge/coverage-62.9%25-yellow.svg)](tmp/coverage_html/index.html)
 ```
 
-**Note:** Coverage is measured at 62.9% line coverage across production code. HTML reports available in `tmp/coverage_html/` after running tests with `--coverage` flag.
-
-#### Valgrind CI Job (for release builds)
-```yaml
-- name: Run Valgrind checks (slow)
-  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  run: |
-    cd esp_bt_audio_source/test/host_test/build_host_tests
-    for test in test_*; do
-      valgrind --leak-check=full --error-exitcode=1 ./$test
-    done
-```
+**Additional Sanitizers (if needed):**
+- ThreadSanitizer for race condition detection
+- UndefinedBehaviorSanitizer for UB detection
 
 ---
 
