@@ -8,6 +8,14 @@
  * Command Interface - Handles serial command protocol
  */
 
+/** Wire-protocol status token constants.
+ *  Use these instead of bare string literals to prevent silent typos that
+ *  would produce malformed responses the client cannot parse. */
+#define CMD_STATUS_OK    "OK"
+#define CMD_STATUS_ERR   "ERR"
+#define CMD_STATUS_INFO  "INFO"
+#define CMD_STATUS_EVENT "EVENT"
+
 // Status codes
 typedef enum {
     CMD_SUCCESS = 0,
@@ -68,7 +76,10 @@ typedef enum {
 
 // Maximum parameter count and length
 #define CMD_MAX_PARAMS 5
-#define CMD_MAX_PARAM_LEN 32
+/* Increased from 32 to 64: Bluetooth device names can be up to 64+ bytes.
+ * CONNECT_NAME with names longer than the old limit was silently truncated,
+ * causing connection failures for long device names. */
+#define CMD_MAX_PARAM_LEN 64
 
 // Command context
 typedef struct {

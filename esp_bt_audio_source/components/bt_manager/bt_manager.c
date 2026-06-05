@@ -1,5 +1,6 @@
 #include "bt_manager.h"
 #include "bt_manager_internal.h"
+#include "platform_memory.h"
 /* CODE_REVIEW8 P2: Need bt_manager_status_t but skip duplicate bt_device_t */
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
 #include "bt_source.h"      /* For bt_manager_status_t (CODE_REVIEW8 P2) */
@@ -834,7 +835,7 @@ exit:
         controller_status = ESP_FAIL;
     } else if (bonded_devices > 0) {
         int list_capacity = bonded_devices;
-        esp_bd_addr_t *bond_list = (esp_bd_addr_t *)calloc((size_t)list_capacity, sizeof(esp_bd_addr_t));
+        esp_bd_addr_t *bond_list = (esp_bd_addr_t *)platform_calloc((size_t)list_capacity, sizeof(esp_bd_addr_t), PLATFORM_MEM_CAP_DEFAULT);
         if (!bond_list) {
             ESP_LOGE(TAG, "Insufficient memory to retrieve bonded device list");  // NOLINT(bugprone-branch-clone)
             return ESP_ERR_NO_MEM;
@@ -863,7 +864,7 @@ exit:
             }
         }
 
-        free(bond_list);
+        platform_free(bond_list);
     #ifdef UNIT_TEST
         bt_manager_test_record_unpair_all_temp_alloc(-1);
     #endif
@@ -1055,6 +1056,14 @@ static esp_err_t bt_manager_init_profiles(void)
         return ESP_FAIL;
     }
 
+    /* DESIGN: bt_events_a2dp_callback is the SINGLE registered A2DP callback.
+     * It dispatches to bt_connection_state_cb / bt_audio_state_cb in
+     * bt_connection_manager.  bt_connection_manager_init() also calls
+     * esp_a2d_register_callback() but that function is only used by isolated
+     * unit tests that need a minimal connection-manager harness; it is never
+     * called in production.  Do not add a second esp_a2d_register_callback()
+     * registration here — only the last registration wins in ESP-IDF and a
+     * second call would silently drop events for the other handler. */
     ret = esp_a2d_register_callback(bt_events_a2dp_callback);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)

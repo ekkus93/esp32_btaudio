@@ -365,9 +365,9 @@ Items are ordered by priority: Bugs first (must fix), then Warnings (should fix)
 | WARN-6 | Silent NVS erasure on version mismatch | nvs_storage.c | [x] Done |
 | WARN-7 | platform_storage_handle_t truncates pointer | platform_storage.h | [x] Done |
 | WARN-8 | malloc() bypasses platform_malloc() in sync | platform_sync_esp32.c | [x] Done |
-| DESIGN-1 | Two parallel A2DP callback chains | bt_manager / bt_events_a2dp | [ ] Open |
-| DESIGN-2 | BT state split across three modules | bt_manager / bt_connection_mgr | [ ] Open |
-| DESIGN-3 | cmd_handle_debug() god function | cmd_handlers_bt.c | [ ] Open |
-| DESIGN-4 | Magic strings in command interface | cmd_handlers_*.c | [ ] Open |
-| DESIGN-5 | CMD_MAX_PARAM_LEN 32 truncates BT names | command_interface.h | [ ] Open |
-| DESIGN-6 | Inconsistent malloc/platform_malloc usage | Multiple | [ ] Open |
+| DESIGN-1 | Two parallel A2DP callback chains | bt_manager / bt_events_a2dp | [x] Done |
+| DESIGN-2 | BT state split across three modules | bt_manager / bt_connection_mgr | [x] Done |
+| DESIGN-3 | cmd_handle_debug() god function | cmd_handlers_bt.c | [x] Done |
+| DESIGN-4 | Magic strings in command interface | cmd_handlers_*.c | [x] Done |
+| DESIGN-5 | CMD_MAX_PARAM_LEN 32 truncates BT names | command_interface.h | [x] Done |
+| DESIGN-6 | Inconsistent malloc/platform_malloc usage | Multiple | [x] Done |

@@ -1,6 +1,7 @@
 #include "cmd_handlers.h"
 #include "audio_processor_internal.h"
 #include "audio_span_log.h"
+#include "platform_memory.h"
 #include <inttypes.h>
 /* CODE_REVIEW5 Task 3.1: Need bt_get_streaming_info() but skip duplicate bt_device_t */
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
@@ -162,7 +163,7 @@ cmd_status_t cmd_handle_spanlog(const cmd_context_t *ctx)
     }
 
     /* Allocate buffer for span entries */
-    audio_rb_span_t *spans = (audio_rb_span_t *)malloc(count * sizeof(audio_rb_span_t));
+    audio_rb_span_t *spans = (audio_rb_span_t *)platform_malloc(count * sizeof(audio_rb_span_t), PLATFORM_MEM_CAP_DEFAULT);
     if (!spans) {
         cmd_send_response("ERROR", "SPANLOG", "NO_MEMORY", "Failed to allocate buffer");
         return CMD_ERROR_INIT_FAILED;
@@ -171,7 +172,7 @@ cmd_status_t cmd_handle_spanlog(const cmd_context_t *ctx)
     /* Retrieve span log entries */
     size_t actual = 0;
     if (!span_log_get_last_n(spans, count, &actual)) {
-        free(spans);
+        platform_free(spans);
         cmd_send_response("ERROR", "SPANLOG", "NOT_INITIALIZED", "Span log not initialized");
         return CMD_ERROR_NOT_INITIALIZED;
     }

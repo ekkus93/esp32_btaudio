@@ -2,11 +2,42 @@
 
 /**
  * bt_manager_internal.h - Internal shared declarations for bt_manager components
- * 
+ *
  * This header provides access to shared state and utilities for the bt_manager
  * subsystem modules (pairing, scan, connection, events). It should only be
  * included by implementation files within the bt_manager component, never by
  * external components.
+ *
+ * ─── STATE OWNERSHIP MAP ────────────────────────────────────────────────────
+ *
+ * bt_ctx (bt_manager.c)
+ *   Canonical global state.  Covers: initialized flag, connected flag + addr,
+ *   discovered_devices list, paired_devices list, scanning flag.
+ *   Written ONLY from BtAppTask (or init path before task start).
+ *   Read from other tasks ONLY via bt_manager_get_status() or the snapshot
+ *   helpers bt_get_device_list_snapshot() / bt_get_paired_devices_snapshot().
+ *
+ * s_connection_info / s_streaming_info (bt_connection_manager.c)
+ *   Connection-lifecycle state: state machine, connected address, streaming
+ *   counters.  Updated by the A2DP event callbacks running on BtAppTask.
+ *   Exposed to callers via bt_get_connection_info() (copy by value) and
+ *   bt_get_streaming_info() (copy under spinlock).
+ *
+ * s_streaming_info / s_streaming_state (bt_streaming_manager.c)
+ *   Streaming-specific state: bytes_sent/requested/produced, underrun counts.
+ *   Updated inside the A2DP data callback (ISR-like context) under spinlock.
+ *   Note: bt_connection_manager.c has its OWN s_streaming_info copy that
+ *   tracks connection-level stats; bt_streaming_manager.c tracks the data-path
+ *   stats.  These are NOT the same struct instance — prefer bt_streaming_manager
+ *   as authoritative for audio bytes/underrun counters.
+ *
+ * ─── SYNCHRONIZATION RULES ──────────────────────────────────────────────────
+ *
+ *  Access to bt_ctx fields:  route through BtAppTask queue (bt_manager_get_status).
+ *  Access to streaming stats: acquire s_stats_lock spinlock in bt_streaming_manager.c.
+ *  Access to connection info:  call bt_get_connection_info() which copies under lock.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 #include "bt_manager.h"
