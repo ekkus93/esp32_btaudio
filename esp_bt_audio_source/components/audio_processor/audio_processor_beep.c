@@ -1,4 +1,7 @@
 #include "audio_processor_internal.h"
+#include <stdint.h>
+#include <limits.h>
+#include <inttypes.h>
 
 static void audio_processor_beep_done_cb(void *ctx)
 {
@@ -136,8 +139,16 @@ esp_err_t audio_processor_beep_tone(uint32_t duration_ms, double freq_hz)
         return ret;
     }
 
+    /* BUG-8: guard against overflow before narrowing to size_t (32-bit on ESP32).
+     * At 96kHz/stereo/32-bit the product is ~768 bytes/ms; 20000ms max → 15.36MB,
+     * which fits in uint64_t but would silently truncate on a 32-bit size_t. */
+    uint64_t total_bytes = (uint64_t)duration_ms * bytes_per_ms;
+    if (total_bytes > (uint64_t)SIZE_MAX) {
+        ESP_LOGE(TAG, "audio_processor_beep: byte count overflows size_t (%" PRIu64 " bytes)", total_bytes);
+        return ESP_ERR_INVALID_ARG;
+    }
     portENTER_CRITICAL(&s_beep_lock);
-    s_beep_remaining_bytes = (size_t)((uint64_t)duration_ms * bytes_per_ms);
+    s_beep_remaining_bytes = (size_t)total_bytes;
     portEXIT_CRITICAL(&s_beep_lock);
 
 #ifdef UNIT_TEST

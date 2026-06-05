@@ -18,6 +18,8 @@ static esp_err_t open_result;
 static int open_calls;
 static esp_err_t commit_result;
 static int commit_calls;
+static esp_err_t set_blob_result;
+static int set_blob_calls;
 
 #define MAX_I32_KEYS 8
 struct i32_entry {
@@ -55,6 +57,8 @@ static void reset_state(void)
     open_calls = 0;
     commit_result = ESP_OK;
     commit_calls = 0;
+    set_blob_result = ESP_OK;
+    set_blob_calls = 0;
     memset(i32_entries, 0, sizeof(i32_entries));
     i32_count = 0;
 }
@@ -171,7 +175,8 @@ esp_err_t nvs_storage_set_blob(platform_storage_handle_t h, const char* key, con
     (void)key;
     (void)buf;
     (void)len;
-    return ESP_OK;
+    set_blob_calls++;
+    return set_blob_result;
 }
 
 esp_err_t nvs_storage_erase_key(platform_storage_handle_t h, const char* key)
@@ -478,6 +483,43 @@ void test_clear_paired_devices_commit_failure(void)
     TEST_ASSERT_EQUAL(1, commit_calls);
 }
 
+/* BUG-1: get_i2s_pins must return a hard error (not ESP_OK) when a read fails
+ * with anything other than NOT_FOUND. */
+void test_i2s_pins_get_hard_read_error(void)
+{
+    int bclk = 99, ws = 99, din = 99, dout = 99;
+    open_result = ESP_OK;
+    /* bclk read succeeds, ws read fails with a hard I/O error */
+    set_i32_entry("i2s_bclk", ESP_OK, 26);
+    set_i32_entry("i2s_ws",   ESP_FAIL, 0);
+    set_i32_entry("i2s_din",  ESP_OK, 22);
+    set_i32_entry("i2s_dout", ESP_OK, 21);
+
+    esp_err_t err = nvs_storage_get_i2s_pins(&bclk, &ws, &din, &dout);
+
+    /* The first hard error must be propagated, not silently swallowed. */
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    /* Pins that succeeded before the failure are populated; failing pin is -1 */
+    TEST_ASSERT_EQUAL(26, bclk);
+    TEST_ASSERT_EQUAL(-1, ws);
+}
+
+/* BUG-2: add_paired_device must NOT alter the paired count when the blob write
+ * fails.  The set_blob_result mock controls whether set_blob succeeds. */
+void test_add_paired_device_blob_write_failure(void)
+{
+    open_result = ESP_OK;
+    set_i32_entry("paired_count", ESP_OK, 0);  /* empty list */
+    set_blob_result = ESP_ERR_NO_MEM;           /* blob write will fail */
+
+    esp_err_t err = nvs_storage_add_paired_device("AA:BB:CC:DD:EE:FF", "Speaker");
+
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, err);
+    /* Count must remain 0: no commit should have occurred. */
+    TEST_ASSERT_EQUAL(0, commit_calls);
+    TEST_ASSERT_EQUAL(1, set_blob_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -505,5 +547,7 @@ int main(void)
     RUN_TEST(test_remove_paired_device_count_zero);
     RUN_TEST(test_clear_paired_devices_open_failure);
     RUN_TEST(test_clear_paired_devices_commit_failure);
+    RUN_TEST(test_i2s_pins_get_hard_read_error);
+    RUN_TEST(test_add_paired_device_blob_write_failure);
     return UNITY_END();
 }

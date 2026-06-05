@@ -278,9 +278,17 @@ void beep_overlay_fill(uint8_t *buffer, size_t bytes, const audio_config_t *cfg)
 	}
 	
 	const size_t num_frames = bytes / frame_bytes;
-	const size_t frames_to_mix = (frames_generated + num_frames > total_frames) 
-	                              ? (size_t)(total_frames - frames_generated) 
-	                              : num_frames;
+	/* Clamp to prevent underflow: if a scheduling race causes frames_generated
+	 * to reach or exceed total_frames by the time we get here, the subtraction
+	 * would wrap to a huge positive value on unsigned arithmetic. */
+	size_t frames_to_mix;
+	if (frames_generated >= total_frames) {
+		frames_to_mix = 0;
+	} else if (frames_generated + num_frames > total_frames) {
+		frames_to_mix = (size_t)(total_frames - frames_generated);
+	} else {
+		frames_to_mix = num_frames;
+	}
 	
 	/* Mix beep samples into buffer (CODE_REVIEW6 Phase 3.3 mixing formula) */
 	const double two_pi = 2.0 * M_PI;

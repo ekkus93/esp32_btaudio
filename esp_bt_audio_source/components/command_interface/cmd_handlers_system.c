@@ -1,6 +1,7 @@
 #include "cmd_handlers.h"
 #include "audio_processor_internal.h"
 #include "audio_span_log.h"
+#include <inttypes.h>
 /* CODE_REVIEW5 Task 3.1: Need bt_get_streaming_info() but skip duplicate bt_device_t */
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
 #include "bt_source.h"
@@ -123,11 +124,12 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     if (stream_info_err == ESP_OK) {
         snprintf(data, sizeof(data), 
                  "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
-                 "BYTES_REQ=%lu,BYTES_PROD=%lu,BYTES_SILENCE=%lu,PKTS=%lu,PKT_ERR=%lu,DUR=%lu,"
+                 "BYTES_REQ=%" PRIu64 ",BYTES_PROD=%" PRIu64 ",BYTES_SILENCE=%" PRIu64
+                 ",PKTS=%lu,PKT_ERR=%lu,DUR=%lu,"
                  "UNDERRUNS=%lu,CALLBACKS=%lu,UNDERRUN_RATE=%.2f",
                  mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume,
-                 (unsigned long)stream_info.bytes_requested, (unsigned long)stream_info.bytes_produced,
-                 (unsigned long)stream_info.bytes_silence, (unsigned long)stream_info.packets_sent,
+                 stream_info.bytes_requested, stream_info.bytes_produced,
+                 stream_info.bytes_silence, (unsigned long)stream_info.packets_sent,
                  (unsigned long)stream_info.packet_errors, (unsigned long)stream_info.stream_duration,
                  (unsigned long)stream_info.underrun_count, (unsigned long)stream_info.total_callbacks,
                  underrun_rate);

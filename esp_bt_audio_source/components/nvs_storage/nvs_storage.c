@@ -87,41 +87,62 @@ esp_err_t nvs_storage_get_i2s_pins(int* bclk, int* word_select, int* din, int* d
     if (err != ESP_OK) {
     	return err;
     }
+    /* Track the first hard error (anything other than NOT_FOUND).
+     * NOT_FOUND is expected when the key was never stored; callers treat -1 as
+     * "use default".  Any other failure (I/O, invalid handle, …) is unexpected
+     * and must be surfaced so the caller does not silently use garbage pins. */
+    esp_err_t first_err = ESP_OK;
     int32_t tmp;
     if (bclk) {
         err = nvs_storage_get_i32(h, "i2s_bclk", &tmp);
         if (err == ESP_OK) {
-		*bclk = (int)tmp;
-	} else {
-		*bclk = -1;
-	}
+            *bclk = (int)tmp;
+        } else {
+            *bclk = -1;
+            if (first_err == ESP_OK && err != PLATFORM_ERR_STORAGE_NOT_FOUND) {
+                ESP_LOGE(TAG, "nvs_storage_get_i2s_pins: failed to read i2s_bclk (err=%d)", err);
+                first_err = err;
+            }
+        }
     }
     if (word_select) {
         err = nvs_storage_get_i32(h, "i2s_ws", &tmp);
         if (err == ESP_OK) {
-		*word_select = (int)tmp;
-	} else {
-		*word_select = -1;
-	}
+            *word_select = (int)tmp;
+        } else {
+            *word_select = -1;
+            if (first_err == ESP_OK && err != PLATFORM_ERR_STORAGE_NOT_FOUND) {
+                ESP_LOGE(TAG, "nvs_storage_get_i2s_pins: failed to read i2s_ws (err=%d)", err);
+                first_err = err;
+            }
+        }
     }
     if (din) {
         err = nvs_storage_get_i32(h, "i2s_din", &tmp);
         if (err == ESP_OK) {
-		*din = (int)tmp;
-	} else {
-		*din = -1;
-	}
+            *din = (int)tmp;
+        } else {
+            *din = -1;
+            if (first_err == ESP_OK && err != PLATFORM_ERR_STORAGE_NOT_FOUND) {
+                ESP_LOGE(TAG, "nvs_storage_get_i2s_pins: failed to read i2s_din (err=%d)", err);
+                first_err = err;
+            }
+        }
     }
     if (dout) {
         err = nvs_storage_get_i32(h, "i2s_dout", &tmp);
         if (err == ESP_OK) {
-		*dout = (int)tmp;
-	} else {
-		*dout = -1;
-	}
+            *dout = (int)tmp;
+        } else {
+            *dout = -1;
+            if (first_err == ESP_OK && err != PLATFORM_ERR_STORAGE_NOT_FOUND) {
+                ESP_LOGE(TAG, "nvs_storage_get_i2s_pins: failed to read i2s_dout (err=%d)", err);
+                first_err = err;
+            }
+        }
     }
     nvs_storage_close(h);
-    return ESP_OK;
+    return first_err;
 }
 
 esp_err_t nvs_storage_set_i2s_pins(int bclk, int word_select, int din, int dout)
@@ -376,20 +397,30 @@ esp_err_t nvs_storage_add_paired_device(const char* mac, const char* name)
             }
         }
     }
-    // Append at index c
+    /* Write MAC blob first.  Fail-fast: do not touch the count until both the
+     * blob and optional name are confirmed written, so a partial failure never
+     * leaves a phantom entry in the list. */
     safe_snprintf(key, sizeof(key), PAIRED_MAC_KEY_FMT, device_count);
     err = nvs_storage_set_blob(h, key, mac_bin, 6);
-    if (err == ESP_OK && name) {
-    safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, device_count);
+    if (err != ESP_OK) {
+        nvs_storage_close(h);
+        return err;
+    }
+    if (name) {
+        safe_snprintf(key, sizeof(key), PAIRED_NAME_KEY_FMT, device_count);
         err = nvs_storage_set_str(h, key, name);
+        if (err != ESP_OK) {
+            nvs_storage_close(h);
+            return err;
+        }
     }
-    if (err == ESP_OK) {
-        device_count++;
-        err = nvs_storage_set_i32(h, PAIRED_COUNT_KEY, device_count);
+    /* Both data writes succeeded — now bump and persist the count. */
+    err = nvs_storage_set_i32(h, PAIRED_COUNT_KEY, device_count + 1);
+    if (err != ESP_OK) {
+        nvs_storage_close(h);
+        return err;
     }
-    if (err == ESP_OK) {
-    	err = nvs_storage_commit(h);
-    }
+    err = nvs_storage_commit(h);
     nvs_storage_close(h);
     return err;
 }

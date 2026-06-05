@@ -251,6 +251,17 @@ void test_parse_empty_command_should_error(void) {
     TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   \t   ", &ctx));
 }
 
+/* BUG-3: truly empty string must not UB on s-1 pointer arithmetic */
+void test_parse_truly_empty_string_should_error(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("", &ctx));
+}
+
+void test_parse_whitespace_only_should_error(void) {
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   ", &ctx));
+}
+
 void test_parse_limits_param_count_and_truncates(void) {
     char long_token[CMD_MAX_PARAM_LEN + 8];
     memset(long_token, 'A', sizeof(long_token));
@@ -568,6 +579,8 @@ int main(void) {
     RUN_TEST(test_parse_malformed_tokens);
     RUN_TEST(test_parse_command_with_whitespace);
     RUN_TEST(test_parse_empty_command_should_error);
+    RUN_TEST(test_parse_truly_empty_string_should_error);
+    RUN_TEST(test_parse_whitespace_only_should_error);
     RUN_TEST(test_parse_limits_param_count_and_truncates);
     RUN_TEST(test_parse_connect_name_preserves_spaces);
     RUN_TEST(test_parse_diag_command);

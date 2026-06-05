@@ -296,12 +296,18 @@ cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx)
     int pins[4] = {-1, -1, -1, -1};
     char param_copy[128];
     cmd_safe_copy(param_copy, sizeof(param_copy), ctx->params[0]);
-    char *tok = strtok(param_copy, ",");
+    char *saveptr = NULL;
+    char *tok = strtok_r(param_copy, ",", &saveptr);
     int idx = 0;
     while (tok != NULL && idx < 4)
     {
-        pins[idx++] = atoi(tok);
-        tok = strtok(NULL, ",");
+        int pin_val = 0;
+        if (!cmd_parse_int(tok, &pin_val)) {
+            cmd_send_response("ERR", "I2S_CONFIG", "INVALID_PIN", tok);
+            return CMD_SUCCESS;
+        }
+        pins[idx++] = pin_val;
+        tok = strtok_r(NULL, ",", &saveptr);
     }
 
     int rate = 0;
@@ -406,7 +412,11 @@ cmd_status_t cmd_handle_sample_rate(const cmd_context_t *ctx)
         cmd_send_response("ERR", "SAMPLE_RATE", "MISSING_PARAM", NULL);
         return CMD_SUCCESS;
     }
-    int rate = atoi(ctx->params[0]);
+    int rate = 0;
+    if (!cmd_parse_int(ctx->params[0], &rate)) {
+        cmd_send_response("ERR", "SAMPLE_RATE", "INVALID_RATE", ctx->params[0]);
+        return CMD_SUCCESS;
+    }
     if (rate != 8000 && rate != 16000 && rate != 22050 && rate != 32000 && rate != 44100 && rate != 48000 && rate != 96000)
     {
         cmd_send_response("ERR", "SAMPLE_RATE", "INVALID_RATE", ctx->params[0]);

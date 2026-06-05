@@ -123,6 +123,11 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     while (*s && isspace((unsigned char)*s)) {
         ++s;
     }
+    /* Guard: if the entire string was whitespace, strlen(s) == 0 and
+     * computing s - 1 would be UB.  Bail out early. */
+    if (*s == '\0') {
+        return CMD_ERROR_UNKNOWN;
+    }
     char *end = s + strlen(s) - 1;
     while (end >= s && isspace((unsigned char)*end))
     {

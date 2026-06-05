@@ -288,13 +288,50 @@ void test_cmd_beep_should_fail_when_not_connected(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|BEEP|NOT_CONNECTED"));
 }
 
+/* BUG-4: strtok → strtok_r; BUG-5: atoi → cmd_parse_int
+ * I2S_CONFIG with a non-numeric pin token must return an error response. */
+void test_i2s_config_rejects_non_numeric_pin(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_I2S_CONFIG;
+    ctx.param_count = 1;
+    /* "26,25,garbage,21" — third pin is non-numeric */
+    strncpy(ctx.params[0], "26,25,garbage,21", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_PIN"));
+}
+
+/* BUG-5: SAMPLE_RATE with a garbage string must return INVALID_RATE, not
+ * silently treat the value as 0. */
+void test_sample_rate_rejects_non_numeric_input(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_SAMPLE_RATE;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "garbage", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_sample_rate(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|SAMPLE_RATE|INVALID_RATE"));
+}
+
 // =============================================================================
 // Unity test runner
 // =============================================================================
 
 int main(void) {
     UNITY_BEGIN();
-    
+
     // Test synth command
     RUN_TEST(test_cmd_synth_should_reject_invalid_param);
     RUN_TEST(test_cmd_synth_should_reject_missing_param);
@@ -311,6 +348,10 @@ int main(void) {
     
     // Test beep command
     RUN_TEST(test_cmd_beep_should_fail_when_not_connected);
-    
+
+    // BUG-4 / BUG-5
+    RUN_TEST(test_i2s_config_rejects_non_numeric_pin);
+    RUN_TEST(test_sample_rate_rejects_non_numeric_input);
+
     return UNITY_END();
 }

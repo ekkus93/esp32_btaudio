@@ -104,15 +104,15 @@ typedef enum {
  */
 typedef struct {
     bt_streaming_state_t state;     // Current streaming state
-    uint32_t bytes_sent;            // DEPRECATED: use bytes_requested instead
+    uint64_t bytes_sent;            // DEPRECATED: use bytes_requested instead
     uint32_t packets_sent;          // Packets sent during streaming
     uint32_t packet_errors;         // Packet errors during streaming
     uint32_t stream_duration;       // in milliseconds
     bool paused;                    // Is streaming paused
     /* CODE_REVIEW5 Task 3.1: Split audio vs silence tracking */
-    uint32_t bytes_requested;       // Total bytes A2DP requested
-    uint32_t bytes_produced;        // Actual audio bytes from queue
-    uint32_t bytes_silence;         // Zero-fill bytes (underruns)
+    uint64_t bytes_requested;       // Total bytes A2DP requested
+    uint64_t bytes_produced;        // Actual audio bytes from queue
+    uint64_t bytes_silence;         // Zero-fill bytes (underruns)
     /* CODE_REVIEW5 Task 3.2: Underrun rate tracking */
     uint32_t underrun_count;        // Number of callbacks with underruns
     uint32_t total_callbacks;       // Total A2DP data callbacks

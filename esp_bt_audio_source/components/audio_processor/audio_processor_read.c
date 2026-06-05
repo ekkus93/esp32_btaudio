@@ -68,13 +68,13 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
      * WHY: Ensures beep plays immediately without old I2S/SYNTH audio first.
      * HOW: Discard all buffered audio, return silence this callback.
      * SAFETY: Bounded iteration (max ring capacity), flag cleared after drain. */
-    if (s_drop_ring_audio) {
+    if (s_drop_ring_audio && s_audio_ring != NULL) {
         size_t drained = 0;
         uint8_t drain_buf[512];
-        size_t ring_capacity = s_audio_ring ? audio_rb_capacity(s_audio_ring) : 0;
+        size_t ring_capacity = audio_rb_capacity(s_audio_ring);
         size_t max_iterations = (ring_capacity / sizeof(drain_buf)) + 1;  /* Prevent infinite loop */
         size_t iterations = 0;
-        
+
         while (audio_rb_available_to_read(s_audio_ring) > 0 && iterations < max_iterations) {
             size_t chunk = audio_rb_read(s_audio_ring, drain_buf, sizeof(drain_buf));
             drained += chunk;
