@@ -1,4 +1,5 @@
 #include "nvs_storage.h"
+#include "platform_storage.h"
 #include "esp_err.h"
 #include "esp_bt.h"
 #include <string.h>
@@ -218,5 +219,45 @@ esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart)
 esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
 {
     s_audio_autostart = autostart ? 1 : 0;
+    return ESP_OK;
+}
+
+/* Last-connected MAC stubs (for tests that don't need real NVS behaviour) */
+static char s_mock_last_mac[18] = {0};
+static esp_err_t s_mock_last_mac_get_result = PLATFORM_ERR_STORAGE_NOT_FOUND;
+
+void nvs_storage_mock_set_last_mac(const char *mac, esp_err_t get_result)
+{
+    if (mac) {
+        strncpy(s_mock_last_mac, mac, sizeof(s_mock_last_mac) - 1);
+        s_mock_last_mac[sizeof(s_mock_last_mac) - 1] = '\0';
+    } else {
+        s_mock_last_mac[0] = '\0';
+    }
+    s_mock_last_mac_get_result = get_result;
+}
+
+esp_err_t nvs_storage_get_last_connected_mac(char *buf, size_t buf_len)
+{
+    if (!buf || buf_len == 0) return ESP_ERR_INVALID_ARG;
+    if (s_mock_last_mac_get_result != ESP_OK) return s_mock_last_mac_get_result;
+    strncpy(buf, s_mock_last_mac, buf_len - 1);
+    buf[buf_len - 1] = '\0';
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_set_last_connected_mac(const char *mac)
+{
+    if (!mac || mac[0] == '\0') return ESP_ERR_INVALID_ARG;
+    strncpy(s_mock_last_mac, mac, sizeof(s_mock_last_mac) - 1);
+    s_mock_last_mac[sizeof(s_mock_last_mac) - 1] = '\0';
+    s_mock_last_mac_get_result = ESP_OK;
+    return ESP_OK;
+}
+
+esp_err_t nvs_storage_clear_last_connected_mac(void)
+{
+    s_mock_last_mac[0] = '\0';
+    s_mock_last_mac_get_result = PLATFORM_ERR_STORAGE_NOT_FOUND;
     return ESP_OK;
 }

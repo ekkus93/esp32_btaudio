@@ -71,6 +71,7 @@ typedef enum {
     CMD_TYPE_AUDIO_AUTOSTART,
     CMD_TYPE_AUDIO_STATUS,
     CMD_TYPE_SPANLOG,
+    CMD_TYPE_LAST_MAC,
     CMD_TYPE_UNKNOWN
 } cmd_type_t;
 

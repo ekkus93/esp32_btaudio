@@ -17,6 +17,7 @@
 #include "esp_rom_sys.h"
 #include "util_safe.h"
 #include "platform_timing.h"
+#include "nvs_storage.h"
 
 static const char *TAG = "BT_CONNECTION_MGR";
 
@@ -98,6 +99,13 @@ static void bt_connection_state_handler(esp_a2d_connection_state_t state, esp_bd
             s_connection_info.connect_time = (uint32_t)time(NULL);
             s_reconnect_attempts = 0;
             update_connection_state(BT_CONNECTION_STATE_CONNECTED);
+            /* Persist last-connected MAC to NVS for auto-reconnect on next boot */
+            {
+                esp_err_t nvs_err = nvs_storage_set_last_connected_mac(s_last_connected_addr);
+                if (nvs_err != ESP_OK) {
+                    ESP_LOGW(TAG, "Failed to persist last-connected MAC to NVS: %d", nvs_err);  // NOLINT(bugprone-branch-clone)
+                }
+            }
             break;
             
         case ESP_A2D_CONNECTION_STATE_DISCONNECTING:

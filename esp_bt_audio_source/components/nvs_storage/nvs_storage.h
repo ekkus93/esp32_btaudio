@@ -28,6 +28,15 @@ esp_err_t nvs_storage_set_default_pin(const char* pin);
 esp_err_t nvs_storage_get_audio_autostart(uint8_t* autostart);
 esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart);
 
+// Last-connected Bluetooth device MAC address (for auto-reconnect on boot).
+// MAC is stored as a colon-separated string, e.g. "AA:BB:CC:DD:EE:FF".
+// get returns ESP_ERR_NOT_FOUND when no device has been stored yet.
+// set with a NULL or empty string returns ESP_ERR_INVALID_ARG.
+// clear erases the key entirely so the next get returns NOT_FOUND.
+esp_err_t nvs_storage_get_last_connected_mac(char* buf, size_t buf_len);
+esp_err_t nvs_storage_set_last_connected_mac(const char* mac);
+esp_err_t nvs_storage_clear_last_connected_mac(void);
+
 // Paired devices persistence (simple indexed list stored in NVS)
 // count: number of stored paired devices
 esp_err_t nvs_storage_get_paired_count(int* count);

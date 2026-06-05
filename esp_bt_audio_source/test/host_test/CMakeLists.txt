@@ -293,7 +293,8 @@ add_executable(test_bt_connection_manager_edge_cases
     mocks/mock_a2dp.c
     mocks/mock_gap.c
     mocks/fake_log.c
-    mocks/fake_esp_err.c)
+    mocks/fake_esp_err.c
+    mocks/nvs_storage_mock.c)
 target_include_directories(test_bt_connection_manager_edge_cases PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
 )
@@ -857,6 +858,7 @@ add_executable(test_bt_connection_manager
     ../../components/bt_manager/bt_connection_manager.c
     mocks/mock_a2dp.c
     mocks/mock_gap.c
+    mocks/nvs_storage_mock.c
 )
 target_include_directories(test_bt_connection_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
@@ -1098,6 +1100,29 @@ target_include_directories(test_platform_shim PRIVATE
 target_compile_definitions(test_platform_shim PRIVATE UNIT_TEST)
 target_link_libraries(test_platform_shim unity platform_shim_host)
 add_test(NAME test_platform_shim COMMAND $<TARGET_FILE:test_platform_shim>)
+
+# PHASE-5c: boot-time auto-connect logic (dependency contract + condition matrix)
+# This test is intentionally lightweight: it tests the individual building blocks
+# (nvs_storage_get_last_connected_mac, bt_manager_is_autostart_enabled, bt_connect)
+# without bringing in the full bt_manager stack.
+add_executable(test_autoconnect test_autoconnect.c
+    ../../components/bt_manager/bt_manager.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(test_autoconnect PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_autoconnect PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_autoconnect PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_autoconnect PRIVATE mocks/fake_esp_err.c)
+target_sources(test_autoconnect PRIVATE mocks/mock_gap.c)
+target_sources(test_autoconnect PRIVATE mocks/mock_a2dp.c)
+target_sources(test_autoconnect PRIVATE mocks/mock_avrc.c)
+# bt_connection.c is intentionally excluded: test_autoconnect.c provides its own
+# bt_connect stub to count calls without the real BT stack.
+target_link_libraries(test_autoconnect unity util_safe_host platform_shim_host)
+add_test(NAME test_autoconnect COMMAND $<TARGET_FILE:test_autoconnect>)
 
 # TEST-2: cmd_handlers_system.c — STATUS fallback, zero-callbacks, HELP, VERSION
 add_executable(test_cmd_handlers_system test_cmd_handlers_system.c

@@ -766,6 +766,46 @@ static const debug_subcmd_entry_t s_debug_subcmds[] = {
 };
 #define NUM_DEBUG_SUBCMDS ((int)(sizeof(s_debug_subcmds) / sizeof(s_debug_subcmds[0])))
 
+cmd_status_t cmd_handle_last_mac(const cmd_context_t *ctx)
+{
+    /* LAST_MAC get   — return the most-recently-connected MAC (or NONE)
+     * LAST_MAC clear — erase the stored MAC so auto-connect is disabled
+     */
+    if (ctx->param_count < 1)
+    {
+        cmd_send_response("ERR", "LAST_MAC", "MISSING_PARAM", "Usage: LAST_MAC [get|clear]");
+        return CMD_SUCCESS;
+    }
+
+    const char *sub = ctx->params[0];
+
+    if (strcasecmp(sub, "get") == 0)
+    {
+        char mac[18] = {0};
+        esp_err_t err = nvs_storage_get_last_connected_mac(mac, sizeof(mac));
+        if (err == ESP_OK && mac[0] != '\0') {
+            cmd_send_response("OK", "LAST_MAC", mac, NULL);
+        } else {
+            cmd_send_response("OK", "LAST_MAC", "NONE", NULL);
+        }
+        return CMD_SUCCESS;
+    }
+
+    if (strcasecmp(sub, "clear") == 0)
+    {
+        esp_err_t err = nvs_storage_clear_last_connected_mac();
+        if (err == ESP_OK) {
+            cmd_send_response("OK", "LAST_MAC", "CLEARED", NULL);
+        } else {
+            cmd_send_response("ERR", "LAST_MAC", "NVS_ERROR", NULL);
+        }
+        return CMD_SUCCESS;
+    }
+
+    cmd_send_response("ERR", "LAST_MAC", "UNKNOWN_SUBCMD", sub);
+    return CMD_SUCCESS;
+}
+
 cmd_status_t cmd_handle_debug(const cmd_context_t *ctx)
 {
     if (ctx->param_count < 1)

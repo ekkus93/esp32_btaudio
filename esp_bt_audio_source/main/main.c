@@ -43,6 +43,33 @@
 #define DIAG_MARKER(msg, ...) printf(msg "\r\n", ##__VA_ARGS__)
 #endif
 
+/* ── Auto-reconnect on boot ────────────────────────────────────────────────
+ * If a MAC was persisted to NVS during a previous session and audio autostart
+ * is enabled, kick off a connection attempt.  bt_connect() is non-blocking;
+ * the connection manager's existing retry logic (up to BT_RECONNECT_MAX_ATTEMPTS)
+ * handles failure/retry without blocking app_main.
+ */
+#ifdef ESP_PLATFORM
+static void attempt_autoconnect_if_configured(void)
+{
+    char last_mac[18] = {0};
+    esp_err_t err = nvs_storage_get_last_connected_mac(last_mac, sizeof(last_mac));
+    if (err != ESP_OK) {
+        ESP_LOGI(BT_AV_TAG, "Auto-connect: no last-connected device stored, skipping");  // NOLINT(bugprone-branch-clone)
+        return;
+    }
+    if (!bt_manager_is_autostart_enabled()) {
+        ESP_LOGI(BT_AV_TAG, "Auto-connect: autostart disabled, skipping (LAST_MAC=%s)", last_mac);  // NOLINT(bugprone-branch-clone)
+        return;
+    }
+    ESP_LOGI(BT_AV_TAG, "Auto-connect: attempting to reconnect to last device %s", last_mac);  // NOLINT(bugprone-branch-clone)
+    esp_err_t conn_err = bt_connect(last_mac);
+    if (conn_err != ESP_OK) {
+        ESP_LOGW(BT_AV_TAG, "Auto-connect: bt_connect() returned %d — will retry via connection manager", conn_err);  // NOLINT(bugprone-branch-clone)
+    }
+}
+#endif
+
 /* Small FreeRTOS task that polls the command interface */
 static void cmd_process_task(void* arg) {
     (void)arg;
@@ -327,6 +354,13 @@ void app_main(void)
         ESP_LOGI(BT_AV_TAG, "Bluetooth manager initialized - SCAN/PAIR commands ready");  // NOLINT(bugprone-branch-clone)
         // Mark Bluetooth subsystem as operational (CODE_REVIEW4 Task 3.1)
         bt_ok = true;
+
+        /* ── Auto-reconnect on boot (only when BT and CMD are both ready) ── */
+#ifdef ESP_PLATFORM
+        if (cmd_ok) {
+            attempt_autoconnect_if_configured();
+        }
+#endif
     }
 
     /* ========== Audio Initialization ==========

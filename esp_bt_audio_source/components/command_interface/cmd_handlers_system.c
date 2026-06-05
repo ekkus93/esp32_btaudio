@@ -51,6 +51,7 @@ static const struct
     {"BEEP", NULL, "Play 10s middle-C tone when connected"},
     {"DIAG", NULL, "Report connection/stream/I2S/beep state"},
     {"AUDIO_STATUS", NULL, "Report audio engine stats and ring buffer state"},
+    {"LAST_MAC", "[get|clear]", "Get or clear the most-recently-connected BT device MAC"},
     {"SPANLOG", "[N]", "Dump last N span log entries (default 10, max 100)"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN [RATE] [BIT_DEPTH] [CHANNELS]", "Configure I2S pins and format"},

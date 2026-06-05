@@ -20,6 +20,13 @@ static esp_err_t commit_result;
 static int commit_calls;
 static esp_err_t set_blob_result;
 static int set_blob_calls;
+/* String mock: injectable set result and simple key/value store for get */
+static esp_err_t set_str_result;
+static int set_str_calls;
+#define MAX_STR_KEYS 4
+struct str_entry { const char *key; esp_err_t err; char val[64]; };
+static struct str_entry str_entries[MAX_STR_KEYS];
+static int str_count;
 
 #define MAX_I32_KEYS 8
 struct i32_entry {
@@ -47,6 +54,23 @@ esp_err_t nvs_set_blob(nvs_handle_t handle, const char* key, const void* value, 
 esp_err_t nvs_erase_key(nvs_handle_t handle, const char* key) { (void)handle; (void)key; return ESP_OK; }
 esp_err_t nvs_commit(nvs_handle_t handle) { (void)handle; return ESP_OK; }
 
+static void set_str_entry(const char *key, esp_err_t err, const char *val)
+{
+    for (int i = 0; i < str_count; ++i) {
+        if (strcmp(str_entries[i].key, key) == 0) {
+            str_entries[i].err = err;
+            if (val) strncpy(str_entries[i].val, val, sizeof(str_entries[i].val) - 1);
+            return;
+        }
+    }
+    if (str_count < MAX_STR_KEYS) {
+        str_entries[str_count].key = key;
+        str_entries[str_count].err = err;
+        if (val) strncpy(str_entries[str_count].val, val, sizeof(str_entries[str_count].val) - 1);
+        ++str_count;
+    }
+}
+
 static void reset_state(void)
 {
     flash_init_len = 0;
@@ -59,8 +83,12 @@ static void reset_state(void)
     commit_calls = 0;
     set_blob_result = ESP_OK;
     set_blob_calls = 0;
+    set_str_result = ESP_OK;
+    set_str_calls = 0;
     memset(i32_entries, 0, sizeof(i32_entries));
     i32_count = 0;
+    memset(str_entries, 0, sizeof(str_entries));
+    str_count = 0;
 }
 
 static void push_flash_init(esp_err_t err)
@@ -147,18 +175,27 @@ esp_err_t nvs_storage_set_i32(platform_storage_handle_t h, const char* key, int3
 esp_err_t nvs_storage_get_str(platform_storage_handle_t h, const char* key, char* buf, size_t* len)
 {
     (void)h;
-    (void)key;
-    if (len) *len = 0;
-    if (buf && len && *len) buf[0] = '\0';
+    for (int i = 0; i < str_count; ++i) {
+        if (strcmp(str_entries[i].key, key) == 0) {
+            if (str_entries[i].err != ESP_OK) return str_entries[i].err;
+            if (buf && len && *len > 0) {
+                strncpy(buf, str_entries[i].val, *len - 1);
+                buf[*len - 1] = '\0';
+            }
+            return ESP_OK;
+        }
+    }
     return PLATFORM_ERR_STORAGE_NOT_FOUND;
 }
 
 esp_err_t nvs_storage_set_str(platform_storage_handle_t h, const char* key, const char* val)
 {
     (void)h;
-    (void)key;
-    (void)val;
-    return ESP_OK;
+    set_str_calls++;
+    if (set_str_result == ESP_OK && key && val) {
+        set_str_entry(key, ESP_OK, val);
+    }
+    return set_str_result;
 }
 
 esp_err_t nvs_storage_get_blob(platform_storage_handle_t h, const char* key, void* buf, size_t* len)
@@ -182,7 +219,16 @@ esp_err_t nvs_storage_set_blob(platform_storage_handle_t h, const char* key, con
 esp_err_t nvs_storage_erase_key(platform_storage_handle_t h, const char* key)
 {
     (void)h;
-    (void)key;
+    /* Mark any matching str_entry as NOT_FOUND so subsequent get returns absent */
+    if (key) {
+        for (int i = 0; i < str_count; ++i) {
+            if (str_entries[i].key && strcmp(str_entries[i].key, key) == 0) {
+                str_entries[i].err = PLATFORM_ERR_STORAGE_NOT_FOUND;
+                str_entries[i].val[0] = '\0';
+                break;
+            }
+        }
+    }
     return ESP_OK;
 }
 
@@ -483,6 +529,94 @@ void test_clear_paired_devices_commit_failure(void)
     TEST_ASSERT_EQUAL(1, commit_calls);
 }
 
+/* PHASE-5a: nvs_storage_set/get/clear_last_connected_mac ───────────────── */
+
+void test_set_last_mac_stores_successfully(void)
+{
+    open_result = ESP_OK;
+    commit_result = ESP_OK;
+
+    esp_err_t err = nvs_storage_set_last_connected_mac("AA:BB:CC:DD:EE:FF");
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
+void test_set_last_mac_null_returns_invalid_arg(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, nvs_storage_set_last_connected_mac(NULL));
+    TEST_ASSERT_EQUAL(0, open_calls);
+}
+
+void test_set_last_mac_empty_string_returns_invalid_arg(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, nvs_storage_set_last_connected_mac(""));
+    TEST_ASSERT_EQUAL(0, open_calls);
+}
+
+void test_set_last_mac_commit_failure_propagated(void)
+{
+    open_result = ESP_OK;
+    commit_result = ESP_FAIL;
+
+    esp_err_t err = nvs_storage_set_last_connected_mac("11:22:33:44:55:66");
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+}
+
+void test_get_last_mac_when_stored_returns_mac(void)
+{
+    open_result = ESP_OK;
+    set_str_entry("last_mac", ESP_OK, "AA:BB:CC:DD:EE:FF");
+
+    char buf[18] = {0};
+    esp_err_t err = nvs_storage_get_last_connected_mac(buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", buf);
+}
+
+void test_get_last_mac_when_absent_returns_not_found(void)
+{
+    open_result = ESP_OK;
+    /* no str_entry set → mock returns PLATFORM_ERR_STORAGE_NOT_FOUND */
+
+    char buf[18] = {0};
+    esp_err_t err = nvs_storage_get_last_connected_mac(buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL(PLATFORM_ERR_STORAGE_NOT_FOUND, err);
+}
+
+void test_get_last_mac_null_buf_returns_invalid_arg(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, nvs_storage_get_last_connected_mac(NULL, 18));
+    TEST_ASSERT_EQUAL(0, open_calls);
+}
+
+void test_get_last_mac_zero_len_returns_invalid_arg(void)
+{
+    char buf[18] = {0};
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, nvs_storage_get_last_connected_mac(buf, 0));
+    TEST_ASSERT_EQUAL(0, open_calls);
+}
+
+void test_clear_last_mac_succeeds(void)
+{
+    open_result = ESP_OK;
+    commit_result = ESP_OK;
+    set_str_entry("last_mac", ESP_OK, "AA:BB:CC:DD:EE:FF");
+
+    esp_err_t err = nvs_storage_clear_last_connected_mac();
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(1, commit_calls);
+    /* Subsequent get should return NOT_FOUND */
+    char buf[18] = {0};
+    open_calls = 0; commit_calls = 0;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, nvs_storage_get_last_connected_mac(buf, sizeof(buf)));
+}
+
 /* BUG-1: get_i2s_pins must return a hard error (not ESP_OK) when a read fails
  * with anything other than NOT_FOUND. */
 void test_i2s_pins_get_hard_read_error(void)
@@ -549,5 +683,15 @@ int main(void)
     RUN_TEST(test_clear_paired_devices_commit_failure);
     RUN_TEST(test_i2s_pins_get_hard_read_error);
     RUN_TEST(test_add_paired_device_blob_write_failure);
+    /* PHASE-5a: last-connected MAC persistence */
+    RUN_TEST(test_set_last_mac_stores_successfully);
+    RUN_TEST(test_set_last_mac_null_returns_invalid_arg);
+    RUN_TEST(test_set_last_mac_empty_string_returns_invalid_arg);
+    RUN_TEST(test_set_last_mac_commit_failure_propagated);
+    RUN_TEST(test_get_last_mac_when_stored_returns_mac);
+    RUN_TEST(test_get_last_mac_when_absent_returns_not_found);
+    RUN_TEST(test_get_last_mac_null_buf_returns_invalid_arg);
+    RUN_TEST(test_get_last_mac_zero_len_returns_invalid_arg);
+    RUN_TEST(test_clear_last_mac_succeeds);
     return UNITY_END();
 }

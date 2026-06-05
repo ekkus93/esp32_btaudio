@@ -17,6 +17,7 @@
 #include "command_interface.h"
 #include "mock_uart.h"
 #include "nvs_storage.h"
+#include "platform_storage.h"
 #include "bt_manager.h"
 #include "esp_err.h"
 #include <string.h>
@@ -296,6 +297,85 @@ void test_cmd_debug_should_reject_missing_param(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|MISSING_PARAM"));
 }
 
+/* PHASE-5b: LAST_MAC command handler — provided by nvs_storage_mock.c */
+extern void nvs_storage_mock_set_last_mac(const char *mac, esp_err_t get_result);
+
+void test_cmd_last_mac_get_returns_stored_mac(void) {
+    nvs_storage_mock_set_last_mac("AA:BB:CC:DD:EE:FF", ESP_OK);
+
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_LAST_MAC;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "get", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_last_mac(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|LAST_MAC|AA:BB:CC:DD:EE:FF"));
+}
+
+void test_cmd_last_mac_get_returns_none_when_absent(void) {
+    nvs_storage_mock_set_last_mac(NULL, PLATFORM_ERR_STORAGE_NOT_FOUND);
+
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_LAST_MAC;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "get", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_last_mac(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|LAST_MAC|NONE"));
+}
+
+void test_cmd_last_mac_clear_clears_stored_mac(void) {
+    nvs_storage_mock_set_last_mac("11:22:33:44:55:66", ESP_OK);
+
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_LAST_MAC;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "clear", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_last_mac(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|LAST_MAC|CLEARED"));
+}
+
+void test_cmd_last_mac_missing_param_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_LAST_MAC;
+    ctx.param_count = 0;
+
+    mock_uart_reset_tx();
+    cmd_handle_last_mac(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|LAST_MAC|MISSING_PARAM"));
+}
+
+void test_cmd_last_mac_unknown_subcmd_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_LAST_MAC;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "badparam", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_last_mac(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|LAST_MAC|UNKNOWN_SUBCMD"));
+}
+
 /* TEST-7: DEBUG dispatch table subcommand coverage */
 
 void test_cmd_debug_mock_on_enables_mock(void) {
@@ -461,6 +541,13 @@ int main(void) {
     
     // Debug tests
     RUN_TEST(test_cmd_debug_should_reject_missing_param);
+
+    // PHASE-5b: LAST_MAC command handler
+    RUN_TEST(test_cmd_last_mac_get_returns_stored_mac);
+    RUN_TEST(test_cmd_last_mac_get_returns_none_when_absent);
+    RUN_TEST(test_cmd_last_mac_clear_clears_stored_mac);
+    RUN_TEST(test_cmd_last_mac_missing_param_returns_error);
+    RUN_TEST(test_cmd_last_mac_unknown_subcmd_returns_error);
 
     // TEST-7: DEBUG dispatch table coverage
     RUN_TEST(test_cmd_debug_mock_on_enables_mock);

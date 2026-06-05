@@ -278,6 +278,58 @@ esp_err_t nvs_storage_set_audio_autostart(uint8_t autostart)
     return err;
 }
 
+esp_err_t nvs_storage_get_last_connected_mac(char* buf, size_t buf_len)
+{
+    if (!buf || buf_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READONLY, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    size_t required = buf_len;
+    err = nvs_storage_get_str(h, "last_mac", buf, &required);
+    nvs_storage_close(h);
+    return err;
+}
+
+esp_err_t nvs_storage_set_last_connected_mac(const char* mac)
+{
+    if (!mac || mac[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_storage_set_str(h, "last_mac", mac);
+    if (err == ESP_OK) {
+        err = nvs_storage_commit(h);
+    }
+    nvs_storage_close(h);
+    return err;
+}
+
+esp_err_t nvs_storage_clear_last_connected_mac(void)
+{
+    platform_storage_handle_t h;
+    esp_err_t err = nvs_storage_open(NVS_NAMESPACE, PLATFORM_STORAGE_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_storage_erase_key(h, "last_mac");
+    if (err == PLATFORM_ERR_STORAGE_NOT_FOUND) {
+        err = ESP_OK;  /* Already absent — treat as success */
+    }
+    if (err == ESP_OK) {
+        err = nvs_storage_commit(h);
+    }
+    nvs_storage_close(h);
+    return err;
+}
+
 // Simple paired devices persistence: store count and entries by index
 #define PAIRED_COUNT_KEY "paired_count"
 #define PAIRED_MAC_KEY_FMT "paired_mac_%d"
