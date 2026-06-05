@@ -569,6 +569,43 @@ void test_debug_mock_add_missing_param_errors(void) {
 }
 
 // Main test runner
+/* TEST-8: cmd_status_to_name() — all defined codes return non-empty strings */
+void test_status_name_cmd_success(void) {
+    const char *name = cmd_status_to_name(CMD_SUCCESS);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_cmd_error_init_failed(void) {
+    const char *name = cmd_status_to_name(CMD_ERROR_INIT_FAILED);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_cmd_error_invalid_param(void) {
+    const char *name = cmd_status_to_name(CMD_ERROR_INVALID_PARAM);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_cmd_error_unknown(void) {
+    const char *name = cmd_status_to_name(CMD_ERROR_UNKNOWN);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_cmd_error_not_initialized(void) {
+    const char *name = cmd_status_to_name(CMD_ERROR_NOT_INITIALIZED);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_cmd_error_too_many_params(void) {
+    const char *name = cmd_status_to_name(CMD_ERROR_TOO_MANY_PARAMS);
+    TEST_ASSERT_NOT_NULL(name);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
+}
+void test_status_name_out_of_range_returns_non_null(void) {
+    /* Unknown status codes should return a non-null fallback, not crash */
+    const char *name = cmd_status_to_name((cmd_status_t)999);
+    TEST_ASSERT_NOT_NULL(name);
+}
+
 int main(void) {
     UNITY_BEGIN();
     
@@ -682,7 +719,16 @@ int main(void) {
 
     extern void test_diag_i2s_stop_clears_i2s_flag(void);
     RUN_TEST(test_diag_i2s_stop_clears_i2s_flag);
-    
+
+    /* TEST-8: cmd_status_to_name() completeness */
+    RUN_TEST(test_status_name_cmd_success);
+    RUN_TEST(test_status_name_cmd_error_init_failed);
+    RUN_TEST(test_status_name_cmd_error_invalid_param);
+    RUN_TEST(test_status_name_cmd_error_unknown);
+    RUN_TEST(test_status_name_cmd_error_not_initialized);
+    RUN_TEST(test_status_name_cmd_error_too_many_params);
+    RUN_TEST(test_status_name_out_of_range_returns_non_null);
+
     return UNITY_END();
 }
 

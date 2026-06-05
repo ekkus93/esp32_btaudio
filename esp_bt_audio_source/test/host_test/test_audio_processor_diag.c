@@ -158,6 +158,106 @@ void test_emit_diag_summary_should_succeed(void)
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 }
 
+/* ── apply_volume() — TEST-5 coverage ──────────────────────────────────── */
+
+void test_apply_volume_100_is_passthrough(void)
+{
+    int16_t buf[4] = {1000, -2000, 3000, INT16_MAX};
+    int16_t expected[4];
+    memcpy(expected, buf, sizeof(buf));
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, sizeof(buf), 100);
+
+    TEST_ASSERT_EQUAL_INT16_ARRAY(expected, buf, 4);
+}
+
+void test_apply_volume_0_zeroes_buffer(void)
+{
+    int16_t buf[4] = {1000, -2000, 3000, -4000};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, sizeof(buf), 0);
+
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT16(0, buf[i]);
+    }
+}
+
+void test_apply_volume_50_scales_16bit(void)
+{
+    int16_t buf[2] = {1000, -1000};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, sizeof(buf), 50);
+
+    /* 1000 * 50/100 = 500 (with rounding up from +50/2=25 → 525/100 = 5... wait:
+     * scaled = (1000 * 50 + 50) / 100 = 50050/100 = 500 */
+    TEST_ASSERT_INT16_WITHIN(2, 500, buf[0]);
+    TEST_ASSERT_INT16_WITHIN(2, -500, buf[1]);
+}
+
+void test_apply_volume_16bit_clamps_at_int16_max(void)
+{
+    /* Scale a value that would overflow int16 range */
+    int16_t buf[1] = {INT16_MAX};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, sizeof(buf), 99);
+
+    /* Result must stay within int16 range */
+    TEST_ASSERT_TRUE(buf[0] <= INT16_MAX && buf[0] >= INT16_MIN);
+}
+
+void test_apply_volume_16bit_clamps_at_int16_min(void)
+{
+    int16_t buf[1] = {INT16_MIN};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, sizeof(buf), 99);
+
+    TEST_ASSERT_TRUE(buf[0] <= INT16_MAX && buf[0] >= INT16_MIN);
+}
+
+void test_apply_volume_32bit_scales_samples(void)
+{
+    int32_t buf[2] = {100000, -100000};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_32;
+    apply_volume(buf, sizeof(buf), 50);
+
+    TEST_ASSERT_INT32_WITHIN(100, 50000, buf[0]);
+    TEST_ASSERT_INT32_WITHIN(100, -50000, buf[1]);
+}
+
+void test_apply_volume_32bit_zero_zeroes_buffer(void)
+{
+    int32_t buf[2] = {999999, -999999};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_32;
+    apply_volume(buf, sizeof(buf), 0);
+
+    TEST_ASSERT_EQUAL_INT32(0, buf[0]);
+    TEST_ASSERT_EQUAL_INT32(0, buf[1]);
+}
+
+void test_apply_volume_null_buffer_no_crash(void)
+{
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(NULL, 8, 50);  /* must not crash */
+}
+
+void test_apply_volume_zero_size_no_modification(void)
+{
+    int16_t buf[2] = {1234, -1234};
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    apply_volume(buf, 0, 50);
+
+    TEST_ASSERT_EQUAL_INT16(1234, buf[0]);
+    TEST_ASSERT_EQUAL_INT16(-1234, buf[1]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -169,5 +269,15 @@ int main(void)
     RUN_TEST(test_get_status_should_reject_null_output);
     RUN_TEST(test_get_stats_should_return_large_counters_without_truncation);
     RUN_TEST(test_emit_diag_summary_should_succeed);
+    /* TEST-5: apply_volume() edge cases */
+    RUN_TEST(test_apply_volume_100_is_passthrough);
+    RUN_TEST(test_apply_volume_0_zeroes_buffer);
+    RUN_TEST(test_apply_volume_50_scales_16bit);
+    RUN_TEST(test_apply_volume_16bit_clamps_at_int16_max);
+    RUN_TEST(test_apply_volume_16bit_clamps_at_int16_min);
+    RUN_TEST(test_apply_volume_32bit_scales_samples);
+    RUN_TEST(test_apply_volume_32bit_zero_zeroes_buffer);
+    RUN_TEST(test_apply_volume_null_buffer_no_crash);
+    RUN_TEST(test_apply_volume_zero_size_no_modification);
     return UNITY_END();
 }

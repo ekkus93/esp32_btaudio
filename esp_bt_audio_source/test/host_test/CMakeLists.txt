@@ -58,6 +58,7 @@ target_include_directories(platform_shim_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 
 # Shared command-interface handlers for host tests
 add_library(command_interface_host OBJECT
+    ../../components/command_interface/command_interface.c
     ../../components/command_interface/commands_helpers.c
     ../../components/command_interface/cmd_handlers_system.c
     ../../components/command_interface/cmd_handlers_audio.c
@@ -419,6 +420,35 @@ target_include_directories(test_audio_processor_core_logic PRIVATE
 target_compile_definitions(test_audio_processor_core_logic PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_processor_core_logic unity util_safe_host platform_shim_host)
 add_test(NAME test_audio_processor_core_logic COMMAND $<TARGET_FILE:test_audio_processor_core_logic>)
+
+# TEST-4: commands_helpers.c — cmd_safe_copy/append, copy_truncated_identifier, parse_log_level
+add_executable(test_commands_helpers test_commands_helpers.c
+    ../../components/command_interface/commands_helpers.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_commands_helpers PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/command_interface
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/platform_shim)
+target_link_libraries(test_commands_helpers unity util_safe_host platform_shim_host)
+target_compile_definitions(test_commands_helpers PRIVATE UNIT_TEST)
+add_test(NAME test_commands_helpers COMMAND $<TARGET_FILE:test_commands_helpers>)
+
+# TEST-3: audio_processor_state.c — audio_bytes_per_sample, audio_get_runtime_work_bytes
+add_executable(test_audio_processor_state
+    test_audio_processor_state.c
+    ../../components/audio_processor/audio_processor_state.c
+    mocks/audio_processor_core_logic_stubs.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/fake_semphr.c)
+target_include_directories(test_audio_processor_state PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
+target_compile_definitions(test_audio_processor_state PRIVATE UNIT_TEST)
+target_link_libraries(test_audio_processor_state unity util_safe_host platform_shim_host)
+add_test(NAME test_audio_processor_state COMMAND $<TARGET_FILE:test_audio_processor_state>)
 
 # Audio processor read-path tests (Phase 6.2 - ring drop/underrun/null bytes_read)
 add_executable(test_audio_processor_read
@@ -1068,6 +1098,48 @@ target_include_directories(test_platform_shim PRIVATE
 target_compile_definitions(test_platform_shim PRIVATE UNIT_TEST)
 target_link_libraries(test_platform_shim unity platform_shim_host)
 add_test(NAME test_platform_shim COMMAND $<TARGET_FILE:test_platform_shim>)
+
+# TEST-2: cmd_handlers_system.c — STATUS fallback, zero-callbacks, HELP, VERSION
+add_executable(test_cmd_handlers_system test_cmd_handlers_system.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_cmd_handlers_system PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_cmd_handlers_system PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_cmd_handlers_system PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_cmd_handlers_system PRIVATE mocks/fake_esp_err.c)
+target_sources(test_cmd_handlers_system PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_cmd_handlers_system unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_cmd_handlers_system PRIVATE UNIT_TEST)
+add_test(NAME test_cmd_handlers_system COMMAND $<TARGET_FILE:test_cmd_handlers_system>)
+
+# TEST-1: bt_pairing_store.c — parse_mac, prepare_for_initiation, NULL safety, host returns
+add_executable(test_bt_pairing_store test_bt_pairing_store.c
+    ../../components/bt_manager/bt_manager.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_pairing_store.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_scan.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_connection.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_gap.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_avrc.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/bt_manager_test_hooks.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/fake_esp_err.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/mock_gap.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/mock_a2dp.c)
+target_sources(test_bt_pairing_store PRIVATE mocks/mock_avrc.c)
+target_link_libraries(test_bt_pairing_store unity util_safe_host platform_shim_host)
+add_test(NAME test_bt_pairing_store COMMAND $<TARGET_FILE:test_bt_pairing_store>)
 
 # Valgrind integration verification test
 # This test intentionally leaks memory to verify --valgrind flag works

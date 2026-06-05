@@ -296,12 +296,149 @@ void test_cmd_debug_should_reject_missing_param(void) {
     TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|MISSING_PARAM"));
 }
 
+/* TEST-7: DEBUG dispatch table subcommand coverage */
+
+void test_cmd_debug_mock_on_enables_mock(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "MOCK_ON", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_status_t result = cmd_handle_debug(&ctx);
+
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, result);
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DEBUG|MOCK_ON"));
+}
+
+void test_cmd_debug_mock_add_missing_mac_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "MOCK_ADD", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|MOCK_ADD_MISSING"));
+}
+
+void test_cmd_debug_log_sets_level(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 3;
+    strncpy(ctx.params[0], "LOG", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[1], "*", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[2], "INFO", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DEBUG|LOG_SET"));
+}
+
+void test_cmd_debug_log_missing_params_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "LOG", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|LOG_MISSING"));
+}
+
+void test_cmd_debug_log_bad_level_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 3;
+    strncpy(ctx.params[0], "LOG", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[1], "*", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[2], "BADLEVEL", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|LOG_BAD_LEVEL"));
+}
+
+void test_cmd_debug_dram_on_host_path(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 2;
+    strncpy(ctx.params[0], "DRAM", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[1], "ON", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    /* On host build: DRAM_ON_MOCK */
+    TEST_ASSERT_NOT_NULL(strstr(tx, "DRAM_ON"));
+}
+
+void test_cmd_debug_dram_missing_param_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "DRAM", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|DRAM_MISSING_PARAM"));
+}
+
+void test_cmd_debug_dram_bad_param_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 2;
+    strncpy(ctx.params[0], "DRAM", CMD_MAX_PARAM_LEN - 1);
+    strncpy(ctx.params[1], "BANANA", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|DRAM_BAD_PARAM"));
+}
+
+void test_cmd_debug_unknown_subcommand_returns_error(void) {
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_DEBUG;
+    ctx.param_count = 1;
+    strncpy(ctx.params[0], "NOTASUBCMD", CMD_MAX_PARAM_LEN - 1);
+
+    mock_uart_reset_tx();
+    cmd_handle_debug(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|UNKNOWN_SUBCMD"));
+}
+
 // ============================================================================
 // Unity Test Runner
 // ============================================================================
 int main(void) {
     UNITY_BEGIN();
-    
+
     // Disconnect tests
     RUN_TEST(test_cmd_disconnect_should_succeed_when_connected);
     RUN_TEST(test_cmd_disconnect_should_fail_when_bt_manager_errors);
@@ -324,6 +461,17 @@ int main(void) {
     
     // Debug tests
     RUN_TEST(test_cmd_debug_should_reject_missing_param);
-    
+
+    // TEST-7: DEBUG dispatch table coverage
+    RUN_TEST(test_cmd_debug_mock_on_enables_mock);
+    RUN_TEST(test_cmd_debug_mock_add_missing_mac_returns_error);
+    RUN_TEST(test_cmd_debug_log_sets_level);
+    RUN_TEST(test_cmd_debug_log_missing_params_returns_error);
+    RUN_TEST(test_cmd_debug_log_bad_level_returns_error);
+    RUN_TEST(test_cmd_debug_dram_on_host_path);
+    RUN_TEST(test_cmd_debug_dram_missing_param_returns_error);
+    RUN_TEST(test_cmd_debug_dram_bad_param_returns_error);
+    RUN_TEST(test_cmd_debug_unknown_subcommand_returns_error);
+
     return UNITY_END();
 }
