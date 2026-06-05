@@ -36,6 +36,11 @@ esp_err_t nvs_storage_init(void)
 {
     esp_err_t err = nvs_storage_flash_init();
     if (err == PLATFORM_ERR_STORAGE_NO_FREE_PAGES || err == PLATFORM_ERR_STORAGE_NEW_VERSION) {
+        /* All NVS data (device name, paired list, volume, I2S pins, etc.) is
+         * about to be erased.  Log prominently so field teams can diagnose why
+         * a device reset to defaults after a firmware update. */
+        ESP_LOGW(TAG, "NVS corrupt or version mismatch (err=0x%x) — erasing all NVS. "
+                 "Device settings will reset to defaults.", err);
         esp_err_t erase_err = nvs_storage_flash_erase();
         if (erase_err != ESP_OK) {
             return erase_err;

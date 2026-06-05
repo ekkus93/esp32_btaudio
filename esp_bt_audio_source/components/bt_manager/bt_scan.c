@@ -135,8 +135,9 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
     
     ESP_LOGI(TAG, "Device found: %s, name: %s, RSSI: %d", bda_str, name, rssi);  // NOLINT(bugprone-branch-clone)
     
-    // Add to discovered devices list
-    if (bt_ctx.discovered_devices.count < 20) {
+    /* BT_MAX_DISCOVERED_DEVICES = 20 (size of bt_device_list_t.devices array) */
+#define BT_MAX_DISCOVERED_DEVICES 20
+    if (bt_ctx.discovered_devices.count < BT_MAX_DISCOVERED_DEVICES) {
         int idx = bt_ctx.discovered_devices.count;
         safe_copy_str(bt_ctx.discovered_devices.devices[idx].mac,
                       sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
@@ -144,6 +145,9 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
                       sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
         bt_ctx.discovered_devices.devices[idx].rssi = (int)rssi;  // Direct cast from int8_t to int
         bt_ctx.discovered_devices.count++;
+    } else {
+        ESP_LOGW(TAG, "Discovery buffer full (%d devices); dropping %s (%s)",
+                 BT_MAX_DISCOVERED_DEVICES, name, bda_str);
     }
 }
 

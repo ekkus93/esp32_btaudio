@@ -125,7 +125,12 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
     evt_msg.param = msg.param;
     
     if (xQueueSend(s_bt_app_queue, &evt_msg, 10 / portTICK_PERIOD_MS) != pdTRUE) {
-        ESP_LOGE(TAG, "%s: xQueue send failed", __func__);  // NOLINT(bugprone-branch-clone)
+        /* Queue full: the message is dropped.  Callers waiting on a semaphore
+         * that BtAppTask would have signalled will time out instead of
+         * blocking indefinitely. Log clearly so diagnostics show queue pressure
+         * rather than a mysterious BtAppTask hang. */
+        ESP_LOGW(TAG, "%s: BtAppTask queue full (sig=0x%x) — message dropped",
+                 __func__, msg.sig);  // NOLINT(bugprone-branch-clone)
         return false;
     }
     return true;

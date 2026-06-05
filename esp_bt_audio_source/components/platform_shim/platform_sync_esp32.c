@@ -9,6 +9,7 @@
  */
 
 #include "platform_sync.h"
+#include "platform_memory.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
@@ -27,7 +28,7 @@ struct platform_binary_sem_s {
 
 platform_binary_sem_t platform_binary_sem_create(void) {
     // Allocate wrapper structure
-    struct platform_binary_sem_s* sem = (struct platform_binary_sem_s*)malloc(sizeof(struct platform_binary_sem_s));
+    struct platform_binary_sem_s* sem = (struct platform_binary_sem_s*)platform_malloc(sizeof(struct platform_binary_sem_s), PLATFORM_MEM_CAP_DEFAULT);
     if (sem == NULL) {
         ESP_LOGE(TAG, "Failed to allocate semaphore structure");
         return NULL;
@@ -54,8 +55,8 @@ void platform_binary_sem_delete(platform_binary_sem_t sem) {
         vSemaphoreDelete(sem->freertos_sem);
         ESP_LOG_LEVEL_LOCAL(ESP_LOG_DEBUG, TAG, "Deleted binary semaphore %p", sem);
     }
-    
-    free(sem);
+
+    platform_free(sem);
 }
 
 esp_err_t platform_binary_sem_take(platform_binary_sem_t sem, uint32_t timeout_ms) {

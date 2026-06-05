@@ -13,6 +13,9 @@
 #include "audio_processor.h"
 #include "esp_log.h"
 
+/* Test-only hook defined in bt_manager.c under UNIT_TEST */
+void bt_manager_test_set_connection_state(int v);
+
 static char s_test_spiffs_root[PATH_MAX];
 static int s_test_spiffs_root_ready = 0;
 static const char* k_file_alpha_name = "alpha.txt";

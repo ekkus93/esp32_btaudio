@@ -357,14 +357,14 @@ Items are ordered by priority: Bugs first (must fix), then Warnings (should fix)
 | BUG-7 | Integer underflow in beep_overlay_fill | beep_manager.c | [x] Done |
 | BUG-8 | size_t overflow cast in beep byte calculation | audio_processor_beep.c | [x] Done |
 | BUG-9 | NULL deref on s_audio_ring in drop path | audio_processor_read.c | [x] Done |
-| WARN-1 | Pointer returns to mutable device lists | bt_manager.c | [ ] Open |
-| WARN-2 | Silent discovery drop at 20 devices | bt_scan.c | [ ] Open |
-| WARN-3 | Queue overflow causes silent semaphore stall | bt_app_core.c | [ ] Open |
-| WARN-4 | Uninitialized data buffer in i2s_config handler | cmd_handlers_audio.c | [ ] Open |
-| WARN-5 | Unprotected static mock state | cmd_handlers_bt.c | [ ] Open |
-| WARN-6 | Silent NVS erasure on version mismatch | nvs_storage.c | [ ] Open |
-| WARN-7 | platform_storage_handle_t truncates pointer | platform_storage.h | [ ] Open |
-| WARN-8 | malloc() bypasses platform_malloc() in sync | platform_sync_esp32.c | [ ] Open |
+| WARN-1 | Pointer returns to mutable device lists | bt_manager.c | [x] Done |
+| WARN-2 | Silent discovery drop at 20 devices | bt_scan.c | [x] Done |
+| WARN-3 | Queue overflow causes silent semaphore stall | bt_app_core.c | [x] Done |
+| WARN-4 | Uninitialized data buffer in i2s_config handler | cmd_handlers_audio.c | [x] Done |
+| WARN-5 | Unprotected static mock state | cmd_handlers_bt.c | [x] Done |
+| WARN-6 | Silent NVS erasure on version mismatch | nvs_storage.c | [x] Done |
+| WARN-7 | platform_storage_handle_t truncates pointer | platform_storage.h | [x] Done |
+| WARN-8 | malloc() bypasses platform_malloc() in sync | platform_sync_esp32.c | [x] Done |
 | DESIGN-1 | Two parallel A2DP callback chains | bt_manager / bt_events_a2dp | [ ] Open |
 | DESIGN-2 | BT state split across three modules | bt_manager / bt_connection_mgr | [ ] Open |
 | DESIGN-3 | cmd_handle_debug() god function | cmd_handlers_bt.c | [ ] Open |

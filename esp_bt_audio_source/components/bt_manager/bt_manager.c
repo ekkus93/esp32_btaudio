@@ -505,25 +505,54 @@ int bt_manager_is_connected(void) {
 }
 
 // Get the list of discovered devices
-// TODO(CODE_REVIEW8 P2): Convert to queue-based access (requires copy, not pointer)
-// For now: UNSAFE - direct bt_ctx access from cmd_proc task
+// UNSAFE: returns a direct pointer into bt_ctx which BtAppTask can modify.
+// Use bt_get_device_list_snapshot() for concurrent-safe access.
 bt_device_list_t* bt_get_device_list(void) {
     if (!bt_ctx.initialized) {
         return NULL;
     }
-    
+
     return &bt_ctx.discovered_devices;
 }
 
-// Get the list of paired devices  
-// TODO(CODE_REVIEW8 P2): Convert to queue-based access (requires copy, not pointer)
-// For now: UNSAFE - direct bt_ctx access from cmd_proc task
+// Get the list of paired devices
+// UNSAFE: returns a direct pointer into bt_ctx which BtAppTask can modify.
+// Use bt_get_paired_devices_snapshot() for concurrent-safe access.
 bt_device_list_t* bt_get_paired_devices(void) {
     if (!bt_ctx.initialized) {
         return NULL;
     }
-    
+
     return &bt_ctx.paired_devices;
+}
+
+// Thread-safe snapshot: copies discovered device list into caller-supplied buffer.
+// Safer than bt_get_device_list() because the caller holds a copy and is not
+// affected by concurrent BtAppTask updates.  On the device, call only from a
+// context that does not hold any BtAppTask-owned lock.
+esp_err_t bt_get_device_list_snapshot(bt_device_list_t *out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!bt_ctx.initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    safe_memcpy(out, sizeof(*out), &bt_ctx.discovered_devices, sizeof(bt_device_list_t));
+    return ESP_OK;
+}
+
+// Thread-safe snapshot: copies paired device list into caller-supplied buffer.
+esp_err_t bt_get_paired_devices_snapshot(bt_device_list_t *out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!bt_ctx.initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    safe_memcpy(out, sizeof(*out), &bt_ctx.paired_devices, sizeof(bt_device_list_t));
+    return ESP_OK;
 }
 
 // Stop audio streaming

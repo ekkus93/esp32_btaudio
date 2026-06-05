@@ -8,6 +8,11 @@ static const char *TAG = "cmd";
 #include "esp_bt.h"
 #endif
 
+/* Mock state for host-test/debug pairing simulation.
+ * Access contract: on the device, commands arrive serially from a single UART
+ * task, so no locking is required.  Host unit tests run single-threaded.
+ * If this changes (e.g., concurrent command sources are added), protect these
+ * with a mutex. */
 static bool s_cmd_mock_enabled = false;
 static char s_cmd_mock_pairing_addr[32] = {0};
 static char s_cmd_mock_passkey[16] = {0};

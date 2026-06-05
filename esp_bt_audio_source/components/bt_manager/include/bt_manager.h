@@ -173,6 +173,20 @@ bt_device_list_t* bt_get_device_list(void);
 bt_device_list_t* bt_get_paired_devices(void);
 
 /**
+ * Thread-safe snapshot of the discovered device list.
+ * Copies current list into caller-supplied buffer via BtAppTask.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG/INVALID_STATE on error.
+ */
+esp_err_t bt_get_device_list_snapshot(bt_device_list_t *out);
+
+/**
+ * Thread-safe snapshot of the paired device list.
+ * Copies current list into caller-supplied buffer via BtAppTask.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG/INVALID_STATE on error.
+ */
+esp_err_t bt_get_paired_devices_snapshot(bt_device_list_t *out);
+
+/**
  * Start audio streaming
  *
  * @return ESP_OK (bt_err_t) if successful

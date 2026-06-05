@@ -363,6 +363,7 @@ cmd_status_t cmd_handle_i2s_config(const cmd_context_t *ctx)
     }
 
     char data[128];
+    data[0] = '\0';  /* BUG-WARN-4: always initialise before conditional write */
     if (has_rate || has_bit_depth || has_channels)
     {
         snprintf(data, sizeof(data), "PINS=%s%s%s%s%s%s%s%s", ctx->params[0],

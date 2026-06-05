@@ -40,11 +40,14 @@ extern "C" {
 
 /**
  * @brief Opaque handle for storage namespace
- * 
- * ESP32: nvs_handle_t
- * Host: Pointer to in-memory storage context
+ *
+ * ESP32: nvs_handle_t (uint32_t, fits in uintptr_t on 32-bit)
+ * Host:  Pointer to in-memory storage context cast to integer
+ *
+ * uintptr_t is used instead of uint32_t so the host implementation can round-
+ * trip a pointer through the handle without truncation on 64-bit systems.
  */
-typedef uint32_t platform_storage_handle_t;
+typedef uintptr_t platform_storage_handle_t;
 
 /**
  * @brief Storage access mode
