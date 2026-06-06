@@ -6,21 +6,14 @@ artifacts/
 # Ignore local build directories for host tests
 **/build_host_tests/
 
-# OS/editor files
-.DS_Store
-*.swp
-.vscode/# Ignore local GitHub Actions run downloads and test artifacts
-gh-run-*/
-**/gh-run-*/
-artifacts/
-
-# Ignore local build directories for host tests
-**/build_host_tests/
+# Laptop BT integration test artifacts
+esp_bt_audio_source/test/laptop_bt_tests/build/
 
 # OS/editor files
 .DS_Store
 *.swp
-.vscode/# Prerequisites
+.vscode/
+# Prerequisites
 *.d
 
 # Object files

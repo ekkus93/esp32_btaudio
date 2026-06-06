@@ -251,6 +251,58 @@ Notes:
 - If a test fails, edit or extend the mocks under `test/host_test/mocks/` (for example `mock_gap.c` or `nvs_storage_mock.c`) to simulate the expected runtime behavior.
 
 If you'd like, I can also add a short `test/host_test/README.md` with these commands and a quick map of where the mocks live.
+
+<a id="how-to-run-laptop-bt-tests"></a>
+## How to run laptop Bluetooth integration tests
+
+These tests pair the ESP32 with the laptop's built-in Bluetooth adapter over real
+radio and drive the full A2DP lifecycle (scan → pair → connect → stream → disconnect).
+They require physical hardware and are skipped automatically in CI environments without it.
+
+### Prerequisites
+
+- Physical ESP32 on `/dev/ttyUSB0` flashed with production firmware (not a Unity test image)
+- Laptop Bluetooth adapter MAC `E8:FB:1C:25:E4:C2` powered on
+- `pydbus` and `pulsectl` installed in the `python310` conda environment:
+  ```bash
+  conda run -n python310 pip install pydbus pulsectl
+  ```
+
+### Running the suite
+
+```bash
+# Run all laptop BT integration tests
+cd esp_bt_audio_source/test/laptop_bt_tests
+conda run -n python310 python -m pytest \
+    test_connection.py test_autoconnect.py test_streaming.py \
+    test_control.py test_e2e.py \
+    -v --timeout=120
+
+# Skip in CI (no hardware):
+conda run -n python310 python -m pytest test/laptop_bt_tests/ -m "not laptop_bt"
+```
+
+Or via the shell wrapper:
+
+```bash
+conda run -n python310 tools/run_laptop_bt_tests.sh
+```
+
+### Lint
+
+```bash
+conda run -n python310 python -m flake8 test/laptop_bt_tests/ --max-line-length=100
+```
+
+### Notes
+
+- Tests are tagged `@pytest.mark.laptop_bt`; CI environments without the adapter will skip
+  the entire suite cleanly (a hardware-presence guard runs at collection time).
+- The laptop adapter is power-cycled at session start to reset HCI page-scan state — this
+  is intentional and fixes PAGE_TIMEOUT errors that accumulate after many pair/unpair cycles.
+- Slow tests (`@pytest.mark.slow`) include boot-reconnect and full E2E lifecycle tests;
+  budget ~15 minutes for the full suite.
+
 ## Serial Command Protocol
 
 This ESP32 accepts commands via UART using the text-based protocol described in the main project README. Key command categories include:

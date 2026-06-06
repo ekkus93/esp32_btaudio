@@ -574,7 +574,7 @@ hardware state.
 
 ## E2E-1 — Full end-to-end scenario
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High  
 **File:** `test/laptop_bt_tests/test_e2e.py`
 
@@ -585,7 +585,7 @@ This is the closest thing to a real usage session.
 
 ### Tasks
 
-- [ ] **E2E-1a** `test_full_discovery_pair_connect_stream_disconnect_lifecycle`:
+- [x] **E2E-1a** `test_full_discovery_pair_connect_stream_disconnect_lifecycle`:
   - **Setup:** `UNPAIR_ALL`; `laptop_bt_adapter.remove_device(ESP32_MAC)`
   - **Step 1 — Discovery:** Make laptop discoverable; send `SCAN`; assert
     laptop MAC found
@@ -601,7 +601,7 @@ This is the closest thing to a real usage session.
     assert `laptop_bt_adapter.is_connected(ESP32_MAC)` False
   - Marks `@pytest.mark.slow`
 
-- [ ] **E2E-1b** `test_reconnect_after_simulated_range_loss`:
+- [x] **E2E-1b** `test_reconnect_after_simulated_range_loss`:
   - Pair and connect (E2E-1a partial fixture up to Step 3)
   - Simulate range loss: `laptop_bt_adapter.remove_device(ESP32_MAC)` (forces
     disconnection from the laptop side)
@@ -610,24 +610,27 @@ This is the closest thing to a real usage session.
   - Assert connection re-established without re-pairing
   - Marks `@pytest.mark.slow`
 
-- [ ] **E2E-1c** `test_boot_reconnect_full_sequence`:
+- [x] **E2E-1c** `test_boot_reconnect_full_sequence`:
   - Pair, connect, start stream, stop stream, disconnect
   - `LAST_MAC get` → confirm laptop MAC persisted
   - `RESET`; `wait_for_boot()`
   - Assert laptop auto-connects within 30 s
   - Assert `START` works immediately after boot reconnect
   - Marks `@pytest.mark.slow`
+  - Fix: `wait_for_disconnect` required after DISCONNECT before RESET; without
+    it the firmware's auto-reconnect attempt races with RESET and leaves the
+    laptop's AVDTP stack in a half-open state that prevents A2DP on boot.
 
 ---
 
 ## RUN-1 — CI integration note (documentation task)
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** Low
 
 ### Tasks
 
-- [ ] **RUN-1a** Add a section to `README.md` under "Running tests" describing
+- [x] **RUN-1a** Add a section to `README.md` under "Running tests" describing
   how to run the laptop BT suite:
   ```bash
   conda run -n python310 tools/run_laptop_bt_tests.sh
@@ -635,9 +638,9 @@ This is the closest thing to a real usage session.
   conda run -n python310 python -m pytest test/laptop_bt_tests/ -m "not laptop_bt"
   ```
 
-- [ ] **RUN-1b** Add `test/laptop_bt_tests/build/` to `.gitignore`.
+- [x] **RUN-1b** Add `test/laptop_bt_tests/build/` to `.gitignore`.
 
-- [ ] **RUN-1c** Document in `README.md` that these tests require:
+- [x] **RUN-1c** Document in `README.md` that these tests require:
   - Physical ESP32 on `/dev/ttyUSB0`
   - Laptop Bluetooth powered on and adapter MAC `E8:FB:1C:25:E4:C2` active
   - `pydbus` and `pulsectl` installed in `python310` conda env
