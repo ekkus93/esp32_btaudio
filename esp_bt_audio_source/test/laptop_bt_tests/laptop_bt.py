@@ -173,7 +173,14 @@ class LaptopBT:
     # ------------------------------------------------------------------
 
     def __enter__(self):
+        # Power-cycle the adapter so the HCI controller resets page-scan state.
+        # After many connect/disconnect/pair/unpair cycles the HCI-level page-scan
+        # bit can drift despite D-Bus properties showing Pairable=True, causing
+        # PAGE_TIMEOUT errors (error 0x04) on the ESP32 side.
+        self._adapter.Powered = False
+        time.sleep(0.8)
         self._adapter.Powered = True
+        time.sleep(1.0)
         self.register_agent(auto_accept=True)
         self._adapter.Pairable = True
         self._adapter.Discoverable = True
@@ -248,7 +255,9 @@ class LaptopBT:
             except Exception as exc:
                 if attempt >= 4:
                     raise
-                log.warning("LaptopBT: set_pairable attempt %d failed (%s), retrying…", attempt + 1, exc)
+                log.warning(
+                    "LaptopBT: set_pairable attempt %d failed (%s), retrying…", attempt + 1, exc
+                )
                 _time.sleep(1.0)
         log.info("LaptopBT: pairable=%s", on)
         return old
@@ -266,7 +275,9 @@ class LaptopBT:
             except Exception as exc:
                 if attempt >= max_attempts - 1:
                     raise
-                log.warning("LaptopBT: set_discoverable attempt %d failed (%s), retrying…", attempt + 1, exc)
+                log.warning(
+                    "LaptopBT: set_discoverable attempt %d failed (%s), retrying…", attempt + 1, exc
+                )
                 _time.sleep(1.5)
         log.info("LaptopBT: discoverable=%s timeout=%ds", on, timeout_s)
         return old

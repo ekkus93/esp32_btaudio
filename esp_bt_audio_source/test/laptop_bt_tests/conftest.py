@@ -163,7 +163,15 @@ def paired_state(esp32, laptop_bt_adapter, clean_pair_state):
 
     Yields the esp32 driver so tests can reuse it without re-importing.
     """
+    # BlueZ HCI page-scan state can drift between tests (after many connect/
+    # disconnect cycles the adapter's page-scan bit may not be set even though
+    # Pairable=True was set at session start).  Re-assert both flags here so the
+    # laptop reliably accepts the ESP32's incoming ACL connection request.
+    # The 0.5s sleep lets BlueZ propagate the HCI scan-enable command before the
+    # ESP32 sends its PAGE request.
+    laptop_bt_adapter.set_pairable(True)
     laptop_bt_adapter.set_discoverable(True)
+    time.sleep(0.5)
     esp32.drain(0.1)
 
     # Initiate pairing from the ESP32

@@ -358,6 +358,15 @@ void app_main(void)
         /* ── Auto-reconnect on boot (only when BT and CMD are both ready) ── */
 #ifdef ESP_PLATFORM
         if (cmd_ok) {
+            /* Sync runtime autostart flag from NVS before the auto-connect check.
+             * bt_manager_init() always resets s_autostart_enabled to true; without
+             * this read the check in attempt_autoconnect_if_configured() would
+             * ignore any NVS-persisted AUDIO_AUTOSTART=off setting. */
+            {
+                uint8_t autostart_nv = CONFIG_AUDIO_AUTOSTART_DEFAULT ? 1 : 0;
+                nvs_storage_get_audio_autostart(&autostart_nv);
+                bt_manager_set_autostart_enabled(autostart_nv != 0);
+            }
             attempt_autoconnect_if_configured();
         }
 #endif

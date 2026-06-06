@@ -136,12 +136,21 @@ class TestAutoConnect:
                 )
             )
         finally:
-            # Restore AUDIO_AUTOSTART so future test runs are not affected.
+            # Restore AUDIO_AUTOSTART and reboot so the runtime is back to a known
+            # state (audio initialized) for subsequent tests in the session.
+            # LAST_MAC is cleared before RESET so the restore-boot does not trigger
+            # an auto-reconnect that contaminates subsequent test fixtures.
             esp32.drain(0.1)
             try:
                 esp32.send_and_expect(
                     "AUDIO_AUTOSTART on", "OK|AUDIO_AUTOSTART|", timeout_s=5.0
                 )
+                esp32.drain(0.1)
+                esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+                esp32.drain(0.1)
+                esp32.send_and_expect("RESET", "OK|RESET|REBOOTING", timeout_s=5.0)
+                esp32.wait_for_boot(timeout_s=BOOT_TIMEOUT_S)
+                esp32.drain(0.2)
             except Exception as exc:
                 log.warning(
                     "test_autostart_disabled: failed to restore AUDIO_AUTOSTART — %s", exc

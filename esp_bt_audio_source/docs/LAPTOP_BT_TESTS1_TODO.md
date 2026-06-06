@@ -482,7 +482,7 @@ device.
 
 ## STREAM-1 — A2DP streaming verification
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High  
 **File:** `test/laptop_bt_tests/test_streaming.py`
 
@@ -495,32 +495,32 @@ frames.
 
 ### Tasks
 
-- [ ] **STREAM-1a** `test_pulseaudio_bt_sink_appears_after_connect`:
+- [x] **STREAM-1a** `test_pulseaudio_bt_sink_appears_after_connect`:
   - After A2DP connect (CONN-1a fixture), poll `pulsectl` for a sink whose
     description or name contains `"bluez"` or the ESP32 MAC
   - Assert such a sink exists within 10 s of connection
   - This validates the A2DP codec negotiation completed at the OS level
 
-- [ ] **STREAM-1b** `test_start_streaming_command_succeeds`:
+- [x] **STREAM-1b** `test_start_streaming_command_succeeds`:
   - While connected, send `START`
   - Assert `OK|START|STARTED` within 5 s
 
-- [ ] **STREAM-1c** `test_audio_status_ring_buffer_fills_after_start`:
+- [x] **STREAM-1c** `test_audio_status_ring_buffer_fills_after_start`:
   - After `START`, wait 2 s, then send `AUDIO_STATUS`
   - Parse `OK|AUDIO_STATUS|CURRENT|…` DATA field
   - Assert `RING_USED` value > 0 (confirms audio data is flowing into
     the ring buffer from I2S/synthesiser)
 
-- [ ] **STREAM-1d** `test_stop_streaming_command_succeeds`:
+- [x] **STREAM-1d** `test_stop_streaming_command_succeeds`:
   - After `START`, send `STOP`; assert `OK|STOP|STOPPED`
   - Send `AUDIO_STATUS`; assert `RING_USED=0` or `SOURCE=IDLE`
 
-- [ ] **STREAM-1e** `test_streaming_survives_volume_change`:
+- [x] **STREAM-1e** `test_streaming_survives_volume_change`:
   - Start streaming; send `VOLUME 50`; assert `OK|VOLUME|SET|50`
   - Wait 1 s; send `AUDIO_STATUS`; assert `RING_USED` still > 0
   - (Regression guard: volume path must not interrupt streaming)
 
-- [ ] **STREAM-1f** `test_mute_does_not_stop_ring_buffer_fill`:
+- [x] **STREAM-1f** `test_mute_does_not_stop_ring_buffer_fill`:
   - Start streaming; send `MUTE`; assert `OK|MUTE|SET`
   - Send `AUDIO_STATUS`; assert `RING_USED` still > 0 (mute is
     post-ring-buffer; data should still flow)

@@ -288,7 +288,18 @@ static void audio_engine_task(void *arg)
         /* Produce audio if not paused and ring has space */
         if (!s_audio_engine_paused && free >= AUDIO_ENGINE_CHUNK_BYTES) {
             size_t produced = produce_audio_chunk(chunk_buf, AUDIO_ENGINE_CHUNK_BYTES);
-            
+
+            /* Silence fallback: I2S source returns 0 on timeout (no audio input).
+             * Fill with silence so the ring stays fed and the A2DP callback
+             * doesn't underrun on every packet when no I2S source is connected. */
+            if (produced == 0) {
+                util_safe_memset(chunk_buf, AUDIO_ENGINE_CHUNK_BYTES, 0, AUDIO_ENGINE_CHUNK_BYTES);
+                produced = AUDIO_ENGINE_CHUNK_BYTES;
+                portENTER_CRITICAL(&s_audio_stats_lock);
+                s_audio_stats.bytes_by_source[AUDIO_SOURCE_SILENCE] += produced;
+                portEXIT_CRITICAL(&s_audio_stats_lock);
+            }
+
             if (produced > 0) {
                 size_t written = audio_rb_write(s_audio_ring, chunk_buf, produced);
                 
