@@ -441,7 +441,7 @@ the connection state on both sides using `STATUS` and `pactl`.
 
 ## CONN-2 — Auto-reconnect on boot tests
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** Medium  
 **File:** `test/laptop_bt_tests/test_autoconnect.py`
 
@@ -453,30 +453,30 @@ device.
 
 ### Tasks
 
-- [ ] **CONN-2a** `test_last_mac_saved_after_connection`:
+- [x] **CONN-2a** `test_last_mac_saved_after_connection`:
   - Pair and connect to laptop (fixture)
   - Send `LAST_MAC get`; assert response contains `E8:FB:1C:25:E4:C2`
 
-- [ ] **CONN-2b** `test_last_mac_none_when_never_connected`:
+- [x] **CONN-2b** `test_last_mac_none_when_never_connected`:
   - `LAST_MAC clear` first; then `LAST_MAC get`
   - Assert `OK|LAST_MAC|NONE`
 
-- [ ] **CONN-2c** `test_autostart_reconnects_on_reboot`:
-  - Precondition: paired and `LAST_MAC` is set to laptop MAC
-  - Send `RESET`; call `esp32.wait_for_boot(timeout_s=20)`
+- [x] **CONN-2c** `test_autostart_reconnects_on_reboot`:
+  - Precondition: connected (LAST_MAC set via A2DP CONNECTED event, not PAIR)
+  - Send `RESET`; call `esp32.wait_for_boot(timeout_s=30)`
   - Wait up to 30 s for `laptop_bt_adapter.wait_for_connect(ESP32_MAC)`
   - Assert connection is re-established without any explicit `CONNECT` command
   - Marks `@pytest.mark.slow`
 
-- [ ] **CONN-2d** `test_no_autostart_when_last_mac_cleared`:
+- [x] **CONN-2d** `test_no_autostart_when_last_mac_cleared`:
   - `LAST_MAC clear`; then `RESET`; `wait_for_boot()`
   - Wait 20 s; assert `laptop_bt_adapter.is_connected(ESP32_MAC)` is False
   - Guards against spurious reconnect when there is no saved MAC
 
-- [ ] **CONN-2e** `test_autostart_disabled_prevents_reconnect_on_reboot`:
-  - `AUDIO_AUTOSTART off`; set `LAST_MAC` via connect; then `RESET`
+- [x] **CONN-2e** `test_autostart_disabled_prevents_reconnect_on_reboot`:
+  - `AUDIO_AUTOSTART off`; LAST_MAC set via connected_state; then `RESET`
   - After boot, wait 20 s; assert NOT connected
-  - `AUDIO_AUTOSTART on` in teardown
+  - `AUDIO_AUTOSTART on` restored in test finally block
 
 ---
 

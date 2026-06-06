@@ -223,8 +223,10 @@ def connected_state(paired_state, laptop_bt_adapter):
         pytest.fail("connected_state: connection lost after A2DP setup")
     time.sleep(1.5)
     yield esp32
-    # Best-effort disconnect
+    # Best-effort disconnect; drain first so A2DP media-error flood doesn't
+    # exhaust the 5-second window before the DONE response arrives.
     try:
+        esp32.drain(0.1)
         esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
     except Exception:
         pass
