@@ -42,14 +42,14 @@ This project implements the Bluetooth A2DP audio source component of the ESP32 A
   - **Code cleanup and documentation (Phase 4):** Removed unused defines (BT_APP_TASK_STACK_SIZE), unnecessary while(1) loop in app_main. Fixed clang-tidy warnings in application code (variable naming, declarations, braces, nested conditionals). Added comprehensive WHY comments throughout main.c explaining architectural decisions. Documented error handling policy (platform fail-fast, subsystems graceful degradation). Binary size: 927KB (+21KB from Phase 3 features, 48% partition space free).
 - **main.c cleanup (Jan 2026):** Removed ~800 lines of orphaned legacy ESP-IDF A2DP/AVRCP example code from main.c (78% reduction: 1019→226 lines, later grew to ~319 lines with documentation). main.c is now a clean bootstrap that delegates all Bluetooth initialization to the bt_manager component. CI enforcement added via `tools/ci_check_main_no_bt_apis.sh` to prevent regression. All 505 tests passing, zero behavioral changes.
 - **[OBSOLETE - WAV removed Feb 2026]** Latest audio pipeline hardening (Nov 2025): WAV prime/read chunk sizing now clamps to the runtime `audio_processor_get_work_buffer_bytes()` allocation and sends are throttled by live ringbuffer free-space checks. Combined with `RINGBUF_TYPE_ALLOWSPLIT` and conservative chunking, WAV playback no longer trips the interrupt WDT or overruns the audio ringbuffer. _(Note: WAV playback and PLAY command removed in Version 0.3.0 - only I2S and synth sources remain)_
-- The Unity runner and orchestrator were hardened to run non-interactively: `tools/run_unity.py` (and the helper `tools/flash_and_watch.py`) now run `idf.py flash monitor` inside a pseudo-TTY, detect canonical Unity summary markers reliably, and the aggregator consumes those canonical logs for CI-friendly summaries.
-- Full regression orchestration: a complete host+device sweep was executed after fixing the ESP-IDF environment and host mock semantics. Results (sources-of-truth: `tmp/run_all_tests_summary.json`, per-suite `build/one_run_unity.log` files):
-   - Host CTest bundle: 22/22 passed (see host CTest output in `test/host_test/build_host_tests/Testing/Temporary/LastTest.log`, also mirrored in `tmp/host_ctest_output.log`).
-   - Device Unity suites (per-suite canonical `one_run_unity.log`):
-      - `test_app`: 37 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app/build/one_run_unity.log`).
-      - `test_app2`: 45 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app2/build/one_run_unity.log`).
-      - `test_app_audio`: 26 passed, 0 failed, 0 ignored (`esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log`).
-   - Aggregate totals: 22 (host) + 108 (device) = 130 tests run; 130 passed, 0 failed, 0 ignored. The orchestrator wrote the aggregated JSON summary to `tmp/run_all_tests_summary.json` and `tmp/canonical_unity_summary.json`.
+- The Unity runner was hardened to run non-interactively: `tools/run_unity.py` runs `idf.py flash monitor` inside a pseudo-TTY, detects the `TEST_RUN_COMPLETE` marker reliably, and prints a `N/N passed` count on exit.
+- Full regression orchestration — current results (per-suite `build/one_run_unity.log`):
+   - Host CTest bundle: 60/60 passed (`test/host_test/build_host_tests/`).
+   - Device Unity suites:
+      - `test_bluetooth`: 46 passed, 0 failed, 0 ignored (`test/test_bluetooth/build/one_run_unity.log`).
+      - `test_app_audio`: 35 passed, 0 failed, 0 ignored (`test/test_app_audio/build/one_run_unity.log`).
+      - `test_manager`: 18 passed, 0 failed, 0 ignored (`test/test_manager/build/one_run_unity.log`).
+   - Aggregate totals: 60 (host) + 99 (device) = 159 tests; 159 passed, 0 failed, 0 ignored.
 
 Diagnostics & trace parsing
 - `tools/parse_traces.py` extracts DIAG/TRACE allocation lines from host and monitor logs and writes structured CSV/JSON artifacts. Example outputs from the last sweep:
@@ -60,10 +60,10 @@ Diagnostics & trace parsing
 Notes about PSRAM tests
 - PSRAM-specific tests remain gated at build-time (`CONFIG_SPIRAM`) and at runtime (via `esp_psram_is_initialized()`). On non-PSRAM hardware they are skipped with a clear message. When PSRAM-equipped hardware is available, enable SPIRAM in `sdkconfig`, flash the image and re-run the orchestrator to capture fragmentation metrics.
 
-Timing snapshot from the sweep (per-orchestrator timing): `test_app` ~65 s total (flash ~12 s, tests ~53 s); `test_app2` ~45 s (flash ~11 s, tests ~34 s); `test_app_audio` ~34 s (flash ~4 s, tests ~30 s). Durations are recorded in the orchestrator CSV output.
+Typical per-suite run times: `test_bluetooth` ~90 s (flash + 46 tests); `test_app_audio` ~60 s (flash + 35 tests); `test_manager` ~30 s (flash + 18 tests).
 
 Key recent completions:
-- Host tests: all host CTest targets are green (22/22) with pairing and command coverage intact.
+- Host tests: all host CTest targets are green (60/60) with pairing and command coverage intact.
 - **[OBSOLETE - WAV removed Feb 2026]** Audio processor: WAV playback now uses ring buffer architecture with proper watermark-based pacing to avoid WDTs; reader/worker flow yields appropriately so consumers drain pending audio. _(Note: WAV playback removed in Version 0.3.0 - only I2S and synth sources remain)_
 - Unity runner reliability: pseudo-TTY execution plus canonical summary scraping yields deterministic automation and clean aggregator JSON for CI.
 - SPIFFS flash+verify helper is available at `esp_bt_audio_source/tools/flash_and_verify_spiffs.py` for reproducible SPIFFS flashing and on-device validation (PARTS/FILES checks).
@@ -146,33 +146,20 @@ Notes on recent progress:
 - The audio processor and command handlers now persist changes (volume and I2S pin updates) to NVS. The command `SET_NAME` and `SET_DEFAULT_PIN` persist values as well.
 - Bluetooth initialization was updated to read the persisted local device name from NVS at boot and apply it (GAP API with guarded deprecated fallback), so persisted device name now takes effect on startup.
 
-## Current test status (2025-11-15)
+## Current test status
 ---------------------------------
-- `tools/run_all_tests.py` (2025-11-15) executes the full sweep in one command. Output artifacts:
-  - Host CTest: 19 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/Testing/Temporary/LastTest.log`).
-  - Device Unity suites (via `tools/run_unity.py` orchestrated flash/monitor):
-   - `test_app`: 37/0/0 (`test/test_app/build/one_run_unity.log`).
-   - `test_app2`: 45/0/0 (`test/test_app2/build/one_run_unity.log`).
-   - `test_app_audio`: 12/0/0 (`test/test_app_audio/build/one_run_unity.log`).
-  - Aggregate telemetry (start/end epochs, flash/test durations, runner stdout paths): `tmp/run_all_tests_summary.json` & `tmp/run_all_tests_summary.csv` (142 tests / 0 failures / 0 ignored).
-- Standalone re-runs remain available with `tools/run_unity.py`, and the orchestrator now emits per-suite flash/test breakdowns for timing analysis directly into the CSV for downstream consumption.
+- Host CTest: 60 tests, 0 failures, 0 ignored (`test/host_test/build_host_tests/`).
+- Device Unity suites (via `tools/run_unity.py`):
+  - `test_bluetooth`: 46/0/0 (`test/test_bluetooth/build/one_run_unity.log`).
+  - `test_app_audio`: 35/0/0 (`test/test_app_audio/build/one_run_unity.log`).
+  - `test_manager`: 18/0/0 (`test/test_manager/build/one_run_unity.log`).
+- Aggregate: 159 tests / 0 failures / 0 ignored.
+- Standalone re-runs: `tools/run_unity.py -p /dev/ttyUSB0 -r test/<suite>` — output includes pass/total count.
 
 Remaining work (short list)
 ---------------------------
-- Test coverage gaps (Priority: High — ETA: 1–2 days):
-   Continue hardening audio-focused host tests so they assert observable buffer fill/volume behavior and capture the new 128 KiB runtime floor. **[OBSOLETE - WAV removed Feb 2026]** ~~Add regression coverage for WAV playback to ensure the non-blocking ringbuffer writes stay watchdog-safe.~~
-
-- On-device end-to-end verification (Priority: High — ETA: 2–3 days):
+- On-device end-to-end verification (Priority: High):
    Re-run pairing scenarios with real sinks (phone, speaker, car stereo) to validate persistence across reboot and confirm the refreshed event stream sequencing.
-
-- Beep diagnostics CLI (Priority: High — ETA: 1 day):
-   Add a command handler path that arms `audio_processor_enable_next_beep_diag()` before issuing BEEP so operators can capture diagnostics without reflashing test firmware.
-
-- Real I2S capture integration (Priority: Medium — ETA: 2–3 days):
-   Replace the sine-wave stub in `main/bt_streaming_manager.c` with the actual capture pipeline now that runtime buffers match production sizing; document any performance limits observed on DRAM-only boards.
-
-- Unity log formatting uplift (Priority: Medium — ETA: 1 day):
-   Improve the Unity runners so canonical pass/fail lines emit without fallbacks, keeping `tmp/canonical_unity_summary.json` minimal and CI-friendly.
 
 Recent work (pairing & events):
 - Pairing event streaming: GAP pairing events (PIN requests, SSP numeric confirmation, auth complete) are forwarded to the serial command interface as `EVENT|PAIR|...` messages so a host can drive the pairing flow.
@@ -188,7 +175,7 @@ Recent changes (host-test and pairing work)
 Recent on-device pairing diagnostics and status
 
 - On-device E2E pairing runs have been executed and serial monitor output was persisted to `build/pairing_e2_logs/serial.log` for post-run analysis. This log contains allocator diagnostic dumps (the allocator prints `osi_mem_dbg_clean not-found` with a `recent-free-history` buffer), temporary BTM lifecycle traces and additional WARN/ERRORs inserted for timeline correlation.
-- Unity regression sweeps on 2025-10-29 refreshed the canonical per-suite logs: `test/test_app/build/one_run_unity.log` (37 tests), `test/test_app_audio/build/one_run_unity.log` (26 tests), and `test/test_app2/build/one_run_unity.log` (45 tests) all show clean passes alongside the earlier `device_test_monitor.log` capture from 2025-10-11.
+- Current canonical per-suite logs: `test/test_bluetooth/build/one_run_unity.log` (46 tests), `test/test_app_audio/build/one_run_unity.log` (35 tests), `test/test_manager/build/one_run_unity.log` (18 tests) — all clean passes.
 - Minimal defensive fixes applied to aid stability and debug:
    - `BTM_SetPowerMode` now uses a zero-initialized local copy of the caller-provided `tBTM_PM_PWR_MD` structure before using it internally and before sending it to the power manager helper. This reduces reliance on caller memory lifetime.
    - `bta_dm_pm_sniff` contains an ACL-existence guard that skips requesting a power-mode change when no ACL is present; it logs the skip and returns a non-success status. This avoids invoking power-mode transitions during disconnect transient windows.
@@ -252,7 +239,7 @@ Note about "all unit tests":
 
 The phrase "all unit tests" in this repository refers to the complete test set consisting of:
 - The host-side CTest bundle (host tests built under `test/host_test` and executed via CTest).
-- The on-device Unity suites: `test_app`, `test_app2`, and `test_app_audio` (these require flashing an ESP32 and capturing Unity output via the provided runner scripts).
+- The on-device Unity suites: `test_bluetooth`, `test_app_audio`, and `test_manager` (these require flashing an ESP32 and capturing Unity output via the provided runner scripts).
 
 When asking to "run all unit tests" you are requesting the host CTest run plus flashing and running the three on-device Unity suites. On-device runs require a physical device (serial port) and explicit confirmation to flash.
 
@@ -488,7 +475,7 @@ Persistent storage and small-file storage
 Testing suggestions
 
 - Host-based unit tests: put parser and business logic behind an interface and mock ESP-IDF APIs. Use the `test/host_test` CMake host-test harness to run fast tests on your development machine.
-- On-device: keep Unity-based tests in `test_app` for integration verification. Run fast host tests during development and run on-device tests before major merges.
+- On-device: Unity-based tests live in `test/test_bluetooth`, `test/test_app_audio`, and `test/test_manager`. Run fast host tests during development and run on-device tests before major merges.
 
 ## Build and Installation Guide
 
@@ -700,14 +687,15 @@ Host-based tests run on your development computer rather than on the ESP32, prov
 
 On-device tests use ESP-IDF's Unity framework integration:
 
-1. Create an on-device test component:
+1. Create an on-device test component (example: `test/test_bluetooth`):
    ```
    esp_bt_audio_source/
-   ├── test_app/              # Separate test application
-   │   ├── main/
-   │   │   └── test_app_main.c
-   │   ├── components/
-   │   └── CMakeLists.txt
+   └── test/
+       └── test_bluetooth/    # One directory per on-device test suite
+           ├── main/
+           │   └── test_app_main.c
+           ├── components/
+           └── CMakeLists.txt
    ```
 
 2. Use ESP-IDF's built-in Unity test framework:
@@ -724,15 +712,15 @@ On-device tests use ESP-IDF's Unity framework integration:
 
 3. Flash and run:
    ```bash
-   cd test_app
+   cd test/test_bluetooth
    idf.py -p PORT flash monitor
    ```
 
 On-device Unity tests (detailed)
-These tests run on the target ESP32 and use ESP-IDF's Unity integration. The `test_app/` application is already configured to run the Unity tests on boot and print results to the serial console.
+These tests run on the target ESP32 and use ESP-IDF's Unity integration. Each suite is in its own directory under `test/` and boots directly into the Unity test runner.
 Runner-first workflow (recommended)
 
-Use the repository runner `tools/run_unity.py` (or the repo helper `tools/flash_and_watch.py` if you prefer) to build, flash, capture and stop on deterministic completion markers. This avoids leaving an interactive `idf.py monitor` running and provides a reproducible `build/one_run_unity.log` capture and CI-friendly exit codes.
+Use `tools/run_unity.py` to build, flash, capture, and stop on the deterministic `TEST_RUN_COMPLETE` marker. This avoids leaving an interactive `idf.py monitor` running and provides a reproducible `build/one_run_unity.log` capture and CI-friendly exit codes.
 
 Quick sequence to run all unit tests (host + on-device)
 
@@ -741,28 +729,24 @@ Quick sequence to run all unit tests (host + on-device)
 cd esp_bt_audio_source/test/host_test
 mkdir -p build_host_tests && cmake -S . -B build_host_tests
 cmake --build build_host_tests -- -j"$(nproc)"
-cd build_host_tests
-ctest --output-on-failure |& tee ctest_full_output.log
+ctest --test-dir build_host_tests --output-on-failure
 
-# 2) From the repository root, run each on-device Unity suite with the canonical runner
-cd /home/phil/work/esp32/esp32_btaudio
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app  --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
+# 2) Run each on-device Unity suite with the canonical runner (from esp_bt_audio_source/):
+conda activate python310
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_app_audio
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_manager
 
-# Each run writes a canonical capture into the respective project's build/one_run_unity.log
+# Each run writes a canonical capture into the respective suite's build/one_run_unity.log
+# and prints "Unity tests passed — N/N passed" on success.
 ```
 
 What to expect
 
-- After flashing, the device boots the test application and the Unity runner executes the registered TEST_CASEs. The runner will stop automatically when it detects a deterministic completion marker and will write the serial capture to `build/one_run_unity.log`.
-- Look for lines like:
+- After flashing, the device boots the test application and the Unity runner executes the registered TEST_CASEs. The runner will stop automatically when it detects the `TEST_RUN_COMPLETE` marker and will write the serial capture to `build/one_run_unity.log`.
+- The runner prints a summary line on exit, e.g.:
 
-   "Running 3 tests..."
-   "[ RUN ] Test Bluetooth connection"
-   "[ PASS ] Test Bluetooth connection"
-   "--- SUMMARY ---"
-   "3 Tests 0 Failures 0 Ignored"
+   `Unity tests passed — 46/46 passed — logfile: test/test_bluetooth/build/one_run_unity.log`
 
 - On failure, Unity prints a failing assertion and the test name. Use the saved capture (`build/one_run_unity.log`) to triage failures.
 
@@ -771,7 +755,7 @@ Running only the build (no flash)
 If you want to build without flashing (for a faster compile-check):
 
 ```bash
-cd esp_bt_audio_source/test/test_app
+cd esp_bt_audio_source/test/test_bluetooth
 idf.py build
 ```
 
@@ -780,7 +764,7 @@ Manual fallback (raw monitor capture)
 If you must capture the monitor manually (not recommended), run from the test app directory and pipe the monitor output into a file. This is less robust than the runner and may leave an interactive monitor running until you manually interrupt it:
 
 ```bash
-cd esp_bt_audio_source/test/test_app
+cd esp_bt_audio_source/test/test_bluetooth
 idf.py -p /dev/ttyUSB0 flash monitor |& tee build/one_run_unity.log
 ```
 
@@ -789,7 +773,7 @@ Note about "all unit tests" and safe on-device runs
 
 "All unit tests" in this repository means the complete test set consisting of:
 - Host-side unit tests (the CTest bundle under `test/host_test`). These run on your development machine and do not require hardware.
-- On-device Unity suites: `test_app`, `test_app2`, and `test_app_audio`. These are Unity-based tests that must be flashed to a physical ESP32 and captured over serial.
+- On-device Unity suites: `test_bluetooth`, `test_app_audio`, and `test_manager`. These are Unity-based tests that must be flashed to a physical ESP32 and captured over serial.
 
 Important safety & reproducibility notes for on-device runs
 - Always source your ESP-IDF environment before building or flashing. Example:
@@ -830,9 +814,11 @@ On-device (build + flash + monitor + capture) — explicit permission required
 2) Build & flash + capture using the in-project runner (recommended):
 
 ```bash
-# from repo root
-python3 esp_bt_audio_source/tools/run_unity.py --port /dev/ttyUSB0 --project-root esp_bt_audio_source/test/test_app --timeout 300
-# Repeat for test_app2 and test_app_audio, updating --project-root accordingly.
+# from esp_bt_audio_source/
+conda activate python310
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_app_audio
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_manager
 ```
 
 Notes on the runner (`esp_bt_audio_source/tools/run_unity.py`):
@@ -861,7 +847,7 @@ which idf.py || echo "idf.py not found"
 which idf.py || (echo "ERROR: idf.py still not found; fix your ESP-IDF export" && exit 1)
 ```
 
-We provide `tools/run_unity.py` to make flashing, monitoring, and extracting Unity test results reproducible and scriptable when present. In this repository the in-tree helper `tools/flash_and_watch.py` is available and is the more-reliable option — prefer that helper or run `run_unity.py` from the repo root when you have an updated copy.
+We provide `tools/run_unity.py` to make flashing, monitoring, and extracting Unity test results reproducible and scriptable. It is the canonical runner for all device suites.
 
 What it does:
 - Runs `idf.py -p <PORT> flash monitor` in the project you point it at.
@@ -872,7 +858,7 @@ What it does:
    - 2 = no Unity summary found (timeout)
    - 3 = error/interrupt
 
-📌 **Important:** Unity lives in the `test_app/` project. If you run the helper from the production app root, it will happily flash `esp_bt_audio_source` and you will *not* see any Unity output. Always point the runner at `test_app/` (either by changing directories or using `--project-root`).
+📌 **Important:** Always pass `-r test/<suite>` so the runner flashes the correct test image. Running against the production app root will not produce any Unity output.
 
 Unity quickstart (host + on-device)
 -----------------------------------
@@ -886,70 +872,28 @@ Unity quickstart (host + on-device)
    ```
    The binaries land in `build_host_tests/` (for example `test_audio_processor`). JUnit/CTest logs remain in the same directory for CI artifacts.
 
-2. **Bluetooth Unity firmware (`test_app`)**
+2. **Bluetooth Unity firmware (`test_bluetooth`)**
    ```bash
-   # build from inside the test app directory
-   cd esp_bt_audio_source/test/test_app
-   idf.py build
-
-   # Preferred (robust): run from the repository root using the repo helper that exists
-   cd /home/phil/work/esp32/esp32_btaudio
-   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app --port /dev/ttyUSB0 --timeout 300
-
-   # Alternative: run from inside the test_app directory (note the corrected relative path)
-   # python3 ../../tools/flash_and_watch.py --project-dir . --port /dev/ttyUSB0 --timeout 300
+   cd esp_bt_audio_source
+   python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
    ```
-   The runner flashes `build/esp_bt_audio_source_test.bin`, streams Unity output, and saves the canonical capture to `test_app/build/one_run_unity.log`.
+   Writes the capture to `test/test_bluetooth/build/one_run_unity.log`.
 
-3. **Integration Unity firmware (`test_app2`)**
+3. **Manager Unity firmware (`test_manager`)**
    ```bash
-   cd esp_bt_audio_source/test/test_app2
-   idf.py build
-      python3 ../tools/run_unity.py --project-root test_app2 --port /dev/ttyUSB0 --timeout 300
+   cd esp_bt_audio_source
+   python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_manager
    ```
-   Notes:
-   - The runner flashes `build/esp_bt_audio_source_test2.bin`, streams Unity output, and writes the capture to `test_app2/build/one_run_unity.log`.
-   - `test_app2` now prints the canonical `"<tests> Tests <failures> Failures <ignored> Ignored"` line, so the helper exits with `0` on success and `1` if any tests fail.
-      - Bump `--timeout` as the suite grows (300 seconds comfortably covers the current run). Run `idf.py fullclean` if you add new sources and see stale behaviour.
-   - To inspect the tail of the latest run: `tail -n 30 test_app2/build/one_run_unity.log`.
+   Writes the capture to `test/test_manager/build/one_run_unity.log`.
 
 4. **Audio Unity firmware (`test_app_audio`)**
    ```bash
-   # build from the test app directory
-   cd esp_bt_audio_source/test/test_app_audio
-   idf.py build
-
-   # Preferred (robust): run from the repository root using the repo helper that exists
-   cd /home/phil/work/esp32/esp32_btaudio
-   python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
-
-   # Alternative: run from inside the test_app_audio directory (note the corrected relative path)
-   # python3 ../../tools/flash_and_watch.py --project-dir . --port /dev/ttyUSB0 --timeout 300
-
-   # If you have an up-to-date run_unity.py at the repo root, you can also use it:
-   # python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
+   cd esp_bt_audio_source
+   python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_app_audio
    ```
-   This image (`build/esp_bt_audio_source_audio_test.bin`) exercises the audio/I²S suites. The log is written to `test_app_audio/build/one_run_unity.log`.
+   Writes the capture to `test/test_app_audio/build/one_run_unity.log`.
 
-Canonical sequence:
-
-```bash
-# 1. Build the Unity firmware once (incremental rebuilds are cheap)
-cd esp_bt_audio_source/test/test_app
-idf.py build
-
-# 2. Flash + monitor using the locked-down runner
-python3 ../tools/run_unity.py --port /dev/ttyUSB0 --timeout 300
-```
-
-If you prefer to stay at the repository root, pass the test app directory explicitly:
-
-```bash
-cd esp_bt_audio_source
-python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout 300
-```
-
-The script writes the canonical serial capture to `build/one_run_unity.log` inside the selected project. In CI, run the script and fail the job when the exit code is non-zero; upload `build/one_run_unity.log` as an artifact for triage.
+The script builds the suite, flashes the device, captures serial output, and exits automatically when it sees `TEST_RUN_COMPLETE`. In CI, fail the job when the exit code is non-zero; upload `build/one_run_unity.log` as an artifact for triage.
 
 ### Gathering Unity summaries (canonical workflow)
 
@@ -987,16 +931,14 @@ which idf.py || (echo "ERROR: idf.py not found on PATH; source export.sh and try
 ls -l /dev/ttyUSB* || ls -l /dev/ttyACM* || echo "No serial device found; check connection"
 ```
 
-2) Run the runner from the repository root and point it explicitly at the test project. The runner watches the serial output for a Unity summary marker and exits automatically.
+2) Run the runner from `esp_bt_audio_source/`. The runner builds, flashes, and watches for the `TEST_RUN_COMPLETE` marker.
 
 ```bash
-# From repo root (recommended)
-cd /home/phil/work/esp32/esp32_btaudio
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app --port /dev/ttyUSB0 --timeout 300
-
-# Run other suites the same way
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0 --timeout 300
-python3 tools/run_unity.py --project-root esp_bt_audio_source/test/test_app_audio --port /dev/ttyUSB0 --timeout 300
+cd esp_bt_audio_source
+conda activate python310
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_app_audio
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_manager
 ```
 
 Notes:
@@ -1007,18 +949,13 @@ Notes:
    - 2 = timeout / no summary detected
    - 3 = error / interrupt
 
-Alternative helper (requires explicit ESP-IDF env)
-
-```bash
-. $HOME/esp/esp-idf/export.sh
-python3 tools/flash_and_watch.py --project-dir esp_bt_audio_source/test/test_app2 --port /dev/ttyUSB0
-```
-
-This helper also writes the canonical monitor capture to `test_app*/build/one_run_unity.log` and will exit when it sees the Unity summary.
+Notes on the runner (`tools/run_unity.py`):
+- Exit codes: 0 = all tests passed, 1 = failures, 2 = timeout/no summary, 3 = other error.
+- Use `--allow-fallback` only for diagnostic runs against unknown binaries; without it, a timeout returns rc=2 immediately so CI fails loudly.
 
 3) idf.py stdout captures (optional)
 
-- CI runs or scripted idf.py invocations sometimes leave `idf_py_stdout_output_*` captures under `esp_bt_audio_source/test/test_app/build/log/`. Include these only if you use the runner or CI that produces them.
+- CI runs or scripted idf.py invocations sometimes leave `idf_py_stdout_output_*` captures under each suite's `build/log/`. Include these only if you use the runner or CI that produces them.
 
 4) Canonical aggregation (recommended)
 
@@ -1026,11 +963,10 @@ This helper also writes the canonical monitor capture to `test_app*/build/one_ru
 
 ```bash
 grep -E "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored" \
-  esp_bt_audio_source/test/test_app/build/one_run_unity.log \
-  esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log \
-  esp_bt_audio_source/device_test_monitor.log \\
-  esp_bt_audio_source/test/test_app/build/log/idf_py_stdout_output_* \
-  test/host_test/**/Testing/Temporary/LastTest.log || true
+  test/test_bluetooth/build/one_run_unity.log \
+  test/test_app_audio/build/one_run_unity.log \
+  test/test_manager/build/one_run_unity.log \
+  test/host_test/build_host_tests/Testing/Temporary/LastTest.log || true
 ```
 
 - Recommended: run the small aggregator below. It scans only the canonical artifact locations and writes a JSON summary to `tmp/canonical_unity_summary.json` in the repository root. The JSON contains the aggregated totals and a per-file breakdown.
@@ -1042,18 +978,10 @@ root=os.path.abspath('.')
 pattern=re.compile(r"(\d+)\s+Tests\s+(\d+)\s+Failures\s+(\d+)\s+Ignored")
 paths=[]
 # canonical device logs
-paths.append(os.path.join(root,'esp_bt_audio_source','test_app','build','one_run_unity.log'))
-paths.append(os.path.join(root,'esp_bt_audio_source','test_app_audio','build','one_run_unity.log'))
-paths.append(os.path.join(root,'esp_bt_audio_source','device_test_monitor.log'))
-# idf.py captured logs (optional)
-logdir=os.path.join(root,'esp_bt_audio_source','test_app','build','log')
-if os.path.isdir(logdir):
-   for fn in os.listdir(logdir):
-      if fn.startswith('idf_py_stdout_output_'):
-         paths.append(os.path.join(logdir,fn))
-# host LastTest logs - common build dirs used in this repo
-paths.append(os.path.join(root,'esp_bt_audio_source','test','host_test','build_host_tests','Testing','Temporary','LastTest.log'))
-paths.append(os.path.join(root,'esp_bt_audio_source','test','host_test','build-host','Testing','Temporary','LastTest.log'))
+paths.append(os.path.join(root,'test','test_bluetooth','build','one_run_unity.log'))
+paths.append(os.path.join(root,'test','test_app_audio','build','one_run_unity.log'))
+paths.append(os.path.join(root,'test','test_manager','build','one_run_unity.log'))
+# host LastTest logs
 paths.append(os.path.join(root,'test','host_test','build_host_tests','Testing','Temporary','LastTest.log'))
 # CI artifact test-results.xml (optional)
 artdir=os.path.join(root,'.github','artifacts')
@@ -1131,32 +1059,32 @@ Use the exact sequence below to run Unity tests reliably and capture the canonic
 1) Build (recommended: clean when iterating on instrumentation)
 ```bash
 source $HOME/esp/esp-idf/export.sh
-cd test_app
+cd test/test_bluetooth
 idf.py fullclean   # optional but useful when changing instrumented files
 idf.py build
 ```
 
-2) Flash + capture using the project's locked-down runner (preferred)
+2) Flash + capture using the runner (from `esp_bt_audio_source/`):
 ```bash
-# from repository root
-source $HOME/esp/esp-idf/export.sh
-python3 tools/run_unity.py --project-root test_app --port /dev/ttyUSB0 --timeout 300
+conda activate python310
+python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
+# repeat for test_app_audio and test_manager
 ```
-The runner flashes the image, captures serial to `test_app/build/one_run_unity.log`, watches for the Unity summary, and exits automatically (exit codes: 0=pass, 1=fail, 2=timeout, 3=error/interrupt).
+The runner builds, flashes, captures serial to `test/<suite>/build/one_run_unity.log`, and exits automatically (exit codes: 0=pass, 1=fail, 2=timeout, 3=error/interrupt).
 
 - Quick checks after a run
 - Search for Unity summary markers:
 ```bash
-grep -n "--- SUMMARY ---\|Tests:\|FAIL" test_app/build/one_run_unity.log || true
+grep -n "--- SUMMARY ---\|Tests:\|FAIL" test/test_bluetooth/build/one_run_unity.log || true
 ```
 - Search for instrumentation (example `DIAG:`):
 ```bash
-grep -n "DIAG:" test_app/build/one_run_unity.log || true
+grep -n "DIAG:" test/test_bluetooth/build/one_run_unity.log || true
 ```
 
 Common pitfalls & tips
-- Wrong project: running the runner from the production app root will flash the wrong image and you won't see Unity output. Always point `--project-root` at `test_app` (or `cd test_app` first).
-- Stale builds: if your instrumentation doesn't appear in the serial log, run `idf.py fullclean` before `idf.py build` to force recompilation of edited files.
+- Wrong project: always pass `-r test/<suite>` so the runner flashes the correct image.
+- Stale builds: if your instrumentation doesn't appear in the serial log, run `idf.py fullclean` in the suite directory before re-running.
 - Serial port: verify the correct device (e.g., `/dev/ttyUSB0` vs `/dev/ttyACM0`) using `dmesg` or `ls /dev/ttyUSB*`.
 - Monitor behavior: `idf.py monitor` is interactive; prefer the runner or `timeout` for unattended runs.
 
@@ -1164,20 +1092,17 @@ Common pitfalls & tips
 Manual fallback (if you prefer raw commands)
 -----------------------------------------
 
-If you want to run the steps manually, here's the canonical sequence:
+If you must capture manually (not recommended):
 
 ```bash
-# build the test_app
-cd test_app
-idf.py build
-# flash and capture monitor to the canonical file
-idf.py -p /dev/ttyUSB0 flash monitor |& tee ../build/one_run_unity.log
+cd test/test_bluetooth
+idf.py -p /dev/ttyUSB0 flash monitor |& tee build/one_run_unity.log
 ```
 
 Then search the canonical log for Unity summary markers:
 
 ```bash
-grep -n "--- SUMMARY ---\|Tests:\|FAILED\|OK" -i build/one_run_unity.log || true
+grep -n "--- SUMMARY ---\|Tests:\|FAILED\|TEST_RUN_COMPLETE" -i build/one_run_unity.log || true
 ```
 
 
@@ -1187,7 +1112,7 @@ CI and automated test runners
 
 Troubleshooting
 
-- No tests appear on the console: ensure you flashed the `test_app` binary (the main firmware won't run the Unity tests unless you run the test application).
+- No tests appear on the console: ensure you flashed a test suite binary (the main firmware won't run Unity tests; always use `-r test/<suite>` with the runner).
 - Build failures referencing missing ESP-IDF symbols: ensure your ESP-IDF environment is sourced (run `. $HOME/esp/esp-idf/export.sh`) and you're using a compatible IDF version.
 - Serial monitor shows a crash early during boot: capture the logs, increase the monitor baud rate to match `CONFIG_ESP_CONSOLE_UART_BAUDRATE` in your `sdkconfig` (default 115200), and inspect stack traces. You can also use `idf.py monitor` with `--monitor` options to decode backtraces.
 
@@ -1361,9 +1286,7 @@ See the [main project README](/home/phil/work/esp32/esp32_btaudio/README.md) for
 
 Open Work
 ---------
-- Integrate the real I2S capture path into `main/bt_streaming_manager.c` (replace the sine-wave stub guarded by the TODO at line 109). The synthetic generator now runs on the worker queue, but the Bluetooth task still needs real capture data.
 - Finish on-device pairing soak tests to confirm persistence across reboot and solidify `EVENT|PAIR|...` ordering; promote pairing management from “in progress” once those hardware runs succeed.
-- Extend host mocks/tests to cover connection drops and timeout cases, and complete allocator timeline analysis using `build/pairing_e2_logs/serial.log` to close out the diagnostics backlog.
 - Add CI coverage that runs host tests and publishes Unity logs, then document a pairing-log triage guide after the hardware validation is wrapped.
 
 Developer note — deprecated init path
