@@ -644,33 +644,48 @@ def main():
         allow_fallback=args.allow_fallback,
     )
 
-    if rc != 0 and os.path.isfile(logfile):
+    total_count = None
+    fail_count = None
+
+    if os.path.isfile(logfile):
         try:
             with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
                 txt = fh.read()
             clean_text = ANSI_ESCAPE_RE.sub('', txt)
             m = TEST_RUN_COMPLETE_RE.search(clean_text)
             if m:
-                failures = int(m.group(2))
-                rc = 1 if failures else 0
-            else:
-                if AUTORUN_COMPLETE_RE.search(clean_text):
-                    fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
-                    print(f"[run_unity DEBUG] Post-check: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
+                total_count = int(m.group(1))
+                fail_count = int(m.group(2))
+                if rc != 0:
                     rc = 1 if fail_count else 0
-                else:
-                    result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
-                    if result_matches:
-                        last_match = result_matches[-1]
-                        failures = int(last_match.group('fail'))
-                        rc = 1 if failures else 0
+            else:
+                result_matches = list(UNITY_RESULT_RE.finditer(clean_text))
+                if result_matches:
+                    last = result_matches[-1]
+                    total_count = int(last.group('total'))
+                    fail_count = int(last.group('fail'))
+                    if rc != 0:
+                        rc = 1 if fail_count else 0
+                elif AUTORUN_COMPLETE_RE.search(clean_text):
+                    fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
+                    pass_count = len(re.findall(r":\s*PASS\b", clean_text, re.IGNORECASE))
+                    total_count = pass_count + fail_count
+                    print(f"[run_unity DEBUG] Post-check: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
+                    if rc != 0:
+                        rc = 1 if fail_count else 0
         except Exception:
             pass
 
+    def _count_suffix():
+        if total_count is not None and fail_count is not None:
+            passed = total_count - fail_count
+            return f" — {passed}/{total_count} passed"
+        return ""
+
     if rc == 0:
-        print(f"Unity tests passed — logfile: {logfile}")
+        print(f"Unity tests passed{_count_suffix()} — logfile: {logfile}")
     elif rc == 1:
-        print(f"Unity tests had failures — logfile: {logfile}")
+        print(f"Unity tests had failures{_count_suffix()} — logfile: {logfile}")
     elif rc == 2:
         print(f"No Unity summary found within timeout; logfile: {logfile}")
     else:
