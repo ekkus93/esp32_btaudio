@@ -21,7 +21,7 @@ mocks.
 
 ## INFRA-1 — Directory structure and runner scaffold
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High (everything else depends on this)
 
 ### Background
@@ -33,7 +33,7 @@ to `tools/run_unity.py`.
 
 ### Tasks
 
-- [ ] **INFRA-1a** Create `test/laptop_bt_tests/` directory with the following
+- [x] **INFRA-1a** Create `test/laptop_bt_tests/` directory with the following
   layout (all files listed here are stubs until the corresponding section
   tasks fill them in):
   ```
@@ -52,7 +52,7 @@ to `tools/run_unity.py`.
   └── test_e2e.py          # E2E-1
   ```
 
-- [ ] **INFRA-1b** `pytest.ini` content:
+- [x] **INFRA-1b** `pytest.ini` content:
   ```ini
   [pytest]
   markers =
@@ -63,7 +63,7 @@ to `tools/run_unity.py`.
   log_cli_level = INFO
   ```
 
-- [ ] **INFRA-1c** `requirements.txt`:
+- [x] **INFRA-1c** `requirements.txt`:
   ```
   pydbus>=0.6.0
   pulsectl>=22.0.0
@@ -74,7 +74,7 @@ to `tools/run_unity.py`.
   conda run -n python310 pip install pydbus pulsectl
   ```
 
-- [ ] **INFRA-1d** Create `tools/run_laptop_bt_tests.sh`:
+- [x] **INFRA-1d** Create `tools/run_laptop_bt_tests.sh`:
   ```bash
   #!/usr/bin/env bash
   # Run all laptop-BT integration tests.
@@ -89,7 +89,7 @@ to `tools/run_unity.py`.
   ```
   Make it executable: `chmod +x tools/run_laptop_bt_tests.sh`
 
-- [ ] **INFRA-1e** Verify the scaffold runs (no test files yet = 0 collected,
+- [x] **INFRA-1e** Verify the scaffold runs (no test files yet = 0 collected,
   no errors):
   ```bash
   conda run -n python310 python -m pytest test/laptop_bt_tests/ --collect-only
@@ -99,7 +99,7 @@ to `tools/run_unity.py`.
 
 ## INFRA-2 — `laptop_bt.py`: Laptop BlueZ controller
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High
 
 ### Background
@@ -117,18 +117,18 @@ must not shell out to `bluetoothctl` directly.
 
 ### Tasks
 
-- [ ] **INFRA-2a** Implement `LaptopBT.__init__(adapter_mac)`:
+- [x] **INFRA-2a** Implement `LaptopBT.__init__(adapter_mac)`:
   - Accept `adapter_mac` defaulting to `"E8:FB:1C:25:E4:C2"`
   - Resolve D-Bus object path from adapter MAC
   - Store references to `Adapter1` proxy and `AgentManager1`
 
-- [ ] **INFRA-2b** Implement context manager (`__enter__` / `__exit__`):
+- [x] **INFRA-2b** Implement context manager (`__enter__` / `__exit__`):
   - `__enter__`: power on adapter, register pairing agent, set pairable=True,
     set discoverable=True with timeout 0 (persist)
   - `__exit__`: deregister agent, set discoverable=False, set pairable=False
   - Must restore prior state even if a test raises
 
-- [ ] **INFRA-2c** Implement `LaptopBT.register_agent(auto_accept=True)`:
+- [x] **INFRA-2c** Implement `LaptopBT.register_agent(auto_accept=True)`:
   - Register a `SimpleAgent` on `org.bluez.Agent1` at a well-known D-Bus path
     (`/test/agent`)
   - `SimpleAgent.RequestConfirmation(device, passkey)`: if `auto_accept=True`
@@ -139,38 +139,38 @@ must not shell out to `bluetoothctl` directly.
   - Register as capability `"NoInputNoOutput"` with `AgentManager1.RegisterAgent`
   - Call `AgentManager1.RequestDefaultAgent` to make it the system default
 
-- [ ] **INFRA-2d** Implement `LaptopBT.set_discoverable(on: bool, timeout_s: int = 0)`:
+- [x] **INFRA-2d** Implement `LaptopBT.set_discoverable(on: bool, timeout_s: int = 0)`:
   - Sets `Discoverable` and `DiscoverableTimeout` on `Adapter1`
   - Returns old value so callers can restore if needed
 
-- [ ] **INFRA-2e** Implement `LaptopBT.get_paired_devices() -> list[dict]`:
+- [x] **INFRA-2e** Implement `LaptopBT.get_paired_devices() -> list[dict]`:
   - Enumerate `org.freedesktop.DBus.ObjectManager` under `/org/bluez`
   - Return list of `{"mac": ..., "name": ..., "trusted": ..., "connected": ...}`
     for devices that have `Paired=True`
 
-- [ ] **INFRA-2f** Implement `LaptopBT.remove_device(mac: str)`:
+- [x] **INFRA-2f** Implement `LaptopBT.remove_device(mac: str)`:
   - Call `Adapter1.RemoveDevice(device_path)` for the given MAC
   - Used in test teardown to unpair the ESP32 from the laptop side
 
-- [ ] **INFRA-2g** Implement `LaptopBT.is_connected(mac: str) -> bool`:
+- [x] **INFRA-2g** Implement `LaptopBT.is_connected(mac: str) -> bool`:
   - Returns `Device1.Connected` for the given MAC, or `False` if device not
     found in object manager
 
-- [ ] **INFRA-2h** Implement `LaptopBT.wait_for_connect(mac: str, timeout_s: float = 30.0) -> bool`:
+- [x] **INFRA-2h** Implement `LaptopBT.wait_for_connect(mac: str, timeout_s: float = 30.0) -> bool`:
   - Polls `is_connected(mac)` every 0.5 s until True or timeout
   - Returns True on success, False on timeout
 
-- [ ] **INFRA-2i** Implement `LaptopBT.adapter_mac` property returning the
+- [x] **INFRA-2i** Implement `LaptopBT.adapter_mac` property returning the
   resolved adapter MAC address (used by tests to feed to ESP32 CONNECT command)
 
-- [ ] **INFRA-2j** Smoke-test: `conda run -n python310 python -c "from laptop_bt import LaptopBT; print(LaptopBT().adapter_mac)"`
+- [x] **INFRA-2j** Smoke-test: `conda run -n python310 python -c "from laptop_bt import LaptopBT; print(LaptopBT().adapter_mac)"`
   should print `E8:FB:1C:25:E4:C2` without raising.
 
 ---
 
 ## INFRA-3 — `esp32_serial.py`: ESP32 serial protocol driver
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High
 
 ### Background
@@ -212,41 +212,41 @@ Key command→response pairs needed by tests:
 
 ### Tasks
 
-- [ ] **INFRA-3a** Implement `ESP32Serial.__init__(port, baud=115200, timeout=2.0)`:
+- [x] **INFRA-3a** Implement `ESP32Serial.__init__(port, baud=115200, timeout=2.0)`:
   - Opens serial port; drains any pending input
   - Stores port/baud for log output
 
-- [ ] **INFRA-3b** Implement context manager (`__enter__` / `__exit__`):
+- [x] **INFRA-3b** Implement context manager (`__enter__` / `__exit__`):
   - `__exit__` closes the serial port unconditionally
 
-- [ ] **INFRA-3c** Implement `send(command: str)`:
+- [x] **INFRA-3c** Implement `send(command: str)`:
   - Writes `command + "\r\n"` encoded as UTF-8
   - Logs `TX: <command>` at DEBUG level
 
-- [ ] **INFRA-3d** Implement `readline(timeout_s: float = None) -> str`:
+- [x] **INFRA-3d** Implement `readline(timeout_s: float = None) -> str`:
   - Reads until `\n`, strips ANSI escapes and trailing whitespace
   - Returns empty string on timeout; never raises on partial reads
 
-- [ ] **INFRA-3e** Implement `send_and_expect(command: str, prefix: str, timeout_s: float = 5.0) -> str`:
+- [x] **INFRA-3e** Implement `send_and_expect(command: str, prefix: str, timeout_s: float = 5.0) -> str`:
   - Sends command, reads lines until a line starts with `prefix` or timeout
   - Returns the matching line on success
   - Raises `AssertionError` with full log if no match within timeout
   - Logs all RX lines at DEBUG level
 
-- [ ] **INFRA-3f** Implement `wait_for_line(prefix: str, timeout_s: float) -> str`:
+- [x] **INFRA-3f** Implement `wait_for_line(prefix: str, timeout_s: float) -> str`:
   - Reads lines (no TX) until one starts with `prefix`
   - Used to wait for asynchronous events (e.g. `EVENT|PAIR|CONFIRM`)
   - Returns the matching line; raises `TimeoutError` on expiry
 
-- [ ] **INFRA-3g** Implement `drain(seconds: float = 0.2)`:
+- [x] **INFRA-3g** Implement `drain(seconds: float = 0.2)`:
   - Reads and discards all available input for `seconds`; used in test
     setup to flush boot log lines
 
-- [ ] **INFRA-3h** Implement `wait_for_boot(timeout_s: float = 15.0)`:
+- [x] **INFRA-3h** Implement `wait_for_boot(timeout_s: float = 15.0)`:
   - Reads until the line `"esp-idf"` or `"I2S"` or `"CMD>"` appears
   - Used after a `RESET` to confirm the device has rebooted
 
-- [ ] **INFRA-3i** Implement `parse_response(line: str) -> dict`:
+- [x] **INFRA-3i** Implement `parse_response(line: str) -> dict`:
   - Splits `STATUS|COMMAND|RESULT[|DATA]` into a dict
   - `{"status": …, "command": …, "result": …, "data": …}`
   - Returns `{"raw": line}` for lines that don't match the protocol
@@ -255,7 +255,7 @@ Key command→response pairs needed by tests:
 
 ## INFRA-4 — `conftest.py`: pytest fixtures and session setup
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High
 
 ### Background
@@ -266,18 +266,18 @@ for every test.
 
 ### Tasks
 
-- [ ] **INFRA-4a** Session-scoped fixture `laptop_bt_adapter`:
+- [x] **INFRA-4a** Session-scoped fixture `laptop_bt_adapter`:
   - Constructs `LaptopBT` and enters the context once for the entire test
     session
   - Yields the `LaptopBT` instance; on teardown exits context (restores
     discoverable=False, deregisters agent)
 
-- [ ] **INFRA-4b** Session-scoped fixture `esp32`:
+- [x] **INFRA-4b** Session-scoped fixture `esp32`:
   - Opens `ESP32Serial("/dev/ttyUSB0")` once; yields it
   - Calls `drain()` at start to flush any residual boot output
   - Closes on teardown
 
-- [ ] **INFRA-4c** Function-scoped fixture `clean_pair_state(esp32, laptop_bt_adapter)`:
+- [x] **INFRA-4c** Function-scoped fixture `clean_pair_state(esp32, laptop_bt_adapter)`:
   - Before each test: sends `UNPAIR_ALL` to ESP32, then calls
     `laptop_bt_adapter.remove_device(esp32_mac)` if the ESP32 is already
     paired from a previous run
@@ -285,11 +285,11 @@ for every test.
   - `esp32_mac` is read from the ESP32 at session start via a helper that
     scans for the device or reads from config
 
-- [ ] **INFRA-4d** Module-level `pytestmark` helper: each test file applies
+- [x] **INFRA-4d** Module-level `pytestmark` helper: each test file applies
   `@pytest.mark.laptop_bt` so `pytest -m "not laptop_bt"` skips the whole
   suite in environments without the hardware.
 
-- [ ] **INFRA-4e** `conftest.py` top of file: skip the entire session with a
+- [x] **INFRA-4e** `conftest.py` top of file: skip the entire session with a
   clear message if `/dev/ttyUSB0` is not present or if `bluetoothctl show`
   fails (guard against CI environments with no hardware):
   ```python
@@ -299,7 +299,7 @@ for every test.
                       allow_module_level=True)
   ```
 
-- [ ] **INFRA-4f** Add `ESP32_MAC` constant to `conftest.py` holding the
+- [x] **INFRA-4f** Add `ESP32_MAC` constant to `conftest.py` holding the
   hardcoded ESP32 adapter MAC (`A0:B7:65:2B:E6:5C`, read from flash log
   `MAC: a0:b7:65:2b:e6:5c`).  Tests use this to tell the laptop which
   device to trust/remove.
