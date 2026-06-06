@@ -530,7 +530,7 @@ frames.
 
 ## CTRL-1 — Control commands during live connection
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** Medium  
 **File:** `test/laptop_bt_tests/test_control.py`
 
@@ -541,32 +541,32 @@ hardware state.
 
 ### Tasks
 
-- [ ] **CTRL-1a** `test_status_shows_connected_bt_state`:
+- [x] **CTRL-1a** `test_status_shows_connected_bt_state`:
   - While connected, send `STATUS`; parse DATA
   - Assert DATA contains `BT_STATE=CONNECTED` or similar connected indicator
 
-- [ ] **CTRL-1b** `test_volume_set_persists_in_status`:
+- [x] **CTRL-1b** `test_volume_set_persists_in_status`:
   - Send `VOLUME 42`; assert `OK|VOLUME|SET|42`
   - Send `AUDIO_STATUS`; assert DATA reflects the new volume value
 
-- [ ] **CTRL-1c** `test_volume_out_of_range_rejected`:
+- [x] **CTRL-1c** `test_volume_out_of_range_rejected`:
   - Send `VOLUME 101`; assert `ERR|VOLUME|OUT_OF_RANGE`
   - Send `VOLUME -1`; assert `ERR|VOLUME|…`
 
-- [ ] **CTRL-1d** `test_mute_unmute_cycle_while_streaming`:
+- [x] **CTRL-1d** `test_mute_unmute_cycle_while_streaming`:
   - Start stream; send `MUTE`; assert `OK|MUTE|SET`
   - Send `UNMUTE`; assert `OK|UNMUTE|CLEARED`
   - Assert still streaming after unmute (AUDIO_STATUS RING_USED > 0)
 
-- [ ] **CTRL-1e** `test_mem_command_returns_stats`:
+- [x] **CTRL-1e** `test_mem_command_returns_stats`:
   - Send `MEM`; assert `OK|MEM|STATS|…`
   - Parse DRAM value; assert > 0 (confirms heap introspection works)
 
-- [ ] **CTRL-1f** `test_audio_autostart_get_reflects_current_setting`:
+- [x] **CTRL-1f** `test_audio_autostart_get_reflects_current_setting`:
   - Send `AUDIO_AUTOSTART get`; assert `OK|AUDIO_AUTOSTART|STATUS|…`
   - Captures current value; does not change it (read-only probe)
 
-- [ ] **CTRL-1g** `test_version_command_returns_non_empty`:
+- [x] **CTRL-1g** `test_version_command_returns_non_empty`:
   - Send `VERSION`; assert `OK|VERSION|…` with a non-empty result field
   - Basic smoke-test that the firmware self-identifies
 
