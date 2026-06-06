@@ -187,7 +187,7 @@ def tail_process_output(proc, stdout_stream, logfile_path, stop_event, summary_e
                 break
 
 
-def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None = None, spiffs_offset_arg: str | None = None, force_spiffs: bool = False):
+def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None = None, spiffs_offset_arg: str | None = None, force_spiffs: bool = False, allow_fallback: bool = False):
     logfile = os.path.join(project_root, "build", "one_run_unity.log")
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
     # Start with a clean logfile so stale watchdog strings from prior runs don't trigger detection.
@@ -483,61 +483,71 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
                     proc.terminate()
                 except Exception:
                     pass
-                # Timeout fallback: inspect logfile for numeric results or deterministic markers
-                try:
-                    max_wait = 10.0
-                    stable_for = 1.0
-                    last_size = -1
-                    stable_start = None
-                    t_wait_start = time.time()
-                    while (time.time() - t_wait_start) < max_wait:
-                        try:
-                            size = os.path.getsize(logfile)
-                        except Exception:
-                            size = 0
-                        if size == last_size:
-                            if stable_start is None:
-                                stable_start = time.time()
-                            elif (time.time() - stable_start) >= stable_for:
-                                break
-                        else:
-                            last_size = size
-                            stable_start = None
-                        time.sleep(0.2)
+                # Timeout fallback: inspect logfile for numeric results or deterministic markers.
+                # Root cause: the real-time parser depends on TEST_RUN_COMPLETE_RE,
+                # AUTORUN_COMPLETE_RE, or RUN_COMPLETE_RE + boot_event to set summary_event.
+                # If none of these arrive within `timeout` seconds the run is considered lost.
+                # All current device test apps emit TEST_RUN_COMPLETE; this fallback exists
+                # only as a last resort for legacy / externally-built test images.  Off by
+                # default so CI detects broken real-time paths immediately.  Enable with
+                # --allow-fallback for diagnostic runs against unknown binaries.
+                if allow_fallback:
+                    try:
+                        max_wait = 10.0
+                        stable_for = 1.0
+                        last_size = -1
+                        stable_start = None
+                        t_wait_start = time.time()
+                        while (time.time() - t_wait_start) < max_wait:
+                            try:
+                                size = os.path.getsize(logfile)
+                            except Exception:
+                                size = 0
+                            if size == last_size:
+                                if stable_start is None:
+                                    stable_start = time.time()
+                                elif (time.time() - stable_start) >= stable_for:
+                                    break
+                            else:
+                                last_size = size
+                                stable_start = None
+                            time.sleep(0.2)
 
-                    with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
-                        text = fh.read()
-                    clean_text = ANSI_ESCAPE_RE.sub("", text)
+                        with open(logfile, 'r', encoding='utf-8', errors='replace') as fh:
+                            text = fh.read()
+                        clean_text = ANSI_ESCAPE_RE.sub("", text)
 
-                    result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
-                    if result_matches:
-                        last_match = result_matches[-1]
-                        failures = int(last_match.group('fail'))
-                        print(f"[run_unity DEBUG] Timeout fallback: numeric UNITY result found -> failures={failures}", file=sys.stderr)
-                        return (1 if failures else 0), logfile
+                        result_matches = [m for m in UNITY_RESULT_RE.finditer(clean_text)]
+                        if result_matches:
+                            last_match = result_matches[-1]
+                            failures = int(last_match.group('fail'))
+                            print(f"[run_unity DEBUG] Timeout fallback: numeric UNITY result found -> failures={failures}", file=sys.stderr)
+                            return (1 if failures else 0), logfile
 
-                    m = TEST_RUN_COMPLETE_RE.search(clean_text)
-                    if m:
-                        total = int(m.group(1))
-                        failures = int(m.group(2))
-                        ignored = int(m.group(3))
-                        print(f"[run_unity DEBUG] Timeout fallback: TEST_RUN_COMPLETE marker found -> total={total} failures={failures} ignored={ignored}", file=sys.stderr)
-                        return (1 if failures else 0), logfile
+                        m = TEST_RUN_COMPLETE_RE.search(clean_text)
+                        if m:
+                            total = int(m.group(1))
+                            failures = int(m.group(2))
+                            ignored = int(m.group(3))
+                            print(f"[run_unity DEBUG] Timeout fallback: TEST_RUN_COMPLETE marker found -> total={total} failures={failures} ignored={ignored}", file=sys.stderr)
+                            return (1 if failures else 0), logfile
 
-                    if AUTORUN_COMPLETE_RE.search(clean_text):
+                        if AUTORUN_COMPLETE_RE.search(clean_text):
+                            fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
+                            print(f"[run_unity DEBUG] Timeout fallback: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
+                            return (1 if fail_count else 0), logfile
+
+                        pass_count = len(re.findall(r":\s*PASS\b", clean_text, re.IGNORECASE))
                         fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
-                        print(f"[run_unity DEBUG] Timeout fallback: AUTORUN_COMPLETE marker seen -> fail_count={fail_count}", file=sys.stderr)
-                        return (1 if fail_count else 0), logfile
-
-                    pass_count = len(re.findall(r":\s*PASS\b", clean_text, re.IGNORECASE))
-                    fail_count = len(re.findall(r":\s*FAIL\b", clean_text, re.IGNORECASE))
-                    print(f"[run_unity DEBUG] Timeout fallback: per-test counts -> pass_count={pass_count} fail_count={fail_count}", file=sys.stderr)
-                    if fail_count:
-                        return 1, logfile
-                    if pass_count:
-                        return 0, logfile
-                except Exception:
-                    pass
+                        print(f"[run_unity DEBUG] Timeout fallback: per-test counts -> pass_count={pass_count} fail_count={fail_count}", file=sys.stderr)
+                        if fail_count:
+                            return 1, logfile
+                        if pass_count:
+                            return 0, logfile
+                    except Exception:
+                        pass
+                else:
+                    print("[run_unity DEBUG] Timeout reached and --allow-fallback not set; treating as missing summary (rc=2)", file=sys.stderr)
 
                 return 2, logfile
 
@@ -618,6 +628,10 @@ def main():
     ap.add_argument('--spiffs-image', help='Explicit path to a spiffs.bin image to flash before running monitor')
     ap.add_argument('--spiffs-offset', help='Explicit offset (e.g. 0x1c0000) where to write the spiffs image')
     ap.add_argument('--force-spiffs', action='store_true', help='Force attempting a SPIFFS flash when --spiffs-image is provided; if offset cannot be determined, will skip and log a message')
+    ap.add_argument('--allow-fallback', action='store_true',
+                    help='Enable timeout fallback log-scraping when no real-time completion '
+                         'marker arrives within --timeout seconds.  Off by default so CI '
+                         'fails loudly when the canonical real-time path breaks.')
     args = ap.parse_args()
 
     rc, logfile = run_flash_and_monitor(
@@ -627,6 +641,7 @@ def main():
         spiffs_image=args.spiffs_image,
         spiffs_offset_arg=args.spiffs_offset,
         force_spiffs=args.force_spiffs,
+        allow_fallback=args.allow_fallback,
     )
 
     if rc != 0 and os.path.isfile(logfile):

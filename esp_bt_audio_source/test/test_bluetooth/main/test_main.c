@@ -113,7 +113,15 @@ static void unity_runner_task(void *arg)
     
     // Display a clear marker that we're in idle loop so we can see it in the logs
     printf("\n\n*** ENTERING IDLE LOOP - TESTS COMPLETE ***\n\n");
-    
+    /* Emit a deterministic, machine-parseable completion token consumed by
+     * run_unity.py's real-time parser (TEST_RUN_COMPLETE_RE).  Without this
+     * marker the runner must rely on the 60-second grace window waiting for a
+     * reboot banner that never arrives (the device stays in the idle loop). */
+    printf("%d Tests %d Failures %d Ignored\n", Unity.NumberOfTests, Unity.TestFailures, 0);
+    printf("TEST_RUN_COMPLETE: %d %d %d\n", Unity.NumberOfTests, Unity.TestFailures, 0);
+    fflush(stdout);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+
     // IMPORTANT: Enter idle loop instead of restarting!
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));

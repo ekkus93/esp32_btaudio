@@ -148,7 +148,7 @@ Bluetooth peer.
 
 ## TOOL-1 — Unity log formatting uplift
 
-**Status:** `[ ]` Open  
+**Status:** `[x]` Done  
 **Source:** README.md "Unity log formatting uplift"  
 **Priority:** Medium
 
@@ -161,28 +161,25 @@ canonical pass/fail lines always arrive via the real-time path, keeping
 
 ### Tasks
 
-- [ ] **TOOL-1a** Reproduce the condition that triggers the timeout fallback:
-  - Add `--debug` output to a test suite whose Unity summary line arrives after the
-    `TEST_RUN_COMPLETE` regex fires (i.e. the summary arrives late on the serial port).
-  - Document the root cause in a comment in `run_unity.py`.
+- [x] **TOOL-1a** Root cause documented in `run_unity.py` comment: the fallback fires
+  when no TEST_RUN_COMPLETE/AUTORUN_COMPLETE/RUN_COMPLETE_RE marker arrives within the
+  timeout.  `test_bluetooth` was the only suite missing `TEST_RUN_COMPLETE` — it
+  entered an idle loop, so boot_event was already set from the `--- esp-idf-monitor`
+  header and the grace window exited after 0.5 s, but test_complete_event was never set.
 
-- [ ] **TOOL-1b** Fix the root cause:
-  - If the issue is that Unity emits the summary line **after** the custom
-    `TEST_RUN_COMPLETE` marker, reorder the test runner's `app_main` to call
-    `UNITY_END()` before printing the custom marker.
-  - If the issue is a serial latency race, increase the post-completion drain window
-    (currently implicit in the regex loop) before the script declares the run done.
+- [x] **TOOL-1b** Added `TEST_RUN_COMPLETE: %d %d %d\n` emission (after
+  `*** ENTERING IDLE LOOP - TESTS COMPLETE ***`) to
+  `test/test_bluetooth/main/test_main.c` so all three device suites now trigger
+  `test_complete_event` and exit immediately via the fast path.
 
-- [ ] **TOOL-1c** Remove or guard the timeout-fallback branch in `run_unity.py` behind
-  a `--allow-fallback` flag so it is off by default and CI fails loudly if the
-  canonical path is broken.
+- [x] **TOOL-1c** Gated the timeout-fallback block behind `--allow-fallback` CLI flag
+  in `run_unity.py`; without the flag the script returns rc=2 on timeout so CI fails
+  loudly instead of silently post-processing a stale log.
 
-- [ ] **TOOL-1d** Update `tmp/canonical_unity_summary.json` schema comment (or the
-  docstring in `tools/aggregate_unity.py`) to note that the fallback field is now
-  absent in normal runs.
+- [x] **TOOL-1d** `aggregate_unity.py` was not changed (no `fallback: true` field was
+  ever written to the JSON; the schema is unaffected).
 
-- [ ] **TOOL-1e** Run `tools/run_all_tests.py` to confirm all device and host suites
-  pass and the JSON summary contains no `fallback: true` entries.
+- [x] **TOOL-1e** All three device suites and 60/60 host tests pass.
 
 ---
 
