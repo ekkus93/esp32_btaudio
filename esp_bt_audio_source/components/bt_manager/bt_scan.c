@@ -15,6 +15,8 @@
 #include "esp_log.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
+#include "command_interface.h"
+#include <stdio.h>
 #define TAG "BT_SCAN"
 #else
 #include "esp_log.h"
@@ -105,6 +107,28 @@ bt_err_t bt_stop_scan(void)
     return ESP_OK;
 }
 
+#ifdef ESP_PLATFORM
+/* Tracks how many remote name requests are still pending.  When it reaches
+ * zero, bt_scan_emit_results() fires and sends all discovered devices over
+ * the serial command interface. */
+static int s_pending_name_requests = 0;
+
+static void bt_scan_emit_results(void)
+{
+    for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+        char result_data[64];
+        safe_snprintf(result_data, sizeof(result_data), "%s,%s",
+                      bt_ctx.discovered_devices.devices[i].mac,
+                      bt_ctx.discovered_devices.devices[i].name);
+        cmd_send_response("INFO", "SCAN", "RESULT", result_data);
+    }
+    char count_str[16];
+    safe_snprintf(count_str, sizeof(count_str), "count=%d",
+                  bt_ctx.discovered_devices.count);
+    cmd_send_response("OK", "SCAN", "DONE", count_str);
+}
+#endif
+
 /* Internal API for GAP callback - also available for UNIT_TEST */
 #if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
@@ -134,17 +158,34 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
     }
     
     ESP_LOGI(TAG, "Device found: %s, name: %s, RSSI: %d", bda_str, name, rssi);  // NOLINT(bugprone-branch-clone)
-    
+
     /* BT_MAX_DISCOVERED_DEVICES = 20 (size of bt_device_list_t.devices array) */
 #define BT_MAX_DISCOVERED_DEVICES 20
     if (bt_ctx.discovered_devices.count < BT_MAX_DISCOVERED_DEVICES) {
         int idx = bt_ctx.discovered_devices.count;
-        safe_copy_str(bt_ctx.discovered_devices.devices[idx].mac,
-                      sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
-        safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
-                      sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
-        bt_ctx.discovered_devices.devices[idx].rssi = (int)rssi;  // Direct cast from int8_t to int
-        bt_ctx.discovered_devices.count++;
+        /* Check if this MAC is already in the list (second callback may bring name). */
+        int existing = -1;
+        for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+            if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
+                existing = i;
+                break;
+            }
+        }
+        if (existing >= 0) {
+            /* Update name if the new callback has a non-empty name. */
+            if (name[0] != '\0') {
+                safe_copy_str(bt_ctx.discovered_devices.devices[existing].name,
+                              sizeof(bt_ctx.discovered_devices.devices[existing].name),
+                              name);
+            }
+        } else {
+            safe_copy_str(bt_ctx.discovered_devices.devices[idx].mac,
+                          sizeof(bt_ctx.discovered_devices.devices[idx].mac), bda_str);
+            safe_copy_str(bt_ctx.discovered_devices.devices[idx].name,
+                          sizeof(bt_ctx.discovered_devices.devices[idx].name), name);
+            bt_ctx.discovered_devices.devices[idx].rssi = (int)rssi;  // Direct cast from int8_t to int
+            bt_ctx.discovered_devices.count++;
+        }
     } else {
         ESP_LOGW(TAG, "Discovery buffer full (%d devices); dropping %s (%s)",
                  BT_MAX_DISCOVERED_DEVICES, name, bda_str);
@@ -156,9 +197,64 @@ void bt_scan_handle_state_change(esp_bt_gap_discovery_state_t state)
     if (state == ESP_BT_GAP_DISCOVERY_STOPPED) {
         ESP_LOGI(TAG, "Device discovery stopped");  // NOLINT(bugprone-branch-clone)
         bt_ctx.scanning = false;
+#ifdef ESP_PLATFORM
+        /* For devices whose name was not in EIR, issue an explicit remote name
+         * request.  Results are emitted only after all requests complete (or
+         * if there are none to issue, emit immediately). */
+        s_pending_name_requests = 0;
+        for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+            if (bt_ctx.discovered_devices.devices[i].name[0] == '\0') {
+                esp_bd_addr_t bda;
+                /* NOLINTNEXTLINE(cert-err34-c) */
+                if (sscanf(bt_ctx.discovered_devices.devices[i].mac,
+                           "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+                           &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]) == 6
+                    && esp_bt_gap_read_remote_name(bda) == ESP_OK) {
+                    s_pending_name_requests++;
+                }
+            }
+        }
+        if (s_pending_name_requests == 0) {
+            bt_scan_emit_results();
+        }
+#endif
     } else if (state == ESP_BT_GAP_DISCOVERY_STARTED) {
         ESP_LOGI(TAG, "Device discovery started");  // NOLINT(bugprone-branch-clone)
         bt_ctx.scanning = true;
     }
 }
+
+#ifdef ESP_PLATFORM
+void bt_scan_handle_remote_name_evt(const esp_bd_addr_t bda,
+                                    esp_bt_status_t stat,
+                                    const uint8_t *rmt_name)
+{
+    char bda_str[18];
+    safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+    if (stat == ESP_BT_STATUS_SUCCESS) {
+        for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+            if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
+                safe_copy_str(bt_ctx.discovered_devices.devices[i].name,
+                              sizeof(bt_ctx.discovered_devices.devices[i].name),
+                              (const char *)rmt_name);
+                ESP_LOGI(TAG, "Remote name resolved: %s -> %s", bda_str,
+                         bt_ctx.discovered_devices.devices[i].name);  // NOLINT(bugprone-branch-clone)
+                break;
+            }
+        }
+    } else {
+        ESP_LOGW(TAG, "Remote name request failed for %s (stat=%d)", bda_str, (int)stat);  // NOLINT(bugprone-branch-clone)
+    }
+
+    if (s_pending_name_requests > 0) {
+        s_pending_name_requests--;
+    }
+    if (s_pending_name_requests == 0) {
+        bt_scan_emit_results();
+    }
+}
+#endif  // ESP_PLATFORM
+
 #endif  // ESP_PLATFORM || UNIT_TEST

@@ -308,7 +308,7 @@ for every test.
 
 ## DISC-1 — Discovery tests
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High  
 **File:** `test/laptop_bt_tests/test_discovery.py`
 
@@ -318,26 +318,26 @@ discoverable, and that the scan result contains the expected MAC and name.
 
 ### Tasks
 
-- [ ] **DISC-1a** `test_laptop_discoverable_appears_in_scan`:
+- [x] **DISC-1a** `test_laptop_discoverable_appears_in_scan`:
   - Set laptop discoverable via `laptop_bt_adapter.set_discoverable(True)`
   - Send `SCAN` to ESP32; wait up to 15 s for `INFO|SCAN|RESULT|` lines
   - Assert at least one result line contains `E8:FB:1C:25:E4:C2` (case-
     insensitive)
   - Teardown: `set_discoverable(False)`
 
-- [ ] **DISC-1b** `test_scan_result_contains_device_name`:
+- [x] **DISC-1b** `test_scan_result_contains_device_name`:
   - Same scan flow as DISC-1a
   - Assert the result line for the laptop MAC also contains `"arisu"` (the
     adapter name configured in BlueZ)
 
-- [ ] **DISC-1c** `test_scan_not_discoverable_does_not_find_laptop`:
+- [x] **DISC-1c** `test_scan_not_discoverable_does_not_find_laptop`:
   - Ensure laptop is NOT discoverable (`set_discoverable(False)`)
   - Run SCAN; wait the full scan window (12 s)
   - Assert no `INFO|SCAN|RESULT|` line contains the laptop MAC
   - This validates the test harness is not getting false positives from NVS
     cache
 
-- [ ] **DISC-1d** `test_scan_completes_within_timeout`:
+- [x] **DISC-1d** `test_scan_completes_within_timeout`:
   - Record wall-clock time around SCAN command
   - Assert the `OK|SCAN|` terminal response arrives within 15 s
   - Guards against scan getting stuck with no completion event

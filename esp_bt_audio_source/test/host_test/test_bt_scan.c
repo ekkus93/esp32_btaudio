@@ -338,13 +338,13 @@ void test_bt_scan_handle_discovery_result_missing_name_should_use_empty_string(v
  */
 void test_bt_scan_handle_discovery_result_duplicate_device_adds_new_entry(void)
 {
-    // Arrange: Add initial device
+    // Arrange: Add initial device with no name (simulates first inquiry callback)
     bt_ctx.discovered_devices.count = 1;
     strcpy(bt_ctx.discovered_devices.devices[0].mac, "aa:bb:cc:dd:ee:ff");
-    strcpy(bt_ctx.discovered_devices.devices[0].name, "DeviceOld");
+    strcpy(bt_ctx.discovered_devices.devices[0].name, "");
     bt_ctx.discovered_devices.devices[0].rssi = -50;
-    
-    // Arrange: Create discovery result for SAME MAC but different name/RSSI
+
+    // Arrange: Create discovery result for SAME MAC with name resolved (second callback)
     esp_bd_addr_t bda = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
     esp_bt_gap_dev_prop_t props[2];
     char name[] = "DeviceNew";
@@ -355,22 +355,16 @@ void test_bt_scan_handle_discovery_result_duplicate_device_adds_new_entry(void)
     props[1].type = ESP_BT_GAP_DEV_PROP_RSSI;
     props[1].val = &rssi;
     props[1].len = sizeof(rssi);
-    
-    // Act: Handle discovery result
+
+    // Act: Handle discovery result for duplicate MAC
     bt_scan_handle_discovery_result(bda, 2, props);
-    
-    // Assert: Count should increase to 2 (duplicate added as new entry)
-    TEST_ASSERT_EQUAL(2, bt_ctx.discovered_devices.count);
-    
-    // Assert: First entry should remain unchanged
+
+    // Assert: Count stays at 1 (deduplicated — same MAC is updated, not added)
+    TEST_ASSERT_EQUAL(1, bt_ctx.discovered_devices.count);
+
+    // Assert: Existing entry name is updated to the resolved name
     TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", bt_ctx.discovered_devices.devices[0].mac);
-    TEST_ASSERT_EQUAL_STRING("DeviceOld", bt_ctx.discovered_devices.devices[0].name);
-    TEST_ASSERT_EQUAL(-50, bt_ctx.discovered_devices.devices[0].rssi);
-    
-    // Assert: Second entry should be the "new" discovery
-    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", bt_ctx.discovered_devices.devices[1].mac);
-    TEST_ASSERT_EQUAL_STRING("DeviceNew", bt_ctx.discovered_devices.devices[1].name);
-    TEST_ASSERT_EQUAL(-30, bt_ctx.discovered_devices.devices[1].rssi);
+    TEST_ASSERT_EQUAL_STRING("DeviceNew", bt_ctx.discovered_devices.devices[0].name);
 }
 
 /**

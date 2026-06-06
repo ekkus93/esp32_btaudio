@@ -68,3 +68,23 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
  * @param state Discovery state (STARTED or STOPPED)
  */
 void bt_scan_handle_state_change(esp_bt_gap_discovery_state_t state);
+
+#ifdef ESP_PLATFORM
+/**
+ * Handle ESP_BT_GAP_READ_REMOTE_NAME_EVT
+ *
+ * Called when an explicit remote name request (issued after inquiry stops
+ * for devices whose name was not in EIR) completes.  Updates the device
+ * name in the discovered-devices list and emits serial results once all
+ * pending requests have been satisfied.
+ *
+ * Internal use only - called from GAP callback (ESP_PLATFORM only)
+ *
+ * @param bda     Remote device address
+ * @param stat    Request status
+ * @param rmt_name Remote device name (only valid when stat == ESP_BT_STATUS_SUCCESS)
+ */
+void bt_scan_handle_remote_name_evt(const esp_bd_addr_t bda,
+                                    esp_bt_status_t stat,
+                                    const uint8_t *rmt_name);
+#endif

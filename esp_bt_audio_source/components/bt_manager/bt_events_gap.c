@@ -22,6 +22,12 @@ void bt_events_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *
             // Discovery state changed
             bt_scan_handle_state_change(param->disc_st_chg.state);
             break;
+
+        case ESP_BT_GAP_READ_REMOTE_NAME_EVT:
+            bt_scan_handle_remote_name_evt(param->read_rmt_name.bda,
+                                           param->read_rmt_name.stat,
+                                           param->read_rmt_name.rmt_name);
+            break;
             
         case ESP_BT_GAP_PIN_REQ_EVT: {
             // Remote device is requesting a PIN code (legacy pairing)
