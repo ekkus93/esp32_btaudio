@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
+from gi.repository import GLib
 
 from laptop_bt import LaptopBT
 from esp32_serial import ESP32Serial
@@ -70,6 +71,20 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
         skip = pytest.mark.skip(reason="Hardware not available: {}".format(_HW_REASON))
         for item in items:
             item.add_marker(skip)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _glib_drain(seconds):
+    """Process pending GLib events for `seconds` (50ms tick, may_block=False)."""
+    ctx = GLib.MainContext.default()
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        ctx.iteration(may_block=False)
+        time.sleep(0.05)
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +209,19 @@ def connected_state(paired_state, laptop_bt_adapter):
     ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=20.0)
     if not ok:
         pytest.fail("connected_state: ESP32 did not connect to laptop within 20s")
+    # BlueZ fires Connected=True on ACL establishment, but AuthorizeService for
+    # A2DP may still be pending in the GLib event queue.  A plain time.sleep()
+    # does not drain GLib, so AuthorizeService would only fire later (when
+    # _assert_disconnected calls ctx.iteration), by which time DISCONNECT has
+    # already been sent while A2DP is in OPENING state (unhandled by ESP32).
+    # Drain GLib so A2DP setup completes, then re-confirm the link is stable
+    # (the initial connection can briefly drop and be re-established), then
+    # sleep for the ESP32's A2DP CONNECTED callback to fire.
+    _glib_drain(seconds=3.0)
+    ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
+    if not ok:
+        pytest.fail("connected_state: connection lost after A2DP setup")
+    time.sleep(1.5)
     yield esp32
     # Best-effort disconnect
     try:

@@ -236,6 +236,12 @@ bt_err_t bt_pair(const char* mac);
 bt_err_t bt_unpair(const char* mac);
 
 /**
+ * @brief Clear the in-memory reconnect target so the next explicit DISCONNECT
+ * does not trigger the session auto-reconnect loop.  Does not affect NVS.
+ */
+void bt_connection_manager_clear_reconnect_target(void);
+
+/**
  * @brief Check whether the manager reports an active connection
  *
  * @return 1 if connected, 0 otherwise

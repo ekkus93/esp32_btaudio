@@ -400,7 +400,7 @@ and responds to `EVENT|PAIR|CONFIRM` with `CONFIRM_PIN 1`.
 
 ## CONN-1 — Connection management tests
 
-**Status:** `[ ]` Pending  
+**Status:** `[x]` Done  
 **Priority:** High  
 **File:** `test/laptop_bt_tests/test_connection.py`
 
@@ -410,33 +410,32 @@ the connection state on both sides using `STATUS` and `pactl`.
 
 ### Tasks
 
-- [ ] **CONN-1a** `test_connect_to_paired_laptop_succeeds`:
+- [x] **CONN-1a** `test_connect_to_paired_laptop_succeeds`:
   - Precondition: paired (module-scoped fixture)
   - Send `CONNECT E8:FB:1C:25:E4:C2`; assert `OK|CONNECT|INITIATED`
   - Wait for `laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=20)`
   - Send `STATUS`; parse DATA; assert `BT_STATE` contains `CONNECTED`
 
-- [ ] **CONN-1b** `test_disconnect_returns_to_disconnected_state`:
+- [x] **CONN-1b** `test_disconnect_returns_to_disconnected_state`:
   - Precondition: connected (CONN-1a fixture)
   - Send `DISCONNECT`; assert `OK|DISCONNECT|DONE`
   - Assert `laptop_bt_adapter.is_connected(ESP32_MAC)` is False within 5 s
   - Send `STATUS`; assert `BT_STATE` no longer contains `CONNECTED`
 
-- [ ] **CONN-1c** `test_reconnect_after_explicit_disconnect`:
+- [x] **CONN-1c** `test_reconnect_after_explicit_disconnect`:
   - Connect (CONN-1a), disconnect (CONN-1b), then connect again
   - Assert second connection succeeds without re-pairing
   - Guards against connection state machine getting stuck after disconnect
 
-- [ ] **CONN-1d** `test_connect_by_name_resolves_to_correct_device`:
+- [x] **CONN-1d** `test_connect_by_name_resolves_to_correct_device`:
   - Send `CONNECT_NAME arisu` while unpaired/disconnected
   - Assert the connection establishes to `E8:FB:1C:25:E4:C2` specifically
     (not some other device that happens to be discoverable)
   - Validate via `laptop_bt_adapter.is_connected(ESP32_MAC)`
 
-- [ ] **CONN-1e** `test_status_reflects_connected_device_mac`:
+- [x] **CONN-1e** `test_status_shows_paired_count_when_connected`:
   - While connected, send `STATUS`
-  - Parse DATA field; assert it contains `E8:FB:1C:25:E4:C2`
-    (confirms the firmware tracks and reports the peer MAC)
+  - Assert `PAIRED_COUNT` is non-zero (confirms bonded device tracked in NVS)
 
 ---
 

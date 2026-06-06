@@ -32,6 +32,7 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
         ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
 
         bt_ctx.connected = true;
+        bt_ctx.connecting = false;
         safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
 
         if (bt_ctx.connected_callback != NULL) {
@@ -57,6 +58,7 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
         }
 
         bt_ctx.connected = false;
+        bt_ctx.connecting = false;
         bt_ctx.audio_playing = false;
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));

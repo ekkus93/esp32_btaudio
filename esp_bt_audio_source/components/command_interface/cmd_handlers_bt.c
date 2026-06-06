@@ -96,6 +96,10 @@ cmd_status_t cmd_handle_disconnect(const cmd_context_t *ctx)
 {
     (void)ctx;
 #ifdef ESP_PLATFORM
+    /* Clear in-memory reconnect target so explicit DISCONNECT does not
+     * trigger the session auto-reconnect loop.  Only needed on the real
+     * device; host/unit-test builds do not run the session reconnect timer. */
+    bt_connection_manager_clear_reconnect_target();
     if (bt_manager_disconnect() == ESP_OK) {
         cmd_send_response("OK", "DISCONNECT", "DONE", NULL);
     }

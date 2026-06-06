@@ -37,6 +37,10 @@ typedef struct {
     bool pin_pending;
     bool ssp_pending;
     bool pairing_in_progress; /* Set by prepare_for_initiation; cleared on auth complete */
+    /* Set by bt_pairing_handle_connection_failed to suppress the duplicate FAILED
+     * event that would otherwise fire from bt_pairing_handle_auth_complete for the
+     * same page-timeout disconnect.  Cleared on the next prepare_for_initiation. */
+    bool connection_failed_handled;
     esp_bd_addr_t bda;
     char mac[18];
     uint32_t passkey;
@@ -178,10 +182,11 @@ void bt_pairing_handle_auth_complete(const esp_bd_addr_t bda, esp_bt_status_t st
     safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
                   bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
 
-    if (!s_pair_pending.pairing_in_progress) {
-        /* No active pairing initiation — this AUTH_CMPL arrived after
-         * bt_pairing_handle_connection_failed already emitted FAILED.
-         * Ignore to avoid a duplicate event. */
+    if (s_pair_pending.connection_failed_handled) {
+        /* bt_pairing_handle_connection_failed already emitted FAILED for this
+         * pairing session.  Suppress the duplicate AUTH_CMPL FAILED event that
+         * arrives after a page-timeout HCI disconnect. */
+        s_pair_pending.connection_failed_handled = false;
         return;
     }
 
@@ -347,6 +352,7 @@ void bt_pairing_prepare_for_initiation(const esp_bd_addr_t bda)
     bt_pairing_set_pending_addr(bda);
     s_pair_pending.passkey = 0;
     s_pair_pending.pairing_in_progress = true;
+    s_pair_pending.connection_failed_handled = false;
 }
 
 bool bt_pairing_handle_connection_failed(const esp_bd_addr_t bda)
@@ -364,6 +370,9 @@ bool bt_pairing_handle_connection_failed(const esp_bd_addr_t bda)
     bt_pairing_format_mac(bda, mac, sizeof(mac));
     ESP_LOGW(TAG, "Connection failed while pairing pending: %s", mac);  // NOLINT(bugprone-branch-clone)
     bt_pairing_send_event("FAILED", mac);
+    /* Mark that FAILED was already emitted so bt_pairing_handle_auth_complete
+     * skips the duplicate event for the same session. */
+    s_pair_pending.connection_failed_handled = true;
     bt_pairing_clear_pending_flags(true, true);
     return true;
 }

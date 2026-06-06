@@ -1105,9 +1105,10 @@ void bt_manager_mock_connection_established(const char* mac, const char* name) {
     }
     
     bt_ctx.connected = true;
+    bt_ctx.connecting = false;
     safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
     safe_copy_str(bt_ctx.connected_name, sizeof(bt_ctx.connected_name), name);
-    
+
     // Log the connection
     printf("Mock BT: Connected to device: %s, name: %s\n", mac, name);
     
@@ -1141,8 +1142,9 @@ void bt_manager_mock_connection_closed(const char* mac) {
     printf("Mock BT: Disconnected from device: %s\n", mac);
     
     bt_ctx.connected = false;
+    bt_ctx.connecting = false;
     bt_ctx.audio_playing = false;
-    
+
     if (bt_ctx.disconnected_callback != NULL) {
         bt_ctx.disconnected_callback(mac);
     }

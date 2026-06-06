@@ -457,3 +457,8 @@ uint8_t bt_connection_manager_get_reconnect_attempts_for_test(void)
     return s_reconnect_attempts;
 }
 #endif
+
+void bt_connection_manager_clear_reconnect_target(void)
+{
+    s_last_connected_addr[0] = '\0';
+}

@@ -77,6 +77,11 @@ typedef struct {
     char device_name[32];
     bool scanning;
     bool connected;
+    /* Set by bt_connect() when a connection attempt is in progress;
+     * cleared on CONNECTED or DISCONNECTED A2DP event.  Guards bt_disconnect()
+     * from returning "already disconnected" during the ACL-up / A2DP-pending
+     * window where BlueZ may show Connected=true but bt_ctx.connected is still false. */
+    bool connecting;
     bool audio_playing;
     int volume;
     bt_device_list_t discovered_devices;

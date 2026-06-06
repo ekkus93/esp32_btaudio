@@ -54,7 +54,8 @@ bt_err_t bt_connect(const char* mac)
     
     ESP_LOGI(TAG, "Connecting to device: %s", mac);  // NOLINT(bugprone-branch-clone)
     safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), mac);
-    
+    bt_ctx.connecting = true;
+
     return ESP_OK;
 }
 
@@ -115,11 +116,11 @@ MAYBE_WEAK bt_err_t bt_disconnect(void)
         return ESP_OK;
     }
     
-    if (!bt_ctx.connected) {
+    if (!bt_ctx.connected && !bt_ctx.connecting) {
 #if defined(ESP_PLATFORM) && defined(CONFIG_BT_MOCK_TESTING)
-        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect short-circuit (already disconnected)");
+        ESP_LOGI(TAG, "DIAG: mgr_bt_disconnect short-circuit (already disconnected, not connecting)");
 #endif
-        return ESP_OK; // Already disconnected
+        return ESP_OK; // Already disconnected and no connection in progress
     }
     
 #ifdef ESP_PLATFORM
@@ -165,7 +166,8 @@ MAYBE_WEAK bt_err_t bt_disconnect(void)
 #else
     // For testing without ESP-IDF, manually update state
     bt_ctx.connected = false;
-    
+    bt_ctx.connecting = false;
+
     if (bt_ctx.disconnected_callback != NULL) {
         bt_ctx.disconnected_callback(bt_ctx.connected_mac);
     }
