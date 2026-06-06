@@ -237,11 +237,37 @@ class LaptopBT:
     # Discoverability
     # ------------------------------------------------------------------
 
+    def set_pairable(self, on):
+        """Set adapter pairable state.  Returns previous value."""
+        import time as _time
+        old = bool(self._adapter.Pairable)
+        for attempt in range(5):
+            try:
+                self._adapter.Pairable = bool(on)
+                break
+            except Exception as exc:
+                if attempt >= 4:
+                    raise
+                log.warning("LaptopBT: set_pairable attempt %d failed (%s), retrying…", attempt + 1, exc)
+                _time.sleep(1.0)
+        log.info("LaptopBT: pairable=%s", on)
+        return old
+
     def set_discoverable(self, on, timeout_s=0):
         """Set adapter discoverable state; returns previous value."""
+        import time as _time
         old = bool(self._adapter.Discoverable)
-        self._adapter.Discoverable = bool(on)
-        self._adapter.DiscoverableTimeout = int(timeout_s)
+        max_attempts = 20
+        for attempt in range(max_attempts):
+            try:
+                self._adapter.Discoverable = bool(on)
+                self._adapter.DiscoverableTimeout = int(timeout_s)
+                break
+            except Exception as exc:
+                if attempt >= max_attempts - 1:
+                    raise
+                log.warning("LaptopBT: set_discoverable attempt %d failed (%s), retrying…", attempt + 1, exc)
+                _time.sleep(1.5)
         log.info("LaptopBT: discoverable=%s timeout=%ds", on, timeout_s)
         return old
 

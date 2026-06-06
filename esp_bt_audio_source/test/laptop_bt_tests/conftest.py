@@ -25,8 +25,9 @@ log = logging.getLogger(__name__)
 #: Laptop adapter MAC (confirmed from `bluetoothctl show`)
 LAPTOP_MAC = "E8:FB:1C:25:E4:C2"
 
-#: ESP32 adapter MAC (read from flash boot log: "MAC: a0:b7:65:2b:e6:5c")
-ESP32_MAC = "A0:B7:65:2B:E6:5C"
+#: ESP32 Classic BT MAC (from boot log: "Bluetooth MAC: a0:b7:65:2b:e6:5e")
+#: Note: base/WiFi MAC is 5C; Classic BT MAC = base + 2 = 5E
+ESP32_MAC = "A0:B7:65:2B:E6:5E"
 
 #: Serial port the ESP32 is connected to
 ESP32_PORT = "/dev/ttyUSB0"
@@ -109,6 +110,18 @@ def clean_pair_state(esp32, laptop_bt_adapter):
     """
 
     def _cleanup():
+        # Disconnect first so UNPAIR_ALL works cleanly and autostart stops.
+        try:
+            esp32.drain(0.1)
+            esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
+        except Exception:
+            pass
+        # Clear LAST_MAC so the autostart reconnect loop has no target.
+        try:
+            esp32.drain(0.1)
+            esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+        except Exception as exc:
+            log.warning("clean_pair_state: LAST_MAC clear failed — %s", exc)
         try:
             esp32.drain(0.1)
             esp32.send_and_expect("UNPAIR_ALL", "OK|UNPAIR_ALL|", timeout_s=5.0)
@@ -118,6 +131,9 @@ def clean_pair_state(esp32, laptop_bt_adapter):
             laptop_bt_adapter.remove_device(ESP32_MAC)
         except Exception as exc:
             log.warning("clean_pair_state: remove_device failed — %s", exc)
+        # Let the BT stack fully process the HCI disconnect and device removal before
+        # the next operation. After a real pairing cycle BlueZ needs extra time.
+        time.sleep(5.0)
 
     _cleanup()
     yield
@@ -151,6 +167,15 @@ def paired_state(esp32, laptop_bt_adapter, clean_pair_state):
             break
         elif "FAILED" in line:
             pytest.fail("Pairing failed during paired_state fixture: {}".format(line))
+
+    # Disconnect the A2DP link so the device is bonded but not connected.
+    # connected_state will CONNECT afterwards when it needs a live link.
+    try:
+        esp32.drain(0.1)
+        esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
+    except Exception:
+        pass
+    time.sleep(2.0)
 
     yield esp32
 

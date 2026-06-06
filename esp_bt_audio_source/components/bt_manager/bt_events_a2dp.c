@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "bt_manager_internal.h"
 #include "bt_manager.h"
+#include "bt_pairing_store.h"
 #include "audio_processor.h"
 #include <string.h>
 
@@ -60,6 +61,9 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
         bt_connection_state_cb(param->conn_stat.state, tmp_addr);
+        /* Emit PAIR FAILED if a pairing initiation never reached AUTH_CMPL
+         * (e.g. page timeout, HCI connection refused). */
+        bt_pairing_handle_connection_failed(tmp_addr);
     }
 }
 

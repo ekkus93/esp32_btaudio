@@ -36,6 +36,7 @@ extern esp_err_t bt_mock_get_ssp_passkey(char* passkey, size_t size);
 typedef struct {
     bool pin_pending;
     bool ssp_pending;
+    bool pairing_in_progress; /* Set by prepare_for_initiation; cleared on auth complete */
     esp_bd_addr_t bda;
     char mac[18];
     uint32_t passkey;
@@ -80,6 +81,7 @@ static void bt_pairing_clear_pending_flags(bool clear_pin, bool clear_ssp)
         safe_memset(s_pair_pending.bda, sizeof(s_pair_pending.bda), 0, sizeof(s_pair_pending.bda));
         s_pair_pending.mac[0] = '\0';
         s_pair_pending.passkey = 0;
+        s_pair_pending.pairing_in_progress = false;
     }
 }
 
@@ -149,6 +151,7 @@ void bt_pairing_handle_pin_request(const esp_bd_addr_t bda)
     s_pair_pending.pin_pending = true;
     s_pair_pending.ssp_pending = false;
     s_pair_pending.passkey = 0;
+    s_pair_pending.pairing_in_progress = true;
     bt_pairing_send_event("PIN_REQUEST", bda_str);
 }
 
@@ -165,6 +168,7 @@ void bt_pairing_handle_ssp_confirm(const esp_bd_addr_t bda, uint32_t passkey)
     s_pair_pending.ssp_pending = true;
     s_pair_pending.pin_pending = false;
     s_pair_pending.passkey = passkey;
+    s_pair_pending.pairing_in_progress = true;
     bt_pairing_send_event("CONFIRM", data);
 }
 
@@ -173,6 +177,13 @@ void bt_pairing_handle_auth_complete(const esp_bd_addr_t bda, esp_bt_status_t st
     char bda_str[18] = {0};
     safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
                   bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+    if (!s_pair_pending.pairing_in_progress) {
+        /* No active pairing initiation — this AUTH_CMPL arrived after
+         * bt_pairing_handle_connection_failed already emitted FAILED.
+         * Ignore to avoid a duplicate event. */
+        return;
+    }
 
     bt_pairing_prepare_pending_for_event(bda);
     if (stat == ESP_BT_STATUS_SUCCESS) {
@@ -335,6 +346,26 @@ void bt_pairing_prepare_for_initiation(const esp_bd_addr_t bda)
     bt_pairing_clear_pending_flags(true, true);
     bt_pairing_set_pending_addr(bda);
     s_pair_pending.passkey = 0;
+    s_pair_pending.pairing_in_progress = true;
+}
+
+bool bt_pairing_handle_connection_failed(const esp_bd_addr_t bda)
+{
+    if (!s_pair_pending.pairing_in_progress) {
+        return false;
+    }
+    if (bt_pairing_addr_is_zero(s_pair_pending.bda)) {
+        return false;
+    }
+    if (memcmp(s_pair_pending.bda, bda, sizeof(esp_bd_addr_t)) != 0) {
+        return false;
+    }
+    char mac[18];
+    bt_pairing_format_mac(bda, mac, sizeof(mac));
+    ESP_LOGW(TAG, "Connection failed while pairing pending: %s", mac);  // NOLINT(bugprone-branch-clone)
+    bt_pairing_send_event("FAILED", mac);
+    bt_pairing_clear_pending_flags(true, true);
+    return true;
 }
 
 #if CONFIG_BT_MOCK_TESTING

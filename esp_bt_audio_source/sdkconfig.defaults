@@ -20,6 +20,9 @@ CONFIG_BT_NIMBLE_ENABLED=n
 
 CONFIG_APP_NO_BLOBS=n
 
+# Increase BTC_TASK stack to prevent overflow during A2DP + pairing sequences
+CONFIG_BT_BTC_TASK_STACK_SIZE=8192
+
 # Build-time toggle: when enabled, the audio processor will generate
 # synthetic audio instead of reading from an I2S peripheral. Useful for
 # development and CI when no hardware source is attached.

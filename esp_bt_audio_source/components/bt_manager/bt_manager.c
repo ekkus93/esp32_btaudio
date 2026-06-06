@@ -733,26 +733,19 @@ bool bt_manager_is_autostart_enabled(void) {
 
     bt_pairing_prepare_for_initiation(bda);
 
-    // Initiate GAP-level bonding by requesting the remote service list. The
-    // controller will establish an ACL link and drive the authentication flow,
-    // delivering PIN/SSP callbacks via bt_app_gap_callback.
-    esp_err_t gap_err = esp_bt_gap_get_remote_services(bda);
-    if (gap_err == ESP_OK) {
-        ESP_LOGI(TAG, "Initiated GAP service discovery to pair with %s", mac);  // NOLINT(bugprone-branch-clone)
+    // Initiate an A2DP connection to the target device.  A2DP requires L2CAP
+    // channel security, so the controller always runs the SSP authentication
+    // flow before the profile connects — this is the reliable way to drive
+    // the AUTH_CMPL event that bt_pairing_handle_auth_complete needs.
+    bt_err_t connect_err = bt_connect(mac);
+    if (connect_err == ESP_OK) {
+        ESP_LOGI(TAG, "Initiated A2DP connection to pair with %s", mac);  // NOLINT(bugprone-branch-clone)
         return ESP_OK;
     }
 
-    // Fall back to reading the remote name which also triggers an ACL link and
-    // will still surface the required authentication callbacks.
-    gap_err = esp_bt_gap_read_remote_name(bda);
-    if (gap_err == ESP_OK) {
-        ESP_LOGI(TAG, "Requested remote name to pair with %s", mac);  // NOLINT(bugprone-branch-clone)
-        return ESP_OK;
-    }
-
-    ESP_LOGE(TAG, "Failed to initiate GAP bonding for %s: %s", mac, esp_err_to_name(gap_err));  // NOLINT(bugprone-branch-clone)
+    ESP_LOGE(TAG, "Failed to initiate A2DP connection for pairing with %s", mac);  // NOLINT(bugprone-branch-clone)
     bt_pairing_clear_pending();
-    return gap_err;
+    return ESP_FAIL;
 #else
     esp_bd_addr_t bda = {0};
     if (!bt_pairing_parse_mac(mac, bda)) {

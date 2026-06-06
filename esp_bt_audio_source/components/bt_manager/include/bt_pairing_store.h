@@ -91,6 +91,17 @@ bool bt_pairing_parse_mac(const char* mac, esp_bd_addr_t out);
  */
 void bt_pairing_prepare_for_initiation(const esp_bd_addr_t bda);
 
+/**
+ * Notify the pairing subsystem that an A2DP connection failed.
+ *
+ * If a pairing was initiated to bda but AUTH_CMPL never fired (e.g. page
+ * timeout, HCI connection refused), call this from the A2DP DISCONNECTED
+ * handler to emit EVENT|PAIR|FAILED and clear the pending state.
+ *
+ * Returns true if FAILED was emitted, false if no matching pending pairing.
+ */
+bool bt_pairing_handle_connection_failed(const esp_bd_addr_t bda);
+
 #if CONFIG_BT_MOCK_TESTING
 /**
  * Set mock pairing state for BT_MOCK_TESTING

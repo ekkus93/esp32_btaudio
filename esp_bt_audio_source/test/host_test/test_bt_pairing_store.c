@@ -217,6 +217,69 @@ void test_pairing_submit_pin_null_pin_returns_not_supported_on_host(void)
     TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, err);
 }
 
+/* ── bt_pairing_handle_connection_failed ────────────────────────────────── */
+
+extern void bt_manager_test_gap_auth_complete(const char* mac, bool success);
+
+void test_connection_failed_emits_pair_failed(void)
+{
+    /* Setup a pairing initiation */
+    esp_bd_addr_t bda = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    bt_pairing_prepare_for_initiation(bda);
+
+    /* Simulate A2DP DISCONNECTED before AUTH_CMPL (page timeout) */
+    bool emitted = bt_pairing_handle_connection_failed(bda);
+    TEST_ASSERT_TRUE(emitted);
+
+    /* State should be cleared */
+    bt_pairing_request_info_t info;
+    memset(&info, 0, sizeof(info));
+    TEST_ASSERT_FALSE(bt_pairing_get_pending_request(&info));
+}
+
+void test_connection_failed_no_match_returns_false(void)
+{
+    esp_bd_addr_t bda_a = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    esp_bd_addr_t bda_b = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    bt_pairing_prepare_for_initiation(bda_a);
+
+    bool emitted = bt_pairing_handle_connection_failed(bda_b);
+    TEST_ASSERT_FALSE(emitted);
+
+    /* Pending state for bda_a should remain */
+    bt_pairing_request_info_t info;
+    memset(&info, 0, sizeof(info));
+    /* Flags not set (just initiation state), so get_pending_request returns false */
+    (void)bt_pairing_get_pending_request(&info);
+}
+
+void test_connection_failed_without_initiation_returns_false(void)
+{
+    /* No prepare_for_initiation called */
+    esp_bd_addr_t bda = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    bool emitted = bt_pairing_handle_connection_failed(bda);
+    TEST_ASSERT_FALSE(emitted);
+}
+
+void test_auth_complete_ignored_after_connection_failed(void)
+{
+    /* Simulate page timeout: prepare → connection_failed → auth_complete late */
+    extern int bt_manager_test_get_pair_event_count(void);
+    extern const char* bt_manager_test_get_last_pair_event_subtype(void);
+
+    esp_bd_addr_t bda = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    bt_pairing_prepare_for_initiation(bda);
+
+    bool emitted = bt_pairing_handle_connection_failed(bda);
+    TEST_ASSERT_TRUE(emitted);
+    TEST_ASSERT_EQUAL_STRING("FAILED", bt_manager_test_get_last_pair_event_subtype());
+    int events_after_failed = bt_manager_test_get_pair_event_count();
+
+    /* AUTH_CMPL arrives late — should be silently ignored */
+    bt_manager_test_gap_auth_complete("de:ad:be:ef:ca:fe", false);
+    TEST_ASSERT_EQUAL(events_after_failed, bt_manager_test_get_pair_event_count());
+}
+
 /* ── device change during pending pairing ───────────────────────────────── */
 
 void test_second_pin_request_replaces_first(void)
@@ -269,6 +332,12 @@ int main(void)
     RUN_TEST(test_pairing_submit_pin_returns_not_supported_on_host);
     RUN_TEST(test_pairing_confirm_null_mac_returns_not_supported_on_host);
     RUN_TEST(test_pairing_submit_pin_null_pin_returns_not_supported_on_host);
+
+    /* bt_pairing_handle_connection_failed */
+    RUN_TEST(test_connection_failed_emits_pair_failed);
+    RUN_TEST(test_connection_failed_no_match_returns_false);
+    RUN_TEST(test_connection_failed_without_initiation_returns_false);
+    RUN_TEST(test_auth_complete_ignored_after_connection_failed);
 
     /* device change */
     RUN_TEST(test_second_pin_request_replaces_first);

@@ -171,11 +171,11 @@ cmd_status_t cmd_handle_paired(const cmd_context_t *ctx)
 {
     (void)ctx;
     int count = 0;
-    if (nvs_storage_get_paired_count(&count) == ESP_OK)
+    esp_err_t rc = nvs_storage_get_paired_count(&count);
+    /* ESP_ERR_NOT_FOUND means the count key doesn't exist — valid empty state
+     * after UNPAIR_ALL clears the NVS namespace.  Treat as count=0. */
+    if (rc == ESP_OK || rc == ESP_ERR_NOT_FOUND)
     {
-        char data[64];
-        snprintf(data, sizeof(data), "%d", count);
-        cmd_send_response("OK", "PAIRED", "COUNT", data);
         for (int i = 0; i < count; ++i)
         {
             char mac[32];
@@ -187,6 +187,9 @@ cmd_status_t cmd_handle_paired(const cmd_context_t *ctx)
                 cmd_send_response("INFO", "PAIRED", "ITEM", buf);
             }
         }
+        char data[64];
+        snprintf(data, sizeof(data), "%d", count);
+        cmd_send_response("OK", "PAIRED", "COUNT", data);
     }
     else
     {
