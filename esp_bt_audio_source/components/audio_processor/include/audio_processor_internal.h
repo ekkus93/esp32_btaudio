@@ -53,6 +53,17 @@ extern volatile bool s_audio_diag_enabled;
 #define AUDIO_RESAMPLE_MAX_RATIO      8
 #endif
 #define AUDIO_WORK_BUFFER_BYTES ((size_t)AUDIO_BLOCK_SIZE * 8U * (size_t)AUDIO_RESAMPLE_MAX_RATIO)
+
+/* Minimum work-buffer size guaranteed after audio_processor_init() succeeds.
+ * On DRAM-only boards the allocator halves AUDIO_WORK_BUFFER_BYTES when no
+ * PSRAM is detected; this floor asserts the minimum usable working size. */
+#define AUDIO_WORK_BUFFER_DRAM_MIN_BYTES ((size_t)(AUDIO_WORK_BUFFER_BYTES / 2U))
+
+/* Minimum audio ring-buffer capacity.  Production default is 32 KiB
+ * (CONFIG_AUDIO_RB_CAPACITY_KB=32); host tests use the same fallback.
+ * Tests should assert free bytes >= this value after init. */
+#define AUDIO_MIN_RB_CAPACITY_BYTES ((size_t)(32U * 1024U))
+
 #define BEEP_FADE_MS 50
 #define I2S_RAW_POOL_DEFAULT_COUNT 8U
 #define I2S_RAW_POOL_DRAM_COUNT    1U

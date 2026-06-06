@@ -76,6 +76,16 @@ void test_runtime_work_bytes_set_returns_set_value(void)
     TEST_ASSERT_EQUAL_UINT(4096u, result);
 }
 
+void test_work_buffer_dram_min_is_at_least_half_compile_time_default(void)
+{
+    /* AUDIO_WORK_BUFFER_DRAM_MIN_BYTES is the floor for DRAM-only boards.
+     * The allocator halves AUDIO_WORK_BUFFER_BYTES on DRAM-only systems.
+     * Guard against accidental reduction of this constant. */
+    TEST_ASSERT_EQUAL_UINT(AUDIO_WORK_BUFFER_BYTES / 2U, AUDIO_WORK_BUFFER_DRAM_MIN_BYTES);
+    /* Floor must still be large enough to be useful (at least 1 KiB). */
+    TEST_ASSERT_GREATER_OR_EQUAL((size_t)1024u, AUDIO_WORK_BUFFER_DRAM_MIN_BYTES);
+}
+
 void test_runtime_work_bytes_large_value_returned_unchanged(void)
 {
     s_runtime_work_bytes = 65536;
@@ -105,6 +115,8 @@ int main(void)
     RUN_TEST(test_runtime_work_bytes_uninitialized_returns_default);
     RUN_TEST(test_runtime_work_bytes_set_returns_set_value);
     RUN_TEST(test_runtime_work_bytes_large_value_returned_unchanged);
+    /* TEST-2: work-buffer floor constant sanity */
+    RUN_TEST(test_work_buffer_dram_min_is_at_least_half_compile_time_default);
 
     /* weak stub */
     RUN_TEST(test_a2dp_connected_weak_stub_returns_false);

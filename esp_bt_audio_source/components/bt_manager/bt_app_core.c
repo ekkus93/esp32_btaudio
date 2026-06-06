@@ -104,6 +104,14 @@ void bt_app_task_shut_down(void)
     }
     
     if (s_bt_app_queue) {
+        /* Drain pending messages and free any heap-copied params to prevent
+         * leaks when shutdown races with in-flight dispatches. */
+        bt_app_evt_msg_t pending;
+        while (xQueueReceive(s_bt_app_queue, &pending, 0) == pdTRUE) {
+            if (pending.param && pending.msg.param_free_cb) {
+                pending.msg.param_free_cb(pending.param);
+            }
+        }
         vQueueDelete(s_bt_app_queue);
         s_bt_app_queue = NULL;
     }
@@ -131,6 +139,10 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
          * rather than a mysterious BtAppTask hang. */
         ESP_LOGW(TAG, "%s: BtAppTask queue full (sig=0x%x) — message dropped",
                  __func__, msg.sig);  // NOLINT(bugprone-branch-clone)
+        /* Free any heap-copied param to prevent a leak when the enqueue fails. */
+        if (msg.param && msg.param_free_cb) {
+            msg.param_free_cb(msg.param);
+        }
         return false;
     }
     return true;

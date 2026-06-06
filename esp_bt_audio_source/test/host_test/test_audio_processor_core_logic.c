@@ -137,6 +137,25 @@ void test_produce_audio_chunk_should_handle_beep_overlay_failure_without_overlay
     TEST_ASSERT_EQUAL_UINT64(0, stats.beep_overlay_bytes);
 }
 
+void test_audio_volume_set_reflects_in_volume_gain_state(void)
+{
+    /* Verify audio_processor_set_volume correctly updates the internal gain state.
+     * apply_volume() (in audio_processor_diag.c) is tested for amplitude scaling
+     * in test_audio_processor_diag.c; here we confirm only the state transition. */
+    audio_processor_set_volume(100);
+    TEST_ASSERT_EQUAL_UINT8(100, s_volume_gain);
+
+    audio_processor_set_volume(50);
+    TEST_ASSERT_EQUAL_UINT8(50, s_volume_gain);
+
+    audio_processor_set_volume(0);
+    TEST_ASSERT_EQUAL_UINT8(0, s_volume_gain);
+
+    /* Clamping: values > 100 must be clamped to 100. */
+    audio_processor_set_volume(200);
+    TEST_ASSERT_EQUAL_UINT8(100, s_volume_gain);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -147,5 +166,6 @@ int main(void)
     RUN_TEST(test_ring_edge_conditions_should_gate_chunk_production);
     RUN_TEST(test_volume_commit_should_propagate_nvs_failure_in_test_hook);
     RUN_TEST(test_produce_audio_chunk_should_handle_beep_overlay_failure_without_overlay_stats);
+    RUN_TEST(test_audio_volume_set_reflects_in_volume_gain_state);
     return UNITY_END();
 }

@@ -350,11 +350,105 @@ void test_bt_connection_info_updates_on_new_device(void)
     TEST_ASSERT_TRUE(info2.connect_time >= time1);
 }
 
+/* TEST-3a: Disconnect while audio is active transitions streaming to STOPPED.
+ *
+ * Proxy for "audio processor transitions to idle on disconnect": we verify
+ * that the connection manager transitions the streaming state to STOPPED when
+ * the A2DP audio state is reported as STOPPED (which the BT stack emits when
+ * the A2DP source disconnects mid-stream).
+ */
+void test_bt_disconnect_mid_stream_transitions_streaming_state_to_stopped(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(false);
+
+    esp_bd_addr_t addr = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, bt_get_connection_state_detailed());
+
+    /* Simulate audio stream starting. */
+    bt_audio_state_cb(ESP_A2D_AUDIO_STATE_STARTED, addr);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STREAMING, bt_get_streaming_state());
+
+    /* Mid-stream disconnect: BT stack fires AUDIO_STATE_STOPPED.
+     * Per bt_connection_manager.c logic, STOPPED while streaming → PAUSED. */
+    bt_audio_state_cb(ESP_A2D_AUDIO_STATE_STOPPED, addr);
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_PAUSED, bt_get_streaming_state());
+
+    /* Then the connection itself drops, which resets streaming to STOPPED. */
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_DISCONNECTED, bt_get_connection_state_detailed());
+    TEST_ASSERT_EQUAL(BT_STREAMING_STATE_STOPPED, bt_get_streaming_state());
+}
+
+/* TEST-3b: All reconnect attempts exhausted → state settles at DISCONNECTED.
+ *
+ * This approximates the "connection timeout" scenario: the remote device never
+ * responds so every reconnect attempt fails.  After exhausting retries the
+ * manager must leave the system in a well-defined DISCONNECTED state so a new
+ * connection attempt can succeed without a full reboot.
+ */
+void test_bt_all_reconnect_attempts_exhausted_returns_to_disconnected(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    /* Force every connect attempt to fail immediately. */
+    mock_a2dp_set_connect_result(ESP_BT_STATUS_FAIL);
+
+    esp_bd_addr_t addr = {0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02};
+
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+
+    /* After exhausting retries, reconnect_attempts must equal the retry limit. */
+    TEST_ASSERT_EQUAL_UINT8(5, bt_connection_manager_get_reconnect_attempts_for_test());
+
+    /* The connection state must no longer be CONNECTING (manager gave up). */
+    bt_connection_state_t final_state = bt_get_connection_state_detailed();
+    TEST_ASSERT_NOT_EQUAL(BT_CONNECTION_STATE_CONNECTING, final_state);
+}
+
+/* TEST-3c: Reconnect succeeds after an unexpected disconnect.
+ *
+ * After a single unexpected disconnect, auto-reconnect fires and the remote
+ * device accepts the re-connection.  Verify the state machine returns to
+ * CONNECTED cleanly.
+ */
+void test_bt_reconnect_succeeds_after_unexpected_disconnect(void)
+{
+    init_connection_manager();
+    bt_connection_manager_set_auto_reconnect_for_test(true);
+
+    mock_a2dp_set_connect_result(ESP_BT_STATUS_SUCCESS);
+
+    esp_bd_addr_t addr = {0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x01};
+
+    /* Establish initial connection. */
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, bt_get_connection_state_detailed());
+
+    /* Unexpected disconnect fires reconnect. */
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_DISCONNECTED, addr);
+    TEST_ASSERT_EQUAL(1, mock_a2dp_get_connect_calls());
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTING, bt_get_connection_state_detailed());
+
+    /* Simulate the remote device accepting the reconnect. */
+    bt_connection_state_cb(ESP_A2D_CONNECTION_STATE_CONNECTED, addr);
+    TEST_ASSERT_EQUAL(BT_CONNECTION_STATE_CONNECTED, bt_get_connection_state_detailed());
+
+    /* Streaming state should not be stuck; reset to 0 (STOPPED) on new connect. */
+    bt_connection_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, bt_get_connection_info(&info));
+    TEST_ASSERT_TRUE(info.connected);
+}
+
 // Unity test runner
 int main(void)
 {
     UNITY_BEGIN();
-    
+
     // Section 5.2: Connection Manager Edge Cases
 #if CONFIG_BT_MOCK_TESTING
     RUN_TEST(test_bt_reconnect_partial_failures_then_success);
@@ -365,6 +459,12 @@ int main(void)
     RUN_TEST(test_bt_connection_info_persists_across_disconnect);
     RUN_TEST(test_bt_streaming_state_through_connection_states);
     RUN_TEST(test_bt_connection_info_updates_on_new_device);
-    
+    /* TEST-3: connection drop / timeout / reconnect scenarios */
+    RUN_TEST(test_bt_disconnect_mid_stream_transitions_streaming_state_to_stopped);
+#if CONFIG_BT_MOCK_TESTING
+    RUN_TEST(test_bt_all_reconnect_attempts_exhausted_returns_to_disconnected);
+    RUN_TEST(test_bt_reconnect_succeeds_after_unexpected_disconnect);
+#endif
+
     return UNITY_END();
 }

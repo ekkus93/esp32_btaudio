@@ -73,7 +73,7 @@ Key recent completions:
 - Known warning: ESP-IDF builds may show duplicate-definition notices for `ESP_EVENT_ANY_ID` coming from a legacy shim header; plan to guard/remove that legacy definition in a cleanup pass.
 
 - **Build warnings present (note date):**
-   - Crystal frequency divergence: detected 41.01MHz vs the expected 40MHz on the current hardware; this is informational but should be documented before release.
+   - Crystal frequency divergence: detected 41.01MHz vs the expected 40MHz on the current hardware; this is informational and expected for this board — see [Known Hardware Quirks](ARCH.md#known-hardware-quirks) in ARCH.md for a full explanation.
 
 <a id="architecture-policy"></a>
 ## Architecture Policy: main.c

@@ -258,6 +258,32 @@ void test_apply_volume_zero_size_no_modification(void)
     TEST_ASSERT_EQUAL_INT16(-1234, buf[1]);
 }
 
+/* TEST-1b: Integration — set_volume → apply_volume produces correct amplitude. */
+void test_volume_set_then_apply_scales_pcm_amplitude(void)
+{
+    const int16_t full_val = 0x4000;
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+
+    /* volume 100 → pass-through: apply_volume must not modify samples. */
+    s_volume_gain = 100;
+    int16_t buf100[4] = {full_val, full_val, full_val, full_val};
+    apply_volume(buf100, sizeof(buf100), s_volume_gain);
+    TEST_ASSERT_EQUAL_INT16(full_val, buf100[0]);
+
+    /* volume 50 → each sample should be approximately halved (±1 rounding). */
+    s_volume_gain = 50;
+    int16_t buf50[4] = {full_val, full_val, full_val, full_val};
+    apply_volume(buf50, sizeof(buf50), s_volume_gain);
+    const int16_t half_val = (int16_t)(((int32_t)full_val * 50 + 50) / 100);
+    TEST_ASSERT_INT16_WITHIN(1, half_val, buf50[0]);
+
+    /* volume 0 → mute: all samples must become 0. */
+    s_volume_gain = 0;
+    int16_t buf0[4] = {full_val, full_val, full_val, full_val};
+    apply_volume(buf0, sizeof(buf0), s_volume_gain);
+    TEST_ASSERT_EQUAL_INT16(0, buf0[0]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -279,5 +305,7 @@ int main(void)
     RUN_TEST(test_apply_volume_32bit_zero_zeroes_buffer);
     RUN_TEST(test_apply_volume_null_buffer_no_crash);
     RUN_TEST(test_apply_volume_zero_size_no_modification);
+    /* TEST-1b: volume-set → apply_volume amplitude integration */
+    RUN_TEST(test_volume_set_then_apply_scales_pcm_amplitude);
     return UNITY_END();
 }
