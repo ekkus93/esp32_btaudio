@@ -126,6 +126,12 @@ class TestAutoConnect:
         esp32.send_and_expect("AUDIO_AUTOSTART off", "OK|AUDIO_AUTOSTART|", timeout_s=5.0)
 
         try:
+            # Suppress PulseAudio auto-reconnect so only firmware-initiated
+            # connections can occur during the boot window.  Without this,
+            # PulseAudio (module-bluetooth-policy) reconnects from the laptop
+            # side within seconds of the reset regardless of AUDIO_AUTOSTART.
+            laptop_bt_adapter.set_trusted(ESP32_MAC, False)
+
             # Reboot — boots with autostart=off AND LAST_MAC=laptop MAC.
             esp32.drain(0.1)
             esp32.send_and_expect("RESET", "OK|RESET|REBOOTING", timeout_s=5.0)
@@ -146,6 +152,7 @@ class TestAutoConnect:
             # state (audio initialized) for subsequent tests in the session.
             # LAST_MAC is cleared before RESET so the restore-boot does not trigger
             # an auto-reconnect that contaminates subsequent test fixtures.
+            laptop_bt_adapter.set_trusted(ESP32_MAC, True)
             esp32.drain(0.1)
             try:
                 esp32.send_and_expect(
