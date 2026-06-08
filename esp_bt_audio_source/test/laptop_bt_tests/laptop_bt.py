@@ -267,6 +267,7 @@ class LaptopBT:
         import time as _time
         old = bool(self._adapter.Discoverable)
         max_attempts = 20
+        _power_cycled = False
         for attempt in range(max_attempts):
             try:
                 self._adapter.Discoverable = bool(on)
@@ -274,9 +275,42 @@ class LaptopBT:
                 break
             except Exception as exc:
                 if attempt >= max_attempts - 1:
+                    if not on:
+                        # set_discoverable(False) failures are non-critical and
+                        # must NOT trigger a power-cycle — that would destroy active
+                        # pairing/connection state in BlueZ.  Log and return.
+                        log.warning(
+                            "LaptopBT: set_discoverable(False) stuck after %d attempts "
+                            "(adapter will auto-timeout): %s",
+                            max_attempts, exc,
+                        )
+                        return old
                     raise
+                if on and not _power_cycled and attempt == 2:
+                    # For set_discoverable(True): after 3 consecutive failures the
+                    # adapter is stuck (typically degraded HCI state from prior ESP32
+                    # inquiry scans).  Power-cycle once via D-Bus and re-initialise.
+                    # Safe here because we haven't started any BT operation yet.
+                    _power_cycled = True
+                    log.warning(
+                        "LaptopBT: set_discoverable stuck after %d attempts, "
+                        "power-cycling adapter…",
+                        attempt + 1,
+                    )
+                    try:
+                        self._adapter.Powered = False
+                        _time.sleep(3.0)
+                        self._adapter.Powered = True
+                        _time.sleep(5.0)
+                        self._adapter.Pairable = True
+                        self.register_agent(auto_accept=True)
+                    except Exception as reset_exc:
+                        log.warning(
+                            "LaptopBT: adapter reset failed: %s", reset_exc
+                        )
                 log.warning(
-                    "LaptopBT: set_discoverable attempt %d failed (%s), retrying…", attempt + 1, exc
+                    "LaptopBT: set_discoverable attempt %d failed (%s), retrying…",
+                    attempt + 1, exc,
                 )
                 _time.sleep(1.5)
         log.info("LaptopBT: discoverable=%s timeout=%ds", on, timeout_s)
@@ -403,6 +437,55 @@ class LaptopBT:
             timeout_s,
         )
         return False
+
+    def connect_profiles(self, mac, retries=8, retry_delay_s=2.0):
+        """Ask BlueZ to connect all profiles (including A2DP) to the device.
+
+        Idempotent — no-op if already fully connected.  Retries on
+        br-connection-unknown (PulseAudio briefly deregisters the A2DP Sink
+        profile after DeviceRemoved and needs a moment to re-register).
+        """
+        path = self._find_device_path(mac)
+        if path is None:
+            log.warning("LaptopBT.connect_profiles: %s not found", mac)
+            return
+        dev = self._bus.get(BLUEZ_SERVICE, path)
+        for attempt in range(retries):
+            try:
+                dev.Connect()
+                log.info(
+                    "LaptopBT.connect_profiles: %s Connect() called (attempt %d)",
+                    mac, attempt + 1,
+                )
+                return
+            except Exception as exc:
+                exc_str = str(exc)
+                if "br-connection-unknown" in exc_str and attempt < retries - 1:
+                    log.warning(
+                        "LaptopBT.connect_profiles: attempt %d br-connection-unknown"
+                        " — PulseAudio not ready, retrying in %.1fs",
+                        attempt + 1, retry_delay_s,
+                    )
+                    time.sleep(retry_delay_s)
+                    continue
+                log.warning("LaptopBT.connect_profiles: %s — %s", mac, exc)
+                return
+
+    def set_trusted(self, mac, trusted):
+        """Set the Trusted property on the BlueZ device object.
+
+        PulseAudio's module-bluetooth-policy only auto-reconnects TRUSTED
+        devices.  Set trusted=False before a firmware RESET to prevent
+        PulseAudio from racing with the ESP32's own attempt_reconnection()
+        for the AVDTP slot; restore to True once the boot reconnect completes.
+        """
+        path = self._find_device_path(mac)
+        if path is None:
+            log.warning("LaptopBT.set_trusted: %s not found", mac)
+            return
+        dev = self._bus.get(BLUEZ_SERVICE, path)
+        dev.Trusted = bool(trusted)
+        log.info("LaptopBT.set_trusted: %s trusted=%s", mac, trusted)
 
     # ------------------------------------------------------------------
     # Properties

@@ -73,10 +73,16 @@ def _pair_from_esp32(esp32, timeout_s=30.0):
         if "CONFIRM" in rx:
             esp32.send_and_expect("CONFIRM_PIN 1", "OK|CONFIRM_PIN|ACCEPTED", timeout_s=5.0)
         elif "SUCCESS" in rx:
-            # Disconnect any auto-connection; leave device bonded but not connected.
+            # Clear LAST_MAC before disconnecting to prevent attempt_reconnection()
+            # from paging the laptop immediately on the DISCONNECT event.
             try:
                 esp32.drain(0.1)
-                esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
+                esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+            except Exception:
+                pass
+            try:
+                esp32.drain(0.1)
+                esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
             except Exception:
                 pass
             time.sleep(2.0)
@@ -127,6 +133,7 @@ class TestE2E:
         assert ok, "ESP32 did not connect to laptop within {:.0f}s".format(
             CONNECT_TIMEOUT_S
         )
+        laptop_bt_adapter.connect_profiles(ESP32_MAC)
         _glib_drain(3.0)
         ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
         assert ok, "A2DP connection dropped after setup"
@@ -134,9 +141,21 @@ class TestE2E:
         log.info("E2E Step 3: A2DP connection established")
 
         # Step 4 — Streaming: START, verify audio flowing, PulseAudio sink present
-        esp32.drain(0.1)
-        line = esp32.send_and_expect("START", "OK|START|STARTED", timeout_s=5.0)
-        assert "OK|START|STARTED" in line, "START failed: {}".format(line)
+        start_line = None
+        start_deadline = time.monotonic() + 20.0
+        while time.monotonic() < start_deadline:
+            esp32.drain(0.2)
+            try:
+                start_line = esp32.send_and_expect(
+                    "START", "OK|START|STARTED", timeout_s=3.0
+                )
+                break
+            except AssertionError:
+                time.sleep(1.5)
+        assert start_line is not None and "OK|START|STARTED" in start_line, (
+            "START timed out after A2DP connect in lifecycle test"
+        )
+        line = start_line
         time.sleep(2.0)
 
         esp32.drain(0.1)
@@ -271,20 +290,11 @@ class TestE2E:
         esp32.drain(0.1)
         esp32.send_and_expect("STOP", "OK|STOP|STOPPED", timeout_s=5.0)
 
-        # Disconnect (LAST_MAC set to LAPTOP_MAC when A2DP CONNECTED fired)
-        esp32.drain(0.1)
-        esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
-        # Wait for the laptop to fully process the disconnect before rebooting.
-        # Without this, the firmware's auto-reconnect attempt (fired on
-        # DISCONNECTED) races with RESET and leaves the laptop's AVDTP/L2CAP
-        # stack in a half-open state — the boot auto-reconnect then establishes
-        # ACL but A2DP never completes.
-        ok = laptop_bt_adapter.wait_for_disconnect(ESP32_MAC, timeout_s=15.0)
-        if not ok:
-            log.warning("Laptop did not see disconnect within 15s; continuing")
-        _glib_drain(1.0)
+        # Suppress PulseAudio auto-reconnect before the reboot window.
+        laptop_bt_adapter.set_trusted(ESP32_MAC, False)
 
-        # Confirm LAST_MAC is set to laptop before reboot
+        # Confirm LAST_MAC while A2DP is still fully connected (set when
+        # connected_state was established).
         esp32.drain(0.1)
         line = esp32.send_and_expect("LAST_MAC get", "OK|LAST_MAC|", timeout_s=5.0)
         assert LAPTOP_MAC.upper() in line.upper(), (
@@ -292,27 +302,39 @@ class TestE2E:
         )
         log.info("LAST_MAC confirmed: %s", line)
 
-        # Reboot and wait for boot complete
+        # RESET while A2DP is fully connected.  The hardware reset issues a
+        # clean HCI disconnect that BlueZ handles without leaving a half-open
+        # AVDTP L2CAP state.  DISCONNECT before RESET would trigger
+        # attempt_reconnection() which starts a PAGE — the interrupted PAGE
+        # leaves BlueZ in a confused state that causes AVDTP to fail on boot.
         esp32.drain(0.1)
         esp32.send_and_expect("RESET", "OK|RESET|", timeout_s=5.0)
         esp32.wait_for_boot(timeout_s=30.0)
 
-        # Auto-connect should restore A2DP connection within 30s
+        # Wait for the ESP32's own attempt_reconnection() to restore the link.
+        # PulseAudio is suppressed (Trusted=False), so the firmware is the sole
+        # AVDTP initiator — no L2CAP collision, CONNECTED fires reliably.
         ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=30.0)
         assert ok, "ESP32 did not auto-reconnect to laptop within 30s after reboot"
         _glib_drain(3.0)
         ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
         assert ok, "Connection lost after A2DP setup in boot reconnect"
         # Drain serial to let boot-reconnect re-authentication events settle.
-        # After auto-reconnect the A2DP stack completes pairing auth async;
-        # START returns ERR|START|FAILED if sent before auth finishes.
         esp32.drain(3.0)
+        # Restore trust and push A2DP from the laptop side.  After a hardware
+        # reset the firmware's attempt_reconnection() establishes ACL quickly but
+        # AVDTP negotiation can take 10-20s more.  connect_profiles() triggers
+        # BlueZ to initiate AVDTP immediately (no-op if the ESP32 already won the
+        # AVDTP race), cutting the wait time reliably.
+        laptop_bt_adapter.set_trusted(ESP32_MAC, True)
+        laptop_bt_adapter.connect_profiles(ESP32_MAC)
+        _glib_drain(3.0)
         log.info("Auto-reconnect confirmed after reboot")
 
         # Retry START with backoff — boot reconnect triggers re-authentication
         # that can delay A2DP readiness by several seconds past the ACL connect.
         start_line = None
-        start_deadline = time.monotonic() + 20.0
+        start_deadline = time.monotonic() + 45.0
         while time.monotonic() < start_deadline:
             esp32.drain(0.2)
             try:

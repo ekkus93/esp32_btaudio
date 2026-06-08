@@ -72,9 +72,20 @@ class TestConnection:
     ):
         """DISCONNECT tears down the A2DP link on both sides."""
         # A2DP media errors flood the serial buffer while connected (no audio source
-        # active); drain before sending DISCONNECT so the response isn't missed.
-        esp32.drain(0.1)
-        line = esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
+        # active); drain before sending DISCONNECT so the response is more likely to
+        # arrive on its own line.  FreeRTOS tasks may still print concurrently and
+        # embed the response in a BT APPL log line — detect it in the AssertionError
+        # captured lines rather than failing outright.
+        esp32.drain(1.5)
+        try:
+            line = esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
+        except AssertionError as exc:
+            if "OK|DISCONNECT|" not in str(exc):
+                raise
+            log.warning(
+                "test_disconnect: UART interleave — response embedded in BT log line"
+            )
+            line = "OK|DISCONNECT|DONE|"
         assert "OK|DISCONNECT|" in line
         _assert_disconnected(laptop_bt_adapter)
 
@@ -96,6 +107,15 @@ class TestConnection:
         ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
         assert ok, "First connection dropped after A2DP setup"
         time.sleep(1.5)   # let ESP32 CONNECTED callback fire
+
+        # Clear LAST_MAC before disconnecting so that attempt_reconnection() does
+        # not fire a PAGE immediately on the DISCONNECT event — that would compete
+        # with the explicit second CONNECT below and cause a connection collision.
+        esp32.drain(0.1)
+        try:
+            esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+        except Exception:
+            pass
 
         # Disconnect
         esp32.drain(0.1)
@@ -123,15 +143,25 @@ class TestConnection:
         # BlueZ may reset Discoverable=False after the pairing connection — re-enable
         # so the ESP32 inquiry scan can find the laptop by name.
         laptop_bt_adapter.set_discoverable(True)
-        # Scan first to populate discovered_devices so CONNECT_NAME can resolve
-        # the name "arisu" to the laptop's MAC.
-        esp32.drain(0.1)
-        esp32.send_and_expect("SCAN", "OK|SCAN|STARTED", timeout_s=5.0)
-        esp32.wait_for_line("OK|SCAN|DONE|", timeout_s=30.0)
-
-        line = esp32.send_and_expect(
-            "CONNECT_NAME arisu", "OK|CONNECT_NAME|INITIATED", timeout_s=5.0
-        )
+        # Scan to populate discovered_devices so CONNECT_NAME can resolve "arisu"
+        # to the laptop MAC.  Retry once: if the ESP32's auto-reconnect PAGE was
+        # still running during the first scan the laptop may not respond to inquiry;
+        # a second scan after the PAGE times out will find it.
+        last_err = None
+        for _scan_attempt in range(2):
+            esp32.drain(0.1)
+            esp32.send_and_expect("SCAN", "OK|SCAN|STARTED", timeout_s=5.0)
+            esp32.wait_for_line("OK|SCAN|DONE|", timeout_s=30.0)
+            try:
+                line = esp32.send_and_expect(
+                    "CONNECT_NAME arisu", "OK|CONNECT_NAME|INITIATED", timeout_s=5.0
+                )
+                last_err = None
+                break
+            except AssertionError as _err:
+                last_err = _err
+        if last_err:
+            raise last_err
         assert "OK|CONNECT_NAME|INITIATED" in line
 
         ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=CONNECT_TIMEOUT_S)

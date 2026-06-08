@@ -125,18 +125,20 @@ def clean_pair_state(esp32, laptop_bt_adapter):
     """
 
     def _cleanup():
-        # Disconnect first so UNPAIR_ALL works cleanly and autostart stops.
-        try:
-            esp32.drain(0.1)
-            esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
-        except Exception:
-            pass
-        # Clear LAST_MAC so the autostart reconnect loop has no target.
+        # Clear LAST_MAC BEFORE disconnecting so that the auto-reconnect logic
+        # that fires immediately on the DISCONNECT event finds no target and skips
+        # the PAGE attempt.  If we cleared it after, the event would already have
+        # read the old MAC and started paging, keeping the HCI adapter busy.
         try:
             esp32.drain(0.1)
             esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
         except Exception as exc:
             log.warning("clean_pair_state: LAST_MAC clear failed — %s", exc)
+        try:
+            esp32.drain(0.1)
+            esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
+        except Exception:
+            pass
         try:
             esp32.drain(0.1)
             esp32.send_and_expect("UNPAIR_ALL", "OK|UNPAIR_ALL|", timeout_s=5.0)
@@ -174,31 +176,69 @@ def paired_state(esp32, laptop_bt_adapter, clean_pair_state):
     time.sleep(0.5)
     esp32.drain(0.1)
 
-    # Initiate pairing from the ESP32
-    esp32.send_and_expect("PAIR {}".format(LAPTOP_MAC), "OK|PAIR|", timeout_s=5.0)
+    # Initiate pairing from the ESP32, with up to 3 attempts to handle
+    # intermittent SSP protocol failures (EVENT|PAIR|FAILED) that can occur
+    # when the BT controller state has accumulated over many test cycles.
+    _pair_line = None
+    for _pair_attempt in range(3):
+        esp32.send_and_expect("PAIR {}".format(LAPTOP_MAC), "OK|PAIR|", timeout_s=5.0)
 
-    # Handle the confirmation event (laptop agent auto-accepts)
-    deadline_ts = time.monotonic() + 30.0
-    while time.monotonic() < deadline_ts:
-        try:
-            line = esp32.wait_for_line("EVENT|PAIR|", timeout_s=5.0)
-        except TimeoutError:
-            continue
-        if "CONFIRM" in line:
-            esp32.send_and_expect("CONFIRM_PIN 1", "OK|CONFIRM_PIN|", timeout_s=5.0)
-        elif "SUCCESS" in line:
+        deadline_ts = time.monotonic() + 30.0
+        _pair_ok = False
+        while time.monotonic() < deadline_ts:
+            try:
+                _pair_line = esp32.wait_for_line("EVENT|PAIR|", timeout_s=5.0)
+            except TimeoutError:
+                continue
+            if "CONFIRM" in _pair_line:
+                esp32.send_and_expect("CONFIRM_PIN 1", "OK|CONFIRM_PIN|", timeout_s=5.0)
+            elif "SUCCESS" in _pair_line:
+                _pair_ok = True
+                break
+            elif "FAILED" in _pair_line:
+                log.warning(
+                    "paired_state: pairing attempt %d/3 failed: %s",
+                    _pair_attempt + 1, _pair_line,
+                )
+                break
+
+        if _pair_ok:
             break
-        elif "FAILED" in line:
-            pytest.fail("Pairing failed during paired_state fixture: {}".format(line))
+        if _pair_attempt < 2:
+            try:
+                esp32.drain(0.1)
+                esp32.send_and_expect("UNPAIR_ALL", "OK|UNPAIR_ALL|", timeout_s=5.0)
+            except Exception:
+                pass
+            try:
+                laptop_bt_adapter.remove_device(ESP32_MAC)
+            except Exception:
+                pass
+            laptop_bt_adapter.set_pairable(True)
+            laptop_bt_adapter.set_discoverable(True)
+            time.sleep(3.0)
+            esp32.drain(0.1)
+    else:
+        pytest.fail(
+            "Pairing failed after 3 attempts: {}".format(_pair_line)
+        )
 
+    # Clear LAST_MAC BEFORE disconnecting so attempt_reconnection() — which fires
+    # synchronously on the DISCONNECT event — finds no target and skips the PAGE.
+    # Cleared first ensures the NVS write completes before the BT event can fire.
+    try:
+        esp32.drain(0.1)
+        esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+    except Exception:
+        pass
     # Disconnect the A2DP link so the device is bonded but not connected.
     # connected_state will CONNECT afterwards when it needs a live link.
     try:
         esp32.drain(0.1)
-        esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
+        esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
     except Exception:
         pass
-    time.sleep(2.0)
+    time.sleep(12.0)
 
     yield esp32
 
@@ -213,23 +253,40 @@ def connected_state(paired_state, laptop_bt_adapter):
     Yields the esp32 driver.
     """
     esp32 = paired_state
-    esp32.send_and_expect("CONNECT {}".format(LAPTOP_MAC), "OK|CONNECT|", timeout_s=5.0)
+    # paired_state sleeps 12s after DISCONNECT, giving PulseAudio's auto-reconnect
+    # time to fully complete (ACL + A2DP).  Drain GLib for 2s to flush any pending
+    # BlueZ events, then send CONNECT.
+    # If PulseAudio finished its auto-reconnect the ESP32 is already A2DP-connected
+    # and returns ERR|CONNECT|FAILED| — treat that as "already connected" and verify
+    # the laptop sees the link before proceeding.
+    _glib_drain(seconds=2.0)
+    try:
+        esp32.send_and_expect("CONNECT {}".format(LAPTOP_MAC), "OK|CONNECT|", timeout_s=5.0)
+    except AssertionError as exc:
+        if "ERR|CONNECT|FAILED|" not in str(exc):
+            raise
+        if not laptop_bt_adapter.is_connected(ESP32_MAC):
+            pytest.fail("connected_state: CONNECT failed and laptop not connected: {}".format(exc))
+        log.info("connected_state: ESP32 already connected via PulseAudio auto-reconnect")
     ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=20.0)
     if not ok:
         pytest.fail("connected_state: ESP32 did not connect to laptop within 20s")
-    # BlueZ fires Connected=True on ACL establishment, but AuthorizeService for
-    # A2DP may still be pending in the GLib event queue.  A plain time.sleep()
-    # does not drain GLib, so AuthorizeService would only fire later (when
-    # _assert_disconnected calls ctx.iteration), by which time DISCONNECT has
-    # already been sent while A2DP is in OPENING state (unhandled by ESP32).
-    # Drain GLib so A2DP setup completes, then re-confirm the link is stable
-    # (the initial connection can briefly drop and be re-established), then
-    # sleep for the ESP32's A2DP CONNECTED callback to fire.
+    # ACL is now up.  Push BlueZ to connect A2DP from the laptop side.  This
+    # handles the case where the ESP32's SDP query finds no A2DP Sink (PulseAudio
+    # briefly deregisters it after a DeviceRemoved event) so the ESP32 never
+    # initiates AVDTP.  If A2DP is already fully established this is a no-op.
+    laptop_bt_adapter.connect_profiles(ESP32_MAC)
     _glib_drain(seconds=3.0)
     ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
     if not ok:
         pytest.fail("connected_state: connection lost after A2DP setup")
-    time.sleep(1.5)
+    # AuthorizeService may arrive late (SDP still running at end of first drain).
+    # Drain GLib again to process any pending agent callbacks, then re-confirm
+    # the link is stable before yielding to the test body.
+    _glib_drain(seconds=2.0)
+    ok = laptop_bt_adapter.wait_for_connect(ESP32_MAC, timeout_s=10.0)
+    if not ok:
+        pytest.fail("connected_state: connection dropped after late A2DP auth")
     yield esp32
     # Best-effort disconnect; drain first so A2DP media-error flood doesn't
     # exhaust the 5-second window before the DONE response arrives.

@@ -95,6 +95,12 @@ class TestAutoConnect:
         line = esp32.send_and_expect("LAST_MAC get", "OK|LAST_MAC|NONE", timeout_s=5.0)
         assert "NONE" in line, "LAST_MAC not cleared before RESET: {}".format(line)
 
+        # Remove the ESP32 from the laptop's BlueZ so that PulseAudio/BlueZ cannot
+        # initiate a reconnect from the laptop side after the ESP32 reboots.
+        # This isolates the test to ESP32-side behaviour (LAST_MAC cleared → no
+        # auto-connect from ESP32), without interference from laptop auto-reconnect.
+        laptop_bt_adapter.remove_device(ESP32_MAC)
+
         # Reboot.
         esp32.drain(0.1)
         esp32.send_and_expect("RESET", "OK|RESET|REBOOTING", timeout_s=5.0)

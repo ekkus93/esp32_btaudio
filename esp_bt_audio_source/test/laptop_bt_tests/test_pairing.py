@@ -47,10 +47,18 @@ def _do_pair(esp32):
         if "CONFIRM" in rx:
             esp32.send_and_expect("CONFIRM_PIN 1", "OK|CONFIRM_PIN|ACCEPTED", timeout_s=5.0)
         elif "SUCCESS" in rx:
-            # Disconnect the A2DP link; leave device bonded but not connected.
+            # Clear LAST_MAC before disconnecting so attempt_reconnection() —
+            # which fires immediately on the DISCONNECT event — finds no target
+            # and skips the PAGE.  Without this the ESP32 pages the laptop for
+            # ~10s, keeping the HCI adapter busy for subsequent operations.
             try:
                 esp32.drain(0.1)
-                esp32.send_and_expect("DISCONNECT", "DISCONNECT|", timeout_s=5.0)
+                esp32.send_and_expect("LAST_MAC clear", "OK|LAST_MAC|", timeout_s=5.0)
+            except Exception:
+                pass
+            try:
+                esp32.drain(0.1)
+                esp32.send_and_expect("DISCONNECT", "OK|DISCONNECT|", timeout_s=5.0)
             except Exception:
                 pass
             time.sleep(2.0)
@@ -268,7 +276,7 @@ class TestPairingEdgeCases:
                 "UNPAIR {}".format(LAPTOP_MAC), "OK|UNPAIR|REMOVED", timeout_s=5.0
             )
             laptop_bt_adapter.remove_device(ESP32_MAC)
-            time.sleep(1.0)
+            time.sleep(3.0)
             _do_pair(esp32)
         finally:
             laptop_bt_adapter.set_discoverable(False)
