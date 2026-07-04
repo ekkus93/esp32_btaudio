@@ -1,3 +1,15 @@
+## 2026-07-05 (cont) - Echo Buds test: PERFECT stream to real headset
+
+ESP32 paired+connected directly to Echo Buds 009H (48:78:5E:D9:35:A3;
+buds auto-connect A2DP during pairing — explicit CONNECT then returns
+ERR already-connected, harmless). 24 s music stream: ALL counters zero
+(in=2,116,608 = every byte of 2067 frames accepted, out=4,234,240
+upsampled, und/ovf/crc/lost all 0), A2DP steady 176.6-176.8 kB/s.
+UARTAUDIO feature validated on the real use-case sink.
+
+Note: laptop-side `bluetoothctl block` on the buds during the test kept
+the laptop from stealing them (unblocked after). ESP32 now has buds
+bonded + LAST_MAC may point at them; laptop pairing untouched.
 ## 2026-07-05 (cont) - Option B forensics: FIFO_OVF convicted, threshold fix -> ZERO-DEFECT streams
 
 UART event-queue forensics (main.c installs queue -> reader drains,
