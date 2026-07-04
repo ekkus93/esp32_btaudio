@@ -170,3 +170,70 @@ After completing manual tests:
 
 **Generated:** 2026-02-08  
 **For:** REMOVE_PLAY_TODO.md Phase 7.4 verification
+
+---
+
+# Addendum: UARTAUDIO End-to-End Smoke Test (2026-07-04)
+
+Verifies the laptop -> UART -> ESP32 -> Bluetooth speaker audio path
+(UARTAUDIO feature, commits UARTAUDIO-1..8).
+
+## Prerequisites
+
+- ESP32 flashed with current firmware (`idf.py build` then confirm flash)
+- Bluetooth speaker paired previously (or ready to pair)
+- `python310` conda env (pyserial) on the laptop
+- A test song: `ffmpeg -i song.mp3 -ar 22050 -ac 2 -sample_fmt s16 /tmp/song22k.wav`
+
+## Procedure
+
+1. **Connect the speaker** (115200 text mode, e.g. via `miniterm` or the
+   test tooling):
+
+   ```
+   CONNECT <speaker MAC>        # or rely on autoconnect
+   STATUS                       # expect CONNECTED + streaming state
+   ```
+
+2. **Close the terminal** (the streamer owns the port), then stream:
+
+   ```bash
+   conda run -n python310 python tools/stream_audio_uart.py \
+       --port /dev/ttyUSB0 /tmp/song22k.wav
+   ```
+
+   Expected console flow: `OK|UARTAUDIO|STARTING` -> `UA|READY` ->
+   "streaming ..." line. Music (FM-radio quality, ~11 kHz bandwidth)
+   plays from the speaker after the ~185 ms prebuffer.
+
+3. **Listen for 3 minutes.** No dropouts expected. With `-v` the
+   `[fill NN%]` lines should hover mid-range with `crc=0 ovf=0`.
+
+4. **Ctrl-C.** Tool sends the STOP frame; device drains, prints
+   `UA|BYE`, both sides return to 115200. Tool prints frame count and
+   device error counters — **all error counters should be 0**.
+
+5. **Confirm text mode recovered:** reopen the terminal, send `STATUS`
+   and `UARTAUDIO STATUS` — expect normal responses
+   (`streaming=0,state=INACTIVE`).
+
+## Failure recovery notes
+
+- Host killed mid-stream: device auto-recovers to text mode after 2 s
+  of RX inactivity (check with `STATUS` at 115200).
+- Device reset mid-stream: streamer notices missing `UA|FILL` feedback;
+  restart it. Port stays at 921600 only while streaming.
+- Nonzero `crc=`/`ovf=` counters: retry with `--baud 460800` to isolate
+  cable/bridge issues (note: 460800 cannot sustain stereo 22.05 kHz —
+  expect underruns; it is a link-quality diagnostic only).
+
+## Checklist
+
+- [ ] Speaker connected, STATUS shows CONNECTED
+- [ ] STARTING/READY handshake completes
+- [ ] Music audible within ~1 s of streamer start
+- [ ] 3 min playback with no dropouts
+- [ ] Final stats: underruns=0 crc_errors=0 frames_lost=0 overflows=0
+- [ ] Text prompt works after Ctrl-C (STATUS + UARTAUDIO STATUS)
+- [ ] Device DRAM headroom acceptable (`MEM` before/after streaming;
+      if tight, set `UART_AUDIO_STAGING_RB_KB=16` in menuconfig)
