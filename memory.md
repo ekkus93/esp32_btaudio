@@ -1,3 +1,35 @@
+## 2026-07-05 - UARTAUDIO static SOLVED: engine throughput bug + UART FIFO overruns
+
+Pull-rate instrumentation (READ_BPS, commit f079c9bd) cracked the case in
+one measurement: A2DP pull is a perfect 176.5-176.8 kB/s ALWAYS — the
+deficit was never Bluetooth. Two real bugs found and fixed:
+
+1. bc2f2e8a — audio engine produced ONE 1 KB chunk per wake, but with
+   CONFIG_FREERTOS_HZ=100 its 2 ms tick clamps to 10 ms -> 102.4 KB/s
+   ceiling vs 176.4 needed. A2DP zero-filled the ~40% gap on EVERY ring
+   underrun since forever (inaudible for silence/synth; = the heavy
+   static for real audio). Now up to 8 chunks/wake, watermark-bounded.
+   NOTE: this means I2S capture playback likely ALSO had 40% silence
+   gaps all along — worth rechecking I2S path quality now.
+2. 3ffbb670 — residual crc/lost from the 128 B UART hardware FIFO
+   overflowing during BT flash-cache windows (1.4 ms deadline at 921600).
+   CONFIG_UART_ISR_IN_IRAM=y fixed most of it; RX driver buffer 16 KB.
+
+Also: the live A2DP data callback is bt_events_a2dp_data_callback
+(bt_manager.c:1066 registration). bt_streaming_manager and
+bt_connection_manager each hold DUPLICATE never-fed stats/state machines
+— STATUS's BYTES_REQ/CALLBACKS/DUR fields read those dead structs (always
+0). Candidate cleanup: point STATUS at real stats or delete duplicates.
+
+Result on hardware (24 s music stream, laptop as sink): staging ring
+25-65% (was pegged), ovf=0, und=0, crc=8, lost=13 (0.5% frames, was
+52/88). User: 'much better... beginning pretty clear and static free'
+(pre-ISR-fix run; final run should be cleaner still — awaiting listen).
+
+Remaining candidates for the last ~0.5%: BT_L2CAP error-log suppression
+during streaming; real-headset test (laptop link congestion may be the
+trigger for the loss bursts). Longer-duration pytest E2E variant still
+worth adding as regression for the engine-throughput class of bug.
 ## 2026-07-04 (night) - UARTAUDIO static: WiFi-coex theory DISPROVED; deficit is invariant
 
 Correction to earlier entry: the A2DP consumption deficit (~30-40% below
