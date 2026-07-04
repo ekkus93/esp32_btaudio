@@ -166,16 +166,18 @@ bool test_send_serial_cmd(const char *cmd)
             // ENTER_PIN <MAC> [PIN]
             const char *p = tmp + 10;
             const char *space = strchr(p, ' ');
+            /* Production contract (bt_pairing_store.c): a PIN-flow pairing
+             * emits PIN_REQUEST then SUCCESS on auth-complete. CONFIRM is
+             * SSP-only — the fabricated CONFIRM|mac,pin this emulation used
+             * to push never matched production and was removed when the
+             * device suite was re-aligned. */
             if (!space) {
-                // No PIN provided — use default 000000
+                // No PIN provided — command handler resolves the default PIN
                 char macbuf[64];
                 size_t maclen = strlen(p);
                 if (maclen >= sizeof(macbuf)) maclen = sizeof(macbuf) - 1;
                 memcpy(macbuf, p, maclen);
                 macbuf[maclen] = '\0';
-                char confirm_ev[160];
-                snprintf(confirm_ev, sizeof(confirm_ev), "EVENT|PAIR|CONFIRM|%s,000000", macbuf);
-                event_queue_push(confirm_ev);
                 char success_ev[128];
                 snprintf(success_ev, sizeof(success_ev), "EVENT|PAIR|SUCCESS|%s", macbuf);
                 event_queue_push(success_ev);
@@ -185,10 +187,6 @@ bool test_send_serial_cmd(const char *cmd)
                 if (maclen >= sizeof(mac)) maclen = sizeof(mac)-1;
                 memcpy(mac, p, maclen);
                 mac[maclen] = '\0';
-                const char *pin = space + 1;
-                char confirm_ev[160];
-                snprintf(confirm_ev, sizeof(confirm_ev), "EVENT|PAIR|CONFIRM|%s,%s", mac, pin);
-                event_queue_push(confirm_ev);
                 char success_ev[128];
                 snprintf(success_ev, sizeof(success_ev), "EVENT|PAIR|SUCCESS|%s", mac);
                 event_queue_push(success_ev);
