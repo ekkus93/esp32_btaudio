@@ -1,3 +1,36 @@
+## 2026-07-04 (night) - UARTAUDIO static: WiFi-coex theory DISPROVED; deficit is invariant
+
+Correction to earlier entry: the A2DP consumption deficit (~30-40% below
+the 176.4 KB/s needed; staging ring pegs at 100% within ~2 s, steady
+overflows) is IDENTICAL across: 2.4 vs 5 GHz WiFi, double vs single vs
+zero PulseAudio loopback, stale vs fresh BT connection/pairing, adapter
+power-cycle. Laptop-side conditions ruled out.
+
+Established facts:
+- Two simultaneous loopbacks (mine + bluez-policy auto-loopback) DID
+  cause doubled/phasey audio earlier — dedup fixed that layer. bluez
+  policy auto-loads its own loopback for a2dp_source; don't add one.
+- 'Microphone on' indicator = loopback recording the bluez_source (BT
+  stream registers as an input device); physical mics stay SUSPENDED.
+- Streaming with NO A2DP link (or released transport) -> engine pauses
+  on full main ring -> near-zero staging drain (worst ovf slope) — this
+  contaminated two earlier 'control' runs.
+- Even the 'clean' 3 s pytest may fit inside ring headroom at ~80-90%
+  consumption; it cannot distinguish 100% from ~85%.
+- Suspicion: A2DP data callback pull rate on the ESP32 may be chronically
+  below 44.1 kHz real-time even for SILENCE (AUDIO_PROC flood showed
+  req=512 at ~10 ms cadence ~= 51 KB/s if every callback logs); STATUS
+  BYTES_REQ/CALLBACKS/DUR counters read 0 during streaming — not wired
+  to this path, so no direct measurement exists yet.
+
+Next steps: (1) definitive sink test with the real BT headset once
+charged (removes laptop stack entirely); (2) instrument firmware to
+report actual A2DP callback pull rate (bytes/sec) so the deficit can be
+measured instead of inferred from ring fill; (3) if pull rate is low
+even to a good sink, dig into Bluedroid media-task cadence/SBC config.
+
+Cleanup state: laptop-ESP32 re-paired fresh; engine STOPped; single
+policy loopback remains loaded.
 ## 2026-07-04 (evening) - UARTAUDIO audible listen test: works, static traced to WiFi/BT coex
 
 Laptop-as-sink listen test (PulseAudio loopback from bluez_source to
