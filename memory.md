@@ -1,3 +1,19 @@
+## 2026-07-05 (cont) - capture-vs-source analysis: pipeline is bit-faithful; tapping == lost UART frames, nothing else
+
+New tools/compare_bt_capture.py (parec bluez capture + windowed FFT
+xcorr vs reference built with the firmware's exact upsampler). Sweep
+test result: median window r = 1.0000, amplitude ratio 1.000, zero
+silence insertions — UART framing, upsampling, SBC and BT air link are
+audibly transparent. The ONLY defect found: one 23.0 ms excision ==
+exactly 2 lost UART frames (matches device lost counter). So residual
+'tapping' = UART frame loss, fully characterized; loss rate now ~1-2
+events/24 s after ISR-in-IRAM.
+
+Method notes: use non-repetitive source (sweep) — repetitive music let
+the correlator lock onto wrong cycles (bogus 61 ms 'skip'). Sub-sample
+alignment limits per-window r above ~5 kHz (energy/quiet-run columns
+distinguish artifact from defect). conda run does not forward heredoc
+stdin reliably — use system python3 for heredocs or python -c.
 ## 2026-07-05 (cont) - UARTAUDIO listen quality: 'even better'; residual ~0.5% tapping
 
 After engine fix + UART_ISR_IN_IRAM: user reports clean start, faint
