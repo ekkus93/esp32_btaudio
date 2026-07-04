@@ -45,7 +45,7 @@ engine. The S3 provides:
 | Board | ESP32-S3-WROOM-1 **N16R8** | User's hardware (Amazon B0DG8L5NG5, 3-pack). Octal PSRAM ⇒ GPIO35-37 unusable; 8 MB PSRAM ⇒ generous audio/TLS buffers |
 | I2S format | **44.1 kHz, 16-bit, stereo, Philips** — S3 is **master transmitter** | WROOM32 is I2S SLAVE-RX; A2DP is natively 44.1 kHz (supersedes old 48 kHz contract). Radio streams at other rates are resampled on the S3 |
 | UART link role | **Full remote control** of the BT board + event monitoring | BT board's UART2 command port built for this |
-| Audio decoders | Espressif `esp_audio_codec` managed component (MP3, AAC-LC, HE-AAC) | Covers the radio codec landscape without pulling in ESP-ADF |
+| Audio decoders | Espressif **`esp_audio_codec`** managed component (`^2.6.0`) — MP3, AAC-LC, HE-AAC, **HE-AACv2**; **AAC-Plus (SBR/PS) enabled**. **Plain ESP-IDF, NOT ESP-ADF** | Registry-verified; HE-AACv2 needed for AAC+ streams (e.g. Dance UK 32 kbps). ADF is a pipeline framework we don't need — we own the audio path. Unified `esp_audio_dec.h` API + "simple decoder" frame-finder for raw Shoutcast/Icecast streams |
 | Station UX | Presets in NVS (web-editable) + custom-URL field; defaults seeded from **internet-radio.com** "Popular Stations" list (see §5.4) | User choice (2026-07-04) |
 | Web UI stack | **TypeScript + React** (Vite), built off-device → minified + gzipped bundle **embedded via EMBED_FILES**; **no filesystem partition** | User choice (2026-07-04). 16 MB flash makes an embedded gzip bundle trivial; NVS holds all mutable state. See §5.5 |
 | Terminal UX | Raw terminal pane + live EVENT feed | User choice |
@@ -118,9 +118,12 @@ audio will be channel-shifted/garbled.
   and permanent diagnostic.
 - **`radio`** — stream client (esp_http_client + esp-tls), `.m3u`/`.pls`
   resolution, ICY metadata extraction, compressed-frame ring (PSRAM) →
-  decoder task (`esp_audio_codec`: MP3/AAC-LC/HE-AAC) → resampler to
-  44.1 kHz (decoder output rates 22.05–48 kHz) → `pcm_ring`. Reconnect with
-  backoff on stream drop; buffer/underrun telemetry surfaced to the UI.
+  decoder task (`esp_audio_codec` via `esp_audio_dec.h` + the "simple
+  decoder" frame-finder: MP3, AAC-LC, HE-AAC, HE-AACv2 with AAC-Plus/SBR
+  enabled) → resampler to 44.1 kHz (decoder output rates 22.05–48 kHz, mono
+  or stereo) → `pcm_ring`. **Plain ESP-IDF managed component — no ESP-ADF.**
+  Reconnect with backoff on stream drop; bad frame → resync (not crash);
+  buffer/underrun telemetry surfaced to the UI.
 - **`bt_link`** — UART1 client speaking the WROOM32 command protocol:
   one-in-flight command with timeout, `OK|`/`ERR|` correlation, `EVENT|`
   fan-out to subscribers (web terminal, BT UI state, orchestrator). C

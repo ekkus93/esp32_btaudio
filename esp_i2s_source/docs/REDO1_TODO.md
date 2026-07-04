@@ -164,9 +164,13 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
 **Status:** `[ ]` Not started
 
 ### Tasks
-- [ ] **RADIO-2a** Decoder task: `esp_audio_codec` MP3 + AAC-LC + HE-AAC;
-      handles mid-stream format changes; error containment (bad frame →
-      resync, not crash).
+- [ ] **RADIO-2a** Decoder task: add `espressif/esp_audio_codec ^2.6.0`
+      managed component (plain IDF, **no ESP-ADF**); decode via
+      `esp_audio_dec.h` + simple-decoder frame-finder — MP3 + AAC-LC +
+      HE-AAC + **HE-AACv2** with **AAC-Plus (SBR/PS) enabled** in component
+      config (needed for AAC+ streams like Dance UK). Content-Type →
+      codec selection; handles mid-stream format changes; error containment
+      (bad frame → resync, not crash).
 - [ ] **RADIO-2b** Resampler stage to 44.1 kHz stereo s16 (decoder output
       may be 22.05/24/32/44.1/48 kHz, mono or stereo) — math host-tested
       against known-exact conversions.
