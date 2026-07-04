@@ -1,3 +1,24 @@
+## 2026-07-04 - test_bluetooth device suite FIXED: 46/46 (was: link-broken for months)
+
+Fix (bdf576bd): new test/test_bluetooth/main/bt_manager_api_mock.c
+provides the bt_manager wrapper API surface as pure delegates to the
+base mock (separate file: bt_manager.h vs bt_source.h bt_device_t
+conflict); bt_source_mock.c gained bt_connect_by_name/bt_deinit/
+bt_get_connection_quality/bt_connection_shim_publish_info/
+bt_manager_test_invoke_a2dp_event.
+
+Key architecture learned: EVENT|PAIR|* on this suite comes from the
+PRODUCTION notifier bt_pairing_store.c (bt_manager lib is compiled with
+UNIT_TEST -> bt_manager_test_record_pair_event hook). Mock wrappers must
+NOT emit events (duplicates). Production PIN-flow contract:
+PIN_REQUEST -> SUCCESS; CONFIRM is SSP-only. Two stale tests expected
+CONFIRM|mac,pin — an artifact of the retired test_app2 emulation
+adapter (test_pairing_adapters.c fallback) — updated to production
+contract.
+
+Debug gotcha: run_unity/ninja rebuilt the .obj but reused a stale ELF
+once — when in doubt rm the .elf before rerunning. And run_all_tests.py
+still counts build-failed suites as 0 failures (unfixed reporting gap).
 ## 2026-07-04 - /lint-n-test full sweep: all green EXCEPT pre-existing test_bluetooth link breakage
 
 Sweep results: host CTest 65/65 binaries (688 cases, 0 fail); device
