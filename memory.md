@@ -1,3 +1,17 @@
+## 2026-07-05 (cont) - UARTAUDIO listen quality: 'even better'; residual ~0.5% tapping
+
+After engine fix + UART_ISR_IN_IRAM: user reports clean start, faint
+'tapping' late in stream = the residual crc/lost (11-13 frames per 24 s,
+each lost frame = 11.6 ms click). BT_L2CAP log muting during streaming
+(committed) helped only marginally. Residual is time-correlated with
+laptop-link L2CAP congestion onset (~15 s in) — believed to be BT
+controller interrupt pressure during retransmission bursts starving the
+UART FIFO (128 B / 1.4 ms deadline), unreachable from firmware.
+
+Definitive next test: real BT headset (clean link, no congestion) —
+expectation is zero tapping. If tapping persists on a good link, next
+suspects: CP2102 host-side, or add UART_FIFO_OVF event-queue counting to
+distinguish FIFO overruns from wire corruption.
 ## 2026-07-05 - UARTAUDIO static SOLVED: engine throughput bug + UART FIFO overruns
 
 Pull-rate instrumentation (READ_BPS, commit f079c9bd) cracked the case in
