@@ -1,5 +1,6 @@
 #include "commands_priv.h"
 #include "cmd_handlers.h"
+#include "uart_audio.h"
 
 #define TAG "CMD_IF"
 
@@ -243,6 +244,9 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "DIAG") == 0) {
         ctx->type = CMD_TYPE_DIAG;
     }
+    else if (strcasecmp(token, "UARTAUDIO") == 0) {
+        ctx->type = CMD_TYPE_UARTAUDIO;
+    }
     else if (strcasecmp(token, "SPANLOG") == 0) {
         ctx->type = CMD_TYPE_SPANLOG;
     }
@@ -284,6 +288,13 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
 
 cmd_status_t cmd_process(void)
 {
+    /* UARTAUDIO gate: while streaming, the reader task owns UART RX.
+     * Must be the first check so no byte is ever consumed here. */
+    if (uart_audio_is_streaming())
+    {
+        return CMD_SUCCESS;
+    }
+
     uint8_t read_buf[CMD_BUF_SIZE];
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
     const int read_uart = CMD_UART_NUM;
@@ -440,6 +451,8 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_unpair_all(ctx);
     case CMD_TYPE_SPANLOG:
         return cmd_handle_spanlog(ctx);
+    case CMD_TYPE_UARTAUDIO:
+        return cmd_handle_uartaudio(ctx);
     case CMD_TYPE_HELP:
         return cmd_handle_help(ctx);
     default:

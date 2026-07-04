@@ -487,3 +487,31 @@ bool audio_processor_is_i2s_active(void)
 {
     return s_running && !s_synth_mode;
 }
+
+/* ── uart_source stubs (UARTAUDIO) ───────────────────────────────────────
+ * uart_audio.c (command_interface_host) queries the UART audio source for
+ * STATUS/BUSY decisions; command-handler tests don't exercise the real
+ * staging ring, so a minimal controllable stub suffices. */
+#include "../../components/audio_processor/include/uart_source.h"
+
+static bool s_stub_uart_source_active = false;
+
+void uart_source_stub_set_active(bool active)
+{
+    s_stub_uart_source_active = active;
+}
+
+bool uart_source_is_active(void)
+{
+    return s_stub_uart_source_active;
+}
+
+void uart_source_get_stats(uart_source_stats_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    out->state = s_stub_uart_source_active ? UART_SOURCE_STATE_ACTIVE
+                                           : UART_SOURCE_STATE_INACTIVE;
+}

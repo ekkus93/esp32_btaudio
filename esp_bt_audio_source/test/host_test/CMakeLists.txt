@@ -63,7 +63,8 @@ add_library(command_interface_host OBJECT
     ../../components/command_interface/cmd_handlers_system.c
     ../../components/command_interface/cmd_handlers_audio.c
     ../../components/command_interface/cmd_handlers_files.c
-    ../../components/command_interface/cmd_handlers_bt.c)
+    ../../components/command_interface/cmd_handlers_bt.c
+    ../../components/command_interface/uart_audio.c)
 
 # Find the unity package for unit testing
 find_package(unity QUIET)
@@ -443,6 +444,29 @@ target_include_directories(test_uart_upsample2x PRIVATE
 target_compile_definitions(test_uart_upsample2x PRIVATE UNIT_TEST)
 target_link_libraries(test_uart_upsample2x unity util_safe_host platform_shim_host)
 add_test(NAME test_uart_upsample2x COMMAND $<TARGET_FILE:test_uart_upsample2x>)
+
+# UARTAUDIO step 5: UARTAUDIO command plumbing + cmd_process streaming gate
+add_executable(test_uart_audio_cmd test_uart_audio_cmd.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_uart_audio_cmd PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_uart_audio_cmd PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_uart_audio_cmd PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_uart_audio_cmd PRIVATE mocks/fake_esp_err.c)
+target_sources(test_uart_audio_cmd PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_uart_audio_cmd unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_uart_audio_cmd PRIVATE UNIT_TEST)
+add_test(NAME test_uart_audio_cmd COMMAND $<TARGET_FILE:test_uart_audio_cmd>)
 
 # UARTAUDIO step 3: uart_source lifecycle (staging ring + fill + stats)
 add_executable(test_uart_source test_uart_source.c

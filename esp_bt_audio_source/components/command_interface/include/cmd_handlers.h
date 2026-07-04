@@ -14,6 +14,7 @@ cmd_status_t cmd_handle_help(const cmd_context_t *ctx);
 
 cmd_status_t cmd_handle_scan(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_synth(const cmd_context_t *ctx);
+cmd_status_t cmd_handle_uartaudio(const cmd_context_t *ctx);  /* uart_audio.c */
 cmd_status_t cmd_handle_diag(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_beep(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_start(const cmd_context_t *ctx);

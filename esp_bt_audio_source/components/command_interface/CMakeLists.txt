@@ -26,6 +26,7 @@ idf_component_register(
         "cmd_handlers_files.c"
         "cmd_handlers_bt.c"
         "uart_audio_frame.c"
+        "uart_audio.c"
     INCLUDE_DIRS "include"
     REQUIRES ${public_requires}
     PRIV_REQUIRES ${priv_requires}
