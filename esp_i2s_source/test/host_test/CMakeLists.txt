@@ -41,6 +41,7 @@ enable_testing()
 
 # --- Component source roots (added per task as host-testable code lands) ---
 set(SIGNAL_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../components/signal_gen)
+set(I2S_OUT_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/i2s_out)
 set(BT_LINK_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_link)
 set(RADIO_DIR      ${CMAKE_CURRENT_SOURCE_DIR}/../../components/radio)
 
@@ -54,6 +55,12 @@ add_executable(test_signal_gen test_signal_gen.c ${SIGNAL_GEN_DIR}/signal_gen.c)
 target_include_directories(test_signal_gen PRIVATE ${SIGNAL_GEN_DIR}/include)
 target_link_libraries(test_signal_gen unity m)
 add_test(NAME test_signal_gen COMMAND test_signal_gen)
+
+# SIG-1b: pcm_ring SPSC ring
+add_executable(test_pcm_ring test_pcm_ring.c ${I2S_OUT_DIR}/pcm_ring.c)
+target_include_directories(test_pcm_ring PRIVATE ${I2S_OUT_DIR}/include)
+target_link_libraries(test_pcm_ring unity)
+add_test(NAME test_pcm_ring COMMAND test_pcm_ring)
 
 # Further suites appended by LINK-1a (test_bt_link_parser), RADIO-1a
 # (test_playlist_icy), RADIO-2b (test_resampler), etc.
