@@ -14,6 +14,7 @@ idf_component_register(
         "beep_manager.c"
         "i2s_manager.c"
         "synth_manager.c"
+        "uart_source.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

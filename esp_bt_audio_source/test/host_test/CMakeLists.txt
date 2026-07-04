@@ -429,6 +429,13 @@ target_link_libraries(test_uart_audio_frame unity)
 target_compile_definitions(test_uart_audio_frame PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_frame COMMAND $<TARGET_FILE:test_uart_audio_frame>)
 
+# UARTAUDIO step 2: 2x stereo upsampler (pure function, no mocks needed)
+add_executable(test_uart_upsample2x test_uart_upsample2x.c
+    ../../components/audio_processor/uart_source.c)
+target_link_libraries(test_uart_upsample2x unity)
+target_compile_definitions(test_uart_upsample2x PRIVATE UNIT_TEST)
+add_test(NAME test_uart_upsample2x COMMAND $<TARGET_FILE:test_uart_upsample2x>)
+
 # TEST-4: commands_helpers.c — cmd_safe_copy/append, copy_truncated_identifier, parse_log_level
 add_executable(test_commands_helpers test_commands_helpers.c
     ../../components/command_interface/commands_helpers.c
