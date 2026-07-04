@@ -429,12 +429,35 @@ target_link_libraries(test_uart_audio_frame unity)
 target_compile_definitions(test_uart_audio_frame PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_frame COMMAND $<TARGET_FILE:test_uart_audio_frame>)
 
-# UARTAUDIO step 2: 2x stereo upsampler (pure function, no mocks needed)
+# UARTAUDIO step 2: 2x stereo upsampler (lives in uart_source.c, needs its mocks)
 add_executable(test_uart_upsample2x test_uart_upsample2x.c
-    ../../components/audio_processor/uart_source.c)
-target_link_libraries(test_uart_upsample2x unity)
+    ../../components/audio_processor/uart_source.c
+    ../../components/audio_processor/audio_ringbuffer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_uart_upsample2x PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
 target_compile_definitions(test_uart_upsample2x PRIVATE UNIT_TEST)
+target_link_libraries(test_uart_upsample2x unity util_safe_host platform_shim_host)
 add_test(NAME test_uart_upsample2x COMMAND $<TARGET_FILE:test_uart_upsample2x>)
+
+# UARTAUDIO step 3: uart_source lifecycle (staging ring + fill + stats)
+add_executable(test_uart_source test_uart_source.c
+    ../../components/audio_processor/uart_source.c
+    ../../components/audio_processor/audio_ringbuffer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_uart_source PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_uart_source PRIVATE UNIT_TEST)
+target_link_libraries(test_uart_source unity util_safe_host platform_shim_host)
+add_test(NAME test_uart_source COMMAND $<TARGET_FILE:test_uart_source>)
 
 # TEST-4: commands_helpers.c — cmd_safe_copy/append, copy_truncated_identifier, parse_log_level
 add_executable(test_commands_helpers test_commands_helpers.c
