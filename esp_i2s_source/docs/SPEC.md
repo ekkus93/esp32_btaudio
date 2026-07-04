@@ -47,6 +47,7 @@ engine. The S3 provides:
 | UART link role | **Full remote control** of the BT board + event monitoring | BT board's UART2 command port built for this |
 | Audio decoders | Espressif `esp_audio_codec` managed component (MP3, AAC-LC, HE-AAC) | Covers the radio codec landscape without pulling in ESP-ADF |
 | Station UX | Presets in NVS (web-editable) + custom-URL field; defaults seeded from **internet-radio.com** "Popular Stations" list (see §5.4) | User choice (2026-07-04) |
+| Web UI stack | **TypeScript + React** (Vite), built off-device → minified + gzipped bundle **embedded via EMBED_FILES**; **no filesystem partition** | User choice (2026-07-04). 16 MB flash makes an embedded gzip bundle trivial; NVS holds all mutable state. See §5.5 |
 | Terminal UX | Raw terminal pane + live EVENT feed | User choice |
 | Web security | Open UI on the LAN; AP mode uses WPA2 with a default password printed on the S3 console | v1 scope; LAN-trusted device |
 
@@ -127,10 +128,15 @@ audio will be channel-shifted/garbled.
 - **`wifi_mgr`** — STA with NVS creds; falls back to AP mode
   (`ESP32-S3-Audio` / WPA2, password printed on console) when no creds or
   connect fails; mDNS `esp-i2s-source.local` in STA mode.
-- **`web_ui`** — esp_http_server; embedded single-page UI (HTML/JS baked
-  into the firmware via EMBED_FILES — no filesystem partition needed);
-  REST endpoints for actions/config; one WebSocket multiplexing terminal
-  I/O, EVENT feed, and status updates (JSON messages with a `type` field).
+- **`web_ui`** — esp_http_server serving a **TypeScript + React** single-page
+  app. The app is built off-device (Vite → one minified JS bundle + CSS +
+  `index.html`), gzipped, and **baked into the firmware via EMBED_FILES**;
+  served with `Content-Encoding: gzip`. **No filesystem partition** — NVS holds
+  all mutable state (WiFi creds, station presets), so the only thing a FS would
+  host is the static UI, and a ~50–150 KB gzipped bundle is negligible against
+  16 MB flash. REST endpoints for actions/config; one WebSocket multiplexing
+  terminal I/O, EVENT feed, and status updates (JSON, `type`-tagged). See §5.5
+  for the frontend toolchain and the no-Node-in-IDF-build contract.
 - **`source arbitration`** — explicit user action wins: starting radio
   stops tone and vice versa; silence when idle.
 - **`console`** — minimal S3-local USB commands (`WIFI`, `TONE`, `RADIO`,
@@ -193,6 +199,31 @@ path (`RADIO-2d`) the user picked these two AAC stations (2026-07-04):
 
 Playlist URLs above are the underlying `.pls` links (internet-radio.com wraps
 them in a `playlistgenerator` redirect; `RADIO-1a` resolves `.pls` directly).
+
+### 5.5 Frontend toolchain (TypeScript + React, embedded — no filesystem)
+The web UI is a **TypeScript + React** SPA built with **Vite**, living in a
+standalone `web/` project (its own `package.json`; not part of the IDF build
+tree). Build output is a single minified JS bundle + CSS + `index.html`.
+
+- **Serving model:** `vite build` → assets are **gzipped** and embedded into
+  the firmware via `EMBED_FILES` (`target_add_binary_data(... TEXT)` on the
+  `.gz`); httpd serves them with `Content-Encoding: gzip`. No LittleFS/SPIFFS
+  partition — mutable state lives in NVS, so the FS would only host static
+  bytes, and a ~50–150 KB gzip bundle is negligible on 16 MB flash.
+- **No Node in the IDF/CI build:** the gzipped artifacts are checked into
+  `main/www/` (generated). `web/` has an `npm run build` that regenerates them
+  via a small `scripts/embed_web.mjs` (build + gzip + copy). `idf.py build`
+  and CI never invoke npm — they consume the committed `.gz`. A pre-commit or
+  make target keeps the artifact in sync; a build-time hash check warns if the
+  committed bundle is stale vs `web/src`.
+- **Bundle discipline:** target < 200 KB gzipped. Prefer a lean dependency set
+  (React + a small WS/fetch layer; no heavyweight UI kit). If size ever
+  matters, `preact/compat` is a drop-in React alias that cuts the runtime to
+  ~4 KB — noted as an escape hatch, not the default, since 16 MB flash makes
+  React itself a non-issue here.
+- **Dev ergonomics:** `vite dev` runs the UI against the device's REST/WS over
+  the LAN (CORS allowed in dev builds only) for fast iteration without
+  reflashing; production builds embed and lock down.
 
 ## 6. Memory budget (N16R8: 512 KB SRAM + 8 MB PSRAM)
 - PSRAM: compressed stream ring (~512 KB), decoded PCM ring (~256 KB),

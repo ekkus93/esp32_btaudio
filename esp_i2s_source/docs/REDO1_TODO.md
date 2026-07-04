@@ -10,6 +10,9 @@ Prerequisites / environment (confirmed 2026-07-04):
   I2S slave-RX on BCLK=26/WS=25/DIN=22).
 - Wiring per SPEC.md §3.2; both boards on separate USB power, common GND.
 - Python tooling via `conda run -n python310` (never create new envs).
+- Web UI build (WEB-1 only) needs Node.js ≥ 20 + npm for the `web/` Vite
+  project. The IDF/CI firmware build does NOT need Node — it embeds the
+  committed gzipped bundle in `main/www/` (SPEC §5.5).
 - The old `main/ws_echo_server.c` scaffold is replaced wholesale; old
   `docs/PRD.md`/`docs/FS.md` superseded by SPEC.md where they conflict.
 
@@ -94,13 +97,21 @@ WROOM32 UART2. Also the first physical exercise of the WROOM32's UART2.
 **Status:** `[ ]` Not started
 
 ### Background
-esp_http_server with an embedded single-page UI (EMBED_FILES — no
-filesystem partition). One WebSocket multiplexes terminal I/O, the EVENT
-feed, and status pushes as JSON `{type:...}` frames (SPEC §5.2).
+esp_http_server serving a **TypeScript + React** SPA (Vite build → minified +
+gzipped bundle, embedded via EMBED_FILES — **no filesystem partition**; SPEC
+§5.5). One WebSocket multiplexes terminal I/O, the EVENT feed, and status
+pushes as JSON `{type:...}` frames (SPEC §5.2).
 
 ### Tasks
-- [ ] **WEB-1a** httpd + `GET /` embedded UI + `GET /api/status`
-      (aggregated S3 + last-known WROOM32 state).
+- [ ] **WEB-1z** Frontend toolchain: standalone `web/` project (Vite + TS +
+      React, own `package.json`); `npm run build` → minify → gzip → emit
+      artifacts into `main/www/` via `scripts/embed_web.mjs`. Commit the
+      `.gz` so `idf.py build`/CI need no Node. CMake `target_add_binary_data`
+      wires the bundle in; httpd serves it with `Content-Encoding: gzip`.
+      Stale-bundle hash check. (Do this before WEB-1a — everything else
+      renders into this shell.)
+- [ ] **WEB-1a** httpd + `GET /` (embedded gzipped React app) + `GET
+      /api/status` (aggregated S3 + last-known WROOM32 state).
 - [ ] **WEB-1b** `POST /api/wifi` provisioning endpoint + AP-mode flow:
       connect to S3 AP → open UI → enter home WiFi → S3 switches to STA;
       UI shows the new address. End-to-end provisioning test. (M4 gate)
