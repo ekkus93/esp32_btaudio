@@ -272,7 +272,11 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
         max_bytes = stats.bytes_by_source[1];
         source_name = "SYNTH";
     }
-    if (stats.bytes_by_source[2] > max_bytes) {  /* SILENCE */
+    if (stats.bytes_by_source[2] > max_bytes) {  /* UART */
+        max_bytes = stats.bytes_by_source[2];
+        source_name = "UART";
+    }
+    if (stats.bytes_by_source[3] > max_bytes) {  /* SILENCE */
         source_name = "SILENCE";
     }
     
@@ -284,7 +288,7 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
      * SOURCE: Current/dominant audio source
      * BEEP: Beep overlay active
      * UNDERRUNS, UNDERRUN_BYTES: Consumer starvation stats
-     * WAV_BYTES, I2S_BYTES, SYNTH_BYTES, SILENCE_BYTES: Per-source totals
+     * I2S_BYTES, SYNTH_BYTES, UART_BYTES, SILENCE_BYTES: Per-source totals
      * SOURCE_SWITCHES: Source change count
      * BEEP_OVERLAYS: Beep mix count
      * ENGINE_WRITES, ENGINE_BYTES: Producer write stats
@@ -294,7 +298,7 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
              "RING_CAP=%zu,RING_USED=%zu,RING_FREE=%zu,RING_PEAK=%zu,"
              "SOURCE=%s,BEEP=%s,"
              "UNDERRUNS=%lu,UNDERRUN_BYTES=%llu,"
-             "WAV_BYTES=%llu,I2S_BYTES=%llu,SYNTH_BYTES=%llu,SILENCE_BYTES=%llu,"
+             "I2S_BYTES=%llu,SYNTH_BYTES=%llu,UART_BYTES=%llu,SILENCE_BYTES=%llu,"
              "SOURCE_SWITCHES=%lu,BEEP_OVERLAYS=%lu,BEEP_BYTES=%llu,"
              "ENGINE_WRITES=%lu,ENGINE_BYTES=%llu,ENGINE_PAUSES=%lu",
              ring_cap, ring_used, ring_free, stats.ring_peak_used,

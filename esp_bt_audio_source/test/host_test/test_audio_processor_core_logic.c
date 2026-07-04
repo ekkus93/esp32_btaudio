@@ -10,6 +10,8 @@ void audio_processor_core_stub_reset(void);
 void audio_processor_core_stub_set_nvs_set_volume_result(esp_err_t result);
 uint32_t audio_processor_core_stub_get_nvs_set_volume_calls(void);
 uint8_t audio_processor_core_stub_get_last_nvs_set_volume_value(void);
+void audio_processor_core_stub_set_uart_active(bool active);
+void audio_processor_core_stub_set_uart_fill_bytes(size_t bytes);
 
 void setUp(void)
 {
@@ -36,7 +38,8 @@ void test_get_active_source_should_prioritize_beep_over_synth_and_i2s(void)
 
     int source = audio_processor_test_get_active_source_id();
 
-    TEST_ASSERT_EQUAL_INT(2, source);
+    /* SILENCE == 3 since AUDIO_SOURCE_UART was inserted at index 2 */
+    TEST_ASSERT_EQUAL_INT(3, source);
 }
 
 void test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep(void)
@@ -156,6 +159,61 @@ void test_audio_volume_set_reflects_in_volume_gain_state(void)
     TEST_ASSERT_EQUAL_UINT8(100, s_volume_gain);
 }
 
+/* ── UARTAUDIO step 4: AUDIO_SOURCE_UART priority + dispatch ────────────── */
+
+void test_get_active_source_uart_beats_synth_and_i2s(void)
+{
+    /* Starting a UART stream is the most recent explicit intent, so an
+     * active stream outranks forced SYNTH; SYNTH ON must not interrupt it. */
+    s_force_synth = true;
+    audio_processor_core_stub_set_beep_active(false);
+    audio_processor_core_stub_set_i2s_running(true);
+    audio_processor_core_stub_set_uart_active(true);
+
+    /* enum order: I2S=0, SYNTH=1, UART=2, SILENCE=3 */
+    TEST_ASSERT_EQUAL_INT(2, audio_processor_test_get_active_source_id());
+}
+
+void test_get_active_source_beep_beats_uart(void)
+{
+    s_force_synth = false;
+    audio_processor_core_stub_set_beep_active(true);
+    audio_processor_core_stub_set_uart_active(true);
+
+    /* beep plays over silence, never mixed with the UART stream */
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id());
+}
+
+void test_get_active_source_falls_back_when_uart_inactive(void)
+{
+    s_force_synth = false;
+    audio_processor_core_stub_set_beep_active(false);
+    audio_processor_core_stub_set_uart_active(false);
+    audio_processor_core_stub_set_i2s_running(true);
+
+    TEST_ASSERT_EQUAL_INT(0, audio_processor_test_get_active_source_id());
+}
+
+void test_produce_audio_chunk_dispatches_to_uart_fill(void)
+{
+    uint8_t out[64] = {0};
+
+    s_force_synth = false;
+    audio_processor_core_stub_set_beep_active(false);
+    audio_processor_core_stub_set_i2s_running(false);
+    audio_processor_core_stub_set_uart_active(true);
+    audio_processor_core_stub_set_uart_fill_bytes(sizeof(out));
+
+    size_t produced = audio_processor_test_produce_audio_chunk(out, sizeof(out));
+
+    TEST_ASSERT_EQUAL_UINT(sizeof(out), produced);
+    TEST_ASSERT_EQUAL_HEX8(0x44, out[0]); /* uart stub pattern */
+
+    audio_stats_t stats = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_stats(&stats));
+    TEST_ASSERT_EQUAL_UINT(sizeof(out), stats.bytes_by_source[2]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -167,5 +225,9 @@ int main(void)
     RUN_TEST(test_volume_commit_should_propagate_nvs_failure_in_test_hook);
     RUN_TEST(test_produce_audio_chunk_should_handle_beep_overlay_failure_without_overlay_stats);
     RUN_TEST(test_audio_volume_set_reflects_in_volume_gain_state);
+    RUN_TEST(test_get_active_source_uart_beats_synth_and_i2s);
+    RUN_TEST(test_get_active_source_beep_beats_uart);
+    RUN_TEST(test_get_active_source_falls_back_when_uart_inactive);
+    RUN_TEST(test_produce_audio_chunk_dispatches_to_uart_fill);
     return UNITY_END();
 }

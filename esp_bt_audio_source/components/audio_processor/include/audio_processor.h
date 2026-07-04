@@ -80,7 +80,7 @@ typedef struct {
     uint32_t peak_buffer_level;
     
     /* Audio engine stats (CODE_REVIEW6 Phase 4, Task 4.2) */
-    uint64_t bytes_by_source[3];  // Per-source byte counts: [I2S, SYNTH, SILENCE]
+    uint64_t bytes_by_source[4];  // Per-source byte counts: [I2S, SYNTH, UART, SILENCE]
     uint32_t source_switch_count; // Number of times active source changed
     uint32_t beep_overlay_count;  // Number of times beep was overlaid
     uint64_t beep_overlay_bytes;  // Total bytes mixed with beep
@@ -255,7 +255,7 @@ void audio_processor_get_last_beep_request(uint32_t* duration_ms, double* freq_h
 
 /**
  * @brief Test hook: return active source ID from core audio source arbitration.
- * Values map to audio_stats_t bytes_by_source indexes: 0=I2S, 1=SYNTH, 2=SILENCE.
+ * Values map to audio_stats_t bytes_by_source indexes: 0=I2S, 1=SYNTH, 2=UART, 3=SILENCE.
  */
 int audio_processor_test_get_active_source_id(void);
 

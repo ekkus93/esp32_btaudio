@@ -15,6 +15,7 @@
 #include <stdatomic.h>
 
 #include "audio_processor_internal.h"
+#include "uart_source.h"
 #include "util_safe.h"
 #include "nvs_storage.h"
 #include "esp_timer.h"
@@ -96,6 +97,7 @@ static void volume_commit_timer_callback(void* arg)
 typedef enum {
     AUDIO_SOURCE_I2S = 0,
     AUDIO_SOURCE_SYNTH,
+    AUDIO_SOURCE_UART,     /* UARTAUDIO: laptop PCM stream over UART0 */
     AUDIO_SOURCE_SILENCE,
     NUM_AUDIO_SOURCES
 } audio_source_t;
@@ -113,18 +115,25 @@ static audio_source_t get_active_source(void)
     if (beep_overlay_is_active() || s_beep_remaining_bytes > 0) {
         return AUDIO_SOURCE_SILENCE;
     }
-    
-    /* Priority 1: Forced SYNTH mode (user explicitly requested via SYNTH ON) */
+
+    /* Priority 1: Active UART audio stream (UARTAUDIO). Outranks forced
+     * SYNTH: starting a stream is the most recent explicit user intent,
+     * so SYNTH ON does not interrupt an in-progress stream. */
+    if (uart_source_is_active()) {
+        return AUDIO_SOURCE_UART;
+    }
+
+    /* Priority 2: Forced SYNTH mode (user explicitly requested via SYNTH ON) */
     if (s_force_synth) {
         return AUDIO_SOURCE_SYNTH;
     }
-    
-    /* Priority 2: I2S capture (if I2S manager is running) */
+
+    /* Priority 3: I2S capture (if I2S manager is running) */
     if (i2s_manager_is_running()) {
         return AUDIO_SOURCE_I2S;
     }
-    
-    /* Priority 3: Silence as final fallback */
+
+    /* Priority 4: Silence as final fallback */
     return AUDIO_SOURCE_SILENCE;
 }
 
@@ -163,7 +172,11 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
         case AUDIO_SOURCE_SYNTH:
             produced = synth_source_fill(dst, dst_bytes);
             break;
-            
+
+        case AUDIO_SOURCE_UART:
+            produced = uart_source_fill(dst, dst_bytes);
+            break;
+
         case AUDIO_SOURCE_SILENCE:
         default:
             util_safe_memset(dst, dst_bytes, 0, dst_bytes);
@@ -385,6 +398,7 @@ static void audio_engine_task(void *arg)
 typedef enum {
     AUDIO_SOURCE_I2S = 0,
     AUDIO_SOURCE_SYNTH,
+    AUDIO_SOURCE_UART,     /* UARTAUDIO: laptop PCM stream over UART0 */
     AUDIO_SOURCE_SILENCE,
     NUM_AUDIO_SOURCES
 } audio_source_t;
@@ -395,6 +409,11 @@ static audio_source_t get_active_source(void)
 {
     if (beep_overlay_is_active() || s_beep_remaining_bytes > 0) {
         return AUDIO_SOURCE_SILENCE;
+    }
+
+    /* active UART stream outranks forced SYNTH — mirrors device build */
+    if (uart_source_is_active()) {
+        return AUDIO_SOURCE_UART;
     }
 
     if (s_force_synth) {
@@ -430,6 +449,9 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
             break;
         case AUDIO_SOURCE_SYNTH:
             produced = synth_source_fill(dst, dst_bytes);
+            break;
+        case AUDIO_SOURCE_UART:
+            produced = uart_source_fill(dst, dst_bytes);
             break;
         case AUDIO_SOURCE_SILENCE:
         default:

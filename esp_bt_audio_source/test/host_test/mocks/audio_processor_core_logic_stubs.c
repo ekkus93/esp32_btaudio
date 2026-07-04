@@ -7,6 +7,8 @@
 #include <string.h>
 
 static bool s_stub_i2s_running = false;
+static bool s_stub_uart_active = false;
+static size_t s_stub_uart_fill_bytes = 0;
 static bool s_stub_beep_active = false;
 static size_t s_stub_i2s_fill_bytes = 0;
 static size_t s_stub_synth_fill_bytes = 0;
@@ -25,6 +27,33 @@ void audio_processor_core_stub_set_beep_active(bool active)
     s_stub_beep_active = active;
 }
 
+void audio_processor_core_stub_set_uart_active(bool active)
+{
+    s_stub_uart_active = active;
+}
+
+void audio_processor_core_stub_set_uart_fill_bytes(size_t bytes)
+{
+    s_stub_uart_fill_bytes = bytes;
+}
+
+bool uart_source_is_active(void)
+{
+    return s_stub_uart_active;
+}
+
+size_t uart_source_fill(uint8_t* dst, size_t dst_bytes)
+{
+    size_t out = s_stub_uart_fill_bytes;
+    if (out > dst_bytes) {
+        out = dst_bytes;
+    }
+    if (dst != NULL && out > 0) {
+        memset(dst, 0x44, out);
+    }
+    return out;
+}
+
 void audio_processor_core_stub_set_i2s_fill_bytes(size_t bytes)
 {
     s_stub_i2s_fill_bytes = bytes;
@@ -38,6 +67,8 @@ void audio_processor_core_stub_set_synth_fill_bytes(size_t bytes)
 void audio_processor_core_stub_reset(void)
 {
     s_stub_i2s_running = false;
+    s_stub_uart_active = false;
+    s_stub_uart_fill_bytes = 0;
     s_stub_beep_active = false;
     s_stub_i2s_fill_bytes = 0;
     s_stub_synth_fill_bytes = 0;
