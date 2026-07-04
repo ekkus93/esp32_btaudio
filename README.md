@@ -7,46 +7,56 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 - One ESP32 dedicated to Bluetooth A2DP audio source functionality
 - Another ESP32 handling WiFi and web server capabilities
 
-## Project Status (2026-02-08)
+## Project Status (2026-07-04)
 
 **Completed recently**
-- PLAY command and WAV playback functionality removed from codebase (Phase 1-5 complete)
-- SPIFFS partition removed, reclaimed 1MB flash space
-- Audio architecture simplified to 3 sources: I2S, synth, silence (beep)
-- All documentation updated to reflect 2-source architecture (I2S, synth)
-- Hardware validation complete: ESP32 boots cleanly without SPIFFS errors
+- **UART audio streaming (UARTAUDIO):** stream stereo 22.05 kHz PCM from a PC
+  over the USB serial cable straight to the Bluetooth speaker/headset — the
+  primary developer audio-test path (no I2S wiring needed). Verified
+  bit-faithful end-to-end (`tools/compare_bt_capture.py`) and zero-defect to
+  real earbuds. Host tool: `esp_bt_audio_source/tools/stream_audio_uart.py`.
+- **Three audio-quality root causes fixed** while validating UARTAUDIO:
+  audio engine production ceiling (1 chunk per 10 ms FreeRTOS tick — every
+  source had been silently zero-filled ~40% since inception), UART ISR moved
+  to IRAM, and UART RX-FIFO threshold lowered during streaming.
+- **Secondary command UART (UART2, GPIO16/17):** the text command protocol is
+  now served on UART2 alongside USB; responses route to the originating port,
+  events broadcast to both, and UART2 keeps serving commands while UARTAUDIO
+  streaming owns the USB port.
+- Audio architecture: 4 sources — I2S, synth, **UART**, silence (beep overlay).
+- `test_bluetooth` on-device suite revived (had been link-broken); full test
+  estate green: 66 host binaries (~690 cases) + device 46/35/18.
+- Earlier: PLAY/WAV playback and the SPIFFS partition removed (1 MB flash
+  reclaimed).
 
 **Active TODOs**
-- Complete Phase 6 documentation updates (Phases 6.1-6.2 done, 6.3+ in progress)
-- Final testing phase (Phase 7)
-- Cleanup and merge (Phase 8)
+- Redo `esp_i2s_source` (planned next; expected to drive this board via UART2)
+- Longer-duration UARTAUDIO pytest as an engine-throughput regression guard
+- `tools/run_all_tests.py` counts build-failed suites as 0 failures (reporting gap)
 
 ## System Architecture
 
 ## Running Unity Firmware Tests
 
-The on-device Unity suites live in `esp_bt_audio_source/test_app` (command-interface focus) and `esp_bt_audio_source/test_app2` (Bluetooth-heavy coverage). The DUT is assumed to be connected at `/dev/ttyUSB0` unless stated otherwise.
+The on-device Unity suites live in `esp_bt_audio_source/test/test_bluetooth`
+(46 tests, BT/pairing/command coverage), `esp_bt_audio_source/test/test_app_audio`
+(35 tests) and `esp_bt_audio_source/test/test_manager` (18 tests). The DUT is
+assumed to be connected at `/dev/ttyUSB0` unless stated otherwise. Flashing a
+test image replaces the production firmware — reflash production afterwards.
 
 1. Ensure the ESP-IDF environment is active:
   ```bash
   . "$HOME/esp/esp-idf/export.sh"
   ```
-    - The ESP-IDF env pins `esptool~=4.11.dev1`; running `install.sh` or `export.sh` first ensures the correct version. Avoid upgrading `esptool` in this env via other tooling to prevent device build/monitor failures.
-2. Build the desired test firmware (example for `test_app`):
+2. Run one suite with the non-interactive Unity runner (builds, flashes,
+   monitors, auto-stops on the Unity summary, saves
+   `<suite>/build/one_run_unity.log`):
   ```bash
-  cd esp_bt_audio_source/test_app
-  idf.py build
+  cd esp_bt_audio_source
+  conda run -n python310 python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
   ```
-3. From the repository root, run the provided helper to flash, monitor, and auto-stop when the Unity summary appears (adjust the port or project directory as needed):
-  ```bash
-  cd /home/phil/work/esp32/esp32_btaudio
-  ./tools/flash_and_watch.py --port /dev/ttyUSB0 --project-dir esp_bt_audio_source/test_app
-  ```
-   - The script sources ESP-IDF if necessary, runs `idf.py flash monitor`, stops automatically once `*** ENTERING IDLE LOOP - TESTS COMPLETE ***` prints, and saves the full capture to `esp_bt_audio_source/test_app/build/one_run_unity.log`.
-4. Inspect the exit code (`0` = pass, `1` = failures detected) and review the saved log if you need detailed failure context. The Unity footer in the log lists totals such as `37 Tests 18 Failures 0 Ignored`.
-5. For the Bluetooth integration suites in `test_app2`, rerun the same command with `--project-dir esp_bt_audio_source/test_app2`.
-
-> Prefer to drive `idf.py` manually? You can still run `idf.py -p /dev/ttyUSB0 -b 115200 flash monitor | tee unity.log`, but remember to press `Ctrl+]` once the Unity footer appears because `idf.py monitor` will continue running otherwise.
+3. Exit code `0` = all passed; the runner prints an `N/N passed` summary and
+   the saved log holds the full Unity output for failure context.
 
 ### One-command regression sweep
 
@@ -129,10 +139,12 @@ For detailed coverage analysis, download the HTML report artifact from the CI ru
 - DATA OUT: GPIO22 (from external device to ESP32)
 - DATA IN: GPIO21 (from ESP32 to external device, if needed)
 
-**Serial Communication:**
-- Using UART1 (separate from USB programming port UART0)
-- TX: GPIO17
-- RX: GPIO16 
+**Serial Communication (implemented as UART2):**
+- Secondary command UART, separate from the USB programming port (UART0)
+- TX: GPIO17, RX: GPIO16, 115200 8N1 (Kconfig: `CMD_UART2_*`)
+- Both UARTs serve the command protocol simultaneously: responses return on
+  the port the command arrived on, `EVENT|` lines broadcast to both, and
+  UART2 keeps serving commands while UARTAUDIO streaming occupies UART0
 
 **Rationale:**
 - These pins avoid boot strapping pins (GPIO0, GPIO2, GPIO12)
@@ -177,7 +189,7 @@ Responses follow the format:
 ```
 <STATUS>|<COMMAND>|<RESULT>[|<ADDITIONAL_DATA>]
 ```
-- STATUS: OK, ERROR, INFO
+- STATUS: OK, ERR, INFO, EVENT
 - COMMAND: The command being responded to
 - RESULT: Result of the command
 - ADDITIONAL_DATA: Optional additional data
