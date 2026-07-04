@@ -106,6 +106,7 @@ class DeviceLines:
         self.fill_used = None
         self.fill_cap = None
         self.last_fill = None       # full parsed tuple for the final report
+        self.last_a2dp_bps = None   # device A2DP pull rate (bytes/s), if reported
         self.bye = threading.Event()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -136,16 +137,21 @@ class DeviceLines:
             return
         if line.startswith("UA|FILL|"):
             parts = line.split("|")[2:]
-            if len(parts) == 7:
+            if len(parts) in (7, 8):  # 8th field (a2dp pull B/s) added later
                 try:
-                    used, cap, und, crc, lost, ovf, seq = (int(p) for p in parts)
+                    nums = [int(p) for p in parts]
                 except ValueError:
                     return
+                used, cap, und, crc, lost, ovf, seq = nums[:7]
+                a2dp_bps = nums[7] if len(nums) == 8 else None
                 self.fill_used, self.fill_cap = used, cap
                 self.last_fill = (used, cap, und, crc, lost, ovf, seq)
+                if a2dp_bps is not None:
+                    self.last_a2dp_bps = a2dp_bps
                 if self.verbose:
                     pct = 100 * used // cap if cap else 0
-                    print(f"  [fill {pct:3d}%  und={und} crc={crc} lost={lost} ovf={ovf}]")
+                    rate = f" a2dp={a2dp_bps/1000:.1f}kB/s" if a2dp_bps else ""
+                    print(f"  [fill {pct:3d}%  und={und} crc={crc} lost={lost} ovf={ovf}{rate}]")
         elif line.startswith("UA|BYE"):
             self.bye.set()
         elif self.verbose:
@@ -259,6 +265,11 @@ def main() -> int:
         used, cap, und, crc, lost, ovf, _ = lines.last_fill
         print(f"device last report: underruns={und} crc_errors={crc} "
               f"frames_lost={lost} overflows={ovf}")
+        if lines.last_a2dp_bps is not None:
+            need = 44100 * 4
+            pct = 100 * lines.last_a2dp_bps / need
+            print(f"device A2DP pull rate: {lines.last_a2dp_bps/1000:.1f} kB/s "
+                  f"({pct:.0f}% of the {need/1000:.1f} kB/s real-time rate)")
         if crc or lost or ovf:
             print("note: nonzero error counters — try a lower --baud or a shorter cable")
     return 0

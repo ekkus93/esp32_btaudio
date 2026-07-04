@@ -69,7 +69,8 @@ bool uart_audio_rx_crc_abort(const uart_audio_rx_t *rx)
 }
 
 int uart_audio_format_fill_line(char *buf, size_t buf_len,
-                                const uart_audio_rx_t *rx)
+                                const uart_audio_rx_t *rx,
+                                uint32_t a2dp_pull_bps)
 {
     if (buf == NULL || buf_len == 0 || rx == NULL) {
         return -1;
@@ -78,14 +79,15 @@ int uart_audio_format_fill_line(char *buf, size_t buf_len,
     uart_source_stats_t src;
     uart_source_get_stats(&src);
 
-    return snprintf(buf, buf_len, "UA|FILL|%zu|%zu|%lu|%lu|%lu|%lu|%u\r\n",
+    return snprintf(buf, buf_len, "UA|FILL|%zu|%zu|%lu|%lu|%lu|%lu|%u|%lu\r\n",
                     src.ring_used,
                     src.ring_capacity,
                     (unsigned long)src.underrun_events,
                     (unsigned long)rx->parser.stats.crc_errors,
                     (unsigned long)rx->parser.stats.frames_lost,
                     (unsigned long)src.overflow_events,
-                    (unsigned)rx->parser.last_seq);
+                    (unsigned)rx->parser.last_seq,
+                    (unsigned long)a2dp_pull_bps);
 }
 
 int uart_audio_format_stopped_data(char *buf, size_t buf_len,

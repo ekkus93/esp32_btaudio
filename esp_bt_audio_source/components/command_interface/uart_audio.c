@@ -33,6 +33,7 @@ bool uart_audio_is_streaming(void)
 #include "freertos/task.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "audio_processor.h"
 
 #define UA_RX_CHUNK_BYTES     1024
 #define UA_READ_TIMEOUT_MS    20
@@ -115,8 +116,11 @@ static void uart_audio_reader_task(void *arg)
         }
         feedback_ms += UA_READ_TIMEOUT_MS;
         if (feedback_ms >= CONFIG_UART_AUDIO_FEEDBACK_MS) {
+            audio_read_rate_t rr = { 0 };
+            (void)audio_processor_get_read_rate(&rr);
             char line[96];
-            if (uart_audio_format_fill_line(line, sizeof(line), &s_rx) > 0) {
+            if (uart_audio_format_fill_line(line, sizeof(line), &s_rx,
+                                            rr.rate_bps) > 0) {
                 ua_send_line(line);
             }
             feedback_ms = 0;

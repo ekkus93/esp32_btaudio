@@ -247,6 +247,34 @@ bool audio_processor_is_beep_active(void);
  */
 bool audio_processor_is_i2s_active(void);
 
+/**
+ * @brief A2DP pull-rate snapshot (UARTAUDIO diagnostics).
+ *
+ * audio_processor_read() is called only by the A2DP data callback, so its
+ * request rate IS the A2DP pull rate. Tracking is per activity burst: a
+ * gap of >1 s between reads starts a new burst, so the rate reflects the
+ * current stream rather than averaging over idle time. 44.1 kHz s16
+ * stereo real-time corresponds to 176400 B/s.
+ */
+typedef struct {
+    uint32_t calls;            /* reads in the current burst */
+    uint32_t bytes_requested;  /* bytes requested in the current burst */
+    uint32_t window_ms;        /* burst duration, first..last read */
+    uint32_t rate_bps;         /* bytes_requested*1000/window_ms; 0 while window < 100 ms */
+} audio_read_rate_t;
+
+/**
+ * @brief Snapshot the A2DP pull rate. ESP_ERR_INVALID_ARG on NULL.
+ */
+esp_err_t audio_processor_get_read_rate(audio_read_rate_t* out);
+
+#ifdef UNIT_TEST
+/** Test hooks: feed the rate tracker with an injected timestamp / reset it. */
+void audio_processor_test_read_rate_note(uint32_t now_ms, size_t req_bytes);
+void audio_processor_test_read_rate_set_now(uint32_t now_ms);
+void audio_processor_test_read_rate_reset(void);
+#endif
+
 #ifdef UNIT_TEST
 /**
  * @brief Retrieve the most recent beep request (for tests only).

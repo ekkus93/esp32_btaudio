@@ -147,6 +147,101 @@ void test_audio_buffer_full_rejects_write_no_state_mutation(void)
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)audio_rb_available_to_write(s_audio_ring));
 }
 
+/* ── A2DP pull-rate tracking (UARTAUDIO diagnostics) ────────────────────
+ * Time is injected via the UNIT_TEST note hook so tests are deterministic;
+ * one test exercises the real audio_processor_read() feed path. */
+
+void test_read_rate_no_activity_reports_zeros(void)
+{
+    audio_processor_test_read_rate_reset();
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(0, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.bytes_requested);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.window_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.rate_bps);
+}
+
+void test_read_rate_computes_bytes_per_second(void)
+{
+    audio_processor_test_read_rate_reset();
+    /* 21 reads of 512 B, 10 ms apart -> 10752 B over a 200 ms window */
+    for (int i = 0; i <= 20; i++) {
+        audio_processor_test_read_rate_note(1000 + (uint32_t)i * 10, 512);
+    }
+
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(21, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(21 * 512, rr.bytes_requested);
+    TEST_ASSERT_EQUAL_UINT32(200, rr.window_ms);
+    TEST_ASSERT_EQUAL_UINT32(21U * 512U * 1000U / 200U, rr.rate_bps);
+}
+
+void test_read_rate_short_window_reports_zero_rate(void)
+{
+    audio_processor_test_read_rate_reset();
+    audio_processor_test_read_rate_note(1000, 512);
+    audio_processor_test_read_rate_note(1050, 512); /* 50 ms < 100 ms floor */
+
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(2, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.rate_bps); /* too little data to trust */
+}
+
+void test_read_rate_gap_starts_new_burst(void)
+{
+    audio_processor_test_read_rate_reset();
+    for (int i = 0; i <= 20; i++) {
+        audio_processor_test_read_rate_note(1000 + (uint32_t)i * 10, 512);
+    }
+    /* >1 s of silence (stream stopped), then activity resumes */
+    audio_processor_test_read_rate_note(5000, 256);
+
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(1, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(256, rr.bytes_requested);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.window_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.rate_bps);
+}
+
+void test_read_rate_goes_idle_after_gap(void)
+{
+    audio_processor_test_read_rate_reset();
+    for (int i = 0; i <= 20; i++) {
+        audio_processor_test_read_rate_note(1000 + (uint32_t)i * 10, 512);
+    }
+    /* stream stopped >1 s ago: the getter must report idle, not the
+     * frozen last-burst rate */
+    audio_processor_test_read_rate_set_now(3000);
+
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(0, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(0, rr.rate_bps);
+}
+
+void test_read_rate_null_arg_rejected(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_processor_get_read_rate(NULL));
+}
+
+void test_audio_processor_read_feeds_rate_tracker(void)
+{
+    audio_processor_test_read_rate_reset();
+    uint8_t out[16];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_read(out, sizeof(out), &bytes_read));
+
+    audio_read_rate_t rr;
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_get_read_rate(&rr));
+    TEST_ASSERT_EQUAL_UINT32(2, rr.calls);
+    TEST_ASSERT_EQUAL_UINT32(32, rr.bytes_requested);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -159,5 +254,12 @@ int main(void)
     RUN_TEST(test_audio_buffer_fill_and_drain_round_trip);
     /* TEST-1c: full buffer rejects write without state mutation */
     RUN_TEST(test_audio_buffer_full_rejects_write_no_state_mutation);
+    RUN_TEST(test_read_rate_no_activity_reports_zeros);
+    RUN_TEST(test_read_rate_computes_bytes_per_second);
+    RUN_TEST(test_read_rate_short_window_reports_zero_rate);
+    RUN_TEST(test_read_rate_gap_starts_new_burst);
+    RUN_TEST(test_read_rate_goes_idle_after_gap);
+    RUN_TEST(test_read_rate_null_arg_rejected);
+    RUN_TEST(test_audio_processor_read_feeds_rate_tracker);
     return UNITY_END();
 }

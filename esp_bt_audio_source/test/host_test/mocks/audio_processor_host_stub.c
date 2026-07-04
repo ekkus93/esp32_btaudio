@@ -515,3 +515,14 @@ void uart_source_get_stats(uart_source_stats_t *out)
     out->state = s_stub_uart_source_active ? UART_SOURCE_STATE_ACTIVE
                                            : UART_SOURCE_STATE_INACTIVE;
 }
+
+/* A2DP pull-rate stub (UARTAUDIO diagnostics) — command-handler tests
+ * only need the call to succeed with quiescent values. */
+esp_err_t audio_processor_get_read_rate(audio_read_rate_t *out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(out, 0, sizeof(*out));
+    return ESP_OK;
+}

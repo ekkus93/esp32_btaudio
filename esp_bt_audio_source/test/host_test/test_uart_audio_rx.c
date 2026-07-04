@@ -130,11 +130,11 @@ void test_fill_line_format(void)
     feed_data_frame(2, 64, 1); /* one CRC error */
 
     char line[160];
-    int n = uart_audio_format_fill_line(line, sizeof(line), &s_rx);
+    int n = uart_audio_format_fill_line(line, sizeof(line), &s_rx, 176400);
 
     TEST_ASSERT_GREATER_THAN(0, n);
-    /* UA|FILL|used|cap|und|crc|lost|ovf|seq */
-    TEST_ASSERT_EQUAL_STRING("UA|FILL|256|1024|0|1|0|0|1\r\n", line);
+    /* UA|FILL|used|cap|und|crc|lost|ovf|seq|a2dp_Bps */
+    TEST_ASSERT_EQUAL_STRING("UA|FILL|256|1024|0|1|0|0|1|176400\r\n", line);
 }
 
 void test_stopped_data_format(void)

@@ -1,5 +1,104 @@
 #include "audio_processor_internal.h"
+#include "platform_timing.h"
 #include "util_safe.h"
+
+/* ── A2DP pull-rate tracking (UARTAUDIO diagnostics) ─────────────────────
+ * audio_processor_read() is the A2DP data callback's only data path, so
+ * its request cadence measures how fast Bluedroid actually pulls audio.
+ * Burst-windowed: a >1 s gap between reads starts a fresh window so the
+ * reported rate always describes the current stream.
+ * Guarded by s_audio_stats_lock (same contexts as the other read stats). */
+
+#define READ_RATE_GAP_MS   1000U  /* silence longer than this ends a burst */
+#define READ_RATE_MIN_WINDOW_MS 100U /* don't report rates from tiny samples */
+
+static uint32_t s_rr_first_ms;
+static uint32_t s_rr_last_ms;
+static uint32_t s_rr_bytes;
+static uint32_t s_rr_calls;
+
+#ifdef UNIT_TEST
+static uint32_t s_rr_test_now;
+static bool s_rr_test_now_set;
+#endif
+
+static uint32_t read_rate_now(void)
+{
+#ifdef UNIT_TEST
+    if (s_rr_test_now_set) {
+        return s_rr_test_now;
+    }
+#endif
+    return (uint32_t)platform_get_time_ms();
+}
+
+static void read_rate_note_locked(uint32_t now_ms, size_t req_bytes)
+{
+    if (s_rr_calls == 0U || (now_ms - s_rr_last_ms) > READ_RATE_GAP_MS) {
+        s_rr_first_ms = now_ms;
+        s_rr_bytes = 0;
+        s_rr_calls = 0;
+    }
+    s_rr_last_ms = now_ms;
+    s_rr_bytes += (uint32_t)req_bytes;
+    s_rr_calls++;
+}
+
+esp_err_t audio_processor_get_read_rate(audio_read_rate_t* out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    uint32_t now_ms = read_rate_now();
+    portENTER_CRITICAL(&s_audio_stats_lock);
+    /* a burst that stopped is history, not a current rate — report idle
+     * instead of freezing the last value forever */
+    if (s_rr_calls > 0U && (now_ms - s_rr_last_ms) > READ_RATE_GAP_MS) {
+        s_rr_first_ms = 0;
+        s_rr_last_ms = 0;
+        s_rr_bytes = 0;
+        s_rr_calls = 0;
+    }
+    out->calls = s_rr_calls;
+    out->bytes_requested = s_rr_bytes;
+    out->window_ms = (s_rr_calls > 0U) ? (s_rr_last_ms - s_rr_first_ms) : 0U;
+    portEXIT_CRITICAL(&s_audio_stats_lock);
+
+    out->rate_bps = 0;
+    if (out->window_ms >= READ_RATE_MIN_WINDOW_MS) {
+        out->rate_bps = (uint32_t)(((uint64_t)out->bytes_requested * 1000ULL) /
+                                   (uint64_t)out->window_ms);
+    }
+    return ESP_OK;
+}
+
+#ifdef UNIT_TEST
+void audio_processor_test_read_rate_note(uint32_t now_ms, size_t req_bytes)
+{
+    s_rr_test_now = now_ms;
+    s_rr_test_now_set = true;
+    portENTER_CRITICAL(&s_audio_stats_lock);
+    read_rate_note_locked(now_ms, req_bytes);
+    portEXIT_CRITICAL(&s_audio_stats_lock);
+}
+
+void audio_processor_test_read_rate_set_now(uint32_t now_ms)
+{
+    s_rr_test_now = now_ms;
+    s_rr_test_now_set = true;
+}
+
+void audio_processor_test_read_rate_reset(void)
+{
+    s_rr_test_now_set = false;
+    portENTER_CRITICAL(&s_audio_stats_lock);
+    s_rr_first_ms = 0;
+    s_rr_last_ms = 0;
+    s_rr_bytes = 0;
+    s_rr_calls = 0;
+    portEXIT_CRITICAL(&s_audio_stats_lock);
+}
+#endif
 
 static void log_read_summary(const char *phase, size_t requested, size_t produced)
 {
@@ -87,6 +186,9 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
         
         /* Return silence for this callback - beep overlay will mix over it */
         util_safe_memset(buffer, size, 0, size);
+        portENTER_CRITICAL(&s_audio_stats_lock);
+        read_rate_note_locked((uint32_t)platform_get_time_ms(), size);
+        portEXIT_CRITICAL(&s_audio_stats_lock);
         *bytes_read = size;
         log_read_summary("drain", size, size);
         return ESP_OK;
@@ -102,6 +204,7 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     /* Update statistics (CODE_REVIEW 2602101453, P1.2.4)
      * Protected by spinlock - audio_processor_read() called from ISR-like context */
     portENTER_CRITICAL(&s_audio_stats_lock);
+    read_rate_note_locked((uint32_t)platform_get_time_ms(), size);
     if (read < size) {
         /* Underrun - zero-fill remainder
          * WHY: Prevent glitches from stale data

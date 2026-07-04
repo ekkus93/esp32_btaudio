@@ -292,7 +292,14 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
      * SOURCE_SWITCHES: Source change count
      * BEEP_OVERLAYS: Beep mix count
      * ENGINE_WRITES, ENGINE_BYTES: Producer write stats
-     * ENGINE_PAUSES: Watermark pause count */
+     * ENGINE_PAUSES: Watermark pause count
+     * READ_BPS/READ_CALLS/READ_WIN_MS: A2DP pull rate (UARTAUDIO diag).
+     *   audio_processor_read is only called by the A2DP data callback, so
+     *   READ_BPS is the actual consumption rate; 176400 = 44.1k stereo
+     *   real time, persistently lower means the BT side is throttled. */
+    audio_read_rate_t read_rate = {0};
+    (void)audio_processor_get_read_rate(&read_rate);
+
     char data[512];
     snprintf(data, sizeof(data),
              "RING_CAP=%zu,RING_USED=%zu,RING_FREE=%zu,RING_PEAK=%zu,"
@@ -300,7 +307,8 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
              "UNDERRUNS=%lu,UNDERRUN_BYTES=%llu,"
              "I2S_BYTES=%llu,SYNTH_BYTES=%llu,UART_BYTES=%llu,SILENCE_BYTES=%llu,"
              "SOURCE_SWITCHES=%lu,BEEP_OVERLAYS=%lu,BEEP_BYTES=%llu,"
-             "ENGINE_WRITES=%lu,ENGINE_BYTES=%llu,ENGINE_PAUSES=%lu",
+             "ENGINE_WRITES=%lu,ENGINE_BYTES=%llu,ENGINE_PAUSES=%lu,"
+             "READ_BPS=%lu,READ_CALLS=%lu,READ_WIN_MS=%lu",
              ring_cap, ring_used, ring_free, stats.ring_peak_used,
              source_name, beep_state,
              (unsigned long)stats.buffer_underruns, (unsigned long long)stats.underrun_bytes,
@@ -313,8 +321,11 @@ cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)
              (unsigned long long)stats.beep_overlay_bytes,
              (unsigned long)stats.engine_write_calls,
              (unsigned long long)stats.engine_write_bytes,
-             (unsigned long)stats.engine_pause_count);
-    
+             (unsigned long)stats.engine_pause_count,
+             (unsigned long)read_rate.rate_bps,
+             (unsigned long)read_rate.calls,
+             (unsigned long)read_rate.window_ms);
+
     cmd_send_response("OK", "AUDIO_STATUS", "CURRENT", data);
 #else
     cmd_send_response("OK", "AUDIO_STATUS", "MOCK", "RING_CAP=0,RING_USED=0,SOURCE=MOCK,BEEP=no");

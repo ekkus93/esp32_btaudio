@@ -49,11 +49,14 @@ bool uart_audio_rx_crc_abort(const uart_audio_rx_t *rx);
 
 /**
  * Format the periodic feedback line:
- *   UA|FILL|<used>|<cap>|<und>|<crc>|<lost>|<ovf>|<seq>\r\n
- * Returns the line length (snprintf semantics).
+ *   UA|FILL|<used>|<cap>|<und>|<crc>|<lost>|<ovf>|<seq>|<a2dp_bps>\r\n
+ * a2dp_pull_bps is the device's current A2DP consumption rate in bytes/s
+ * (audio_processor_get_read_rate; 176400 = 44.1 kHz stereo real time,
+ * 0 = unknown/warming up). Returns the line length (snprintf semantics).
  */
 int uart_audio_format_fill_line(char *buf, size_t buf_len,
-                                const uart_audio_rx_t *rx);
+                                const uart_audio_rx_t *rx,
+                                uint32_t a2dp_pull_bps);
 
 /**
  * Format the EVENT|UARTAUDIO|STOPPED data field:
