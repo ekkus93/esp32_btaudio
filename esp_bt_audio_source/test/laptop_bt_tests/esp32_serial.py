@@ -70,6 +70,13 @@ class ESP32Serial:
             self._ser.close()
             log.info("ESP32Serial: closed %s", self._port)
 
+    @property
+    def raw(self):
+        """Underlying pyserial port, for binary protocols (UARTAUDIO framing)
+        that bypass the line-oriented command interface. Callers must restore
+        the baud rate to 115200 before returning control to this driver."""
+        return self._ser
+
     # ------------------------------------------------------------------
     # Low-level I/O
     # ------------------------------------------------------------------
