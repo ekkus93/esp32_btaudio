@@ -64,8 +64,14 @@ static void uart_audio_reader_task(void *arg)
 
     uart_audio_rx_init(&s_rx);
 
-    /* quiet logs so binary frames don't interleave with log text */
+    /* quiet logs so binary frames don't interleave with log text.
+     * BT_L2CAP goes fully silent: when the A2DP link congests it emits
+     * ERROR-level lines dozens of times per second from the high-priority
+     * BT task — console churn we can't afford while the 921600-baud RX
+     * stream needs sub-1.4 ms interrupt service. Restored by the
+     * wildcard reset at teardown. */
     esp_log_level_set("*", ESP_LOG_WARN);
+    esp_log_level_set("BT_L2CAP", ESP_LOG_NONE);
     uart_wait_tx_done(CMD_UART_NUM, pdMS_TO_TICKS(200));
     uart_set_baudrate(CMD_UART_NUM, (uint32_t)s_stream_baud);
     uart_flush_input(CMD_UART_NUM);
