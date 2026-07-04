@@ -49,6 +49,11 @@ add_executable(test_sanity test_sanity.c)
 target_link_libraries(test_sanity unity)
 add_test(NAME test_sanity COMMAND test_sanity)
 
-# Real suites are appended here by SIG-1a (test_signal_gen), LINK-1a
-# (test_bt_link_parser), RADIO-1a (test_playlist_icy), RADIO-2b
-# (test_resampler), etc.
+# SIG-1a: signal_gen producers (pure sample math)
+add_executable(test_signal_gen test_signal_gen.c ${SIGNAL_GEN_DIR}/signal_gen.c)
+target_include_directories(test_signal_gen PRIVATE ${SIGNAL_GEN_DIR}/include)
+target_link_libraries(test_signal_gen unity m)
+add_test(NAME test_signal_gen COMMAND test_signal_gen)
+
+# Further suites appended by LINK-1a (test_bt_link_parser), RADIO-1a
+# (test_playlist_icy), RADIO-2b (test_resampler), etc.
