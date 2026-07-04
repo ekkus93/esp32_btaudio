@@ -1,3 +1,10 @@
+> **⚠️ SUPERSEDED (July 2026):** the from-scratch ESP32-S3 rewrite is
+> specified in [SPEC.md](SPEC.md) (with task breakdown in
+> [REDO1_TODO.md](REDO1_TODO.md)). Where this document conflicts with
+> SPEC.md — notably the 48 kHz I2S contract (now **44.1 kHz**), the web-UI
+> scope (deferred) and pin assignments (now locked in SPEC.md §2) — SPEC.md
+> wins. Retained for component-level detail and historical reference.
+
 # ESP I2S Source — Functional Specification
 
 **Document Version:** 1.0  
