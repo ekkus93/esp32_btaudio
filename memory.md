@@ -1,3 +1,23 @@
+## 2026-07-04 (later) - UARTAUDIO validated ON HARDWARE - 6/6 laptop-BT tests green
+
+Board mystery solved: /dev/ttyUSB0 ESP32 had esp32_zx81 firmware flashed
+(wrong project) - that's why it never answered. User approved reflash with
+esp_bt_audio_source (now v0.2.0-...-gfc68f7 + fixes).
+
+- MEM check RESOLVED: 107,632 B DRAM free — 32 KB ring default stands.
+- New test/laptop_bt_tests/test_uart_streaming.py: 6/6 PASS on hardware
+  (laptop as A2DP sink). E2E: 3 s sine over UART at 921600, crc=0 ovf=0
+  lost=0, UART_BYTES=339,968 through the engine, clean text-mode recovery.
+- Two bugs found by hardware run, both fixed+committed:
+  a85d3817 fw: teardown's esp_log_level_set("*",INFO) wiped main.c's
+  AUDIO_PROC=WARN -> INFO log flood drowned cmd responses after streams.
+  bdbcd104 test: blocking read stalled pacing -> 800+ underruns.
+- Baud round-trip log recovery verified implicitly (STATUS/AUDIO_STATUS
+  work after stream; logs resume at 115200).
+
+Remaining (optional): listen test with a real BT speaker + music via
+tools/stream_audio_uart.py (procedure in MANUAL_SMOKE_TEST_GUIDE.md).
+
 ## 2026-07-04 - UARTAUDIO implementation COMPLETE (all 9 steps committed)
 
 Feature: laptop -> USB serial -> ESP32 -> BT speaker audio streaming.
