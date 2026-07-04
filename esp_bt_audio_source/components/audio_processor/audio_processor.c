@@ -298,8 +298,27 @@ static void audio_engine_task(void *arg)
             s_audio_engine_paused = false;
         }
         
-        /* Produce audio if not paused and ring has space */
-        if (!s_audio_engine_paused && free >= AUDIO_ENGINE_CHUNK_BYTES) {
+        /* Produce audio if not paused and ring has space.
+         * Multiple chunks per wake: the FreeRTOS tick (10 ms at 100 Hz)
+         * is coarser than AUDIO_ENGINE_TICK_MS, so one chunk per wake
+         * cannot keep up with the A2DP consumer — see
+         * AUDIO_ENGINE_MAX_CHUNKS_PER_WAKE. Free space and the high
+         * watermark are re-checked every iteration. */
+        for (int chunk_n = 0; chunk_n < AUDIO_ENGINE_MAX_CHUNKS_PER_WAKE; chunk_n++) {
+            free = audio_rb_available_to_write(s_audio_ring);
+            used = capacity - free;
+            if (used >= AUDIO_RB_HIGH_WATERMARK) {
+                if (!s_audio_engine_paused) {
+                    s_audio_engine_paused = true;
+                    portENTER_CRITICAL(&s_audio_stats_lock);
+                    s_audio_stats.engine_pause_count++;
+                    portEXIT_CRITICAL(&s_audio_stats_lock);
+                }
+                break;
+            }
+            if (s_audio_engine_paused || free < AUDIO_ENGINE_CHUNK_BYTES) {
+                break;
+            }
             size_t produced = produce_audio_chunk(chunk_buf, AUDIO_ENGINE_CHUNK_BYTES);
 
             /* Silence fallback: I2S source returns 0 on timeout (no audio input).

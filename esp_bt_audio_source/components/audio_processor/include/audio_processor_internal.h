@@ -83,6 +83,15 @@ extern volatile bool s_audio_diag_enabled;
 #define AUDIO_ENGINE_TICK_MS          2   /* 2ms tick rate */
 #define AUDIO_ENGINE_CHUNK_BYTES      1024  /* Produce 1KB chunks */
 
+/* Chunks the engine may produce per wake-up. With CONFIG_FREERTOS_HZ=100
+ * the 2 ms tick clamps to one 10 ms FreeRTOS tick, so a single chunk per
+ * wake caps production at ~102 KB/s — below the 176.4 KB/s the A2DP
+ * callback consumes at 44.1 kHz stereo, causing chronic ring underruns
+ * (audible as silence gaps in real audio sources). Eight chunks per wake
+ * lift the ceiling to ~819 KB/s; the in-loop high-watermark check still
+ * bounds ring occupancy so this cannot overfill the ring. */
+#define AUDIO_ENGINE_MAX_CHUNKS_PER_WAKE  8
+
 /* I2S read timeout relationship (CODE_REVIEW 2602101453, A1)
  * 
  * DOCUMENTED HERE for architecture visibility, but DEFINED IN i2s_manager.c
