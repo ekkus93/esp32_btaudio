@@ -247,7 +247,14 @@ void app_main(void)
      * no control/diagnostics). ESP_ERROR_CHECK enforces this contract.
      */
 #ifdef ESP_PLATFORM
+    /* RX buffer sized for UARTAUDIO streaming: at 921600 baud (~92 KB/s)
+     * 1024 B is only ~11 ms of slack — guaranteed overflow under normal
+     * scheduler jitter. Default 8192 B gives ~89 ms of stall tolerance. */
+#ifdef CONFIG_UART_AUDIO_RX_BUF_BYTES
+    const int uart_rx_buf = CONFIG_UART_AUDIO_RX_BUF_BYTES;
+#else
     const int uart_rx_buf = 1024;
+#endif
     const int uart_tx_buf = 1024;
     
 #ifdef CONFIG_ESP_CONSOLE_UART_NUM

@@ -82,6 +82,58 @@ menu "A2DP Example Configuration"
                 Note: Ring buffer structure itself is always in DRAM (small overhead).
     endmenu
 
+    menu "UART Audio Streaming (UARTAUDIO)"
+        config UART_AUDIO_ENABLED
+            bool "Enable UART audio streaming (laptop -> BT speaker dev path)"
+            default y
+            help
+                Stream stereo 22050 Hz s16le PCM from a host PC over the
+                console UART (UARTAUDIO command), upsampled 2x to 44100 Hz
+                on device and played over A2DP. Development/test feature;
+                see tools/stream_audio_uart.py for the host-side streamer.
+
+        config UART_AUDIO_STREAM_BAUD
+            int "Streaming baud rate"
+            depends on UART_AUDIO_ENABLED
+            default 921600
+            range 230400 921600
+            help
+                UART baud rate during streaming mode. 921600 is required
+                for stereo 22.05 kHz (88.2 KB/s payload); lower rates exist
+                for troubleshooting flaky USB-serial bridges but cannot
+                carry full stereo 22.05 kHz audio (a degraded mono mode is
+                not implemented).
+
+        config UART_AUDIO_STAGING_RB_KB
+            int "Staging ring buffer size (KB)"
+            depends on UART_AUDIO_ENABLED
+            default 32
+            range 8 64
+            help
+                DRAM staging buffer between the UART reader task and the
+                audio engine. 32 KB buffers ~371 ms of 22.05 kHz input
+                (prebuffer fires at 50%). Reduce to 16 KB if DRAM is tight.
+
+        config UART_AUDIO_RX_BUF_BYTES
+            int "UART driver RX buffer during streaming (bytes)"
+            depends on UART_AUDIO_ENABLED
+            default 8192
+            range 2048 16384
+            help
+                Console UART driver RX buffer (installed once at boot).
+                At ~92 KB/s wire rate, 8192 bytes tolerate ~89 ms of
+                reader-task stall; the old 1024-byte default only ~11 ms.
+
+        config UART_AUDIO_FEEDBACK_MS
+            int "Fill-level feedback period (ms)"
+            depends on UART_AUDIO_ENABLED
+            default 250
+            range 50 1000
+            help
+                Period of the UA|FILL feedback lines the device sends to
+                the host during streaming so the host can trim its pacing.
+    endmenu
+
     menu "Bluetooth Logging Configuration"
         config BT_VERBOSE_AUDIO_LOGGING
             bool "Enable Verbose Audio Logging (Development Only)"
