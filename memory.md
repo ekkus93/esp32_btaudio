@@ -1,3 +1,18 @@
+## 2026-07-05 (cont) - Option B forensics: FIFO_OVF convicted, threshold fix -> ZERO-DEFECT streams
+
+UART event-queue forensics (main.c installs queue -> reader drains,
+UA|ERR live markers + counters in STOPPED): first run caught
+UA|ERR|FIFO_OVF red-handed — hardware FIFO overrun, NOT wire corruption
+or driver-buffer overflow. Root: default RX-full threshold ~120/128
+leaves ~87 us ISR budget at 921600; BT interrupt-masked sections exceed
+it even with ISR in IRAM.
+
+Fix: uart_set_rx_full_threshold(32) during streaming (~1 ms budget),
+restore 120 at teardown. Result: consecutive 24 s streams mit und=0
+crc=0 lost=0 ovf=0; compare_bt_capture: 95/95 windows r>0.99, median
+1.0000, zero skips, amplitude 1.000. UARTAUDIO is now measurably
+transparent end-to-end on the laptop sink. Tapping should be GONE —
+awaiting user listen confirmation; headset test now optional.
 ## 2026-07-05 (cont) - capture-vs-source analysis: pipeline is bit-faithful; tapping == lost UART frames, nothing else
 
 New tools/compare_bt_capture.py (parec bluez capture + windowed FFT
