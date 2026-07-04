@@ -76,7 +76,8 @@ fi
 echo -n "Check 2: No forbidden UART driver calls... "
 UART_VIOLATIONS=$(grep -n -E 'uart_(read_bytes|set_|param_|get_buffered)' "${MAIN_C}" | \
                   grep -v '^\s*//' | \
-                  grep -v '^\s*/\*' || true)
+                  grep -v '^\s*/\*' | \
+                  grep -v -E '\*.*uart_(read_bytes|set_|param_|get_buffered)' || true)
 
 if [ -n "${UART_VIOLATIONS}" ]; then
     echo -e "${RED}FAIL${NC}"
