@@ -1,3 +1,34 @@
+## 2026-07-04 - /lint-n-test full sweep: all green EXCEPT pre-existing test_bluetooth link breakage
+
+Sweep results: host CTest 65/65 binaries (688 cases, 0 fail); device
+test_app_audio 35/35, test_manager 18/18. test_bluetooth device suite
+FAILS TO LINK — PRE-EXISTING (predates UARTAUDIO; cmd_handlers_bt.c
+referenced bt_connection_manager_clear_reconnect_target at f397d6ad and
+the mock never provided it). Root cause: test/test_bluetooth/main/
+bt_source_mock.c has drifted ~25 symbols behind the bt_manager API that
+command_interface now calls (bt_unpair, bt_manager_connect/disconnect/
+set_name/start_*, bt_pairing_confirm/submit_pin, bt_get_streaming_info,
+bt_get_connection_state, ...). Any reference resolved from
+libbt_manager.a pulls real objects that collide with the mock's
+duplicate definitions. Fix = catch the mock up to the current API
+(enumerate with: nm -u libcommand_interface.a + libmain.a vs nm
+--defined bt_source_mock.o). A 4-stub attempt was reverted as
+insufficient.
+
+ALSO: run_all_tests.py reported failures=0 despite test_bluetooth rc=3,
+tests_total=0 — build-failed suites are silently not counted. Reporting
+gap worth fixing in tools/run_all_tests.py (repo ROOT tools/, not
+esp_bt_audio_source/tools/ — the /lint-n-test skill had that path wrong,
+fixed in 841fa073).
+
+clang-tidy on xtensa needs: filtered compile_commands (strip -mlongcalls,
+-fno-shrink-wrap, -fstrict-volatile-bitfields, -fno-tree-switch-conversion,
+-fno-jump-tables) + --extra-arg=-isystem<xtensa-newlib-include>
++ -D__XTENSA__. Only findings on changed files: 2x snprintf
+DeprecatedOrUnsafeBufferHandling in uart_audio_rx.c (Annex K n/a on
+newlib — not actionable).
+
+Production UARTAUDIO firmware reflashed after the sweep (v0.2.0-307).
 ## 2026-07-05 (cont) - Echo Buds test: PERFECT stream to real headset
 
 ESP32 paired+connected directly to Echo Buds 009H (48:78:5E:D9:35:A3;
