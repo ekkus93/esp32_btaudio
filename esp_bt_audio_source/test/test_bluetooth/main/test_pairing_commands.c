@@ -185,10 +185,10 @@ void test_pairing_commands_happy_path(void) {
 
     // Submit PIN
     test_send_serial_cmd("ENTER_PIN 11:22:33:44:55:66 123456\r\n");
-    // Expect CONFIRM then SUCCESS events (mock behavior)
-    TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
-    normalize_event(ev, norm, sizeof(norm));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|11:22:33:44:55:66,123456", norm);
+    // Production event contract (bt_pairing_store.c): a PIN-flow pairing
+    // emits PIN_REQUEST then SUCCESS on auth-complete. CONFIRM is the SSP
+    // numeric-comparison event and never appears in the PIN flow (the old
+    // CONFIRM|mac,pin expectation came from the retired emulation adapter).
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
     normalize_event(ev, norm, sizeof(norm));
     TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|SUCCESS|11:22:33:44:55:66", norm);
@@ -206,10 +206,13 @@ void test_enter_pin_uses_default_when_missing(void) {
 
     // Call ENTER_PIN without providing a PIN — command handler should use NVS default PIN
     test_send_serial_cmd("ENTER_PIN 22:33:44:55:66:77\r\n");
-    // Expect CONFIRM with the default pin (test utils sets default to 000000)
+    // Production contract: successful PIN submission ends in SUCCESS (no
+    // CONFIRM in the PIN flow — see note in happy_path). SUCCESS still
+    // proves the default PIN was resolved: with no PIN available the
+    // handler errors out before submitting and no event is emitted.
     TEST_ASSERT_TRUE(test_capture_event(ev, sizeof(ev)));
     normalize_event(ev, norm, sizeof(norm));
-    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|CONFIRM|22:33:44:55:66:77,000000", norm);
+    TEST_ASSERT_EQUAL_STRING("EVENT|PAIR|SUCCESS|22:33:44:55:66:77", norm);
 }
 
 void test_confirm_pin_without_pending_request_returns_error_event(void) {

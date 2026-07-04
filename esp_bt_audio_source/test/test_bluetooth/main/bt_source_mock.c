@@ -12,6 +12,7 @@
 #include "bt_source_mock.h"
 #include "bt_mock.h"
 #include "bt_api.h"
+#include "esp_a2dp_api.h"  /* bt_manager_test_invoke_a2dp_event */
 #include "nvs_storage.h"
 #include "nvs_flash.h"
 
@@ -714,6 +715,62 @@ esp_err_t bt_connect_with_timeout(const char* addr, uint32_t timeout_ms)
         return mock_control.timeout_return;
     } else {
         return bt_connect_device(addr);
+    }
+}
+
+/* ── API catch-up layer (2026-07) ─────────────────────────────────────────
+ * command_interface and the merged test files grew references to newer
+ * bt_manager-era APIs. Providing them here (backed by the mock's own
+ * state) keeps the real bt_manager/bt_connection_manager objects out of
+ * this fully-mocked link — any symbol resolved from libbt_manager.a
+ * drags in objects whose definitions collide with this mock.
+ * Wrappers that need bt_manager.h types live in bt_manager_api_mock.c
+ * (bt_manager.h's bt_device_t conflicts with bt_source.h's). */
+
+bt_err_t bt_connect_by_name(const char* name)
+{
+    return bt_connect_device_by_name(name);
+}
+
+void bt_deinit(void)
+{
+    /* teardown-lite: drop link and streaming, keep paired cache for
+     * tests that re-init without re-pairing */
+    (void)bt_scan_stop();
+    s_connected = false;
+    s_streaming = false;
+    s_streaming_paused = false;
+    s_streaming_state = BT_STREAMING_STATE_STOPPED;
+}
+
+int bt_get_connection_quality(const bt_connection_info_t* info)
+{
+    /* simple mock heuristic: any live connection reports good quality */
+    return (info != NULL && info->connected) ? 80 : 0;
+}
+
+void bt_connection_shim_publish_info(const bt_connection_info_t *info)
+{
+    if (info != NULL) {
+        bt_source_stub_sync_connected_state(info->connected, info->addr, info->name);
+    }
+}
+
+void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
+{
+    /* the a2dp tests drive streaming-state transitions through this hook */
+    if (event != ESP_A2D_AUDIO_STATE_EVT || param == NULL) {
+        return;
+    }
+    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+        s_streaming = true;
+        s_streaming_paused = false;
+        s_streaming_state = BT_STREAMING_STATE_STREAMING;
+    } else {
+        /* STOPPED / REMOTE_SUSPEND: remote pause semantics */
+        s_streaming = false;
+        s_streaming_paused = true;
+        s_streaming_state = BT_STREAMING_STATE_PAUSED;
     }
 }
 

@@ -20,6 +20,7 @@ idf_component_register(
         "bt_test_setup.c"
         "bt_source_mock.c"
         "bt_source_stubs.c"
+        "bt_manager_api_mock.c"
         "esp32_bt_shim.c"
         "auto_run_tests.c"
         
