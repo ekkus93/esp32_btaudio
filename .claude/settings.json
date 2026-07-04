@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */esp_bt_audio_source/main/main.c) out=$(/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/tools/ci_check_main_layering.sh 2>&1); code=$?; if [ \"$code\" -ne 0 ]; then clean=$(printf '%s' \"$out\" | sed -E 's/\\x1b\\[[0-9;]*m//g' | grep -E 'FAIL|violation' | tr '\\n' ' ' | sed 's/\"/\\\\\"/g'); printf '{\"systemMessage\":\"main.c layering check flagged: %s\"}\\n' \"$clean\"; fi ;; esac; } 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

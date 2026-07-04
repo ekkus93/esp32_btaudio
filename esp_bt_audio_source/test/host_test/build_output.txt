@@ -1,0 +1,694 @@
+[  0%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_system.c.o
+[  0%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands_helpers.c.o
+[  0%] Building C object CMakeFiles/platform_shim_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/platform_shim/platform_timing_host.c.o
+[  0%] Building C object _deps/unity-build/CMakeFiles/unity.dir/src/unity.c.o
+[  0%] Building C object CMakeFiles/platform_shim_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/platform_shim/platform_memory_host.c.o
+[  1%] Building C object CMakeFiles/platform_shim_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/platform_shim/platform_sync_host.c.o
+[  1%] Building C object CMakeFiles/platform_shim_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/platform_shim/platform_storage_host.c.o
+[  2%] Building C object CMakeFiles/util_safe_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[  2%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_files.c.o
+[  2%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_audio.c.o
+[  2%] Building C object CMakeFiles/command_interface_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/cmd_handlers_bt.c.o
+[  2%] Built target platform_shim_host
+[  2%] Built target util_safe_host
+[  2%] Built target command_interface_host
+[  2%] Linking C static library libunity.a
+[  2%] Building C object CMakeFiles/dump_event_stress_output.dir/dump_event_stress_output.c.o
+[  2%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_gap.c.o
+[  2%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_avrc.c.o
+[  2%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_uart.c.o
+[  2%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_a2dp.c.o
+[  3%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[  3%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  4%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  4%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[  4%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[  4%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/nvs_storage_mock.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/bt_manager_test_hooks.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/mock_audio_and_btstate.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/audio_processor_host_stub.c.o
+[  5%] Building C object CMakeFiles/dump_event_stress_output.dir/mocks/fake_esp_err.c.o
+[  5%] Built target unity
+[  5%] Linking C executable dump_event_stress_output
+[  6%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/test_cmd_handlers_audio.c.o
+[  6%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/test_cmd_handlers_bt.c.o
+[  6%] Building C object CMakeFiles/test_commands.dir/test_commands.c.o
+[  6%] Building C object CMakeFiles/test_bt_manager_profiles.dir/test_bt_manager_profiles.c.o
+[  6%] Building C object CMakeFiles/test_concurrency.dir/test_concurrency.c.o
+[  6%] Building C object CMakeFiles/test_integration_flows.dir/test_integration_flows.c.o
+[  6%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/test_bt_manager_edge_cases.c.o
+[  7%] Building C object CMakeFiles/test_cmd_handlers_files.dir/test_cmd_handlers_files.c.o
+[  7%] Building C object CMakeFiles/test_bluetooth.dir/test_bluetooth.c.o
+[  7%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/test_bt_connection_manager_edge_cases.c.o
+[  7%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/test_bt_streaming_manager_edge_cases.c.o
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c: In function ‘test_diag_command_reports_state’:
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_commands.c:426:5: warning: implicit declaration of function ‘bt_manager_test_set_connection_state’ [-Wimplicit-function-declaration]
+  426 |     bt_manager_test_set_connection_state(1);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[  7%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  7%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  7%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  7%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  7%] Built target dump_event_stress_output
+[  7%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  7%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection_manager.c.o
+[  8%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  8%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[  8%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  8%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  8%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_streaming_manager.c.o
+[  8%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  8%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[  8%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  8%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[  8%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  8%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  8%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/mocks/mock_a2dp.c.o
+[  8%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/mock_a2dp.c.o
+[  8%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[  8%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[  9%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/mocks/mock_gap.c.o
+[  9%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[  9%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[  9%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[  9%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/mock_gap.c.o
+[ 10%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 10%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/mocks/fake_log.c.o
+[ 10%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 10%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 10%] Building C object CMakeFiles/test_audio_processor.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/component/test_audio_processor.c.o
+[ 10%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 11%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 11%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 11%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 11%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 12%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 12%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 13%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/fake_log.c.o
+[ 13%] Building C object CMakeFiles/test_bt_connection_manager_edge_cases.dir/mocks/fake_esp_err.c.o
+[ 13%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 14%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 14%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 14%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 14%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 14%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 14%] Linking C executable test_bt_connection_manager_edge_cases
+[ 14%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/fake_task.c.o
+[ 15%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 15%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 15%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 15%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 15%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 15%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 15%] Building C object CMakeFiles/test_audio_processor.dir/mocks/mock_i2s.c.o
+[ 15%] Building C object CMakeFiles/test_bt_manager_profiles.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 15%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/audio_processor_host_stub.c.o
+[ 15%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 15%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 15%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 15%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 15%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_a2dp.c.o
+[ 15%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 15%] Built target test_bt_connection_manager_edge_cases
+[ 15%] Building C object CMakeFiles/test_bluetooth.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 15%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 15%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 15%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 15%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 16%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 17%] Building C object CMakeFiles/test_audio_processor.dir/mocks/test_main_wrapper.c.o
+[ 18%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 18%] Building C object CMakeFiles/test_bt_streaming_manager_edge_cases.dir/mocks/mock_audio_and_btstate.c.o
+[ 18%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 18%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_avrc.c.o
+[ 18%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/mock_a2dp.c.o
+[ 19%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 19%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_i2s.c.o
+[ 19%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 19%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 20%] Building C object CMakeFiles/test_bluetooth.dir/mocks/bt_manager_test_hooks.c.o
+[ 20%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 21%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 21%] Linking C executable test_bt_streaming_manager_edge_cases
+[ 21%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_gap.c.o
+[ 21%] Building C object CMakeFiles/test_concurrency.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_audio_processor.dir/mocks/audio_processor_host_stub.c.o
+[ 21%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/mock_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_concurrency.dir/mocks/mock_uart.c.o
+[ 21%] Building C object CMakeFiles/test_integration_flows.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_cmd_handlers_files.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 21%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_audio_and_btstate.c.o
+[ 21%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/mock_uart.c.o
+[ 22%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/nvs_storage_mock.c.o
+[ 22%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 23%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/mock_gap.c.o
+[ 23%] Built target test_bt_streaming_manager_edge_cases
+[ 23%] Building C object CMakeFiles/test_integration_flows.dir/mocks/mock_uart.c.o
+[ 23%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/mock_uart.c.o
+[ 23%] Building C object CMakeFiles/test_audio_processor.dir/mocks/nvs_storage_mock.c.o
+[ 24%] Building C object CMakeFiles/test_concurrency.dir/mocks/mock_gap.c.o
+[ 24%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/mock_uart.c.o
+[ 24%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/mock_audio_and_btstate.c.o
+[ 24%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 24%] Building C object CMakeFiles/test_bluetooth.dir/mocks/nvs_storage_mock.c.o
+[ 24%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/nvs_storage_mock.c.o
+[ 24%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/mock_gap.c.o
+[ 25%] Building C object CMakeFiles/test_integration_flows.dir/mocks/mock_gap.c.o
+[ 25%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/bt_manager_test_hooks.c.o
+[ 25%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/mock_gap.c.o
+[ 25%] Building C object CMakeFiles/test_concurrency.dir/mocks/mock_a2dp.c.o
+[ 25%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/fake_esp_err.c.o
+[ 25%] Linking C executable test_audio_processor
+[ 25%] Building C object CMakeFiles/test_commands.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 25%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/mock_gap.c.o
+[ 25%] Building C object CMakeFiles/test_nvs_storage.dir/test_nvs_storage.c.o
+[ 25%] Building C object CMakeFiles/test_bluetooth.dir/mocks/fake_esp_err.c.o
+[ 25%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/mock_audio_and_btstate.c.o
+[ 25%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/mock_a2dp.c.o
+[ 25%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/mock_a2dp.c.o
+[ 25%] Building C object CMakeFiles/test_bt_manager_profiles.dir/mocks/fake_log.c.o
+[ 25%] Building C object CMakeFiles/test_integration_flows.dir/mocks/mock_a2dp.c.o
+[ 25%] Building C object CMakeFiles/test_concurrency.dir/mocks/mock_avrc.c.o
+[ 25%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_gap.c.o
+[ 25%] Building C object CMakeFiles/test_concurrency.dir/mocks/nvs_storage_mock.c.o
+[ 25%] Building C object CMakeFiles/test_commands.dir/mocks/mock_uart.c.o
+[ 25%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/mock_a2dp.c.o
+[ 25%] Linking C executable test_bt_manager_profiles
+[ 25%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/bt_manager_test_hooks.c.o
+[ 26%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/mock_avrc.c.o
+[ 26%] Built target test_audio_processor
+[ 26%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/mock_avrc.c.o
+[ 26%] Building C object CMakeFiles/test_nvs_storage.dir/mocks/nvs_storage_mock.c.o
+[ 26%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/fake_esp_err.c.o
+[ 26%] Building C object CMakeFiles/test_integration_flows.dir/mocks/mock_avrc.c.o
+[ 26%] Building C object CMakeFiles/test_nvs_storage_errors.dir/test_nvs_storage_errors.c.o
+[ 26%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/nvs_storage_mock.c.o
+[ 26%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_a2dp.c.o
+[ 27%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/nvs_storage_mock.c.o
+[ 28%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/mock_avrc.c.o
+[ 28%] Building C object CMakeFiles/test_commands.dir/mocks/mock_gap.c.o
+[ 28%] Building C object CMakeFiles/test_nvs_storage_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/nvs_storage/nvs_storage.c.o
+[ 28%] Building C object CMakeFiles/test_bt_manager_edge_cases.dir/mocks/fake_log.c.o
+[ 28%] Building C object CMakeFiles/test_integration_flows.dir/mocks/nvs_storage_mock.c.o
+[ 28%] Building C object CMakeFiles/test_concurrency.dir/mocks/mock_audio_and_btstate.c.o
+[ 28%] Built target test_bt_manager_profiles
+[ 29%] Building C object CMakeFiles/test_commands.dir/mocks/nvs_storage_mock.c.o
+[ 29%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/nvs_storage_mock.c.o
+[ 29%] Linking C executable test_nvs_storage
+[ 29%] Building C object CMakeFiles/test_concurrency.dir/mocks/audio_processor_host_stub.c.o
+[ 30%] Linking C executable test_bt_manager_edge_cases
+[ 31%] Building C object CMakeFiles/test_bluetooth.dir/mocks/mock_avrc.c.o
+[ 31%] Building C object CMakeFiles/test_commands.dir/mocks/bt_manager_test_hooks.c.o
+[ 31%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/audio_processor_host_stub.c.o
+[ 31%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/mock_audio_and_btstate.c.o
+[ 31%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/mock_audio_and_btstate.c.o
+[ 31%] Building C object CMakeFiles/test_integration_flows.dir/mocks/mock_audio_and_btstate.c.o
+[ 32%] Linking C executable test_nvs_storage_errors
+[ 32%] Linking C executable test_bluetooth
+[ 32%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/audio_processor_host_stub.c.o
+[ 32%] Building C object CMakeFiles/test_concurrency.dir/mocks/fake_esp_err.c.o
+[ 32%] Building C object CMakeFiles/test_integration_flows.dir/mocks/audio_processor_host_stub.c.o
+[ 32%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/mock_audio_and_btstate.c.o
+[ 32%] Building C object CMakeFiles/test_commands.dir/mocks/mock_audio_and_btstate.c.o
+[ 32%] Built target test_nvs_storage
+[ 32%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/fake_esp_err.c.o
+[ 32%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/fake_esp_err.c.o
+[ 32%] Building C object CMakeFiles/test_commands.dir/mocks/audio_processor_host_stub.c.o
+[ 32%] Built target test_bt_manager_edge_cases
+[ 33%] Building C object CMakeFiles/test_concurrency.dir/mocks/bt_manager_test_hooks.c.o
+[ 33%] Building C object CMakeFiles/test_commands.dir/mocks/fake_esp_err.c.o
+[ 34%] Building C object CMakeFiles/test_integration_flows.dir/mocks/fake_esp_err.c.o
+[ 34%] Building C object CMakeFiles/test_commands.dir/mocks/mock_a2dp.c.o
+[ 34%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/audio_processor_host_stub.c.o
+[ 34%] Building C object CMakeFiles/test_cmd_handlers_audio.dir/mocks/bt_manager_test_hooks.c.o
+[ 34%] Built target test_nvs_storage_errors
+[ 35%] Building C object CMakeFiles/test_commands.dir/mocks/mock_avrc.c.o
+[ 35%] Building C object CMakeFiles/test_cmd_handlers_files.dir/mocks/bt_manager_test_hooks.c.o
+[ 35%] Building C object CMakeFiles/test_integration_flows.dir/mocks/bt_manager_test_hooks.c.o
+[ 36%] Building C object CMakeFiles/test_psram.dir/test_psram.c.o
+[ 36%] Linking C executable test_concurrency
+[ 36%] Building C object CMakeFiles/test_util_safe.dir/test_util_safe_host.c.o
+[ 36%] Built target test_bluetooth
+[ 36%] Linking C executable test_commands
+[ 36%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/test_audio_processor_idle_i2s.c.o
+[ 36%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/test_audio_processor_core_logic.c.o
+[ 36%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/audio_processor_host_stub.c.o
+[ 36%] Linking C executable test_cmd_handlers_audio
+[ 37%] Building C object CMakeFiles/test_audio_processor_read.dir/test_audio_processor_read.c.o
+[ 38%] Linking C executable test_cmd_handlers_files
+[ 38%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/fake_esp_err.c.o
+[ 38%] Linking C executable test_integration_flows
+[ 38%] Building C object CMakeFiles/test_psram.dir/mocks/esp_heap_caps_mock.c.o
+[ 38%] Building C object CMakeFiles/test_cmd_handlers_bt.dir/mocks/bt_manager_test_hooks.c.o
+[ 38%] Built target test_concurrency
+[ 38%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/esp_heap_caps_mock.c.o
+[ 38%] Linking C executable test_util_safe
+[ 38%] Built target test_commands
+[ 38%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor.c.o
+[ 38%] Building C object CMakeFiles/test_audio_processor_read.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_read.c.o
+[ 38%] Building C object CMakeFiles/test_audio_processor_read.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_state.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_state.c.o
+[ 39%] Built target test_cmd_handlers_audio
+[ 39%] Building C object CMakeFiles/test_psram.dir/mocks/audio_alloc_host.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_diag.dir/test_audio_processor_diag.c.o
+[ 39%] Linking C executable test_cmd_handlers_bt
+[ 39%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/mocks/audio_processor_core_logic_stubs.c.o
+[ 39%] Built target test_integration_flows
+[ 39%] Built target test_cmd_handlers_files
+[ 39%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/mocks/fake_log.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_read.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_ringbuffer.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/mocks/fake_esp_err.c.o
+[ 39%] Built target test_util_safe
+[ 39%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_i2s.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_core_logic.dir/mocks/fake_semphr.c.o
+[ 39%] Linking C executable test_psram
+[ 39%] Building C object CMakeFiles/test_audio_processor_read.dir/mocks/fake_log.c.o
+[ 39%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/test_audio_processor_beep_edge_cases.c.o
+[ 40%] Building C object CMakeFiles/test_audio_processor_diag.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor.c.o
+[ 41%] Building C object CMakeFiles/test_audio_processor_read.dir/mocks/esp_heap_caps_mock.c.o
+[ 41%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_beep.c.o
+[ 41%] Building C object CMakeFiles/test_audio_processor_read.dir/mocks/fake_esp_err.c.o
+[ 41%] Built target test_cmd_handlers_bt
+[ 42%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_gap.c.o
+[ 42%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/mock_audio_and_btstate.c.o
+[ 42%] Building C object CMakeFiles/test_audio_processor_diag.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_diag.c.o
+[ 42%] Linking C executable test_audio_processor_core_logic
+[ 42%] Building C object CMakeFiles/test_beep_manager_edge_cases.dir/test_beep_manager_edge_cases.c.o
+[ 42%] Building C object CMakeFiles/test_audio_processor_diag.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_state.c.o
+[ 42%] Built target test_psram
+[ 42%] Linking C executable test_audio_processor_read
+[ 42%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/test_i2s_manager_config_errors.c.o
+[ 43%] Building C object CMakeFiles/test_beep_manager_edge_cases.dir/mocks/fake_log.c.o
+[ 43%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/nvs_storage_mock.c.o
+[ 43%] Building C object CMakeFiles/test_beep_manager_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/beep_manager.c.o
+[ 44%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_processor_state.c.o
+[ 44%] Built target test_audio_processor_core_logic
+[ 44%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_task.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/test_i2s_manager_runtime_errors.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/i2s_manager.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_diag.dir/mocks/audio_processor_core_logic_stubs.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_queue.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/test_i2s_manager_cleanup_errors.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/esp_heap_caps_mock.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/test_i2s_manager_mock_queue.c.o
+[ 45%] Built target test_audio_processor_read
+[ 45%] Building C object CMakeFiles/test_beep_manager_edge_cases.dir/mocks/fake_esp_err.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/nvs_storage_mock.c.o
+[ 45%] Building C object CMakeFiles/test_list_ownership.dir/test_list_ownership.c.o
+[ 45%] Building C object CMakeFiles/test_audio_ringbuffer.dir/test_audio_ringbuffer.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_diag.dir/mocks/fake_log.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_semphr.c.o
+[ 45%] Linking C executable test_beep_manager_edge_cases
+[ 45%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/i2s_manager.c.o
+[ 45%] Building C object CMakeFiles/test_list_ownership.dir/esp_idf_stubs/bt/common/osi/allocator.c.o
+[ 45%] Building C object CMakeFiles/test_audio_ringbuffer.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_ringbuffer.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/i2s_manager.c.o
+[ 45%] Building C object CMakeFiles/test_audio_processor_diag.dir/mocks/fake_esp_err.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/i2s_manager.c.o
+[ 45%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 46%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_ringbuf.c.o
+[ 46%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_log.c.o
+[ 46%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/fake_log.c.o
+[ 47%] Building C object CMakeFiles/test_audio_processor_diag.dir/mocks/fake_semphr.c.o
+[ 47%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/fake_esp_err.c.o
+[ 47%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/mocks/mock_i2s_std.c.o
+[ 47%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 48%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 48%] Built target test_beep_manager_edge_cases
+[ 49%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/mocks/fake_queue.c.o
+[ 49%] Building C object CMakeFiles/test_list_ownership.dir/esp_idf_stubs/bt/common/osi/list.c.o
+[ 49%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_esp_err.c.o
+[ 49%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_timer.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/mocks/mock_i2s_std.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/mocks/mock_i2s_std.c.o
+[ 49%] Building C object CMakeFiles/test_audio_ringbuffer.dir/mocks/esp_heap_caps_mock.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/mocks/mock_i2s_std.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/mocks/fake_log.c.o
+[ 49%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_debug_helpers.c.o
+[ 49%] Linking C executable test_audio_processor_diag
+[ 49%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_esp_err.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/mocks/fake_queue.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/mocks/fake_queue.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/mocks/fake_log.c.o
+[ 49%] Building C object CMakeFiles/test_i2s_manager_config_errors.dir/mocks/fake_esp_err.c.o
+[ 49%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_log.c.o
+[ 50%] Linking C executable test_audio_ringbuffer
+[ 51%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_task.c.o
+[ 51%] Building C object CMakeFiles/test_audio_engine_stress.dir/test_audio_engine_stress.c.o
+[ 51%] Building C object CMakeFiles/test_osi_allocator.dir/test_bt_osi_allocator.c.o
+[ 52%] Linking C executable test_list_ownership
+[ 51%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/mocks/fake_queue.c.o
+[ 52%] Building C object CMakeFiles/test_audio_processor_idle_i2s.dir/mocks/fake_debug_helpers.c.o
+[ 52%] Linking C executable test_i2s_manager_config_errors
+[ 53%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/mocks/fake_log.c.o
+[ 54%] Building C object CMakeFiles/test_i2s_manager_runtime_errors.dir/mocks/fake_esp_err.c.o
+[ 54%] Built target test_audio_processor_diag
+[ 54%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_queue.c.o
+[ 54%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/mocks/fake_log.c.o
+[ 54%] Building C object CMakeFiles/test_audio_engine_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_ringbuffer.c.o
+[ 54%] Building C object CMakeFiles/test_osi_allocator.dir/esp_idf_stubs/bt/common/osi/allocator.c.o
+[ 54%] Building C object CMakeFiles/test_audio_processor_beep_edge_cases.dir/mocks/fake_semphr.c.o
+[ 54%] Building C object CMakeFiles/test_i2s_manager_cleanup_errors.dir/mocks/fake_esp_err.c.o
+[ 54%] Linking C executable test_i2s_manager_runtime_errors
+[ 54%] Linking C executable test_audio_processor_idle_i2s
+[ 54%] Built target test_audio_ringbuffer
+[ 54%] Building C object CMakeFiles/test_i2s_manager_mock_queue.dir/mocks/fake_esp_err.c.o
+[ 54%] Built target test_list_ownership
+[ 55%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/fake_log.c.o
+[ 55%] Linking C executable test_i2s_manager_cleanup_errors
+[ 55%] Building C object CMakeFiles/test_dispatch_copy_regression.dir/test_dispatch_copy_regression.c.o
+[ 55%] Linking C executable test_audio_processor_beep_edge_cases
+[ 55%] Building C object CMakeFiles/test_bt_app_core_host.dir/test_bt_app_core_host.c.o
+[ 55%] Building C object CMakeFiles/test_pairing_confirm.dir/test_pairing_confirm.c.o
+[ 55%] Linking C executable test_i2s_manager_mock_queue
+[ 55%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/fake_esp_err.c.o
+[ 55%] Built target test_i2s_manager_config_errors
+[ 55%] Linking C executable test_osi_allocator
+[ 55%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 55%] Built target test_i2s_manager_runtime_errors
+[ 55%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_gap.c.o
+[ 55%] Building C object CMakeFiles/test_dispatch_copy_regression.dir/mocks/bt_app_core_host_stub.c.o
+[ 55%] Building C object CMakeFiles/test_audio_engine_stress.dir/mocks/esp_heap_caps_mock.c.o
+[ 55%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_uart.c.o
+[ 55%] Built target test_audio_processor_idle_i2s
+[ 55%] Building C object CMakeFiles/test_bt_app_core_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_app_core.c.o
+[ 55%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/nvs_storage_mock.c.o
+[ 55%] Built target test_i2s_manager_cleanup_errors
+[ 55%] Built target test_i2s_manager_mock_queue
+[ 55%] Built target test_audio_processor_beep_edge_cases
+[ 55%] Built target test_osi_allocator
+[ 55%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_task.c.o
+[ 55%] Linking C executable test_dispatch_copy_regression
+[ 55%] Linking C executable test_audio_engine_stress
+[ 56%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 56%] Building C object CMakeFiles/test_connect_name.dir/test_connect_name.c.o
+[ 56%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 56%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 56%] Building C object CMakeFiles/test_pairing_enter_pin.dir/test_pairing_enter_pin.c.o
+[ 57%] Building C object CMakeFiles/test_pairing_negative.dir/test_pairing_negative.c.o
+[ 57%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 57%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_queue.c.o
+[ 57%] Building C object CMakeFiles/test_pairing_edge_cases.dir/test_pairing_edge_cases.c.o
+[ 57%] Building C object CMakeFiles/test_pairing_pending.dir/test_pairing_pending.c.o
+[ 57%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 58%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_log.c.o
+[ 58%] Built target test_audio_engine_stress
+[ 58%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_negative.dir/mocks/nvs_storage_mock.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_gap.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_negative.dir/mocks/mock_gap.c.o
+[ 58%] Building C object CMakeFiles/test_pairing_event_notifications.dir/test_pairing_event_notifications.c.o
+[ 58%] Built target test_dispatch_copy_regression
+[ 58%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 59%] Building C object CMakeFiles/test_event_stress.dir/test_event_stress.c.o
+[ 59%] Building C object CMakeFiles/test_bt_app_core_host.dir/mocks/fake_esp_err.c.o
+[ 59%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 59%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_gap.c.o
+[ 59%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_uart.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 60%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_uart.c.o
+[ 60%] Linking C executable test_pairing_negative
+[ 60%] Building C object CMakeFiles/test_bt_app_core_host.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[ 60%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 60%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_gap.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 61%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 61%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 62%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/nvs_storage_mock.c.o
+[ 62%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 62%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_uart.c.o
+[ 62%] Linking C executable test_bt_app_core_host
+[ 62%] Built target test_pairing_negative
+[ 62%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 62%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/nvs_storage_mock.c.o
+[ 62%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 63%] Building C object CMakeFiles/test_pairing_confirm.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 63%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 63%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/test_pairing_seq_hardening.c.o
+[ 63%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 63%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_uart.c.o
+[ 63%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 64%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 64%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 64%] Built target test_bt_app_core_host
+[ 64%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/bt_manager_test_hooks.c.o
+[ 64%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_uart.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 65%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_audio_and_btstate.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/audio_processor_host_stub.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 65%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_gap.c.o
+[ 65%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_pending.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 65%] Building C object CMakeFiles/test_bt_connection_manager.dir/test_bt_connection_manager.c.o
+[ 65%] Building C object CMakeFiles/test_bt_connection_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection_manager.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_gap.c.o
+[ 65%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 65%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/fake_esp_err.c.o
+[ 66%] Building C object CMakeFiles/test_bt_connection_manager.dir/mocks/mock_a2dp.c.o
+[ 67%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/bt_manager_test_hooks.c.o
+[ 67%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 68%] Building C object CMakeFiles/test_connect_name.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_a2dp.c.o
+[ 68%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_audio_and_btstate.c.o
+[ 69%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 69%] Building C object CMakeFiles/test_connect_name.dir/mocks/nvs_storage_mock.c.o
+[ 70%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 71%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 71%] Building C object CMakeFiles/test_bt_connection_manager.dir/mocks/mock_gap.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_enter_pin.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/nvs_storage_mock.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_confirm.dir/mocks/mock_avrc.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/bt_manager_test_hooks.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 71%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 71%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 71%] Linking C executable test_bt_connection_manager
+[ 72%] Building C object CMakeFiles/test_pairing_edge_cases.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 72%] Building C object CMakeFiles/test_pairing_event_notifications.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 72%] Building C object CMakeFiles/test_connect_name.dir/mocks/bt_manager_test_hooks.c.o
+[ 73%] Linking C executable test_pairing_confirm
+[ 73%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/bt_manager_test_hooks.c.o
+[ 73%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/fake_esp_err.c.o
+[ 73%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_audio_and_btstate.c.o
+[ 73%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 73%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/audio_processor_host_stub.c.o
+[ 73%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_audio_and_btstate.c.o
+[ 73%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/bt_manager_test_hooks.c.o
+[ 73%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_audio_and_btstate.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_gap.c.o
+[ 74%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 74%] Built target test_bt_connection_manager
+[ 74%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_audio_and_btstate.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/nvs_storage_mock.c.o
+[ 74%] Building C object CMakeFiles/test_connect_name.dir/mocks/audio_processor_host_stub.c.o
+[ 74%] Building C object CMakeFiles/test_mock_connection_helpers.dir/test_mock_connection_helpers.c.o
+[ 74%] Building C object CMakeFiles/test_bt_streaming_manager.dir/test_bt_streaming_manager.c.o
+[ 74%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 74%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 75%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_audio_and_btstate.c.o
+[ 75%] Built target test_pairing_confirm
+[ 75%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_a2dp.c.o
+[ 75%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/fake_esp_err.c.o
+[ 75%] Building C object CMakeFiles/test_event_stress.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 75%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/audio_processor_host_stub.c.o
+[ 75%] Building C object CMakeFiles/test_connect_name.dir/mocks/fake_esp_err.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_a2dp.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/fake_esp_err.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_bluetooth/main/test_pairing_commands.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 76%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/test_bluetooth/main/test_pairing_adapters.c.o
+[ 77%] Building C object CMakeFiles/test_pairing_pending.dir/mocks/mock_avrc.c.o
+[ 77%] Building C object CMakeFiles/test_event_stress.dir/mocks/nvs_storage_mock.c.o
+[ 77%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 78%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_a2dp.c.o
+[ 78%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/fake_esp_err.c.o
+[ 78%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_gap.c.o
+[ 78%] Building C object CMakeFiles/test_bt_streaming_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_streaming_manager.c.o
+[ 78%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_a2dp.c.o
+[ 78%] Building C object CMakeFiles/test_pairing_enter_pin.dir/mocks/mock_avrc.c.o
+[ 78%] Building C object CMakeFiles/test_connect_name.dir/mocks/mock_avrc.c.o
+[ 78%] Linking C executable test_pairing_pending
+[ 79%] Building C object CMakeFiles/test_event_stress.dir/mocks/bt_manager_test_hooks.c.o
+[ 79%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_a2dp.c.o
+[ 80%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/command_interface/commands.c.o
+[ 81%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 81%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_a2dp.c.o
+[ 81%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_gap.c.o
+[ 81%] Building C object CMakeFiles/test_pairing_event_notifications.dir/mocks/mock_avrc.c.o
+[ 81%] Linking C executable test_pairing_enter_pin
+[ 81%] Building C object CMakeFiles/test_audio_resampler_stream.dir/test_audio_resampler_stream.c.o
+[ 81%] Linking C executable test_connect_name
+[ 82%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/mock_a2dp.c.o
+[ 82%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/nvs_storage_mock.c.o
+[ 83%] Building C object CMakeFiles/test_pairing_edge_cases.dir/mocks/mock_avrc.c.o
+[ 83%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_audio_and_btstate.c.o
+[ 83%] Building C object CMakeFiles/test_audio_resampler_stream.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_resampler_stream.c.o
+[ 83%] Built target test_pairing_pending
+[ 83%] Linking C executable test_pairing_event_notifications
+[ 83%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_gap.c.o
+[ 83%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/bt_manager_test_hooks.c.o
+[ 83%] Linking C executable test_pairing_edge_cases
+[ 83%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/mock_avrc.c.o
+[ 83%] Building C object CMakeFiles/test_event_stress.dir/mocks/audio_processor_host_stub.c.o
+[ 83%] Built target test_connect_name
+[ 83%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/mock_audio_and_btstate.c.o
+[ 83%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_uart.c.o
+[ 83%] Built target test_pairing_enter_pin
+[ 83%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_audio_and_btstate.c.o
+[ 83%] Building C object CMakeFiles/test_event_stress.dir/mocks/fake_esp_err.c.o
+[ 83%] Building C object CMakeFiles/test_audio_resampler_stream.dir/mocks/fake_log.c.o
+[ 83%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/audio_processor_host_stub.c.o
+[ 83%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/audio_processor_host_stub.c.o
+[ 83%] Building C object CMakeFiles/test_audio_resampler_stream.dir/mocks/fake_esp_err.c.o
+[ 83%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 83%] Built target test_pairing_event_notifications
+[ 84%] Building C object CMakeFiles/test_audio_util.dir/test_audio_util/test_audio_util.c.o
+[ 84%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/test_pairing_adapter_main.c.o
+[ 84%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_a2dp.c.o
+[ 85%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_a2dp.c.o
+[ 85%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/fake_esp_err.c.o
+[ 85%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_task.c.o
+[ 85%] Built target test_pairing_edge_cases
+[ 85%] Building C object CMakeFiles/test_synth_manager.dir/test_synth_manager/test_synth_manager.c.o
+[ 86%] Linking C executable test_audio_resampler_stream
+[ 86%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 86%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/nvs_storage_mock.c.o
+[ 86%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 86%] Building C object CMakeFiles/test_synth_manager.dir/test_synth_manager/stub_audio_config.c.o
+[ 86%] Building C object CMakeFiles/test_audio_util.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_util.c.o
+[ 86%] Building C object CMakeFiles/test_event_stress.dir/mocks/mock_avrc.c.o
+[ 87%] Building C object CMakeFiles/test_synth_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/synth_manager.c.o
+[ 87%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_log.c.o
+[ 88%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 88%] Building C object CMakeFiles/test_pairing_seq_hardening.dir/mocks/mock_avrc.c.o
+[ 88%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 89%] Linking C executable test_event_stress
+[ 89%] Building C object CMakeFiles/test_audio_util.dir/mocks/fake_log.c.o
+[ 89%] Linking C executable test_synth_manager
+[ 89%] Building C object CMakeFiles/test_mem_util.dir/test_mem_util/test_mem_util.c.o
+[ 89%] Building C object CMakeFiles/test_mem_util.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[ 89%] Built target test_audio_resampler_stream
+[ 89%] Building C object CMakeFiles/test_audio_util.dir/mocks/fake_esp_err.c.o
+[ 89%] Building C object CMakeFiles/test_bt_streaming_manager.dir/mocks/fake_esp_err.c.o
+[ 89%] Linking C executable test_pairing_seq_hardening
+[ 89%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 90%] Building C object CMakeFiles/test_bt_streaming_manager.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/util_safe/util_safe.c.o
+[ 90%] Building C object CMakeFiles/test_mock_connection_helpers.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 90%] Linking C executable test_audio_util
+[ 91%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 91%] Built target test_event_stress
+[ 92%] Building C object CMakeFiles/test_bt_scan.dir/test_bt_scan.c.o
+[ 92%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/test_bt_manager_connection_pairing_events.c.o
+[ 92%] Linking C executable test_mem_util
+[ 92%] Built target test_synth_manager
+[ 92%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+[ 92%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/bt_manager_test_hooks.c.o
+[ 92%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/nvs_storage_mock.c.o
+[ 92%] Building C object CMakeFiles/test_audio_span_log.dir/test_audio_span_log.c.o
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bt_scan.c: In function ‘test_bt_scan_handle_discovery_result_device_list_full_should_drop’:
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bt_scan.c:279:5: warning: implicit declaration of function ‘bt_scan_handle_discovery_result’ [-Wimplicit-function-declaration]
+  279 |     bt_scan_handle_discovery_result(bda, 1, props);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bt_scan.c: In function ‘test_bt_scan_handle_state_change_started_should_set_scanning’:
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_bt_scan.c:388:5: warning: implicit declaration of function ‘bt_scan_handle_state_change’ [-Wimplicit-function-declaration]
+  388 |     bt_scan_handle_state_change(ESP_BT_GAP_DISCOVERY_STARTED);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 92%] Linking C executable test_bt_streaming_manager
+[ 92%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 92%] Building C object CMakeFiles/test_mock_connection_helpers.dir/mocks/fake_esp_err.c.o
+[ 92%] Built target test_pairing_seq_hardening
+[ 92%] Built target test_audio_util
+[ 92%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 92%] Built target test_mem_util
+[ 92%] Building C object CMakeFiles/test_audio_span_log.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_span_log.c.o
+[ 93%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 93%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 93%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_scan.c.o
+[ 93%] Building C object CMakeFiles/test_audio_span_log.dir/mocks/fake_log.c.o
+[ 93%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 94%] Linking C executable test_mock_connection_helpers
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_span_log.c:16:10: fatal error: freertos/portmacro.h: No such file or directory
+   16 | #include "freertos/portmacro.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+[ 94%] Building C object CMakeFiles/test_platform_shim.dir/test_platform_shim.c.o
+gmake[2]: *** [CMakeFiles/test_audio_span_log.dir/build.make:90: CMakeFiles/test_audio_span_log.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/audio_processor/audio_span_log.c.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+[ 94%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 94%] Built target test_bt_streaming_manager
+[ 94%] Building C object CMakeFiles/test_platform_shim.dir/mocks/fake_log.c.o
+[ 94%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 94%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_manager.c.o
+gmake[1]: *** [CMakeFiles/Makefile2:1732: CMakeFiles/test_audio_span_log.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/bt_manager_test_hooks.c.o
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_platform_shim.c: In function ‘test_platform_calloc_with_caps_should_ignore_caps_on_host’:
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_platform_shim.c:73:40: error: ‘PLATFORM_MEM_CAP_32BIT’ undeclared (first use in this function); did you mean ‘PLATFORM_MEM_CAP_8BIT’?
+   73 |     void *ptr2 = platform_calloc(8, 4, PLATFORM_MEM_CAP_32BIT);
+      |                                        ^~~~~~~~~~~~~~~~~~~~~~
+      |                                        PLATFORM_MEM_CAP_8BIT
+/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/test/host_test/test_platform_shim.c:73:40: note: each undeclared identifier is reported only once for each function it appears in
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_audio_and_btstate.c.o
+[ 95%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_pairing_store.c.o
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+gmake[2]: *** [CMakeFiles/test_platform_shim.dir/build.make:76: CMakeFiles/test_platform_shim.dir/test_platform_shim.c.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/audio_processor_host_stub.c.o
+[ 95%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/fake_esp_err.c.o
+gmake[1]: *** [CMakeFiles/Makefile2:1759: CMakeFiles/test_platform_shim.dir/all] Error 2
+[ 95%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 95%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_connection.c.o
+[ 95%] Built target test_mock_connection_helpers
+[ 95%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_a2dp.c.o
+[ 96%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/mock_a2dp.c.o
+[ 96%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/mock_avrc.c.o
+[ 96%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_gap.c.o
+[ 96%] Building C object CMakeFiles/test_pairing_adapter_runner.dir/mocks/mock_avrc.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_a2dp.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/home/phil/work/esp32/esp32_btaudio/esp_bt_audio_source/components/bt_manager/bt_events_avrc.c.o
+[ 97%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/mock_gap.c.o
+[ 97%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/nvs_storage_mock.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/mocks/mock_gap.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/mocks/mock_a2dp.c.o
+[ 97%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/mock_audio_and_btstate.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/mocks/mock_avrc.c.o
+[ 97%] Building C object CMakeFiles/test_bt_scan.dir/mocks/nvs_storage_mock.c.o
+[ 98%] Building C object CMakeFiles/test_bt_scan.dir/mocks/mock_audio_and_btstate.c.o
+[ 98%] Building C object CMakeFiles/test_bt_scan.dir/mocks/bt_manager_test_hooks.c.o
+[ 98%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/bt_manager_test_hooks.c.o
+[ 99%] Linking C executable test_pairing_adapter_runner
+[ 99%] Building C object CMakeFiles/test_bt_scan.dir/mocks/fake_log.c.o
+[ 99%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/fake_esp_err.c.o
+[ 99%] Building C object CMakeFiles/test_bt_scan.dir/mocks/fake_esp_err.c.o
+[100%] Building C object CMakeFiles/test_bt_manager_connection_pairing_events.dir/mocks/fake_log.c.o
+[100%] Linking C executable test_bt_scan
+[100%] Linking C executable test_bt_manager_connection_pairing_events
+[100%] Built target test_pairing_adapter_runner
+[100%] Built target test_bt_scan
+[100%] Built target test_bt_manager_connection_pairing_events
+gmake: *** [Makefile:146: all] Error 2

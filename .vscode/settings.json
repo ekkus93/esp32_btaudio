@@ -8,5 +8,6 @@
             "packageManager": "ms-python.python:conda"
         }
     ],
-    "idf.pythonInstallPath": "/usr/bin/python3"
+    "idf.pythonInstallPath": "/usr/bin/python3",
+    "dotnet.defaultSolution": "disable"
 }
