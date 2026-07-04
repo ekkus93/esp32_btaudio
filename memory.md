@@ -1,3 +1,26 @@
+## 2026-07-04 (evening) - UARTAUDIO audible listen test: works, static traced to WiFi/BT coex
+
+Laptop-as-sink listen test (PulseAudio loopback from bluez_source to
+speakers): music audibly played through laptop->UART->ESP32->A2DP->laptop.
+User reported static. Root cause found: laptop WiFi on 2.427 GHz (ch 4,
+kensington2) shares the combo radio with BT -> A2DP throughput throttled
+~12% below real-time (verbose UA|FILL showed ring 40%->100% in ~2 s and
+pegged; L2CAP congestion errors flooding). NOT a firmware/UART bug — the
+UART leg was near-clean; overflow was the downstream symptom.
+
+Setup still in place for a retry: ESP32 paired+connected to laptop BT,
+PulseAudio loopback module 40 loaded, engine STOPped (idle).
+Scratchpad helper: connect_esp32.py (pair+connect+START, then releases
+serial). Test music: scratchpad/test_music.wav.
+
+Waiting on user: (a) switch laptop WiFi to 5 GHz then rerun
+tools/stream_audio_uart.py, or (b) charged BT headset (dedicated sink,
+no shared radio — expected clean). Note: 3 s pytest E2E fits inside
+buffer headroom and can't catch this rate deficit; optional longer
+`slow` test variant was offered, not requested yet.
+
+Also: /lint-n-test skill added (.claude/skills/lint-n-test, Haiku model).
+
 ## 2026-07-04 (later) - UARTAUDIO validated ON HARDWARE - 6/6 laptop-BT tests green
 
 Board mystery solved: /dev/ttyUSB0 ESP32 had esp32_zx81 firmware flashed
