@@ -10,17 +10,21 @@
 > - SPIFFS filesystem usage (partition removed in Version 0.3.0)
 > - `play_manager` component references (removed in Version 0.3.0)
 > 
-> **Current capabilities (Version 0.3.0):**
-> - Audio sources: **I2S live streaming** and **synthesized tones** only
-> - Commands: `START`, `STOP`, `BEEP`, `VOLUME`, etc. (but NOT `PLAY`)
+> **Current capabilities (as of July 2026):**
+> - Audio sources: **I2S live streaming**, **synthesized tones**, **UART audio
+>   streaming (UARTAUDIO)** — stereo 22.05 kHz PCM from a PC over the USB
+>   serial cable, upsampled 2x on device (see Addendum §A below)
+> - Commands: `START`, `STOP`, `BEEP`, `VOLUME`, `UARTAUDIO`, etc. (NOT `PLAY`)
+> - Command transport: **dual UART** — USB console UART plus secondary UART2
+>   (GPIO16/17); responses route to the originating port, events broadcast
 > - Storage: NVS only (no SPIFFS partition)
 > 
-> For current documentation, see:
+> The historical body below is retained for reference; the **Addendum
+> (§A, July 2026)** at the end of this document captures requirements added
+> since. For current documentation, see:
 > - [README.md](../README.md) — current project status
 > - [MIGRATION.md](../MIGRATION.md) — Version 0.3.0 migration guide
 > - [main/README.md](../main/README.md) — current audio architecture
-> 
-> This document is retained for historical reference.
 
 ---
 
@@ -145,12 +149,12 @@ Representative Use Cases:
 
 ## 6. Dependencies & Constraints
 
-- **Platform**: ESP-IDF v5.4.x (ESP32-WROOM32 target). Must source `$HOME/esp/v5.4.1/esp-idf/export.sh` before running `idf.py`.
+- **Platform**: ESP-IDF v5.5.1 (ESP32-WROOM32 target). Must source `$HOME/esp/esp-idf/export.sh` before running `idf.py`.
 - **Hardware**: Reference board uses `/dev/ttyUSB0` for flashing/monitor. No BLE-only configs; controller must be dual-mode.
 - **Storage**: NVS partition for settings, SPIFFS partition at offset `0x1C0000` (size `0x40000`).
 - **Policy constraints** (per repo instructions):
   - Do not modify `sdkconfig`, partition tables, or introduce new components without explicit approval.
-  - Flashing permission is standing once the user asks to “run all unit tests.”
+  - Flashing always requires explicit confirmation; test images replace the production firmware, which must be reflashed afterwards (see repository CLAUDE.md).
   - Use `python310` conda env for Python tooling; do not create new venvs.
 
 ## 7. Metrics & Acceptance Criteria
@@ -185,3 +189,53 @@ Representative Use Cases:
 - `memory.md` — rolling engineering log; specific TODOs and verification notes.
 - `tools/run_all_tests.py`, `tools/run_unity.py`, `tools/flash_and_verify_spiffs.py` — automation and flashing helpers.
 - Per-suite artifacts under `esp_bt_audio_source/test/test_app*/build/` and aggregated outputs under `tmp/`.
+
+---
+
+## A. Addendum — July 2026 (UARTAUDIO + dual-UART commands)
+
+Requirements added and delivered since the historical body above was written.
+
+### A.1 UART Audio Streaming (UARTAUDIO) — delivered
+- **Requirement**: stream real audio from a developer PC to the connected
+  Bluetooth sink using only the existing USB serial cable (no I2S wiring),
+  as the primary developer audio-test path.
+- **Constraint driving the format**: the CP2102 bridge caps the link at
+  921600 baud (~92 KB/s), so the wire format is stereo 22.05 kHz s16le
+  (88.2 KB/s payload) in CRC-16 framed 1024-byte chunks, upsampled 2x to
+  44.1 kHz on device. Audio bandwidth ~11 kHz (accepted trade-off).
+- **Acceptance (met)**: capture-vs-source analysis bit-faithful (95/95
+  windows r>0.99, zero skips — `tools/compare_bt_capture.py`); zero-defect
+  24 s streams to real earbuds (underruns/CRC/lost/overflows all 0);
+  automatic recovery to text mode on host death (2 s) or failed handshake
+  (5 s); hardware-gated pytest suite `test/laptop_bt_tests/test_uart_streaming.py`.
+- **Diagnostics requirement (met)**: the device reports its actual A2DP pull
+  rate (`READ_BPS` in `AUDIO_STATUS`; 8th field of the `UA|FILL` feedback
+  line) so rate-deficit regressions are measurable, not inferable.
+
+### A.2 Dual command UART — delivered
+- **Requirement**: keep full command access while UARTAUDIO streaming
+  occupies the console UART, and provide a wired command path for a
+  companion controller (planned `esp_i2s_source` redo).
+- **Design**: secondary command UART2 (RX GPIO16 / TX GPIO17, 115200,
+  Kconfig `CMD_UART2_*`). Responses return on the originating port;
+  `EVENT|` lines broadcast to all ports; `cmd_process()` skips only the
+  primary port while streaming. USB behavior is unchanged (regression-tested).
+
+### A.3 Audio-quality root causes fixed (were latent since inception)
+1. Audio engine produced one 1 KB chunk per wake against a 10 ms effective
+   tick — a 102.4 KB/s ceiling vs the 176.4 KB/s A2DP consumes; every source
+   was zero-filled ~40% (inaudible for synth/silence, static for real audio).
+   Now up to 8 chunks per wake, watermark-bounded.
+2. UART ISR moved to IRAM (`CONFIG_UART_ISR_IN_IRAM=y`) — BT flash-cache
+   windows overran the 128-byte RX FIFO at 921600 baud.
+3. RX FIFO threshold lowered to 32 during streaming (~1 ms ISR budget
+   instead of ~87 µs at the default ~120 threshold).
+
+### A.4 Updated milestones
+| Milestone | Status (2026-07-04) | Description |
+| --- | --- | --- |
+| M7 – UARTAUDIO feature | ✅ Complete | 9 TDD steps; host tool + fidelity checker; hardware-validated to laptop sink and earbuds. |
+| M8 – Dual command UART | ✅ Complete (software) | UART2 live with 14 routing tests; physical UART2 check awaits a second USB-serial adapter. |
+| M9 – test_bluetooth suite revival | ✅ Complete | Link break fixed (mock caught up to bt_manager wrapper API); 46/46; full estate green (host ~702 cases + device 46/35/18). |
+| M10 – esp_i2s_source redo | ⏳ Planned | Expected to drive this board via UART2; requirements not yet gathered. |

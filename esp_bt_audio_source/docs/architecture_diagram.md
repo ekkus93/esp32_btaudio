@@ -9,21 +9,87 @@
 > - References to WAV playback from SPIFFS (removed in Version 0.3.0)
 > - SPIFFS filesystem (partition removed in Version 0.3.0)
 > 
-> **Current architecture (Version 0.3.0):**
-> - Audio sources: **I2S live streaming**, **synth tones**, **silence** (3 sources, no WAV)
-> - Audio managers: `i2s_manager`, `synth_manager`, `beep_manager` (no `play_manager`)
+> **Current architecture (as of July 2026 — UARTAUDIO era):**
+> - Audio sources: **I2S live streaming**, **synth tones**, **UART audio streaming**, **silence** (4 sources; priority: beep > UART > synth > I2S > silence)
+> - Audio managers/sources: `i2s_manager`, `synth_manager`, `beep_manager`, `uart_source` (no `play_manager`)
+> - Command transport: **dual UART** — USB console UART (UART0) plus secondary UART2 (GPIO16/17); UART0 also carries the UARTAUDIO binary PCM stream at 921600 baud
 > - Storage: NVS only (no SPIFFS partition)
 > 
-> For current architecture documentation, see:
-> - [main/README.md](../main/README.md) — current audio pipeline architecture
-> - [ARCH.md](../ARCH.md) — architecture notes (obsolete sections marked)
-> - [MIGRATION.md](../MIGRATION.md) — Version 0.3.0 changes
+> The **Current Data Paths (2026-07)** section below is up to date; the
+> remaining diagrams reflect the Feb 2026 architecture and are retained for
+> historical reference (the init/ownership/layering diagrams remain accurate).
 > 
-> This document is retained for historical reference.
+> See also: [main/README.md](../main/README.md), [ARCH.md](../ARCH.md),
+> [MIGRATION.md](../MIGRATION.md).
 
 ---
 
-This document contains Mermaid diagrams visualizing the architecture decisions from the CODE_REVIEW2 cleanup (Jan-Feb 2026).
+This document contains Mermaid diagrams visualizing the architecture decisions from the CODE_REVIEW2 cleanup (Jan-Feb 2026), plus current data-path diagrams added in July 2026.
+
+## Current Data Paths (2026-07)
+
+### UART Audio Streaming (UARTAUDIO) + audio pipeline
+
+Stereo 22.05 kHz s16le PCM streams from a PC over the existing USB serial
+cable, is upsampled 2x on device, and plays through the normal A2DP path:
+
+```mermaid
+graph LR
+    subgraph Host["PC (tools/stream_audio_uart.py)"]
+        WAV[WAV / stdin<br/>22050 Hz stereo s16le]
+        PACER[Deadline pacer<br/>+ UA-FILL feedback trim]
+    end
+
+    subgraph UART0["USB / UART0 @ 921600"]
+        FRAMES[CRC-framed DATA/STOP<br/>1024 B payloads<br/>uart_audio_frame.h]
+    end
+
+    subgraph FW["ESP32 firmware"]
+        READER[uart_audio reader task<br/>baud switch, timeouts,<br/>UA-READY / UA-FILL / UA-BYE]
+        PARSER[uart_audio_frame parser<br/>CRC16, resync, seq gaps]
+        STAGING[uart_source staging ring<br/>32 KB SPSC, prebuffer 50%]
+        UPSAMPLE[2x midpoint upsampler<br/>22.05k -> 44.1k]
+        ENGINE[audio_engine_task<br/>up to 8 chunks/wake<br/>source arbitration]
+        RING[main audio ring<br/>watermark hysteresis]
+        A2DPCB[A2DP data callback<br/>176.4 KB/s pull<br/>READ_BPS instrumented]
+    end
+
+    SINK[BT speaker / earbuds<br/>SBC over A2DP]
+
+    WAV --> PACER --> FRAMES --> READER --> PARSER --> STAGING
+    STAGING --> UPSAMPLE --> ENGINE --> RING --> A2DPCB --> SINK
+
+    style FW fill:#e8f5e9
+    style UART0 fill:#fff3e0
+```
+
+Source arbitration in `produce_audio_chunk()`: **beep overlay > UART > forced
+synth > I2S > silence** — an active UART stream is the most recent explicit
+user intent, so `SYNTH ON` does not interrupt it.
+
+### Dual-UART command routing
+
+```mermaid
+graph TB
+    USB[USB console UART0<br/>GPIO1/3 @ 115200<br/>+ UARTAUDIO stream @ 921600]
+    U2[Secondary UART2<br/>RX GPIO16 / TX GPIO17 @ 115200<br/>Kconfig CMD_UART2_*]
+    PROC[cmd_process<br/>per-port line buffers]
+    HANDLERS[command handlers]
+    EVENTS[EVENT lines<br/>broadcast to BOTH ports]
+
+    USB -->|commands| PROC
+    U2 -->|commands| PROC
+    PROC --> HANDLERS
+    HANDLERS -->|response to<br/>originating port| USB
+    HANDLERS -->|response to<br/>originating port| U2
+    HANDLERS --> EVENTS
+
+    NOTE[While UARTAUDIO streaming owns UART0,<br/>cmd_process skips UART0 only —<br/>UART2 keeps serving commands mid-stream]
+
+    style NOTE fill:#fff9c4
+```
+
+---
 
 ## Initialization Sequence
 
@@ -354,7 +420,7 @@ graph LR
 
 ## Notes
 
-- All diagrams reflect the architecture as of **Feb 5, 2026** (post CODE_REVIEW6 ring buffer migration)
+- The **Current Data Paths** section reflects the architecture as of **Jul 4, 2026** (UARTAUDIO + dual-UART commands); the remaining diagrams reflect **Feb 5, 2026** (post CODE_REVIEW6 ring buffer migration)
 - **Major changes since Feb 1**:
   - SPSC ring buffer architecture completed and validated (CODE_REVIEW6)
   - Legacy audio_queue removed from codebase

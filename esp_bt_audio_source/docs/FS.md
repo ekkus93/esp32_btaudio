@@ -4,6 +4,7 @@
 
 **Scope alignment**
 - PRD goals addressed: serial-driven Bluetooth A2DP source with I2S/synth audio, deterministic command protocol, reproducible test automation, diagnostics suitable for CI/field work.
+- July 2026 additions (PRD Addendum §A): UART audio streaming (UARTAUDIO) and the dual-UART command interface — specified in §2.5 and §2.6 below.
 - Out-of-scope here: mobile app UX, BLE sink role, OTA workflows (can be spun out to dedicated specs if needed).
 
 ---
@@ -59,7 +60,10 @@ Key data paths:
 ### 2.1 Command Interface (`components/command_interface`)
 
 **Responsibilities**
-- Maintain UART transport (115200 8N1) using IDF VFS or driver.
+- Maintain UART transport (115200 8N1) using IDF VFS or driver — on BOTH the
+  USB console UART (primary) and the optional secondary UART2 (GPIO16/17,
+  Kconfig `CMD_UART2_*`). Per-port line accumulators; responses return on the
+  port the command arrived on; `EVENT|` lines broadcast to every port.
 - Parse uppercase tokens terminated by `\n` (commands) with optional arguments.
 - Validate syntax and route to the correct subsystem.
 - Emit exactly one terminal response (`OK|...` or `ERR|...`) per command; allow asynchronous `EVENT|...` interleaving.
@@ -93,6 +97,7 @@ Key data paths:
 | `SET_NAME` | `<string>` | Set local BT device name + persist. |
 | `SET_DEFAULT_PIN` | `<pin>` | Update stored default PIN. |
 | `SAMPLE_RATE` / `I2S_CONFIG` | numbers | Update audio configuration (pins + optional rate/bit depth/channels); reinit I2S if needed. |
+| `UARTAUDIO` | `START [baud]` / `STATUS` / `STOP` | Enter/inspect UART audio streaming mode (see §2.5). `START` hands console-UART RX to the reader task; `STOP` in text mode returns `ERR|UARTAUDIO|NOT_STREAMING` (the real stop is the in-band STOP frame). |
 
 Configuration persistence rules:
 - `SET_NAME` and `SET_DEFAULT_PIN` write directly to the `nvs_storage` namespace so the values survive reboot.
@@ -165,6 +170,63 @@ STREAM_I2S ──(STOP/DISCONNECT)──▶ IDLE (buffers drained)
 ### 2.4 Storage, Assets, and Helpers
 - **NVS**: `nvs_storage` component wraps key/value operations for pairing table, default PIN, device name, audio settings. All setters persist immediately; getters provide defaults if not found.
 - **Diagnostics tools**: `tools/parse_traces.py` and `tools/trace_stats.py` require DIAG markers in logs. Audio processor and worker tasks must emit consistent prefixes (`DIAG-READ`, `DIAG-WORKER`, `DIAG-APLAY`, etc.).
+
+### 2.5 UART Audio Streaming (`uart_audio*`, `uart_source`) — added July 2026
+
+**Purpose**: stream stereo 22.05 kHz s16le PCM from a host PC over the console
+UART (921600 baud) into a fourth audio source (`AUDIO_SOURCE_UART`), upsampled
+2x to 44.1 kHz on device and played through the normal A2DP path.
+
+**Components**
+- `command_interface/uart_audio_frame.c` — pure byte-stream frame parser:
+  magic `A5 5A`, DATA/STOP types, uint8 seq, LE len (4..2048, %4==0),
+  CRC-16/CCITT-FALSE; feed-boundary agnostic; resync on bad header; stats for
+  crc errors / desync bytes / seq-gap losses.
+- `audio_processor/uart_source.c` — SPSC staging ring (default 32 KB,
+  Kconfig `UART_AUDIO_STAGING_RB_KB`), PREBUFFER→ACTIVE at 50% fill, 2x
+  midpoint upsampler, drain-on-STOP, underrun/overflow stats.
+- `command_interface/uart_audio_rx.c` — host-testable RX pump (parser →
+  staging ring; STOP handling; >8 consecutive CRC failures = link abort;
+  `UA|FILL` / STOPPED-stats formatting).
+- `command_interface/uart_audio.c` — `UARTAUDIO` command handler, streaming
+  flag (gates `cmd_process()` off the primary UART), device reader task
+  (baud switch, `UA|READY` beacon, 20 ms read loop, `UA|FILL` every 250 ms,
+  2 s inactivity / 5 s handshake aborts, `UA|BYE` teardown, RX-FIFO threshold
+  32 during streaming).
+
+**Handshake (host `tools/stream_audio_uart.py`)**:
+`UARTAUDIO START` @115200 → `OK|UARTAUDIO|STARTING|baud=..,frame=..,ring=..,a2dp=..`
+→ both sides switch baud → device beacons `UA|READY` → paced CRC-framed DATA
+→ periodic `UA|FILL|used|cap|und|crc|lost|ovf|seq|a2dp_bps` → host sends STOP
+frame → device drains ≤500 ms → `UA|BYE` → both sides restore 115200 →
+`EVENT|UARTAUDIO|STOPPED|frames=..,bytes=..,crc=..,und=..,ovf=..,lost=..,fifo_ovf=..,drv_full=..,frame_err=..,parity_err=..`.
+
+**Source arbitration**: beep overlay > **UART** > forced synth > I2S >
+silence. An active stream outranks `SYNTH ON` (most recent explicit intent).
+
+**Failure containment**: host death → 2 s inactivity auto-recovery to text
+mode; device reset → host notices missing `UA|FILL` and reverts; CRC-storm →
+link abort. Verification: `tools/compare_bt_capture.py` (windowed
+cross-correlation of the captured sink audio against the source).
+
+### 2.6 Dual-UART command interface — added July 2026
+
+- Port table: primary = console UART0 (USB); secondary = UART2
+  (RX GPIO16 / TX GPIO17, 115200 8N1), enabled via `CMD_UART2_ENABLED`.
+- `cmd_process()` polls both ports with independent line buffers; a partial
+  line on one port never mixes with the other; buffer overflow on one port
+  resets only that port's accumulator.
+- Response routing: each `OK|`/`ERR|` line goes to the port its command
+  arrived on; asynchronous `EVENT|` lines broadcast to all ports; responses
+  emitted outside command processing default to the primary port.
+- While UARTAUDIO streaming owns the primary port, `cmd_process()` skips only
+  that port — UART2 continues serving commands (e.g. `VOLUME`, `STATUS`,
+  `UARTAUDIO STATUS`) mid-stream. `UARTAUDIO START` from UART2 is accepted:
+  the response routes to UART2 while the binary stream runs on the console UART.
+- UART2 bring-up lives in `cmd_init()` (the cmd layer owns
+  `uart_param_config`/`uart_set_pin`; enforced for main.c by
+  `tools/ci_check_main_layering.sh`). Init failure degrades gracefully to
+  USB-only.
 
 ---
 
@@ -308,3 +370,17 @@ Document history: initial version authored 2025-12-04 based on PRD v2025-12-04. 
 - **Impact**: Simplified audio pipeline, eliminated race conditions, improved diagnostics
 - Updated acceptance criteria to reflect current test counts
 
+### 2026-07-04 - UARTAUDIO + dual-UART commands (new sections §2.5, §2.6)
+- **New feature specs**: UART audio streaming (frame protocol, staging ring,
+  reader task, handshake, failure containment) and the dual-UART command
+  interface (per-port routing, event broadcast, mid-stream control).
+- **Audio pipeline correction**: engine now produces up to 8 chunks per wake
+  (`AUDIO_ENGINE_MAX_CHUNKS_PER_WAKE`) — the historical single-chunk-per-wake
+  behavior capped production at 102.4 KB/s vs the 176.4 KB/s A2DP consumes.
+- **New diagnostics**: A2DP pull-rate instrumentation (`READ_BPS`/`READ_CALLS`/
+  `READ_WIN_MS` in `AUDIO_STATUS`; `a2dp_bps` as the 8th `UA|FILL` field);
+  UART driver event-queue forensics (`fifo_ovf`/`drv_full`/`frame_err`/
+  `parity_err` in the UARTAUDIO STOPPED event).
+- **Test status**: host 66 binaries (~702 cases) + standalone 66 + device
+  46/35/18 — all green; `test_bluetooth` suite revived after long-standing
+  link breakage.
