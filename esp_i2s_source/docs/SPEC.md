@@ -175,10 +175,17 @@ exercise the decoders):
 | 4 | Airport Lounge Radio | Lounge | `https://az1.mediacp.eu:443/listen/airport-lounge-radio/listen.pls?sid=1` |
 | 5 | Different Drumz D&B | Drum & Bass | `https://differentdrumz.radioca.st:443/listen.pls?sid=1` |
 
-Most internet-radio.com popular stations are MP3 (Shoutcast). `RADIO-2d`'s
-AAC hardware test still needs an explicit AAC/AAC+ station — pick one from the
-site's AAC-tagged listings at test time and record the URL in the task notes;
-the seed list above is MP3-first and validates the MP3 path end to end.
+Most internet-radio.com popular stations are MP3 (Shoutcast). The seed list
+above is MP3-first and validates the MP3 path end to end. For the AAC decode
+path (`RADIO-2d`) the user picked these two AAC stations (2026-07-04):
+
+| Name | Codec (claimed) | Playlist URL | Notes |
+| --- | --- | --- | --- |
+| Dance UK Radio | **AAC+ (AACP) 32 kbps** | `http://uk2.internet-radio.com:8024/listen.pls` | Confirmed AAC+ — primary HE-AAC decode test |
+| Hirschmilch Electronic | AAC (per station slug) | `http://hirschmilch.de:7000/listen.pls?sid=5` | ⚠️ page fetch reported `audio/mpeg`/128 kbps on port 7000 (their Prog-House MP3 feed); the AAC electronic stream is a different port. **Verify actual codec on hardware at RADIO-2d**; correct the URL/port if it decodes as MP3 |
+
+Playlist URLs above are the underlying `.pls` links (internet-radio.com wraps
+them in a `playlistgenerator` redirect; `RADIO-1a` resolves `.pls` directly).
 
 ## 6. Memory budget (N16R8: 512 KB SRAM + 8 MB PSRAM)
 - PSRAM: compressed stream ring (~512 KB), decoded PCM ring (~256 KB),

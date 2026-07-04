@@ -158,9 +158,9 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       to UI over WS.
 - [ ] **RADIO-2d** Hardware E2E: MP3 station and AAC station each play to
       earbuds ≥30 min without dropout; WROOM32 counters clean; document
-      buffer telemetry. MP3 station from the SPEC §5.4 seed list; pick an
-      AAC/AAC+ station from internet-radio.com at test time and record its
-      URL here. (M6)
+      buffer telemetry. MP3 station from the SPEC §5.4 seed list; AAC test
+      via Dance UK Radio (AAC+, `uk2.internet-radio.com:8024`) and Hirschmilch
+      Electronic (§5.4 — verify its codec/port on hardware). (M6)
 
 ## CTRL-1 — Orchestrated boot + polish
 
