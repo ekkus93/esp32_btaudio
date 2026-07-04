@@ -1,3 +1,15 @@
+## 2026-07-04 - Secondary command UART added (UART2, RX=GPIO16 TX=GPIO17)
+
+Commands now served on UART2 alongside USB (which is unchanged —
+verified on hardware). Responses route to the originating port; EVENT|
+lines broadcast to both. Bonus: UART2 keeps serving commands DURING
+UARTAUDIO streaming (gate now skips only the primary port). Kconfig:
+CMD_UART2_* (enabled, pins 16/17, 115200). Init in cmd_init() (cmd
+layer owns uart_set_pin/param_config per layering rules). Host mapping
+for tests: primary=mock port 1, secondary=mock port 0; mock_uart has
+port-aware helpers now. Wiring: dongle TX->GPIO16, RX->GPIO17, GND-GND,
+3.3V levels. Physical UART2 verification pending (needs a second
+USB-serial adapter); firmware boot log confirms init.
 ## 2026-07-04 - Full sweep FULLY GREEN: 837 tests, 0 failures
 
 After test_bluetooth fix + host adapter alignment: host 688/688 (once
