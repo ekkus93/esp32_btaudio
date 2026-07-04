@@ -3,30 +3,57 @@
 **Status:** Authoritative spec for the from-scratch rewrite. Supersedes
 `docs/PRD.md` and `docs/FS.md` (Feb 2026) where they conflict; those remain
 useful for component-level detail not repeated here.
-**Target hardware:** ESP32-S3 DevKit (WROOM-1 module class; pinout per
-oceanlabz ESP32-S3 DevKit reference).
+**Target hardware:** AYWHP ESP32-S3 DevKit — **ESP32-S3-WROOM-1 N16R8**
+(16 MB flash, 8 MB octal PSRAM, USB-C). Pinout per oceanlabz ESP32-S3
+DevKit reference.
 **Companion device:** `esp_bt_audio_source` on ESP32-WROOM32 (I2S slave
 receiver + Bluetooth A2DP source), connected by I2S + UART.
 **ESP-IDF:** v5.5.1 (same toolchain as the companion project).
 
-## 1. Locked decisions (2026-07-04)
+## 1. Product summary
+
+The S3 is the **system's face and brain**; the WROOM32 stays the Bluetooth
+engine. The S3 provides:
+
+1. **Web server** with an embedded single-page UI, reachable two ways:
+   - **AP provisioning mode** (default when no WiFi credentials stored):
+     the S3 broadcasts its own WiFi network; connect to it, open the UI,
+     enter home-WiFi credentials → S3 joins the LAN (STA mode).
+   - Normal STA mode on the home LAN (mDNS: `esp-i2s-source.local`).
+2. **Web serial terminal** to the WROOM32: type any raw command, see its
+   response, alongside a continuously scrolling `EVENT|` feed (shared
+   WebSocket).
+3. **Bluetooth management UI**: scan/discovery results, pair (incl. PIN /
+   SSP confirm prompts driven by `EVENT|PAIR|` lines), connect/disconnect,
+   paired-device list, volume — friendly buttons over the same UART protocol.
+4. **Test tone generator**: sine/sweep at selectable frequencies out the
+   I2S link — the audio path's built-in diagnostic.
+5. **Internet Radio**: pick a station (NVS-stored presets, editable in the
+   web UI, plus a paste-any-URL field), S3 fetches the stream (HTTP/HTTPS),
+   decodes **MP3 and AAC (AAC-LC + HE-AAC)**, resamples to the I2S contract,
+   and plays it through the WROOM32 to the Bluetooth speaker. ICY metadata
+   (station/song title) shown in the UI when present.
+
+## 2. Locked decisions (2026-07-04)
 
 | Decision | Choice | Rationale |
 | --- | --- | --- |
-| Codebase | **From scratch** (`idf.py create-project`, target `esp32s3`) | Current tree is the stock IDF ws_echo_server example; target chip changes |
-| Audio sources | **Phase 1: test-signal generator. Phase 2: WiFi network audio (PCM over TCP).** | Prove the I2S link first with zero external dependencies; then the real use case. Internet-radio/MP3 stays future work. |
-| UART link role | **Full remote control** of the BT board (CONNECT/START/VOLUME/STATUS + EVENT monitoring) — the S3 is the system's orchestrator | BT board's UART2 command port was built for exactly this |
-| I2S format | **44.1 kHz, 16-bit, stereo, Philips** — S3 is **master transmitter** | BT board is I2S SLAVE-RX (`i2s_manager.c`: `I2S_ROLE_SLAVE`, RX-only); A2DP is natively 44.1 kHz, so 44.1 out avoids the fractional resampler entirely (supersedes the old 48 kHz contract in PRD FR1) |
-| Web UI | Deferred (future phase) | Not needed for the audio path or control; old PRD FR10-FR12 parked |
+| Codebase | **From scratch** (`idf.py create-project`, target `esp32s3`) | Current tree is the stock IDF ws_echo_server example |
+| Board | ESP32-S3-WROOM-1 **N16R8** | User's hardware (Amazon B0DG8L5NG5, 3-pack). Octal PSRAM ⇒ GPIO35-37 unusable; 8 MB PSRAM ⇒ generous audio/TLS buffers |
+| I2S format | **44.1 kHz, 16-bit, stereo, Philips** — S3 is **master transmitter** | WROOM32 is I2S SLAVE-RX; A2DP is natively 44.1 kHz (supersedes old 48 kHz contract). Radio streams at other rates are resampled on the S3 |
+| UART link role | **Full remote control** of the BT board + event monitoring | BT board's UART2 command port built for this |
+| Audio decoders | Espressif `esp_audio_codec` managed component (MP3, AAC-LC, HE-AAC) | Covers the radio codec landscape without pulling in ESP-ADF |
+| Station UX | Presets in NVS (web-editable) + custom-URL field; 2-3 known-good defaults shipped | User choice |
+| Terminal UX | Raw terminal pane + live EVENT feed | User choice |
+| Web security | Open UI on the LAN; AP mode uses WPA2 with a default password printed on the S3 console | v1 scope; LAN-trusted device |
 
-## 2. Pin map and wiring (the hardware contract)
+## 3. Pin map and wiring (the hardware contract)
 
-### 2.1 ESP32-S3 pin selection
+### 3.1 ESP32-S3 pin selection
 
-Chosen to avoid every restricted pin class on S3 DevKit boards: strapping
-(GPIO 0/3/45/46), flash/PSRAM (26–32), UART0 console (43/44), native USB
-(19/20), octal-PSRAM variants (35/36/37 — board variant unknown, so avoided),
-and the DevKitC RGB LED (48).
+Avoids every restricted pin class on this board: strapping (GPIO 0/3/45/46),
+flash/PSRAM bus (26–32), UART0 console (43/44), native USB (19/20), **octal
+PSRAM (35/36/37 — consumed on N16R8)**, RGB LED (48).
 
 | Function | ESP32-S3 pin | Direction | Notes |
 | --- | --- | --- | --- |
@@ -40,7 +67,7 @@ and the DevKitC RGB LED (48).
 Reserved for future phases (kept free): GPIO8/9 (I2C default), GPIO10–13
 (SPI — SD card option), GPIO4/15/16/21 spare.
 
-### 2.2 Wiring table (S3 ↔ WROOM32)
+### 3.2 Wiring table (S3 ↔ WROOM32)
 
 ```
 ESP32-S3 (esp_i2s_source)            ESP32-WROOM32 (esp_bt_audio_source)
@@ -52,92 +79,117 @@ GPIO18 UART1 RX ◀────────────────── GPIO17
 GND ◀─────────────────────────────▶ GND
 ```
 
-Electrical notes: both boards are 3.3 V — direct connection, no level
-shifting. Keep the three I2S jumpers short and similar length (BCLK runs at
-~2.8 MHz). Each board powered by its own USB (per root README power policy).
-The WROOM32's USB port stays fully functional (console, UARTAUDIO, flashing).
+Electrical notes: both boards 3.3 V — direct connection. Keep the three I2S
+jumpers short and similar length (~2.8 MHz BCLK). Each board on its own USB
+power. The WROOM32's USB stays fully functional (console, UARTAUDIO, flash).
 
-### 2.3 I2S slot format — must match the WROOM32 slave exactly
+### 3.3 I2S slot format — must match the WROOM32 slave exactly
 
 The BT board's `configure_i2s()` (`components/audio_processor/i2s_manager.c`)
 uses `I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG` with: data width 16-bit,
-**slot width 32-bit**, ws_width 32, bit_shift true, stereo (both slots),
-MCLK unused. The S3 TX channel must be configured with the identical Philips
-slot configuration (16-bit data in 32-bit slots) or channels will be
-misaligned/garbled.
+**slot width 32-bit**, ws_width 32, bit_shift true, stereo, MCLK unused.
+The S3 TX channel must use the identical Philips slot configuration or the
+audio will be channel-shifted/garbled.
 
-## 3. Architecture (components to build)
+## 4. Architecture
 
 ```
-[PC sender tool]──WiFi/TCP──▶ net_audio ──▶┐
-                                            ├─▶ pcm_ring ──▶ i2s_out (master TX, 44.1k)──▶ WROOM32
-                  signal_gen (tones/sweeps)─┘
-bt_link (UART1) ◀──── commands/responses/events ────▶ WROOM32 UART2
-console (USB serial, UART0): local command interface for the S3 itself
-config: NVS (WiFi creds, volume policy, autostart behavior)
+                                     ┌──────────────── web_ui (httpd) ───────────────┐
+                                     │ REST: wifi, stations, tone, bt actions        │
+        Browser ◀──WiFi──▶           │ WS:   terminal I/O + EVENT feed + status push │
+                                     └──────┬─────────────────┬───────────────┬──────┘
+                                            │                 │               │
+ Internet ──HTTP(S)──▶ radio ──decode──▶ resample ──▶┐   bt_link (UART1)   wifi_mgr
+   (MP3/AAC stream,    (esp_audio_codec)  (to 44.1k) │        │            (AP⇄STA, NVS)
+    m3u/pls, ICY)                                    ├─▶ pcm_ring ─▶ i2s_out (master TX)──▶ WROOM32
+                       signal_gen (tones/sweeps) ────┘
+                                                          bt_link ◀──cmd/resp/EVENT──▶ WROOM32 UART2
+ console (S3 USB serial): local fallback commands; config: NVS
 ```
 
-- **`i2s_out`** — I2S master TX at the §2.3 contract; owns a PCM ring buffer
-  (SPSC — reuse the proven `audio_ringbuffer.c` pattern from the BT project);
-  zero-fills on underrun and counts it; telemetry counters.
-- **`signal_gen`** — sine/sweep/silence at 44.1 kHz stereo; the Phase-1
-  source and permanent diagnostic (port the tone math from
-  `esp_bt_audio_source` scratchpad tools / `synth_manager` patterns).
-- **`net_audio`** — Phase 2: TCP server accepting length-framed 44.1 kHz
-  s16le stereo PCM; feeds `pcm_ring` with backpressure (drop-oldest policy +
-  fill feedback to sender, mirroring the proven UARTAUDIO UA|FILL design).
-  Companion PC tool `tools/stream_audio_net.py` (sibling of the BT project's
-  `stream_audio_uart.py` — same pacing/feedback structure, TCP transport).
-- **`bt_link`** — UART1 client speaking the BT board's command protocol:
-  send `CMD\r\n`, await `OK|`/`ERR|` (single-line completion contract),
-  collect asynchronous `EVENT|` lines (pairing, UARTAUDIO stopped, etc.).
-  State machine mirrors the python `ESP32Serial` driver
-  (`esp_bt_audio_source/test/laptop_bt_tests/esp32_serial.py`) in C.
-- **`orchestrator`** — boot flow: bring up I2S + signal source → via
-  `bt_link`: `STATUS` → `CONNECT <sink>` (from NVS) → `START` → audio flows.
-  Reacts to EVENT lines (reconnect on disconnect, etc.).
-- **`console`** — minimal command set on the S3's own USB serial for humans:
-  `TONE <hz>|OFF`, `NET ON|OFF`, `BT <passthrough command>`, `STATUS`.
+- **`i2s_out`** — I2S master TX per §3.3; SPSC PCM ring (port the proven
+  `audio_ringbuffer.c` pattern; ring lives in PSRAM, sized ≥256 KB for
+  radio jitter absorption); zero-fill + count on underrun; stats API.
+- **`signal_gen`** — sine/sweep/silence at 44.1 kHz stereo; Phase-1 source
+  and permanent diagnostic.
+- **`radio`** — stream client (esp_http_client + esp-tls), `.m3u`/`.pls`
+  resolution, ICY metadata extraction, compressed-frame ring (PSRAM) →
+  decoder task (`esp_audio_codec`: MP3/AAC-LC/HE-AAC) → resampler to
+  44.1 kHz (decoder output rates 22.05–48 kHz) → `pcm_ring`. Reconnect with
+  backoff on stream drop; buffer/underrun telemetry surfaced to the UI.
+- **`bt_link`** — UART1 client speaking the WROOM32 command protocol:
+  one-in-flight command with timeout, `OK|`/`ERR|` correlation, `EVENT|`
+  fan-out to subscribers (web terminal, BT UI state, orchestrator). C
+  equivalent of the proven `esp32_serial.py` driver.
+- **`wifi_mgr`** — STA with NVS creds; falls back to AP mode
+  (`ESP32-S3-Audio` / WPA2, password printed on console) when no creds or
+  connect fails; mDNS `esp-i2s-source.local` in STA mode.
+- **`web_ui`** — esp_http_server; embedded single-page UI (HTML/JS baked
+  into the firmware via EMBED_FILES — no filesystem partition needed);
+  REST endpoints for actions/config; one WebSocket multiplexing terminal
+  I/O, EVENT feed, and status updates (JSON messages with a `type` field).
+- **`source arbitration`** — explicit user action wins: starting radio
+  stops tone and vice versa; silence when idle.
+- **`console`** — minimal S3-local USB commands (`WIFI`, `TONE`, `RADIO`,
+  `BT <raw>`, `STATUS`) as fallback when the web UI is unreachable.
 
-## 4. Interfaces
+## 5. Interfaces
 
-### 4.1 UART command link (S3 → WROOM32 UART2)
-- 115200 8N1; protocol exactly as documented in
-  `esp_bt_audio_source/README.md` (`<STATUS>|<COMMAND>|<RESULT>[|<DATA>]`,
-  `EVENT|` interleaving allowed, single terminal response per command).
-- The S3 treats `EVENT|` lines as async notifications; responses correlate
-  by command token.
-- Note: the BT board broadcasts events to both its UARTs; the S3 will see
-  everything a USB console sees.
+### 5.1 UART command link (S3 → WROOM32 UART2)
+115200 8N1; protocol per `esp_bt_audio_source/README.md`
+(`<STATUS>|<COMMAND>|<RESULT>[|<DATA>]`, single terminal response per
+command, `EVENT|` interleaving). The WROOM32 broadcasts events to both its
+UARTs, so the S3 sees everything a USB console sees.
 
-### 4.2 Network audio protocol (Phase 2)
-- TCP, port 5005 (configurable). Frame: `magic(2) len(2) seq(2)` + PCM
-  payload (≤4096 B, multiple of 4). Server replies with periodic fill-level
-  feedback lines for sender pacing (design lifted from the UARTAUDIO
-  protocol, which is proven; CRC omitted — TCP guarantees integrity).
+### 5.2 Web API (sketch — final shape decided during WEB-1)
+- `GET /` — embedded UI. `GET /api/status` — aggregated S3 + WROOM32 state.
+- `POST /api/wifi {ssid,pass}` — provision; reply then switch AP→STA.
+- `GET/POST/DELETE /api/stations` — preset CRUD (NVS-backed).
+- `POST /api/radio {url|preset_id}` / `DELETE /api/radio` — play/stop.
+- `POST /api/tone {hz}` / `DELETE /api/tone` — tone on/off.
+- `POST /api/bt/{scan|pair|connect|disconnect|volume}` — BT actions
+  (thin wrappers over bt_link commands).
+- `WS /ws` — JSON frames: `{type:"term_in"|"term_out"|"event"|"status"|"icy", ...}`.
 
-## 5. Verification strategy
+### 5.3 Radio stream handling
+HTTP and HTTPS (esp-tls, no client certs); follow redirects; resolve
+`.m3u`/`.pls` to the first stream URL; request `Icy-MetaData:1` and strip/
+parse metadata blocks; content types: `audio/mpeg` → MP3 decoder,
+`audio/aac(p)`/`audio/mp4` variants → AAC decoder. Unknown → error surfaced
+in UI. HE-AAC (SBR) supported via esp_audio_codec.
 
-1. **Bench E2E is the north star**: S3 tone → I2S → WROOM32 → A2DP →
-   earbuds. Audible tone + `AUDIO_STATUS` on the BT board showing
-   `I2S_BYTES` growing and `SOURCE=I2S` is the acceptance test for Phase 1.
-2. The UART link phase doubles as the **physical verification of the BT
-   board's UART2 port** (never yet exercised with real hardware).
-3. Host tests: reuse the BT project's host-test architecture (CTest + Unity
-   FetchContent, mocks directory) for pure logic: frame parser for net_audio,
-   response parser for bt_link, signal generator sample math.
-4. The BT board's existing `AUDIO_STATUS`/`READ_BPS` instrumentation serves
-   as the far-end measurement of I2S delivery health.
+## 6. Memory budget (N16R8: 512 KB SRAM + 8 MB PSRAM)
+- PSRAM: compressed stream ring (~512 KB), decoded PCM ring (~256 KB),
+  TLS buffers, HTTP scratch — total well under 2 MB.
+- SRAM: decoder working set, I2S DMA descriptors, WiFi/lwIP, httpd.
+- `CONFIG_SPIRAM` (octal) enabled from INFRA-1 so allocations can prefer
+  PSRAM via `heap_caps_malloc` from day one.
 
-## 6. Milestones
+## 7. Verification strategy
+1. **Bench E2E per phase**: tone → earbuds (Phase 1); web-driven pairing;
+   radio station → earbuds ≥30 min without dropout.
+2. LINK-1 doubles as the first **physical validation of the WROOM32's
+   UART2 port**.
+3. Host tests (CTest + Unity harness cloned from esp_bt_audio_source):
+   bt_link response parser, playlist/ICY parsers, resampler math,
+   signal_gen sample math, station-store CRUD logic.
+4. Far-end health: WROOM32 `AUDIO_STATUS` (`I2S_BYTES`, `READ_BPS`,
+   underruns) is the independent measurement of I2S delivery.
+5. Fidelity spot-check: BT project's `compare_bt_capture.py` method with a
+   44.1 kHz reference via laptop-as-sink.
+
+## 8. Milestones
 
 | ID | Milestone | Definition of done |
 | --- | --- | --- |
-| M1 | Project scaffold on esp32s3 | `idf.py set-target esp32s3 && idf.py build` green from scratch tree |
-| M2 | Tone over I2S | Audible tone in earbuds via WROOM32; `I2S_BYTES` growing; no WROOM32-side underruns |
-| M3 | UART control | S3 drives CONNECT/START/VOLUME/STATUS over UART2; EVENT lines parsed; = physical UART2 validation |
-| M4 | Orchestrated boot | Power both boards → music path up with no human action |
-| M5 | WiFi PCM streaming | PC tool → S3 → earbuds, ≥3 min clean (counters zero both ends) |
-| M6 | Docs + regression | READMEs/specs updated; host tests green in CI pattern |
+| M1 | Scaffold on esp32s3 (N16R8, SPIRAM on) | clean `idf.py build` + boot banner |
+| M2 | Tone over I2S | audible in earbuds; WROOM32 `I2S_BYTES` growing, no underruns |
+| M3 | UART control (bt_link) | S3 drives CONNECT/START/VOLUME/STATUS; = physical UART2 validation |
+| M4 | WiFi + web shell | AP provisioning flow works; STA + mDNS; UI serves; WS terminal + EVENT feed live |
+| M5 | BT management UI | scan/pair/connect/volume from the browser, incl. PIN/SSP prompts |
+| M6 | Internet Radio | MP3 + AAC stations play to earbuds ≥30 min; presets CRUD; ICY titles shown |
+| M7 | Orchestrated boot + docs | power-on → auto-connect → last source resumes; docs/tests updated |
 
-Task breakdown: see `REDO1_TODO.md`.
+Task breakdown: see `REDO1_TODO.md`. (A PC→WiFi raw-PCM streaming mode,
+formerly NET-2, is parked as optional future work — radio covers the
+primary use case.)
