@@ -46,28 +46,42 @@ static struct {
     { false, 0, {0}, 0, 0, 0, {0}, 0 }
 };
 
-// Initialize mock UART
-void mock_uart_init(int baud_rate) {
-    // Default to UART1 for the serial command interface
-    uart_port_t uart_num = UART_NUM_1;
-    
+// Initialize a specific mock UART port
+void mock_uart_init_port(int uart_num, int baud_rate) {
+    if (uart_num < 0 || uart_num >= MOCK_UART_MAX_PORTS) {
+        return;
+    }
     memset(&uart_mock_state[uart_num], 0, sizeof(uart_mock_state[0]));
     uart_mock_state[uart_num].initialized = true;
     uart_mock_state[uart_num].baud_rate = baud_rate;
-    
     printf("Mock UART %d initialized with baud rate: %d\n", uart_num, baud_rate);
 }
 
-// Reset TX buffer
-void mock_uart_reset_tx(void) {
-    uart_port_t uart_num = UART_NUM_1;
+// Initialize mock UART (legacy default: UART1, the primary command port)
+void mock_uart_init(int baud_rate) {
+    mock_uart_init_port(UART_NUM_1, baud_rate);
+}
+
+// Reset TX buffer of a specific port
+void mock_uart_reset_tx_port(int uart_num) {
+    if (uart_num < 0 || uart_num >= MOCK_UART_MAX_PORTS) {
+        return;
+    }
     memset(uart_mock_state[uart_num].tx_buffer, 0, sizeof(uart_mock_state[uart_num].tx_buffer));
     uart_mock_state[uart_num].tx_pos = 0;
 }
 
-// Inject data into RX buffer (simulate receiving data)
-void mock_uart_inject_rx_data(const char* data, size_t len) {
-    uart_port_t uart_num = UART_NUM_1;
+// Reset TX buffer (legacy default: UART1)
+void mock_uart_reset_tx(void) {
+    mock_uart_reset_tx_port(UART_NUM_1);
+}
+
+// Inject data into a specific port's RX buffer
+void mock_uart_inject_rx_data_port(int port, const char* data, size_t len) {
+    if (port < 0 || port >= MOCK_UART_MAX_PORTS) {
+        return;
+    }
+    uart_port_t uart_num = (uart_port_t)port;
     
     if (!uart_mock_state[uart_num].initialized) {
         printf("Error: UART %d not initialized\n", uart_num);
@@ -101,10 +115,22 @@ void mock_uart_inject_rx_data(const char* data, size_t len) {
            uart_num, len, uart_mock_state[uart_num].rx_available);
 }
 
-// Get the transmitted data
-const char* mock_uart_get_tx_data(void) {
-    uart_port_t uart_num = UART_NUM_1;
+// Inject data (legacy default: UART1)
+void mock_uart_inject_rx_data(const char* data, size_t len) {
+    mock_uart_inject_rx_data_port(UART_NUM_1, data, len);
+}
+
+// Get transmitted data of a specific port
+const char* mock_uart_get_tx_data_port(int uart_num) {
+    if (uart_num < 0 || uart_num >= MOCK_UART_MAX_PORTS) {
+        return "";
+    }
     return uart_mock_state[uart_num].tx_buffer;
+}
+
+// Get the transmitted data (legacy default: UART1)
+const char* mock_uart_get_tx_data(void) {
+    return mock_uart_get_tx_data_port(UART_NUM_1);
 }
 
 // Driver implementation

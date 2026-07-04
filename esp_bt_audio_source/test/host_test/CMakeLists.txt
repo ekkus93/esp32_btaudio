@@ -468,6 +468,29 @@ target_link_libraries(test_uart_audio_cmd unity util_safe_host command_interface
 target_compile_definitions(test_uart_audio_cmd PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_cmd COMMAND $<TARGET_FILE:test_uart_audio_cmd>)
 
+# Dual-UART command interface (secondary command port routing)
+add_executable(test_cmd_dual_uart test_cmd_dual_uart.c
+    ../../components/command_interface/commands.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_uart.c
+    mocks/mock_gap.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c)
+target_sources(test_cmd_dual_uart PRIVATE mocks/nvs_storage_mock.c)
+target_sources(test_cmd_dual_uart PRIVATE mocks/mock_audio_and_btstate.c)
+target_sources(test_cmd_dual_uart PRIVATE mocks/audio_processor_host_stub.c)
+target_sources(test_cmd_dual_uart PRIVATE mocks/fake_esp_err.c)
+target_sources(test_cmd_dual_uart PRIVATE mocks/bt_manager_test_hooks.c)
+target_link_libraries(test_cmd_dual_uart unity util_safe_host command_interface_host platform_shim_host)
+target_compile_definitions(test_cmd_dual_uart PRIVATE UNIT_TEST)
+add_test(NAME test_cmd_dual_uart COMMAND $<TARGET_FILE:test_cmd_dual_uart>)
+
 # UARTAUDIO step 6: reader RX pump (real parser + real uart_source, no mocks)
 add_executable(test_uart_audio_rx test_uart_audio_rx.c
     ../../components/command_interface/uart_audio_rx.c

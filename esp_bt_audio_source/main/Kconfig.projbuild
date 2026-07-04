@@ -134,6 +134,42 @@ menu "A2DP Example Configuration"
                 the host during streaming so the host can trim its pacing.
     endmenu
 
+    menu "Secondary Command UART"
+        config CMD_UART2_ENABLED
+            bool "Enable secondary command UART (UART2)"
+            default y
+            help
+                Serve the text command protocol on a second UART in
+                addition to the console/USB UART. Purely additive: the
+                console UART keeps working unchanged (and remains the
+                UARTAUDIO streaming transport). Responses return on the
+                UART the command arrived on; EVENT lines broadcast to
+                both. The secondary port also keeps serving commands
+                while UARTAUDIO streaming owns the console UART.
+
+        config CMD_UART2_RX_PIN
+            int "Secondary UART RX pin"
+            depends on CMD_UART2_ENABLED
+            default 16
+            help
+                GPIO for UART2 RX (connect to your adapter's TX).
+                Default 16 is free on WROOM-32 boards (do not use on
+                WROVER: 16/17 are PSRAM).
+
+        config CMD_UART2_TX_PIN
+            int "Secondary UART TX pin"
+            depends on CMD_UART2_ENABLED
+            default 17
+            help
+                GPIO for UART2 TX (connect to your adapter's RX).
+
+        config CMD_UART2_BAUD
+            int "Secondary UART baud rate"
+            depends on CMD_UART2_ENABLED
+            default 115200
+            range 9600 921600
+    endmenu
+
     menu "Bluetooth Logging Configuration"
         config BT_VERBOSE_AUDIO_LOGGING
             bool "Enable Verbose Audio Logging (Development Only)"

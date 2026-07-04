@@ -18,6 +18,11 @@ void mock_uart_init(int baud_rate);
 void mock_uart_reset_tx(void);
 void mock_uart_inject_rx_data(const char* data, size_t len);
 const char* mock_uart_get_tx_data(void);
+/* port-aware variants (dual-UART command interface tests) */
+void mock_uart_init_port(int uart_num, int baud_rate);
+void mock_uart_reset_tx_port(int uart_num);
+void mock_uart_inject_rx_data_port(int port, const char* data, size_t len);
+const char* mock_uart_get_tx_data_port(int uart_num);
 bool mock_uart_is_initialized(uart_port_t uart_num);
 size_t mock_uart_get_available_bytes(uart_port_t uart_num);
 

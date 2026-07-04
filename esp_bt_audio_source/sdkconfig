@@ -460,6 +460,15 @@ CONFIG_UART_AUDIO_FEEDBACK_MS=250
 # end of UART Audio Streaming (UARTAUDIO)
 
 #
+# Secondary Command UART
+#
+CONFIG_CMD_UART2_ENABLED=y
+CONFIG_CMD_UART2_RX_PIN=16
+CONFIG_CMD_UART2_TX_PIN=17
+CONFIG_CMD_UART2_BAUD=115200
+# end of Secondary Command UART
+
+#
 # Bluetooth Logging Configuration
 #
 # CONFIG_BT_VERBOSE_AUDIO_LOGGING is not set

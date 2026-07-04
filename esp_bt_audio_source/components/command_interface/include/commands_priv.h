@@ -52,11 +52,22 @@
 #else
 #define CMD_UART_NUM UART_NUM_0
 #endif
+/*
+ * CMD_UART_SECONDARY: optional second command UART (Kconfig). Additive
+ * only — the console/USB UART above remains the primary port and the
+ * UARTAUDIO streaming transport. Responses are routed back to the port
+ * a command arrived on; EVENT| lines broadcast to every port.
+ */
+#if defined(CONFIG_CMD_UART2_ENABLED) && CONFIG_CMD_UART2_ENABLED
+#define CMD_UART_SECONDARY UART_NUM_2
+#endif
 #else
 /* Host tests use mock UART (UART_NUM_1 for historical compatibility with tests) */
 #ifndef CMD_UART_NUM
 #define CMD_UART_NUM UART_NUM_1
 #endif
+/* Host secondary port: mock port 0 (dual-UART routing tests) */
+#define CMD_UART_SECONDARY UART_NUM_0
 #endif
 
 #define CMD_FILES_WARN_NAME_MAX 80

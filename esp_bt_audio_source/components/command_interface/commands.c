@@ -12,14 +12,30 @@ static uint32_t s_event_sequence = 0;
 #define CMD_BUF_SIZE 256
 #endif
 
-static char s_cmd_line_buf[CMD_BUF_SIZE];
-static size_t s_cmd_line_len;
+/* Command ports polled by cmd_process(). Index 0 is always the primary
+ * (console/USB) UART; the optional secondary UART is purely additive. */
+static const int s_cmd_ports[] = {
+    CMD_UART_NUM,
+#ifdef CMD_UART_SECONDARY
+    CMD_UART_SECONDARY,
+#endif
+};
+#define CMD_PORT_COUNT (sizeof(s_cmd_ports) / sizeof(s_cmd_ports[0]))
+
+/* per-port line accumulators — bytes from different ports never mix */
+static char s_cmd_line_buf[CMD_PORT_COUNT][CMD_BUF_SIZE];
+static size_t s_cmd_line_len[CMD_PORT_COUNT];
+
+/* Port the currently-executing command arrived on; responses go here.
+ * Async callers (events) never depend on it — events broadcast. */
+static int s_reply_uart = CMD_UART_NUM;
 
 #if defined(UNIT_TEST)
 void cmd_test_reset_cmd_process_state(void)
 {
     memset(s_cmd_line_buf, 0, sizeof(s_cmd_line_buf));
-    s_cmd_line_len = 0;
+    memset(s_cmd_line_len, 0, sizeof(s_cmd_line_len));
+    s_reply_uart = CMD_UART_NUM;
 }
 #endif
 
@@ -38,6 +54,36 @@ cmd_status_t cmd_init(void)
     extern void bt_manager_test_reset_btstate_mock(void);
     bt_manager_test_reset_btstate_mock();
 #endif
+#if defined(ESP_PLATFORM) && !defined(UNIT_TEST) && defined(CMD_UART_SECONDARY)
+    /* Secondary command UART (Kconfig). Configured here — not main.c —
+     * because uart_param_config/uart_set_pin belong to the cmd layer
+     * (tools/ci_check_main_layering.sh enforces this for main.c). */
+    const uart_config_t uart2_cfg = {
+        .baud_rate = CONFIG_CMD_UART2_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    esp_err_t u2err = uart_param_config(CMD_UART_SECONDARY, &uart2_cfg);
+    if (u2err == ESP_OK) {
+        u2err = uart_set_pin(CMD_UART_SECONDARY, CONFIG_CMD_UART2_TX_PIN,
+                             CONFIG_CMD_UART2_RX_PIN,
+                             UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    }
+    if (u2err == ESP_OK) {
+        u2err = uart_driver_install(CMD_UART_SECONDARY, 1024, 1024, 0, NULL, 0);
+    }
+    if (u2err != ESP_OK) {
+        /* degrade gracefully: primary/USB command port is unaffected */
+        ESP_LOGW(TAG, "secondary command UART init failed: %s", esp_err_to_name(u2err));
+    } else {
+        ESP_LOGI(TAG, "secondary command UART ready: uart=%d tx=%d rx=%d baud=%d",
+                 CMD_UART_SECONDARY, CONFIG_CMD_UART2_TX_PIN,
+                 CONFIG_CMD_UART2_RX_PIN, CONFIG_CMD_UART2_BAUD);
+    }
+#endif
     return CMD_SUCCESS;
 }
 
@@ -46,19 +92,38 @@ cmd_status_t cmd_deinit(void)
     return CMD_SUCCESS;
 }
 
+static void cmd_write_port(int port, const char *buf, size_t len)
+{
+#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
+    uart_write_bytes(port, buf, len);
+#else
+    if (uart_is_driver_installed(port))
+    {
+        uart_write_bytes(port, buf, len);
+    }
+#endif
+}
+
 cmd_status_t cmd_send_response(const char *status, const char *command, const char *result, const char *data)
 {
     char buf[512];
     const char *d = data ? data : "";
     int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n", status ? status : "", command ? command : "", result ? result : "", d);
-#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
-#else
-    if (uart_is_driver_installed(CMD_UART_NUM))
+
+    /* EVENT lines are asynchronous notifications — broadcast to every
+     * command port. Direct responses go only to the port the command
+     * came from (USB behavior unchanged when the command came via USB). */
+    if (status != NULL && strcmp(status, "EVENT") == 0)
     {
-        uart_write_bytes(CMD_UART_NUM, buf, (size_t)len);
+        for (size_t i = 0; i < CMD_PORT_COUNT; i++)
+        {
+            cmd_write_port(s_cmd_ports[i], buf, (size_t)len);
+        }
     }
-#endif
+    else
+    {
+        cmd_write_port(s_reply_uart, buf, (size_t)len);
+    }
     if (cmd_test_capture_response)
     {
         cmd_test_capture_response(buf);
@@ -286,55 +351,48 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     return (ctx->type == CMD_TYPE_UNKNOWN) ? CMD_ERROR_UNKNOWN : CMD_SUCCESS;
 }
 
-cmd_status_t cmd_process(void)
+/* Read pending bytes from one port and execute any complete lines.
+ * pi indexes s_cmd_ports and the per-port line accumulators. */
+static void cmd_process_port(size_t pi)
 {
-    /* UARTAUDIO gate: while streaming, the reader task owns UART RX.
-     * Must be the first check so no byte is ever consumed here. */
-    if (uart_audio_is_streaming())
-    {
-        return CMD_SUCCESS;
-    }
-
+    const int read_uart = s_cmd_ports[pi];
+    char *line_buf = s_cmd_line_buf[pi];
     uint8_t read_buf[CMD_BUF_SIZE];
-#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    const int read_uart = CMD_UART_NUM;
-#else
-    /* 
-     * CMD_UART_NUM is the console UART (installed by main.c).
-     * If not installed, device cannot function - fail gracefully.
-     * (CODE_REVIEW4 Task 2.2 - Option A: commands always on console UART)
-     */
-    if (!uart_is_driver_installed(CMD_UART_NUM))
+
+#if !defined(UNIT_TEST) && defined(ESP_PLATFORM)
+    if (!uart_is_driver_installed(read_uart))
     {
-        return CMD_SUCCESS;  /* UART not ready, skip processing */
+        return;  /* port not ready (e.g. secondary UART disabled) */
     }
-    const int read_uart = CMD_UART_NUM;
 #endif
 
     int bytes_read = uart_read_bytes(read_uart, read_buf, sizeof(read_buf) - 1, 0);
     if (bytes_read <= 0)
     {
-        return CMD_SUCCESS;
+        return;
     }
 
     size_t to_copy = (size_t)bytes_read;
-    if (s_cmd_line_len + to_copy >= sizeof(s_cmd_line_buf))
+    if (s_cmd_line_len[pi] + to_copy >= CMD_BUF_SIZE)
     {
 #ifdef ESP_PLATFORM
-        ESP_LOGW(TAG, "cmd_process: line buffer overflow, resetting buffer");  // NOLINT(bugprone-branch-clone)
+        ESP_LOGW(TAG, "cmd_process: line buffer overflow on uart %d, resetting", read_uart);  // NOLINT(bugprone-branch-clone)
 #endif
-        s_cmd_line_len = 0;
-        to_copy = sizeof(s_cmd_line_buf) - 1;
+        s_cmd_line_len[pi] = 0;
+        to_copy = CMD_BUF_SIZE - 1;
     }
-    memcpy(s_cmd_line_buf + s_cmd_line_len, read_buf, to_copy);
-    s_cmd_line_len += to_copy;
-    s_cmd_line_buf[s_cmd_line_len] = '\0';
+    memcpy(line_buf + s_cmd_line_len[pi], read_buf, to_copy);
+    s_cmd_line_len[pi] += to_copy;
+    line_buf[s_cmd_line_len[pi]] = '\0';
 
-    char *start = s_cmd_line_buf;
+    /* responses for lines found below belong to this port */
+    s_reply_uart = read_uart;
+
+    char *start = line_buf;
     while (true)
     {
-        char *newline_pos = (char *)memchr(start, '\n', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
-        char *cr_pos = (char *)memchr(start, '\r', (size_t)(s_cmd_line_buf + s_cmd_line_len - start));
+        char *newline_pos = (char *)memchr(start, '\n', (size_t)(line_buf + s_cmd_line_len[pi] - start));
+        char *cr_pos = (char *)memchr(start, '\r', (size_t)(line_buf + s_cmd_line_len[pi] - start));
         char *term = newline_pos ? newline_pos : cr_pos;
         if (!term) {
             break;
@@ -360,18 +418,34 @@ cmd_status_t cmd_process(void)
         }
 
         start = term + 1;
-        while (start < s_cmd_line_buf + s_cmd_line_len && (*start == '\n' || *start == '\r')) {
+        while (start < line_buf + s_cmd_line_len[pi] && (*start == '\n' || *start == '\r')) {
             ++start;
         }
     }
 
-    size_t remaining = (size_t)(s_cmd_line_buf + s_cmd_line_len - start);
+    size_t remaining = (size_t)(line_buf + s_cmd_line_len[pi] - start);
     if (remaining > 0) {
-        memmove(s_cmd_line_buf, start, remaining);
+        memmove(line_buf, start, remaining);
     }
-    s_cmd_line_len = remaining;
-    s_cmd_line_buf[s_cmd_line_len] = '\0';
+    s_cmd_line_len[pi] = remaining;
+    line_buf[s_cmd_line_len[pi]] = '\0';
 
+    s_reply_uart = CMD_UART_NUM;
+}
+
+cmd_status_t cmd_process(void)
+{
+    for (size_t pi = 0; pi < CMD_PORT_COUNT; pi++)
+    {
+        /* UARTAUDIO gate: while streaming, the reader task owns the
+         * PRIMARY UART's RX — never consume a byte from it here. The
+         * secondary port keeps serving commands mid-stream. */
+        if (s_cmd_ports[pi] == CMD_UART_NUM && uart_audio_is_streaming())
+        {
+            continue;
+        }
+        cmd_process_port(pi);
+    }
     return CMD_SUCCESS;
 }
 
