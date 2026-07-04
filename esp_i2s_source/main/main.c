@@ -7,6 +7,8 @@
  */
 #include <stdio.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_idf_version.h"
@@ -43,7 +45,18 @@ void app_main(void)
              esp_get_idf_version(), (unsigned)(psram_bytes / 1024),
              (unsigned)esp_get_free_heap_size());
 
-    /* Machine-parseable boot beacon (INFRA-1a acceptance). */
-    printf("DIAG|BOOT|READY|psram_kb=%u,heap=%u\n",
-           (unsigned)(psram_bytes / 1024), (unsigned)esp_get_free_heap_size());
+    /*
+     * Machine-parseable boot beacon (INFRA-1a acceptance). Repeated for a few
+     * seconds because the native USB-Serial-JTAG console re-enumerates on
+     * reset — a single line would be lost before a host can reattach. Goes
+     * quiet after the window; real subsystems replace this from SIG-1 on.
+     */
+    for (int i = 0; i < 60; i++) {
+        printf("DIAG|BOOT|READY|psram_kb=%u,heap=%u,t=%d\n",
+               (unsigned)(psram_bytes / 1024),
+               (unsigned)esp_get_free_heap_size(), i);
+        fflush(stdout);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    ESP_LOGI(TAG, "boot diagnostics window done; idle");
 }

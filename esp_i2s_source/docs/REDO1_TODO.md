@@ -20,20 +20,33 @@ Prerequisites / environment (confirmed 2026-07-04):
 
 ## INFRA-1 — Project scaffold on esp32s3
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` DONE (2026-07-04) — hardware-verified on the S3.
 
 ### Tasks
-- [ ] **INFRA-1a** Re-init project: `idf.py set-target esp32s3`; remove
-      ws_echo_server.c + its pytest/sdkconfig.ci; minimal `app_main` that
-      boots, inits NVS, prints `DIAG|BOOT|READY`.
-- [ ] **INFRA-1b** Enable octal PSRAM (`CONFIG_SPIRAM`, octal mode) and
-      verify 8 MB visible in the boot heap report.
-- [ ] **INFRA-1c** Component skeleton: `components/{i2s_out,signal_gen,
-      bt_link,wifi_mgr,web_ui,radio}` registered and building empty;
-      `test/host_test` harness cloned from the esp_bt_audio_source pattern
-      (CTest + Unity FetchContent + mocks/).
-- [ ] **INFRA-1d** `idf.py build` green; flash the S3 (confirm before
-      flashing) and verify boot banner + PSRAM size on its USB console.
+- [x] **INFRA-1a** Re-init project: `idf.py set-target esp32s3`; removed the
+      vendored ESP-IDF tree + ws_echo_server.c + pytest/sdkconfig.ci; minimal
+      `app_main` boots, inits NVS, prints `DIAG|BOOT|READY`.
+- [x] **INFRA-1b** Octal PSRAM enabled (`CONFIG_SPIRAM_MODE_OCT`); boot banner
+      reports `psram_kb=8192` (8 MB) and ~8.7 MB free heap.
+- [x] **INFRA-1c** Component skeletons `components/{i2s_out,signal_gen,
+      bt_link,wifi_mgr,web_ui,radio}` register + build; `test/host_test`
+      harness (CTest + Unity FetchContent + mocks/) with `test_sanity` green
+      via `tools/run_host_tests.sh`.
+- [x] **INFRA-1d** `idf.py build` green (219 KB app, 79% partition free);
+      flashed + booted the app; console shows `DIAG|BOOT|READY|psram_kb=8192`.
+      Chip: ESP32-S3 rev v0.2, 8 MB PSRAM, MAC 30:ed:a0:bd:44:e0.
+
+### Hardware/flashing notes (USB-Serial-JTAG)
+- Board enumerates as native USB-Serial-JTAG (`303a:1001`), console routed
+  there (`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`). Only `/dev/ttyACM*` present
+  (no CP2102 UART port wired).
+- **esptool's default RTS/DTR reset drops the S3 into DOWNLOAD mode** (DTR
+  holds GPIO0 low) — the app won't run. Boot the app via
+  `esptool --after watchdog_reset`. Encapsulated in `tools/s3_flash_run.sh`.
+- The CDC port hops `/dev/ttyACM0` ↔ `/dev/ttyACM1` on re-enumeration after
+  each reset — rescan `/dev/ttyACM*`, don't hardcode.
+- `idf.py monitor` needs a real TTY (fails when piped) — use `script -qec` or
+  the helper's pyserial capture.
 
 ## SIG-1 — Signal generator + I2S master TX (first audio)
 
