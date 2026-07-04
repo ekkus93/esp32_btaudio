@@ -468,6 +468,23 @@ target_link_libraries(test_uart_audio_cmd unity util_safe_host command_interface
 target_compile_definitions(test_uart_audio_cmd PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_cmd COMMAND $<TARGET_FILE:test_uart_audio_cmd>)
 
+# UARTAUDIO step 6: reader RX pump (real parser + real uart_source, no mocks)
+add_executable(test_uart_audio_rx test_uart_audio_rx.c
+    ../../components/command_interface/uart_audio_rx.c
+    ../../components/command_interface/uart_audio_frame.c
+    ../../components/audio_processor/uart_source.c
+    ../../components/audio_processor/audio_ringbuffer.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/esp_heap_caps_mock.c)
+target_include_directories(test_uart_audio_rx PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_compile_definitions(test_uart_audio_rx PRIVATE UNIT_TEST)
+target_link_libraries(test_uart_audio_rx unity util_safe_host platform_shim_host)
+add_test(NAME test_uart_audio_rx COMMAND $<TARGET_FILE:test_uart_audio_rx>)
+
 # UARTAUDIO step 3: uart_source lifecycle (staging ring + fill + stats)
 add_executable(test_uart_source test_uart_source.c
     ../../components/audio_processor/uart_source.c
