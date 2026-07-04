@@ -1,1 +1,22 @@
+# esp_i2s_source defaults — ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB octal PSRAM)
+# See docs/SPEC.md §2 (locked decisions) and §6 (memory budget).
+
+# --- Target ---
+CONFIG_IDF_TARGET="esp32s3"
+
+# --- Flash: 16 MB ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# --- Octal PSRAM (N16R8 = 8 MB, octal mode) ---
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# --- Console on native USB-Serial-JTAG ---
+# The devkit is connected via its USB port (/dev/ttyACM0), so route the
+# console there rather than UART0. Revisit if the CP2102 UART port is used.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# --- HTTP server WebSocket support (web_ui, WEB-1) ---
 CONFIG_HTTPD_WS_SUPPORT=y

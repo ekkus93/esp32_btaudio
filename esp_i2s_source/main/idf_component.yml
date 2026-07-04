@@ -1,3 +1,4 @@
+## Managed component dependencies for esp_i2s_source.
+## esp_audio_codec (radio MP3/AAC decode) is added at RADIO-2a, not here.
 dependencies:
-  protocol_examples_common:
-    path: ${IDF_PATH}/examples/common_components/protocol_examples_common
+  idf: ">=5.5"
