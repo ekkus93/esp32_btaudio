@@ -3,13 +3,14 @@
 
 Streams-and-captures workflow (laptop as A2DP sink):
 
-    parec --device=bluez_source.<ESP32_MAC>.a2dp_source --raw           --format=s16le --rate=44100 --channels=2 > capture.raw &
+    parec --device=bluez_source.<ESP32_MAC>.a2dp_source --raw \
+          --format=s16le --rate=44100 --channels=2 > capture.raw &
     python tools/stream_audio_uart.py --port /dev/ttyUSB0 source.wav
     python tools/compare_bt_capture.py capture.raw source.wav
 
 The reference is the source WAV (22050 stereo s16) pushed through the
-firmware's exact 2x midpoint upsampler. Windowed cross-correlation then
-tracks the capture/reference offset over time:
+firmware's exact 2x midpoint upsampler. Windowed cross-correlation
+then tracks the capture/reference offset over time:
   - lossless playback = constant offset, r ~= 1.0 per window
   - each lost 1024 B UART frame = 512-sample (11.6 ms) forward skip
   - A2DP zero-fill shows up as quiet runs with rms_ratio << 1
@@ -18,7 +19,9 @@ patterns let the correlator lock onto the wrong cycle. Sub-sample
 alignment limits per-window r on content above ~5 kHz; energy and
 quiet-run columns distinguish artifacts from real defects.
 """
-import sys, wave
+import sys
+import wave
+
 import numpy as np
 
 if len(sys.argv) < 3:
@@ -44,6 +47,7 @@ cap = cap[: len(cap) // 2 * 2].reshape(-1, 2).astype(np.int32)
 cap_m = cap.mean(axis=1).astype(np.float64)
 print(f"reference: {len(ref_m)/SR:.2f}s  capture: {len(cap_m)/SR:.2f}s")
 
+
 def xcorr_offset(needle, hay):
     """offset of needle in hay via FFT cross-correlation; returns (pos, score)"""
     n = len(needle) + len(hay)
@@ -55,6 +59,7 @@ def xcorr_offset(needle, hay):
     denom = np.linalg.norm(needle) * np.linalg.norm(seg)
     r = float(np.dot(needle, seg) / denom) if denom > 0 else 0.0
     return pos, r
+
 
 # global start alignment: first 1 s of reference vs first 8 s of capture
 start, r0 = xcorr_offset(ref_m[:SR], cap_m[: 8 * SR])
@@ -79,7 +84,9 @@ for wstart in range(0, len(ref_m) - WIN, WIN):
     if r > 0.5:
         prev_off = off
 
-offsets = np.array(offsets); scores = np.array(scores); times = np.array(times)
+offsets = np.array(offsets)
+scores = np.array(scores)
+times = np.array(times)
 good = scores > 0.9
 print(f"\nwindows: {len(scores)}  correlation r>0.99: {(scores>0.99).sum()}  "
       f"r>0.9: {good.sum()}  median r: {np.median(scores):.4f}")

@@ -44,14 +44,13 @@ CI treats flake8 as advisory (`|| true`); report findings but count them separat
 
 The full sweep flashes test images to the ESP32 on /dev/ttyUSB0. **Ask the user to confirm before running it** (root CLAUDE.md: never flash without confirmation). Offer two options:
 
-- Full sweep (needs confirmation, device on /dev/ttyUSB0):
+- Full sweep (needs confirmation, device on /dev/ttyUSB0) — note:
+  run_all_tests.py lives at the REPO ROOT tools/, not esp_bt_audio_source/tools/:
   ```bash
-  cd esp_bt_audio_source
   conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
   ```
 - Host-only (no hardware, no confirmation needed) — use this automatically if the user declines or /dev/ttyUSB0 is absent:
   ```bash
-  cd esp_bt_audio_source
   conda run -n python310 python tools/run_all_tests.py --no-device --no-standalone
   ```
 
