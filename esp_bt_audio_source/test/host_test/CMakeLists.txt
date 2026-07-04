@@ -422,6 +422,13 @@ target_compile_definitions(test_audio_processor_core_logic PRIVATE CONFIG_BT_MOC
 target_link_libraries(test_audio_processor_core_logic unity util_safe_host platform_shim_host)
 add_test(NAME test_audio_processor_core_logic COMMAND $<TARGET_FILE:test_audio_processor_core_logic>)
 
+# UARTAUDIO step 1: UART audio frame parser (pure module, no mocks needed)
+add_executable(test_uart_audio_frame test_uart_audio_frame.c
+    ../../components/command_interface/uart_audio_frame.c)
+target_link_libraries(test_uart_audio_frame unity)
+target_compile_definitions(test_uart_audio_frame PRIVATE UNIT_TEST)
+add_test(NAME test_uart_audio_frame COMMAND $<TARGET_FILE:test_uart_audio_frame>)
+
 # TEST-4: commands_helpers.c — cmd_safe_copy/append, copy_truncated_identifier, parse_log_level
 add_executable(test_commands_helpers test_commands_helpers.c
     ../../components/command_interface/commands_helpers.c
