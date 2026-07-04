@@ -139,7 +139,8 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       reconnect with backoff; telemetry (buffer level, drops, reconnects).
 - [ ] **RADIO-1c** Station store: NVS-backed preset CRUD (host-tested
       logic) + `/api/stations` endpoints + UI list/add/edit/delete +
-      custom-URL field; ship 2-3 known-good defaults (one MP3, one AAC).
+      custom-URL field. Seed defaults from internet-radio.com's Popular
+      Stations list (SPEC §5.4 — 5 `.pls` presets); all web-editable.
 
 ## RADIO-2 — Decode, resample, play
 
@@ -157,7 +158,9 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       to UI over WS.
 - [ ] **RADIO-2d** Hardware E2E: MP3 station and AAC station each play to
       earbuds ≥30 min without dropout; WROOM32 counters clean; document
-      buffer telemetry. (M6)
+      buffer telemetry. MP3 station from the SPEC §5.4 seed list; pick an
+      AAC/AAC+ station from internet-radio.com at test time and record its
+      URL here. (M6)
 
 ## CTRL-1 — Orchestrated boot + polish
 

@@ -43,7 +43,7 @@ engine. The S3 provides:
 | I2S format | **44.1 kHz, 16-bit, stereo, Philips** — S3 is **master transmitter** | WROOM32 is I2S SLAVE-RX; A2DP is natively 44.1 kHz (supersedes old 48 kHz contract). Radio streams at other rates are resampled on the S3 |
 | UART link role | **Full remote control** of the BT board + event monitoring | BT board's UART2 command port built for this |
 | Audio decoders | Espressif `esp_audio_codec` managed component (MP3, AAC-LC, HE-AAC) | Covers the radio codec landscape without pulling in ESP-ADF |
-| Station UX | Presets in NVS (web-editable) + custom-URL field; 2-3 known-good defaults shipped | User choice |
+| Station UX | Presets in NVS (web-editable) + custom-URL field; defaults seeded from **internet-radio.com** "Popular Stations" list (see §5.4) | User choice (2026-07-04) |
 | Terminal UX | Raw terminal pane + live EVENT feed | User choice |
 | Web security | Open UI on the LAN; AP mode uses WPA2 with a default password printed on the S3 console | v1 scope; LAN-trusted device |
 
@@ -157,6 +157,28 @@ HTTP and HTTPS (esp-tls, no client certs); follow redirects; resolve
 parse metadata blocks; content types: `audio/mpeg` → MP3 decoder,
 `audio/aac(p)`/`audio/mp4` variants → AAC decoder. Unknown → error surfaced
 in UI. HE-AAC (SBR) supported via esp_audio_codec.
+
+### 5.4 Default station presets (user decision, 2026-07-04)
+Ship the defaults from **internet-radio.com**'s "Popular Stations" list
+(https://www.internet-radio.com/). These are `.pls` playlist links that
+`RADIO-1a` resolves to the underlying Shoutcast/Icecast stream. The list on
+the site rotates, so this is a *snapshot* — all presets are web-editable and
+the user can add/remove/replace them from the UI, so drift is cosmetic, not a
+bug. Seed the NVS store with these on first boot (chosen to span genres and
+exercise the decoders):
+
+| # | Name | Genre | Playlist URL |
+| - | --- | --- | --- |
+| 1 | Retro80sRadio | Rock/Pop | `https://securestreams.reliastream.com:1079/listen.pls?sid=1` |
+| 2 | Smooth Jazz Deluxe | Smooth Jazz | `https://cast1.torontocast.com:4490/listen.pls?sid=1` |
+| 3 | A Mississippi Blues | Blues | `https://cast1.torontocast.com:4450/listen.pls?sid=1` |
+| 4 | Airport Lounge Radio | Lounge | `https://az1.mediacp.eu:443/listen/airport-lounge-radio/listen.pls?sid=1` |
+| 5 | Different Drumz D&B | Drum & Bass | `https://differentdrumz.radioca.st:443/listen.pls?sid=1` |
+
+Most internet-radio.com popular stations are MP3 (Shoutcast). `RADIO-2d`'s
+AAC hardware test still needs an explicit AAC/AAC+ station — pick one from the
+site's AAC-tagged listings at test time and record the URL in the task notes;
+the seed list above is MP3-first and validates the MP3 path end to end.
 
 ## 6. Memory budget (N16R8: 512 KB SRAM + 8 MB PSRAM)
 - PSRAM: compressed stream ring (~512 KB), decoded PCM ring (~256 KB),
