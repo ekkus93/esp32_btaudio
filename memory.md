@@ -1,3 +1,62 @@
+## 2026-07-04 - UARTAUDIO implementation COMPLETE (all 9 steps committed)
+
+Feature: laptop -> USB serial -> ESP32 -> BT speaker audio streaming.
+Commits e9f88c29..a72bf1c5 (UARTAUDIO-1..9 + layering-checker fix d2af3d87).
+
+- Wire: stereo 22050 Hz s16le, CRC-framed 1024 B payloads at 921600 baud;
+  device upsamples 2x to 44.1 kHz (new AUDIO_SOURCE_UART, priority
+  beep > UART > synth > I2S). SILENCE enum value shifted 2 -> 3.
+- New: uart_audio_frame.c (parser), uart_source.c (staging ring/fill),
+  uart_audio_rx.c (RX pump), uart_audio.c (UARTAUDIO cmd + reader task),
+  tools/stream_audio_uart.py (host streamer), Kconfig menu
+  (UART_AUDIO_*), main.c RX buffer 1024 -> CONFIG (8192 default).
+- Also fixed latent OOB: audio_stats_t.bytes_by_source was [3] while
+  STATUS read index 3 -> now [4]; STATUS labels now I2S/SYNTH/UART/
+  SILENCE_BYTES (stale WAV_BYTES dropped).
+- Host suite 65/65 green; ESP-IDF v5.5.1 idf.py build green.
+
+STILL OPEN (needs hardware — device was NOT responding on /dev/ttyUSB0
+this session, so nothing was flashed or smoke-tested):
+1. Flash new firmware (confirm with user first).
+2. MEM check for DRAM headroom (drop UART_AUDIO_STAGING_RB_KB to 16 if tight).
+3. Manual E2E smoke test — procedure in MANUAL_SMOKE_TEST_GUIDE.md addendum.
+4. On-hardware check: logs resume cleanly at 115200 after baud round-trip.
+5. Optional: hardware-gated laptop_bt pytest for UART streaming.
+
+## 2026-07-03 22:34:16 - UART Audio Streaming (UARTAUDIO) — plan approved, implementation started (step 1 of 9)
+
+**Feature:** Stream real audio (e.g. a song) from laptop over USB serial (/dev/ttyUSB0) into the ESP32, played out over A2DP to a BT speaker. Replaces cumbersome I2S wiring as the primary developer audio-test path.
+
+**Full approved plan:** `/home/phil/.claude/plans/shimmering-greeting-seal.md` — read this first when resuming; it has the complete design (frame format, handshake sequence, buffer math, priorities).
+
+**Key locked decisions:**
+- CP2102 bridge caps at 921600 baud (~92 KB/s) → full 44.1k stereo (176.4 KB/s) impossible. Wire format: **stereo 22050 Hz s16le (88.2 KB/s)**, upsampled 2× to 44.1k on device (exact integer ratio, simple linear interpolation — NOT the existing 44100↔48000 fractional resampler).
+- Real-time streaming (not clip upload). Runtime baud switch 115200→921600 during stream, back after.
+- Frame: 8-byte header (A5 5A magic, type DATA/STOP, seq, len ≤2048 %4==0, CRC-16/CCITT-FALSE), 1024 B payload nominal → 0.78% overhead.
+- New `AUDIO_SOURCE_UART` in audio_processor enum (BOTH copies: device ~:96 and UNIT_TEST ~:385 in audio_processor.c); priority beep → UART → synth → I2S → silence.
+- Staging ring: reuse audio_rb_t, 32 KB default, prebuffer→active at 50% fill. SPSC preserved (reader task sole producer of staging ring; audio_engine sole producer of main ring).
+- cmd_process handoff: `if (uart_audio_is_streaming()) return` gate at top of cmd_process(); flag set before reader task spawn; reader clears flag last after restoring 115200 + uart_flush_input.
+- main.c RX buffer 1024 → CONFIG_UART_AUDIO_RX_BUF_BYTES (8192) — constant-only change, layering-safe.
+
+**Progress (tasks in Claude Code task list, 9 TDD commits planned):**
+1. **IN PROGRESS — Frame parser + CRC16** (`components/command_interface/uart_audio_frame.c/.h` + `test/host_test/test_uart_audio_frame.c`). NO CODE WRITTEN YET. Was studying test/host_test/CMakeLists.txt patterns when interrupted.
+2. TODO: 2× stereo upsampler (audio_upsample2x_s16_stereo, prev[2] carried across calls) + tests
+3. TODO: uart_source lifecycle (start/write/request_drain/stop/stats, PREBUFFER→ACTIVE) + tests
+4. TODO: AUDIO_SOURCE_UART wiring in audio_processor.c (both enum copies!) + priority tests
+5. TODO: UARTAUDIO command plumbing + cmd_process streaming gate + tests
+6. TODO: reader task + baud switch + handshake + feedback (UA|FILL every 250ms) + timeouts
+7. TODO: Kconfig (UART_AUDIO_* entries) + main.c RX buf + ci_check_main_layering.sh + idf.py build
+8. TODO: tools/stream_audio_uart.py (pyserial, absolute-deadline pacing, ffmpeg pipe input)
+9. TODO: E2E manual smoke docs + optional hardware-gated laptop_bt test
+
+**Verified facts for resuming:**
+- test/host_test/mocks/mock_uart.c exists (uart_read_bytes/uart_write_bytes/uart_is_driver_installed) but LACKS uart_set_baudrate/uart_wait_tx_done/uart_flush_input — add stubs at step 6.
+- Host test pattern: add_executable(test_X test_X.c <component srcs> mocks/...) + target_link_libraries(test_X unity util_safe_host command_interface_host platform_shim_host) + target_compile_definitions(test_X PRIVATE UNIT_TEST) + add_test. See test_commands at test/host_test/CMakeLists.txt:81-104. Unity IS used in host tests (FetchContent v2.5.2).
+- cmd_process() structure verified (commands.c:285-365): single uart_read_bytes at top per cycle → race-free handoff design holds.
+- Still to verify before step 3: free DRAM headroom on device (`MEM` command; ~44 KB new cost; if tight drop ring to 16 KB) and on-hardware log recovery after baud round-trip (step 6).
+
+**Session context:** also created CLAUDE.md (root + esp_bt_audio_source), .claude/settings.json PostToolUse hook running ci_check_main_layering.sh on main.c edits (needs /hooks once to load; script has known false-positive on block-comment mention of uart_param_config at main.c:229), and .claude/skills/laptop-bt-tests skill.
+
 ## 2026-02-12 11:24:31 - BBGW I2S Source CI Test Timing Fix
 
 **Context:**
