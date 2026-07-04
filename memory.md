@@ -1,3 +1,13 @@
+## 2026-07-04 - Full sweep FULLY GREEN: 837 tests, 0 failures
+
+After test_bluetooth fix + host adapter alignment: host 688/688 (once
+adapter runner re-aligned: 690 incl. its 3), standalone 65/65, device
+test_bluetooth 46/46 + test_app_audio 35/35 + test_manager 18/18.
+Gotcha fixed en route: test_pairing_commands.c runs in TWO harnesses —
+device (production bt_pairing_store notifier) and host
+test_pairing_adapter_runner (test_pairing_adapters.c emulation
+fallback); both must agree on the event contract. Production firmware
+reflashed (v0.2.0-310).
 ## 2026-07-04 - test_bluetooth device suite FIXED: 46/46 (was: link-broken for months)
 
 Fix (bdf576bd): new test/test_bluetooth/main/bt_manager_api_mock.c
