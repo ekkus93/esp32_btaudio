@@ -15,6 +15,7 @@
 /* Bluetooth includes */
 #include "esp_bt.h"
 #include "command_interface.h"
+#include "uart_audio.h"
 #include "driver/uart.h"
 #include "audio_processor.h"
 /* Needed for pin fallbacks and i2s port constants when auto-initializing audio */
@@ -263,7 +264,15 @@ void app_main(void)
     const int console_uart = UART_NUM_0;
 #endif
 
-    ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 0, NULL, 0));  // NOLINT(readability-suspicious-call-argument)
+    /* Event queue (UARTAUDIO diagnostics): lets the streaming reader task
+     * distinguish hardware FIFO overruns from driver-buffer overflow and
+     * wire errors. Depth 64 absorbs the ~15 UART_DATA events that can
+     * accumulate between 20 ms reader drains at 921600 baud; outside
+     * streaming nobody drains it, which is harmless (full queue just
+     * drops further events, data flow is unaffected). */
+    QueueHandle_t uart_evt_queue = NULL;
+    ESP_ERROR_CHECK(uart_driver_install(console_uart, uart_rx_buf, uart_tx_buf, 64, &uart_evt_queue, 0));  // NOLINT(readability-suspicious-call-argument)
+    uart_audio_set_event_queue(uart_evt_queue);
     
     /* Success markers for test harness: UART driver installed successfully */
     DIAG_MARKER("DIAG|BOOT|UART_INSTALL_SUCCESS|installed=1");

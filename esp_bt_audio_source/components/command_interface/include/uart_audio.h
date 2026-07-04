@@ -41,6 +41,16 @@ extern "C" {
 bool uart_audio_is_streaming(void);
 
 /**
+ * Hand over the UART driver event queue created by main.c's
+ * uart_driver_install (QueueHandle_t passed as void* to keep this header
+ * platform-neutral). The streaming reader task drains it to count
+ * UART_FIFO_OVF / UART_BUFFER_FULL / frame errors — the discriminator
+ * between ISR starvation, reader starvation and wire corruption.
+ * No-op on host builds; safe to never call (counters just read 0).
+ */
+void uart_audio_set_event_queue(void *queue);
+
+/**
  * Enter streaming mode: sets the streaming flag and (device build,
  * UARTAUDIO-6) spawns the reader task that switches baud and consumes
  * frames. Returns 0 on success, -1 if already streaming.

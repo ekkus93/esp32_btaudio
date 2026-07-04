@@ -255,6 +255,20 @@ def main() -> int:
 
     ser.baudrate = TEXT_BAUD
     time.sleep(0.1)
+    # the device emits EVENT|UARTAUDIO|STOPPED|frames=..,...,fifo_ovf=..
+    # at 115200 after restoring baud — surface its forensic counters
+    stopped_line = None
+    deadline = time.monotonic() + 2.0
+    buf = b""
+    while time.monotonic() < deadline and stopped_line is None:
+        chunk = ser.read(256)
+        if chunk:
+            buf += chunk
+            for raw in buf.split(b"\n"):
+                text = raw.decode("utf-8", errors="replace").strip()
+                if "EVENT|UARTAUDIO|STOPPED|" in text:
+                    stopped_line = text[text.index("EVENT|UARTAUDIO|STOPPED|"):]
+                    break
     ser.reset_input_buffer()
     ser.close()
 
@@ -272,6 +286,8 @@ def main() -> int:
                   f"({pct:.0f}% of the {need/1000:.1f} kB/s real-time rate)")
         if crc or lost or ovf:
             print("note: nonzero error counters — try a lower --baud or a shorter cable")
+    if stopped_line:
+        print(f"device stop report: {stopped_line.split('|', 3)[3]}")
     return 0
 
 

@@ -31,6 +31,7 @@ bool uart_audio_is_streaming(void)
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "audio_processor.h"
@@ -48,6 +49,52 @@ bool uart_audio_is_streaming(void)
 #endif
 
 static int s_stream_baud = CONFIG_UART_AUDIO_STREAM_BAUD;
+
+/* UART driver event queue from main.c (see uart_audio_set_event_queue) */
+static QueueHandle_t s_uart_evt_queue = NULL;
+
+/* per-stream loss forensics, reset at stream start */
+static uint32_t s_evt_fifo_ovf;
+static uint32_t s_evt_buf_full;
+static uint32_t s_evt_frame_err;
+static uint32_t s_evt_parity_err;
+
+void uart_audio_set_event_queue(void *queue)
+{
+    s_uart_evt_queue = (QueueHandle_t)queue;
+}
+
+static void ua_send_line(const char *line);
+
+/* Drain pending driver events, counting loss/corruption causes and
+ * emitting UA|ERR markers so the host can correlate them in time. */
+static void ua_drain_uart_events(void)
+{
+    if (s_uart_evt_queue == NULL) {
+        return;
+    }
+    uart_event_t evt;
+    while (xQueueReceive(s_uart_evt_queue, &evt, 0) == pdTRUE) {
+        switch (evt.type) {
+        case UART_FIFO_OVF:
+            s_evt_fifo_ovf++;
+            ua_send_line("UA|ERR|FIFO_OVF\r\n");
+            break;
+        case UART_BUFFER_FULL:
+            s_evt_buf_full++;
+            ua_send_line("UA|ERR|BUF_FULL\r\n");
+            break;
+        case UART_FRAME_ERR:
+            s_evt_frame_err++;
+            break;
+        case UART_PARITY_ERR:
+            s_evt_parity_err++;
+            break;
+        default:
+            break; /* UART_DATA etc. — normal traffic */
+        }
+    }
+}
 
 static void ua_send_line(const char *line)
 {
@@ -75,6 +122,20 @@ static void uart_audio_reader_task(void *arg)
     uart_wait_tx_done(CMD_UART_NUM, pdMS_TO_TICKS(200));
     uart_set_baudrate(CMD_UART_NUM, (uint32_t)s_stream_baud);
     uart_flush_input(CMD_UART_NUM);
+
+    s_evt_fifo_ovf = 0;
+    s_evt_buf_full = 0;
+    s_evt_frame_err = 0;
+    s_evt_parity_err = 0;
+    if (s_uart_evt_queue != NULL) {
+        xQueueReset(s_uart_evt_queue); /* discard stale text-mode events */
+    }
+
+    /* FIFO_OVF forensics showed the 128 B hardware FIFO overflowing when
+     * BT critical sections mask interrupts past the default ISR trigger
+     * (~120 full = only ~87 us of headroom at 921600 baud). Trigger at 32
+     * instead: 96 B / ~1 ms of latency budget, ~3k extra interrupts/s. */
+    uart_set_rx_full_threshold(CMD_UART_NUM, 32);
 
     uart_source_start((size_t)CONFIG_UART_AUDIO_STAGING_RB_KB * 1024U);
 
@@ -117,6 +178,7 @@ static void uart_audio_reader_task(void *arg)
                 break; /* host died: auto-recover to text mode */
             }
         }
+        ua_drain_uart_events();
         if (uart_audio_rx_crc_abort(&s_rx)) {
             break; /* link hosed */
         }
@@ -150,6 +212,7 @@ static void uart_audio_reader_task(void *arg)
     ua_send_line("UA|BYE\r\n");
     uart_wait_tx_done(CMD_UART_NUM, pdMS_TO_TICKS(200));
     uart_set_baudrate(CMD_UART_NUM, UA_TEXT_BAUD);
+    uart_set_rx_full_threshold(CMD_UART_NUM, 120); /* restore driver default */
     uart_flush_input(CMD_UART_NUM);
     esp_log_level_set("*", ESP_LOG_INFO);
     /* the wildcard reset above re-enables AUDIO_PROC INFO spam that main.c
@@ -159,8 +222,17 @@ static void uart_audio_reader_task(void *arg)
 
     uart_source_stop();
 
-    char data[160];
-    if (uart_audio_format_stopped_data(data, sizeof(data), &s_rx, &final_stats) > 0) {
+    ua_drain_uart_events(); /* pick up any events posted during drain */
+
+    char data[224];
+    int n_data = uart_audio_format_stopped_data(data, sizeof(data), &s_rx, &final_stats);
+    if (n_data > 0) {
+        snprintf(data + n_data, sizeof(data) - (size_t)n_data,
+                 ",fifo_ovf=%lu,drv_full=%lu,frame_err=%lu,parity_err=%lu",
+                 (unsigned long)s_evt_fifo_ovf,
+                 (unsigned long)s_evt_buf_full,
+                 (unsigned long)s_evt_frame_err,
+                 (unsigned long)s_evt_parity_err);
         cmd_send_response("EVENT", "UARTAUDIO", "STOPPED", data);
     }
 
@@ -187,6 +259,11 @@ int uart_audio_begin(int baud)
 }
 
 #else /* host build: no reader task; flag only */
+
+void uart_audio_set_event_queue(void *queue)
+{
+    (void)queue;
+}
 
 int uart_audio_begin(int baud)
 {
