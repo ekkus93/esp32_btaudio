@@ -234,9 +234,11 @@ class TestUartAudioStreaming:
                 if delay > 0:
                     time.sleep(delay)
                 raw.write(build_data_frame(n & 0xFF, payload))
-                chunk = raw.read(raw.in_waiting or 1)
-                if chunk:
-                    rx += chunk
+                # non-blocking drain: raw.read(1) would block up to the
+                # port timeout (100 ms) and stall pacing into underruns
+                waiting = raw.in_waiting
+                if waiting:
+                    rx += raw.read(waiting)
 
             raw.write(build_stop_frame())
             raw.flush()
