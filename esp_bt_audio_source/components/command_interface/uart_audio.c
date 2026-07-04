@@ -142,6 +142,10 @@ static void uart_audio_reader_task(void *arg)
     uart_set_baudrate(CMD_UART_NUM, UA_TEXT_BAUD);
     uart_flush_input(CMD_UART_NUM);
     esp_log_level_set("*", ESP_LOG_INFO);
+    /* the wildcard reset above re-enables AUDIO_PROC INFO spam that main.c
+     * deliberately suppresses at boot — re-apply that policy or the
+     * per-read log flood drowns the command interface while A2DP runs */
+    esp_log_level_set("AUDIO_PROC", ESP_LOG_WARN);
 
     uart_source_stop();
 
