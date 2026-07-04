@@ -1,3 +1,14 @@
+## 2026-07-04 - UART2 hardened to 14 host tests; NEXT UP: esp_i2s_source redo
+
+Dual-UART coverage now 14 tests (0fdbf508): burst/interleave/overflow
+isolation, LF/CR terminators, async-reply defaults to primary, VOLUME
+via UART2 mid-stream, UARTAUDIO START from UART2 (response routes to
+UART2, stream stays on primary). Full suite 66 host binaries green.
+Physical UART2 test still pending (no second USB-serial adapter yet).
+
+USER'S NEXT PROJECT: redo esp_i2s_source — likely as the device that
+talks to esp_bt_audio_source over the new UART2 command port (that was
+the motivation for adding UART2). Requirements discussion not yet held.
 ## 2026-07-04 - Secondary command UART added (UART2, RX=GPIO16 TX=GPIO17)
 
 Commands now served on UART2 alongside USB (which is unchanged —
