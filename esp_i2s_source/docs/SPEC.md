@@ -32,7 +32,10 @@ engine. The S3 provides:
    web UI, plus a paste-any-URL field), S3 fetches the stream (HTTP/HTTPS),
    decodes **MP3 and AAC (AAC-LC + HE-AAC)**, resamples to the I2S contract,
    and plays it through the WROOM32 to the Bluetooth speaker. ICY metadata
-   (station/song title) shown in the UI when present.
+   (station/song title) shown in the UI when present. **Users can enter their
+   own station URL and save it** (with a name) as a preset in NVS, so it
+   persists across reboots and can be replayed later from the station list —
+   the seeded defaults and user-added stations live in the same editable list.
 
 ## 2. Locked decisions (2026-07-04)
 
@@ -144,8 +147,12 @@ UARTs, so the S3 sees everything a USB console sees.
 ### 5.2 Web API (sketch — final shape decided during WEB-1)
 - `GET /` — embedded UI. `GET /api/status` — aggregated S3 + WROOM32 state.
 - `POST /api/wifi {ssid,pass}` — provision; reply then switch AP→STA.
-- `GET/POST/DELETE /api/stations` — preset CRUD (NVS-backed).
-- `POST /api/radio {url|preset_id}` / `DELETE /api/radio` — play/stop.
+- `GET/POST/PUT/DELETE /api/stations` — preset CRUD (NVS-backed). `POST` adds
+  a user-entered station (`{name,url}`) to the saved list; `PUT` edits one;
+  `DELETE` removes one. This is the "save my URL for later" path.
+- `POST /api/radio {url|preset_id}` / `DELETE /api/radio` — play/stop. A raw
+  `url` plays immediately without saving (one-off audition); to keep it, the
+  UI offers a **"Save station"** action that `POST`s it to `/api/stations`.
 - `POST /api/tone {hz}` / `DELETE /api/tone` — tone on/off.
 - `POST /api/bt/{scan|pair|connect|disconnect|volume}` — BT actions
   (thin wrappers over bt_link commands).

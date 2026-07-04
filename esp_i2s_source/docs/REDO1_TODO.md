@@ -141,6 +141,12 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       logic) + `/api/stations` endpoints + UI list/add/edit/delete +
       custom-URL field. Seed defaults from internet-radio.com's Popular
       Stations list (SPEC §5.4 — 5 `.pls` presets); all web-editable.
+  - [ ] **RADIO-1c-i** User-entered stations: UI "Add station" (name + URL)
+        and "Save station" on a one-off custom-URL audition both persist to
+        NVS so they survive reboot and replay from the list. URL validation
+        (scheme http/https, length cap); name defaults to host/ICY name if
+        blank. Store as a versioned NVS blob (or per-slot keys), capacity
+        **≥ 32 stations**; host-test add/edit/delete/persist/dedupe logic.
 
 ## RADIO-2 — Decode, resample, play
 
