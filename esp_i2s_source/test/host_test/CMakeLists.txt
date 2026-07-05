@@ -75,5 +75,12 @@ target_include_directories(test_bt_link_parser PRIVATE ${BT_LINK_DIR}/include)
 target_link_libraries(test_bt_link_parser unity)
 add_test(NAME test_bt_link_parser COMMAND test_bt_link_parser)
 
+# LINK-1b: bt_link session state machine
+add_executable(test_bt_link_session test_bt_link_session.c
+    ${BT_LINK_DIR}/bt_link_session.c ${BT_LINK_DIR}/bt_link_parser.c)
+target_include_directories(test_bt_link_session PRIVATE ${BT_LINK_DIR}/include)
+target_link_libraries(test_bt_link_session unity)
+add_test(NAME test_bt_link_session COMMAND test_bt_link_session)
+
 # Further suites appended by RADIO-1a (test_playlist_icy), RADIO-2b
 # (test_resampler), etc.
