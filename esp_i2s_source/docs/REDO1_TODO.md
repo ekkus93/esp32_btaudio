@@ -83,10 +83,11 @@ line, queue `EVENT|` lines for subscribers. S3 UART1 (TX=17/RX=18) ↔
 WROOM32 UART2. Also the first physical exercise of the WROOM32's UART2.
 
 ### Tasks
-- [ ] **LINK-1a** Line/response parser (pure, host-tested): splits
-      `STATUS|COMMAND|RESULT|DATA`, classifies OK/ERR/INFO/EVENT,
-      correlates responses to the pending command, tolerates interleaved
-      events and partial reads.
+- [x] **LINK-1a** Line/response parser (pure, host-tested, commit 4fa649f3):
+      splits `STATUS|COMMAND|RESULT|DATA` (DATA keeps embedded `|`), classifies
+      OK/ERR/INFO/EVENT + terminal helper, line assembler tolerates partial
+      reads / CRLF / empty lines / overflow recovery. 13 host cases.
+      (Response↔command correlation moves to LINK-1b's session state machine.)
 - [ ] **LINK-1b** `bt_link` task: UART1 driver, one-in-flight command with
       timeout/retry, EVENT fan-out (multiple subscribers); host-tested
       against a scripted UART mock.
