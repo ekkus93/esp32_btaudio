@@ -88,12 +88,14 @@ WROOM32 UART2. Also the first physical exercise of the WROOM32's UART2.
       OK/ERR/INFO/EVENT + terminal helper, line assembler tolerates partial
       reads / CRLF / empty lines / overflow recovery. 13 host cases.
       (Response↔command correlation moves to LINK-1b's session state machine.)
-- [ ] **LINK-1b** `bt_link` task: UART1 driver, one-in-flight command with
-      timeout/retry, EVENT fan-out (multiple subscribers); host-tested
-      against a scripted UART mock.
+- [x] **LINK-1b** Session state machine (pure, 11 host tests, commit 04c4e4b8):
+      one-in-flight command, verb correlation, terminal completion, timeout
+      tick, EVENT fan-out to N subscribers incl. interleaving. Device UART1
+      task w/ synchronous `bt_link_send()` (commit 646f4fcc, builds; runtime
+      verified at LINK-1c).
 - [ ] **LINK-1c** Hardware validation: `VERSION`/`STATUS`/`VOLUME 40` over
       the real wires; WROOM32 USB console verified still fully usable in
-      parallel (dual-UART contract). Record results here. (M3)
+      parallel (dual-UART contract). Record results here. (M3) — needs WROOM32.
 
 ## WIFI-1 — WiFi manager + provisioning
 
