@@ -62,5 +62,12 @@ target_include_directories(test_pcm_ring PRIVATE ${I2S_OUT_DIR}/include)
 target_link_libraries(test_pcm_ring unity)
 add_test(NAME test_pcm_ring COMMAND test_pcm_ring)
 
+# SIG-1b: i2s_out pure pump (drain / zero-fill / stats)
+add_executable(test_i2s_out_pump test_i2s_out_pump.c
+    ${I2S_OUT_DIR}/i2s_out_pump.c ${I2S_OUT_DIR}/pcm_ring.c)
+target_include_directories(test_i2s_out_pump PRIVATE ${I2S_OUT_DIR}/include)
+target_link_libraries(test_i2s_out_pump unity)
+add_test(NAME test_i2s_out_pump COMMAND test_i2s_out_pump)
+
 # Further suites appended by LINK-1a (test_bt_link_parser), RADIO-1a
 # (test_playlist_icy), RADIO-2b (test_resampler), etc.
