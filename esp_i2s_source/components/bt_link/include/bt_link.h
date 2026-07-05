@@ -1,9 +1,42 @@
 /*
- * bt_link — UART1 client speaking the WROOM32 command protocol
- * (STATUS|COMMAND|RESULT[|DATA]). One in-flight command with timeout,
- * OK|/ERR| correlation, EVENT| fan-out to subscribers. S3 UART1
- * TX=GPIO17/RX=GPIO18 <-> WROOM32 UART2. C port of esp32_serial.py.
+ * bt_link — UART1 command client to the WROOM32 UART2 port (LINK-1).
+ * Device API: one bt_link task owns UART1 + the session; callers issue
+ * synchronous commands and register EVENT subscribers. S3 UART1
+ * TX=GPIO17 -> WROOM32 GPIO16, RX=GPIO18 <- WROOM32 GPIO17 (SPEC §3.2).
  *
- * Implemented in LINK-1. Skeleton only for now.
+ * The pure logic lives in bt_link_parser.h / bt_link_session.h (host-tested).
+ * This device task is verified on hardware at LINK-1c.
  */
 #pragma once
+
+#include "bt_link_parser.h"
+#include "bt_link_session.h"
+
+#ifdef ESP_PLATFORM
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define BT_LINK_UART_TX_GPIO   17
+#define BT_LINK_UART_RX_GPIO   18
+#define BT_LINK_DEFAULT_TIMEOUT_MS 2000
+
+/* Install UART1, init the session, and spawn the bt_link task. */
+esp_err_t bt_link_init(uint32_t cmd_timeout_ms);
+
+/* Register an EVENT subscriber (call before heavy traffic; see note in .c). */
+int bt_link_subscribe(bt_link_event_cb cb, void *ctx);
+
+/* Send `cmd` and block until its terminal response or timeout. On return,
+ * *out_state is DONE_OK / DONE_ERR / TIMEOUT and `result` holds the response
+ * RESULT field (truncated to result_sz). Returns ESP_OK if a terminal
+ * response arrived, ESP_ERR_TIMEOUT otherwise. Serialized (one in flight). */
+esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
+                       char *result, size_t result_sz);
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* ESP_PLATFORM */
