@@ -50,7 +50,8 @@ Prerequisites / environment (confirmed 2026-07-04):
 
 ## SIG-1 — Signal generator + I2S master TX (first audio)
 
-**Status:** `[ ]` Not started
+**Status:** `[~]` In progress — SIG-1a/1b done + host-tested; SIG-1c S3-side
+verified; SIG-1c(WROOM32)/1d gated on the WROOM32 being wired.
 
 ### Background
 Prove the I2S link with zero external dependencies. Slot format MUST match
@@ -58,17 +59,18 @@ the WROOM32 slave exactly (SPEC §3.3: Philips, 16-bit data in 32-bit slots,
 stereo, 44.1 kHz, MCLK unused). Pins: BCLK=GPIO5, WS=GPIO6, DOUT=GPIO7.
 
 ### Tasks
-- [ ] **SIG-1a** `signal_gen`: 44.1 kHz stereo s16 sine/sweep/silence
-      producers, pure functions, host-tested (exact sample math).
-- [ ] **SIG-1b** `i2s_out`: SPSC PCM ring (port `audio_ringbuffer.c`
-      pattern; PSRAM-backed, ≥256 KB) + I2S master-TX channel per §3.3;
-      writer task zero-fills + counts underruns; start/stop/stats API
-      host-tested with an I2S mock.
-- [ ] **SIG-1c** On-hardware smoke: 440 Hz tone out; WROOM32 (driven
-      manually over USB) shows `SOURCE=I2S`, `I2S_BYTES` growing after
-      `START`.
+- [x] **SIG-1a** `signal_gen`: sine/sweep/silence producers, phase-continuous,
+      7 host tests (commit 31917181).
+- [x] **SIG-1b** `i2s_out`: lock-free SPSC `pcm_ring` (8 host tests) + pure
+      `i2s_out_pump_once` (5 host tests, mock sink) + I2S std master-TX channel
+      (16-in-32 slots per §3.3) + writer task (commits 1452d93a, 756f4e4f).
+- [~] **SIG-1c** On-hardware smoke: **S3 side PASS** (commit a71eadc9) — 440 Hz
+      tone firmware; beacon shows `bytes` climbing at ~176.6 kB/s (= 44.1k×4),
+      `undev=1` (single startup underrun) then flat, ring holds full. **Still
+      to do (needs WROOM32):** confirm WROOM32 shows `SOURCE=I2S` +
+      `I2S_BYTES` growing after `START`.
 - [ ] **SIG-1d** Listen test: tone audible in earbuds; WROOM32
-      `READ_BPS`≈176400; no underrun growth either side. (M2)
+      `READ_BPS`≈176400; no underrun growth either side. (M2) — needs WROOM32.
 
 ## LINK-1 — UART command client (bt_link)
 
