@@ -69,5 +69,11 @@ target_include_directories(test_i2s_out_pump PRIVATE ${I2S_OUT_DIR}/include)
 target_link_libraries(test_i2s_out_pump unity)
 add_test(NAME test_i2s_out_pump COMMAND test_i2s_out_pump)
 
-# Further suites appended by LINK-1a (test_bt_link_parser), RADIO-1a
-# (test_playlist_icy), RADIO-2b (test_resampler), etc.
+# LINK-1a: bt_link line/response parser
+add_executable(test_bt_link_parser test_bt_link_parser.c ${BT_LINK_DIR}/bt_link_parser.c)
+target_include_directories(test_bt_link_parser PRIVATE ${BT_LINK_DIR}/include)
+target_link_libraries(test_bt_link_parser unity)
+add_test(NAME test_bt_link_parser COMMAND test_bt_link_parser)
+
+# Further suites appended by RADIO-1a (test_playlist_icy), RADIO-2b
+# (test_resampler), etc.
