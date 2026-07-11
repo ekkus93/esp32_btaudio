@@ -105,6 +105,12 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
     err = uart_set_pin(BT_LINK_UART, BT_LINK_UART_TX_GPIO, BT_LINK_UART_RX_GPIO,
                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) return err;
+    /* The uart_set_pin transition can glitch the TX line, leaving a partial
+     * garbage line in the peer's RX assembler that would swallow the first
+     * real command (observed at LINK-1c: first VERSION timed out, rest OK).
+     * Send a lone CRLF so the peer terminates and discards that stray line. */
+    uart_flush_input(BT_LINK_UART);
+    uart_write_bytes(BT_LINK_UART, "\r\n", 2);
 
     bt_link_session_init(&s_session,
                          cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS);

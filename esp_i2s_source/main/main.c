@@ -26,6 +26,7 @@
 
 #include "signal_gen.h"
 #include "i2s_out.h"
+#include "bt_link.h"
 
 static const char *TAG = "main";
 
@@ -118,6 +119,44 @@ static void tone_task(void *arg)
     }
 }
 
+/* LINK-1c: exercise the bt_link UART1 client against the WROOM32 UART2 command
+ * port over the real wires (S3 TX=17->WROOM32 RX=16, S3 RX=18<-WROOM32 TX=17).
+ * Sends VERSION/STATUS/VOLUME 40 and logs each round-trip as DIAG|BTLINK. This
+ * is the first physical exercise of the dual-UART contract and doubles as a
+ * boot-time link health check; non-fatal if the WROOM32 is absent/unwired. */
+static const char *link_state_str(bt_link_cmd_state_t st)
+{
+    switch (st) {
+    case BT_LINK_CMD_DONE_OK:  return "OK";
+    case BT_LINK_CMD_DONE_ERR: return "ERR";
+    case BT_LINK_CMD_TIMEOUT:  return "TIMEOUT";
+    default:                   return "PENDING";
+    }
+}
+
+static void link_selftest(void)
+{
+    static const char *const cmds[] = { "VERSION", "STATUS", "VOLUME 40" };
+    esp_err_t err = bt_link_init(BT_LINK_DEFAULT_TIMEOUT_MS);
+    if (err != ESP_OK) {
+        printf("DIAG|BTLINK|INIT_FAIL|err=%s\n", esp_err_to_name(err));
+        fflush(stdout);
+        return;
+    }
+    int ok = 0;
+    for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
+        bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+        char result[BT_LINK_FIELD_MAX] = {0};
+        bt_link_send(cmds[i], &st, result, sizeof(result));
+        if (st == BT_LINK_CMD_DONE_OK) ok++;
+        printf("DIAG|BTLINK|cmd=%s,state=%s,result=%s\n",
+               cmds[i], link_state_str(st), result);
+        fflush(stdout);
+    }
+    printf("DIAG|BTLINK|SELFTEST|ok=%d/3\n", ok);
+    fflush(stdout);
+}
+
 void app_main(void)
 {
     init_nvs();
@@ -141,6 +180,9 @@ void app_main(void)
     ESP_ERROR_CHECK(i2s_out_start());
     ESP_LOGI(TAG, "SIG-1c: 440 Hz tone streaming to I2S (bclk=%d ws=%d dout=%d)",
              I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT);
+
+    /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */
+    link_selftest();
 
     /* I2S stats beacon: bytes_written must climb and underruns stay flat once
      * the ring primes; the PCNT freq meter confirms the WROOM32 master clock

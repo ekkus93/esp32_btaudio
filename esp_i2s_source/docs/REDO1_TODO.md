@@ -85,7 +85,7 @@ BCLK=GPIO18(out), WS=GPIO19(out), DIN=GPIO22(in).
 
 ## LINK-1 — UART command client (bt_link)
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` DONE — LINK-1a/1b/1c complete; hardware-validated dual-UART.
 
 ### Background
 C implementation of the command-client behavior proven by
@@ -104,9 +104,24 @@ WROOM32 UART2. Also the first physical exercise of the WROOM32's UART2.
       tick, EVENT fan-out to N subscribers incl. interleaving. Device UART1
       task w/ synchronous `bt_link_send()` (commit 646f4fcc, builds; runtime
       verified at LINK-1c).
-- [ ] **LINK-1c** Hardware validation: `VERSION`/`STATUS`/`VOLUME 40` over
-      the real wires; WROOM32 USB console verified still fully usable in
-      parallel (dual-UART contract). Record results here. (M3) — needs WROOM32.
+- [x] **LINK-1c** Hardware validation **PASS** (S3 UART1 GPIO17/18 ↔ WROOM32
+      UART2 GPIO16/17): a boot-time `link_selftest()` in `main.c` sent
+      `VERSION`/`STATUS`/`VOLUME 40` over the real wires — **3/3 OK**, VERSION
+      returned the live WROOM32 build string. Dual-UART contract confirmed: the
+      WROOM32 USB console (UART0) stayed fully usable throughout, and
+      `STATUS` read back `VOL=40` — proving the S3's UART2 command took effect
+      and was observable on the independent console port. (M3)
+      Two findings recorded:
+      - **Wiring trap:** the jumpers must be on WROOM32 **GPIO16/17** (UART2),
+        NOT GPIO1/3 (silk-labeled TX/RX = the UART0 console). A misplaced
+        jumper let the self-test "pass" over UART0 while the S3 driving that
+        line hung the whole WROOM32 (console + UART2 + BT all dead together).
+        A raw wire-probe (WROOM32 logs on UART0 only, never UART2) is the
+        definitive discriminator.
+      - **First-command race fix (bt_link.c):** `uart_set_pin` glitches the TX
+        line, leaving a partial garbage line in the peer's assembler that
+        swallowed the first command. `bt_link_init` now flushes + sends a lone
+        CRLF after pin setup → clean 3/3.
 
 ## WIFI-1 — WiFi manager + provisioning
 

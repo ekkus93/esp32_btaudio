@@ -25165,3 +25165,31 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Final config re-flashed to both boards + verified TWICE: 100% purity both channels.
 - Net source change: S3 main.c -74/+19 (scaffolding gone); WROOM32 i2s_manager.c +
   main.c are COMMENT-ONLY (values == HEAD). main.c layering check PASS.
+
+## 2026-07-11T21:54:54Z - Claude Opus 4.8 (1M) - LINK-1c: bt_link dual-UART hardware validation PASS
+
+- Wired a boot-time link_selftest() into esp_i2s_source/main/main.c: bt_link_init
+  then VERSION/STATUS/VOLUME 40 over S3 UART1 (GPIO17/18) <-> WROOM32 UART2
+  (GPIO16/17). Final result: 3/3 OK; VERSION returned live WROOM32 build.
+- Dual-UART contract PROVEN: WROOM32 USB console (UART0) fully usable while the
+  S3 drives UART2; STATUS read back VOL=40 set by the S3's UART2 command.
+- Two hard-won findings:
+  * WIRING TRAP: the inter-board UART jumpers had been on the WROOM32's UART0
+    pins (GPIO1/3, silk-labeled TX/RX) instead of UART2 (GPIO16/17). Symptom:
+    the self-test "passed" 3/3 over UART0, but once the S3 firmware DROVE UART1
+    as a push-pull output, it contended the WROOM32's console line and hung the
+    WHOLE board — console + UART2 responses + BT all died together, survived
+    power-cycle (recovered only after flashing S3 back to non-UART firmware).
+    Discriminator: a raw wire-probe — WROOM32 emits ESP_LOG only on UART0, never
+    UART2, so passive log spam => wrong pins; clean silent-until-queried => UART2.
+    Fixed by user re-wiring to GPIO16/17.
+  * FIRST-COMMAND RACE (fixed in bt_link.c): uart_set_pin glitches the TX line,
+    leaving a partial garbage line in the peer's RX assembler that swallowed the
+    first command (first VERSION always timed out, rest OK). bt_link_init now
+    uart_flush_input + writes a lone CRLF after pin setup -> clean 3/3.
+- Debugging cost: heavy DTR/RTS probing on /dev/ttyUSB0 (CP2102) can wedge the
+  adapter; the gentle default-open method (i2s_verify.py) is safe, aggressive
+  EN-pulse toggling is not. esptool "TX path seems to be down" == board->host
+  TX contended/hung, not necessarily damaged (recovered fine).
+- esp_i2s_source host tests 6/6 pass. REDO1_TODO LINK-1 marked DONE (a/b/c).
+- Verification harness: scratchpad/i2s_verify.py (FFT) + console_gentle.py.
