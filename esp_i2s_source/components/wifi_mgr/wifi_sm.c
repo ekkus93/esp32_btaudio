@@ -42,6 +42,12 @@ wifi_sm_action_t wifi_sm_on_connected(wifi_sm_t *s)
 
 wifi_sm_action_t wifi_sm_on_disconnected(wifi_sm_t *s)
 {
+    /* Ignore stray STA disconnects while intentionally NOT trying STA — e.g.
+     * the old link dropping right after WIFI RESET / AP fallback. Only a
+     * disconnect during a STA attempt or an established STA link drives retry. */
+    if (s->state != WIFI_SM_STA_CONNECTING && s->state != WIFI_SM_STA_CONNECTED) {
+        return WIFI_SM_ACT_NONE;
+    }
     s->disconnects++;
     s->attempts++;
     if (s->attempts >= s->max_retries) {

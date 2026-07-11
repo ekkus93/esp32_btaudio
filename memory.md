@@ -25193,3 +25193,27 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   TX contended/hung, not necessarily damaged (recovered fine).
 - esp_i2s_source host tests 6/6 pass. REDO1_TODO LINK-1 marked DONE (a/b/c).
 - Verification harness: scratchpad/i2s_verify.py (FFT) + console_gentle.py.
+
+## 2026-07-11T22:22:41Z - Claude Opus 4.8 (1M) - WIFI-1 done: wifi_mgr STA/AP + mDNS + console, hardware-validated
+
+- WIFI-1a: pure wifi_sm STA/AP fallback state machine (components/wifi_mgr/wifi_sm.c),
+  12 host tests. creds->STA w/ bounded retries->AP fallback; set/clear transitions.
+- WIFI-1b: wifi_mgr.c device glue (esp_wifi/esp_netif/esp_event/NVS/mdns). AP SSID
+  "ESP32-S3-Audio", WPA2, MAC-derived password "audio-XXXXXX" printed on console.
+  mDNS esp-i2s-source.local. Added espressif/mdns ^1.2 to main/idf_component.yml.
+- WIFI-1c: cmd_console component (USB-Serial-JTAG line reader): WIFI <ssid> [pass],
+  WIFI STATUS, WIFI RESET, STATUS. Uses usb_serial_jtag driver + vfs_use_driver().
+- HARDWARE VALIDATED (S3 on <home-ssid> LAN): boot->AP (laptop sees SSID, signal 47);
+  console `WIFI <home-ssid> <pass>` -> STA got IP 10.1.2.52; WIFI STATUS shows
+  MODE=STA,STATE=CONNECTED,RSSI=-59; esp-i2s-source.local resolves via avahi + pings;
+  creds persist in NVS across reboot (auto-STA); WIFI RESET -> AP.
+- GOTCHAS (both real, fixed):
+  * Component name collision: a component named `console` SHADOWS ESP-IDF's built-in
+    `console` (esp_console), which espressif/mdns depends on -> mdns_console.c fails
+    "esp_console.h not found". Renamed ours to `cmd_console`.
+  * SM bug caught on hardware: after WIFI RESET->AP, the old STA link dropping fired
+    DISCONNECTED, and wifi_sm_on_disconnected blindly went STA_CONNECTING with no
+    creds. Fix: ignore disconnect unless state is STA_CONNECTING/STA_CONNECTED.
+    Added 2 regression host tests.
+- main.c now: tone + LINK-1c selftest + wifi_mgr_init + console_start + beacon.
+  Host suite 7/7. REDO1_TODO WIFI-1 marked done. Next: WEB-1.

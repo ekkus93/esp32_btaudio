@@ -1,8 +1,41 @@
 /*
- * wifi_mgr — WiFi state machine: NVS creds -> STA connect (retries) ->
- * fallback to AP mode (ESP32-S3-Audio / WPA2) when no creds or repeated
- * failure. mDNS esp-i2s-source.local in STA mode (SPEC §4).
+ * wifi_mgr — device glue (WIFI-1b): esp_wifi / esp_netif / NVS creds / mDNS,
+ * driving the pure wifi_sm (WIFI-1a). Boots into STA if credentials are stored,
+ * else SoftAP provisioning ("ESP32-S3-Audio", WPA2, MAC-derived password
+ * printed on the console). mDNS "esp-i2s-source.local" once on the LAN.
  *
- * Implemented in WIFI-1. Skeleton only for now.
+ * Console/web provisioning (WIFI-1c / WEB-1b) call set_creds()/reset().
  */
 #pragma once
+
+#include <stddef.h>
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define WIFI_MGR_AP_SSID   "ESP32-S3-Audio"
+#define WIFI_MGR_HOSTNAME  "esp-i2s-source"
+#define WIFI_MGR_SSID_MAX  32
+#define WIFI_MGR_PASS_MAX  64
+
+/* Bring up netif/event/wifi, load stored creds, and start STA or AP per the
+ * state machine. Call once after NVS init. */
+esp_err_t wifi_mgr_init(void);
+
+/* Provision STA credentials (from console/web): persist to NVS and (re)start
+ * STA association. ssid 1..32 chars; pass "" (open) or 8..64 chars. */
+esp_err_t wifi_mgr_set_creds(const char *ssid, const char *pass);
+
+/* Clear stored credentials and drop back to AP provisioning mode (WIFI RESET). */
+esp_err_t wifi_mgr_reset(void);
+
+/* Human/parse-friendly status line into buf, e.g.
+ * "MODE=STA,STATE=CONNECTED,SSID=home,IP=192.168.1.42,RSSI=-54" or
+ * "MODE=AP,SSID=ESP32-S3-Audio,IP=192.168.4.1,CLIENTS=1". */
+void wifi_mgr_get_status(char *buf, size_t buf_sz);
+
+#ifdef __cplusplus
+}
+#endif

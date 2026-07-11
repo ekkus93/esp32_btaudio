@@ -5,3 +5,6 @@ sdkconfig.old
 # Build output
 /build/
 /test/host_test/build*/
+
+# Managed components — reproducible from dependencies.lock (which IS committed)
+/managed_components/

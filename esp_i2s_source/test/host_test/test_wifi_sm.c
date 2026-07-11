@@ -129,6 +129,27 @@ void test_max_retries_one_goes_ap_on_first_failure(void)
     TEST_ASSERT_EQUAL(WIFI_SM_AP_MODE, wifi_sm_state(&s));
 }
 
+void test_disconnect_ignored_in_ap_mode(void)
+{
+    /* Regression (found on hardware at WIFI-1b): after WIFI RESET/AP fallback
+     * the old STA link drops -> a stray DISCONNECTED event must NOT bounce us
+     * back into a credential-less STA retry. */
+    wifi_sm_t s;
+    wifi_sm_init(&s, false, 5);
+    wifi_sm_start(&s);                     /* AP mode */
+    TEST_ASSERT_EQUAL(WIFI_SM_ACT_NONE, wifi_sm_on_disconnected(&s));
+    TEST_ASSERT_EQUAL(WIFI_SM_AP_MODE, wifi_sm_state(&s));
+    TEST_ASSERT_EQUAL_UINT32(0, s.disconnects);
+}
+
+void test_disconnect_ignored_before_start(void)
+{
+    wifi_sm_t s;
+    wifi_sm_init(&s, true, 5);             /* INIT, not started */
+    TEST_ASSERT_EQUAL(WIFI_SM_ACT_NONE, wifi_sm_on_disconnected(&s));
+    TEST_ASSERT_EQUAL(WIFI_SM_INIT, wifi_sm_state(&s));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -142,5 +163,7 @@ int main(void)
     RUN_TEST(test_clear_creds_returns_to_ap);
     RUN_TEST(test_max_retries_clamped);
     RUN_TEST(test_max_retries_one_goes_ap_on_first_failure);
+    RUN_TEST(test_disconnect_ignored_in_ap_mode);
+    RUN_TEST(test_disconnect_ignored_before_start);
     return UNITY_END();
 }

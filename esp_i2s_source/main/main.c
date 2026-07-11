@@ -27,6 +27,8 @@
 #include "signal_gen.h"
 #include "i2s_out.h"
 #include "bt_link.h"
+#include "wifi_mgr.h"
+#include "console.h"
 
 static const char *TAG = "main";
 
@@ -183,6 +185,11 @@ void app_main(void)
 
     /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */
     link_selftest();
+
+    /* WIFI-1b: bring up WiFi — STA if provisioned, else AP provisioning. */
+    ESP_ERROR_CHECK(wifi_mgr_init());
+    /* WIFI-1c: console for runtime provisioning (WIFI <ssid> <pass> / STATUS). */
+    ESP_ERROR_CHECK(console_start());
 
     /* I2S stats beacon: bytes_written must climb and underruns stay flat once
      * the ring primes; the PCNT freq meter confirms the WROOM32 master clock

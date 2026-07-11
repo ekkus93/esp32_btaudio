@@ -2,3 +2,4 @@
 ## esp_audio_codec (radio MP3/AAC decode) is added at RADIO-2a, not here.
 dependencies:
   idf: ">=5.5"
+  espressif/mdns: "^1.2"   # WIFI-1b: esp-i2s-source.local on the LAN

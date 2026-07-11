@@ -125,16 +125,23 @@ WROOM32 UART2. Also the first physical exercise of the WROOM32's UART2.
 
 ## WIFI-1 — WiFi manager + provisioning
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` DONE — a/b/c hardware-validated (STA join + mDNS + AP + console).
 
 ### Tasks
-- [ ] **WIFI-1a** `wifi_mgr` state machine (host-tested logic where pure):
-      creds in NVS → STA connect w/ retries → fallback to AP mode
-      (`ESP32-S3-Audio`, WPA2, default password printed on console) when
-      no creds or repeated failure.
-- [ ] **WIFI-1b** mDNS `esp-i2s-source.local` in STA mode.
-- [ ] **WIFI-1c** S3 console fallback commands: `WIFI <ssid> <pass>`,
-      `WIFI STATUS`, `WIFI RESET` (clear creds → AP mode).
+- [x] **WIFI-1a** Pure `wifi_sm` STA/AP fallback state machine (creds → STA with
+      bounded retries → AP fallback; set/clear creds transitions). Host-tested,
+      12 Unity cases incl. the disconnect-in-AP regression. No ESP-IDF deps.
+- [x] **WIFI-1b** `wifi_mgr` device glue: esp_wifi/esp_netif/esp_event, NVS creds
+      (namespace `wifi`), AP provisioning (`ESP32-S3-Audio`, WPA2, **MAC-derived**
+      password `audio-XXXXXX` printed on console), STA connect, and **mDNS
+      `esp-i2s-source.local`**. Hardware-verified: boot→AP (laptop sees SSID);
+      provision→STA got IP 10.1.2.52; `esp-i2s-source.local` resolves + pings;
+      creds persist across reboot (auto-STA). Regression found+fixed on hardware:
+      a stray STA disconnect after WIFI RESET no longer bounces AP→STA.
+- [x] **WIFI-1c** S3 console (`cmd_console`, USB-Serial-JTAG): `WIFI <ssid> [pass]`,
+      `WIFI STATUS`, `WIFI RESET`, `STATUS`. All verbs verified over the wire.
+      (Component named `cmd_console`, not `console`, to avoid shadowing ESP-IDF's
+      built-in `console` component that `mdns` depends on.)
 
 ## WEB-1 — Web server + UI shell + terminal
 
