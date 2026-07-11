@@ -44,6 +44,7 @@ set(SIGNAL_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../components/signal_gen)
 set(I2S_OUT_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/i2s_out)
 set(BT_LINK_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_link)
 set(RADIO_DIR      ${CMAKE_CURRENT_SOURCE_DIR}/../../components/radio)
+set(WIFI_MGR_DIR   ${CMAKE_CURRENT_SOURCE_DIR}/../../components/wifi_mgr)
 
 # --- Sanity: proves the harness builds and CTest runs (INFRA-1c) ---
 add_executable(test_sanity test_sanity.c)
@@ -81,6 +82,12 @@ add_executable(test_bt_link_session test_bt_link_session.c
 target_include_directories(test_bt_link_session PRIVATE ${BT_LINK_DIR}/include)
 target_link_libraries(test_bt_link_session unity)
 add_test(NAME test_bt_link_session COMMAND test_bt_link_session)
+
+# WIFI-1a: wifi_sm STA/AP fallback state machine
+add_executable(test_wifi_sm test_wifi_sm.c ${WIFI_MGR_DIR}/wifi_sm.c)
+target_include_directories(test_wifi_sm PRIVATE ${WIFI_MGR_DIR}/include)
+target_link_libraries(test_wifi_sm unity)
+add_test(NAME test_wifi_sm COMMAND test_wifi_sm)
 
 # Further suites appended by RADIO-1a (test_playlist_icy), RADIO-2b
 # (test_resampler), etc.
