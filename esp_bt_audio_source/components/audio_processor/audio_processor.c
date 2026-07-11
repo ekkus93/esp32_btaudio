@@ -149,7 +149,17 @@ static size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes)
     }
     
     audio_source_t base = get_active_source();
-    
+
+    /* DBG-I2SCAP: periodic snapshot of the source decision inputs. */
+    {
+        static unsigned s_dbg_pc = 0;
+        if ((s_dbg_pc++ & 0x1FFU) == 0U) {
+            ESP_LOGW(TAG, "DBG-I2SCAP produce base=%d i2s_run=%d synth=%d beep=%d beeprem=%u",
+                     (int)base, (int)i2s_manager_is_running(), (int)s_force_synth,
+                     (int)beep_overlay_is_active(), (unsigned)s_beep_remaining_bytes);
+        }
+    }
+
     /* Track source switches (Phase 4.2)
      * Protected by spinlock (CODE_REVIEW 2602101453, P1.2.4) */
     if (base != s_last_source) {
@@ -320,6 +330,16 @@ static void audio_engine_task(void *arg)
                 break;
             }
             size_t produced = produce_audio_chunk(chunk_buf, AUDIO_ENGINE_CHUNK_BYTES);
+
+            /* Live real-time I2S source: produced==0 just means the DMA is
+             * mid-accumulation (it delivers at exactly real-time rate).
+             * Stuffing silence here interleaved ~60% zeros into the stream
+             * (measured via laptop A2DP capture — harsh chop). Stop producing
+             * this wake instead; the real data arrives in time. */
+            if (produced == 0 && get_active_source() == AUDIO_SOURCE_I2S &&
+                i2s_manager_is_running()) {
+                break;
+            }
 
             /* Silence fallback: I2S source returns 0 on timeout (no audio input).
              * Fill with silence so the ring stays fed and the A2DP callback
@@ -712,10 +732,14 @@ esp_err_t audio_processor_init(const audio_config_t* config)
 esp_err_t audio_processor_start(void)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
+    /* DBG-I2SCAP: trace the start path while diagnosing I2S capture. */
+    ESP_LOGW(TAG, "DBG-I2SCAP audio_processor_start: initialized=%d running=%d force_synth=%d",
+             (int)s_is_initialized, (int)s_is_running, (int)s_force_synth);
     if (!s_is_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
     if (s_is_running) {
+        ESP_LOGW(TAG, "DBG-I2SCAP audio_processor_start: EARLY RETURN (already running) -> i2s NOT (re)started");
         return ESP_OK;
     }
 
@@ -740,6 +764,8 @@ esp_err_t audio_processor_start(void)
          * 3. EARLY FAILURE DETECTION: Hardware issues found at startup
          * 4. POWER COST NEGLIGIBLE: ~1-2mA for dev/bench device */
         esp_err_t ret = i2s_manager_start();
+        ESP_LOGW(TAG, "DBG-I2SCAP audio_processor_start: i2s_manager_start() -> %d (running now=%d)",
+                 (int)ret, (int)i2s_manager_is_running());
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
             return ret;

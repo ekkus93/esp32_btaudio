@@ -270,6 +270,15 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "I2S_CONFIG") == 0) {
         ctx->type = CMD_TYPE_I2S_CONFIG;
     }
+    else if (strcasecmp(token, "I2S_PROBE") == 0) {
+        ctx->type = CMD_TYPE_I2S_PROBE;
+    }
+    else if (strcasecmp(token, "I2S_RXTEST") == 0) {
+        ctx->type = CMD_TYPE_I2S_RXTEST;
+    }
+    else if (strcasecmp(token, "I2S_CLKGEN") == 0) {
+        ctx->type = CMD_TYPE_I2S_CLKGEN;
+    }
     else if (strcasecmp(token, "BEEP") == 0) {
         ctx->type = CMD_TYPE_BEEP;
     }
@@ -503,6 +512,12 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_volume(ctx);
     case CMD_TYPE_I2S_CONFIG:
         return cmd_handle_i2s_config(ctx);
+    case CMD_TYPE_I2S_PROBE:
+        return cmd_handle_i2s_probe(ctx);
+    case CMD_TYPE_I2S_RXTEST:
+        return cmd_handle_i2s_rxtest(ctx);
+    case CMD_TYPE_I2S_CLKGEN:
+        return cmd_handle_i2s_clkgen(ctx);
     case CMD_TYPE_AUDIO_AUTOSTART:
         return cmd_handle_audio_autostart(ctx);
     case CMD_TYPE_LAST_MAC:

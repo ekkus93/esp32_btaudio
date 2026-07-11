@@ -45,6 +45,22 @@ bool i2s_manager_is_running(void);
  */
 size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes);
 
+/**
+ * DBG-I2SCAP diagnostic: force-enable the RX channel (if not already) and
+ * perform ONE blocking i2s_channel_read with the given timeout, to tell a
+ * starving short-timeout read apart from a peripheral that never samples.
+ * Restores the prior enable state. Returns the esp_err_t from the read
+ * (ESP_ERR_INVALID_STATE if I2S is not configured).
+ *
+ * @param timeout_ms   blocking read timeout in milliseconds
+ * @param out_bytes    [out] bytes actually read (may be NULL)
+ * @param sample       [out] first bytes of captured data (may be NULL)
+ * @param sample_cap   capacity of @p sample
+ * @param out_sample   [out] bytes copied into @p sample (may be NULL)
+ */
+esp_err_t i2s_manager_rxtest(uint32_t timeout_ms, size_t *out_bytes,
+                             uint8_t *sample, size_t sample_cap, size_t *out_sample);
+
 #ifdef CONFIG_BT_MOCK_TESTING
 /* Test helper to inject mock frames without real I2S. */
 esp_err_t i2s_manager_mock_push(const uint8_t *data,

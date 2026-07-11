@@ -24,8 +24,11 @@ extern "C" {
 #define I2S_OUT_SAMPLE_RATE_HZ   44100
 #define I2S_OUT_BITS_PER_SAMPLE  16
 #define I2S_OUT_CHANNELS         2
-#define I2S_OUT_GPIO_BCLK        5
-#define I2S_OUT_GPIO_WS          6
+/* DBG pin test: the slave provably syncs with its clock arriving on 15/16
+ * (on-chip loopback) and never on 5/6 — feed the WROOM32's clock into the
+ * proven pins to separate "bad pins" from "bad clock". */
+#define I2S_OUT_GPIO_BCLK        15
+#define I2S_OUT_GPIO_WS          16
 #define I2S_OUT_GPIO_DOUT        7
 
 typedef struct {

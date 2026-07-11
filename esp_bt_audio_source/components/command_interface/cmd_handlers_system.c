@@ -3,6 +3,15 @@
 #include "audio_span_log.h"
 #include "platform_memory.h"
 #include <inttypes.h>
+#include <stdlib.h>
+#include "i2s_manager.h"
+#ifdef ESP_PLATFORM
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 /* CODE_REVIEW5 Task 3.1: Need bt_get_streaming_info() but skip duplicate bt_device_t */
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
 #include "bt_source.h"
@@ -55,6 +64,9 @@ static const struct
     {"SPANLOG", "[N]", "Dump last N span log entries (default 10, max 100)"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
     {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN [RATE] [BIT_DEPTH] [CHANNELS]", "Configure I2S pins and format"},
+    {"I2S_PROBE", "[BCLK_GPIO] [WS_GPIO]", "Count clock edges on I2S input pads (diag; disrupts I2S until reboot)"},
+    {"I2S_RXTEST", "[TIMEOUT_MS]", "One blocking I2S slave read; reports ret/bytes/sample (diag)"},
+    {"I2S_CLKGEN", "[MS]", "Bit-bang a square wave on GPIO26/25 to test the clock wires (diag; needs reboot)"},
     {"MEM", NULL, "Show free memory (DRAM/INTERNAL/8BIT/PSRAM)"},
     {"RESET", NULL, "Reboot the device"},
 #ifdef ESP_PLATFORM
@@ -236,6 +248,157 @@ cmd_status_t cmd_handle_mem(const cmd_context_t *ctx)
     cmd_send_response("OK", "MEM", "MOCK", "DRAM=0,INTERNAL=0,8BIT=0,PSRAM=0");
 #endif
     return CMD_SUCCESS;
+}
+
+#ifdef ESP_PLATFORM
+/* DBG-I2SCAP: sample an I2S input pad directly to decide whether the S3's
+ * bit-clock physically reaches the WROOM32. gpio_get_level() reads the pad
+ * input register, so this works whether or not the I2S peripheral owns the
+ * pin. We first detach the pin to a fresh pulled-down input: a push-pull
+ * driver (the S3) overpowers the ~45k pulldown and shows thousands of
+ * transitions; a floating/disconnected pad is held at 0 and shows none.
+ * This is destructive to I2S capture until the next reboot. */
+static void i2s_probe_one_pin(int gpio, unsigned *out_highs,
+                              unsigned *out_lows, unsigned *out_trans)
+{
+	const unsigned N = 200000U;
+	gpio_num_t pin = (gpio_num_t)gpio;
+	gpio_reset_pin(pin);
+	gpio_set_direction(pin, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(pin, GPIO_PULLDOWN_ONLY);
+	for (volatile int s = 0; s < 2000; s++) { /* let the pull settle */ }
+
+	unsigned highs = 0, lows = 0, trans = 0;
+	int prev = gpio_get_level(pin);
+	for (unsigned i = 0; i < N; i++) {
+		int lvl = gpio_get_level(pin);
+		if (lvl) { highs++; } else { lows++; }
+		if (lvl != prev) { trans++; prev = lvl; }
+	}
+	*out_highs = highs;
+	*out_lows = lows;
+	*out_trans = trans;
+}
+#endif
+
+cmd_status_t cmd_handle_i2s_probe(const cmd_context_t *ctx)
+{
+#ifdef ESP_PLATFORM
+	int bclk = 18; /* WROOM32 master BCLK output (moved off DAC pin 26) */
+	int ws = 19;   /* WROOM32 master WS output (moved off DAC pin 25) */
+	if (ctx->param_count >= 1 && ctx->params[0][0] != '\0') {
+		bclk = atoi(ctx->params[0]);
+	}
+	if (ctx->param_count >= 2 && ctx->params[1][0] != '\0') {
+		ws = atoi(ctx->params[1]);
+	}
+
+	unsigned bh = 0, bl = 0, bt = 0, wh = 0, wl = 0, wt = 0;
+	i2s_probe_one_pin(bclk, &bh, &bl, &bt);
+	i2s_probe_one_pin(ws, &wh, &wl, &wt);
+
+	char data[192];
+	snprintf(data, sizeof(data),
+	         "bclk_gpio=%d,highs=%u,lows=%u,trans=%u|ws_gpio=%d,highs=%u,lows=%u,trans=%u",
+	         bclk, bh, bl, bt, ws, wh, wl, wt);
+	cmd_send_response("EVENT", "I2SPROBE", "RESULT", data);
+#else
+	(void)ctx;
+	cmd_send_response("OK", "I2SPROBE", "MOCK",
+	                  "bclk_gpio=26,highs=0,lows=0,trans=0|ws_gpio=25,highs=0,lows=0,trans=0");
+#endif
+	return CMD_SUCCESS;
+}
+
+cmd_status_t cmd_handle_i2s_rxtest(const cmd_context_t *ctx)
+{
+#ifdef ESP_PLATFORM
+	uint32_t timeout_ms = 500;
+	if (ctx->param_count >= 1 && ctx->params[0][0] != '\0') {
+		int v = atoi(ctx->params[0]);
+		if (v > 0) {
+			timeout_ms = (uint32_t)v;
+		}
+	}
+
+	uint8_t sample[16] = {0};
+	size_t read_bytes = 0, sample_n = 0;
+	esp_err_t ret = i2s_manager_rxtest(timeout_ms, &read_bytes,
+	                                   sample, sizeof(sample), &sample_n);
+
+	char sbuf[48];
+	if (sample_n == 0) {
+		snprintf(sbuf, sizeof(sbuf), "none");
+	} else {
+		int p = 0;
+		for (size_t i = 0; i < sample_n && p < (int)sizeof(sbuf) - 3; i++) {
+			p += snprintf(sbuf + p, sizeof(sbuf) - (size_t)p, "%02X", sample[i]);
+		}
+	}
+
+	char data[160];
+	snprintf(data, sizeof(data), "ret=%d,read_bytes=%u,timeout_ms=%u,sample=%s",
+	         (int)ret, (unsigned)read_bytes, (unsigned)timeout_ms, sbuf);
+	cmd_send_response("EVENT", "I2SRXTEST", "RESULT", data);
+#else
+	(void)ctx;
+	cmd_send_response("OK", "I2SRXTEST", "MOCK", "ret=0,read_bytes=0,sample=none");
+#endif
+	return CMD_SUCCESS;
+}
+
+cmd_status_t cmd_handle_i2s_clkgen(const cmd_context_t *ctx)
+{
+#ifdef ESP_PLATFORM
+	uint32_t ms = 4000;
+	if (ctx->param_count >= 1 && ctx->params[0][0] != '\0') {
+		int v = atoi(ctx->params[0]);
+		if (v > 0) {
+			ms = (uint32_t)v;
+		}
+	}
+
+	/* Detach the two clock pins from I2S and drive them as plain GPIO. BCLK
+	 * (26) toggles every ~50us (~10kHz), WS (25) at half that. This bypasses
+	 * the I2S peripheral entirely: if the S3's pad-check transition counts
+	 * change during this burst, the wires are good and the fault is the I2S
+	 * master clock output; if they stay at the ~15k noise floor, it's the
+	 * physical clock wiring. Destroys I2S until reboot. */
+	const gpio_num_t bclk = GPIO_NUM_18;
+	const gpio_num_t ws = GPIO_NUM_19;
+	gpio_reset_pin(bclk);
+	gpio_reset_pin(ws);
+	gpio_set_direction(bclk, GPIO_MODE_OUTPUT);
+	gpio_set_direction(ws, GPIO_MODE_OUTPUT);
+
+	int64_t end_us = esp_timer_get_time() + (int64_t)ms * 1000;
+	uint32_t i = 0;
+	int bl = 0, wl = 0;
+	while (esp_timer_get_time() < end_us) {
+		bl ^= 1;
+		gpio_set_level(bclk, bl);
+		if ((i & 1u) == 0u) {
+			wl ^= 1;
+			gpio_set_level(ws, wl);
+		}
+		esp_rom_delay_us(50);
+		/* Yield every ~20ms of toggling so the idle task / WDT stay happy. */
+		if ((++i % 400u) == 0u) {
+			vTaskDelay(1);
+		}
+	}
+	gpio_set_level(bclk, 0);
+	gpio_set_level(ws, 0);
+
+	char data[64];
+	snprintf(data, sizeof(data), "bclk_gpio=26,ws_gpio=25,ms=%u,toggles=%u",
+	         (unsigned)ms, (unsigned)i);
+	cmd_send_response("EVENT", "I2SCLKGEN", "DONE", data);
+#else
+	(void)ctx;
+	cmd_send_response("OK", "I2SCLKGEN", "MOCK", "bclk_gpio=26,ws_gpio=25,ms=0");
+#endif
+	return CMD_SUCCESS;
 }
 
 cmd_status_t cmd_handle_audio_status(const cmd_context_t *ctx)

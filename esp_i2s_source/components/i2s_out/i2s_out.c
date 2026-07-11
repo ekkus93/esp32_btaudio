@@ -1,12 +1,20 @@
 /*
- * i2s_out (device glue) — I2S std master-TX channel + writer task (SIG-1b).
+ * i2s_out (device glue) — I2S std SLAVE-TX channel + writer task (SIG-1b).
  * Built on the pure i2s_out_pump_once(); verified on hardware at SIG-1c.
  *
- * SPEC §3.3 interop contract (MUST match the WROOM32 slave-RX exactly):
+ * ROLE FLIP (2026-07-11): the S3 is the I2S *slave* transmitter and the
+ * WROOM32 is the *master* receiver. The ESP32-classic (WROOM32) has a silicon
+ * limitation that makes its I2S slave-RX never latch a present clock, so the
+ * roles are inverted: the WROOM32 (reliable as master) generates BCLK+WS, and
+ * the S3 (HW-v2, solid slave support) shifts data out synced to that clock.
+ * Same 4 wires as before — only the BCLK/WS drive direction reverses.
+ *
+ * SPEC §3.3 interop contract (MUST match the WROOM32 master-RX exactly):
  *   Philips, data width 16-bit, SLOT width 32-bit, stereo, 44.1 kHz, MCLK
  *   unused. The 16-in-32 slot width is the subtle one — the WROOM32 uses
- *   ws_width 32, so the S3 master must pad 16-bit samples into 32-bit slots
- *   or the audio garbles.
+ *   ws_width 32, so both sides must pad 16-bit samples into 32-bit slots or
+ *   the audio garbles. As a slave, the S3 follows the WROOM32's BCLK/WS; the
+ *   sample rate below only sets the internal clock divider.
  */
 #include "i2s_out.h"
 
@@ -60,8 +68,9 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
     if (!s_ring) return ESP_ERR_NO_MEM;
     memset(&s_stats, 0, sizeof(s_stats));
 
+    /* SLAVE: the WROOM32 master drives BCLK/WS; the S3 clocks data out on them. */
     i2s_chan_config_t chan_cfg =
-        I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+        I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_SLAVE);
     esp_err_t err = i2s_new_channel(&chan_cfg, &s_tx_chan, NULL);  /* TX only */
     if (err != ESP_OK) {
         pcm_ring_destroy(s_ring);
@@ -71,8 +80,12 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
 
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_OUT_SAMPLE_RATE_HZ),
+        /* DBG 32-in-32 experiment: slave-TX with 16-bit data in 32-bit slots
+         * never shifts (FIFO half-width expansion suspect). Send full 32-bit
+         * samples instead — tone in the TOP 16 bits — which the WROOM32's
+         * 16-in-32 MSB-first extraction reads identically. Same BCLK. */
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-                        I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+                        I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = I2S_OUT_GPIO_BCLK,
@@ -83,15 +96,21 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
         },
     };
     /* SPEC §3.3: 16-bit data padded into 32-bit slots to match the WROOM32
-     * slave EXACTLY. The WROOM32 (i2s_manager.c) sets slot_bit_width=32,
+     * master EXACTLY. The WROOM32 (i2s_manager.c) sets slot_bit_width=32,
      * ws_width=32, ws_pol=false, bit_shift=true. The Philips default macro
      * leaves ws_width = data_bit_width (16), so WS would toggle every 16 BCLK
-     * while the slave expects every 32 → framing never aligns and the slave
-     * latches nothing (I2S_BYTES=0). Set ws_width=32 to match. */
+     * while the master drives every 32 → framing never aligns and the audio
+     * garbles. Set ws_width=32 to match. (Slot framing must agree regardless
+     * of which side is master.) */
     std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
     std_cfg.slot_cfg.ws_width = 32;
     std_cfg.slot_cfg.ws_pol = false;
     std_cfg.slot_cfg.bit_shift = true;
+    /* SLAVE clocking margin: the slave samples the external BCLK with its
+     * internal clock, which must be >= 8x BCLK (esp-idf #9513). The default
+     * bclk_div=8 puts us exactly AT the minimum through a fractional divider;
+     * use 16 for real margin (internal clk ~45 MHz vs 2.82 MHz BCLK). */
+    std_cfg.clk_cfg.bclk_div = 16;
 
     err = i2s_channel_init_std_mode(s_tx_chan, &std_cfg);
     if (err != ESP_OK) {
@@ -102,7 +121,7 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
         return err;
     }
 
-    ESP_LOGI(TAG, "init: 44.1kHz 16in32 stereo, bclk=%d ws=%d dout=%d, ring=%u B",
+    ESP_LOGI(TAG, "init: SLAVE-TX 44.1kHz 16in32 stereo, bclk=%d ws=%d dout=%d, ring=%u B",
              I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT,
              (unsigned)ring_capacity_bytes);
     return ESP_OK;

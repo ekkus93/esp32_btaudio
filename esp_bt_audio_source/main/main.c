@@ -136,11 +136,22 @@ static audio_config_t load_audio_boot_config(void)
         .channels = AUDIO_CHANNEL_STEREO,
         .volume = CONFIG_AUDIO_DEFAULT_VOLUME,
         .mute = false,
-        .i2s_port = I2S_NUM_0,
+        /* I2S1, not I2S0: on ESP32-classic, I2S0 is the multi-mode controller
+         * (DAC/ADC/LCD/camera/PDM) and is the suspect in the master clock
+         * never reaching the output pads (every clock-output test failed on
+         * I2S0 while the internal clock ran). I2S1 is the plain audio-only
+         * controller. */
+        .i2s_port = I2S_NUM_1,
         /* Fallback pin assignments match internal defaults in audio_processor.c
          * to ensure consistent behavior across boot paths */
-        .i2s_bclk_pin = GPIO_NUM_26,
-        .i2s_ws_pin = GPIO_NUM_25,
+        /* BCLK/WS moved off the DAC pins (GPIO25/26) to GPIO18/19: as I2S
+         * master the WROOM32 must OUTPUT the clock, and GPIO25/26 (DAC) did
+         * not route the I2S peripheral clock out (verified — pads stayed at the
+         * noise floor while the internal clock ran). GPIO18/19 are plain
+         * output-capable GPIOs. DIN stays GPIO22. Rewire the two clock jumpers
+         * on the WROOM32 side accordingly. */
+        .i2s_bclk_pin = GPIO_NUM_18,
+        .i2s_ws_pin = GPIO_NUM_19,
         .i2s_din_pin = GPIO_NUM_22,
         .i2s_dout_pin = GPIO_NUM_NC,
     };
