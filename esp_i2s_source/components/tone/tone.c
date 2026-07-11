@@ -15,7 +15,7 @@ static const char *TAG = "tone";
 #define TONE_FRAMES     256   /* 256 stereo frames = 1024 B per fill */
 #define TONE_AMPLITUDE  0.30  /* modest level, comfortable in earbuds */
 
-static _Atomic bool s_on = true;                 /* default on (SIG-1c parity) */
+static _Atomic bool s_on = false;                /* default off; enable via /api/tone */
 static _Atomic int  s_hz = TONE_HZ_DEFAULT;
 
 static void tone_task(void *arg)
