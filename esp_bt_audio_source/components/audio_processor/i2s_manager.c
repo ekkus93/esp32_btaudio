@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "i2s_frame_extract.h"
 #include "util_safe.h"
 
 #include "freertos/FreeRTOS.h"
@@ -32,30 +33,19 @@
 #include "driver/i2s_std.h"
 #endif
 
-/* I2S read timeout (CODE_REVIEW 2602101453, A1)
- * 
- * TIMING RELATIONSHIP: Must be < AUDIO_ENGINE_TICK_MS (defined in audio_processor_internal.h)
- *                      to leave headroom for format conversion and resampling overhead.
- * 
- * CURRENT VALUES: I2S timeout = 1ms, Engine tick = 2ms → 1ms processing headroom
- * 
- * WHY SEPARATE: Defined here to avoid circular include (audio_processor_internal.h
- *               includes this file's header). Value must stay synchronized manually.
- * 
- * ON CHANGE: If AUDIO_ENGINE_TICK_MS changes, update this value to maintain
- *            relationship: I2S_READ_TIMEOUT_MS = AUDIO_ENGINE_TICK_MS - 1
- * 
- * BEHAVIOR: Quick timeout ensures non-blocking returns from i2s_channel_read().
- *           Audio engine proceeds with silence chunk if I2S source is slow/disconnected,
- *           maintaining real-time pipeline responsiveness.
- */
-/* DBG-I2SCAP: raised 1 -> 8ms. The I2S capture source produces at exactly
- * 176.4 kB/s (real-time), but the engine tick demands chunks at ~512 kB/s —
- * with a 1ms timeout most fills came back short and the engine padded ~2/3
- * of the stream with silence (heard as harsh chop). Letting the read block
- * until a full chunk of raw data is available paces production to the
- * source's real-time rate; the 32KB output ring (185ms) absorbs the slower
- * tick cadence. */
+/* I2S read timeout (CODE_REVIEW 2602101453, A1; retuned 2026-07-11)
+ *
+ * 8ms deliberately EXCEEDS AUDIO_ENGINE_TICK_MS: the I2S capture source
+ * produces at exactly real-time (176.4 kB/s), so a sub-tick timeout made
+ * most fills return short and the engine padded ~2/3 of the stream with
+ * silence (heard as harsh chop). Blocking until a full raw chunk is
+ * available paces chunk production to the source's real-time rate; the
+ * 32KB output ring (~185ms) absorbs the slower tick cadence, and the
+ * engine additionally skips silence-stuffing while a live I2S source is
+ * mid-accumulation (see audio_engine_task).
+ *
+ * WHY SEPARATE: defined here to avoid a circular include
+ * (audio_processor_internal.h includes this file's header). */
 #define I2S_READ_TIMEOUT_MS  8
 
 static const char *TAG = "i2s_manager";
@@ -85,9 +75,10 @@ typedef struct {
 } i2s_manager_state_t;
 
 static i2s_manager_state_t s_mgr = {0};
-/* DBG-I2SCAP: which 16-bit half-stream carries the payload this session
- * (-1 = not yet detected; re-detected after each channel (re)enable). */
-static int s_payload_phase = -1;
+/* Which half-offsets carry the I2S link payload this session (see
+ * i2s_frame_extract.h). I2S_FRAME_PHASE_NONE until first detection;
+ * reset on every channel (re)enable — the phase shifts across enables. */
+static int s_payload_phase = I2S_FRAME_PHASE_NONE;
 
 #if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 static esp_err_t configure_i2s(const audio_config_t *cfg)
@@ -123,9 +114,9 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 		.auto_clear = true,
 	};
 
-	/* DBG-I2SCAP: log the ACTUAL port/pins used (main.c defaults can be
-	 * overridden from NVS — rule out stale saved pins fighting the tests). */
-	ESP_LOGW(TAG, "DBG-I2SCAP configure_i2s: port=%d role=MASTER bclk=%d ws=%d din=%d dout=%d",
+	/* Log the ACTUAL port/pins used: main.c defaults can be silently
+	 * overridden from NVS, which cost a day of bring-up — keep this visible. */
+	ESP_LOGI(TAG, "configure_i2s: port=%d role=MASTER bclk=%d ws=%d din=%d dout=%d",
 	         (int)cfg->i2s_port, cfg->i2s_bclk_pin, cfg->i2s_ws_pin,
 	         cfg->i2s_din_pin, cfg->i2s_dout_pin);
 
@@ -317,14 +308,7 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 	                                  read_bytes_limit,
 	                                  &read_bytes,
 	                                  I2S_READ_TIMEOUT_MS);
-	
-	{
-		static unsigned s_dbg_isf = 0;
-		if ((s_dbg_isf++ & 0xFFU) == 0U) {
-			ESP_LOGW(TAG, "DBG-I2SCAP i2s_read ret=%d read_bytes=%u limit=%u",
-			         (int)ret, (unsigned)read_bytes, (unsigned)read_bytes_limit);
-		}
-	}
+	(void)ret;
 
 	/* A short timeout with a PARTIAL read still carries valid samples — the
 	 * driver hands back what the DMA had (ret=ESP_ERR_TIMEOUT, read_bytes>0).
@@ -335,114 +319,44 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 		return 0;  /* No data available */
 	}
 
-	/* 32-bit capture from the S3 slave: the link contract puts 16 significant
-	 * bits + 16 zero-pad bits in each 32-bit slot, but the classic's capture
-	 * phase shifts by 16 bits per enable session (HW v1 <-> v2 pairing quirk).
-	 * Viewed as a flat stream of 16-bit halves, the payload always occupies a
-	 * stride-2 sub-stream at EVEN or ODD parity — detect the live parity once
-	 * per session (the padding halves are all zero by contract) and extract
-	 * the payload halves directly to s16. */
-	size_t conv_in_bytes = read_bytes;
-	audio_bit_depth_t conv_depth = s_mgr.cfg.bit_depth;
+	/* 32-bit capture from the S3 slave (SPEC §3.3): each 32-bit slot carries
+	 * 16 significant bits + 16 zero-pad bits, and the classic's capture
+	 * lands the two payload halves of each frame at a phase that shifts per
+	 * enable session (HW v1 <-> v2 pairing quirk). Detect the phase PER
+	 * BLOCK (a one-time latch can lock onto the enable transient) and
+	 * extract straight to s16 — host-tested in test_i2s_frame_extract.c. */
 	if (s_mgr.cfg.bit_depth == AUDIO_BIT_DEPTH_32) {
-		/* One stereo frame = 2x 32-bit words = 4x 16-bit halves. The link
-		 * contract fills exactly TWO of the four halves with the L/R payload
-		 * (the other two are zero pad), but WHICH two shifts per enable
-		 * session (observed: {1,3}, {2,3}, ...). Detect the two energetic
-		 * offsets once per session, emit them in wire order (word first,
-		 * high half before low within a word — MSB is on the wire first). */
 		uint16_t *h = (uint16_t *)s_mgr.bufs.raw_buf;
 		size_t nh = read_bytes / sizeof(uint16_t);
-		size_t nframes = nh / 4;
-		{
-			/* DBG-I2SCAP: aligned raw words, straight from DMA. */
-			static unsigned s_dbg_raw = 0;
-			if ((s_dbg_raw++ & 0xFFU) == 0U && read_bytes >= 16) {
-				const uint32_t *rw = (const uint32_t *)s_mgr.bufs.raw_buf;
-				ESP_LOGW(TAG, "DBG-I2SCAP raw words: %08x %08x %08x %08x",
-				         (unsigned)rw[0], (unsigned)rw[1],
-				         (unsigned)rw[2], (unsigned)rw[3]);
-			}
+		int phase = i2s_frame_extract_detect(h, nh);
+		if (phase == I2S_FRAME_PHASE_NONE) {
+			phase = s_payload_phase;  /* silent block: reuse session phase */
+		} else if (phase != s_payload_phase) {
+			ESP_LOGI(TAG, "i2s payload phase: %d,%d",
+			         (phase >> 4) & 0xF, phase & 0xF);
+			s_payload_phase = phase;
 		}
-		/* Detect PER BLOCK (no latch): a one-time latch at engine start can
-		 * lock onto the enable transient and stay wrong forever. Detection
-		 * over this block's frames is ~1k adds — negligible — and the phase
-		 * is constant within a session, so per-block answers are stable. */
-		if (nframes >= 16) {
-			uint32_t e[4] = {0, 0, 0, 0};
-			size_t scan = (nframes < 256) ? nframes : 256;
-			for (size_t f = 0; f < scan; f++) {
-				for (int o = 0; o < 4; o++) {
-					int16_t v = (int16_t)h[4 * f + o];
-					e[o] += (uint32_t)(v < 0 ? -v : v);
-				}
-			}
-			int a = 0;
-			for (int o = 1; o < 4; o++) { if (e[o] > e[a]) a = o; }
-			int b = (a == 0) ? 1 : 0;
-			for (int o = 0; o < 4; o++) { if (o != a && e[o] > e[b]) b = o; }
-			if (e[a] > 0) {
-				/* temporal order: by word, high half (LE odd) before low */
-				int ka = (a >> 1) * 2 + ((a & 1) ? 0 : 1);
-				int kb = (b >> 1) * 2 + ((b & 1) ? 0 : 1);
-				int first = (ka < kb) ? a : b;
-				int second = (ka < kb) ? b : a;
-				int phase = (first << 4) | second;
-				if (phase != s_payload_phase) {
-					ESP_LOGW(TAG, "DBG-I2SCAP payload halves: %d,%d (e=%u,%u,%u,%u)",
-					         first, second,
-					         (unsigned)e[0], (unsigned)e[1], (unsigned)e[2], (unsigned)e[3]);
-					s_payload_phase = phase;
-				}
-			}
+		if (phase < 0) {
+			return 0;  /* phase never seen — deliver silence, not garbage */
 		}
-		if (s_payload_phase >= 0) {
-			int offL = (s_payload_phase >> 4) & 0xF;
-			int offR = s_payload_phase & 0xF;
-			int16_t *out16 = (int16_t *)s_mgr.bufs.raw_buf;
-			for (size_t f = 0; f < nframes; f++) {  /* in-place: reads ahead */
-				out16[2 * f] = (int16_t)h[4 * f + offL];
-				out16[2 * f + 1] = (int16_t)h[4 * f + offR];
-			}
-			conv_in_bytes = nframes * 2 * sizeof(int16_t);
-			conv_depth = AUDIO_BIT_DEPTH_16;
-			/* Extracted data is ALREADY s16 stereo at the pad's 44.1kHz —
-			 * exactly the engine format. Copy directly; the generic
-			 * convert/resample path is bypassed (suspected of interleaving
-			 * zeros on this 16-bit input; also pure overhead here). */
-			size_t n = (conv_in_bytes < dst_bytes) ? conv_in_bytes : dst_bytes;
-			util_safe_memcpy(dst, dst_bytes, s_mgr.bufs.raw_buf, n);
-			{
-				static unsigned s_dbg_dst2 = 0;
-				if ((s_dbg_dst2++ & 0x3FU) == 0U && n >= 8) {
-					const int16_t *s = (const int16_t *)dst;
-					ESP_LOGW(TAG, "DBG-I2SCAP direct out=%u dst16=[%d,%d,%d,%d]",
-					         (unsigned)n, (int)s[0], (int)s[1], (int)s[2], (int)s[3]);
-				}
-			}
-			return n;
-		} else {
-			return 0;  /* phase unknown yet — deliver silence, not garbage */
-		}
+		/* In-place extraction is safe (the extractor reads each frame's
+		 * halves before writing). Output is s16 stereo at the link rate —
+		 * already the engine format, so copy directly; the generic
+		 * convert/resample stages would be identity here (host-verified). */
+		size_t nsamp = i2s_frame_extract(h, nh, phase,
+		                                 (int16_t *)s_mgr.bufs.raw_buf);
+		size_t nbytes = nsamp * sizeof(int16_t);
+		size_t n = (nbytes < dst_bytes) ? nbytes : dst_bytes;
+		util_safe_memcpy(dst, dst_bytes, s_mgr.bufs.raw_buf, n);
+		return n;
 	}
 
-	size_t out = convert_and_resample_to_dst(s_mgr.bufs.raw_buf,
-	                                         conv_in_bytes,
-	                                         conv_depth,
-	                                         s_mgr.cfg.sample_rate,
-	                                         dst,
-	                                         dst_bytes);
-	{
-		/* DBG-I2SCAP: dump what the engine actually receives. */
-		static unsigned s_dbg_dst = 0;
-		if ((s_dbg_dst++ & 0x3FU) == 0U && out >= 8) {
-			const int16_t *s = (const int16_t *)dst;
-			ESP_LOGW(TAG, "DBG-I2SCAP fill raw=%u out=%u dst16=[%d,%d,%d,%d]",
-			         (unsigned)read_bytes, (unsigned)out,
-			         (int)s[0], (int)s[1], (int)s[2], (int)s[3]);
-		}
-	}
-	return out;
+	return convert_and_resample_to_dst(s_mgr.bufs.raw_buf,
+	                                   read_bytes,
+	                                   s_mgr.cfg.bit_depth,
+	                                   s_mgr.cfg.sample_rate,
+	                                   dst,
+	                                   dst_bytes);
 #else
 	/* Non-ESP platform (host tests) - return silence */
 	(void)dst_bytes;
@@ -467,7 +381,7 @@ esp_err_t i2s_manager_rxtest(uint32_t timeout_ms, size_t *out_bytes,
 	if (!was_enabled) {
 		esp_err_t en = i2s_channel_enable(s_mgr.i2s_rx);
 		if (en != ESP_OK) {
-			ESP_LOGE(TAG, "DBG-I2SCAP rxtest: rx enable failed %d", (int)en);
+			ESP_LOGE(TAG, "rxtest: rx enable failed %d", (int)en);
 			return en;
 		}
 		s_mgr.i2s_enabled = true;
@@ -512,8 +426,6 @@ esp_err_t i2s_manager_rxtest(uint32_t timeout_ms, size_t *out_bytes,
 		s_mgr.i2s_enabled = false;
 	}
 
-	ESP_LOGW(TAG, "DBG-I2SCAP rxtest: ret=%d read_bytes=%u timeout=%ums",
-	         (int)ret, (unsigned)read_bytes, (unsigned)timeout_ms);
 	return ret;
 #else
 	(void)timeout_ms; (void)sample; (void)sample_cap;
@@ -584,9 +496,6 @@ void i2s_manager_deinit(void)
 
 esp_err_t i2s_manager_start(void)
 {
-	/* DBG-I2SCAP: trace start attempts while diagnosing I2S capture. */
-	ESP_LOGW(TAG, "DBG-I2SCAP i2s_manager_start: initialized=%d running=%d rx=%p",
-	         (int)s_mgr.initialized, (int)s_mgr.running, (void *)s_mgr.i2s_rx);
 	if (!s_mgr.initialized) {
 		return ESP_ERR_INVALID_STATE;
 	}
@@ -601,15 +510,13 @@ esp_err_t i2s_manager_start(void)
 	}
 #endif
 
-	s_payload_phase = -1;  /* capture phase shifts per enable — re-detect */
+	s_payload_phase = I2S_FRAME_PHASE_NONE;  /* phase shifts per enable — re-detect */
 	s_mgr.running = true;
 	return ESP_OK;
 }
 
 esp_err_t i2s_manager_stop(void)
 {
-	ESP_LOGW(TAG, "DBG-I2SCAP i2s_manager_stop: initialized=%d running=%d",
-	         (int)s_mgr.initialized, (int)s_mgr.running);
 	if (!s_mgr.initialized) {
 		return ESP_ERR_INVALID_STATE;
 	}

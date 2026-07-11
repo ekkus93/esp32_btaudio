@@ -291,6 +291,137 @@ void test_resample_zero_src_size_should_succeed_with_nothing(void) {
     TEST_ASSERT_EQUAL(0, dst_size);
 }
 
+/* I2S-link regression probes (2026-07-11 bring-up): the capture path feeds
+ * extracted s16 44.1kHz stereo through convert(16->16) + resample(equal
+ * rates). During bring-up this stage was suspected of mangling the stream
+ * (one channel zeroed); these identity tests pin the actual behavior. */
+
+void test_convert_16_to_16_stereo_is_identity(void)
+{
+    int16_t src[64];
+    int16_t dst[64];
+    size_t dst_size = 0;
+    for (int i = 0; i < 64; i++) {
+        src[i] = (int16_t)(101 * i - 3000);  /* sign-mixed ramp */
+    }
+    memset(dst, 0x5A, sizeof(dst));
+
+    audio_convert_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&args));
+    TEST_ASSERT_EQUAL(sizeof(src), dst_size);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(src, dst, 64);
+}
+
+void test_resample_equal_rates_stereo_is_identity(void)
+{
+    int16_t src[64];  /* 32 stereo frames, L != R */
+    int16_t dst[64];
+    size_t dst_size = 0;
+    for (int f = 0; f < 32; f++) {
+        src[2 * f] = (int16_t)(100 * f - 1000);
+        src[2 * f + 1] = (int16_t)(-200 * f + 500);
+    }
+    memset(dst, 0x5A, sizeof(dst));
+
+    audio_resample_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_rate = AUDIO_SAMPLE_RATE_44K,
+        .dst_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, resample_audio(&args));
+    TEST_ASSERT_EQUAL(sizeof(src), dst_size);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(src, dst, 64);
+}
+
+void test_convert_then_resample_chain_is_identity(void)
+{
+    /* The exact shape the I2S fill used pre-bypass: s16 stereo through both
+     * stages back-to-back. */
+    int16_t src[64];
+    int16_t mid[64];
+    int16_t dst[64];
+    size_t mid_size = 0;
+    size_t dst_size = 0;
+    for (int f = 0; f < 32; f++) {
+        src[2 * f] = (int16_t)(100 * f - 1000);
+        src[2 * f + 1] = (int16_t)(-200 * f + 500);
+    }
+
+    audio_convert_args_t cargs = {
+        .src = src,
+        .dst = mid,
+        .src_size = sizeof(src),
+        .src_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_size = &mid_size,
+        .work_bytes = sizeof(mid),
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&cargs));
+
+    audio_resample_args_t rargs = {
+        .src = mid,
+        .dst = dst,
+        .src_size = mid_size,
+        .src_rate = AUDIO_SAMPLE_RATE_44K,
+        .dst_rate = AUDIO_SAMPLE_RATE_44K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, resample_audio(&rargs));
+    TEST_ASSERT_EQUAL(sizeof(src), dst_size);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(src, dst, 64);
+}
+
+/* --- audio_engine_hold_for_live_i2s: the anti-silence-stuffing policy that
+ * killed the ~60% zero interleave (harsh chop) on the live I2S path. --- */
+
+void test_hold_true_only_for_empty_live_i2s(void)
+{
+    /* The one case that must hold: I2S source, running, produced nothing. */
+    TEST_ASSERT_TRUE(audio_engine_hold_for_live_i2s(0, true, true));
+}
+
+void test_hold_false_when_bytes_produced(void)
+{
+    /* Real data this tick — never hold, even for a running I2S source. */
+    TEST_ASSERT_FALSE(audio_engine_hold_for_live_i2s(1024, true, true));
+    TEST_ASSERT_FALSE(audio_engine_hold_for_live_i2s(2, true, true));
+}
+
+void test_hold_false_when_not_i2s_source(void)
+{
+    /* Other sources (synth/uart): produced==0 is a genuine underrun -> silence
+     * fallback must run, so the policy must NOT hold. */
+    TEST_ASSERT_FALSE(audio_engine_hold_for_live_i2s(0, false, true));
+}
+
+void test_hold_false_when_i2s_not_running(void)
+{
+    /* I2S selected by stat comparison but manager stopped: no real-time source
+     * to wait for, so silence is correct -> do not hold. */
+    TEST_ASSERT_FALSE(audio_engine_hold_for_live_i2s(0, true, false));
+    /* And the fully-idle case. */
+    TEST_ASSERT_FALSE(audio_engine_hold_for_live_i2s(0, false, false));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -319,6 +450,16 @@ int main(void)
     RUN_TEST(test_resample_null_dst_should_fail);
     RUN_TEST(test_resample_zero_src_rate_should_fail);
     RUN_TEST(test_resample_zero_src_size_should_succeed_with_nothing);
+
+    /* I2S-link regression probes */
+    RUN_TEST(test_convert_16_to_16_stereo_is_identity);
+    RUN_TEST(test_resample_equal_rates_stereo_is_identity);
+    RUN_TEST(test_convert_then_resample_chain_is_identity);
+
+    RUN_TEST(test_hold_true_only_for_empty_live_i2s);
+    RUN_TEST(test_hold_false_when_bytes_produced);
+    RUN_TEST(test_hold_false_when_not_i2s_source);
+    RUN_TEST(test_hold_false_when_i2s_not_running);
     
     return UNITY_END();
 }

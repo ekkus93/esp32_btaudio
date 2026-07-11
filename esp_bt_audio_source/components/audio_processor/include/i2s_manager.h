@@ -46,17 +46,23 @@ bool i2s_manager_is_running(void);
 size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes);
 
 /**
- * DBG-I2SCAP diagnostic: force-enable the RX channel (if not already) and
- * perform ONE blocking i2s_channel_read with the given timeout, to tell a
- * starving short-timeout read apart from a peripheral that never samples.
- * Restores the prior enable state. Returns the esp_err_t from the read
- * (ESP_ERR_INVALID_STATE if I2S is not configured).
+ * Hardware diagnostic (I2S_RXTEST command): enable the RX channel if the
+ * engine hasn't already, then loop blocking reads for ~timeout_ms so the
+ * master clock runs CONTINUOUSLY (an I2S-slave transmitter needs sustained
+ * clocking to sync — bursty probes prove nothing). Reports total bytes and
+ * the first non-zero sample window, distinguishing "no clock", "clock but
+ * silence" and "data flowing". Restores the prior enable state.
  *
- * @param timeout_ms   blocking read timeout in milliseconds
- * @param out_bytes    [out] bytes actually read (may be NULL)
- * @param sample       [out] first bytes of captured data (may be NULL)
+ * NOTE: contends with the audio engine for DMA data if a stream is active —
+ * results are only clean while the engine is idle.
+ *
+ * @param timeout_ms   total clock-hold / read duration in milliseconds
+ * @param out_bytes    [out] total bytes read (may be NULL)
+ * @param sample       [out] first non-zero captured bytes (may be NULL)
  * @param sample_cap   capacity of @p sample
  * @param out_sample   [out] bytes copied into @p sample (may be NULL)
+ * @return esp_err_t from the last read (ESP_ERR_INVALID_STATE if I2S is not
+ *         configured)
  */
 esp_err_t i2s_manager_rxtest(uint32_t timeout_ms, size_t *out_bytes,
                              uint8_t *sample, size_t sample_cap, size_t *out_sample);

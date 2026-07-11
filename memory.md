@@ -25108,3 +25108,29 @@ Fixes beyond the prior entry that got from "static" to pure tone (all esp_bt_aud
 S3 (esp_i2s_source, uncommitted): slave TX 32-in-32, tone <<16 (top half), bclk_div=16, glitch filters on 5/6 (likely unneeded), pins 15/16 for BCLK/WS, PCNT freq meter + reg dumps + pad sampler in beacon (strip later), main CMakeLists PRIV_REQUIRES esp_timer esp_driver_pcnt.
 OPERATIONAL NOTES: laptop-initiated connect (bluetoothctl connect A0:B7:65:2B:E6:5E) far more reliable than ESP32-initiated after many cycles; ESP32 A2DP+laptop sink = capture via parec -d bluez_source.A0_B7_65_2B_E6_5E.a2dp_source; WROOM32 reboot mid-stream wedges the S3 slave (constant word) — reboot S3 while clock running to resync (add auto-resync later).
 CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; decide keep-vs-revert: APLL(revert), I2S1-vs-I2S0(retest I2S0), glitch filters(revert+retest), bclk_div16(keep?), 8ms timeout+engine break(KEEP - real fixes), phase extractor(KEEP - real fix, add stereo L/R identity test), direct-copy bypass(KEEP, but root-cause convert_and_resample 16-bit bug + host test); commit both projects in reviewed slices; SPEC §3.3 rewrite (32-bit slots + 32-bit data classic-side, payload top-16 from S3, phase-detect contract); REDO1_TODO update (SIG-1c/1d essentially done); fix I2S_CONFIG help/param-order doc bug; earbud listen test (Echo Buds) for the human-validated SIG-1d checkbox.
+
+## 2026-07-11T18:19:09Z - Claude Opus 4.8 (1M) - I2S bring-up cleanup + regression tests (task #17)
+
+- Cleanup on top of the working SIG-1d link (commit 5a5f91e4). No hardware config touched.
+- Extracted the payload phase-detect/extract logic into a pure module
+  `components/audio_processor/i2s_frame_extract.{c,h}` (registered in the component
+  CMakeLists); host tests `test/host_test/test_i2s_frame_extract.c` (16 cases, all
+  observed hardware phases + in-place safety + round-trip).
+- Extracted the anti-silence-stuffing decision into a pure, enum-independent
+  helper `audio_engine_hold_for_live_i2s(produced, is_i2s_source, i2s_running)`
+  in audio_util.{c,h}; wired into audio_processor.c's engine loop (replaces the
+  inline condition). 4 new host tests in test_audio_util.c, plus the 3 earlier
+  convert/resample identity probes.
+- Stripped all DBG-I2SCAP logging (0 matches remain); reworded I2S_PROBE/I2S_RXTEST
+  diagnostic comments; kept the I2S_PROBE/RXTEST/CLKGEN commands as diagnostics.
+- Fixed I2S_CONFIG help text param order: was "BCLK,WCLK,DOUT,DIN", code maps
+  p3=DIN p4=DOUT (audio_processor_set_i2s_pins(bclk,ws,din,dout)) -> now "BCLK,WCLK,DIN,DOUT".
+- Rewrote esp_i2s_source SPEC.md §2 format row, §3.1 pin map, §3.2 wiring, §3.3
+  slot contract, and the arch diagram to match the inverted roles (WROOM32=master RX
+  on GPIO18/19/22, S3=slave TX on GPIO15/16/7, 32-bit slots, 16-in-32 top-half payload,
+  phase-detect receiver). Marked REDO1_TODO SIG-1/1c/1d DONE with the fix list.
+- Verified: host suite 67/67 PASS; esp_bt_audio_source idf.py build clean.
+  clang-tidy could not run (compile_commands carries xtensa/newlib flags neither
+  system clang-14 nor esp-clang parses) — device build is the compiler gate.
+- Deferred (need re-flash + laptop-FFT re-verify, touch working HW config): S3 beacon
+  slimming; APLL / glitch-filter / bclk_div16 / I2S1-vs-I2S0 keep-vs-revert decisions.

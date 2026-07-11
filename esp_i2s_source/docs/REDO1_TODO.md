@@ -7,7 +7,8 @@ Prerequisites / environment (confirmed 2026-07-04):
 - Board: AYWHP ESP32-S3-WROOM-1 **N16R8** (16 MB flash, 8 MB octal PSRAM).
 - ESP-IDF v5.5.1 at `$HOME/esp/esp-idf` (same env as esp_bt_audio_source).
 - Companion WROOM32 runs firmware ≥ v0.2.0-317 (UART2 command port live,
-  I2S slave-RX on BCLK=26/WS=25/DIN=22).
+  I2S **master-RX** on BCLK=GPIO18/WS=GPIO19/DIN=GPIO22 — role inverted during
+  SIG-1d bring-up; see SPEC §3.3).
 - Wiring per SPEC.md §3.2; both boards on separate USB power, common GND.
 - Python tooling via `conda run -n python310` (never create new envs).
 - Web UI build (WEB-1 only) needs Node.js ≥ 20 + npm for the `web/` Vite
@@ -48,29 +49,39 @@ Prerequisites / environment (confirmed 2026-07-04):
 - `idf.py monitor` needs a real TTY (fails when piped) — use `script -qec` or
   the helper's pyserial capture.
 
-## SIG-1 — Signal generator + I2S master TX (first audio)
+## SIG-1 — Signal generator + I2S slave TX (first audio)
 
-**Status:** `[~]` In progress — SIG-1a/1b done + host-tested; SIG-1c S3-side
-verified; SIG-1c(WROOM32)/1d gated on the WROOM32 being wired.
+**Status:** `[x]` DONE — end-to-end I2S link verified via laptop A2DP capture
+(440.00 Hz, 100% purity, both channels, 0% dropouts; commit `5a5f91e4`). Roles
+were **inverted** from the original design: WROOM32 = master RX, S3 = slave TX.
 
 ### Background
 Prove the I2S link with zero external dependencies. Slot format MUST match
-the WROOM32 slave exactly (SPEC §3.3: Philips, 16-bit data in 32-bit slots,
-stereo, 44.1 kHz, MCLK unused). Pins: BCLK=GPIO5, WS=GPIO6, DOUT=GPIO7.
+the WROOM32 master exactly (SPEC §3.3: Philips, 32-bit slots, ws_width 32,
+stereo, 44.1 kHz, MCLK unused; WROOM32 data width 32, S3 data width 16 placed
+in the top half of the slot with a per-block phase-detect receiver). Pins
+(final): S3 BCLK=GPIO15(in), WS=GPIO16(in), DOUT=GPIO7(out); WROOM32
+BCLK=GPIO18(out), WS=GPIO19(out), DIN=GPIO22(in).
 
 ### Tasks
 - [x] **SIG-1a** `signal_gen`: sine/sweep/silence producers, phase-continuous,
       7 host tests (commit 31917181).
 - [x] **SIG-1b** `i2s_out`: lock-free SPSC `pcm_ring` (8 host tests) + pure
-      `i2s_out_pump_once` (5 host tests, mock sink) + I2S std master-TX channel
+      `i2s_out_pump_once` (5 host tests, mock sink) + I2S std channel
       (16-in-32 slots per §3.3) + writer task (commits 1452d93a, 756f4e4f).
-- [~] **SIG-1c** On-hardware smoke: **S3 side PASS** (commit a71eadc9) — 440 Hz
-      tone firmware; beacon shows `bytes` climbing at ~176.6 kB/s (= 44.1k×4),
-      `undev=1` (single startup underrun) then flat, ring holds full. **Still
-      to do (needs WROOM32):** confirm WROOM32 shows `SOURCE=I2S` +
-      `I2S_BYTES` growing after `START`.
-- [ ] **SIG-1d** Listen test: tone audible in earbuds; WROOM32
-      `READ_BPS`≈176400; no underrun growth either side. (M2) — needs WROOM32.
+      Role later flipped to **slave-TX** during SIG-1d bring-up (commit
+      `5a5f91e4`).
+- [x] **SIG-1c** On-hardware smoke: S3 side PASS (commit a71eadc9); WROOM32
+      confirmed `SOURCE=I2S` + `I2S_BYTES` growing after `START` during the
+      SIG-1d bring-up.
+- [x] **SIG-1d** Listen/verify test: **PASS** — laptop-as-A2DP-sink FFT capture
+      confirms 440.00 Hz, 100.0% purity, both channels, peak bit-faithful, 0%
+      dropouts (commit `5a5f91e4`). Five stacked root causes fixed: classic WS
+      framing (bit_depth 32), stale NVS pins, per-session payload phase
+      (phase-detect receiver), convert/resample mangling (direct copy), engine
+      silence-stuffing chop (`audio_engine_hold_for_live_i2s`). Host tests added
+      to lock the fixes: `test_i2s_frame_extract` (16) + audio_util identity &
+      hold-policy probes (7).
 
 ## LINK-1 — UART command client (bt_link)
 

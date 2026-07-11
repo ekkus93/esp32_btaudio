@@ -13,6 +13,7 @@ idf_component_register(
         "audio_resampler_stream.c"
         "beep_manager.c"
         "i2s_manager.c"
+        "i2s_frame_extract.c"
         "synth_manager.c"
         "uart_source.c"
     INCLUDE_DIRS

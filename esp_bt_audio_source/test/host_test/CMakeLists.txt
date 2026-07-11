@@ -430,6 +430,16 @@ target_link_libraries(test_uart_audio_frame unity)
 target_compile_definitions(test_uart_audio_frame PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_frame COMMAND $<TARGET_FILE:test_uart_audio_frame>)
 
+# I2S link payload phase detector/extractor (pure module, no mocks needed).
+# Guards the S3->WROOM32 capture fixes from the 2026-07-11 bring-up.
+add_executable(test_i2s_frame_extract test_i2s_frame_extract.c
+    ../../components/audio_processor/i2s_frame_extract.c)
+target_include_directories(test_i2s_frame_extract PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include)
+target_link_libraries(test_i2s_frame_extract unity)
+target_compile_definitions(test_i2s_frame_extract PRIVATE UNIT_TEST)
+add_test(NAME test_i2s_frame_extract COMMAND $<TARGET_FILE:test_i2s_frame_extract>)
+
 # UARTAUDIO step 2: 2x stereo upsampler (lives in uart_source.c, needs its mocks)
 add_executable(test_uart_upsample2x test_uart_upsample2x.c
     ../../components/audio_processor/uart_source.c

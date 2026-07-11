@@ -63,7 +63,7 @@ static const struct
     {"LAST_MAC", "[get|clear]", "Get or clear the most-recently-connected BT device MAC"},
     {"SPANLOG", "[N]", "Dump last N span log entries (default 10, max 100)"},
     {"DEBUG LOG", "<TAG> <LEVEL>", "Set log level for a tag at runtime"},
-    {"I2S_CONFIG", "BCLK,WCLK,DOUT,DIN [RATE] [BIT_DEPTH] [CHANNELS]", "Configure I2S pins and format"},
+    {"I2S_CONFIG", "BCLK,WCLK,DIN,DOUT [RATE] [BIT_DEPTH] [CHANNELS]", "Configure I2S pins and format"},
     {"I2S_PROBE", "[BCLK_GPIO] [WS_GPIO]", "Count clock edges on I2S input pads (diag; disrupts I2S until reboot)"},
     {"I2S_RXTEST", "[TIMEOUT_MS]", "One blocking I2S slave read; reports ret/bytes/sample (diag)"},
     {"I2S_CLKGEN", "[MS]", "Bit-bang a square wave on GPIO26/25 to test the clock wires (diag; needs reboot)"},
@@ -251,13 +251,13 @@ cmd_status_t cmd_handle_mem(const cmd_context_t *ctx)
 }
 
 #ifdef ESP_PLATFORM
-/* DBG-I2SCAP: sample an I2S input pad directly to decide whether the S3's
- * bit-clock physically reaches the WROOM32. gpio_get_level() reads the pad
- * input register, so this works whether or not the I2S peripheral owns the
- * pin. We first detach the pin to a fresh pulled-down input: a push-pull
- * driver (the S3) overpowers the ~45k pulldown and shows thousands of
- * transitions; a floating/disconnected pad is held at 0 and shows none.
- * This is destructive to I2S capture until the next reboot. */
+/* Hardware diagnostic (I2S_PROBE command): sample an I2S input pad directly
+ * to decide whether an external clock physically reaches the WROOM32.
+ * gpio_get_level() reads the pad input register, so this works whether or
+ * not the I2S peripheral owns the pin. The pin is first detached to a fresh
+ * pulled-down input: a push-pull driver on the far end overpowers the ~45k
+ * pulldown and shows thousands of transitions; a floating/disconnected pad
+ * is held at 0 and shows none. DESTRUCTIVE to I2S capture until reboot. */
 static void i2s_probe_one_pin(int gpio, unsigned *out_highs,
                               unsigned *out_lows, unsigned *out_trans)
 {

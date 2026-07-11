@@ -248,3 +248,8 @@ esp_err_t resample_audio(const audio_resample_args_t *args)
     *dst_size = dst_frame_count * frame_bytes;
     return ESP_OK;
 }
+
+bool audio_engine_hold_for_live_i2s(size_t produced, bool is_i2s_source, bool i2s_running)
+{
+    return produced == 0 && is_i2s_source && i2s_running;
+}
