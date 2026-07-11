@@ -417,7 +417,6 @@ esp_err_t i2s_manager_rxtest(uint32_t timeout_ms, size_t *out_bytes,
 			}
 		}
 	}
-	size_t read_bytes = total_read;
 	if (out_bytes) { *out_bytes = total_read; }
 
 	/* Restore prior state so a normal stream isn't left half-enabled. */
