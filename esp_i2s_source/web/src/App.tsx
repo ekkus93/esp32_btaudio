@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getStatus, setWifi, type DeviceStatus } from "./api";
+import { getStatus, setWifi, setTone, toneOff, type DeviceStatus } from "./api";
 import { Terminal } from "./Terminal";
 
 function fmtUptime(s: number): string {
@@ -89,6 +89,64 @@ function ProvisionForm() {
   );
 }
 
+const TONE_PRESETS = [220, 440, 1000, 4000];
+
+function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; onChange: () => void }) {
+  const [hz, setHz] = useState(440);
+  const [busy, setBusy] = useState(false);
+
+  // Sync the slider/input from device state when not mid-edit.
+  useEffect(() => {
+    if (tone?.hz) setHz(tone.hz);
+  }, [tone?.hz]);
+
+  const on = tone?.on ?? false;
+
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+      onChange();
+    }
+  };
+
+  return (
+    <section className="card tone">
+      <h2>
+        Tone
+        <span className={`dot ${on ? "ok" : "bad"}`} title={on ? "on" : "off"} />
+      </h2>
+      <div className="tone-row">
+        <input
+          type="number"
+          min={20}
+          max={20000}
+          value={hz}
+          onChange={(e) => setHz(Number(e.target.value))}
+          disabled={busy}
+        />
+        <span className="muted">Hz</span>
+        <button className="primary" disabled={busy} onClick={() => act(() => setTone(hz))}>
+          {on ? "Set" : "Play"}
+        </button>
+        <button disabled={busy || !on} onClick={() => act(toneOff)}>
+          Stop
+        </button>
+      </div>
+      <div className="tone-presets">
+        {TONE_PRESETS.map((p) => (
+          <button key={p} disabled={busy} onClick={() => { setHz(p); act(() => setTone(p)); }}>
+            {p >= 1000 ? `${p / 1000}k` : p}
+          </button>
+        ))}
+      </div>
+      <p className="muted">Streams over Bluetooth to the connected speaker.</p>
+    </section>
+  );
+}
+
 function Placeholder({ title, task }: { title: string; task: string }) {
   return (
     <section className="card stub">
@@ -102,18 +160,15 @@ export function App() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const refresh = () =>
+    getStatus()
+      .then((s) => (setStatus(s), setErr(null)))
+      .catch((e) => setErr(String(e.message ?? e)));
+
   useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      getStatus()
-        .then((s) => alive && (setStatus(s), setErr(null)))
-        .catch((e) => alive && setErr(String(e.message ?? e)));
-    tick();
-    const id = setInterval(tick, 3000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
+    refresh();
+    const id = setInterval(refresh, 3000);
+    return () => clearInterval(id);
   }, []);
 
   const online = !err && status != null;
@@ -161,7 +216,7 @@ export function App() {
         </Card>
 
         <Terminal />
-        <Placeholder title="Tone" task="WEB-1d" />
+        <ToneControl tone={status?.tone} onChange={refresh} />
         <Placeholder title="Radio" task="RADIO-1" />
         <Placeholder title="Bluetooth" task="BTUI-1" />
       </div>

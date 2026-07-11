@@ -25276,3 +25276,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   the feed. bt_link_send blocks the httpd worker up to ~2.5s per terminal cmd
   (acceptable single-user; events still flow via the bt_link task meanwhile).
 - Remaining WEB-1: 1d (tone /api/tone) + the WEB-1b M4 browser walk-through.
+
+## 2026-07-11T23:25:20Z - Claude Opus 4.8 (1M) - WEB-1d: browser tone control (first browser-driven audio)
+
+- Extracted main.c's hardcoded always-on tone_task into a controllable `tone`
+  component (components/tone/): tone_start/tone_set(hz)/tone_off/tone_get, atomic
+  state (_Atomic on + hz), emits silence (amp 0, phase continues) when off so the
+  slave-TX I2S stream keeps flowing. Default on @ 440 (SIG-1c parity). main.c now
+  calls tone_start() instead of the inline task.
+- web_ui: POST /api/tone {hz} -> tone_set; DELETE /api/tone -> tone_off; tone
+  {on,hz} added to /api/status. Frontend Tone panel: freq input + presets
+  (220/440/1k/4k) + play/stop, reads state from status.
+- OBJECTIVELY VERIFIED via A2DP FFT (scratchpad/tone_fft.py): POST hz=1000 ->
+  dominant 1000.00 Hz; 220 -> 220.00; DELETE -> silence (peak 0, near0 100%);
+  440 -> 440.00. Full chain browser->/api/tone->tone->signal_gen->i2s->WROOM32->
+  A2DP is frequency-accurate.
+- WEB-1 implementation COMPLETE (z/a/b/c/d). Only the WEB-1b M4 browser AP->STA
+  walk-through remains (user-driven). Host suite 7/7. Next group: BTUI-1.

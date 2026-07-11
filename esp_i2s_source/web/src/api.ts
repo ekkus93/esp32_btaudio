@@ -15,6 +15,7 @@ export interface DeviceStatus {
   heap_free: number;
   wifi: WifiStatus;
   wroom?: { reachable: boolean; version?: string };
+  tone?: { on: boolean; hz: number };
 }
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -38,4 +39,24 @@ export async function setWifi(ssid: string, pass: string): Promise<ProvisionResu
     body: JSON.stringify({ ssid, pass }),
   });
   return r.json() as Promise<ProvisionResult>;
+}
+
+export interface ToneState {
+  ok: boolean;
+  on: boolean;
+  hz?: number;
+}
+
+export async function setTone(hz: number): Promise<ToneState> {
+  const r = await fetch("/api/tone", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hz }),
+  });
+  return r.json() as Promise<ToneState>;
+}
+
+export async function toneOff(): Promise<ToneState> {
+  const r = await fetch("/api/tone", { method: "DELETE" });
+  return r.json() as Promise<ToneState>;
 }

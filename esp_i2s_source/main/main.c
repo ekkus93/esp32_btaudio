@@ -24,8 +24,8 @@
 
 #include "driver/gpio.h"
 
-#include "signal_gen.h"
 #include "i2s_out.h"
+#include "tone.h"
 #include "bt_link.h"
 #include "wifi_mgr.h"
 #include "console.h"
@@ -73,9 +73,6 @@ static float s3_measure_hz(int gpio, int ms)
 
 /* 256 KB PSRAM ring ≈ 1.5 s of 44.1 kHz stereo s16 — ample jitter absorption. */
 #define I2S_RING_BYTES (256 * 1024)
-#define TONE_HZ        440.0
-#define TONE_AMPLITUDE 0.30   /* modest level — comfortable in earbuds */
-#define TONE_FRAMES    256    /* per fill: 256 stereo frames = 1024 bytes */
 
 /* Initialise NVS exactly once (root CLAUDE.md contract mirrors esp_bt_audio_source). */
 static void init_nvs(void)
@@ -86,40 +83,6 @@ static void init_nvs(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
-}
-
-/* Producer: generate a continuous 440 Hz sine and push it into the i2s_out
- * ring, honouring backpressure (write returns short when the ring is full). */
-static void tone_task(void *arg)
-{
-    (void)arg;
-    sg_sine_state_t sine;
-    sg_sine_reset(&sine);
-    int16_t block[TONE_FRAMES * SIGNAL_GEN_CHANNELS];
-
-    /* 16-in-32 with the sample in the TOP half (<<16): the classic-side
-     * capture window lags the S3's slots by half a slot, so HIGH-aligned
-     * payload lands whole in the LOW half of each captured word, one word
-     * per channel (verified via laptop A2DP capture; low-aligned payload
-     * gets split across words and one channel goes silent). The WROOM32
-     * shim then lifts it back to the top for its >>16 conversion. */
-    static int32_t block32[TONE_FRAMES * SIGNAL_GEN_CHANNELS];
-    for (;;) {
-        sg_sine_fill(&sine, block, TONE_FRAMES, TONE_HZ, TONE_AMPLITUDE);
-        for (size_t i = 0; i < TONE_FRAMES * SIGNAL_GEN_CHANNELS; i++) {
-            block32[i] = (int32_t)block[i] << 16;
-        }
-        const uint8_t *p = (const uint8_t *)block32;
-        size_t total = sizeof(block32);
-        size_t off = 0;
-        while (off < total) {
-            size_t w = i2s_out_write(p + off, total - off);
-            off += w;
-            if (w == 0) {
-                vTaskDelay(1);  /* ring full — let the I2S consumer drain */
-            }
-        }
-    }
 }
 
 /* LINK-1c: exercise the bt_link UART1 client against the WROOM32 UART2 command
@@ -178,10 +141,10 @@ void app_main(void)
     ESP_ERROR_CHECK(i2s_out_init(I2S_RING_BYTES));
     /* Prime the ring with tone BEFORE starting the writer, so the first DMA
      * load is real tone data, not underrun zeros. */
-    xTaskCreate(tone_task, "tone", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+    ESP_ERROR_CHECK(tone_start());
     vTaskDelay(pdMS_TO_TICKS(300));
     ESP_ERROR_CHECK(i2s_out_start());
-    ESP_LOGI(TAG, "SIG-1c: 440 Hz tone streaming to I2S (bclk=%d ws=%d dout=%d)",
+    ESP_LOGI(TAG, "I2S out streaming (bclk=%d ws=%d dout=%d); tone controllable via /api/tone",
              I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT);
 
     /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */

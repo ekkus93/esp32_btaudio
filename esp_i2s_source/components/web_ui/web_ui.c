@@ -5,6 +5,7 @@
 #include "web_ui.h"
 #include "wifi_mgr.h"
 #include "bt_link.h"
+#include "tone.h"
 
 #include <string.h>
 
@@ -78,6 +79,12 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddBoolToObject(wroom, "reachable", s_wroom_reachable);
     if (s_wroom_reachable) cJSON_AddStringToObject(wroom, "version", s_wroom_version);
 
+    bool tone_on; int tone_hz;
+    tone_get(&tone_on, &tone_hz);
+    cJSON *tone = cJSON_AddObjectToObject(root, "tone");
+    cJSON_AddBoolToObject(tone, "on", tone_on);
+    cJSON_AddNumberToObject(tone, "hz", tone_hz);
+
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!body) return httpd_resp_send_500(req);
@@ -150,6 +157,33 @@ static esp_err_t wifi_post(httpd_req_t *req)
     /* Apply asynchronously; the AP tears down as STA comes up. */
     xTaskCreate(provision_task, "provision", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
     return ESP_OK;
+}
+
+/* POST /api/tone {hz} — enable the test tone; DELETE /api/tone — silence it. */
+static esp_err_t tone_post(httpd_req_t *req)
+{
+    char body[128];
+    int hz = TONE_HZ_DEFAULT;
+    if (recv_body(req, body, sizeof(body)) == ESP_OK) {
+        cJSON *j = cJSON_Parse(body);
+        cJSON *h = j ? cJSON_GetObjectItem(j, "hz") : NULL;
+        if (cJSON_IsNumber(h)) hz = h->valueint;
+        cJSON_Delete(j);
+    }
+    tone_set(hz);
+    bool on; int cur;
+    tone_get(&on, &cur);
+    char resp[64];
+    snprintf(resp, sizeof(resp), "{\"ok\":true,\"on\":true,\"hz\":%d}", cur);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, resp);
+}
+
+static esp_err_t tone_delete(httpd_req_t *req)
+{
+    tone_off();
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true,\"on\":false}");
 }
 
 /* ---- WebSocket /ws: terminal I/O (term_in/term_out) + EVENT feed ---- */
@@ -286,12 +320,18 @@ esp_err_t web_ui_start(void)
         .uri = "/api/status", .method = HTTP_GET, .handler = status_get };
     const httpd_uri_t wifi_uri = {
         .uri = "/api/wifi", .method = HTTP_POST, .handler = wifi_post };
+    const httpd_uri_t tone_post_uri = {
+        .uri = "/api/tone", .method = HTTP_POST, .handler = tone_post };
+    const httpd_uri_t tone_del_uri = {
+        .uri = "/api/tone", .method = HTTP_DELETE, .handler = tone_delete };
     const httpd_uri_t ws_uri = {
         .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     const httpd_uri_t root_uri = {
         .uri = "/*", .method = HTTP_GET, .handler = root_get };
     httpd_register_uri_handler(s_server, &status_uri);
     httpd_register_uri_handler(s_server, &wifi_uri);
+    httpd_register_uri_handler(s_server, &tone_post_uri);
+    httpd_register_uri_handler(s_server, &tone_del_uri);
     httpd_register_uri_handler(s_server, &ws_uri);
     httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
 

@@ -186,8 +186,14 @@ pushes as JSON `{type:...}` frames (SPEC §5.2).
       auto-reconnect. Hardware-verified: `VERSION`/`STATUS`/`VOLUME` round-trip
       as term_out; `DEBUG MOCK_PAIR` yielded both term_out AND a pushed
       `EVENT|PAIR|CONFIRM` frame.
-- [ ] **WEB-1d** Tone controls in the UI (`/api/tone`): frequency select,
-      on/off — first browser-driven audio.
+- [x] **WEB-1d** Tone controls. Extracted the hardcoded always-on `tone_task`
+      into a controllable `tone` component (on/off + frequency, atomic state,
+      emits silence when off so the slave-TX stream keeps flowing). `POST
+      /api/tone {hz}` / `DELETE /api/tone`; tone state added to /api/status;
+      frontend Tone panel (freq input + presets + play/stop). **First
+      browser-driven audio, objectively verified** via A2DP FFT: POST 1000→
+      1000.00 Hz, 220→220.00 Hz, DELETE→silence, 440→440.00 Hz. First step of
+      retiring the always-on tone (full arbitration at RADIO-2c).
 
 ## BTUI-1 — Bluetooth management UI
 
