@@ -169,9 +169,14 @@ pushes as JSON `{type:...}` frames (SPEC §5.2).
       the LAN: `curl http://10.1.2.52/` returns the 47639 B gzip SPA; status
       JSON aggregates S3 + `wroom:{reachable,version}`. Added
       `wifi_mgr_get_info()` structured accessor.
-- [ ] **WEB-1b** `POST /api/wifi` provisioning endpoint + AP-mode flow:
-      connect to S3 AP → open UI → enter home WiFi → S3 switches to STA;
-      UI shows the new address. End-to-end provisioning test. (M4 gate)
+- [~] **WEB-1b** `POST /api/wifi {ssid,pass}` (web_ui.c): validate → reply
+      `{ok,host}` → **deferred** apply (provision_task, ~400 ms) so the response
+      flushes before AP tears down. Frontend `ProvisionForm` shows in AP mode.
+      Backend hardware-verified over STA: bad creds → 400; valid → 200 + clean
+      reconnect to CONNECTED. Fixed a re-provision bug (esp_wifi_start()'s return
+      isn't reliably NOT_STOPPED; now track s_wifi_started + force
+      disconnect→reconnect when re-applying creds while holding an IP).
+      **Pending: full browser AP→STA walk-through (M4 gate).**
 - [ ] **WEB-1c** WebSocket: terminal pane (raw command → bt_link →
       response echo) + live scrolling EVENT feed. Both share `/ws`.
 - [ ] **WEB-1d** Tone controls in the UI (`/api/tone`): frequency select,

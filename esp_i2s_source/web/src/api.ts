@@ -24,3 +24,18 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export const getStatus = () => getJSON<DeviceStatus>("/api/status");
+
+export interface ProvisionResult {
+  ok: boolean;
+  host?: string;
+  error?: string;
+}
+
+export async function setWifi(ssid: string, pass: string): Promise<ProvisionResult> {
+  const r = await fetch("/api/wifi", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ssid, pass }),
+  });
+  return r.json() as Promise<ProvisionResult>;
+}

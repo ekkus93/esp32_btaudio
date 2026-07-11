@@ -55,6 +55,38 @@ header h1 {
   font-size: 14px;
 }
 .banner.err { background: #3a1c22; color: #ffb3ba; border: 1px solid #5a2730; }
+.banner.ok { background: #12312a; color: #9ff0d5; border: 1px solid #1f5546; }
+
+.card.provision { grid-column: 1 / -1; border-color: var(--accent); }
+.card.provision form { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.card.provision label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.card.provision input {
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 15px;
+}
+.card.provision input:focus { outline: none; border-color: var(--accent); }
+.card.provision button {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #04122a;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.card.provision button:disabled { opacity: 0.55; cursor: default; }
+.card.provision .banner { margin-top: 12px; margin-bottom: 0; }
 
 .grid {
   display: grid;

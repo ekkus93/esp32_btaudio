@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getStatus, type DeviceStatus } from "./api";
+import { getStatus, setWifi, type DeviceStatus } from "./api";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -22,6 +22,68 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     <section className="card">
       <h2>{title}</h2>
       {children}
+    </section>
+  );
+}
+
+function ProvisionForm() {
+  const [ssid, setSsid] = useState("");
+  const [pass, setPass] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ssid) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await setWifi(ssid, pass);
+      if (r.ok) {
+        setMsg({
+          ok: true,
+          text: `Joining "${ssid}"… reconnect this device to your network, then open http://${r.host ?? "esp-i2s-source.local"}`,
+        });
+      } else {
+        setMsg({ ok: false, text: r.error ?? "provisioning failed" });
+        setBusy(false);
+      }
+    } catch (err) {
+      // The AP tears down as STA comes up, so the reply may not arrive — that's
+      // expected on success. Show the same guidance.
+      setMsg({
+        ok: true,
+        text: `Joining "${ssid}"… reconnect this device to your network, then open http://esp-i2s-source.local`,
+      });
+    }
+  };
+
+  return (
+    <section className="card provision">
+      <h2>Set up WiFi</h2>
+      <p className="muted">
+        This device is in setup mode. Enter your WiFi so it can join your network.
+      </p>
+      <form onSubmit={submit}>
+        <label>
+          Network (SSID)
+          <input value={ssid} onChange={(e) => setSsid(e.target.value)} autoFocus disabled={busy} />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            placeholder="(leave blank if open)"
+            disabled={busy}
+          />
+        </label>
+        <button type="submit" disabled={busy || !ssid}>
+          {busy ? "Connecting…" : "Connect"}
+        </button>
+      </form>
+      {msg && <div className={`banner ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
     </section>
   );
 }
@@ -64,6 +126,12 @@ export function App() {
       </header>
 
       {err && <div className="banner err">Device unreachable: {err}</div>}
+
+      {w?.mode === "AP" && (
+        <div className="grid">
+          <ProvisionForm />
+        </div>
+      )}
 
       <div className="grid">
         <Card title="Network">

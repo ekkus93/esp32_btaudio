@@ -31,6 +31,8 @@ static char          s_ssid[WIFI_MGR_SSID_MAX + 1];
 static char          s_pass[WIFI_MGR_PASS_MAX + 1];
 static char          s_ap_pass[WIFI_MGR_PASS_MAX + 1];
 static bool          s_mdns_up;
+static bool          s_sta_got_ip;   /* true between GOT_IP and DISCONNECTED */
+static bool          s_wifi_started;  /* esp_wifi_start() called (any mode) */
 
 /* ---- credential persistence ---- */
 
@@ -94,8 +96,18 @@ static void apply_sta(void)
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
     ESP_LOGI(TAG, "STA: associating with \"%s\"", s_ssid);
-    /* If wifi was already started, STA_START won't fire again — connect now. */
-    if (esp_wifi_start() == ESP_ERR_WIFI_NOT_STOPPED) {
+    /* First start: STA_START fires -> on_wifi_event calls esp_wifi_connect().
+     * Already started (AP->STA switch or re-provision):
+     *   - holding an IP -> disconnect() first; the DISCONNECTED event re-drives
+     *     connect() with the new config (connect() is a no-op while associated,
+     *     which would strand us in CONNECTING).
+     *   - otherwise connect() directly. */
+    if (!s_wifi_started) {
+        esp_wifi_start();
+        s_wifi_started = true;
+    } else if (s_sta_got_ip) {
+        esp_wifi_disconnect();
+    } else {
         esp_wifi_connect();
     }
 }
@@ -110,9 +122,12 @@ static void apply_ap(void)
     cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     esp_wifi_set_mode(WIFI_MODE_AP);
     esp_wifi_set_config(WIFI_IF_AP, &cfg);
-    if (esp_wifi_start() == ESP_ERR_WIFI_NOT_STOPPED) {
-        /* already running (mode switch) — config takes effect immediately */
+    if (!s_wifi_started) {
+        esp_wifi_start();
+        s_wifi_started = true;
     }
+    /* If already started (STA->AP on WIFI RESET), the mode/config change above
+     * takes effect immediately. */
     ESP_LOGW(TAG, "AP provisioning: SSID=\"%s\" PASS=\"%s\"  (join and open the UI)",
              WIFI_MGR_AP_SSID, s_ap_pass);
     printf("DIAG|WIFI|AP|ssid=%s,pass=%s\n", WIFI_MGR_AP_SSID, s_ap_pass);
@@ -139,6 +154,7 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
         ESP_LOGW(TAG, "STA disconnected");
+        s_sta_got_ip = false;
         apply_action(wifi_sm_on_disconnected(&s_sm));
         break;
     case WIFI_EVENT_AP_START:
@@ -156,6 +172,7 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
     ESP_LOGI(TAG, "STA got IP: " IPSTR, IP2STR(&e->ip_info.ip));
     printf("DIAG|WIFI|STA|ssid=%s,ip=" IPSTR "\n", s_ssid, IP2STR(&e->ip_info.ip));
     fflush(stdout);
+    s_sta_got_ip = true;
     wifi_sm_on_connected(&s_sm);
     start_mdns();
 }

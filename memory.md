@@ -25240,3 +25240,21 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Remaining WEB-1: 1b (POST /api/wifi provisioning, M4 gate), 1c (WebSocket
   terminal + EVENT feed), 1d (tone controls /api/tone). Frontend shell has stubs
   for Terminal/Tone/Radio/BT ready to fill in.
+
+## 2026-07-11T23:01:48Z - Claude Opus 4.8 (1M) - WEB-1b: POST /api/wifi browser provisioning (backend validated)
+
+- web_ui.c: POST /api/wifi {ssid,pass} -> validate -> reply {ok,host} -> deferred
+  provision_task (~400ms) applies creds so the HTTP reply flushes before AP drops
+  (SPEC "reply then switch AP->STA"). Bad creds -> 400. Frontend ProvisionForm
+  (React) renders when wifi.mode==AP; posts creds, shows "reconnect + open
+  esp-i2s-source.local".
+- BUG FOUND + FIXED (re-provision while already STA-connected stayed stuck at
+  CONNECTING): esp_wifi_start() does NOT reliably return ESP_ERR_WIFI_NOT_STOPPED
+  when already running, so the reconnect branch was dead code -> device kept the
+  old association, SM stuck CONNECTING. Fix: track s_wifi_started explicitly;
+  when re-applying creds while s_sta_got_ip, esp_wifi_disconnect() first so the
+  DISCONNECTED event re-drives connect() with the new config. Now settles to
+  CONNECTED first poll. (s_sta_got_ip set on GOT_IP, cleared on DISCONNECTED.)
+- Verified over STA (device at 10.1.2.52). Full browser AP->STA walk-through is
+  the M4 gate, still to do with the user (needs joining the S3 AP + a browser).
+- Remaining WEB-1: 1c (WebSocket terminal + EVENT feed), 1d (tone /api/tone).
