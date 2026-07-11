@@ -25258,3 +25258,21 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Verified over STA (device at 10.1.2.52). Full browser AP->STA walk-through is
   the M4 gate, still to do with the user (needs joining the S3 AP + a browser).
 - Remaining WEB-1: 1c (WebSocket terminal + EVENT feed), 1d (tone /api/tone).
+
+## 2026-07-11T23:12:01Z - Claude Opus 4.8 (1M) - WEB-1c: WebSocket terminal + live EVENT feed
+
+- web_ui.c /ws WebSocket (CONFIG_HTTPD_WS_SUPPORT=y). term_in JSON -> bt_link_send
+  -> term_out (sync in handler). bt_link_subscribe(on_bt_event) fans WROOM32
+  EVENT| lines to all WS clients as async  frames via httpd_queue_work +
+  httpd_ws_send_frame_async (client fds tracked in s_ws_fds[4], pruned on send
+  fail). Frontend src/Terminal.tsx: live WS, input, scrolling log (sent/out/event
+  colors), auto-reconnect.
+- HARDWARE VERIFIED (raw stdlib WS client, scratchpad/ws_test.py + ws_event_test.py):
+  handshake 101; VERSION/STATUS/VOLUME 55 -> term_out OK; DEBUG MOCK_PAIR
+  AA:BB:CC:DD:EE:FF -> term_out(OK,MOCK_PAIR_STARTED) AND pushed
+  event(PAIR,CONFIRM,...). Full multiplex works.
+- Note: WROOM32 only emits EVENT| for PAIR (cmd_send_event_pair); A2DP
+  connect/disconnect does NOT emit an EVENT, so use DEBUG MOCK_PAIR to exercise
+  the feed. bt_link_send blocks the httpd worker up to ~2.5s per terminal cmd
+  (acceptable single-user; events still flow via the bt_link task meanwhile).
+- Remaining WEB-1: 1d (tone /api/tone) + the WEB-1b M4 browser walk-through.

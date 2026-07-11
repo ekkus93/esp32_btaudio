@@ -16,8 +16,11 @@
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdlib.h>
 
 static const char *TAG = "web_ui";
+
+static httpd_handle_t s_server;
 
 /* Embedded single-file SPA (gzip). Symbols from main's EMBED_FILES. */
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
@@ -149,6 +152,122 @@ static esp_err_t wifi_post(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ---- WebSocket /ws: terminal I/O (term_in/term_out) + EVENT feed ---- */
+
+#define WS_MAX_CLIENTS 4
+static int s_ws_fds[WS_MAX_CLIENTS] = { -1, -1, -1, -1 };
+
+static void ws_track(int fd)
+{
+    for (int i = 0; i < WS_MAX_CLIENTS; i++) if (s_ws_fds[i] == fd) return;
+    for (int i = 0; i < WS_MAX_CLIENTS; i++) if (s_ws_fds[i] < 0) { s_ws_fds[i] = fd; return; }
+}
+static void ws_untrack(int fd)
+{
+    for (int i = 0; i < WS_MAX_CLIENTS; i++) if (s_ws_fds[i] == fd) s_ws_fds[i] = -1;
+}
+
+static esp_err_t ws_send_text(int fd, const char *s)
+{
+    httpd_ws_frame_t f = {
+        .type = HTTPD_WS_TYPE_TEXT, .payload = (uint8_t *)s, .len = strlen(s) };
+    return httpd_ws_send_frame_async(s_server, fd, &f);
+}
+
+/* Async broadcast: httpd_ws_send_frame_async must run on the httpd task, so a
+ * bt_link event (bt_link task context) queues work rather than sending inline. */
+typedef struct { int fd; char *json; } ws_push_t;
+
+static void ws_push_work(void *arg)
+{
+    ws_push_t *p = arg;
+    if (ws_send_text(p->fd, p->json) != ESP_OK) ws_untrack(p->fd);
+    free(p->json);
+    free(p);
+}
+
+static void ws_broadcast(const char *json)
+{
+    for (int i = 0; i < WS_MAX_CLIENTS; i++) {
+        int fd = s_ws_fds[i];
+        if (fd < 0) continue;
+        ws_push_t *p = malloc(sizeof(ws_push_t));
+        if (!p) continue;
+        p->fd = fd;
+        p->json = strdup(json);
+        if (!p->json || httpd_queue_work(s_server, ws_push_work, p) != ESP_OK) {
+            free(p->json);
+            free(p);
+        }
+    }
+}
+
+/* bt_link EVENT subscriber -> {type:"event",...} to all WS clients. */
+static void on_bt_event(void *ctx, const bt_link_msg_t *m)
+{
+    (void)ctx;
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddStringToObject(j, "type", "event");
+    cJSON_AddStringToObject(j, "command", m->command);
+    cJSON_AddStringToObject(j, "result", m->result);
+    cJSON_AddStringToObject(j, "data", m->data);
+    char *s = cJSON_PrintUnformatted(j);
+    cJSON_Delete(j);
+    if (s) { ws_broadcast(s); cJSON_free(s); }
+}
+
+static void send_term_out(httpd_req_t *req, const char *cmd,
+                          bt_link_cmd_state_t st, const char *result)
+{
+    const char *status = (st == BT_LINK_CMD_DONE_OK) ? "OK"
+                       : (st == BT_LINK_CMD_DONE_ERR) ? "ERR" : "TIMEOUT";
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "type", "term_out");
+    cJSON_AddStringToObject(o, "cmd", cmd);
+    cJSON_AddStringToObject(o, "status", status);
+    cJSON_AddStringToObject(o, "result", result);
+    char *s = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+    if (!s) return;
+    httpd_ws_frame_t out = {
+        .type = HTTPD_WS_TYPE_TEXT, .payload = (uint8_t *)s, .len = strlen(s) };
+    httpd_ws_send_frame(req, &out);
+    cJSON_free(s);
+}
+
+static esp_err_t ws_handler(httpd_req_t *req)
+{
+    if (req->method == HTTP_GET) {          /* handshake */
+        ws_track(httpd_req_to_sockfd(req));
+        return ESP_OK;
+    }
+    httpd_ws_frame_t frame = { .type = HTTPD_WS_TYPE_TEXT };
+    if (httpd_ws_recv_frame(req, &frame, 0) != ESP_OK) return ESP_FAIL;
+    if (frame.len == 0 || frame.len > 480) return ESP_OK;
+
+    uint8_t buf[512];
+    frame.payload = buf;
+    if (httpd_ws_recv_frame(req, &frame, sizeof(buf) - 1) != ESP_OK) return ESP_FAIL;
+    buf[frame.len] = '\0';
+
+    cJSON *j = cJSON_Parse((char *)buf);
+    const char *type = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "type")) : NULL;
+    const char *data = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "data")) : NULL;
+    if (type && strcmp(type, "term_in") == 0 && data && data[0]) {
+        char cmd[BT_LINK_FIELD_MAX];
+        strlcpy(cmd, data, sizeof(cmd));
+        cJSON_Delete(j);
+        ws_track(httpd_req_to_sockfd(req));
+        bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+        char result[BT_LINK_FIELD_MAX] = {0};
+        bt_link_send(cmd, &st, result, sizeof(result));  /* events still flow */
+        send_term_out(req, cmd, st, result);
+        return ESP_OK;
+    }
+    cJSON_Delete(j);
+    return ESP_OK;
+}
+
 esp_err_t web_ui_start(void)
 {
     refresh_wroom();
@@ -157,8 +276,7 @@ esp_err_t web_ui_start(void)
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.lru_purge_enable = true;
 
-    httpd_handle_t server = NULL;
-    esp_err_t err = httpd_start(&server, &cfg);
+    esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed: %s", esp_err_to_name(err));
         return err;
@@ -168,11 +286,17 @@ esp_err_t web_ui_start(void)
         .uri = "/api/status", .method = HTTP_GET, .handler = status_get };
     const httpd_uri_t wifi_uri = {
         .uri = "/api/wifi", .method = HTTP_POST, .handler = wifi_post };
+    const httpd_uri_t ws_uri = {
+        .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     const httpd_uri_t root_uri = {
         .uri = "/*", .method = HTTP_GET, .handler = root_get };
-    httpd_register_uri_handler(server, &status_uri);
-    httpd_register_uri_handler(server, &wifi_uri);
-    httpd_register_uri_handler(server, &root_uri);  /* catch-all last */
+    httpd_register_uri_handler(s_server, &status_uri);
+    httpd_register_uri_handler(s_server, &wifi_uri);
+    httpd_register_uri_handler(s_server, &ws_uri);
+    httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
+
+    /* Fan WROOM32 EVENT lines out to WS clients (WEB-1c live feed). */
+    bt_link_subscribe(on_bt_event, NULL);
 
     ESP_LOGI(TAG, "web UI up on port %d (%u B gzip SPA)", cfg.server_port,
              (unsigned)(index_html_gz_end - index_html_gz_start));

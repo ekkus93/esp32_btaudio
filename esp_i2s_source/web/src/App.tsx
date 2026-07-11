@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getStatus, setWifi, type DeviceStatus } from "./api";
+import { Terminal } from "./Terminal";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -159,7 +160,7 @@ export function App() {
           />
         </Card>
 
-        <Placeholder title="Terminal" task="WEB-1c" />
+        <Terminal />
         <Placeholder title="Tone" task="WEB-1d" />
         <Placeholder title="Radio" task="RADIO-1" />
         <Placeholder title="Bluetooth" task="BTUI-1" />

@@ -177,8 +177,15 @@ pushes as JSON `{type:...}` frames (SPEC §5.2).
       isn't reliably NOT_STOPPED; now track s_wifi_started + force
       disconnect→reconnect when re-applying creds while holding an IP).
       **Pending: full browser AP→STA walk-through (M4 gate).**
-- [ ] **WEB-1c** WebSocket: terminal pane (raw command → bt_link →
-      response echo) + live scrolling EVENT feed. Both share `/ws`.
+- [x] **WEB-1c** WebSocket `/ws` (web_ui.c) multiplexing terminal + EVENT feed.
+      `term_in` → `bt_link_send()` → `term_out` (sync in the WS handler); a
+      `bt_link_subscribe()` fans WROOM32 `EVENT|` lines out to all clients as
+      async `event` frames via `httpd_queue_work` + `httpd_ws_send_frame_async`
+      (client fds tracked, lazily pruned on send failure). Frontend `Terminal`
+      component: live WS, command input, scrolling colored log (sent/out/event),
+      auto-reconnect. Hardware-verified: `VERSION`/`STATUS`/`VOLUME` round-trip
+      as term_out; `DEBUG MOCK_PAIR` yielded both term_out AND a pushed
+      `EVENT|PAIR|CONFIRM` frame.
 - [ ] **WEB-1d** Tone controls in the UI (`/api/tone`): frequency select,
       on/off — first browser-driven audio.
 
