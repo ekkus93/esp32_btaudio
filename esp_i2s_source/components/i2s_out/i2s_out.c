@@ -82,8 +82,16 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
             .invert_flags = { .mclk_inv = false, .bclk_inv = false, .ws_inv = false },
         },
     };
-    /* SPEC §3.3: 16-bit data padded into 32-bit slots to match WROOM32 slave. */
+    /* SPEC §3.3: 16-bit data padded into 32-bit slots to match the WROOM32
+     * slave EXACTLY. The WROOM32 (i2s_manager.c) sets slot_bit_width=32,
+     * ws_width=32, ws_pol=false, bit_shift=true. The Philips default macro
+     * leaves ws_width = data_bit_width (16), so WS would toggle every 16 BCLK
+     * while the slave expects every 32 → framing never aligns and the slave
+     * latches nothing (I2S_BYTES=0). Set ws_width=32 to match. */
     std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+    std_cfg.slot_cfg.ws_width = 32;
+    std_cfg.slot_cfg.ws_pol = false;
+    std_cfg.slot_cfg.bit_shift = true;
 
     err = i2s_channel_init_std_mode(s_tx_chan, &std_cfg);
     if (err != ESP_OK) {
