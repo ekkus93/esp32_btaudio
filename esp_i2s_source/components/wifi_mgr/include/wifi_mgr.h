@@ -36,6 +36,17 @@ esp_err_t wifi_mgr_reset(void);
  * "MODE=AP,SSID=ESP32-S3-Audio,IP=192.168.4.1,CLIENTS=1". */
 void wifi_mgr_get_status(char *buf, size_t buf_sz);
 
+/* Structured snapshot (for the web API). */
+typedef struct {
+    char mode[4];    /* "STA" | "AP" */
+    char state[12];  /* "CONNECTED" | "CONNECTING" | "" (AP) */
+    char ssid[WIFI_MGR_SSID_MAX + 1];
+    char ip[16];
+    int  rssi;       /* STA only; 0 otherwise */
+} wifi_mgr_info_t;
+
+void wifi_mgr_get_info(wifi_mgr_info_t *out);
+
 #ifdef __cplusplus
 }
 #endif

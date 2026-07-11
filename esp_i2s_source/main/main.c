@@ -29,6 +29,7 @@
 #include "bt_link.h"
 #include "wifi_mgr.h"
 #include "console.h"
+#include "web_ui.h"
 
 static const char *TAG = "main";
 
@@ -190,6 +191,8 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_mgr_init());
     /* WIFI-1c: console for runtime provisioning (WIFI <ssid> <pass> / STATUS). */
     ESP_ERROR_CHECK(console_start());
+    /* WEB-1a: HTTP server (embedded SPA + /api/status). */
+    ESP_ERROR_CHECK(web_ui_start());
 
     /* I2S stats beacon: bytes_written must climb and underruns stay flat once
      * the ring primes; the PCNT freq meter confirms the WROOM32 master clock

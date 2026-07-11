@@ -154,15 +154,21 @@ gzipped bundle, embedded via EMBED_FILES — **no filesystem partition**; SPEC
 pushes as JSON `{type:...}` frames (SPEC §5.2).
 
 ### Tasks
-- [ ] **WEB-1z** Frontend toolchain: standalone `web/` project (Vite + TS +
-      React, own `package.json`); `npm run build` → minify → gzip → emit
-      artifacts into `main/www/` via `scripts/embed_web.mjs`. Commit the
-      `.gz` so `idf.py build`/CI need no Node. CMake `target_add_binary_data`
-      wires the bundle in; httpd serves it with `Content-Encoding: gzip`.
-      Stale-bundle hash check. (Do this before WEB-1a — everything else
-      renders into this shell.)
-- [ ] **WEB-1a** httpd + `GET /` (embedded gzipped React app) + `GET
-      /api/status` (aggregated S3 + last-known WROOM32 state).
+- [x] **WEB-1z** Frontend toolchain: standalone `web/` (Vite + TS + React 18,
+      own `package.json`). `npm run build` = `tsc --noEmit && vite build`
+      (single-file via `vite-plugin-singlefile`) → `scripts/embed_web.mjs`
+      gzips → `main/www/index.html.gz` (+`.sha256`). **46.5 KB gzip** (< 200 KB
+      target). Committed `.gz` so idf.py/CI need no Node. Embedded via
+      `target_add_binary_data(${COMPONENT_LIB} ... BINARY)` **in the web_ui
+      component** (not main — cross-component link order needs the _binary_*
+      symbols in the same lib that references them). Shell renders Network +
+      System cards from /api/status; Terminal/Tone/Radio/BT are stubs.
+- [x] **WEB-1a** httpd (`web_ui.c`) + `GET /` (gzipped SPA, `Content-Encoding:
+      gzip`) + `GET /api/status` (cJSON: device/version/uptime/heap + wifi
+      snapshot + **live WROOM32 version via bt_link**). Hardware-verified over
+      the LAN: `curl http://10.1.2.52/` returns the 47639 B gzip SPA; status
+      JSON aggregates S3 + `wroom:{reachable,version}`. Added
+      `wifi_mgr_get_info()` structured accessor.
 - [ ] **WEB-1b** `POST /api/wifi` provisioning endpoint + AP-mode flow:
       connect to S3 AP → open UI → enter home WiFi → S3 switches to STA;
       UI shows the new address. End-to-end provisioning test. (M4 gate)

@@ -243,3 +243,27 @@ void wifi_mgr_get_status(char *buf, size_t buf_sz)
     snprintf(buf, buf_sz, "MODE=STA,STATE=%s,SSID=%s,IP=" IPSTR ",RSSI=%d",
              sname, s_ssid, IP2STR(&ip.ip), rssi);
 }
+
+void wifi_mgr_get_info(wifi_mgr_info_t *out)
+{
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    wifi_sm_state_t st = wifi_sm_state(&s_sm);
+    if (st == WIFI_SM_AP_MODE) {
+        esp_netif_ip_info_t ip = {0};
+        if (s_ap_netif) esp_netif_get_ip_info(s_ap_netif, &ip);
+        strlcpy(out->mode, "AP", sizeof(out->mode));
+        strlcpy(out->ssid, WIFI_MGR_AP_SSID, sizeof(out->ssid));
+        snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&ip.ip));
+        return;
+    }
+    esp_netif_ip_info_t ip = {0};
+    if (s_sta_netif) esp_netif_get_ip_info(s_sta_netif, &ip);
+    wifi_ap_record_t ap = {0};
+    strlcpy(out->mode, "STA", sizeof(out->mode));
+    strlcpy(out->state, (st == WIFI_SM_STA_CONNECTED) ? "CONNECTED" : "CONNECTING",
+            sizeof(out->state));
+    strlcpy(out->ssid, s_ssid, sizeof(out->ssid));
+    snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&ip.ip));
+    out->rssi = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) ? ap.rssi : 0;
+}

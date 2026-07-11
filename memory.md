@@ -25217,3 +25217,26 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
     Added 2 regression host tests.
 - main.c now: tone + LINK-1c selftest + wifi_mgr_init + console_start + beacon.
   Host suite 7/7. REDO1_TODO WIFI-1 marked done. Next: WEB-1.
+
+## 2026-07-11T22:46:05Z - Claude Opus 4.8 (1M) - WEB-1z + WEB-1a: embedded React SPA + httpd + /api/status
+
+- WEB-1z: standalone esp_i2s_source/web/ (Vite + TS + React 18). vite-plugin-singlefile
+  -> one self-contained index.html; scripts/embed_web.mjs gzips it to
+  main/www/index.html.gz (46.5 KB, <200KB target) + .sha256. Committed the .gz so
+  idf.py/CI need no Node. web/.gitignore excludes node_modules/dist.
+- WEB-1a: web_ui.c (esp_http_server). GET / serves the gzip SPA (Content-Encoding:
+  gzip); GET /api/status returns cJSON aggregating device/version/uptime/heap +
+  wifi snapshot (via new wifi_mgr_get_info()) + live WROOM32 version (bt_link
+  VERSION, cached at start). Wired web_ui_start() into main.c after console_start.
+- HARDWARE VERIFIED on the LAN: curl http://10.1.2.52/ -> 47639 B gzip -> valid SPA;
+  /api/status -> {device,version,uptime_s,heap_free=8.2MB,wifi{STA,CONNECTED,...},
+  wroom{reachable:true,version:v0.2.0-...-g1696be}}. Full stack integrates
+  (browser -> httpd -> bt_link -> WROOM32 UART2).
+- GOTCHA: EMBED_FILES in `main` puts _binary_index_html_gz_* in libmain.a, but
+  web_ui.c (in libweb_ui.a) references them and components can't depend on main
+  -> undefined reference. Fix: embed with target_add_binary_data(${COMPONENT_LIB}
+  "${PROJECT_DIR}/main/www/index.html.gz" BINARY) IN the web_ui component. BINARY
+  (not TEXT) since it's gzip bytes.
+- Remaining WEB-1: 1b (POST /api/wifi provisioning, M4 gate), 1c (WebSocket
+  terminal + EVENT feed), 1d (tone controls /api/tone). Frontend shell has stubs
+  for Terminal/Tone/Radio/BT ready to fill in.

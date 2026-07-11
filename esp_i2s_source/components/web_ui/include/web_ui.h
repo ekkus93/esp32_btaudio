@@ -1,9 +1,20 @@
 /*
- * web_ui — esp_http_server serving the embedded (gzipped, EMBED_FILES)
- * TypeScript + React SPA; REST endpoints for wifi/stations/tone/bt; one
- * WebSocket multiplexing terminal I/O + EVENT feed + status pushes
- * (SPEC §4, §5.2, §5.5). No filesystem partition.
- *
- * Implemented in WEB-1. Skeleton only for now.
+ * web_ui — esp_http_server serving the embedded (gzipped, single-file) React
+ * SPA plus the device REST/WS API (SPEC §5.2). WEB-1a: GET / (the app) and
+ * GET /api/status. Provisioning (/api/wifi), the WebSocket, tone, etc. land in
+ * WEB-1b/1c/1d.
  */
 #pragma once
+
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Start the HTTP server. Call after wifi_mgr_init() and bt_link_init(). */
+esp_err_t web_ui_start(void);
+
+#ifdef __cplusplus
+}
+#endif
