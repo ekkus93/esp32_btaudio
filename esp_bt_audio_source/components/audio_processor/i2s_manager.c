@@ -137,10 +137,12 @@ static esp_err_t configure_i2s(const audio_config_t *cfg)
 #ifndef CONFIG_BT_MOCK_TESTING
 	std_cfg.clk_cfg = (i2s_std_clk_config_t)I2S_STD_CLK_DEFAULT_CONFIG(cfg->sample_rate);
 	/* APLL: the default PLL_160M clock is FRACTIONALLY divided (alternating
-	 * /N,/N+1 periods = cycle-to-cycle BCLK jitter). Fine for DACs, but the
-	 * S3's I2S slave never syncs to it, while it locks perfectly to a clean
-	 * clock (proven via S3 on-chip loopback). APLL generates the exact audio
-	 * clock — jitter-free. */
+	 * /N,/N+1 periods = cycle-to-cycle BCLK jitter). The default clock was
+	 * re-verified working (laptop A2DP FFT, 100% purity over 6 s) once the
+	 * framing bug and DAC-pin routing were fixed — the earlier "S3 never syncs
+	 * to it" was those bugs, not the clock. APLL kept anyway: it generates the
+	 * exact, jitter-free audio clock, the robust choice for an I2S link over
+	 * jumpers (a short FFT can't rule out rare jitter glitches). */
 	std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_APLL;
 	std_cfg.slot_cfg = (i2s_std_slot_config_t)I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
 		bit_width,

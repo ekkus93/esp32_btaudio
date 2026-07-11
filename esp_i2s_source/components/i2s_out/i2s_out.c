@@ -109,7 +109,9 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
     /* SLAVE clocking margin: the slave samples the external BCLK with its
      * internal clock, which must be >= 8x BCLK (esp-idf #9513). The default
      * bclk_div=8 puts us exactly AT the minimum through a fractional divider;
-     * use 16 for real margin (internal clk ~45 MHz vs 2.82 MHz BCLK). */
+     * use 16 for real margin (internal clk ~45 MHz vs 2.82 MHz BCLK). Both 8
+     * and 16 verified working via laptop A2DP FFT (100% purity); 16 kept for
+     * margin. */
     std_cfg.clk_cfg.bclk_div = 16;
 
     err = i2s_channel_init_std_mode(s_tx_chan, &std_cfg);

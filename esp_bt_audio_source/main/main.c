@@ -136,11 +136,13 @@ static audio_config_t load_audio_boot_config(void)
         .channels = AUDIO_CHANNEL_STEREO,
         .volume = CONFIG_AUDIO_DEFAULT_VOLUME,
         .mute = false,
-        /* I2S1, not I2S0: on ESP32-classic, I2S0 is the multi-mode controller
-         * (DAC/ADC/LCD/camera/PDM) and is the suspect in the master clock
-         * never reaching the output pads (every clock-output test failed on
-         * I2S0 while the internal clock ran). I2S1 is the plain audio-only
-         * controller. */
+        /* I2S1 on ESP32-classic. I2S0 is the multi-mode controller
+         * (DAC/ADC/LCD/camera/PDM). During bring-up every clock-output test
+         * failed on I2S0 — but that was the DAC-pin routing (BCLK/WS were on
+         * GPIO25/26 then), NOT the port: with BCLK/WS on plain GPIO18/19 and
+         * the framing fixed, I2S0 was re-verified working (laptop A2DP FFT,
+         * 100% purity). I2S1 kept as the proven original; no reason to churn
+         * a working selection. */
         .i2s_port = I2S_NUM_1,
         /* Fallback pin assignments match internal defaults in audio_processor.c
          * to ensure consistent behavior across boot paths */

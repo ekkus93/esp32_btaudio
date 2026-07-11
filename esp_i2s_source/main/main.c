@@ -23,19 +23,15 @@
 #endif
 
 #include "driver/gpio.h"
-#include "driver/i2s_std.h"   /* DBG: on-chip I2S1 clockgen for loopback test */
-#include "driver/gpio_filter.h" /* DBG: pin glitch filters on clock inputs */
-#include "soc/i2s_struct.h"   /* DBG: dump slave-TX regs while diagnosing */
-#include "soc/gpio_struct.h"  /* DBG: dump GPIO matrix in-sel routing */
 
 #include "signal_gen.h"
 #include "i2s_out.h"
 
 static const char *TAG = "main";
 
-/* DBG exact frequency meter: PCNT counts rising edges at full hardware speed
- * (no aliasing, unlike the gpio_get_level poller). Reveals the WROOM32
- * clock's TRUE frequency and the BCLK:WS ratio the slave actually sees. */
+/* Exact frequency meter: PCNT counts rising edges at full hardware speed
+ * (no aliasing, unlike a gpio_get_level poller). Reports the WROOM32 master
+ * clock's TRUE frequency and the BCLK:WS ratio the S3 slave actually sees. */
 #include "driver/pulse_cnt.h"
 #include "esp_timer.h"
 static float s3_measure_hz(int gpio, int ms)
@@ -71,21 +67,6 @@ static float s3_measure_hz(int gpio, int ms)
     return (dt > 0) ? (float)count * 1e6f / (float)dt : -1.0f;
 }
 
-/* DBG clock-arrival check: sample the BCLK/WS input pads (owned by the I2S
- * slave, but gpio_get_level still reads the pad) and count transitions, to
- * confirm the WROOM32 master's clock physically reaches the S3. */
-static unsigned s3_pad_transitions(int gpio)
-{
-    gpio_num_t pin = (gpio_num_t)gpio;
-    unsigned trans = 0;
-    int prev = gpio_get_level(pin);
-    for (unsigned i = 0; i < 40000; i++) {
-        int lvl = gpio_get_level(pin);
-        if (lvl != prev) { trans++; prev = lvl; }
-    }
-    return trans;
-}
-
 /* 256 KB PSRAM ring ≈ 1.5 s of 44.1 kHz stereo s16 — ample jitter absorption. */
 #define I2S_RING_BYTES (256 * 1024)
 #define TONE_HZ        440.0
@@ -112,7 +93,7 @@ static void tone_task(void *arg)
     sg_sine_reset(&sine);
     int16_t block[TONE_FRAMES * SIGNAL_GEN_CHANNELS];
 
-    /* 32-in-32 with the sample in the TOP half (<<16): the classic-side
+    /* 16-in-32 with the sample in the TOP half (<<16): the classic-side
      * capture window lags the S3's slots by half a slot, so HIGH-aligned
      * payload lands whole in the LOW half of each captured word, one word
      * per channel (verified via laptop A2DP capture; low-aligned payload
@@ -153,67 +134,29 @@ void app_main(void)
     fflush(stdout);
 
     ESP_ERROR_CHECK(i2s_out_init(I2S_RING_BYTES));
-    /* Glitch-filter the external clock inputs: the on-chip loopback proved
-     * the slave TX works under a clean clock, so the WROOM32's clock edges
-     * over the jumpers are what the peripheral rejects. The S3's pin glitch
-     * filter drops sub-2-cycle runts/ringing at the pad. */
-    {
-        gpio_glitch_filter_handle_t f;
-        gpio_pin_glitch_filter_config_t fc = {
-            .clk_src = GLITCH_FILTER_CLK_SRC_DEFAULT,
-            .gpio_num = I2S_OUT_GPIO_BCLK,
-        };
-        ESP_ERROR_CHECK(gpio_new_pin_glitch_filter(&fc, &f));
-        ESP_ERROR_CHECK(gpio_glitch_filter_enable(f));
-        fc.gpio_num = I2S_OUT_GPIO_WS;
-        ESP_ERROR_CHECK(gpio_new_pin_glitch_filter(&fc, &f));
-        ESP_ERROR_CHECK(gpio_glitch_filter_enable(f));
-        ESP_LOGI(TAG, "DBG: glitch filters on bclk=%d ws=%d",
-                 I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS);
-    }
-    /* DBG: prime the ring with tone BEFORE starting the writer, so the first
-     * DMA load is real tone data, not underrun zeros. With auto_clear=false a
-     * stuck TX repeats its last descriptors — if the link transports, the
-     * WROOM32 will read a repeating 440 Hz pattern even if the S3 write path
-     * is stuck, cleanly separating "transport broken" from "driver stuck". */
+    /* Prime the ring with tone BEFORE starting the writer, so the first DMA
+     * load is real tone data, not underrun zeros. */
     xTaskCreate(tone_task, "tone", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
     vTaskDelay(pdMS_TO_TICKS(300));
     ESP_ERROR_CHECK(i2s_out_start());
-    ESP_LOGI(TAG, "SIG-1c: 440 Hz tone streaming to I2S (bclk=5 ws=6 dout=7)");
+    ESP_LOGI(TAG, "SIG-1c: 440 Hz tone streaming to I2S (bclk=%d ws=%d dout=%d)",
+             I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT);
 
-    /* I2S stats beacon: bytes_written must climb; underruns should stay flat
-     * once the ring primes. Repeated so it survives USB-JTAG re-enumeration. */
+    /* I2S stats beacon: bytes_written must climb and underruns stay flat once
+     * the ring primes; the PCNT freq meter confirms the WROOM32 master clock
+     * (bclk≈2.8224 MHz, ws≈44.1 kHz, ratio≈64). Repeated so it survives
+     * USB-JTAG re-enumeration. */
     i2s_out_stats_t st;
     for (;;) {
         i2s_out_get_stats(&st);
-        unsigned bclk_tr = s3_pad_transitions(I2S_OUT_GPIO_BCLK);
-        unsigned ws_tr = s3_pad_transitions(I2S_OUT_GPIO_WS);
-        /* DBG regs: int_raw bit1 = tx_done (TX unit completed a frame = it IS
-         * being clocked). in-sel regs: which GPIO feeds signal 22 (I2S0O_BCK_IN)
-         * and 24 (I2S0O_WS_IN); low 6 bits = gpio, bit7 = matrix-routed. */
-        printf("DIAG|I2S|bytes=%llu,und=%llu,undev=%u,ringpeak=%u,bclk_tr=%u,ws_tr=%u,"
-               "intraw=0x%02x,txstart=%u,txslave=%u,insel_bck=0x%02x,insel_ws=0x%02x\n",
-               (unsigned long long)st.bytes_written,
-               (unsigned long long)st.underrun_bytes,
-               (unsigned)st.underrun_events, (unsigned)st.ring_peak,
-               bclk_tr, ws_tr,
-               (unsigned)I2S0.int_raw.val,
-               (unsigned)I2S0.tx_conf.tx_start,
-               (unsigned)I2S0.tx_conf.tx_slave_mod,
-               (unsigned)GPIO.func_in_sel_cfg[22].val,
-               (unsigned)GPIO.func_in_sel_cfg[24].val);
-        printf("DIAG|I2SREG|txclkm=0x%08x,txconf1=0x%08x,txconf=0x%08x\n",
-               (unsigned)I2S0.tx_clkm_conf.val,
-               (unsigned)I2S0.tx_conf1.val,
-               (unsigned)I2S0.tx_conf.val);
         float bclk_hz = s3_measure_hz(I2S_OUT_GPIO_BCLK, 200);
         float ws_hz = s3_measure_hz(I2S_OUT_GPIO_WS, 200);
+        printf("DIAG|I2S|bytes=%llu,und=%llu,undev=%u,ringpeak=%u\n",
+               (unsigned long long)st.bytes_written,
+               (unsigned long long)st.underrun_bytes,
+               (unsigned)st.underrun_events, (unsigned)st.ring_peak);
         printf("DIAG|I2SFREQ|bclk_hz=%.0f,ws_hz=%.0f,ratio=%.2f\n",
                bclk_hz, ws_hz, (ws_hz > 0) ? bclk_hz / ws_hz : -1.0f);
-        /* Clear the sticky raw bits so intraw becomes a per-second rate
-         * indicator: re-latching every beacon = TX completing frames
-         * continuously. */
-        I2S0.int_clr.val = 0x3;
         fflush(stdout);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }

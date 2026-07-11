@@ -25134,3 +25134,34 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   system clang-14 nor esp-clang parses) — device build is the compiler gate.
 - Deferred (need re-flash + laptop-FFT re-verify, touch working HW config): S3 beacon
   slimming; APLL / glitch-filter / bclk_div16 / I2S1-vs-I2S0 keep-vs-revert decisions.
+
+## 2026-07-11T20:41:00Z - Claude Opus 4.8 (1M) - I2S hardware-config cleanup: test-reverted all 4 tuning knobs on real hardware
+
+- Built a repeatable objective verifier (scratchpad/i2s_verify.py): BT connect ->
+  START -> parec A2DP capture -> per-channel FFT (dominant freq, purity, near-zero,
+  peak). Baseline HEAD: 440.00 Hz, 100% purity, peak 9831, 0% near-zero, both ch.
+- Greedy-cumulative test-revert of each config knob, flashing both boards
+  (WROOM32 /dev/ttyUSB0, S3 /dev/ttyACM1) and FFT-verifying each:
+  * **Beacon slim (S3)**: removed soc/i2s_struct.h + soc/gpio_struct.h reg dumps,
+    s3_pad_transitions() pad sampler, DIAG|I2SREG line; kept the DIAG|I2SFREQ PCNT
+    meter (reads bclk 2.8224 MHz, ws 44.1 kHz, ratio 64.00). Fixed stale strings
+    ("32-in-32"->"16-in-32", "bclk=5 ws=6"->actual 15/16/7). -74 lines. PASS -> kept.
+  * **Glitch filters (S3)**: REMOVED (~18 lines + gpio_filter.h). PASS at 100% ->
+    they were debugging-era cruft; the real bug was WS framing, not clock glitches.
+  * **bclk_div 16->8 (S3)**: PASS, but 8 is "exactly at the esp-idf #9513 minimum";
+    kept 16 for margin (both verified working, documented).
+  * **I2S port I2S_NUM_1->0 (WROOM32)**: PASS(!) at 100%. The recorded "I2S0 clock
+    never reaches pads" was a RED HERRING from the DAC-pin era (BCLK/WS were on
+    GPIO25/26). With plain GPIO18/19 + fixed framing, I2S0 works. Kept I2S_NUM_1
+    (no churn), corrected the false comment.
+  * **APLL->DEFAULT (WROOM32)**: PASS(!) at 100%. Also a red herring — S3 syncs to
+    the fractionally-divided default clock now that framing/routing are fixed. Kept
+    APLL anyway for jitter-free margin (6s FFT can't rule out rare jitter glitches).
+- KEY FINDING: 3 of 4 "mystery" knobs (glitch filters, I2S port, APLL) were NOT
+  necessary — all were over-corrections attributed to the wrong root cause during
+  bring-up (actual causes: 16-in-32 WS framing + DAC-pin routing + stale NVS pins).
+  Only the glitch filters were physically removed (real LOC); port + clock source
+  kept for robustness/no-churn but comments now tell the truth.
+- Final config re-flashed to both boards + verified TWICE: 100% purity both channels.
+- Net source change: S3 main.c -74/+19 (scaffolding gone); WROOM32 i2s_manager.c +
+  main.c are COMMENT-ONLY (values == HEAD). main.c layering check PASS.
