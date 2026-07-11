@@ -236,12 +236,13 @@ static void ws_broadcast(const char *json)
     }
 }
 
-/* bt_link EVENT subscriber -> {type:"event",...} to all WS clients. */
+/* bt_link async-line subscriber -> {type:"event"|"info",...} to all WS clients.
+ * EVENT = pairing prompts / state; INFO = scan results, paired-list items. */
 static void on_bt_event(void *ctx, const bt_link_msg_t *m)
 {
     (void)ctx;
     cJSON *j = cJSON_CreateObject();
-    cJSON_AddStringToObject(j, "type", "event");
+    cJSON_AddStringToObject(j, "type", (m->status == BT_LINK_INFO) ? "info" : "event");
     cJSON_AddStringToObject(j, "command", m->command);
     cJSON_AddStringToObject(j, "result", m->result);
     cJSON_AddStringToObject(j, "data", m->data);

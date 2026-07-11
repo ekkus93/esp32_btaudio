@@ -45,6 +45,7 @@ typedef struct {
     int      n_subs;
 
     uint32_t events_dispatched;
+    uint32_t infos_dispatched;
     uint32_t timeouts;
     uint32_t completed_ok;
     uint32_t completed_err;
@@ -52,7 +53,9 @@ typedef struct {
 
 void bt_link_session_init(bt_link_session_t *s, uint32_t timeout_ms);
 
-/* Register an EVENT subscriber. Returns 0 on success, -1 if the table is full. */
+/* Register a subscriber for async lines — both EVENT (pairing prompts, state
+ * changes) and INFO (scan results, paired-list items). Inspect m->status to
+ * tell them apart. Returns 0 on success, -1 if the table is full. */
 int  bt_link_session_subscribe(bt_link_session_t *s, bt_link_event_cb cb, void *ctx);
 
 /* Mark `command` as just sent (verb = first token). Transitions to PENDING.

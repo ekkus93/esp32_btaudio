@@ -91,6 +91,33 @@ static void test_event_fanout_to_subscribers(void)
     TEST_ASSERT_EQUAL_UINT32(1, s.events_dispatched);
 }
 
+static void test_info_fanout_to_subscribers(void)
+{
+    /* BTUI-1: INFO lines (scan results, paired items) fan out to subscribers
+     * too — both async (no command pending) and during a pending command —
+     * without completing it. */
+    bt_link_session_t s; bt_link_session_init(&s, 1000);
+    ev_t a = {0};
+    bt_link_session_subscribe(&s, ev_cb, &a);
+
+    /* async INFO, no command pending */
+    feed(&s, "INFO|SCAN|RESULT|A0:B7:65:2B:E6:5E,Echo Buds");
+    TEST_ASSERT_EQUAL_INT(1, a.count);
+    TEST_ASSERT_EQUAL_STRING("SCAN", a.last_cmd);
+    TEST_ASSERT_EQUAL_STRING("A0:B7:65:2B:E6:5E,Echo Buds", a.last_data);
+    TEST_ASSERT_EQUAL_UINT32(1, s.infos_dispatched);
+
+    /* INFO during a pending command still fans out AND doesn't complete it */
+    bt_link_session_begin(&s, "PAIRED");
+    feed(&s, "INFO|PAIRED|ITEM|11:22:33:44:55:66,Speaker");
+    TEST_ASSERT_EQUAL_INT(2, a.count);
+    TEST_ASSERT_EQUAL_INT(BT_LINK_CMD_PENDING, bt_link_session_state(&s));
+    feed(&s, "OK|PAIRED|COUNT|1");
+    TEST_ASSERT_EQUAL_INT(BT_LINK_CMD_DONE_OK, bt_link_session_state(&s));
+    TEST_ASSERT_EQUAL_UINT32(2, s.infos_dispatched);
+    TEST_ASSERT_EQUAL_UINT32(0, s.events_dispatched);
+}
+
 static void test_event_interleaved_with_pending(void)
 {
     bt_link_session_t s; bt_link_session_init(&s, 1000);
@@ -157,6 +184,7 @@ int main(void)
     RUN_TEST(test_mismatched_terminal_ignored);
     RUN_TEST(test_info_does_not_complete);
     RUN_TEST(test_event_fanout_to_subscribers);
+    RUN_TEST(test_info_fanout_to_subscribers);
     RUN_TEST(test_event_interleaved_with_pending);
     RUN_TEST(test_subscribe_table_full);
     RUN_TEST(test_timeout_fires_once);

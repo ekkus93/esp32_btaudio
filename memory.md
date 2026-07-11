@@ -25293,3 +25293,24 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   A2DP is frequency-accurate.
 - WEB-1 implementation COMPLETE (z/a/b/c/d). Only the WEB-1b M4 browser AP->STA
   walk-through remains (user-driven). Host suite 7/7. Next group: BTUI-1.
+
+## 2026-07-11T23:38:47Z - Claude Opus 4.8 (1M) - BTUI-1a/b/c: browser Bluetooth management UI
+
+- Foundation: extended bt_link_session to fan out INFO lines (scan results,
+  paired items) to subscribers, not just EVENT (+ infos_dispatched counter +
+  host test test_info_fanout_to_subscribers). web_ui on_bt_event now tags
+  frames info vs event by m->status.
+- Shared web/src/ws.ts: one /ws WebSocket singleton + pub/sub + useWs() hook,
+  reused by Terminal (refactored) and the new Bluetooth panel.
+- Bluetooth.tsx: Scan (SCAN -> INFO|SCAN|RESULT -> discovered list),
+  Pair/Connect per device, Disconnect, volume slider (VOLUME <n>), Paired list
+  (PAIRED -> INFO|PAIRED|ITEM) with Unpair (UNPAIR <mac>), and a pairing-prompt
+  modal (EVENT|PAIR|CONFIRM -> CONFIRM_PIN ACCEPT|REJECT).
+- WROOM32 protocol confirmed: SCAN->OK STARTED then async INFO|SCAN|RESULT|mac,name;
+  PAIRED->INFO|PAIRED|ITEM|mac,name + OK|PAIRED|COUNT; CONFIRM_PIN accepts
+  ACCEPT/YES/1 or REJECT/NO/0; UNPAIR <mac>.
+- HARDWARE VERIFIED over WS (scratchpad/btui_test.py): PAIRED returned 2 paired
+  devices as info frames; SCAN OK STARTED (no discoverable devices in range);
+  DEBUG MOCK_PAIR -> EVENT|PAIR|CONFIRM prompt frame. Host suite 7/7.
+- BTUI-1d (Echo Buds E2E, M5) is user-driven: full pair->connect->volume from
+  the browser with real earbuds. Next group: RADIO-1.

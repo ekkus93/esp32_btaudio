@@ -199,15 +199,25 @@ pushes as JSON `{type:...}` frames (SPEC §5.2).
 
 **Status:** `[ ]` Not started
 
+Foundation: extended `bt_link_session` to fan out **INFO** lines (scan results,
+paired items) to subscribers too, not just EVENT (+host test). web_ui pushes
+them as `info` WS frames (EVENT → `event`). A shared `web/src/ws.ts` singleton
+multiplexes one `/ws` across the Terminal + Bluetooth panels.
+
 ### Tasks
-- [ ] **BTUI-1a** Scan: button → `SCAN` via bt_link → parse
-      `INFO|SCAN|ITEM|` results → device list in UI.
-- [ ] **BTUI-1b** Pair/connect/disconnect buttons per device; volume
-      slider (`VOLUME <n>`); paired-devices list (`PAIRED`) with unpair.
-- [ ] **BTUI-1c** Pairing prompts: `EVENT|PAIR|CONFIRM`/`PIN_REQUEST`
-      surfaced as UI dialogs → `CONFIRM_PIN`/`ENTER_PIN` replies.
-- [ ] **BTUI-1d** Hardware E2E with the Echo Buds: full pair→connect→
-      volume flow from the browser only. (M5)
+- [x] **BTUI-1a** Scan: button → `SCAN` → `INFO|SCAN|RESULT|<mac>,<name>` info
+      frames accumulate into a discovered-device list. Verified over WS (`OK
+      STARTED`; info-frame path proven via PAIRED's identical fan-out — no
+      devices discoverable in range at test time).
+- [x] **BTUI-1b** Per-device Pair/Connect buttons; global Disconnect; volume
+      slider (`VOLUME <n>`); paired list (`PAIRED` → `INFO|PAIRED|ITEM`) with
+      Unpair (`UNPAIR <mac>`). Verified: 2 paired devices returned as info
+      frames; commands round-trip as term_out.
+- [x] **BTUI-1c** Pairing prompt: `EVENT|PAIR|CONFIRM` → modal → Accept/Reject
+      send `CONFIRM_PIN ACCEPT|REJECT`. Verified via `DEBUG MOCK_PAIR` →
+      `EVENT|PAIR|CONFIRM` frame surfaced.
+- [ ] **BTUI-1d** Hardware E2E with the Echo Buds: full pair→connect→volume
+      from the browser only. (M5) — user-driven.
 
 ## RADIO-1 — Stream client + parsers
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getStatus, setWifi, setTone, toneOff, type DeviceStatus } from "./api";
 import { Terminal } from "./Terminal";
+import { Bluetooth } from "./Bluetooth";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -217,8 +218,8 @@ export function App() {
 
         <Terminal />
         <ToneControl tone={status?.tone} onChange={refresh} />
+        <Bluetooth />
         <Placeholder title="Radio" task="RADIO-1" />
-        <Placeholder title="Bluetooth" task="BTUI-1" />
       </div>
 
       <footer className="muted">esp-i2s-source · {status?.version ?? "…"}</footer>

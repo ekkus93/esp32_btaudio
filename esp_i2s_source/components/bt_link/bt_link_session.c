@@ -54,11 +54,17 @@ bool bt_link_session_begin(bt_link_session_t *s, const char *command)
 
 void bt_link_session_on_message(bt_link_session_t *s, const bt_link_msg_t *m)
 {
-    if (m->status == BT_LINK_EVENT) {
+    /* EVENT and INFO are async/informational broadcasts — fan them out to
+     * subscribers (pairing prompts, scan results, paired-list items) and never
+     * let them complete the in-flight command. INFO may arrive during a pending
+     * command (PAIRED items) or with none pending (SCAN results after STARTED);
+     * both are surfaced to subscribers. */
+    if (m->status == BT_LINK_EVENT || m->status == BT_LINK_INFO) {
         for (int i = 0; i < s->n_subs; i++) {
             if (s->subs[i].cb) s->subs[i].cb(s->subs[i].ctx, m);
         }
-        s->events_dispatched++;
+        if (m->status == BT_LINK_EVENT) s->events_dispatched++;
+        else s->infos_dispatched++;
         return;
     }
 
