@@ -316,14 +316,35 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
 
 ## CTRL-1 — Orchestrated boot + polish
 
-**Status:** `[ ]` Not started
+**Status:** `[~]` Implementation done + host-tested; M7 hardware gate passed for
+the sink-available path (see CTRL-1c caveat).
 
 ### Tasks
-- [ ] **CTRL-1a** NVS: target sink MAC, autostart flag, last source/station.
-- [ ] **CTRL-1b** Orchestrator: boot → WiFi up → bt_link STATUS →
-      CONNECT <mac> → START → resume last source (radio station or idle);
-      EVENT-driven reconnect. Host-tested with scripted bt_link mock.
-- [ ] **CTRL-1c** Power-on-to-music with zero human interaction. (M7 gate)
+- [x] **CTRL-1a** NVS config store (`components/ctrl/ctrl_cfg`): target sink
+      MAC, autostart flag, last station index (magic-guarded blob, namespace
+      "ctrl"). Pure `ctrl_cfg_mac_valid()` host-tested (5 cases).
+- [x] **CTRL-1b** Orchestrator. Pure `ctrl_sm` FSM (host-tested, 9 cases):
+      WAIT_WIFI → STATUS → CONNECT `<mac>` → settle → START → resume last
+      station → RUNNING with health-poll; failed START / dropped link (RUN=0)
+      → backoff → retry CONNECT up to max_retries → GAVEUP. `ctrl.c` glue
+      drives it via `bt_link_send` (STATUS/CONNECT/START) + `radio_play`,
+      reading `RUN=1` as the connected/streaming signal. `/api/ctrl` GET/POST
+      configures sink+autostart; POST `/api/radio {id}` records last station.
+      **Reconnect note:** the WROOM32 emits no connect/disconnect EVENT (its
+      callbacks are NULL), so reconnect is STATUS-polled, not push-EVENT — the
+      FSM is source-agnostic. Pure-EVENT push is a WROOM32-side follow-up.
+- [x] **CTRL-1c** Power-on-to-music (M7) — **PASSED on hardware (Echo Buds).**
+      Disconnected the sink, cold-rebooted the S3 → orchestrator auto-connected
+      the earbuds and resumed the last station (jazz) in **~6 s with zero human
+      interaction**. Required an orchestrator fix (commit ee48824c): the old
+      CONNECT→settle→START-or-backoff raced a slow sink (earbuds aren't linked
+      at +4 s, so START failed and it never resumed). New flow: CONNECT → nudge
+      START (result ignored) → poll STATUS until `RUN=1` or connect_timeout →
+      resume. Note: a laptop test-sink refuses a cold WROOM32-initiated A2DP
+      connection (environmental), but a real speaker/earbud accepts it — so M7
+      is demonstrated against the actual product sink. Known polish item: the
+      WROOM32 resets VOL to 40 on a fresh A2DP connection, so autostart music
+      currently comes up at 40 rather than the persisted level.
 
 ## DOC-1 — Documentation + regression
 

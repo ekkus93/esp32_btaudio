@@ -25474,3 +25474,52 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   DOC-1 (docs/regression). Task #29 done. Endurance harness lives in scratchpad
   (radio2d_endurance.py / radio2d_gate.sh); not committed (test tooling).
 - Device left playing the AAC+ stream at end of gate.
+
+## 2026-07-12T07:47:00Z - Claude Opus 4.8 (1M) - Two-stage volume: WROOM32 fix + S3 pre-I2S gain
+
+- User hit painfully loud audio; VOLUME command did nothing. Root causes (both
+  in WROOM32 esp_bt_audio_source):
+  1) apply_volume() was DEAD CODE (never called) -> VOLUME was a no-op.
+  2) After wiring it into audio_processor_read (the A2DP data path's single
+     output point), it corrupted audio into loud STATIC: apply_volume dispatches
+     int16-vs-int32 on s_audio_config.bit_depth, which is 32 for the 16-in-32
+     I2S input, but the A2DP/SBC output buffer is always 16-bit. Scaling a 16-bit
+     buffer with 32-bit math scrambles samples.
+- FIX: added apply_volume_s16() (always 16-bit) and use it on the A2DP output.
+  Verified OBJECTIVELY via laptop A2DP parec capture: 440Hz tone peak scales
+  9831/4915/2459/984 for VOLUME 100/50/25/10 (exactly linear), purity 93-99%
+  (clean). Commit 8e500c1a. WROOM32 host 67/67.
+- Also added S3 pre-I2S software volume (user asked for two-stage control):
+  pure i2s_out_apply_gain() (0-100%, truncate-toward-zero, unity/over=noop,
+  <=0=mute), POST /api/volume {pct}, i2s.gain in /api/status. Host-tested (7
+  cases). Objectively verified on laptop: identical linear scaling. In-memory
+  (resets to 100 on boot; WROOM32 VOLUME is the persistent primary). Commit
+  228e7bd1. S3 host 13/13.
+- Regression tests added per user request: WROOM32 test_audio_processor_read now
+  asserts volume applied AND scales as s16 when bit_depth=32 (the case the old
+  harness masked by forcing bit_depth=16); S3 test_i2s_out_gain (7 cases).
+- KEY hardware facts learned: laptop A2DP sink only accepts LAPTOP-initiated
+  connects (bluetoothctl connect A0:B7:65:2B:E6:5E), not WROOM32-initiated;
+  laptop BT MAC E8:FB:1C:25:E4:C2, WROOM32 MAC A0:B7:65:2B:E6:5E, Echo Buds
+  48:78:5E:D9:35:A3 (paired w/ WROOM32, auto-reconnect on its boot). WROOM32
+  STATUS byte counters (BYTES_PROD/PKTS) read 0 always (not populated); RUN=1 is
+  the connected signal. "static" earlier in earbuds was Echo Buds L->R relay
+  glitch (fixed by A2DP reconnect), separate from the apply_volume static.
+- STATE: CTRL-1 autostart currently OFF (disabled during debugging). Roadmap
+  CTRL-1c (M7) mid-flight, DOC-1 pending.
+
+## 2026-07-12T08:01:25Z - Claude Opus 4.8 (1M) - CTRL-1c M7 PASSED (cold-start to music on Echo Buds)
+
+- Fixed the orchestrator cold-connect race (commit ee48824c): old flow settled 4s
+  after CONNECT then START-or-backoff; a slow sink (Echo Buds) isn't linked at
+  +4s so START failed and it never resumed. New: CONNECT -> START nudge (result
+  ignored) -> poll STATUS until RUN=1 or connect_timeout(20s) -> resume/backoff.
+  Regression test test_slow_sink_start_fails_but_connects. Host 13/13.
+- M7 VERIFIED on hardware: disconnected Echo Buds, rebooted S3 -> orchestrator
+  CONNECT 48:78:5E:D9:35:A3 -> START fail (expected) -> waited RUN=1 -> resume
+  station 5 -> jazz playing in ~6s, zero human interaction. Echo Buds accept the
+  WROOM32-initiated CONNECT (the laptop sink did not — env limitation, not fw).
+- Known polish item: WROOM32 VOL resets to 40 on a fresh A2DP connection (AVRCP/
+  default), so autostart music comes up at 40 not the persisted level; orchestrator
+  could set a target volume post-connect. Not blocking M7.
+- CTRL-1 (a/b/c) COMPLETE. Remaining: DOC-1.
