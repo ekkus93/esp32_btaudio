@@ -57,7 +57,12 @@ header h1 {
 .banner.err { background: #3a1c22; color: #ffb3ba; border: 1px solid #5a2730; }
 .banner.ok { background: #12312a; color: #9ff0d5; border: 1px solid #1f5546; }
 
-.card.provision { grid-column: 1 / -1; border-color: var(--accent); }
+.card.provision { border-color: var(--accent); }
+
+/* Settings tab: a fixed 2-column layout (Network+System, WiFi+Control AP), with
+ * the full-width Bluetooth card below. Collapses to one column on phones. */
+.grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 620px) { .grid.settings { grid-template-columns: 1fr; } }
 .card.provision form { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
 .card.provision label {
   display: flex;

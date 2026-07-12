@@ -40,9 +40,23 @@ function ProvisionForm({ wifi }: { wifi?: WifiStatus }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const connected = wifi?.state === "CONNECTED";
 
+  // Pre-fill the SSID with the current network once known (until the user edits).
+  const didFill = useRef(false);
+  useEffect(() => {
+    if (!didFill.current && wifi?.ssid) {
+      setSsid(wifi.ssid);
+      didFill.current = true;
+    }
+  }, [wifi?.ssid]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ssid) return;
+    // Same network, blank password field -> nothing to change.
+    if (connected && ssid === wifi?.ssid && !pass) {
+      setMsg({ ok: true, text: `Already connected to "${ssid}".` });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     const guidance =
@@ -74,12 +88,7 @@ function ProvisionForm({ wifi }: { wifi?: WifiStatus }) {
       <form onSubmit={submit}>
         <label>
           Network (SSID)
-          <input
-            value={ssid}
-            onChange={(e) => setSsid(e.target.value)}
-            placeholder={connected ? wifi?.ssid : ""}
-            disabled={busy}
-          />
+          <input value={ssid} onChange={(e) => setSsid(e.target.value)} disabled={busy} />
         </label>
         <label>
           Password
@@ -87,7 +96,7 @@ function ProvisionForm({ wifi }: { wifi?: WifiStatus }) {
             type="password"
             value={pass}
             onChange={(e) => setPass(e.target.value)}
-            placeholder="(leave blank if open)"
+            placeholder={connected ? "••••••••" : "(leave blank if open)"}
             disabled={busy}
           />
         </label>
@@ -315,8 +324,8 @@ export function App() {
       </nav>
 
       {tab === "settings" && (
-        <div className="grid">
-          <ProvisionForm wifi={w} />
+        <div className="grid settings">
+          {/* Row 1: Network + System */}
           <Card title="Network">
             {w ? (
               <>
@@ -342,7 +351,11 @@ export function App() {
             />
           </Card>
 
+          {/* Row 2: WiFi + Control AP */}
+          <ProvisionForm wifi={w} />
           <ApControl ap={w?.ap} onChange={refresh} />
+
+          {/* Row 3: Bluetooth (full width) */}
           <Bluetooth />
         </div>
       )}

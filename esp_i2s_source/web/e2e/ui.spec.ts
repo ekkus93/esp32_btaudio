@@ -34,7 +34,12 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     // WiFi setup form must be present so users can set/change the network.
     await expect(page.locator(".card.provision")).toBeVisible();
     await expect(page.getByText("Network (SSID)")).toBeVisible();
-    await expect(page.locator(".card.provision input").first()).toBeVisible();
+    // When connected, SSID is pre-filled and the password shows masked dots.
+    await expect(page.locator(".card.provision input").first()).not.toHaveValue("");
+    await expect(page.locator('.card.provision input[type="password"]')).toHaveAttribute(
+      "placeholder",
+      /•/
+    );
     await expect(page.getByRole("heading", { name: "Network" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Control AP" })).toBeVisible();
     await expect(page.getByText("ESP32-S3-Audio")).toBeVisible();
