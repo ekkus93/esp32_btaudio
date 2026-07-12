@@ -1,64 +1,66 @@
 import { useEffect, useRef, useState } from "react";
-import { useWs, type WsMessage } from "./ws";
+import { consoleCmd } from "./api";
 
-type Line = { kind: "sent" | "out" | "event" | "info"; text: string };
+type Line = { kind: "sent" | "out"; text: string };
 
-// WEB-1c: terminal over the shared /ws. term_in -> WROOM32 via bt_link ->
-// term_out; async `event`/`info` frames are shown inline too.
+// Terminal via REST: POST /api/console runs a raw WROOM32 command and returns
+// its response (no WebSocket).
 export function Terminal() {
-  const { connected, command, subscribe } = useWs();
   const [lines, setLines] = useState<Line[]>([]);
   const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const push = (l: Line) => setLines((cur) => [...cur.slice(-200), l]);
-    return subscribe((m: WsMessage) => {
-      if (m.type === "term_out") {
-        const parts = [m.result, m.data].filter(Boolean).join(" | ");
-        push({ kind: "out", text: `${m.status}${parts ? " | " + parts : ""}` });
-      } else if (m.type === "event" || m.type === "info") {
-        const parts = [m.command, m.result, m.data].filter(Boolean).join(" | ");
-        push({ kind: m.type, text: `${m.type.toUpperCase()} ${parts}` });
-      }
-    });
-  }, [subscribe]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [lines]);
 
-  const send = (e: React.FormEvent) => {
+  const push = (l: Line) => setLines((cur) => [...cur.slice(-200), l]);
+
+  const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const cmd = input.trim();
-    if (!cmd || !command(cmd)) return;
-    setLines((cur) => [...cur.slice(-200), { kind: "sent", text: `> ${cmd}` }]);
+    if (!cmd || busy) return;
+    push({ kind: "sent", text: `> ${cmd}` });
     setInput("");
+    setBusy(true);
+    try {
+      const r = await consoleCmd(cmd);
+      const parts = [r.result, r.data].filter(Boolean).join(" | ");
+      push({ kind: "out", text: `${r.status}${parts ? " | " + parts : ""}` });
+    } catch {
+      push({ kind: "out", text: "(request failed)" });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <section className="card terminal">
-      <h2>
-        Terminal
-        <span className={`dot ${connected ? "ok" : "bad"}`} title={connected ? "ws connected" : "ws down"} />
-      </h2>
+      <h2>Terminal</h2>
       <div className="term-log" ref={logRef}>
-        {lines.length === 0 && <div className="muted">Send a command to the Bluetooth board (e.g. VERSION, STATUS, SCAN).</div>}
+        {lines.length === 0 && (
+          <div className="muted">Send a command to the Bluetooth board (e.g. VERSION, STATUS, PAIRED).</div>
+        )}
         {lines.map((l, i) => (
-          <div key={i} className={`term-line ${l.kind}`}>{l.text}</div>
+          <div key={i} className={`term-line ${l.kind}`}>
+            {l.text}
+          </div>
         ))}
       </div>
       <form onSubmit={send}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={connected ? "command…" : "connecting…"}
-          disabled={!connected}
+          placeholder="command…"
+          disabled={busy}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
         />
-        <button type="submit" disabled={!connected || !input.trim()}>Send</button>
+        <button type="submit" disabled={busy || !input.trim()}>
+          Send
+        </button>
       </form>
     </section>
   );

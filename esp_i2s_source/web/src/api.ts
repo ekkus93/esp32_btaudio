@@ -57,6 +57,47 @@ export interface ProvisionResult {
   error?: string;
 }
 
+// Start a Bluetooth scan: the device suspends A2DP for a clean inquiry, then
+// restores. Discovered devices appear in getBt().discovered.
+export async function triggerScan(): Promise<{ ok: boolean; error?: string }> {
+  const r = await fetch("/api/scan", { method: "POST" });
+  return r.json();
+}
+
+export interface BtDev {
+  mac: string;
+  name: string;
+}
+export interface BtState {
+  connected: boolean;
+  scanning: boolean;
+  prompt?: string; // pairing confirm prompt, if any
+  paired: BtDev[];
+  discovered: BtDev[];
+}
+export const getBt = () => getJSON<BtState>("/api/bt");
+
+// Bluetooth actions: connect | disconnect | pair | unpair | pin_accept |
+// pin_reject | refresh.
+export async function btAction(action: string, mac?: string): Promise<{ ok: boolean; result?: string }> {
+  const r = await fetch("/api/bt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, mac }),
+  });
+  return r.json();
+}
+
+// Run a raw WROOM32 command and get its response (replaces the WS terminal).
+export async function consoleCmd(cmd: string): Promise<{ status: string; result: string; data: string }> {
+  const r = await fetch("/api/console", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cmd }),
+  });
+  return r.json();
+}
+
 // Toggle the concurrent control AP (keep it up alongside STA, or STA-only).
 export async function setApEnabled(enabled: boolean): Promise<{ ok: boolean; enabled?: boolean }> {
   const r = await fetch("/api/apmode", {

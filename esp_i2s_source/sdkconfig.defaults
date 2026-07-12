@@ -21,6 +21,12 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 # --- HTTP server WebSocket support (web_ui, WEB-1) ---
 CONFIG_HTTPD_WS_SUPPORT=y
 
+# --- More lwIP sockets. The default 10 is exhausted by the radio HTTPS stream +
+#     APSTA DHCP + mDNS + the httpd (browser holds a WebSocket AND polls
+#     /api/status), which resets new WebSocket handshakes -> the terminal/BT UI
+#     breaks while music is playing. 16 (the max) gives headroom. ---
+CONFIG_LWIP_MAX_SOCKETS=16
+
 # --- Partition table: bigger app for TLS + decoders; larger NVS for presets ---
 # (RADIO-1b) Default single-app ~1 MB is too small once esp_http_client +
 # esp-tls + the mbedtls cert bundle link in. See partitions.csv.

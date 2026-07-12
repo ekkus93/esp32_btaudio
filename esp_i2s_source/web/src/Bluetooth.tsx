@@ -1,124 +1,94 @@
 import { useEffect, useRef, useState } from "react";
-import { useWs, type WsMessage } from "./ws";
+import { getBt, btAction, triggerScan, type BtDev, type BtState } from "./api";
 
-interface Dev {
-  mac: string;
-  name: string;
-}
-interface PairPrompt {
-  mac: string;
-  info: string;
-}
-
-function splitMacName(data: string): Dev {
-  const i = data.indexOf(",");
-  return i < 0 ? { mac: data, name: "" } : { mac: data.slice(0, i), name: data.slice(i + 1) };
-}
-
-// BTUI-1: Bluetooth management over the shared /ws. Commands go out as term_in;
-// scan results / paired items arrive as `info` frames, pairing prompts as
-// `event` frames (SPEC §5.2, protocol per esp_bt_audio_source commands.c).
+// Bluetooth management via polled REST (GET /api/bt) — no WebSocket. Scan
+// results / paired items / pairing prompts are buffered on the device and
+// returned by the poll; actions go through POST /api/bt.
 export function Bluetooth() {
-  const { connected, command, subscribe } = useWs();
-  const [devices, setDevices] = useState<Dev[]>([]);
-  const [paired, setPaired] = useState<Dev[]>([]);
+  const [bt, setBt] = useState<BtState | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [scanned, setScanned] = useState(false);   // a scan has completed at least once
-  const [prompt, setPrompt] = useState<PairPrompt | null>(null);
+  const [scanned, setScanned] = useState(false);
   const [note, setNote] = useState<string>("");
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refreshPaired = () => {
-    setPaired([]);
-    command("PAIRED");
-  };
+  const refresh = () => getBt().then(setBt).catch(() => {});
 
   useEffect(() => {
-    const unsub = subscribe((m: WsMessage) => {
-      const cmd = m.command as string;
-      const result = m.result as string;
-      const data = (m.data as string) || "";
-      if (m.type === "info" && cmd === "SCAN" && result === "RESULT") {
-        const d = splitMacName(data);
-        setDevices((cur) => (cur.some((x) => x.mac === d.mac) ? cur : [...cur, d]));
-      } else if (m.type === "info" && cmd === "PAIRED" && result === "ITEM") {
-        const d = splitMacName(data);
-        setPaired((cur) => (cur.some((x) => x.mac === d.mac) ? cur : [...cur, d]));
-      } else if (m.type === "event" && cmd === "PAIR" && result === "CONFIRM") {
-        const d = splitMacName(data);
-        setPrompt({ mac: d.mac, info: data });
-      } else if (m.type === "event" && cmd === "PAIR" && (result === "SUCCESS" || result === "FAILED")) {
-        setPrompt(null);
-        setNote(`Pairing ${result.toLowerCase()}`);
-        refreshPaired();
-      } else if (m.type === "term_out") {
-        if (["CONNECT", "DISCONNECT", "PAIR", "UNPAIR"].includes(cmd)) {
-          setNote(`${cmd}: ${m.status} ${result || ""}`.trim());
-          if (cmd === "UNPAIR" || cmd === "PAIR") refreshPaired();
-        }
-      }
-    });
-    refreshPaired();
-    return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscribe]);
+    refresh();
+    const id = setInterval(refresh, 2000);
+    return () => {
+      clearInterval(id);
+      if (scanTimer.current) clearTimeout(scanTimer.current);
+    };
+  }, []);
+
+  const act = async (action: string, mac?: string) => {
+    const r = await btAction(action, mac).catch(() => ({ ok: false }));
+    setNote(`${action.replace("_", " ")}: ${r.ok ? "ok" : "failed"}`);
+    setTimeout(refresh, 600);
+  };
 
   const scan = () => {
-    setDevices([]);
     setScanned(false);
     setScanning(true);
-    command("SCAN");
+    triggerScan().catch(() => {});
     if (scanTimer.current) clearTimeout(scanTimer.current);
-    // The WROOM32 inquiry runs ~13s and reports at the end, so wait past it.
+    // Device: ~1.5s disconnect + ~15s inquiry + reconnect. Poll shows results live.
     scanTimer.current = setTimeout(() => {
       setScanning(false);
       setScanned(true);
-    }, 15000);
+    }, 20000);
   };
 
-  const isPaired = (mac: string) => paired.some((p) => p.mac === mac);
+  const paired: BtDev[] = bt?.paired ?? [];
+  const discovered: BtDev[] = bt?.discovered ?? [];
+  const isPaired = (mac: string) => paired.some((p) => p.mac.toLowerCase() === mac.toLowerCase());
+  const online = bt != null;
 
   return (
     <section className="card bt">
       <h2>
         Bluetooth
-        <span className={`dot ${connected ? "ok" : "bad"}`} />
+        <span className={`dot ${bt?.connected ? "ok" : "bad"}`} title={bt?.connected ? "connected" : "not connected"} />
       </h2>
 
       <div className="bt-actions">
-        <button className="primary" disabled={!connected || scanning} onClick={scan}>
+        <button className="primary" disabled={!online || scanning} onClick={scan}>
           {scanning ? "Scanning…" : "Scan"}
         </button>
-        <button disabled={!connected} onClick={() => command("DISCONNECT")}>Disconnect</button>
+        <button disabled={!online || !bt?.connected} onClick={() => act("disconnect")}>
+          Disconnect
+        </button>
       </div>
 
       {scanning ? (
         <p className="muted bt-hint">
-          Scanning… put the speaker/headphones you want in <strong>pairing mode</strong> now —
-          only devices actively in pairing mode are discoverable.
+          Scanning… <strong>audio pauses</strong> for ~20s while the radio scans. Put the
+          speaker/headphones you want in <strong>pairing mode</strong> now — only devices
+          actively in pairing mode are discoverable.
         </p>
-      ) : scanned && devices.length === 0 ? (
+      ) : scanned && discovered.length === 0 ? (
         <p className="muted bt-hint">
           No devices found. Bluetooth speakers/earbuds only appear while they're in
           <strong> pairing mode</strong> — put yours in pairing mode and scan again.
         </p>
-      ) : devices.length === 0 ? (
+      ) : discovered.length === 0 ? (
         <p className="muted bt-hint">
           Tip: put your Bluetooth speaker/headphones in <strong>pairing mode</strong> before scanning.
         </p>
       ) : null}
 
-      {devices.length > 0 && (
+      {discovered.length > 0 && (
         <>
           <h3>Discovered</h3>
           <ul className="bt-list">
-            {devices.map((d) => (
+            {discovered.map((d) => (
               <li key={d.mac}>
                 <span className="name">{d.name || "(no name)"}</span>
                 <span className="mac">{d.mac}</span>
                 <span className="btns">
-                  {!isPaired(d.mac) && <button onClick={() => command(`PAIR ${d.mac}`)}>Pair</button>}
-                  <button onClick={() => command(`CONNECT ${d.mac}`)}>Connect</button>
+                  {!isPaired(d.mac) && <button onClick={() => act("pair", d.mac)}>Pair</button>}
+                  <button onClick={() => act("connect", d.mac)}>Connect</button>
                 </span>
               </li>
             ))}
@@ -126,9 +96,14 @@ export function Bluetooth() {
         </>
       )}
 
-      <h3>Paired</h3>
+      <h3>
+        Paired
+        <button className="bt-refresh" disabled={!online} onClick={() => act("refresh")} title="Refresh">
+          ↻
+        </button>
+      </h3>
       {paired.length === 0 ? (
-        <p className="muted">None paired yet.</p>
+        <p className="muted">{online ? "None paired yet." : "…"}</p>
       ) : (
         <ul className="bt-list">
           {paired.map((d) => (
@@ -136,8 +111,8 @@ export function Bluetooth() {
               <span className="name">{d.name || "(no name)"}</span>
               <span className="mac">{d.mac}</span>
               <span className="btns">
-                <button onClick={() => command(`CONNECT ${d.mac}`)}>Connect</button>
-                <button className="danger" onClick={() => command(`UNPAIR ${d.mac}`)}>Unpair</button>
+                <button onClick={() => act("connect", d.mac)}>Connect</button>
+                <button className="danger" onClick={() => act("unpair", d.mac)}>Unpair</button>
               </span>
             </li>
           ))}
@@ -146,14 +121,11 @@ export function Bluetooth() {
 
       {note && <div className="banner ok">{note}</div>}
 
-      {prompt && (
+      {bt?.prompt && (
         <div className="bt-prompt">
-          <p>Pairing request from <b>{prompt.mac}</b></p>
-          <p className="muted">{prompt.info}</p>
-          <div className="bt-actions">
-            <button className="primary" onClick={() => { command("CONFIRM_PIN ACCEPT"); setPrompt(null); }}>Accept</button>
-            <button className="danger" onClick={() => { command("CONFIRM_PIN REJECT"); setPrompt(null); }}>Reject</button>
-          </div>
+          <p>Pairing request: {bt.prompt}</p>
+          <button className="primary" onClick={() => act("pin_accept")}>Accept</button>
+          <button className="danger" onClick={() => act("pin_reject")}>Reject</button>
         </div>
       )}
     </section>

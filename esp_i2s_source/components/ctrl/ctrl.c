@@ -23,6 +23,8 @@ static ctrl_cfg_t        s_cfg;
 static ctrl_sm_t         s_sm;
 static TaskHandle_t      s_task;
 static SemaphoreHandle_t s_mtx;
+static TaskHandle_t      s_scan_task;
+static volatile bool     s_scan_active;   /* pause the orchestrator during a scan */
 
 static bool wifi_connected(void)
 {
@@ -119,6 +121,12 @@ static void orchestrator_task(void *arg)
              s_cfg.sink_mac, s_cfg.last_station);
 
     for (;;) {
+        /* A scan intentionally drops A2DP for the inquiry — don't fight it by
+         * health-poll-reconnecting. scan_task restores the link when done. */
+        if (s_scan_active) {
+            vTaskDelay(pdMS_TO_TICKS(CTRL_LOOP_MS));
+            continue;
+        }
         ctrl_input_t in = {0};
         if (s_sm.state == CTRL_ST_WAIT_WIFI && wifi_connected()) {
             in.ev = CTRL_EV_WIFI_UP;
@@ -138,6 +146,74 @@ static void orchestrator_task(void *arg)
     }
     s_task = NULL;
     vTaskDelete(NULL);
+}
+
+/* Suspend A2DP for a clean classic-BT inquiry, then restore. Classic inquiry is
+ * unreliable while an A2DP link is active (they share one radio), so stop the
+ * stream, disconnect the sink, run SCAN, then reconnect + resume. Discovery
+ * results fan out over the WS as INFO|SCAN|RESULT during the inquiry window. */
+#define SCAN_INQUIRY_MS  15000
+#define SCAN_SETTLE_MS    4000
+
+static void scan_task(void *arg)
+{
+    (void)arg;
+    /* Snapshot what to restore afterward. */
+    radio_status_t rs;
+    radio_get_status(&rs);
+    bool was_playing = rs.playing;
+    char url[RADIO_URL_MAX];
+    strlcpy(url, rs.url, sizeof(url));
+    ctrl_cfg_t cfg;
+    ctrl_get_cfg(&cfg);
+    bool have_sink = ctrl_cfg_mac_valid(cfg.sink_mac);
+
+    s_scan_active = true;
+    bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+
+    /* Suspend A2DP: stop feeding I2S, drop the sink so the radio is free. */
+    if (was_playing) radio_stop();
+    ESP_LOGI(TAG, "scan: suspending A2DP (disconnect sink)");
+    bt_link_send("DISCONNECT", &st, NULL, 0, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    /* Inquiry — web_ui's bt_link subscription fans INFO|SCAN|RESULT to clients. */
+    ESP_LOGI(TAG, "scan: starting inquiry");
+    bt_link_send("SCAN", &st, NULL, 0, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(SCAN_INQUIRY_MS));
+
+    /* Restore: reconnect the sink, re-apply volume, resume the station. */
+    if (have_sink) {
+        char cmd[16 + CTRL_MAC_LEN];
+        snprintf(cmd, sizeof(cmd), "CONNECT %s", cfg.sink_mac);
+        bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+        vTaskDelay(pdMS_TO_TICKS(SCAN_SETTLE_MS));
+        snprintf(cmd, sizeof(cmd), "VOLUME %u", cfg.volume);
+        bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+    }
+    if (was_playing && url[0]) {
+        ESP_LOGI(TAG, "scan: resuming radio");
+        radio_play(url);
+    }
+    ESP_LOGI(TAG, "scan: done, A2DP restored");
+    s_scan_active = false;
+    s_scan_task = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t ctrl_scan(void)
+{
+    if (s_scan_task) return ESP_ERR_INVALID_STATE;   /* already scanning */
+    if (xTaskCreate(scan_task, "ctrl_scan", 4096, NULL,
+                    tskIDLE_PRIORITY + 3, &s_scan_task) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+bool ctrl_scan_active(void)
+{
+    return s_scan_active;
 }
 
 esp_err_t ctrl_start(void)

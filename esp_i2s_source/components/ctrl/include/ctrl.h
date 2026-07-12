@@ -33,6 +33,15 @@ esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume);
  * Called from the radio play path; cheap no-op if unchanged. */
 void ctrl_note_station(int idx);
 
+/* Run a Bluetooth device scan with A2DP suspended for a clean inquiry: stops
+ * the stream + disconnects the sink, runs SCAN (results arrive over the /ws as
+ * INFO|SCAN|RESULT), then reconnects the sink and resumes the station. Returns
+ * ESP_ERR_INVALID_STATE if a scan is already running. */
+esp_err_t ctrl_scan(void);
+
+/* True while a suspend-and-scan cycle is in progress (~20 s). */
+bool ctrl_scan_active(void);
+
 #ifdef __cplusplus
 }
 #endif

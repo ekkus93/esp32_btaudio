@@ -290,6 +290,9 @@ header h1 {
 
 .bt-hint { margin: 10px 0 2px; line-height: 1.5; }
 .bt-hint strong { color: var(--fg); }
+.bt-refresh { margin-left: 8px; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+.bt-refresh:hover { color: var(--accent); }
+.bt-refresh:disabled { opacity: 0.4; cursor: default; }
 
 .wifi-gate button.primary {
   margin-top: 12px;
