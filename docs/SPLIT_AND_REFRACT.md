@@ -90,26 +90,27 @@ Grew a lot this session (all the REST endpoints). Split handlers by feature; kee
 `web_ui_start()` as the registrar. Shared `s_bt_*` state + `s_bt_mtx` + `recv_body`
 need an internal header.
 
-- [ ] **3.1 `web_ui_internal.h`.** Declare `recv_body`, the shared BT state (or
-      accessors), `on_bt_event`, and every handler prototype so `web_ui_start` can
-      register them across files. Define the BT state + `s_bt_mtx` in one `.c`
-      (`web_ui_bt.c`).
-- [ ] **3.2 Extract `web_ui_bt.c`** (~400 lines): `bt_split/bt_add/bt_remove/
+- [x] **3.1 `web_ui_internal.h`.** Declares `recv_body` + every feature-handler
+      prototype the registrar needs, plus `web_ui_bt_init()`. The BT state stayed
+      **`static` in `web_ui_bt.c`** — moving *all* its readers/writers there meant no
+      extern surface was needed (cleaner than the accessor plan). 46 lines.
+- [x] **3.2 Extract `web_ui_bt.c`** (473 lines): `bt_split/bt_add/bt_remove/
       bt_status_conn_mac`, `on_bt_event`, `bt_dev_array`, `bt_get_h`, `bt_post_h`,
       `connect_volume_task`, `scan_post_h`, `console_post_h`, `ctrl_get_h/ctrl_post_h`,
-      `parse_wroom_kv/parse_wroom_vol`, `btvolume_get_h/btvolume_post_h`.
-- [ ] **3.3 Extract `web_ui_radio.c`** (~180 lines): `radio_post/radio_delete`,
+      `parse_wroom_kv/parse_wroom_vol`, `btvolume_get_h/btvolume_post_h`, plus new
+      `web_ui_bt_init()` (owns mutex create + subscribe + PAIRED prime).
+- [x] **3.3 Extract `web_ui_radio.c`** (175 lines): `radio_post/radio_delete`,
       `radio_play_task/radio_stop_task`, stations CRUD (`stations_get/post/put/
       delete_h`, `station_id_param/station_body/station_reply`).
-- [ ] **3.4 Extract `web_ui_audio.c`** (~130 lines): `tone_post/tone_delete`,
+- [x] **3.4 Extract `web_ui_audio.c`** (100 lines): `tone_post/tone_delete`,
       `volume_post_h`, `prebuffer_post_h`.
-- [ ] **3.5 Extract `web_ui_wifi.c`** (~120 lines): `wifi_post`, `apmode_post_h`,
+- [x] **3.5 Extract `web_ui_wifi.c`** (106 lines): `wifi_post`, `apmode_post_h`,
       `provision_task`.
-- [ ] **3.6 Slim `web_ui.c`** to `root_get`, `status_get`, `refresh_wroom`,
-      `recv_body`, and `web_ui_start()` (httpd config + `max_uri_handlers` + all
-      `httpd_register_uri_handler` calls) (~300 lines).
-- [ ] **3.7 CMake + verify:** `tsc --noEmit`, host CTest, `idf.py build`, Playwright
-      suite (endpoints unchanged → all 14 UI tests still pass).
+- [x] **3.6 Slim `web_ui.c`** to `root_get`, `status_get`, `refresh_wroom`,
+      `recv_body`, and `web_ui_start()`. 253 lines.
+- [x] **3.7 CMake + verify:** `idf.py build` (S3) clean; no host/tsc coverage of
+      web_ui (device-only httpd); endpoints + registrar unchanged so Playwright
+      unaffected (needs device, not run here).
 
 ---
 

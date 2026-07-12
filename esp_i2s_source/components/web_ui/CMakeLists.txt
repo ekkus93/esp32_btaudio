@@ -3,6 +3,10 @@
 # component externs the _binary_index_html_gz_* symbols.
 idf_component_register(
     SRCS "web_ui.c"
+         "web_ui_wifi.c"
+         "web_ui_audio.c"
+         "web_ui_radio.c"
+         "web_ui_bt.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi_mgr bt_link tone radio i2s_out ctrl
     PRIV_REQUIRES json esp_app_format esp_timer)
