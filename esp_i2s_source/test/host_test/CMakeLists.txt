@@ -45,6 +45,7 @@ set(I2S_OUT_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/i2s_out)
 set(BT_LINK_DIR    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_link)
 set(RADIO_DIR      ${CMAKE_CURRENT_SOURCE_DIR}/../../components/radio)
 set(WIFI_MGR_DIR   ${CMAKE_CURRENT_SOURCE_DIR}/../../components/wifi_mgr)
+set(CTRL_DIR       ${CMAKE_CURRENT_SOURCE_DIR}/../../components/ctrl)
 
 # --- Sanity: proves the harness builds and CTest runs (INFRA-1c) ---
 add_executable(test_sanity test_sanity.c)
@@ -106,3 +107,9 @@ add_executable(test_radio_resampler test_radio_resampler.c ${RADIO_DIR}/radio_re
 target_include_directories(test_radio_resampler PRIVATE ${RADIO_DIR}/include)
 target_link_libraries(test_radio_resampler unity)
 add_test(NAME test_radio_resampler COMMAND test_radio_resampler)
+
+# CTRL-1a: ctrl_cfg MAC validator (NVS glue is ESP_PLATFORM-guarded out on host)
+add_executable(test_ctrl_cfg test_ctrl_cfg.c ${CTRL_DIR}/ctrl_cfg.c)
+target_include_directories(test_ctrl_cfg PRIVATE ${CTRL_DIR}/include)
+target_link_libraries(test_ctrl_cfg unity)
+add_test(NAME test_ctrl_cfg COMMAND test_ctrl_cfg)
