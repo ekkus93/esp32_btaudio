@@ -364,6 +364,13 @@ add_executable(test_cmd_handlers_debug test_cmd_handlers_debug.c
 target_link_libraries(test_cmd_handlers_debug unity util_safe_host platform_shim_host)
 add_test(NAME test_cmd_handlers_debug COMMAND $<TARGET_FILE:test_cmd_handlers_debug>)
 
+# UT-9: cmd_status_to_name enum coverage (was the only non-weak fn in
+# command_interface.c at 14.3% func). Links just command_interface.c.
+add_executable(test_cmd_status_to_name test_cmd_status_to_name.c
+    ../../components/command_interface/command_interface.c)
+target_link_libraries(test_cmd_status_to_name unity)
+add_test(NAME test_cmd_status_to_name COMMAND $<TARGET_FILE:test_cmd_status_to_name>)
+
 # UT-4: nvs_storage domain layer against the REAL platform store (wrappers intact),
 # covering the typed accessors + paired-device add/remove/shift logic that the
 # mock-backed nvs suites skip (47.7% baseline). Distinct from test_nvs_storage_errors,
