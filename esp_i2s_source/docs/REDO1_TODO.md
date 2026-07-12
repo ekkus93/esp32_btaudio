@@ -236,8 +236,11 @@ HTTP/HTTPS stream fetch with playlist resolution and ICY metadata.
 Compressed-frame ring in PSRAM decouples network jitter from decode.
 
 ### Tasks
-- [ ] **RADIO-1a** Playlist resolution (`.m3u`/`.pls` → stream URL) and
-      ICY metadata block parser — pure functions, host-tested.
+- [x] **RADIO-1a** Pure `radio_parse` (host-tested, 13 cases):
+      `radio_playlist_first_url()` resolves `.pls` (`FileN=`), extended/plain
+      `.m3u` (skips `#` comments), or a bare URL to the first http(s) stream
+      URL; `radio_icy_stream_title()` pulls `StreamTitle` out of a SHOUTcast
+      ICY metadata block (NUL-padding tolerant). No ESP-IDF deps.
 - [ ] **RADIO-1b** Stream task: esp_http_client (+esp-tls), redirects,
       `Icy-MetaData:1`, content-type → codec selection, PSRAM ring fill,
       reconnect with backoff; telemetry (buffer level, drops, reconnects).

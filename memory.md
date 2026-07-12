@@ -25337,3 +25337,17 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Verification scripts: scratchpad/btui1d_e2e.py (LaptopBT + raw WS), status_check.py.
 - Host suite 7/7. BTUI-1 essentially done; real Echo Buds SCAN + sign-off remains.
   Next group: RADIO-1.
+
+## 2026-07-12T00:20:26Z - Claude Opus 4.8 (1M) - RADIO-1a: pure playlist + ICY parsers
+
+- components/radio/radio_parse.{c,h}: radio_playlist_first_url() (.pls FileN=,
+  .m3u/#EXTM3U comment-skipping, bare URL -> first http(s) URL) and
+  radio_icy_stream_title() (StreamTitle from SHOUTcast ICY block, NUL-pad
+  tolerant). Pure, no ESP-IDF deps. 13 host tests (test_radio_parse). Host
+  suite 8/8, device build clean.
+- Gotcha: device build has -Werror=comment; a comment containing "*line/*len"
+  tripped "/* within comment". Host build didn't flag it — always device-build
+  new C before committing.
+- Next: RADIO-1b (esp_http_client stream task, ICY, content-type->codec, PSRAM
+  ring, reconnect) and RADIO-1c (NVS station store + /api/stations + UI, seed
+  5 .pls presets from SPEC §5.4).

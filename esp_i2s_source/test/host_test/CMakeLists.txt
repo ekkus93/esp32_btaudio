@@ -89,5 +89,10 @@ target_include_directories(test_wifi_sm PRIVATE ${WIFI_MGR_DIR}/include)
 target_link_libraries(test_wifi_sm unity)
 add_test(NAME test_wifi_sm COMMAND test_wifi_sm)
 
-# Further suites appended by RADIO-1a (test_playlist_icy), RADIO-2b
-# (test_resampler), etc.
+# RADIO-1a: playlist (.pls/.m3u) + ICY metadata parsers
+add_executable(test_radio_parse test_radio_parse.c ${RADIO_DIR}/radio_parse.c)
+target_include_directories(test_radio_parse PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(test_radio_parse unity)
+add_test(NAME test_radio_parse COMMAND test_radio_parse)
+
+# Further suites appended by RADIO-2b (test_resampler), etc.
