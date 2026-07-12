@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("ESP32-S3 Audio Source UI", () => {
   test("loads and shows the tab bar", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("header h1")).toContainText("ESP32-S3");
+    await expect(page.locator("header h1")).toContainText("Bluetooth Audio Source");
     for (const t of ["Radio", "Tone", "Terminal", "Settings"]) {
       await expect(page.locator(".tab", { hasText: t })).toBeVisible();
     }

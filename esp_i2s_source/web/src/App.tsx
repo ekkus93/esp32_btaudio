@@ -406,7 +406,7 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>ESP32-S3 Audio Source</h1>
+        <h1>ESP32 Bluetooth Audio Source</h1>
         <span className={`dot ${online ? "ok" : "bad"}`} title={online ? "online" : "unreachable"} />
       </header>
 
