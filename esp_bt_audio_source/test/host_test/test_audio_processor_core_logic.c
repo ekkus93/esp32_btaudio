@@ -214,6 +214,85 @@ void test_produce_audio_chunk_dispatches_to_uart_fill(void)
     TEST_ASSERT_EQUAL_UINT(sizeof(out), stats.bytes_by_source[2]);
 }
 
+/* ── UT-10: idle-I2S synth fallback, engine-pause transitions, tag counters ── */
+
+void test_idle_i2s_failures_forces_synth_after_threshold(void)
+{
+    bool synth_after = false;
+    int failures_after = -1;
+    /* failures over threshold, no beep, synth off → fallback engages: synth on,
+     * failure counter reset to 0. */
+    audio_processor_test_idle_i2s_failures(I2S_FAILURE_THRESHOLD + 5, false, 0,
+                                           &synth_after, &failures_after);
+    TEST_ASSERT_TRUE(synth_after);
+    TEST_ASSERT_EQUAL_INT(0, failures_after);
+}
+
+void test_idle_i2s_failures_no_fallback_when_beep_active(void)
+{
+    bool synth_after = true;
+    int failures_after = -1;
+    /* beep pending → fallback suppressed; state left as-is. */
+    audio_processor_test_idle_i2s_failures(I2S_FAILURE_THRESHOLD + 5, false, 128,
+                                           &synth_after, &failures_after);
+    TEST_ASSERT_FALSE(synth_after);
+    TEST_ASSERT_EQUAL_INT(I2S_FAILURE_THRESHOLD + 5, failures_after);
+}
+
+void test_idle_i2s_failures_no_fallback_below_threshold(void)
+{
+    bool synth_after = true;
+    int failures_after = -1;
+    audio_processor_test_idle_i2s_failures(3, false, 0, &synth_after, &failures_after);
+    TEST_ASSERT_FALSE(synth_after);
+    TEST_ASSERT_EQUAL_INT(3, failures_after);
+}
+
+void test_idle_i2s_failures_no_change_when_synth_already_on(void)
+{
+    bool synth_after = false;
+    int failures_after = -1;
+    /* synth already enabled → condition (!s_force_synth) false, no reset. */
+    audio_processor_test_idle_i2s_failures(I2S_FAILURE_THRESHOLD + 5, true, 0,
+                                           &synth_after, &failures_after);
+    TEST_ASSERT_TRUE(synth_after);
+    TEST_ASSERT_EQUAL_INT(I2S_FAILURE_THRESHOLD + 5, failures_after);
+}
+
+void test_compute_engine_paused_transition_and_midrange(void)
+{
+    uint32_t trans = 99;
+    /* cross into pause from unpaused → transition counted once */
+    TEST_ASSERT_TRUE(audio_processor_test_compute_engine_paused(false, AUDIO_RB_HIGH_WATERMARK, &trans));
+    TEST_ASSERT_EQUAL_UINT32(1, trans);
+
+    /* already paused above high → still paused, no new transition */
+    trans = 99;
+    TEST_ASSERT_TRUE(audio_processor_test_compute_engine_paused(true, AUDIO_RB_HIGH_WATERMARK, &trans));
+    TEST_ASSERT_EQUAL_UINT32(0, trans);
+
+    /* below low → resume regardless of prior state */
+    TEST_ASSERT_FALSE(audio_processor_test_compute_engine_paused(true, AUDIO_RB_LOW_WATERMARK, NULL));
+
+    /* mid-range holds the previous state (hysteresis) */
+    const size_t mid = (AUDIO_RB_LOW_WATERMARK + AUDIO_RB_HIGH_WATERMARK) / 2;
+    TEST_ASSERT_TRUE(audio_processor_test_compute_engine_paused(true, mid, NULL));
+    TEST_ASSERT_FALSE(audio_processor_test_compute_engine_paused(false, mid, NULL));
+}
+
+void test_should_produce_chunk_boundary(void)
+{
+    TEST_ASSERT_FALSE(audio_processor_test_should_produce_chunk(true, AUDIO_ENGINE_CHUNK_BYTES * 4)); /* paused */
+    TEST_ASSERT_TRUE(audio_processor_test_should_produce_chunk(false, AUDIO_ENGINE_CHUNK_BYTES));     /* exactly enough */
+    TEST_ASSERT_FALSE(audio_processor_test_should_produce_chunk(false, AUDIO_ENGINE_CHUNK_BYTES - 1)); /* just short */
+}
+
+void test_tag_miss_count_reset(void)
+{
+    audio_processor_test_reset_tag_miss_count();
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -229,5 +308,12 @@ int main(void)
     RUN_TEST(test_get_active_source_beep_beats_uart);
     RUN_TEST(test_get_active_source_falls_back_when_uart_inactive);
     RUN_TEST(test_produce_audio_chunk_dispatches_to_uart_fill);
+    RUN_TEST(test_idle_i2s_failures_forces_synth_after_threshold);
+    RUN_TEST(test_idle_i2s_failures_no_fallback_when_beep_active);
+    RUN_TEST(test_idle_i2s_failures_no_fallback_below_threshold);
+    RUN_TEST(test_idle_i2s_failures_no_change_when_synth_already_on);
+    RUN_TEST(test_compute_engine_paused_transition_and_midrange);
+    RUN_TEST(test_should_produce_chunk_boundary);
+    RUN_TEST(test_tag_miss_count_reset);
     return UNITY_END();
 }
