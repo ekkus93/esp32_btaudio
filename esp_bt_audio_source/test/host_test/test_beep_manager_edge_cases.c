@@ -55,6 +55,57 @@ static void test_done_callback(void *ctx)
     s_done_callback_ctx = ctx;
 }
 
+/* ── UT-8: state accessors, stop paths, 32-bit mixing, unsupported depth ── */
+
+void test_beep_get_state_and_manager_stop(void)
+{
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
+    beep_request_t req = { .duration_ms = 100, .freq_hz = 1000.0, .amplitude = 5000 };
+    TEST_ASSERT_EQUAL(ESP_OK, beep_manager_play(&req, &s_test_config));
+    TEST_ASSERT_EQUAL(BEEP_STATE_PLAYING, beep_manager_get_state());
+    beep_manager_stop();
+    TEST_ASSERT_FALSE(beep_overlay_is_active());
+    TEST_ASSERT_EQUAL(BEEP_STATE_STOPPED, beep_manager_get_state());
+}
+
+void test_beep_overlay_stop_deactivates(void)
+{
+    beep_request_t req = { .duration_ms = 100, .freq_hz = 1000.0, .amplitude = 5000 };
+    TEST_ASSERT_EQUAL(ESP_OK, beep_overlay_start(&req, &s_test_config));
+    TEST_ASSERT_TRUE(beep_overlay_is_active());
+    beep_overlay_stop();
+    TEST_ASSERT_FALSE(beep_overlay_is_active());
+}
+
+void test_beep_unsupported_bit_depth_rejected(void)
+{
+    audio_config_t cfg24 = s_test_config;
+    cfg24.bit_depth = AUDIO_BIT_DEPTH_24; /* bytes_per_sample() → 0 → NOT_SUPPORTED */
+    beep_request_t req = { .duration_ms = 50, .freq_hz = 1000.0, .amplitude = 5000 };
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, beep_overlay_start(&req, &cfg24));
+}
+
+void test_beep_overlay_fill_mixes_32bit(void)
+{
+    audio_config_t cfg32 = s_test_config;
+    cfg32.bit_depth = AUDIO_BIT_DEPTH_32;
+    cfg32.channels = AUDIO_CHANNEL_STEREO; /* 8-byte frame */
+
+    beep_request_t req = { .duration_ms = 20, .freq_hz = 1000.0, .amplitude = 5000 };
+    TEST_ASSERT_EQUAL(ESP_OK, beep_overlay_start(&req, &cfg32));
+
+    /* Preload base samples; the mix scales base by 0.7 and adds the beep. At
+     * frame 0 the fade envelope is 0, so the first sample is deterministically
+     * base*7/10 = 700 — proving the 32-bit mixing path ran. */
+    int32_t buf[64];
+    for (int i = 0; i < 64; ++i) buf[i] = 1000;
+    beep_overlay_fill((uint8_t *)buf, sizeof(buf), &cfg32);
+
+    TEST_ASSERT_EQUAL_INT32(700, buf[0]); /* left ch, frame 0 */
+    TEST_ASSERT_EQUAL_INT32(700, buf[1]); /* right ch, frame 0 */
+    TEST_ASSERT_TRUE(beep_overlay_is_active());
+}
+
 /* ============================================================================
  * Test 1: Extreme frequency - very low (0.1 Hz)
  * ============================================================================ */
@@ -422,6 +473,12 @@ int main(void)
     
     /* Amplitude defaulting */
     RUN_TEST(test_beep_zero_amplitude_defaults_to_7500);
-    
+
+    /* UT-8: state accessors, stop paths, 32-bit mixing, unsupported depth */
+    RUN_TEST(test_beep_get_state_and_manager_stop);
+    RUN_TEST(test_beep_overlay_stop_deactivates);
+    RUN_TEST(test_beep_unsupported_bit_depth_rejected);
+    RUN_TEST(test_beep_overlay_fill_mixes_32bit);
+
     return UNITY_END();
 }
