@@ -79,7 +79,10 @@ if(NOT unity_FOUND)
 endif()
 
 # Add test executables
-add_executable(test_commands test_commands.c 
+add_executable(test_commands test_commands.c
+    test_commands_parse.c
+    test_commands_audio.c
+    test_commands_bt.c
     ../../components/command_interface/commands.c
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_pairing_store.c

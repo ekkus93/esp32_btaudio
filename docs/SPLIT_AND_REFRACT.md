@@ -170,18 +170,21 @@ domain split so mock/stub stay parallel.
 *bodies* into grouped `.c` files linked into it; the runner keeps `setUp/tearDown` +
 `main()` + `RUN_TEST`s (the file already uses `extern void test_*`).
 
-- [ ] **7.1 `test_commands_shared.h`** — declare the fixture helpers + any shared
-      statics used by moved tests; keep `setUp/tearDown` + fixtures in the runner.
-- [ ] **7.2 Extract `test_commands_parse.c`** — the `cmd_parse` tests.
-- [ ] **7.3 Extract `test_commands_audio.c`** — beep / synth / volume / mute /
-      autostart command tests.
-- [ ] **7.4 Extract `test_commands_bt.c`** — scan / pair / connect / unpair / pin /
-      last_mac command tests.
-- [ ] **7.5 Keep `test_commands.c`** as the runner (`main`, `setUp/tearDown`,
-      `extern` decls, `RUN_TEST` list) (~250 lines).
-- [ ] **7.6 host-test `CMakeLists.txt`:** add the new `.c` files to the
-      `test_commands` executable sources (same target, not new executables).
-- [ ] **7.7 Verify:** `ctest -R test_commands` — same 88 cases pass.
+- [x] **7.1 `test_commands_shared.h`** — the `#include` block + mock/test `extern`
+      decls + all 63 test prototypes + `count_substring` (now non-`static`). No
+      shared file-static fixture state existed, so this was purely declarations.
+      103 lines.
+- [x] **7.2 Extract `test_commands_parse.c`** — 13 `cmd_parse`/protocol tests. 119 lines.
+- [x] **7.3 Extract `test_commands_audio.c`** — 37 beep/synth/volume/mute/status/
+      start-stop/etc. tests. 593 lines.
+- [x] **7.4 Extract `test_commands_bt.c`** — 13 scan/pair/connect/unpair/pin/
+      disconnect tests. 278 lines.
+- [x] **7.5 Keep `test_commands.c`** as the runner (`main` + `RUN_TEST` list,
+      `setUp/tearDown`, `cmd_version_host_override`, `count_substring`). **250 lines.**
+- [x] **7.6 host-test `CMakeLists.txt`:** added the 3 `.c` files to the
+      `test_commands` executable (same target).
+- [x] **7.7 Verify:** `test_commands` reports **63 Tests 0 Failures** (unchanged);
+      full host suite 66/66.
 
 ---
 

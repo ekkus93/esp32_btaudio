@@ -1,17 +1,4 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <limits.h>
-#include "unity.h"
-#include "command_interface.h"
-#include "bt_manager.h"
-#include "mock_uart.h"
-#include "nvs_storage.h"
-#include "audio_processor.h"
-#include "esp_log.h"
+#include "test_commands_shared.h"
 
 /* Test-only hook defined in bt_manager.c under UNIT_TEST */
 void bt_manager_test_set_connection_state(int v);
@@ -57,217 +44,29 @@ void tearDown(void) {
     cmd_deinit();
 }
 
-void test_debug_log_sets_level_and_response(void) {
-    mock_uart_reset_tx();
-    esp_log_level_set("AUDIO_PROC", ESP_LOG_INFO);
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DEBUG LOG AUDIO_PROC WARN", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    TEST_ASSERT_EQUAL_INT(ESP_LOG_WARN, esp_log_level_get("AUDIO_PROC"));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DEBUG|LOG_SET|"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "AUDIO_PROC:WARN"));
-}
 
 // Test basic command parsing
-void test_parse_scan_command(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SCAN", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_SCAN, ctx.type);
-    TEST_ASSERT_EQUAL(0, ctx.param_count);
-}
 
 // Test command with parameter
-void test_parse_connect_command(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("CONNECT AA:BB:CC:DD:EE:FF", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_CONNECT, ctx.type);
-    TEST_ASSERT_EQUAL(1, ctx.param_count);
-    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", ctx.params[0]);
-}
 
 // Test multiple parameters
-void test_parse_i2s_config_command(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_I2S_CONFIG, ctx.type);
-    TEST_ASSERT_EQUAL(1, ctx.param_count);
-    TEST_ASSERT_EQUAL_STRING("26,25,22,21", ctx.params[0]);
-}
 
-void test_parse_i2s_config_command_with_format(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 16 2", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_I2S_CONFIG, ctx.type);
-    TEST_ASSERT_EQUAL(4, ctx.param_count);
-    TEST_ASSERT_EQUAL_STRING("26,25,22,21", ctx.params[0]);
-    TEST_ASSERT_EQUAL_STRING("48000", ctx.params[1]);
-    TEST_ASSERT_EQUAL_STRING("16", ctx.params[2]);
-    TEST_ASSERT_EQUAL_STRING("2", ctx.params[3]);
-}
 
 // Test invalid command
-void test_parse_invalid_command(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("INVALID_COMMAND", &ctx));
-}
 
-void test_parse_malformed_tokens(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   ,,,", &ctx));
-}
 
 // Test command with whitespace
-void test_parse_command_with_whitespace(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("  VOLUME  75  ", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_VOLUME, ctx.type);
-    TEST_ASSERT_EQUAL(1, ctx.param_count);
-    TEST_ASSERT_EQUAL_STRING("75", ctx.params[0]);
-}
 
-void test_parse_diag_command(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_DIAG, ctx.type);
-    TEST_ASSERT_EQUAL(0, ctx.param_count);
-}
-
-void test_parse_empty_command_should_error(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   \t   ", &ctx));
-}
 
 /* BUG-3: truly empty string must not UB on s-1 pointer arithmetic */
-void test_parse_truly_empty_string_should_error(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("", &ctx));
-}
 
-void test_parse_whitespace_only_should_error(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_parse("   ", &ctx));
-}
-
-void test_parse_limits_param_count_and_truncates(void) {
-    char long_token[CMD_MAX_PARAM_LEN + 8];
-    memset(long_token, 'A', sizeof(long_token));
-    long_token[sizeof(long_token) - 1] = '\0';
-
-    char cmd_buf[128];
-    /* Seven params -> only first five kept; first param truncated to CMD_MAX_PARAM_LEN-1. */
-    snprintf(cmd_buf, sizeof(cmd_buf), "CONNECT %s b c d e f g", long_token);
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse(cmd_buf, &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_CONNECT, ctx.type);
-    TEST_ASSERT_EQUAL(5, ctx.param_count);
-    TEST_ASSERT_EQUAL(strlen(ctx.params[0]), CMD_MAX_PARAM_LEN - 1);
-    TEST_ASSERT_EQUAL_STRING("b", ctx.params[1]);
-    TEST_ASSERT_EQUAL_STRING("c", ctx.params[2]);
-    TEST_ASSERT_EQUAL_STRING("d", ctx.params[3]);
-    TEST_ASSERT_EQUAL_STRING("e", ctx.params[4]);
-}
-
-void test_parse_connect_name_preserves_spaces(void) {
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("CONNECT_NAME   Living   Room   Speaker   ", &ctx));
-    TEST_ASSERT_EQUAL(CMD_TYPE_CONNECT_NAME, ctx.type);
-    TEST_ASSERT_EQUAL(1, ctx.param_count);
-    TEST_ASSERT_EQUAL_STRING("Living   Room   Speaker", ctx.params[0]);
-}
 
 // Test response generation
-void test_send_response(void) {
-    mock_uart_reset_tx();
-    
-    cmd_send_response("OK", "SCAN", "COMPLETE", "2");
-    
-    // Check that the correct response was sent
-    const char* tx_data = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx_data);
-    TEST_ASSERT_EQUAL_STRING("OK|SCAN|COMPLETE|2\r\n", tx_data);
-}
 
 // Test command processing from UART
-void test_command_processing(void) {
-    // Inject command into mock UART
-    mock_uart_inject_rx_data("SCAN\r\n", 6);
-    
-    // Process the command
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-    
-    // Verify response
-    const char* tx_data = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx_data);
-    
-    // Note: In a real implementation, this would return scan results
-    // For the test, we're just checking it sent some response
-    TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
-}
 
-void test_cmd_process_handles_multiple_commands_in_one_read(void) {
-    mock_uart_reset_tx();
 
-    /* Two commands arrive in a single UART read; both should be parsed and executed. */
-    mock_uart_inject_rx_data("SCAN\r\nSTATUS\r\n", strlen("SCAN\r\nSTATUS\r\n"));
-
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SCAN"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|STATUS"));
-}
-
-void test_cmd_process_accumulates_partial_line_across_calls(void) {
-    mock_uart_reset_tx();
-
-    /* First call provides no terminator; nothing should be emitted. */
-    mock_uart_inject_rx_data("VOLUME 10", strlen("VOLUME 10"));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-    const char* tx_after_partial = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx_after_partial);
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)strlen(tx_after_partial));
-
-    /* Second call supplies the newline so the buffered command runs. */
-    mock_uart_inject_rx_data("\r\n", 2);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VOLUME|MOCK_SET|10"));
-}
-
-void test_cmd_process_recovers_after_overflow_reset(void) {
-    mock_uart_reset_tx();
-
-    /* Fill most of the line buffer without a newline to trigger the overflow path. */
-    char filler1[250];
-    memset(filler1, 'A', sizeof(filler1));
-    mock_uart_inject_rx_data(filler1, sizeof(filler1));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-    /* No response expected yet. */
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)strlen(mock_uart_get_tx_data()));
-
-    /* Next read includes a valid command plus extra data to force line_len + to_copy past the buffer size.
-     * cmd_process should reset the buffer and still execute the SCAN command. */
-    char overflow_payload[260];
-    memset(overflow_payload, 'B', sizeof(overflow_payload));
-    const char cmd_str[] = "SCAN\r\n";
-    memcpy(overflow_payload, cmd_str, sizeof(cmd_str) - 1);
-    mock_uart_inject_rx_data(overflow_payload, sizeof(overflow_payload));
-
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "SCAN"));
-}
-
-static int count_substring(const char* haystack, const char* needle)
+int count_substring(const char* haystack, const char* needle)
 {
     int count = 0;
     const char* pos = haystack;
@@ -279,219 +78,14 @@ static int count_substring(const char* haystack, const char* needle)
     return count;
 }
 
-void test_help_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("HELP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    /* The number of commands may change over time; parse the declared
-     * count from the SUMMARY line and verify it matches the number of
-     * ENTRY lines emitted. This keeps the test resilient to additions
-     * or removals of help entries. */
-    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|SUMMARY|"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|FORMAT|COMMAND [ARGS] - DESCRIPTION"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|HELP - Show this list"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HELP|ENTRY|CONNECT <MAC> - Connect by MAC address"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HELP|DONE|"));
-
-    int entry_count = count_substring(tx, "INFO|HELP|ENTRY|");
-    /* Extract the numeric count from the SUMMARY line and compare. */
-    const char* sumptr = strstr(tx, "INFO|HELP|SUMMARY|");
-    TEST_ASSERT_NOT_NULL(sumptr);
-    sumptr += strlen("INFO|HELP|SUMMARY|");
-    int declared = -1;
-    if (sumptr) {
-        /* Expect format: "<N> commands available" */
-        sscanf(sumptr, "%d commands available", &declared);
-    }
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, declared);
-    TEST_ASSERT_EQUAL(declared, entry_count);
-}
-
-void test_version_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VERSION", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|TEST-HOST-VERSION|"));
-}
-
-void test_diag_command_reports_state(void) {
-    mock_uart_reset_tx();
-    bt_manager_test_set_connection_state(1);
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(NULL));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DIAG|STATE|"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "CONN=1"));
-    TEST_ASSERT_NOT_NULL(strstr(tx, "I2S=1"));
-
-    (void)audio_processor_stop();
-    (void)audio_processor_deinit();
-}
 
 // Verify issuing SCAN triggers the manager start-scan path (unit-test builds)
-void test_scan_invokes_manager(void) {
-    mock_uart_reset_tx();
-
-    // Ensure forces/hooks reset
-    bt_manager_test_reset_forces();
-
-    // Initial count should be zero
-    int before = bt_manager_test_get_scan_start_count();
-
-    // Inject command into mock UART and process
-    mock_uart_inject_rx_data("SCAN\r\n", 6);
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
-
-    // Manager test hook should have been called at least once
-    int after = bt_manager_test_get_scan_start_count();
-    TEST_ASSERT_TRUE(after > before);
-
-    // Also validate we emitted a response mentioning SCAN
-    const char* tx_data = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx_data);
-    TEST_ASSERT_TRUE(strstr(tx_data, "SCAN") != NULL);
-}
 
 // New tests for pairing command handlers
-void test_confirm_pin_command(void) {
-    mock_gap_reset();
-    // Execute confirm command (MAC + accept)
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("CONFIRM_PIN AA:BB:CC:DD:EE:FF ACCEPT", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
-    const char* mac = mock_gap_get_last_mac();
-    TEST_ASSERT_NOT_NULL(mac);
-    // Mock formats hex lowercase
-    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", mac);
-    TEST_ASSERT_EQUAL(1, mock_gap_get_last_confirm());
-}
-
-void test_enter_pin_command(void) {
-    mock_gap_reset();
-    // Execute enter pin command
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("ENTER_PIN AA:BB:CC:DD:EE:FF 1234", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* mac = mock_gap_get_last_mac();
-    TEST_ASSERT_NOT_NULL(mac);
-    TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", mac);
-    TEST_ASSERT_EQUAL(4, mock_gap_get_last_pin_len());
-    TEST_ASSERT_EQUAL_STRING("1234", mock_gap_get_last_pin());
-}
-
-void test_volume_invalid_param_should_error(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VOLUME 200", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|VOLUME|OUT_OF_RANGE"));
-}
-
-void test_volume_missing_param_should_error(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("VOLUME", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|VOLUME|MISSING_PARAM"));
-}
-
-void test_i2s_config_invalid_rate_should_error(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 12345", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_RATE"));
-}
-
-void test_i2s_config_invalid_bit_depth_should_error(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 20", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_BIT_DEPTH"));
-}
-
-void test_i2s_config_invalid_channels_should_error(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("I2S_CONFIG 26,25,22,21 48000 16 3", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|I2S_CONFIG|INVALID_CHANNELS"));
-}
-
-void test_debug_mock_add_missing_param_errors(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DEBUG MOCK_ADD", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|DEBUG|MOCK_ADD_MISSING"));
-}
 
 // Main test runner
 /* TEST-8: cmd_status_to_name() — all defined codes return non-empty strings */
-void test_status_name_cmd_success(void) {
-    const char *name = cmd_status_to_name(CMD_SUCCESS);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_cmd_error_init_failed(void) {
-    const char *name = cmd_status_to_name(CMD_ERROR_INIT_FAILED);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_cmd_error_invalid_param(void) {
-    const char *name = cmd_status_to_name(CMD_ERROR_INVALID_PARAM);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_cmd_error_unknown(void) {
-    const char *name = cmd_status_to_name(CMD_ERROR_UNKNOWN);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_cmd_error_not_initialized(void) {
-    const char *name = cmd_status_to_name(CMD_ERROR_NOT_INITIALIZED);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_cmd_error_too_many_params(void) {
-    const char *name = cmd_status_to_name(CMD_ERROR_TOO_MANY_PARAMS);
-    TEST_ASSERT_NOT_NULL(name);
-    TEST_ASSERT_GREATER_THAN_INT(0, (int)strlen(name));
-}
-void test_status_name_out_of_range_returns_non_null(void) {
-    /* Unknown status codes should return a non-null fallback, not crash */
-    const char *name = cmd_status_to_name((cmd_status_t)999);
-    TEST_ASSERT_NOT_NULL(name);
-}
 
 int main(void) {
     UNITY_BEGIN();
@@ -610,520 +204,47 @@ int main(void) {
 }
 
 // Test mute and unmute flow
-void test_mute_unmute_command(void) {
-    mock_uart_reset_tx();
-    // Mute
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("MUTE", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
-
-    mock_uart_reset_tx();
-    // Unmute
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNMUTE", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "UNMUTE") != NULL);
-}
 
 // Test UNPAIR removes entry and reports success
-void test_unpair_command_success(void) {
-    bt_manager_test_reset_forces();
-    nvs_storage_clear_paired_devices();
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:FF", "Speaker"));
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR AA:BB:CC:DD:EE:FF", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|UNPAIR|REMOVED|AA:BB:CC:DD:EE:FF"));
-
-    const char* last = bt_manager_test_get_last_unpair_mac();
-    TEST_ASSERT_NOT_NULL(last);
-    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", last);
-
-    int count = -1;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&count));
-    TEST_ASSERT_EQUAL(0, count);
-}
 
 // Test UNPAIR surfaces backend failure without mutating storage
-void test_unpair_command_failure(void) {
-    bt_manager_test_reset_forces();
-    nvs_storage_clear_paired_devices();
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:FF", "Speaker"));
-
-    bt_manager_test_set_force_unpair_failure(1);
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR AA:BB:CC:DD:EE:FF", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|UNPAIR|FAILED|AA:BB:CC:DD:EE:FF"));
-
-    const char* last = bt_manager_test_get_last_unpair_mac();
-    TEST_ASSERT_NOT_NULL(last);
-        TEST_ASSERT_EQUAL('\0', last[0]);
-
-    int count = -1;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&count));
-    TEST_ASSERT_EQUAL(1, count);
-
-    bt_manager_test_reset_forces();
-}
 
 // Test UNPAIR reports NOT_FOUND when storage lacks the entry
-void test_unpair_command_not_found(void) {
-    bt_manager_test_reset_forces();
-    nvs_storage_clear_paired_devices();
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR AA:BB:CC:DD:EE:FF", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|UNPAIR|NOT_FOUND|AA:BB:CC:DD:EE:FF"));
-
-    const char* last = bt_manager_test_get_last_unpair_mac();
-    TEST_ASSERT_NOT_NULL(last);
-    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", last);
-
-    int count = -1;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&count));
-    TEST_ASSERT_EQUAL(0, count);
-}
 
 // Test UNPAIR_ALL clears stored paired devices
-void test_unpair_all_command(void) {
-    nvs_storage_clear_paired_devices();
-    // Seed mock NVS with paired devices
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("aa:bb:cc:11:22:33", "Speaker"));
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("11:22:33:44:55:66", "Phone"));
 
-    int before = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&before));
-    TEST_ASSERT_TRUE(before >= 2);
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR_ALL", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|UNPAIR_ALL|SUCCESS|2"));
-
-    TEST_ASSERT_EQUAL(2, bt_manager_test_get_unpair_all_cleared_before());
-    TEST_ASSERT_EQUAL(0, bt_manager_test_get_unpair_all_removed());
-
-    int after = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&after));
-    TEST_ASSERT_EQUAL(0, after);
-}
-
-void test_unpair_all_command_failure(void) {
-    nvs_storage_clear_paired_devices();
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:01", "One"));
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("AA:BB:CC:DD:EE:02", "Two"));
-
-    bt_manager_test_set_force_unpair_all_failure(1);
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("UNPAIR_ALL", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|UNPAIR_ALL|FAILED"));
-
-    int remaining = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_get_paired_count(&remaining));
-    TEST_ASSERT_EQUAL(2, remaining);
-
-    bt_manager_test_set_force_unpair_all_failure(0);
-}
 
 // Test listing paired devices
-void test_paired_command(void) {
-    // Seed mock NVS
-    nvs_storage_clear_paired_devices();
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("aa:bb:cc:11:22:33", "Speaker"));
-    TEST_ASSERT_EQUAL(ESP_OK, nvs_storage_add_paired_device("11:22:33:44:55:66", "Phone"));
-
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("PAIRED", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "PAIRED") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "COUNT") != NULL);
-}
 
 // Test setting sample rate
-void test_sample_rate_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SAMPLE_RATE 48000", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "48000") != NULL || strstr(tx, "MOCK_APPLIED") != NULL);
-}
 
 // Test STATUS returns key fields
-void test_status_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STATUS", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "STATUS") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL || strstr(tx, "SAMPLE") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "PAIRED_COUNT") != NULL || strstr(tx, "COUNT") != NULL);
-    /* When streaming info is available, should include streaming stats */
-    TEST_ASSERT_TRUE(strstr(tx, "BYTES_REQ") != NULL || strstr(tx, "STREAM_INFO") != NULL);
-}
 
 /* CODE_REVIEW8 Task B: Test STATUS handles bt_get_streaming_info failure gracefully */
-void test_status_command_streaming_info_unavailable(void) {
-    extern void bt_manager_test_force_streaming_info_failure(bool force);
-    
-    bt_manager_test_force_streaming_info_failure(true);
-    
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STATUS", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    /* Should still return basic status */
-    TEST_ASSERT_TRUE(strstr(tx, "STATUS") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MUTE") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "SAMPLE_RATE") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "PAIRED_COUNT") != NULL);
-    /* Should indicate streaming info is unavailable */
-    TEST_ASSERT_TRUE(strstr(tx, "STREAM_INFO=UNAVAILABLE") != NULL);
-    /* Should NOT include detailed streaming stats */
-    TEST_ASSERT_TRUE(strstr(tx, "BYTES_REQ") == NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "UNDERRUNS") == NULL);
-    
-    /* Clean up */
-    bt_manager_test_force_streaming_info_failure(false);
-}
 
 // Test RESET in host-mode returns a mock reboot response
-void test_reset_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("RESET", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "RESET") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MOCK_REBOOT") != NULL || strstr(tx, "REBOOTING") != NULL);
-}
 
 // Test DISCONNECT command behavior
-void test_disconnect_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DISCONNECT", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "DISCONNECT") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MOCK_DONE") != NULL || strstr(tx, "DONE") != NULL || strstr(tx, "FAILED") != NULL);
-}
 
 // Test START command behavior
-void test_start_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("START", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "START") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MOCK_STARTED") != NULL || strstr(tx, "STARTED") != NULL || strstr(tx, "FAILED") != NULL);
-}
 
 /* I2S must override ongoing BEEP. When a beep is active, START should
  * clear it and leave I2S running. */
-void test_start_command_stops_beep_and_enables_i2s(void) {
-    mock_uart_reset_tx();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 50,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(500, 440.0));
-    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("START", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "START") != NULL);
-
-    TEST_ASSERT_TRUE(audio_processor_is_i2s_active());
-    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
 
 // Test STOP command behavior
-void test_stop_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "STOP") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "MOCK_STOPPED") != NULL || strstr(tx, "STOPPED") != NULL || strstr(tx, "FAILED") != NULL);
-}
 
 // Negative-path: simulate backend failure for DISCONNECT
-void test_disconnect_failure_command(void) {
-    mock_uart_reset_tx();
-    // Enable forced failure
-    extern void bt_manager_test_set_force_disconnect_failure(int v);
-    extern void bt_manager_test_reset_forces(void);
-    bt_manager_test_set_force_disconnect_failure(1);
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DISCONNECT", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "DISCONNECT") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
-
-    // Reset forces for other tests
-    bt_manager_test_reset_forces();
-}
 
 // Negative-path: simulate backend failure for START
-void test_start_failure_command(void) {
-    mock_uart_reset_tx();
-    extern void bt_manager_test_set_force_start_failure(int v);
-    extern void bt_manager_test_reset_forces(void);
-    bt_manager_test_set_force_start_failure(1);
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("START", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "START") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
-
-    bt_manager_test_reset_forces();
-}
 
 // Negative-path: simulate backend failure for STOP
-void test_stop_failure_command(void) {
-    mock_uart_reset_tx();
-    extern void bt_manager_test_set_force_stop_failure(int v);
-    extern void bt_manager_test_reset_forces(void);
-    bt_manager_test_set_force_stop_failure(1);
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("STOP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "STOP") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "ERR") != NULL || strstr(tx, "FAILED") != NULL);
-
-    bt_manager_test_reset_forces();
-}
 
 // Test BEEP when not connected should return an error
-void test_beep_command_not_connected(void) {
-    mock_uart_reset_tx();
-    // Ensure mock BT has no connection
-    // Some harnesses default to disconnected; be explicit by closing
-    extern void bt_manager_mock_connection_closed(const char* mac);
-    bt_manager_mock_connection_closed("aa:bb:cc:11:22:33");
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
-    TEST_ASSERT_TRUE(strstr(tx, "NOT_CONNECTED") != NULL || strstr(tx, "ERR") != NULL);
-}
 
 // Test BEEP when connected should call the audio API and return OK
-void test_beep_command_connected(void) {
-    mock_uart_reset_tx();
-    // Simulate a BT connection
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
 
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_TRUE(strstr(tx, "BEEP") != NULL);
-    // Accept either SENT/OK or a mock variant depending on harness
-    TEST_ASSERT_TRUE(strstr(tx, "SENT") != NULL || strstr(tx, "OK") != NULL || strstr(tx, "MOCK") != NULL);
-
-    // Verify that beep was actually triggered
-    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
-
-    // Verify the BEEP command requested a 10s middle-C tone
-    uint32_t dur_ms = 0; double freq_hz = 0.0;
-    audio_processor_get_last_beep_request(&dur_ms, &freq_hz);
-    TEST_ASSERT_EQUAL_UINT32(10000U, dur_ms);
-    TEST_ASSERT_FLOAT_WITHIN(0.1f, 261.63f, (float)freq_hz);
-}
-
-void test_beep_command_allowed_when_i2s_active(void) {
-    mock_uart_reset_tx();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 50,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    /* Disable synth to model live I2S capture so the BEEP busy guard trips. */
-    audio_processor_set_synth_mode(false);
-    TEST_ASSERT_TRUE(audio_processor_is_i2s_active());
-
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, "OK|BEEP|SENT"), tx);
-    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_stop());
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
-
-void test_beep_command_busy_when_beep_active(void) {
-    mock_uart_reset_tx();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 50,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    /* Seed an active beep so the subsequent BEEP command hits the busy guard. */
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(1000, 440.0));
-    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
-
-    extern void bt_manager_mock_connection_established(const char* mac, const char* name);
-    bt_manager_mock_connection_established("aa:bb:cc:11:22:33", "MockSpeaker");
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("BEEP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    const char *expected = "ERR|BEEP|BUSY|BEEP_ACTIVE";
-    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tx, expected), tx);
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-    (void)audio_processor_drain_ring();
-}
 
 // Verify SYNTH ON toggles the mode (host: verifies response emitted)
-void test_synth_on_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SYNTH ON", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SYNTH|ENABLED"));
-}
 
 // Verify SYNTH OFF toggles the mode (host: verifies response emitted)
-void test_synth_off_command(void) {
-    mock_uart_reset_tx();
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("SYNTH OFF", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
 
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SYNTH|DISABLED"));
-}
-
-void test_diag_i2s_stop_clears_i2s_flag(void) {
-    mock_uart_reset_tx();
-
-    audio_config_t cfg = {
-        .sample_rate = AUDIO_SAMPLE_RATE_44K,
-        .bit_depth = AUDIO_BIT_DEPTH_16,
-        .channels = AUDIO_CHANNEL_STEREO,
-        .volume = 50,
-        .mute = false,
-    };
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&cfg));
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_start());
-    audio_processor_set_synth_mode(false);
-    TEST_ASSERT_TRUE(audio_processor_is_i2s_active());
-
-    cmd_context_t ctx;
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("DIAG I2S_STOP", &ctx));
-    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_execute(&ctx));
-
-    const char* tx = mock_uart_get_tx_data();
-    TEST_ASSERT_NOT_NULL(tx);
-    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|DIAG|I2S_STOPPED"));
-    TEST_ASSERT_FALSE(audio_processor_is_i2s_active());
-
-    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_deinit());
-}
