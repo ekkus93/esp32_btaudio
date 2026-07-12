@@ -1,8 +1,10 @@
 # Main component for the consolidated test application (test_bluetooth)
 # Merges test_app, test_app2, and test_app3
 
-# Notes: Using test_app approach (real components, not mocks)  
-# test_app2-specific mocks (bt_connection_shim, bt_streaming_mock, command_interface_mock) are excluded
+# Notes: Using test_app approach (real components, not mocks)
+# test_app2-specific mock/stub leftovers (bt_connection_shim.c, bt_streaming_mock.c,
+# command_interface_mock.c, audio_processor_stub.c, audio_processor_beep_stub.c) were
+# never built here and have been deleted (dead-code sweep).
 
 # Register the component and specify dependencies
 idf_component_register(
