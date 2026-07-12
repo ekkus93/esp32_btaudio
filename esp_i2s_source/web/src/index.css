@@ -381,6 +381,8 @@ header h1 {
   font-size: 13px;
 }
 .bt-findmsg { color: var(--fg); }
+.bt-spin { display: inline-block; animation: bt-spin 1s linear infinite; }
+@keyframes bt-spin { to { transform: rotate(360deg); } }
 
 .bt-hint { margin: 10px 0 2px; line-height: 1.5; }
 .bt-hint strong { color: var(--fg); }

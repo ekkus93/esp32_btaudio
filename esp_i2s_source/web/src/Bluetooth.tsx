@@ -10,6 +10,7 @@ export function Bluetooth() {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [note, setNote] = useState<string>("");
+  const [connecting, setConnecting] = useState<string | null>(null); // mac being connected
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scan-until-found, then pair (by name).
@@ -23,13 +24,43 @@ export function Bluetooth() {
 
   // Poll /api/bt (a WROOM32 round-trip): quick while scanning/finding, slow when
   // idle, and paused entirely while the tab is hidden.
-  usePolling(refresh, scanning || finding ? 2000 : 5000);
+  usePolling(refresh, scanning || finding || connecting ? 2000 : 5000);
   useEffect(() => () => { if (scanTimer.current) clearTimeout(scanTimer.current); }, []);
 
   const act = async (action: string, mac?: string) => {
     const r = await btAction(action, mac).catch(() => ({ ok: false }));
     setNote(`${action.replace("_", " ")}: ${r.ok ? "ok" : "failed"}`);
     setTimeout(refresh, 600);
+  };
+
+  // Connect is async on the WROOM32 (CONNECT returns immediately; the A2DP link
+  // comes up seconds later, and slow devices can take a while). Give live
+  // feedback: acknowledge the request, then poll until the link is actually up.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const connect = async (mac: string, name: string) => {
+    if (connecting) return;
+    setConnecting(mac);
+    setNote(`Connecting to ${name}… this can take 10–20 s for some devices.`);
+    const r = await btAction("connect", mac).catch(() => ({ ok: false }));
+    if (!r.ok) {
+      setNote(`Couldn't start connecting to ${name} — try again.`);
+      setConnecting(null);
+      return;
+    }
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      await sleep(1500);
+      const st = await getBt().catch(() => null);
+      if (!st) continue;
+      setBt(st);
+      if (st.connected_mac && st.connected_mac.toLowerCase() === mac.toLowerCase()) {
+        setNote(`Connected to ${name}.`);
+        setConnecting(null);
+        return;
+      }
+    }
+    setNote(`Still connecting to ${name}… make sure it's on and in range, or try again.`);
+    setConnecting(null);
   };
 
   const scan = () => {
@@ -43,8 +74,6 @@ export function Bluetooth() {
       setScanned(true);
     }, 20000);
   };
-
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   // Repeatedly scan for up to `findSecs`, and pair with the first discovered
   // device whose name contains the entered text (case-insensitive).
@@ -213,8 +242,10 @@ export function Bluetooth() {
                 <span className="name">{d.name || "(no name)"}</span>
                 <span className="mac">{d.mac}</span>
                 <span className="btns">
-                  {!isPaired(d.mac) && <button onClick={() => act("pair", d.mac)}>Pair</button>}
-                  <button onClick={() => act("connect", d.mac)}>Connect</button>
+                  {!isPaired(d.mac) && <button disabled={!!connecting} onClick={() => act("pair", d.mac)}>Pair</button>}
+                  <button disabled={!!connecting} onClick={() => connect(d.mac, d.name || d.mac)}>
+                    {connecting === d.mac ? "Connecting…" : "Connect"}
+                  </button>
                 </span>
               </li>
             ))}
@@ -243,16 +274,23 @@ export function Bluetooth() {
                 {isConn(d.mac) ? (
                   <button onClick={() => act("disconnect")}>Disconnect</button>
                 ) : (
-                  <button onClick={() => act("connect", d.mac)}>Connect</button>
+                  <button disabled={!!connecting} onClick={() => connect(d.mac, d.name || d.mac)}>
+                    {connecting === d.mac ? "Connecting…" : "Connect"}
+                  </button>
                 )}
-                <button className="danger" onClick={() => act("unpair", d.mac)}>Unpair</button>
+                <button className="danger" disabled={!!connecting} onClick={() => act("unpair", d.mac)}>Unpair</button>
               </span>
             </li>
           ))}
         </ul>
       )}
 
-      {note && <div className="banner ok">{note}</div>}
+      {note && (
+        <div className="banner ok">
+          {connecting && <span className="bt-spin">⟳ </span>}
+          {note}
+        </div>
+      )}
 
       {bt?.prompt && (
         <div className="bt-prompt">

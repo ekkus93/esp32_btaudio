@@ -180,6 +180,33 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     expect(pairBody?.mac).toBe("AA:BB:CC:DD:EE:FF");
   });
 
+  test("Connect gives live feedback then confirms the link", async ({ page }) => {
+    const dev = { mac: "11:22:33:44:55:66", name: "Test Speaker" };
+    let connected = false;
+    await page.route("**/api/bt", async (route) => {
+      if (route.request().method() === "POST") {
+        const b = JSON.parse(route.request().postData() || "{}");
+        if (b.action === "connect") connected = true; // link comes up on next poll
+        return route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true,"result":"INITIATED"}' });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          connected, connected_mac: connected ? dev.mac : undefined,
+          scanning: false, paired: [dev], discovered: [],
+        }),
+      });
+    });
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Settings" }).click();
+    const btCard = page.locator(".card.bt");
+    await btCard.locator("ul.bt-list li", { hasText: "Test Speaker" })
+      .getByRole("button", { name: "Connect" }).click();
+    await expect(btCard.locator(".banner.ok")).toContainText(/Connecting to Test Speaker/i);
+    await expect(btCard.locator(".banner.ok")).toContainText(/Connected to Test Speaker/i, { timeout: 10_000 });
+  });
+
   // THE bug the user hit: paired devices don't show up.
   test("Bluetooth card lists paired devices", async ({ page }) => {
     await page.goto("/");
