@@ -23,6 +23,7 @@ idf_component_register(
         "cmd_handlers_system.c"
         "cmd_handlers_audio.c"
         "cmd_handlers_bt.c"
+        "cmd_handlers_debug.c"
         "uart_audio_frame.c"
         "uart_audio_rx.c"
         "uart_audio.c"

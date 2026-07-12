@@ -63,6 +63,7 @@ add_library(command_interface_host OBJECT
     ../../components/command_interface/cmd_handlers_system.c
     ../../components/command_interface/cmd_handlers_audio.c
     ../../components/command_interface/cmd_handlers_bt.c
+    ../../components/command_interface/cmd_handlers_debug.c
     ../../components/command_interface/uart_audio.c)
 
 # Find the unity package for unit testing
