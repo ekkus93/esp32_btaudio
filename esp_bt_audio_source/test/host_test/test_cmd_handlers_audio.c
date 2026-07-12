@@ -329,6 +329,162 @@ void test_sample_rate_rejects_non_numeric_input(void)
 // Unity test runner
 // =============================================================================
 
+/* ── UT-7: branch fill for diag/mute/unmute/sample_rate/i2s_config/autostart ── */
+
+static void ut7_set(cmd_context_t *ctx, int n,
+                    const char *a, const char *b, const char *c, const char *d, const char *e)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->param_count = n;
+    const char *v[5] = {a, b, c, d, e};
+    for (int i = 0; i < n && i < 5; ++i) {
+        if (v[i]) strncpy(ctx->params[i], v[i], CMD_MAX_PARAM_LEN - 1);
+    }
+}
+
+static const char *ut7_tx(void)
+{
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    return tx;
+}
+
+void test_diag_state_query_returns_ok(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 0, 0, 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_diag(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|DIAG|STATE"));
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "CONN="));
+}
+
+void test_diag_i2s_stop_ok(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 1, "I2S_STOP", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_diag(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|DIAG|I2S_STOPPED"));
+}
+
+void test_diag_bad_param(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 1, "WHAT", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_diag(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|DIAG|BAD_PARAM"));
+}
+
+void test_mute_and_unmute_mock(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 0, 0, 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_mute(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|MUTE|MOCK_SET"));
+
+    mock_uart_reset_tx();
+    cmd_handle_unmute(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|UNMUTE|MOCK_UNMUTED"));
+}
+
+void test_sample_rate_missing_invalid_valid(void)
+{
+    cmd_context_t ctx;
+    ut7_set(&ctx, 0, 0, 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_sample_rate(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|SAMPLE_RATE|MISSING_PARAM"));
+
+    ut7_set(&ctx, 1, "12345", 0, 0, 0, 0); /* numeric but unsupported */
+    mock_uart_reset_tx();
+    cmd_handle_sample_rate(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|SAMPLE_RATE|INVALID_RATE"));
+
+    ut7_set(&ctx, 1, "44100", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_sample_rate(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|SAMPLE_RATE|MOCK_APPLIED"));
+}
+
+void test_i2s_config_missing_and_too_many(void)
+{
+    cmd_context_t ctx;
+    ut7_set(&ctx, 0, 0, 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|I2S_CONFIG|MISSING_PARAM"));
+
+    ut7_set(&ctx, 5, "26", "44100", "16", "2", "extra");
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|I2S_CONFIG|TOO_MANY_PARAMS"));
+}
+
+void test_i2s_config_pins_only_applies(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 1, "26,25,22,21", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|I2S_CONFIG|MOCK_APPLIED"));
+}
+
+void test_i2s_config_invalid_rate_bit_channels(void)
+{
+    cmd_context_t ctx;
+    ut7_set(&ctx, 2, "26", "99999", 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|I2S_CONFIG|INVALID_RATE"));
+
+    ut7_set(&ctx, 3, "26", "44100", "7", 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|I2S_CONFIG|INVALID_BIT_DEPTH"));
+
+    ut7_set(&ctx, 4, "26", "44100", "16", "3", 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|I2S_CONFIG|INVALID_CHANNELS"));
+}
+
+void test_i2s_config_full_valid_applies(void)
+{
+    cmd_context_t ctx; ut7_set(&ctx, 4, "26", "44100", "16", "2", 0);
+    mock_uart_reset_tx();
+    cmd_handle_i2s_config(&ctx);
+    const char *tx = ut7_tx();
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|I2S_CONFIG|MOCK_APPLIED"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "RATE=44100"));
+}
+
+void test_audio_autostart_missing_get_on_off_invalid(void)
+{
+    cmd_context_t ctx;
+    ut7_set(&ctx, 0, 0, 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_audio_autostart(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|AUDIO_AUTOSTART|MISSING_PARAM"));
+
+    ut7_set(&ctx, 1, "get", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_audio_autostart(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|AUDIO_AUTOSTART|STATUS"));
+
+    ut7_set(&ctx, 1, "on", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_audio_autostart(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|AUDIO_AUTOSTART|ENABLED"));
+
+    ut7_set(&ctx, 1, "off", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_audio_autostart(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "OK|AUDIO_AUTOSTART|DISABLED"));
+
+    ut7_set(&ctx, 1, "maybe", 0, 0, 0, 0);
+    mock_uart_reset_tx();
+    cmd_handle_audio_autostart(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(ut7_tx(), "ERR|AUDIO_AUTOSTART|INVALID_PARAM"));
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -352,6 +508,18 @@ int main(void) {
     // BUG-4 / BUG-5
     RUN_TEST(test_i2s_config_rejects_non_numeric_pin);
     RUN_TEST(test_sample_rate_rejects_non_numeric_input);
+
+    // UT-7: branch fill
+    RUN_TEST(test_diag_state_query_returns_ok);
+    RUN_TEST(test_diag_i2s_stop_ok);
+    RUN_TEST(test_diag_bad_param);
+    RUN_TEST(test_mute_and_unmute_mock);
+    RUN_TEST(test_sample_rate_missing_invalid_valid);
+    RUN_TEST(test_i2s_config_missing_and_too_many);
+    RUN_TEST(test_i2s_config_pins_only_applies);
+    RUN_TEST(test_i2s_config_invalid_rate_bit_channels);
+    RUN_TEST(test_i2s_config_full_valid_applies);
+    RUN_TEST(test_audio_autostart_missing_get_on_off_invalid);
 
     return UNITY_END();
 }
