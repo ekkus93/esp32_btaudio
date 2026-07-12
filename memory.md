@@ -25633,3 +25633,14 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   on that row. api.ts BtState.connected_mac. Graceful when WROOM32 lacks CONN_MAC.
 - Built both firmwares clean; flashed S3 (/dev/ttyACM0). WROOM32 flash (/dev/ttyUSB0)
   still PENDING user confirmation — feature is end-to-end only after that flash.
+
+## 2026-07-12T11:59:21Z - Claude Opus 4.8 (1M) - Connected-sink feature flashed + verified E2E
+
+- Flashed WROOM32 (/dev/ttyUSB0) with the CONN_MAC STATUS change (user-confirmed).
+- Verified end to end: STATUS reports CONN_MAC=E8:FB:1C:25:E4:C2, /api/bt relays
+  connected_mac, UI banner "Connected to ArIsu BT Headset" + badge on that paired row.
+  This also confirmed the user's complaint: the link is on ArIsu (the laptop adapter),
+  not the Echo Buds — the WROOM32 auto-reconnect keeps re-dialing the last-connected
+  device and the always-on laptop wins.
+- Added Playwright test "Bluetooth shows which device is currently connected"; full
+  S3 UI suite 7/7 green on-device.

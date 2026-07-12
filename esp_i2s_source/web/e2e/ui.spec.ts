@@ -67,6 +67,17 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.locator(".card.bt")).toContainText(/48:78:5e:d9:35:a3/i);
   });
 
+  test("Bluetooth shows which device is currently connected", async ({ page }) => {
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Settings" }).click();
+    const banner = page.locator(".card.bt .bt-connected");
+    await expect(banner).toBeVisible();
+    // The device is connected (autostart), so the banner names the sink and the
+    // connected paired row carries a "connected" badge.
+    await expect(banner).toContainText(/Connected to/i, { timeout: 15_000 });
+    await expect(page.locator(".card.bt .bt-badge")).toHaveText("connected");
+  });
+
   test("Scan button shows the pairing-mode hint", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Settings" }).click();
