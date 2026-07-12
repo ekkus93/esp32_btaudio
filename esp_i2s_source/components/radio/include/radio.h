@@ -55,6 +55,9 @@ esp_err_t radio_play(const char *playlist_or_url);
 /* Stop streaming and drain the ring. */
 void radio_stop(void);
 
+/* True while a stream is active (the I2S feeder routes radio PCM when so). */
+bool radio_is_playing(void);
+
 /* Snapshot the current state. */
 void radio_get_status(radio_status_t *out);
 

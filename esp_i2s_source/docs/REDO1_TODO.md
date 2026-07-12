@@ -287,9 +287,14 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
 - [ ] **RADIO-2b** Resampler stage to 44.1 kHz stereo s16 (decoder output
       may be 22.05/24/32/44.1/48 kHz, mono or stereo) — math host-tested
       against known-exact conversions.
-- [ ] **RADIO-2c** Source arbitration: radio ⇄ tone (explicit user action
-      wins); silence when idle; `/api/radio` play/stop; ICY title pushed
-      to UI over WS.
+- [x] **RADIO-2c** Source arbitration. Single `audio_out` feeder in main:
+      radio decoded PCM when playing (radio_pcm_read; underrun→brief silence),
+      else tone (itself silence when off) → 16-in-32 pack → i2s_out. Retired
+      the always-on tone_task; `tone` now exposes `tone_fill()` (no i2s dep).
+      **Hardware-verified via A2DP FFT**: radio ON → broadband music (peak
+      ~26k); radio+tone → radio wins; stop radio → 440 Hz tone; tone off →
+      silence. `/api/radio` play/stop drives it; ICY title shows in the Radio
+      UI via /api/status poll (WS push is an optional later nicety).
 - [ ] **RADIO-2d** Hardware E2E: MP3 station and AAC station each play to
       earbuds ≥30 min without dropout; WROOM32 counters clean; document
       buffer telemetry. MP3 station from the SPEC §5.4 seed list; AAC test

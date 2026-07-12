@@ -1,5 +1,6 @@
-# tone — controllable test-tone source feeding i2s_out (WEB-1d).
+# tone — controllable test-tone fill source (WEB-1d / RADIO-2c). Pure fill; the
+# audio_out arbiter (main) does the i2s writing.
 idf_component_register(
     SRCS "tone.c"
     INCLUDE_DIRS "include"
-    REQUIRES signal_gen i2s_out)
+    REQUIRES signal_gen)

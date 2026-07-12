@@ -406,6 +406,11 @@ void radio_stop(void)
     for (int i = 0; i < 400 && (s_task || s_dec_task); i++) vTaskDelay(pdMS_TO_TICKS(20));  /* <=8s */
 }
 
+bool radio_is_playing(void)
+{
+    return s_playing;
+}
+
 void radio_get_status(radio_status_t *out)
 {
     if (!out) return;

@@ -9,6 +9,7 @@
  * the command link, WiFi/web and radio replace this from LINK-1 onward.
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -75,6 +76,39 @@ static float s3_measure_hz(int gpio, int ms)
 
 /* 256 KB PSRAM ring ≈ 1.5 s of 44.1 kHz stereo s16 — ample jitter absorption. */
 #define I2S_RING_BYTES (256 * 1024)
+#define AUDIO_OUT_FRAMES 256   /* 256 stereo frames = 1024 B per block */
+
+/* RADIO-2c source arbitration: the single I2S feeder. Each block, pick the
+ * active source — radio decoded PCM when a stream is playing (explicit user
+ * action wins; underrun -> brief silence), else the tone (which is itself
+ * silence when off) — pack it 16-in-32 top-half for the WROOM32 slave RX, and
+ * push to i2s_out. Real source arbitration replacing the old always-on tone. */
+static void audio_out_task(void *arg)
+{
+    (void)arg;
+    static int16_t block[AUDIO_OUT_FRAMES * 2];
+    static int32_t block32[AUDIO_OUT_FRAMES * 2];
+    for (;;) {
+        if (radio_is_playing()) {
+            size_t got = radio_pcm_read(block, AUDIO_OUT_FRAMES);
+            if (got < AUDIO_OUT_FRAMES) {
+                memset(&block[got * 2], 0, (AUDIO_OUT_FRAMES - got) * 2 * sizeof(int16_t));
+            }
+        } else {
+            tone_fill(block, AUDIO_OUT_FRAMES);
+        }
+        for (size_t i = 0; i < AUDIO_OUT_FRAMES * 2; i++) {
+            block32[i] = (int32_t)block[i] << 16;   /* top half of the 32-bit slot */
+        }
+        const uint8_t *p = (const uint8_t *)block32;
+        size_t total = sizeof(block32), off = 0;
+        while (off < total) {
+            size_t w = i2s_out_write(p + off, total - off);
+            off += w;
+            if (w == 0) vTaskDelay(1);   /* ring full — let the I2S consumer drain */
+        }
+    }
+}
 
 /* Initialise NVS exactly once (root CLAUDE.md contract mirrors esp_bt_audio_source). */
 static void init_nvs(void)
@@ -141,12 +175,14 @@ void app_main(void)
     fflush(stdout);
 
     ESP_ERROR_CHECK(i2s_out_init(I2S_RING_BYTES));
-    /* Prime the ring with tone BEFORE starting the writer, so the first DMA
-     * load is real tone data, not underrun zeros. */
-    ESP_ERROR_CHECK(tone_start());
+    /* RADIO-2c: single audio_out feeder (radio ⇄ tone ⇄ silence). Prime the
+     * ring before starting the I2S writer so the first DMA load isn't zeros. */
+    if (xTaskCreate(audio_out_task, "audio_out", 4096, NULL, tskIDLE_PRIORITY + 3, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "audio_out task create failed");
+    }
     vTaskDelay(pdMS_TO_TICKS(300));
     ESP_ERROR_CHECK(i2s_out_start());
-    ESP_LOGI(TAG, "I2S out streaming (bclk=%d ws=%d dout=%d); tone controllable via /api/tone",
+    ESP_LOGI(TAG, "I2S out streaming (bclk=%d ws=%d dout=%d); source: radio/tone/silence",
              I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT);
 
     /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */

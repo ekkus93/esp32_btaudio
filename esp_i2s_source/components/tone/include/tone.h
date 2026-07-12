@@ -1,31 +1,31 @@
 /*
- * tone — controllable 440 Hz-style test tone source feeding i2s_out (WEB-1d).
- * Replaces main.c's hardcoded always-on tone_task with an on/off + frequency
- * control the web UI (/api/tone) and console can drive. When off, it emits
- * silence rather than stopping (the S3 is the I2S slave-TX and must keep the
- * WROOM32 master's stream fed). This is a stopgap single-source model; real
- * source arbitration (radio ⇄ tone ⇄ silence) arrives at RADIO-2c.
+ * tone — controllable test-tone source (WEB-1d). Provides s16 stereo samples on
+ * demand via tone_fill(); the audio_out arbiter (RADIO-2c, in main) calls it
+ * when radio isn't the active source. On/off + frequency are driven by the web
+ * UI (/api/tone) and console. Off = silence.
  */
 #pragma once
 
 #include <stdbool.h>
-#include "esp_err.h"
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define TONE_HZ_MIN   20
-#define TONE_HZ_MAX   20000
+#define TONE_HZ_MIN     20
+#define TONE_HZ_MAX     20000
 #define TONE_HZ_DEFAULT 440
 
-/* Spawn the tone writer task (feeds i2s_out). i2s_out must be started. */
-esp_err_t tone_start(void);
+/* Fill `frames` interleaved stereo s16 frames: a sine at the current frequency
+ * when enabled, otherwise silence. Phase is carried across calls. */
+void tone_fill(int16_t *out, size_t frames);
 
 /* Enable the tone at freq_hz (clamped to [TONE_HZ_MIN, TONE_HZ_MAX]). */
 void tone_set(int freq_hz);
 
-/* Disable — emit silence (the I2S stream keeps flowing). */
+/* Disable — tone_fill() emits silence. */
 void tone_off(void);
 
 /* Current state. Either pointer may be NULL. */

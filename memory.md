@@ -25417,3 +25417,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   Radio play now spawns 2 tasks (stream + decoder); stop joins both.
 - Remaining: RADIO-2c (route radio_pcm_read into i2s with source arbitration ->
   AUDIBLE), RADIO-2d (MP3+AAC E2E to earbuds). Host suite 10/10.
+
+## 2026-07-12T02:48:28Z - Claude Opus 4.8 (1M) - RADIO-2c: source arbitration -> INTERNET RADIO PLAYS over Bluetooth
+
+- Refactored the output path. main.c audio_out_task = single I2S feeder /
+  arbiter: radio_is_playing() -> radio_pcm_read (underrun=brief silence), else
+  tone_fill (silence when off); 16-in-32 pack (<<16) -> i2s_out. Retired the
+  always-on tone_task. tone.c now exposes tone_fill(out,frames) (pure fill, no
+  i2s dep); dropped tone_start/task; tone CMakeLists REQUIRES only signal_gen.
+  radio.h + radio_is_playing().
+- HARDWARE VERIFIED via laptop A2DP FFT: SomaFM MP3 plays as real broadband music
+  (peak ~26k, dominant wanders, near0=0); radio+tone -> radio wins (still music);
+  stop radio -> 440Hz tone (peak 9831); tone off -> silence (peak 0). Full chain
+  SomaFM -> S3 decode/resample -> PCM ring -> audio_out -> I2S -> WROOM32 -> A2DP
+  -> speaker. The device now does its actual job.
+- RADIO-1 + RADIO-2a/b/c COMPLETE. Remaining: RADIO-2d (MP3+AAC E2E to earbuds
+  >=30min, AAC via Dance UK / Hirschmilch) is the M6 hardware gate; and CTRL-1
+  (orchestrated boot). ICY title WS-push optional. Host 10/10.
