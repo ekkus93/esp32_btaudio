@@ -77,6 +77,30 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(cards.nth(3).locator("h2")).toHaveText("Volume");
   });
 
+  test("Piano note-length slider controls how long a key sounds", async ({ page }) => {
+    // Intercept /api/tone so no real audio plays; measure play->stop timing.
+    const events: { method: string; t: number }[] = [];
+    await page.route("**/api/tone", async (route) => {
+      events.push({ method: route.request().method(), t: Date.now() });
+      await route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true,"on":true,"hz":440}' });
+    });
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Tone" }).click();
+    const piano = page.locator(".card.piano");
+    // Set note length to the minimum (100 ms) and tap a key.
+    await piano.locator('input[type="range"]').first().fill("100");
+    await piano.locator(".pkey.white").first().click();
+    await page.waitForTimeout(700);
+    const post = events.find((e) => e.method === "POST");
+    const del = events.find((e) => e.method === "DELETE");
+    expect(post, "a POST /api/tone fired on key press").toBeTruthy();
+    expect(del, "a DELETE /api/tone auto-stopped the note").toBeTruthy();
+    const gap = del!.t - post!.t;
+    // Auto-stop ~100 ms after play (generous bounds for CI jitter).
+    expect(gap).toBeGreaterThan(50);
+    expect(gap).toBeLessThan(450);
+  });
+
   test("Settings tab shows WiFi setup, Network, Control AP, Bluetooth", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Settings" }).click();

@@ -29,27 +29,21 @@ export function Piano() {
   const [active, setActive] = useState<number | null>(null);
   const [durMs, setDurMs] = useState(500); // note length (ms)
   const [vol, setVol] = useState(30); // note amplitude (% of full scale)
-  const heldRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stop = () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    heldRef.current = false;
     setActive(null);
     toneOff().catch(() => {});
   };
 
+  // Each key press plays the note for the full set length, then auto-stops —
+  // a quick click no longer cuts it short (releasing does not stop it).
   const press = (midi: number) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    heldRef.current = true;
     setActive(midi);
     setTone(Math.round(midiToFreq(midi)), vol).catch(() => {});
-    // Auto-stop after the set duration (a held key still ends here).
     timerRef.current = setTimeout(stop, durMs);
-  };
-  // Releasing early stops the note; if already auto-stopped, this is a no-op.
-  const release = () => {
-    if (heldRef.current) stop();
   };
 
   return (
@@ -67,7 +61,7 @@ export function Piano() {
         <span className="vol-val">{vol}%</span>
       </div>
 
-      <div className="piano-keys" onPointerUp={release} onPointerLeave={release} onPointerCancel={release}>
+      <div className="piano-keys">
         {WHITES.map((w) => (
           <div
             key={w.midi}
@@ -85,7 +79,7 @@ export function Piano() {
         ))}
       </div>
       <p className="muted">
-        Each key plays its note (over Bluetooth) for the set length at the set volume; release early to cut it short. C4 is middle C.
+        Each key plays its note (over Bluetooth) for the set length at the set volume. C4 is middle C.
       </p>
     </section>
   );
