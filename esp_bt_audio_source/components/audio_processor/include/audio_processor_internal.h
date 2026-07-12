@@ -209,6 +209,10 @@ size_t audio_get_runtime_work_bytes(void);
 int audio_bytes_per_sample(audio_bit_depth_t bit_depth);
 void apply_volume(void* buffer, size_t size, uint8_t volume);
 
+/* 16-bit-only volume scaling for the A2DP output (SBC PCM is always 16-bit,
+ * regardless of the I2S input bit_depth). Scales `count` int16 samples in place. */
+void apply_volume_s16(int16_t* samples, size_t count, uint8_t volume);
+
 /* WAV helpers removed (play_manager deleted) */
 
 /* Beep helpers */

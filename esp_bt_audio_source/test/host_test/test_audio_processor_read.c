@@ -6,11 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* audio_processor_diag.c (linked for apply_volume) references this symbol from
+ * its diag-summary path, which this test never exercises. Stub it to avoid
+ * pulling in the whole audio_processor.c. */
+uint32_t audio_processor_test_get_tag_miss_count(void) { return 0; }
+
 static void init_defaults(void)
 {
     s_is_initialized = true;
     s_drop_ring_audio = false;
     s_beep_remaining_bytes = 0;
+    s_volume_gain = 100;   /* unity by default; volume test overrides */
 
     memset(&s_audio_stats, 0, sizeof(s_audio_stats));
     s_audio_config.sample_rate = AUDIO_SAMPLE_RATE_44K;
@@ -80,6 +86,76 @@ void test_audio_processor_read_should_zero_fill_underrun_during_beep(void)
     TEST_ASSERT_EQUAL_UINT32(1, s_audio_stats.buffer_underruns);
     TEST_ASSERT_EQUAL_UINT64(sizeof(output) - sizeof(input), s_audio_stats.underrun_bytes);
     TEST_ASSERT_EQUAL_UINT64(sizeof(output), s_audio_stats.bytes_read);
+}
+
+/* Regression: audio_processor_read() must scale the output by s_volume_gain.
+ * This is the test that was missing when apply_volume() sat as dead code and
+ * the VOLUME command silently did nothing. */
+void test_audio_processor_read_applies_volume_gain(void)
+{
+    int16_t input[16];
+    for (int i = 0; i < 16; i++) {
+        input[i] = 1000;
+    }
+    TEST_ASSERT_EQUAL_UINT(sizeof(input),
+                           audio_rb_write(s_audio_ring, (uint8_t *)input, sizeof(input)));
+
+    s_volume_gain = 50;   /* 50% -> samples halve (1000 * 50 / 100 = 500) */
+
+    int16_t output[16];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      audio_processor_read((uint8_t *)output, sizeof(output), &bytes_read));
+    TEST_ASSERT_EQUAL_UINT(sizeof(output), bytes_read);
+    for (int i = 0; i < 16; i++) {
+        TEST_ASSERT_EQUAL_INT16(500, output[i]);
+    }
+}
+
+/* Regression for the "loud static" bug: the A2DP buffer is 16-bit even when the
+ * I2S input bit_depth is 24/32 (16-in-32 slots). The volume path must scale the
+ * buffer as 16-bit regardless of s_audio_config.bit_depth. Before the fix this
+ * took apply_volume()'s 32-bit branch and scrambled the samples. */
+void test_audio_processor_read_volume_is_s16_even_when_bit_depth_32(void)
+{
+    int16_t input[16];
+    for (int i = 0; i < 16; i++) {
+        input[i] = 1000;
+    }
+    TEST_ASSERT_EQUAL_UINT(sizeof(input),
+                           audio_rb_write(s_audio_ring, (uint8_t *)input, sizeof(input)));
+
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_32;   /* like the hardware */
+    s_volume_gain = 50;
+
+    int16_t output[16];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      audio_processor_read((uint8_t *)output, sizeof(output), &bytes_read));
+    /* Each 16-bit sample must still be cleanly halved, not scrambled. */
+    for (int i = 0; i < 16; i++) {
+        TEST_ASSERT_EQUAL_INT16(500, output[i]);
+    }
+}
+
+/* At unity (100) the samples must pass through unchanged (apply_volume no-op). */
+void test_audio_processor_read_volume_unity_is_passthrough(void)
+{
+    int16_t input[8];
+    for (int i = 0; i < 8; i++) {
+        input[i] = (int16_t)(2000 + i);
+    }
+    TEST_ASSERT_EQUAL_UINT(sizeof(input),
+                           audio_rb_write(s_audio_ring, (uint8_t *)input, sizeof(input)));
+    s_volume_gain = 100;
+
+    int16_t output[8];
+    size_t bytes_read = 0;
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      audio_processor_read((uint8_t *)output, sizeof(output), &bytes_read));
+    for (int i = 0; i < 8; i++) {
+        TEST_ASSERT_EQUAL_INT16((int16_t)(2000 + i), output[i]);
+    }
 }
 
 void test_audio_processor_read_should_reject_null_bytes_read_pointer(void)
@@ -247,6 +323,9 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_audio_processor_read_should_drain_ring_and_return_silence_when_drop_flag_set);
     RUN_TEST(test_audio_processor_read_should_zero_fill_underrun_during_beep);
+    RUN_TEST(test_audio_processor_read_applies_volume_gain);
+    RUN_TEST(test_audio_processor_read_volume_is_s16_even_when_bit_depth_32);
+    RUN_TEST(test_audio_processor_read_volume_unity_is_passthrough);
     RUN_TEST(test_audio_processor_read_should_reject_null_bytes_read_pointer);
     /* TEST-2: ring buffer capacity floor */
     RUN_TEST(test_ring_buffer_capacity_meets_minimum_floor);

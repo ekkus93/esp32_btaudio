@@ -567,6 +567,7 @@ add_executable(test_audio_processor_read
     test_audio_processor_read.c
     ../../components/audio_processor/audio_processor_read.c
     ../../components/audio_processor/audio_processor_state.c
+    ../../components/audio_processor/audio_processor_diag.c
     ../../components/audio_processor/audio_ringbuffer.c
     mocks/fake_log.c
     mocks/fake_esp_err.c

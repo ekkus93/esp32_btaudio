@@ -19,6 +19,29 @@ static int32_t clamp_int32(int64_t value)
     return (int32_t)value;
 }
 
+/* Scale `count` int16 samples by volume% in place. The A2DP output PCM is always
+ * 16-bit (SBC), independent of the I2S input bit_depth, so the A2DP volume path
+ * must use this rather than apply_volume()'s bit_depth-driven dispatch — using
+ * the 32-bit branch on a 16-bit buffer scrambles the samples (static). */
+void apply_volume_s16(int16_t* samples, size_t count, uint8_t volume)
+{
+    if (samples == NULL || count == 0U || volume >= 100U) {
+        return;
+    }
+    if (volume == 0U) {
+        for (size_t i = 0; i < count; i++) {
+            samples[i] = 0;
+        }
+        return;
+    }
+    const int32_t scale = (int32_t)volume;
+    const int32_t divisor = 100;
+    for (size_t i = 0; i < count; i++) {
+        int32_t scaled = ((int32_t)samples[i] * scale + (divisor / 2)) / divisor;
+        samples[i] = clamp_int16(scaled);
+    }
+}
+
 void apply_volume(void* buffer, size_t size, uint8_t volume)
 {
     if (volume >= 100U || buffer == NULL || size == 0U) {
@@ -34,13 +57,7 @@ void apply_volume(void* buffer, size_t size, uint8_t volume)
     const int32_t divisor = 100;
 
     if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_16) {
-        int16_t* samples = (int16_t*)buffer;
-        int sample_count = (int)(size / sizeof(int16_t));
-
-        for (int i = 0; i < sample_count; i++) {
-            int32_t scaled = ((int32_t)samples[i] * scale + (divisor / 2)) / divisor;
-            samples[i] = clamp_int16(scaled);
-        }
+        apply_volume_s16((int16_t*)buffer, size / sizeof(int16_t), volume);
     }
     else if (s_audio_config.bit_depth == AUDIO_BIT_DEPTH_24 ||
              s_audio_config.bit_depth == AUDIO_BIT_DEPTH_32) {

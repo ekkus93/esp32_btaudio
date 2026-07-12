@@ -227,7 +227,19 @@ esp_err_t audio_processor_read(uint8_t* buffer, size_t size, size_t* bytes_read)
     /* Zero-fill underrun bytes outside critical section to minimize interrupt latency */
     if (read < size) {
         util_safe_memset(buffer + read, size - read, 0, size - read);
-    }    
+    }
+
+    /* Apply master volume to the final mixed PCM (I2S/synth/beep already combined
+     * in the ring upstream). This is the single output point for the A2DP data
+     * callback, so scaling here makes the VOLUME command actually work. Fixes the
+     * long-standing bug where apply_volume() existed but was never called.
+     *
+     * Use the s16 path explicitly: the A2DP/SBC output buffer is ALWAYS 16-bit,
+     * whereas apply_volume() dispatches on s_audio_config.bit_depth (which is the
+     * I2S input depth, e.g. 32 for 16-in-32 slots). Using the 32-bit branch on a
+     * 16-bit buffer scrambles the samples -> loud static. volume>=100 no-ops. */
+    apply_volume_s16((int16_t*)buffer, size / sizeof(int16_t), s_volume_gain);
+
     *bytes_read = size;  /* Always return full size (zero-filled if needed) */
     
     /* Trace/log if enabled */
