@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getStatus, setWifi, setTone, toneOff, type DeviceStatus } from "./api";
 import { Terminal } from "./Terminal";
 import { Bluetooth } from "./Bluetooth";
+import { Radio } from "./Radio";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -148,15 +149,6 @@ function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; o
   );
 }
 
-function Placeholder({ title, task }: { title: string; task: string }) {
-  return (
-    <section className="card stub">
-      <h2>{title}</h2>
-      <p className="muted">Coming in {task}.</p>
-    </section>
-  );
-}
-
 export function App() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -218,8 +210,8 @@ export function App() {
 
         <Terminal />
         <ToneControl tone={status?.tone} onChange={refresh} />
+        <Radio radio={status?.radio} onChange={refresh} />
         <Bluetooth />
-        <Placeholder title="Radio" task="RADIO-1" />
       </div>
 
       <footer className="muted">esp-i2s-source · {status?.version ?? "…"}</footer>

@@ -116,3 +116,69 @@ bool radio_icy_stream_title(const char *block, char *title, size_t title_sz)
     title[vlen] = '\0';
     return true;
 }
+
+/* --- incremental ICY demuxer --- */
+
+void radio_icy_demux_init(radio_icy_demux_t *d, int metaint)
+{
+    d->metaint = metaint > 0 ? metaint : 0;
+    d->audio_left = d->metaint;   /* audio first, then the first length byte */
+    d->meta_left = -1;            /* -1 = the byte after audio is the length */
+    d->meta_pos = 0;
+    d->meta_buf[0] = '\0';
+}
+
+void radio_icy_demux_feed(radio_icy_demux_t *d, const unsigned char *in, size_t n,
+                          radio_icy_audio_fn audio_fn, radio_icy_title_fn title_fn,
+                          void *ctx)
+{
+    /* No metadata interleaving: everything is audio. */
+    if (d->metaint == 0) {
+        if (n && audio_fn) audio_fn(ctx, in, n);
+        return;
+    }
+
+    while (n > 0) {
+        if (d->audio_left > 0) {
+            size_t chunk = (n < (size_t)d->audio_left) ? n : (size_t)d->audio_left;
+            if (audio_fn) audio_fn(ctx, in, chunk);
+            in += chunk;
+            n -= chunk;
+            d->audio_left -= (int)chunk;
+            continue;
+        }
+        if (d->meta_left < 0) {
+            /* This byte is the metadata length (in 16-byte units). */
+            int blk = (int)(*in) * 16;
+            in++;
+            n--;
+            if (blk == 0) {
+                d->audio_left = d->metaint;   /* empty block, back to audio */
+            } else {
+                d->meta_left = blk;
+                d->meta_pos = 0;
+            }
+            continue;
+        }
+        /* Collecting the metadata block. */
+        size_t chunk = (n < (size_t)d->meta_left) ? n : (size_t)d->meta_left;
+        int room = RADIO_ICY_META_MAX - 1 - d->meta_pos;
+        if (room > 0) {
+            int copy = (chunk < (size_t)room) ? (int)chunk : room;
+            memcpy(d->meta_buf + d->meta_pos, in, (size_t)copy);
+            d->meta_pos += copy;
+        }
+        in += chunk;
+        n -= chunk;
+        d->meta_left -= (int)chunk;
+        if (d->meta_left == 0) {
+            d->meta_buf[d->meta_pos] = '\0';
+            char title[RADIO_ICY_META_MAX];
+            if (title_fn && radio_icy_stream_title(d->meta_buf, title, sizeof(title))) {
+                title_fn(ctx, title);
+            }
+            d->audio_left = d->metaint;
+            d->meta_left = -1;
+        }
+    }
+}

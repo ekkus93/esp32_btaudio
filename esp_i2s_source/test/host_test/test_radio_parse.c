@@ -121,6 +121,99 @@ void test_icy_title_truncated_to_buffer(void)
     TEST_ASSERT_EQUAL_STRING("0123456", t);  /* 7 chars + NUL */
 }
 
+/* ---------- ICY demuxer ---------- */
+
+typedef struct {
+    unsigned char audio[512];
+    int alen;
+    char title[128];
+    int titles;
+} demux_cap_t;
+
+static void cap_audio(void *ctx, const unsigned char *d, size_t n)
+{
+    demux_cap_t *c = ctx;
+    memcpy(c->audio + c->alen, d, n);
+    c->alen += (int)n;
+}
+static void cap_title(void *ctx, const char *t)
+{
+    demux_cap_t *c = ctx;
+    strncpy(c->title, t, sizeof(c->title) - 1);
+    c->titles++;
+}
+
+/* Build an ICY stream: [metaint audio][len byte][len*16 meta][metaint audio]. */
+static int build_icy(unsigned char *s, const char *a1, const char *meta, const char *a2)
+{
+    int p = 0;
+    int al1 = (int)strlen(a1);
+    memcpy(s + p, a1, al1); p += al1;
+    if (meta) {
+        int mlen = (int)strlen(meta);
+        int units = (mlen + 15) / 16;
+        s[p++] = (unsigned char)units;
+        memcpy(s + p, meta, mlen); p += mlen;
+        int pad = units * 16 - mlen;
+        memset(s + p, 0, pad); p += pad;
+    } else {
+        s[p++] = 0;  /* empty metadata block */
+    }
+    memcpy(s + p, a2, strlen(a2)); p += (int)strlen(a2);
+    return p;
+}
+
+void test_demux_metaint_zero_is_all_audio(void)
+{
+    radio_icy_demux_t d;
+    radio_icy_demux_init(&d, 0);
+    demux_cap_t c = {0};
+    radio_icy_demux_feed(&d, (const unsigned char *)"hello world", 11, cap_audio, cap_title, &c);
+    TEST_ASSERT_EQUAL_INT(11, c.alen);
+    TEST_ASSERT_EQUAL_INT(0, c.titles);
+}
+
+void test_demux_splits_audio_and_title(void)
+{
+    unsigned char s[256];
+    int n = build_icy(s, "AAAAAAAA", "StreamTitle='Hi';", "BBBBBBBB");  /* metaint=8 */
+    radio_icy_demux_t d;
+    radio_icy_demux_init(&d, 8);
+    demux_cap_t c = {0};
+    radio_icy_demux_feed(&d, s, (size_t)n, cap_audio, cap_title, &c);
+    TEST_ASSERT_EQUAL_INT(16, c.alen);
+    TEST_ASSERT_EQUAL_MEMORY("AAAAAAAABBBBBBBB", c.audio, 16);
+    TEST_ASSERT_EQUAL_INT(1, c.titles);
+    TEST_ASSERT_EQUAL_STRING("Hi", c.title);
+}
+
+void test_demux_byte_at_a_time_same_result(void)
+{
+    unsigned char s[256];
+    int n = build_icy(s, "AAAAAAAA", "StreamTitle='Song';", "BBBBBBBB");
+    radio_icy_demux_t d;
+    radio_icy_demux_init(&d, 8);
+    demux_cap_t c = {0};
+    for (int i = 0; i < n; i++) {
+        radio_icy_demux_feed(&d, s + i, 1, cap_audio, cap_title, &c);  /* feed-boundary agnostic */
+    }
+    TEST_ASSERT_EQUAL_INT(16, c.alen);
+    TEST_ASSERT_EQUAL_MEMORY("AAAAAAAABBBBBBBB", c.audio, 16);
+    TEST_ASSERT_EQUAL_STRING("Song", c.title);
+}
+
+void test_demux_empty_metadata_block(void)
+{
+    unsigned char s[256];
+    int n = build_icy(s, "AAAAAAAA", NULL, "BBBBBBBB");  /* length byte 0 */
+    radio_icy_demux_t d;
+    radio_icy_demux_init(&d, 8);
+    demux_cap_t c = {0};
+    radio_icy_demux_feed(&d, s, (size_t)n, cap_audio, cap_title, &c);
+    TEST_ASSERT_EQUAL_INT(16, c.alen);
+    TEST_ASSERT_EQUAL_INT(0, c.titles);  /* no title on empty block */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -137,5 +230,9 @@ int main(void)
     RUN_TEST(test_icy_no_title_field);
     RUN_TEST(test_icy_null_padded_block);
     RUN_TEST(test_icy_title_truncated_to_buffer);
+    RUN_TEST(test_demux_metaint_zero_is_all_audio);
+    RUN_TEST(test_demux_splits_audio_and_title);
+    RUN_TEST(test_demux_byte_at_a_time_same_result);
+    RUN_TEST(test_demux_empty_metadata_block);
     return UNITY_END();
 }

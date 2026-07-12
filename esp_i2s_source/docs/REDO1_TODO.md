@@ -241,9 +241,18 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       `.m3u` (skips `#` comments), or a bare URL to the first http(s) stream
       URL; `radio_icy_stream_title()` pulls `StreamTitle` out of a SHOUTcast
       ICY metadata block (NUL-padding tolerant). No ESP-IDF deps.
-- [ ] **RADIO-1b** Stream task: esp_http_client (+esp-tls), redirects,
-      `Icy-MetaData:1`, content-type → codec selection, PSRAM ring fill,
-      reconnect with backoff; telemetry (buffer level, drops, reconnects).
+- [x] **RADIO-1b** `radio.c` stream task: esp_http_client + esp-tls (cert
+      bundle), playlist resolve (fetch .pls/.m3u → stream URL), `Icy-MetaData:1`,
+      content-type → codec (mp3/aac), 256 KB PSRAM ring, ICY demux (pure,
+      host-tested state machine), reconnect w/ backoff, telemetry. `/api/radio`
+      POST/DELETE (deferred), radio state in /api/status, Radio UI panel
+      (presets + URL + now-playing + buffer/telemetry). **Hardware-verified**
+      (SomaFM): `.pls` resolved on-device → MP3 128k, icy-name + live StreamTitle
+      demuxed from the real stream, bytes climbing, 0 reconnects. Needed a
+      **custom 6 MB app partition** (`partitions.csv`) — TLS+http_client overflowed
+      the default ~1 MB single-app. Notes: the SPEC §5.4 snapshot stations had
+      unreachable stream ports here (laptop failed too) — presets swapped to
+      SomaFM until RADIO-1c; audio plays once the RADIO-2 decoder drains the ring.
 - [ ] **RADIO-1c** Station store: NVS-backed preset CRUD (host-tested
       logic) + `/api/stations` endpoints + UI list/add/edit/delete +
       custom-URL field. Seed defaults from internet-radio.com's Popular

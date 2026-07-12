@@ -6,6 +6,7 @@
 #include "wifi_mgr.h"
 #include "bt_link.h"
 #include "tone.h"
+#include "radio.h"
 
 #include <string.h>
 
@@ -84,6 +85,20 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON *tone = cJSON_AddObjectToObject(root, "tone");
     cJSON_AddBoolToObject(tone, "on", tone_on);
     cJSON_AddNumberToObject(tone, "hz", tone_hz);
+
+    radio_status_t rs;
+    radio_get_status(&rs);
+    cJSON *radio = cJSON_AddObjectToObject(root, "radio");
+    cJSON_AddBoolToObject(radio, "playing", rs.playing);
+    cJSON_AddStringToObject(radio, "codec", radio_codec_str(rs.codec));
+    cJSON_AddStringToObject(radio, "station", rs.station);
+    cJSON_AddStringToObject(radio, "title", rs.title);
+    cJSON_AddStringToObject(radio, "url", rs.url);
+    cJSON_AddNumberToObject(radio, "bitrate", rs.bitrate_kbps);
+    cJSON_AddNumberToObject(radio, "bytes_in", (double)rs.bytes_in);
+    cJSON_AddNumberToObject(radio, "ring_used", rs.ring_used);
+    cJSON_AddNumberToObject(radio, "ring_cap", rs.ring_cap);
+    cJSON_AddNumberToObject(radio, "reconnects", rs.reconnects);
 
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -184,6 +199,56 @@ static esp_err_t tone_delete(httpd_req_t *req)
     tone_off();
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, "{\"ok\":true,\"on\":false}");
+}
+
+/* POST /api/radio {url} — resolve + play; DELETE /api/radio — stop. The play/
+ * stop paths can fetch a playlist or wait on a reconnect, so run them off the
+ * httpd worker. */
+static char s_radio_url[RADIO_URL_MAX];
+
+static void radio_play_task(void *arg)
+{
+    (void)arg;
+    radio_play(s_radio_url);
+    vTaskDelete(NULL);
+}
+static void radio_stop_task(void *arg)
+{
+    (void)arg;
+    radio_stop();
+    vTaskDelete(NULL);
+}
+
+static esp_err_t radio_post(httpd_req_t *req)
+{
+    char body[RADIO_URL_MAX + 64];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    const char *url = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "url")) : NULL;
+    if (!url || !url[0] || strlen(url) >= RADIO_URL_MAX) {
+        cJSON_Delete(j);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing/oversized url\"}");
+        return ESP_OK;
+    }
+    strlcpy(s_radio_url, url, sizeof(s_radio_url));
+    cJSON_Delete(j);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    xTaskCreate(radio_play_task, "radioplay", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
+    return ESP_OK;
+}
+
+static esp_err_t radio_delete(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    xTaskCreate(radio_stop_task, "radiostop", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
+    return ESP_OK;
 }
 
 /* ---- WebSocket /ws: terminal I/O (term_in/term_out) + EVENT feed ---- */
@@ -327,6 +392,10 @@ esp_err_t web_ui_start(void)
         .uri = "/api/tone", .method = HTTP_POST, .handler = tone_post };
     const httpd_uri_t tone_del_uri = {
         .uri = "/api/tone", .method = HTTP_DELETE, .handler = tone_delete };
+    const httpd_uri_t radio_post_uri = {
+        .uri = "/api/radio", .method = HTTP_POST, .handler = radio_post };
+    const httpd_uri_t radio_del_uri = {
+        .uri = "/api/radio", .method = HTTP_DELETE, .handler = radio_delete };
     const httpd_uri_t ws_uri = {
         .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     const httpd_uri_t root_uri = {
@@ -335,6 +404,8 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &wifi_uri);
     httpd_register_uri_handler(s_server, &tone_post_uri);
     httpd_register_uri_handler(s_server, &tone_del_uri);
+    httpd_register_uri_handler(s_server, &radio_post_uri);
+    httpd_register_uri_handler(s_server, &radio_del_uri);
     httpd_register_uri_handler(s_server, &ws_uri);
     httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
 

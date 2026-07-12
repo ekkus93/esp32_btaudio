@@ -25351,3 +25351,30 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Next: RADIO-1b (esp_http_client stream task, ICY, content-type->codec, PSRAM
   ring, reconnect) and RADIO-1c (NVS station store + /api/stations + UI, seed
   5 .pls presets from SPEC §5.4).
+
+## 2026-07-12T01:12:19Z - Claude Opus 4.8 (1M) - RADIO-1b: HTTP(S) stream task + ICY demux, hardware-validated
+
+- Pure ICY demux state machine (radio_parse: radio_icy_demux_*) splits the
+  interleaved stream into audio + StreamTitle updates; feed-boundary agnostic.
+  4 host tests (17 radio_parse cases total).
+- radio.c device stream task: esp_http_client + esp-tls (crt bundle), resolve_url
+  (fetch .pls/.m3u -> first stream URL), Icy-MetaData:1, content-type->codec
+  (mp3/aac), 256KB PSRAM ring (mutex SPSC), reconnect w/ exponential backoff,
+  telemetry. radio_read() is the RADIO-2 consumer hook. web_ui: POST/DELETE
+  /api/radio (deferred to a task), radio in /api/status; Radio.tsx UI panel.
+- HARDWARE VERIFIED with SomaFM: POST http://somafm.com/dronezone.pls -> resolved
+  on-device to ice6.somafm.com/dronezone-128-mp3, codec=mp3 br=128, station +
+  live title ("Berlin Heritage - Parce mihi") demuxed from real ICY, bytes_in
+  climbing, reconnects=0. Ring fills to full (nothing drains it until RADIO-2).
+- GOTCHAS:
+  * Binary overflowed the default single-app ~1MB partition (TLS+http_client).
+    Added custom partitions.csv (6MB factory app + 64KB nvs) + CONFIG_PARTITION_
+    TABLE_CUSTOM in sdkconfig.defaults; deleted sdkconfig to regen. NVS start
+    offset unchanged (0x9000) so WiFi creds survived the repartition.
+  * SPEC §5.4 seed stations (internet-radio.com snapshot) had unreachable stream
+    ports from here (laptop curl also code=000) — NOT an ESP bug. Swapped UI
+    presets to SomaFM (reliable). RADIO-1c seeds the editable SPEC list.
+  * esp-tls to some HTTPS .pls (reliastream:1079) reset on the ESP though curl
+    worked — TLS quirk with those servers; SomaFM (HTTP) fine. Revisit if needed.
+- Host suite 8/8. Next: RADIO-1c (NVS station store + /api/stations + UI) and
+  RADIO-2 (esp_audio_codec decode -> resample -> i2s, where audio finally plays).

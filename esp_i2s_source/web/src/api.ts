@@ -16,6 +16,20 @@ export interface DeviceStatus {
   wifi: WifiStatus;
   wroom?: { reachable: boolean; version?: string };
   tone?: { on: boolean; hz: number };
+  radio?: RadioStatus;
+}
+
+export interface RadioStatus {
+  playing: boolean;
+  codec: string;
+  station: string;
+  title: string;
+  url: string;
+  bitrate: number;
+  bytes_in: number;
+  ring_used: number;
+  ring_cap: number;
+  reconnects: number;
 }
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -59,4 +73,18 @@ export async function setTone(hz: number): Promise<ToneState> {
 export async function toneOff(): Promise<ToneState> {
   const r = await fetch("/api/tone", { method: "DELETE" });
   return r.json() as Promise<ToneState>;
+}
+
+export async function playRadio(url: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await fetch("/api/radio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  return r.json();
+}
+
+export async function stopRadio(): Promise<{ ok: boolean }> {
+  const r = await fetch("/api/radio", { method: "DELETE" });
+  return r.json();
 }
