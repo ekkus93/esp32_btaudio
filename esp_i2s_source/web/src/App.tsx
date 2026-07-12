@@ -217,9 +217,17 @@ function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => 
   );
 }
 
+const TABS = [
+  { id: "setup", label: "Setup" },
+  { id: "radio", label: "Radio" },
+  { id: "tone", label: "Tone" },
+  { id: "terminal", label: "Terminal" },
+] as const;
+
 export function App() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<string>("setup");
 
   const refresh = () =>
     getStatus()
@@ -250,38 +258,68 @@ export function App() {
         </div>
       )}
 
-      <div className="grid">
-        <Card title="Network">
-          {w ? (
-            <>
-              <Field k="Mode" v={w.mode} />
-              {w.state && <Field k="State" v={w.state} />}
-              {w.ssid && <Field k="SSID" v={w.ssid} />}
-              <Field k="IP" v={w.ip || "—"} />
-              {typeof w.rssi === "number" && w.rssi !== 0 && <Field k="RSSI" v={`${w.rssi} dBm`} />}
-            </>
-          ) : (
-            <p className="muted">…</p>
-          )}
-        </Card>
+      <nav className="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`tab ${tab === t.id ? "active" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-        <Card title="System">
-          <Field k="Device" v={status?.device ?? "—"} />
-          <Field k="Firmware" v={status?.version ?? "—"} />
-          <Field k="Uptime" v={status ? fmtUptime(status.uptime_s) : "—"} />
-          <Field k="Free heap" v={status ? `${(status.heap_free / 1024).toFixed(0)} KB` : "—"} />
-          <Field
-            k="BT bridge"
-            v={status?.wroom?.reachable ? (status.wroom.version ?? "reachable") : "unreachable"}
-          />
-        </Card>
+      {tab === "setup" && (
+        <div className="grid">
+          <Card title="Network">
+            {w ? (
+              <>
+                <Field k="Mode" v={w.mode} />
+                {w.state && <Field k="State" v={w.state} />}
+                {w.ssid && <Field k="SSID" v={w.ssid} />}
+                <Field k="IP" v={w.ip || "—"} />
+                {typeof w.rssi === "number" && w.rssi !== 0 && <Field k="RSSI" v={`${w.rssi} dBm`} />}
+              </>
+            ) : (
+              <p className="muted">…</p>
+            )}
+          </Card>
 
-        <Terminal />
-        <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
-        <ToneControl tone={status?.tone} onChange={refresh} />
-        <Radio radio={status?.radio} onChange={refresh} />
-        <Bluetooth />
-      </div>
+          <Card title="System">
+            <Field k="Device" v={status?.device ?? "—"} />
+            <Field k="Firmware" v={status?.version ?? "—"} />
+            <Field k="Uptime" v={status ? fmtUptime(status.uptime_s) : "—"} />
+            <Field k="Free heap" v={status ? `${(status.heap_free / 1024).toFixed(0)} KB` : "—"} />
+            <Field
+              k="BT bridge"
+              v={status?.wroom?.reachable ? (status.wroom.version ?? "reachable") : "unreachable"}
+            />
+          </Card>
+
+          <Bluetooth />
+        </div>
+      )}
+
+      {tab === "radio" && (
+        <div className="grid">
+          <Radio radio={status?.radio} onChange={refresh} />
+          <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
+        </div>
+      )}
+
+      {tab === "tone" && (
+        <div className="grid">
+          <ToneControl tone={status?.tone} onChange={refresh} />
+          <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
+        </div>
+      )}
+
+      {tab === "terminal" && (
+        <div className="grid">
+          <Terminal />
+        </div>
+      )}
 
       <footer className="muted">esp-i2s-source · {status?.version ?? "…"}</footer>
     </div>
