@@ -25314,3 +25314,26 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   DEBUG MOCK_PAIR -> EVENT|PAIR|CONFIRM prompt frame. Host suite 7/7.
 - BTUI-1d (Echo Buds E2E, M5) is user-driven: full pair->connect->volume from
   the browser with real earbuds. Next group: RADIO-1.
+
+## 2026-07-11T23:59:43Z - Claude Opus 4.8 (1M) - BTUI-1d (M5): browser BT E2E via laptop-as-sink + term_out data
+
+- Validated full browser-driven pair->connect->volume with the LAPTOP as the
+  A2DP sink (substitute for Echo Buds), using esp_bt_audio_source's LaptopBT
+  auto-accept BlueZ agent + GLib drain. Over /ws (exactly what the browser
+  sends): UNPAIR e8:fb.. -> PAIR E8:FB:1C:25:E4:C2 -> EVENT|PAIR|SUCCESS
+  (paired) -> CONNECT -> A2DP up (confirmed via laptop bt.wait_for_connect) ->
+  VOLUME (tracked as VOL=45).
+- KEY LEARNINGS:
+  * A2DP volume is AVRCP absolute-volume applied AT THE SINK, so it does NOT
+    change the captured a2dp_source stream (FFT peak stays 9831). Verify volume
+    via WROOM32 STATUS VOL= field, not stream amplitude.
+  * SCAN does NOT discover the laptop (poor BR/EDR inquiry target even when
+    discoverable) — real earbuds in pairing mode would show. Substitute limit.
+- Fixed a real WEB-1c gap found here: bt_link_send() only returned result, not
+  the DATA field, so the WS terminal showed just "CURRENT" for STATUS. Extended
+  bt_link_send(cmd,&st,result,rsz,data,dsz) (+bt_link_request_t.data, copy
+  last_data), send_term_out includes data, Terminal shows result|data. Now
+  STATUS shows VOL=/underruns, VERSION shows PROJECT/BUILD. Updated 3 callers.
+- Verification scripts: scratchpad/btui1d_e2e.py (LaptopBT + raw WS), status_check.py.
+- Host suite 7/7. BTUI-1 essentially done; real Echo Buds SCAN + sign-off remains.
+  Next group: RADIO-1.

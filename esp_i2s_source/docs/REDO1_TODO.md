@@ -216,8 +216,16 @@ multiplexes one `/ws` across the Terminal + Bluetooth panels.
 - [x] **BTUI-1c** Pairing prompt: `EVENT|PAIR|CONFIRM` → modal → Accept/Reject
       send `CONFIRM_PIN ACCEPT|REJECT`. Verified via `DEBUG MOCK_PAIR` →
       `EVENT|PAIR|CONFIRM` frame surfaced.
-- [ ] **BTUI-1d** Hardware E2E with the Echo Buds: full pair→connect→volume
-      from the browser only. (M5) — user-driven.
+- [~] **BTUI-1d** Hardware E2E, full pair→connect→volume browser-driven —
+      validated with the **laptop as the A2DP sink** (proven LaptopBT
+      auto-accept agent): UNPAIR → PAIR (`EVENT|PAIR|SUCCESS`) → CONNECT (A2DP
+      up, confirmed via laptop BlueZ) → VOLUME (tracked as `VOL=45`; A2DP
+      volume is AVRCP at the sink, correctly not in the source stream).
+      Limitation of the substitute: `SCAN` doesn't discover a laptop (poor
+      inquiry target) — real Echo Buds in pairing mode would appear. Also
+      surfaced+fixed: `bt_link_send()` now returns the response DATA field, so
+      the terminal shows full replies (STATUS VOL/underruns, VERSION build).
+      (M5) — remaining: real Echo Buds run for the SCAN step + user sign-off.
 
 ## RADIO-1 — Stream client + parsers
 

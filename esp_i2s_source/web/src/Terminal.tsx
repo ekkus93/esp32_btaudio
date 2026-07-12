@@ -15,7 +15,8 @@ export function Terminal() {
     const push = (l: Line) => setLines((cur) => [...cur.slice(-200), l]);
     return subscribe((m: WsMessage) => {
       if (m.type === "term_out") {
-        push({ kind: "out", text: `${m.status} | ${(m.result as string) || ""}` });
+        const parts = [m.result, m.data].filter(Boolean).join(" | ");
+        push({ kind: "out", text: `${m.status}${parts ? " | " + parts : ""}` });
       } else if (m.type === "event" || m.type === "info") {
         const parts = [m.command, m.result, m.data].filter(Boolean).join(" | ");
         push({ kind: m.type, text: `${m.type.toUpperCase()} ${parts}` });

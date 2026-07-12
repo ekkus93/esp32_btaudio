@@ -113,7 +113,7 @@ static void link_selftest(void)
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
         char result[BT_LINK_FIELD_MAX] = {0};
-        bt_link_send(cmds[i], &st, result, sizeof(result));
+        bt_link_send(cmds[i], &st, result, sizeof(result), NULL, 0);
         if (st == BT_LINK_CMD_DONE_OK) ok++;
         printf("DIAG|BTLINK|cmd=%s,state=%s,result=%s\n",
                cmds[i], link_state_str(st), result);

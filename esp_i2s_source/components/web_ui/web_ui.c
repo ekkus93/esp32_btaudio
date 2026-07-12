@@ -36,7 +36,7 @@ static void refresh_wroom(void)
 {
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char res[64] = {0};
-    if (bt_link_send("VERSION", &st, res, sizeof(res)) == ESP_OK &&
+    if (bt_link_send("VERSION", &st, res, sizeof(res), NULL, 0) == ESP_OK &&
         st == BT_LINK_CMD_DONE_OK) {
         strlcpy(s_wroom_version, res, sizeof(s_wroom_version));
         s_wroom_reachable = true;
@@ -252,7 +252,7 @@ static void on_bt_event(void *ctx, const bt_link_msg_t *m)
 }
 
 static void send_term_out(httpd_req_t *req, const char *cmd,
-                          bt_link_cmd_state_t st, const char *result)
+                          bt_link_cmd_state_t st, const char *result, const char *data)
 {
     const char *status = (st == BT_LINK_CMD_DONE_OK) ? "OK"
                        : (st == BT_LINK_CMD_DONE_ERR) ? "ERR" : "TIMEOUT";
@@ -261,6 +261,7 @@ static void send_term_out(httpd_req_t *req, const char *cmd,
     cJSON_AddStringToObject(o, "cmd", cmd);
     cJSON_AddStringToObject(o, "status", status);
     cJSON_AddStringToObject(o, "result", result);
+    cJSON_AddStringToObject(o, "data", data ? data : "");
     char *s = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
     if (!s) return;
@@ -295,8 +296,9 @@ static esp_err_t ws_handler(httpd_req_t *req)
         ws_track(httpd_req_to_sockfd(req));
         bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
         char result[BT_LINK_FIELD_MAX] = {0};
-        bt_link_send(cmd, &st, result, sizeof(result));  /* events still flow */
-        send_term_out(req, cmd, st, result);
+        char rdata[BT_LINK_FIELD_MAX] = {0};
+        bt_link_send(cmd, &st, result, sizeof(result), rdata, sizeof(rdata));
+        send_term_out(req, cmd, st, result, rdata);
         return ESP_OK;
     }
     cJSON_Delete(j);

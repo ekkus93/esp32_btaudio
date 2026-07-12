@@ -34,7 +34,8 @@ int bt_link_subscribe(bt_link_event_cb cb, void *ctx);
  * RESULT field (truncated to result_sz). Returns ESP_OK if a terminal
  * response arrived, ESP_ERR_TIMEOUT otherwise. Serialized (one in flight). */
 esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
-                       char *result, size_t result_sz);
+                       char *result, size_t result_sz,
+                       char *data, size_t data_sz);
 
 #ifdef __cplusplus
 }

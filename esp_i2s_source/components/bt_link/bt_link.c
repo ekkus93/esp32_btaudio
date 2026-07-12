@@ -26,6 +26,7 @@ typedef struct {
     char cmd[BT_LINK_LINE_MAX];
     bt_link_cmd_state_t state;
     char result[BT_LINK_FIELD_MAX];
+    char data[BT_LINK_FIELD_MAX];
 } bt_link_request_t;
 
 static bt_link_session_t  s_session;
@@ -81,6 +82,9 @@ static void bt_link_task(void *arg)
                 strncpy(s_active->result, s_session.last_result,
                         sizeof(s_active->result) - 1);
                 s_active->result[sizeof(s_active->result) - 1] = '\0';
+                strncpy(s_active->data, s_session.last_data,
+                        sizeof(s_active->data) - 1);
+                s_active->data[sizeof(s_active->data) - 1] = '\0';
                 s_active = NULL;
                 xSemaphoreGive(s_done_sem);
             }
@@ -139,7 +143,8 @@ int bt_link_subscribe(bt_link_event_cb cb, void *ctx)
 }
 
 esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
-                       char *result, size_t result_sz)
+                       char *result, size_t result_sz,
+                       char *data, size_t data_sz)
 {
     if (!cmd || !s_send_mutex) return ESP_ERR_INVALID_STATE;
 
@@ -166,6 +171,10 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
     if (result && result_sz) {
         strncpy(result, req.result, result_sz - 1);
         result[result_sz - 1] = '\0';
+    }
+    if (data && data_sz) {
+        strncpy(data, req.data, data_sz - 1);
+        data[data_sz - 1] = '\0';
     }
 
     xSemaphoreGive(s_send_mutex);
