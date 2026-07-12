@@ -92,10 +92,9 @@ function ProvisionForm({ wifi }: { wifi?: WifiStatus }) {
         </label>
         <label>
           Password
-          <input
-            type="password"
+          <PasswordField
             value={pass}
-            onChange={(e) => setPass(e.target.value)}
+            onChange={setPass}
             placeholder={connected ? "••••••••" : "(leave blank if open)"}
             disabled={busy}
           />
@@ -164,6 +163,46 @@ function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; o
       </div>
       <p className="muted">Streams over Bluetooth to the connected speaker.</p>
     </section>
+  );
+}
+
+// Password input with a Show/Hide toggle. Reused by the WiFi and Control-AP
+// forms (revealing what you type / the stored AP key is intentional here).
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-wrap">
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+      />
+      <button
+        type="button"
+        className="pw-toggle"
+        onClick={() => setShow((s) => !s)}
+        disabled={disabled}
+        tabIndex={-1}
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        {show ? "Hide" : "Show"}
+      </button>
+    </div>
   );
 }
 
@@ -240,15 +279,11 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
         </label>
         <label>
           Password
-          <input
-            type="text"
+          <PasswordField
             value={pass}
-            onChange={(e) => setPass(e.target.value)}
+            onChange={setPass}
             placeholder="(blank = open network)"
             disabled={busy}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
           />
         </label>
         <button type="submit" disabled={busy || !ssid}>

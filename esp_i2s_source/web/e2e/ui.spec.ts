@@ -35,17 +35,23 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.locator(".card.provision")).toBeVisible();
     await expect(page.getByText("Network (SSID)")).toBeVisible();
     // When connected, SSID is pre-filled and the password shows masked dots.
-    await expect(page.locator(".card.provision input").first()).not.toHaveValue("");
-    await expect(page.locator('.card.provision input[type="password"]')).toHaveAttribute(
-      "placeholder",
-      /•/
-    );
+    // The WiFi provision card is the first .card.provision (before Control AP).
+    const wifiCard = page.locator(".card.provision").first();
+    await expect(wifiCard.locator("input").first()).not.toHaveValue("");
+    await expect(wifiCard.locator('input[type="password"]')).toHaveAttribute("placeholder", /•/);
     await expect(page.getByRole("heading", { name: "Network" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Control AP" })).toBeVisible();
     // Control-AP name/password are editable (pre-filled) with a Save button.
-    const apCard = page.locator(".card.provision").filter({ hasText: "Control AP" });
+    const apCard = page
+      .locator(".card.provision")
+      .filter({ has: page.getByRole("heading", { name: "Control AP" }) });
     await expect(apCard.locator("input").first()).not.toHaveValue("");
     await expect(apCard.getByRole("button", { name: /Save AP/ })).toBeVisible();
+    // Password has a Show/Hide toggle that flips the input type.
+    const apPw = apCard.locator(".pw-wrap input");
+    await expect(apPw).toHaveAttribute("type", "password");
+    await apCard.getByRole("button", { name: "Show" }).click();
+    await expect(apPw).toHaveAttribute("type", "text");
     await expect(page.getByRole("heading", { name: "Bluetooth" })).toBeVisible();
   });
 

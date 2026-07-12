@@ -80,6 +80,26 @@ header h1 {
   font-size: 15px;
 }
 .card.provision input:focus { outline: none; border-color: var(--accent); }
+
+/* Password field with an inline Show/Hide toggle. */
+.pw-wrap { position: relative; display: flex; }
+.pw-wrap input { flex: 1; padding-right: 58px; width: 100%; }
+.pw-toggle {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--panel) !important;
+  color: var(--muted) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+}
+.pw-toggle:hover { color: var(--fg) !important; }
+.pw-toggle:disabled { opacity: 0.5; cursor: default; }
 .card.provision button {
   padding: 10px 14px;
   border-radius: 8px;
