@@ -209,7 +209,7 @@ target_link_libraries(test_concurrency unity util_safe_host command_interface_ho
 target_compile_definitions(test_concurrency PRIVATE UNIT_TEST)
 add_test(NAME test_concurrency COMMAND $<TARGET_FILE:test_concurrency>)
 
-add_executable(test_bluetooth test_bluetooth.c 
+add_executable(test_bluetooth test_bluetooth.c test_bluetooth_cases.c
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_manager_ops.c
     ../../components/bt_manager/bt_manager_mocks.c
@@ -746,6 +746,7 @@ add_test(NAME test_list_ownership COMMAND $<TARGET_FILE:test_list_ownership>)
 # Host coverage for audio ring buffer (SPSC for audio engine architecture)
 add_executable(test_audio_ringbuffer
     test_audio_ringbuffer.c
+    test_audio_ringbuffer_cases.c
     ../../components/audio_processor/audio_ringbuffer.c
     mocks/fake_log.c
     mocks/fake_esp_err.c
