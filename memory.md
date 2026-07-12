@@ -25434,3 +25434,43 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - RADIO-1 + RADIO-2a/b/c COMPLETE. Remaining: RADIO-2d (MP3+AAC E2E to earbuds
   >=30min, AAC via Dance UK / Hirschmilch) is the M6 hardware gate; and CTRL-1
   (orchestrated boot). ICY title WS-push optional. Host 10/10.
+
+## 2026-07-12T04:31:17Z - Claude Opus 4.8 (1M) - RADIO-2d prep: fixed choppy radio (WiFi PS + deep prebuffer)
+
+- User reported choppy audio during a 128k MP3 endurance run. Diagnosed via new
+  /api/status i2s telemetry (added underrun_events/bytes/ring_peak) + a monitor
+  harness: PCM ring oscillated full<->empty (13/46 samples at 0); FFT near0
+  tracked it (56-90% during starvation). i2s underrun counter stayed 0 the whole
+  time because audio_out zero-fills a full block -> it is BLIND to upstream PCM
+  starvation. The real dropout signal is PCM-ring starvation, not i2s underruns.
+- Root cause: 128k stream arrived at only ~119 kbps avg (below 128). Isolated
+  network-vs-device: 64k stream played glassy (device fine) -> throughput-bound.
+  No esp_wifi_set_ps() anywhere -> IDF default WIFI_PS_MIN_MODEM sleeps radio
+  between beacons, throttling sustained TCP. FIX: esp_wifi_set_ps(WIFI_PS_NONE)
+  in wifi_mgr_init. After: 128k sustains 128 kbps (bursts 155), 0 starvation,
+  FFT near0 ~0%. Commit 20ba3fff.
+- Then deepened jitter buffer: PCM ring 128KB(0.74s)->1MiB(~5.9s); new
+  radio_audio_ready() (playing && prebuffered) gates the arbiter instead of
+  radio_is_playing(); prime to ~3s before audio, re-arm on full drain; added
+  radio.buffering to status. Verified: primes to full in ~1.8s, pins ~95-100%
+  full at 128k, 0 underruns. Commit 917b8126. Host 10/10.
+- NEXT: re-run RADIO-2d endurance (MP3+AAC >=30min) with monitor updated to flag
+  PCM starvation (buffering flag / pcm_used=0), not just i2s underruns.
+
+## 2026-07-12T05:39:28Z - Claude Opus 4.8 (1M) - RADIO-2d M6 gate PASSED (MP3 + AAC+ 30 min each)
+
+- Ran the endurance gate: SomaFM Groove Salad 128k MP3 and Dance UK Radio 32k
+  AAC+ (audio/aacp, HE-AAC upsampled to 44.1k via SBR), each 30 min to the
+  laptop A2DP sink. BOTH PASS: 0 rebuffers, 0 PCM starvation, 0 decode
+  errors/reconnects/i2s underruns; PCM ring held 88-99% full; FFT 18/18 (MP3)
+  and 19/19 (AAC) windows audible; WROOM32 sink counters clean after both
+  (UNDERRUNS=0, PKT_ERR=0). A mid-run screen lock did not disturb it (S3 streams
+  independently; A2DP RX continues while locked; suspend would have paused it).
+- Both fixes from earlier this session were validated under load (WIFI_PS_NONE +
+  ~5.9s prebuffer). Key lesson recorded in TODO: the i2s underrun counter is
+  BLIND to PCM-ring starvation (audio_out zero-fills a full block); the true
+  dropout signal is radio.buffering / pcm_used=0.
+- RADIO-2 (a/b/c/d) COMPLETE. Remaining in REDO1: CTRL-1 (orchestrated boot),
+  DOC-1 (docs/regression). Task #29 done. Endurance harness lives in scratchpad
+  (radio2d_endurance.py / radio2d_gate.sh); not committed (test tooling).
+- Device left playing the AAC+ stream at end of gate.

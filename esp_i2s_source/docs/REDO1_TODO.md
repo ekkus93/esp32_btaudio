@@ -295,11 +295,24 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       ~26k); radio+tone → radio wins; stop radio → 440 Hz tone; tone off →
       silence. `/api/radio` play/stop drives it; ICY title shows in the Radio
       UI via /api/status poll (WS push is an optional later nicety).
-- [ ] **RADIO-2d** Hardware E2E: MP3 station and AAC station each play to
-      earbuds ≥30 min without dropout; WROOM32 counters clean; document
-      buffer telemetry. MP3 station from the SPEC §5.4 seed list; AAC test
-      via Dance UK Radio (AAC+, `uk2.internet-radio.com:8024`) and Hirschmilch
-      Electronic (§5.4 — verify its codec/port on hardware). (M6)
+- [x] **RADIO-2d** Hardware E2E (M6) — **PASSED**. MP3 (SomaFM Groove Salad
+      128k) and AAC+ (Dance UK Radio 32k, `uk2.internet-radio.com:8024`,
+      `audio/aacp`, HE-AAC→44.1k via SBR) each streamed **30 min to the laptop
+      A2DP sink with zero dropouts**: 0 rebuffers, 0 PCM starvation, 0 decode
+      errors / reconnects / I2S underruns; PCM ring held 88–99% full
+      throughout; 18/18 (MP3) and 19/19 (AAC) FFT windows audible; WROOM32
+      sink counters clean after both (`UNDERRUNS=0, PKT_ERR=0`). Two fixes
+      were required to get here (both found via this gate):
+      • **WiFi modem power-save** (IDF default `WIFI_PS_MIN_MODEM`) throttled
+        the stream to ~119 kbps w/ jitter → choppy 128k. Fixed with
+        `esp_wifi_set_ps(WIFI_PS_NONE)`.
+      • **Shallow PCM buffer** (0.74 s) had no jitter tolerance → deepened to
+        ~5.9 s ring + prebuffer gate (`radio_audio_ready`, re-arm on drain).
+      Telemetry made observable via new `i2s{}` + `radio.buffering` fields in
+      `/api/status`. Note: the i2s underrun counter is blind to PCM-ring
+      starvation (audio_out zero-fills a full block); the real dropout signal
+      is `radio.buffering`/`pcm_used`. Hirschmilch not needed (Dance UK was a
+      cleaner AAC+ target; hirschmilch.de:7000 reports `audio/mpeg`).
 
 ## CTRL-1 — Orchestrated boot + polish
 
