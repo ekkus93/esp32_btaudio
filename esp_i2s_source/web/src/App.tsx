@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getStatus, setWifi, setTone, toneOff,
   setS3Volume, getBtVolume, setBtVolume, setApEnabled,
-  type DeviceStatus, type ApStatus,
+  type DeviceStatus, type ApStatus, type WifiStatus,
 } from "./api";
 import { Terminal } from "./Terminal";
 import { Bluetooth } from "./Bluetooth";
@@ -33,48 +33,53 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function ProvisionForm() {
+function ProvisionForm({ wifi }: { wifi?: WifiStatus }) {
   const [ssid, setSsid] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const connected = wifi?.state === "CONNECTED";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ssid) return;
     setBusy(true);
     setMsg(null);
+    const guidance =
+      `Joining "${ssid}"… the device is reconnecting. Reach it at ` +
+      `http://esp-i2s-source.local (once on your network) or via its own AP at http://192.168.4.1.`;
     try {
       const r = await setWifi(ssid, pass);
-      if (r.ok) {
-        setMsg({
-          ok: true,
-          text: `Joining "${ssid}"… reconnect this device to your network, then open http://${r.host ?? "esp-i2s-source.local"}`,
-        });
+      if (r.ok || r.ok === undefined) {
+        setMsg({ ok: true, text: guidance });
       } else {
         setMsg({ ok: false, text: r.error ?? "provisioning failed" });
-        setBusy(false);
       }
-    } catch (err) {
-      // The AP tears down as STA comes up, so the reply may not arrive — that's
-      // expected on success. Show the same guidance.
-      setMsg({
-        ok: true,
-        text: `Joining "${ssid}"… reconnect this device to your network, then open http://esp-i2s-source.local`,
-      });
+    } catch {
+      // The reply may not arrive as the link switches — expected on success.
+      setMsg({ ok: true, text: guidance });
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <section className="card provision">
-      <h2>Set up WiFi</h2>
+      <h2>{connected ? "WiFi" : "Set up WiFi"}</h2>
       <p className="muted">
-        This device is in setup mode. Enter your WiFi so it can join your network.
+        {connected
+          ? `Connected to "${wifi?.ssid}". Enter a different network below to switch. The control AP stays up, so you won't lose access if the new network fails.`
+          : "Enter your WiFi so the device can join your network."}
       </p>
       <form onSubmit={submit}>
         <label>
           Network (SSID)
-          <input value={ssid} onChange={(e) => setSsid(e.target.value)} autoFocus disabled={busy} />
+          <input
+            value={ssid}
+            onChange={(e) => setSsid(e.target.value)}
+            placeholder={connected ? wifi?.ssid : ""}
+            disabled={busy}
+          />
         </label>
         <label>
           Password
@@ -87,7 +92,7 @@ function ProvisionForm() {
           />
         </label>
         <button type="submit" disabled={busy || !ssid}>
-          {busy ? "Connecting…" : "Connect"}
+          {busy ? "Connecting…" : connected ? "Switch network" : "Connect"}
         </button>
       </form>
       {msg && <div className={`banner ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
@@ -276,6 +281,15 @@ export function App() {
     return () => clearInterval(id);
   }, []);
 
+  // First-time setup (AP mode): land on Settings where the WiFi form lives.
+  const didInitTab = useRef(false);
+  useEffect(() => {
+    if (!didInitTab.current && status) {
+      didInitTab.current = true;
+      if (status.wifi?.mode === "AP") setTab("settings");
+    }
+  }, [status]);
+
   const online = !err && status != null;
   const w = status?.wifi;
 
@@ -287,12 +301,6 @@ export function App() {
       </header>
 
       {err && <div className="banner err">Device unreachable: {err}</div>}
-
-      {w?.mode === "AP" && (
-        <div className="grid">
-          <ProvisionForm />
-        </div>
-      )}
 
       <nav className="tabs">
         {TABS.map((t) => (
@@ -308,6 +316,7 @@ export function App() {
 
       {tab === "settings" && (
         <div className="grid">
+          <ProvisionForm wifi={w} />
           <Card title="Network">
             {w ? (
               <>

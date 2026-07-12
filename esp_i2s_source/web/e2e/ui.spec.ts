@@ -28,9 +28,13 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.getByRole("heading", { name: "Volume" })).toBeVisible();
   });
 
-  test("Settings tab shows Network, Control AP, Bluetooth", async ({ page }) => {
+  test("Settings tab shows WiFi setup, Network, Control AP, Bluetooth", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Settings" }).click();
+    // WiFi setup form must be present so users can set/change the network.
+    await expect(page.locator(".card.provision")).toBeVisible();
+    await expect(page.getByText("Network (SSID)")).toBeVisible();
+    await expect(page.locator(".card.provision input").first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Network" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Control AP" })).toBeVisible();
     await expect(page.getByText("ESP32-S3-Audio")).toBeVisible();
