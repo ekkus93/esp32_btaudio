@@ -141,3 +141,13 @@ bool stations_remove(int idx)
     xSemaphoreGive(s_mtx);
     return ok;
 }
+
+bool stations_move(int idx, int delta)
+{
+    if (!s_mtx) return false;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    bool ok = station_store_move(&s_store, idx, delta);
+    if (ok) save_locked();
+    xSemaphoreGive(s_mtx);
+    return ok;
+}

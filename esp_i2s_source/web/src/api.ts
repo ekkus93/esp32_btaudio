@@ -216,3 +216,9 @@ export async function deleteStation(id: number): Promise<{ ok: boolean }> {
   const r = await fetch(`/api/stations?id=${id}`, { method: "DELETE" });
   return r.json();
 }
+
+// Reorder a station by swapping it with its neighbour (up = earlier, down = later).
+export async function moveStation(id: number, dir: "up" | "down"): Promise<{ ok: boolean }> {
+  const r = await fetch(`/api/stations?id=${id}&move=${dir}`, { method: "PUT" });
+  return r.json();
+}

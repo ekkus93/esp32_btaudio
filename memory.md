@@ -25655,3 +25655,18 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   connected from CONN_MAC (non-empty = a real A2DP peer), not RUN; removed the now-dead
   bt_status_running helper. Flashed S3 (/dev/ttyACM0); verified connected + connected_mac
   now track the actual link. UI suite green on-device.
+
+## 2026-07-12T12:24:25Z - Claude Opus 4.8 (1M) - Radio/Volume UI batch + station reorder
+
+- Volume card spans full width (.card.volume grid-column 1/-1) on Radio + Tone tabs.
+- Radio "now playing" block moved from bottom to top, under the title above the list.
+- Radio station Edit is now inline/accordion: the row expands into name/URL fields +
+  Save/Cancel (independent editId/editName/editUrl/editErr state); the bottom form is
+  add-only. Was confusing as a shared bottom form.
+- Station reorder: pure station_store_move(store, idx, +/-1) swap-with-neighbour
+  (host-tested: swap both dirs + edge/bad-arg rejection); stations_move() wrapper
+  (mutex+NVS); PUT /api/stations?id=X&move=up|down (reuses PUT route, no new handler);
+  api.ts moveStation; up/down arrows per row (ends disabled). NOTE: indices are the
+  station id, so reordering remaps ctrl_cfg.last_station (same as delete already does).
+- Built SPA+firmware, flashed S3 (/dev/ttyACM0, user-authorized). Verified reorder
+  round-trip on device (move up then restore, persists). 13/13 S3 host tests, UI 9/9.

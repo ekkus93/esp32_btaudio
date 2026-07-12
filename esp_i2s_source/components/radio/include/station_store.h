@@ -44,6 +44,11 @@ bool station_store_update(station_store_t *s, int idx, const char *name, const c
 /* Remove the entry at idx, shifting the rest down. */
 bool station_store_remove(station_store_t *s, int idx);
 
+/* Swap the entry at idx with its neighbour: delta -1 moves it up, +1 down.
+ * Returns false for a bad idx, an out-of-range destination (already at an
+ * end), or a delta other than +/-1. */
+bool station_store_move(station_store_t *s, int idx, int delta);
+
 /* Index of the entry with exactly this URL, or -1. */
 int station_store_find(const station_store_t *s, const char *url);
 

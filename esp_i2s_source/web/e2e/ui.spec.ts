@@ -21,6 +21,27 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.locator('input[type="range"]')).toHaveCount(2);
   });
 
+  test("Radio station Edit expands the row inline (accordion)", async ({ page }) => {
+    await page.goto("/");
+    const firstRow = page.locator(".card.radio ul.bt-list li").first();
+    await expect(firstRow.getByRole("button", { name: "Edit" })).toBeVisible({ timeout: 10_000 });
+    await firstRow.getByRole("button", { name: "Edit" }).click();
+    // The row itself becomes the editor (inline fields + Save/Cancel), not a bottom form.
+    await expect(firstRow.locator(".radio-edit input")).toHaveCount(2);
+    await expect(firstRow.getByRole("button", { name: "Save" })).toBeVisible();
+    await firstRow.getByRole("button", { name: "Cancel" }).click();
+    await expect(firstRow.getByRole("button", { name: "Edit" })).toBeVisible();
+  });
+
+  test("Radio station rows have up/down reorder arrows (ends disabled)", async ({ page }) => {
+    await page.goto("/");
+    const rows = page.locator(".card.radio ul.bt-list li");
+    await expect(rows.first().getByRole("button", { name: "Move up" })).toBeVisible({ timeout: 10_000 });
+    const n = await rows.count();
+    await expect(rows.first().getByRole("button", { name: "Move up" })).toBeDisabled();
+    await expect(rows.nth(n - 1).getByRole("button", { name: "Move down" })).toBeDisabled();
+  });
+
   test("Tone tab has the tone control + a volume card", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Tone" }).click();

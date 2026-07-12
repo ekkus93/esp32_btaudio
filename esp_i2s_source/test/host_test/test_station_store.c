@@ -96,6 +96,44 @@ void test_remove_shifts(void)
     TEST_ASSERT_FALSE(station_store_remove(&s, 5));  /* bad index */
 }
 
+void test_move_swaps_neighbours(void)
+{
+    station_store_t s;
+    station_store_init(&s);
+    station_store_add(&s, "A", "http://a/s");
+    station_store_add(&s, "B", "http://b/s");
+    station_store_add(&s, "C", "http://c/s");
+
+    /* Move B (idx 1) up -> B, A, C */
+    TEST_ASSERT_TRUE(station_store_move(&s, 1, -1));
+    TEST_ASSERT_EQUAL_STRING("B", s.items[0].name);
+    TEST_ASSERT_EQUAL_STRING("A", s.items[1].name);
+    TEST_ASSERT_EQUAL_STRING("C", s.items[2].name);
+
+    /* Move A (now idx 1) down -> B, C, A */
+    TEST_ASSERT_TRUE(station_store_move(&s, 1, 1));
+    TEST_ASSERT_EQUAL_STRING("B", s.items[0].name);
+    TEST_ASSERT_EQUAL_STRING("C", s.items[1].name);
+    TEST_ASSERT_EQUAL_STRING("A", s.items[2].name);
+    TEST_ASSERT_EQUAL_INT(3, s.count);
+}
+
+void test_move_edges_and_bad_args_rejected(void)
+{
+    station_store_t s;
+    station_store_init(&s);
+    station_store_add(&s, "A", "http://a/s");
+    station_store_add(&s, "B", "http://b/s");
+
+    TEST_ASSERT_FALSE(station_store_move(&s, 0, -1));  /* first up: no room */
+    TEST_ASSERT_FALSE(station_store_move(&s, 1, 1));   /* last down: no room */
+    TEST_ASSERT_FALSE(station_store_move(&s, 5, 1));   /* bad index */
+    TEST_ASSERT_FALSE(station_store_move(&s, 0, 2));   /* bad delta */
+    /* Order unchanged after all rejections. */
+    TEST_ASSERT_EQUAL_STRING("A", s.items[0].name);
+    TEST_ASSERT_EQUAL_STRING("B", s.items[1].name);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -106,5 +144,7 @@ int main(void)
     RUN_TEST(test_full_store_rejects);
     RUN_TEST(test_update);
     RUN_TEST(test_remove_shifts);
+    RUN_TEST(test_move_swaps_neighbours);
+    RUN_TEST(test_move_edges_and_bad_args_rejected);
     return UNITY_END();
 }

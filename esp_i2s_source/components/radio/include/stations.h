@@ -25,6 +25,8 @@ bool stations_get_url(int idx, char *url, size_t usz);
 int  stations_add(const char *name, const char *url);
 bool stations_update(int idx, const char *name, const char *url);
 bool stations_remove(int idx);
+/* Reorder: swap entry idx with its neighbour (delta -1 up, +1 down). */
+bool stations_move(int idx, int delta);
 
 #ifdef __cplusplus
 }

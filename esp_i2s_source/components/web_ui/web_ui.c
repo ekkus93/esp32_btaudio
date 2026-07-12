@@ -582,6 +582,15 @@ static esp_err_t stations_post_h(httpd_req_t *req)
 static esp_err_t stations_put_h(httpd_req_t *req)
 {
     int id = station_id_param(req);
+    /* Reorder shortcut: PUT /api/stations?id=X&move=up|down (no body). */
+    char q[64], mv[8];
+    if (id >= 0 &&
+        httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK &&
+        httpd_query_key_value(q, "move", mv, sizeof(mv)) == ESP_OK) {
+        int delta = !strcmp(mv, "up") ? -1 : (!strcmp(mv, "down") ? 1 : 0);
+        station_reply(req, delta != 0 && stations_move(id, delta), id);
+        return ESP_OK;
+    }
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
     if (id < 0 || !station_body(req, name, sizeof(name), url, sizeof(url))) {
         station_reply(req, false, id);

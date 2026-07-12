@@ -84,3 +84,15 @@ bool station_store_remove(station_store_t *s, int idx)
     s->count--;
     return true;
 }
+
+bool station_store_move(station_store_t *s, int idx, int delta)
+{
+    if (delta != -1 && delta != 1) return false;   /* one step up/down only */
+    int dst = idx + delta;
+    if (idx < 0 || idx >= s->count) return false;
+    if (dst < 0 || dst >= s->count) return false;   /* already at an end */
+    station_t tmp = s->items[idx];
+    s->items[idx] = s->items[dst];
+    s->items[dst] = tmp;
+    return true;
+}

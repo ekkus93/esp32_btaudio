@@ -324,7 +324,7 @@ function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => 
   }, []);
 
   return (
-    <section className="card">
+    <section className="card volume">
       <h2>Volume</h2>
 
       <div className="vol-row">
