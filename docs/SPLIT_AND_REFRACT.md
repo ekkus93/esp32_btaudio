@@ -195,15 +195,25 @@ On-device BT API mock, guarded by `BT_MOCK_PROVIDES_PROTOTYPES` /
 `CONFIG_BT_MOCK_TESTING`. Split by ESP BT API domain. Heaviest split — budget for 3–4
 files.
 
-- [ ] **5.1 `bt_source_mock_internal.h`.** Shared mock state (connection/pairing/scan
-      state, TAG) + accessors; keep the conditional-prototype guards centralized.
-- [ ] **5.2 Extract `bt_source_mock_a2dp.c`** — A2DP source + streaming mocks.
-- [ ] **5.3 Extract `bt_source_mock_gap.c`** — GAP / pairing / SSP / auth mocks.
-- [ ] **5.4 Extract `bt_source_mock_scan.c`** — inquiry/scan + reconnect controls
-      (the `CONFIG_BT_MOCK_TESTING` reconnect block).
-- [ ] **5.5 Keep `bt_source_mock.c`** — init/state/accessors + anything cross-cutting.
-- [ ] **5.6 CMake** (`test/test_bluetooth/main/CMakeLists.txt` SRCS) **+ verify:**
-      builds under the test app; run the Unity suite only with hardware (confirm first).
+- [x] **5.1 `bt_source_mock_internal.h`** (141) — centralizes the includes, the
+      `BT_MOCK_PROVIDES_PROTOTYPES` conditional-prototype block, the `mock_control_t` /
+      `auto_reconnect_config_t` typedefs + `MAX_*` constants, and **all 40 file-scope
+      state vars as `extern`** (definitions de-static'd but kept in `bt_source_mock.c`),
+      plus cross-file helper protos (`is_valid_mac_address`, `cancel_scan_timer`,
+      `bt_source_stub_sync_connected_state`). State proven cross-domain via a usage
+      matrix; a round-trip identity check validated every function boundary before slicing.
+- [x] **5.2 Extract `bt_source_mock_a2dp.c`** (140) — A2DP event + streaming mocks.
+- [x] **5.3 Extract `bt_source_mock_gap.c`** (398) — GAP / pairing / SSP / PIN mocks.
+- [x] **5.4 Extract `bt_source_mock_scan.c`** (572) — inquiry/scan, paired-device
+      registry (store/load/unpair) + the `CONFIG_BT_MOCK_TESTING` reconnect controls.
+- [x] **5.4b Extract `bt_source_mock_conn.c`** (415) — connection lifecycle +
+      `bt_simulate_disconnect` (added a 4th domain file so `bt_source_mock.c` lands ≤700).
+- [x] **5.5 Keep `bt_source_mock.c`** (369) — state definitions, init/reset,
+      result-injection accessors, discovery-cache helpers, MAC validation, `bt_deinit`,
+      `bt_reset_for_test`.
+- [x] **5.6 CMake + verify:** added the 4 domain files to the test-app SRCS; clean
+      `idf.py build` of `test/test_bluetooth` links successfully with **zero** new
+      warnings (on-device Unity run gated on hardware).
 
 ---
 
