@@ -9,6 +9,7 @@
 #include "radio.h"
 #include "stations.h"
 #include "station_store.h"
+#include "i2s_out.h"
 
 #include <string.h>
 
@@ -106,6 +107,16 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddNumberToObject(radio, "pcm_used", rs.pcm_used);
     cJSON_AddNumberToObject(radio, "pcm_cap", rs.pcm_cap);
     cJSON_AddNumberToObject(radio, "decode_errors", rs.decode_errors);
+
+    /* RADIO-2d: I2S output health — the on-source dropout signal. underrun_*
+     * must stay flat and ring_peak below ring_cap for a clean endurance run. */
+    i2s_out_stats_t is;
+    i2s_out_get_stats(&is);
+    cJSON *i2s = cJSON_AddObjectToObject(root, "i2s");
+    cJSON_AddNumberToObject(i2s, "bytes_written", (double)is.bytes_written);
+    cJSON_AddNumberToObject(i2s, "underrun_bytes", (double)is.underrun_bytes);
+    cJSON_AddNumberToObject(i2s, "underrun_events", (double)is.underrun_events);
+    cJSON_AddNumberToObject(i2s, "ring_peak", (double)is.ring_peak);
 
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
