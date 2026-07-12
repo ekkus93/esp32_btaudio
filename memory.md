@@ -25781,3 +25781,26 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   (compile-only tier; on-device Unity gated on hardware). Committed 3050c291.
 - Remaining SPLIT_AND_REFRACT work: #6 `bt_source_stubs.c` (1763, the mirror of #5).
   audio_processor_test.c (709) is dead code → deferred to the low-pri dead-code sweep.
+
+## 2026-07-12T22:31:54Z - Claude Opus 4.8 (1M context) - SPLIT_AND_REFRACT #6: bt_source_stubs.c (final split)
+
+- Split `test/test_bluetooth/main/bt_source_stubs.c` (1763) mirroring #5: 4 domain
+  files + internal header, core at 220 lines. a2dp (150), conn (518), gap (389),
+  scan (458), bt_source_stubs_internal.h (92). No file >700.
+- Preserved `BT_WEAK_FN` (__attribute__((weak))) on all stub functions — mock's strong
+  defs override the weak stubs at link, so both files can define the same bt_* API names.
+- Mirror-name collision (the flagged hard part): #5 promoted 6 bt_source_mock.c vars to
+  globals; stubs had same-named statics. Renamed the stub copies s_stub_* (safe: they
+  were file-local, no external refs) before de-static'ing, else duplicate-global link
+  error. s_connect_by_name_* (used by conn stub + core bt_mock_reset) relocated from
+  mid-file into the core TU + extern'd.
+- Same rigor as #5: round-trip identity check on the raw file validated all 64 function
+  boundaries; rename applied as a uniform whole-word transform post-tiling. Two orphan
+  forward-decls (discovery tasks that moved to scan.c) removed from core; sync-function
+  prototype added to the internal header. Clean idf.py build of test/test_bluetooth,
+  links; only pre-existing warnings (3 unused-static warnings actually cleared by
+  de-static). Committed a4efad74.
+- SPLIT_AND_REFRACT.md is now COMPLETE. Tree-wide >700 sweep shows only
+  test/test_app_audio/main/audio_processor_test.c (709) — dead code (commented out of
+  its build) → deferred to the low-priority dead-code sweep for deletion, not a split.
+- Two split commits (3050c291 #5, a4efad74 #6) not yet pushed as of this entry.
