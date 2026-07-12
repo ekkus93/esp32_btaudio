@@ -133,18 +133,18 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await page.route("**/api/scan", (r) =>
       r.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
     let pairBody: { action?: string; mac?: string } | null = null;
+    const dev = { mac: "AA:BB:CC:DD:EE:FF", name: "Test Buds Pro" };
+    let paired: typeof dev[] = [];
     await page.route("**/api/bt", async (route) => {
       if (route.request().method() === "POST") {
-        pairBody = JSON.parse(route.request().postData() || "{}");
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (body.action === "pair") { pairBody = body; paired = [dev]; } // now bonded
         return route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true,"result":"OK"}' });
       }
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          connected: false, scanning: true, paired: [],
-          discovered: [{ mac: "AA:BB:CC:DD:EE:FF", name: "Test Buds Pro" }],
-        }),
+        body: JSON.stringify({ connected: false, scanning: true, paired, discovered: [dev] }),
       });
     });
     await page.goto("/");

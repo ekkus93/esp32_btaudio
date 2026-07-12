@@ -69,12 +69,28 @@ export function Bluetooth() {
             setBt(st);
             const hit = st.discovered.find((d) => (d.name || "").toLowerCase().includes(target));
             if (hit) {
-              setFindMsg(`Found ${hit.name || hit.mac} — pairing…`);
-              const r = await btAction("pair", hit.mac).catch(() => ({ ok: false }));
+              const label = hit.name || hit.mac;
+              setFindMsg(`Found ${label} — pairing…`);
+              await btAction("pair", hit.mac).catch(() => {});
+              // Auto-accept the pairing confirmation if the device prompts, then
+              // verify it actually landed in the paired list.
+              const pairDeadline = Date.now() + 15000;
+              let ok = false;
+              while (Date.now() < pairDeadline && !cancelFind.current) {
+                await sleep(1200);
+                const s2 = await getBt().catch(() => null);
+                if (!s2) continue;
+                setBt(s2);
+                if (s2.prompt) await btAction("pin_accept").catch(() => {});
+                if (s2.paired.some((p) => p.mac.toLowerCase() === hit.mac.toLowerCase())) {
+                  ok = true;
+                  break;
+                }
+              }
               setFindMsg(
-                r.ok
-                  ? `Paired with ${hit.name || hit.mac}. You can connect it below.`
-                  : `Found ${hit.name || hit.mac} but pairing failed — try again.`
+                ok
+                  ? `Paired with ${label}. You can connect it below.`
+                  : `Reached ${label} but pairing didn't confirm — try again.`
               );
               done = true;
               break;

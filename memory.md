@@ -25713,3 +25713,19 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   synchronously so s_reply_uart is still bt_link. The empty /api/console HELP output is a
   display gap — console_post_h returns only the terminal OK, not the streamed INFO|HELP|ENTRY
   lines. Follow-up idea: have console collect INFO frames during a command.
+
+## 2026-07-12T14:03:42Z - Claude Opus 4.8 (1M) - Scan fix flashed+verified; laptop-pair inconclusive
+
+- Flashed WROOM32 with the scan-broadcast fix. VERIFIED: /api/scan now populates
+  discovered (['ArIsu BT Headset','SICKLUGGAGE H1-013']) — the real bug ("scan does
+  nothing") is fixed. Find & pair now scans, finds by name, and initiates PAIR.
+- Could NOT complete pairing the LAPTOP as a stand-in headset: PAIR returns INITIATED
+  but never completes and no EVENT|PAIR| prompt fires (with bluetoothctl NoInputNoOutput
+  agent it negotiates Just Works, which this WROOM32 pairing didn't finish; the pydbus
+  numeric-comparison agent worked earlier but the laptop adapter got into flaky
+  Busy/powered-off states from repeated toggling — recovered via rfkill block/unblock).
+  Consistent with the known env issue (summary: laptop unreliable as WROOM32 A2DP sink).
+  Real earbuds (Just Works / auto-accept) are the right test — deferred until charged.
+- Enhanced Bluetooth.tsx Find & pair to auto-accept the SSP prompt (pin_accept) and verify
+  the device lands in paired[] before declaring success (needs S3 flash to deploy).
+- Restored: laptop adapter powered + discoverable off; WROOM32 paired=[Echo Buds] only.
