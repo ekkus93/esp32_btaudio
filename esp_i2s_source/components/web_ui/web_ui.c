@@ -641,16 +641,6 @@ static void bt_remove(bt_dev_t *list, int *n, const char *mac)
 }
 
 /* Standalone RUN=1 token from a WROOM32 STATUS data string (skips UNDERRUN*). */
-static bool bt_status_running(const char *data)
-{
-    const char *p = data;
-    while ((p = strstr(p, "RUN=")) != NULL) {
-        if (p == data || p[-1] == ',') return p[4] == '1';
-        p += 4;
-    }
-    return false;
-}
-
 /* Copy the CONN_MAC=<mac> value (the connected A2DP sink) out of a WROOM32
  * STATUS data string into out. Empty (out[0]='\0') when not connected. */
 static void bt_status_conn_mac(const char *data, char *out, size_t out_sz)
@@ -714,9 +704,12 @@ static esp_err_t bt_get_h(httpd_req_t *req)
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char sdata[BT_LINK_FIELD_MAX] = {0};
     bt_link_send("STATUS", &st, NULL, 0, sdata, sizeof(sdata));
-    bool connected = (st == BT_LINK_CMD_DONE_OK) && bt_status_running(sdata);
     char conn_mac[20] = {0};
     if (st == BT_LINK_CMD_DONE_OK) bt_status_conn_mac(sdata, conn_mac, sizeof(conn_mac));
+    /* A device is connected iff the WROOM32 reports a peer MAC. RUN alone is
+     * unreliable — the audio engine keeps "running" (emitting silence) after a
+     * disconnect, so RUN=1 can outlive the A2DP link. */
+    bool connected = (st == BT_LINK_CMD_DONE_OK) && conn_mac[0] != '\0';
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "connected", connected);

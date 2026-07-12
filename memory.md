@@ -25644,3 +25644,14 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   device and the always-on laptop wins.
 - Added Playwright test "Bluetooth shows which device is currently connected"; full
   S3 UI suite 7/7 green on-device.
+
+## 2026-07-12T12:04:38Z - Claude Opus 4.8 (1M) - Unpaired laptop; fixed stale connected=true
+
+- Unpaired "ArIsu BT Headset" (e8:fb:1c:25:e4:c2 = laptop adapter) per user. WROOM32
+  auto-reconnect then fell through to the next paired device and connected the Echo
+  Buds (48:78:5e:d9:35:a3) — the originally-desired sink. PAIRED_COUNT now 1.
+- Unpair exposed a bug: WROOM32 keeps RUN=1 (audio engine emits silence) after a
+  disconnect, so the S3 derived connected=true with no peer. Fixed bt_get_h to derive
+  connected from CONN_MAC (non-empty = a real A2DP peer), not RUN; removed the now-dead
+  bt_status_running helper. Flashed S3 (/dev/ttyACM0); verified connected + connected_mac
+  now track the actual link. UI suite green on-device.
