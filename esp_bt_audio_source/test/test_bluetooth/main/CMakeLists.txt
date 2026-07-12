@@ -26,6 +26,9 @@ idf_component_register(
         
         # Test files (shared)
         "bt_a2dp_test.c"
+        "bt_a2dp_test_scan.c"
+        "bt_a2dp_test_connection.c"
+        "bt_a2dp_test_streaming.c"
         "bt_pairing_test.c"
         "command_parser_test.c"
         "test_pairing_commands.c"

@@ -193,12 +193,14 @@ domain split so mock/stub stay parallel.
 62 on-device Unity tests. Same "one app, split bodies" approach as #7, but this is the
 device test app (`app_main` → `UNITY_BEGIN`).
 
-- [ ] **8.1 Group the 62 tests** by scenario (connection / streaming / control /
-      pairing) via `grep -n 'void test_'`.
-- [ ] **8.2 Move bodies** into `bt_a2dp_test_<group>.c` files; keep `app_main` +
-      fixtures + `RUN_TEST` list in `bt_a2dp_test.c`.
-- [ ] **8.3 CMakeLists + verify** (test-app build; on-device run gated on hardware +
-      confirmation).
+- [x] **8.1 Group the 29 tests** (file had 29 defs + 3 cross-file protos, not 62)
+      by scenario: scan (8), connection (13), streaming (8).
+- [x] **8.2 Move bodies** into `bt_a2dp_test_{scan,connection,streaming}.c`; keep the
+      helpers (`wait_for_*`, `parse_test_addr`, now non-`static`) + `run_bt_a2dp_tests()`
+      RUN_TEST list in `bt_a2dp_test.c` (166 lines). Shared decls (includes, externs,
+      `#define TAG`, helper + test prototypes) in `bt_a2dp_test_shared.h` (73 lines).
+- [x] **8.3 CMakeLists + verify:** added the 3 files to the test-app SRCS; `idf.py
+      build` of test_bluetooth clean (on-device Unity run gated on hardware).
 
 ---
 
