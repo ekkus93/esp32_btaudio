@@ -148,7 +148,7 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(apPw).toHaveAttribute("type", "password");
     await apCard.getByRole("button", { name: "Show" }).click();
     await expect(apPw).toHaveAttribute("type", "text");
-    await expect(page.getByRole("heading", { name: "Bluetooth" })).toBeVisible();
+    await expect(page.locator(".card.bt h2")).toBeVisible();
   });
 
   test("Find & pair scans for a named device and pairs the match", async ({ page }) => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getBt, btAction, triggerScan, type BtDev, type BtState } from "./api";
+import { usePolling } from "./usePolling";
 
 // Bluetooth management via polled REST (GET /api/bt) — no WebSocket. Scan
 // results / paired items / pairing prompts are buffered on the device and
@@ -20,14 +21,10 @@ export function Bluetooth() {
 
   const refresh = () => getBt().then(setBt).catch(() => {});
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 2000);
-    return () => {
-      clearInterval(id);
-      if (scanTimer.current) clearTimeout(scanTimer.current);
-    };
-  }, []);
+  // Poll /api/bt (a WROOM32 round-trip): quick while scanning/finding, slow when
+  // idle, and paused entirely while the tab is hidden.
+  usePolling(refresh, scanning || finding ? 2000 : 5000);
+  useEffect(() => () => { if (scanTimer.current) clearTimeout(scanTimer.current); }, []);
 
   const act = async (action: string, mac?: string) => {
     const r = await btAction(action, mac).catch(() => ({ ok: false }));

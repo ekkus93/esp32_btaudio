@@ -9,6 +9,7 @@ import { Bluetooth } from "./Bluetooth";
 import { Radio } from "./Radio";
 import { Piano } from "./Piano";
 import { Arpeggios } from "./Arpeggios";
+import { usePolling } from "./usePolling";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -385,11 +386,8 @@ export function App() {
       .then((s) => (setStatus(s), setErr(null)))
       .catch((e) => setErr(String(e.message ?? e)));
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 3000);
-    return () => clearInterval(id);
-  }, []);
+  // Poll device status; paused while the tab is hidden.
+  usePolling(refresh, 5000);
 
   // First-time setup (AP mode): land on Settings where the WiFi form lives.
   const didInitTab = useRef(false);
