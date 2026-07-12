@@ -25677,3 +25677,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   press-to-play via /api/tone). Verified on device: UI test passes, and a middle-C
   (261 Hz) tone played + stopped cleanly over the Echo Buds A2DP link. Frontend-only
   feature (Piano.tsx), no C changes.
+
+## 2026-07-12T13:07:58Z - Claude Opus 4.8 (1M) - Verified note length over real BT; fixed WiFi race
+
+- User: "note length still isn't working." Connected WROOM32 -> laptop A2DP sink
+  (BlueZ via laptop_bt_tests infra + parec capture of bluez_source) and measured
+  the actual audible note duration.
+- Direct-HTTP sweep (sequential POST/sleep/DELETE): intended 1000/500/250/150ms ->
+  measured 1310/650/300/220ms. Browser-driven sweep (real Piano UI via vite
+  dev-proxy, Playwright clicking one key at 1500/150/700ms): measured 1560/290/1230ms.
+  Both monotonic -> note length DOES control duration end-to-end. ~60-500ms buffering
+  tail (I2S ring + WROOM32 A2DP buffer) makes notes sound a bit longer than set.
+- Root cause of the user's "not working": browser fired setTone/toneOff fire-and-forget;
+  over WiFi a short note's DELETE can beat the POST -> stuck tone. Fix (Piano.tsx):
+  await setTone (note-on) before scheduling the setTimeout note-off, + pressId guard so
+  a superseded note's timer can't cut a newer one. Verified via mocked timing test.
+- Restored state: unpaired laptop from WROOM32 (+ removed laptop-side bond), Echo Buds
+  reconnected, S3 autostart re-enabled. FIX NOT YET FLASHED (needs S3 flash to deploy).

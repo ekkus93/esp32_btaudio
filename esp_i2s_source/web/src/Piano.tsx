@@ -30,6 +30,7 @@ export function Piano() {
   const [durMs, setDurMs] = useState(500); // note length (ms)
   const [vol, setVol] = useState(30); // note amplitude (% of full scale)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressIdRef = useRef(0);
 
   const stop = () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -37,13 +38,19 @@ export function Piano() {
     toneOff().catch(() => {});
   };
 
-  // Each key press plays the note for the full set length, then auto-stops —
-  // a quick click no longer cuts it short (releasing does not stop it).
-  const press = (midi: number) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+  // Each key press plays the note for the full set length, then auto-stops.
+  // We AWAIT note-on before scheduling note-off so the DELETE can never overtake
+  // the POST over WiFi (which would leave a stuck tone on short notes). The
+  // press-id guard keeps a superseded note's timer from cutting a newer one.
+  const press = async (midi: number) => {
+    const id = ++pressIdRef.current;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setActive(midi);
-    setTone(Math.round(midiToFreq(midi)), vol).catch(() => {});
-    timerRef.current = setTimeout(stop, durMs);
+    await setTone(Math.round(midiToFreq(midi)), vol).catch(() => {});
+    if (pressIdRef.current !== id) return; // a newer key took over
+    timerRef.current = setTimeout(() => {
+      if (pressIdRef.current === id) stop();
+    }, durMs);
   };
 
   return (
