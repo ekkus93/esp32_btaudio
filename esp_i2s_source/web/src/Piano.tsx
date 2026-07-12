@@ -46,7 +46,7 @@ export function Piano() {
     const id = ++pressIdRef.current;
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setActive(midi);
-    await setTone(Math.round(midiToFreq(midi)), vol).catch(() => {});
+    await setTone(Math.round(midiToFreq(midi)), vol, "piano").catch(() => {});
     if (pressIdRef.current !== id) return; // a newer key took over
     timerRef.current = setTimeout(() => {
       if (pressIdRef.current === id) stop();

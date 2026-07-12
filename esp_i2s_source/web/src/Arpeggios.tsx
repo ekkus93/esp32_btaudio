@@ -34,7 +34,7 @@ export function Arpeggios() {
     let i = 0;
     const tick = () => {
       if (i >= seq.length) { stop(); return; }
-      setTone(Math.round(midiToFreq(seq[i])), AMP).catch(() => {});
+      setTone(Math.round(midiToFreq(seq[i])), AMP, "piano").catch(() => {});
       i++;
       timerRef.current = setTimeout(tick, STEP_MS);
     };

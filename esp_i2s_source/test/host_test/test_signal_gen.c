@@ -114,6 +114,58 @@ static void test_sweep_progresses(void)
     free(buf);
 }
 
+/* --- piano voice --- */
+
+void test_piano_note_on_resets(void)
+{
+    sg_piano_state_t st = { .phase = 1.23, .elapsed = 999 };
+    sg_piano_note_on(&st);
+    TEST_ASSERT_TRUE(st.phase == 0.0);
+    TEST_ASSERT_EQUAL_UINT32(0, st.elapsed);
+}
+
+void test_piano_stereo_equal(void)
+{
+    const size_t N = 4410;
+    int16_t *buf = malloc(N * 2 * sizeof(int16_t));
+    sg_piano_state_t st;
+    sg_piano_note_on(&st);
+    sg_piano_fill(&st, buf, N, 262.0, 0.9);
+    for (size_t i = 0; i < N; i++)
+        TEST_ASSERT_EQUAL_INT16(buf[i * 2], buf[i * 2 + 1]);
+    free(buf);
+}
+
+void test_piano_envelope_decays(void)
+{
+    const size_t N = 88200;            /* ~2 s */
+    int16_t *buf = malloc(N * 2 * sizeof(int16_t));
+    sg_piano_state_t st;
+    sg_piano_note_on(&st);
+    /* Fill in realistic small chunks (as the audio engine does). */
+    for (size_t off = 0; off < N; off += 512) {
+        size_t blk = (N - off < 512) ? (N - off) : 512;
+        sg_piano_fill(&st, buf + off * 2, blk, 262.0, 0.9);
+    }
+    int early = 0, late = 0;           /* peak just after attack vs near the end */
+    for (size_t i = 400; i < 4410; i++) { int a = abs(buf[i * 2]); if (a > early) early = a; }
+    for (size_t i = N - 4410; i < N; i++) { int a = abs(buf[i * 2]); if (a > late) late = a; }
+    TEST_ASSERT_TRUE_MESSAGE(early > 1000, "piano should sound at attack");
+    TEST_ASSERT_TRUE_MESSAGE(late * 3 < early, "piano should decay over ~2 s");
+    free(buf);
+}
+
+void test_piano_silent_at_zero_amplitude(void)
+{
+    const size_t N = 1000;
+    int16_t *buf = malloc(N * 2 * sizeof(int16_t));
+    sg_piano_state_t st;
+    sg_piano_note_on(&st);
+    sg_piano_fill(&st, buf, N, 262.0, 0.0);
+    for (size_t i = 0; i < N * 2; i++) TEST_ASSERT_EQUAL_INT16(0, buf[i]);
+    free(buf);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -124,5 +176,9 @@ int main(void)
     RUN_TEST(test_sine_phase_continuity);
     RUN_TEST(test_sine_no_clipping_overflow);
     RUN_TEST(test_sweep_progresses);
+    RUN_TEST(test_piano_note_on_resets);
+    RUN_TEST(test_piano_stereo_equal);
+    RUN_TEST(test_piano_envelope_decays);
+    RUN_TEST(test_piano_silent_at_zero_amplitude);
     return UNITY_END();
 }

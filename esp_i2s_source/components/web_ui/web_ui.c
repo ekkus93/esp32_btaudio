@@ -233,6 +233,8 @@ static esp_err_t tone_post(httpd_req_t *req)
         if (cJSON_IsNumber(h)) hz = h->valueint;
         cJSON *a = j ? cJSON_GetObjectItem(j, "amp") : NULL;
         if (cJSON_IsNumber(a)) tone_set_amplitude(a->valueint);   /* clamps [0,100] */
+        const char *voice = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "voice")) : NULL;
+        tone_set_voice(voice && !strcmp(voice, "piano") ? TONE_VOICE_PIANO : TONE_VOICE_SINE);
         cJSON_Delete(j);
     }
     tone_set(hz);

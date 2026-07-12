@@ -34,6 +34,25 @@ void sg_sine_reset(sg_sine_state_t *st);
 void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
                   double freq_hz, double amplitude);
 
+/* --- Piano-ish voice ---
+ * Additive synthesis: fundamental + harmonics with a struck-string envelope
+ * (fast attack, exponential decay; higher harmonics decay faster, so the note
+ * is bright on attack and mellows as it rings). Retrigger the envelope on each
+ * note with sg_piano_note_on(). Anti-aliased (harmonics past Nyquist dropped).
+ * A far more piano-like sound than a pure sine for the same MIDI pitch. */
+typedef struct {
+    double   phase;     /* fundamental phase, [0, 2*PI) */
+    uint32_t elapsed;   /* samples since note-on (envelope clock) */
+} sg_piano_state_t;
+
+/* Retrigger: restart the envelope (and phase) for a fresh note. */
+void sg_piano_note_on(sg_piano_state_t *st);
+
+/* Fill `frames` with the piano voice at `freq_hz`, scaled by `amplitude`
+ * (0.0..1.0). Phase + envelope clock carried in `st`. */
+void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
+                   double freq_hz, double amplitude);
+
 /* --- Linear sweep --- */
 typedef struct {
     double phase;   /* radians, [0, 2*PI) */

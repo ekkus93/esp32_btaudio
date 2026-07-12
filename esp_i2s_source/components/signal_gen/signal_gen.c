@@ -57,6 +57,73 @@ void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
     st->phase = phase;
 }
 
+/* --- Piano-ish voice (additive harmonics + struck-string envelope) --- */
+
+#define PIANO_HARMONICS   5
+#define PIANO_TAU_S       1.2    /* fundamental decay time constant (seconds) */
+#define PIANO_ATTACK_S    0.004  /* 4 ms attack ramp (percussive) */
+
+/* Relative harmonic weights (fundamental, 2nd, 3rd, ...). */
+static const double PIANO_W[PIANO_HARMONICS] = {1.0, 0.5, 0.30, 0.16, 0.08};
+
+void sg_piano_note_on(sg_piano_state_t *st)
+{
+    st->phase = 0.0;
+    st->elapsed = 0;
+}
+
+/* Envelope re-evaluated every PIANO_ENV_BLOCK samples (~0.7 ms) so it stays
+ * smooth for any fill size, while keeping exp() calls negligible. */
+#define PIANO_ENV_BLOCK 32
+
+void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
+                   double freq_hz, double amplitude)
+{
+    if (amplitude < 0.0) amplitude = 0.0;
+    if (amplitude > 1.0) amplitude = 1.0;
+    const double nyquist = SIGNAL_GEN_SAMPLE_RATE_HZ / 2.0;
+    const double dphi = TWO_PI * freq_hz / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
+
+    double norm = 0.0;
+    for (int n = 0; n < PIANO_HARMONICS; n++) norm += PIANO_W[n];
+    if (norm <= 0.0) norm = 1.0;
+
+    double phase = st->phase;
+    uint32_t elapsed = st->elapsed;
+    size_t f = 0;
+    while (f < frames) {
+        /* Envelope for this sub-block: fast attack, then per-harmonic decay
+         * (higher harmonics fade faster -> bright attack, mellow ring). */
+        const double t = (double)elapsed / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
+        const double attack = (t < PIANO_ATTACK_S) ? (t / PIANO_ATTACK_S) : 1.0;
+        double gain[PIANO_HARMONICS];
+        for (int n = 0; n < PIANO_HARMONICS; n++) {
+            if (freq_hz * (n + 1) >= nyquist) { gain[n] = 0.0; continue; }
+            gain[n] = PIANO_W[n] * exp(-t / (PIANO_TAU_S / (double)(n + 1)));
+        }
+        const double scale = amplitude * attack / norm;
+
+        size_t blk = frames - f;
+        if (blk > PIANO_ENV_BLOCK) blk = PIANO_ENV_BLOCK;
+        for (size_t k = 0; k < blk; k++) {
+            double v = 0.0;
+            for (int n = 0; n < PIANO_HARMONICS; n++) {
+                if (gain[n] != 0.0) v += gain[n] * sin((double)(n + 1) * phase);
+            }
+            long s = lround(scale * v * S16_MAX);
+            if (s > 32767) s = 32767;
+            if (s < -32768) s = -32768;
+            out[(f + k) * 2] = (int16_t)s;
+            out[(f + k) * 2 + 1] = (int16_t)s;
+            phase = wrap_phase(phase + dphi);
+        }
+        elapsed += (uint32_t)blk;
+        f += blk;
+    }
+    st->phase = phase;
+    st->elapsed = elapsed;
+}
+
 void sg_sweep_reset(sg_sweep_state_t *st)
 {
     st->phase = 0.0;

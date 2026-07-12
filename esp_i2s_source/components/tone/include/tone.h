@@ -18,6 +18,11 @@ extern "C" {
 #define TONE_HZ_MAX     20000
 #define TONE_HZ_DEFAULT 440
 
+/* Voice/timbre: a plain sine (test tone) or an additive piano-ish voice with a
+ * struck-string envelope (for the on-screen piano/arpeggios). */
+#define TONE_VOICE_SINE  0
+#define TONE_VOICE_PIANO 1
+
 /* Fill `frames` interleaved stereo s16 frames: a sine at the current frequency
  * when enabled, otherwise silence. Phase is carried across calls. */
 void tone_fill(int16_t *out, size_t frames);
@@ -28,6 +33,10 @@ void tone_set(int freq_hz);
 /* Set the tone amplitude as a percent of full scale (0..100, clamped).
  * Independent of on/off and frequency; default 30%. */
 void tone_set_amplitude(int pct);
+
+/* Select the voice: TONE_VOICE_SINE (default) or TONE_VOICE_PIANO. Applies to
+ * subsequent tone_set() notes. */
+void tone_set_voice(int voice);
 
 /* Disable — tone_fill() emits silence. */
 void tone_off(void);
