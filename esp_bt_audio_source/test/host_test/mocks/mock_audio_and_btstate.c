@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "esp_err.h"
 #include "bt_api.h"
 #include "esp_bt.h"
@@ -25,6 +26,7 @@ static int s_start_audio_calls = 0;
 static int s_last_conn_state = -1;
 static int s_last_audio_state = -1;
 static bool s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
+static bt_connection_info_t s_mock_conn_info;        /* zeroed => not connected */
 
 void bt_manager_test_reset_btstate_mock(void) {
     s_mock_connected = 0;
@@ -33,6 +35,7 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_last_conn_state = -1;
     s_last_audio_state = -1;
     s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
+    memset(&s_mock_conn_info, 0, sizeof(s_mock_conn_info));
 }
 
 /* CODE_REVIEW8 Task B: Test helper to force bt_get_streaming_info failure */
@@ -42,6 +45,22 @@ void bt_manager_test_force_streaming_info_failure(bool force) {
 
 void bt_manager_test_set_connection_state(int v) {
     s_mock_connected = v ? 1 : 0;
+}
+
+/* Connected-peer info stub: lets STATUS tests exercise the CONN_MAC field the
+ * S3 reads to show which A2DP sink is on the link. Zeroed => not connected. */
+void bt_manager_test_set_connection_info(bool connected, const char *mac) {
+    memset(&s_mock_conn_info, 0, sizeof(s_mock_conn_info));
+    s_mock_conn_info.connected = connected;
+    if (mac) {
+        strncpy(s_mock_conn_info.addr, mac, sizeof(s_mock_conn_info.addr) - 1);
+    }
+}
+
+__attribute__((weak)) esp_err_t bt_get_connection_info(bt_connection_info_t *info) {
+    if (info == NULL) return ESP_FAIL;
+    *info = s_mock_conn_info;
+    return ESP_OK;
 }
 
 // Return 1 when mock connection established, 0 otherwise.

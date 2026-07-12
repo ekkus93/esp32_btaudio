@@ -25611,3 +25611,25 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   manual-connect ArIsu -> WROOM32 settled at VOL=22 (would be 40 without the fix). Restored
   user config: autostart on, sink Echo Buds, volume 10. NOTE: orchestrator is in manual mode
   until next power-cycle (side effect of the verification reboot); autostart re-engages on boot.
+
+## 2026-07-12T11:56:21Z - Claude Opus 4.8 (1M) - Report connected A2DP sink to S3 + web UI
+
+- User asked: S3 should be able to query the WROOM32 for which BT audio device is
+  currently connected. Root cause of "Echo Buds connected to ArIsu instead": ArIsu
+  (e8:fb:1c:25:e4:c2) is the laptop BT adapter (hardcoded in esp_bt_audio_source
+  laptop_bt_tests only — NOT firmware), bonded to the WROOM32 during testing; the
+  WROOM32 auto-reconnect (s_last_connected_addr, s_auto_reconnect) keeps re-dialing
+  the last device, and the always-on laptop wins.
+- WROOM32 (esp_bt_audio_source): cmd_handle_status now appends CONN_MAC=<addr> to the
+  STATUS data (empty when not connected) via bt_get_connection_info(). Name isn't
+  tracked in the connection layer (.name never populated) so only the MAC is sent;
+  the S3/web resolves the friendly name from the paired list. Host test: added
+  bt_get_connection_info weak stub + bt_manager_test_set_connection_info() hook in
+  mock_audio_and_btstate.c; 2 new asserts in test_cmd_handlers_system (field present;
+  reports the set MAC). 67/67 WROOM32 host tests pass.
+- S3 (esp_i2s_source): web_ui bt_get_h parses CONN_MAC (new bt_status_conn_mac helper)
+  and adds connected_mac to /api/bt. Bluetooth.tsx shows "Connected to <name> <mac>"
+  banner, a "connected" badge on the paired row, and a Disconnect (vs Connect) button
+  on that row. api.ts BtState.connected_mac. Graceful when WROOM32 lacks CONN_MAC.
+- Built both firmwares clean; flashed S3 (/dev/ttyACM0). WROOM32 flash (/dev/ttyUSB0)
+  still PENDING user confirmation — feature is end-to-end only after that flash.

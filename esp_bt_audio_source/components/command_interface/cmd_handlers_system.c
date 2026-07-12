@@ -133,15 +133,24 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
     if (stream_info.total_callbacks > 0) {
         underrun_rate = ((float)stream_info.underrun_count / (float)stream_info.total_callbacks) * 100.0f;
     }
-    
+
+    /* Currently-connected A2DP sink MAC (empty when not connected), so the S3
+     * (and the web UI) can show which device is on the link. Name is resolved
+     * upstream from the paired list; the connection layer only tracks the MAC. */
+    bt_connection_info_t conn_info = {0};
+    (void)bt_get_connection_info(&conn_info);
+    const char *conn_mac = conn_info.connected ? conn_info.addr : "";
+
     char data[512];
     if (stream_info_err == ESP_OK) {
-        snprintf(data, sizeof(data), 
+        snprintf(data, sizeof(data),
                  "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
+                 "CONN_MAC=%s,"
                  "BYTES_REQ=%" PRIu64 ",BYTES_PROD=%" PRIu64 ",BYTES_SILENCE=%" PRIu64
                  ",PKTS=%lu,PKT_ERR=%lu,DUR=%lu,"
                  "UNDERRUNS=%lu,CALLBACKS=%lu,UNDERRUN_RATE=%.2f",
                  mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume,
+                 conn_mac,
                  stream_info.bytes_requested, stream_info.bytes_produced,
                  stream_info.bytes_silence, (unsigned long)stream_info.packets_sent,
                  (unsigned long)stream_info.packet_errors, (unsigned long)stream_info.stream_duration,
@@ -149,10 +158,11 @@ cmd_status_t cmd_handle_status(const cmd_context_t *ctx)
                  underrun_rate);
     } else {
         /* Streaming info unavailable - report basic status only */
-        snprintf(data, sizeof(data), 
+        snprintf(data, sizeof(data),
                  "MUTE=%d,SAMPLE_RATE=%d,PAIRED_COUNT=%d,INIT=%d,RUN=%d,VOL=%d,"
-                 "STREAM_INFO=UNAVAILABLE",
-                 mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume);
+                 "CONN_MAC=%s,STREAM_INFO=UNAVAILABLE",
+                 mute_val, sample_rate_val, paired_count, status.initialized, status.running, status.volume,
+                 conn_mac);
     }
     cmd_send_response("OK", "STATUS", "CURRENT", data);
     return CMD_SUCCESS;

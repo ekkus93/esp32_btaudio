@@ -651,6 +651,25 @@ static bool bt_status_running(const char *data)
     return false;
 }
 
+/* Copy the CONN_MAC=<mac> value (the connected A2DP sink) out of a WROOM32
+ * STATUS data string into out. Empty (out[0]='\0') when not connected. */
+static void bt_status_conn_mac(const char *data, char *out, size_t out_sz)
+{
+    out[0] = '\0';
+    const char *p = data;
+    while ((p = strstr(p, "CONN_MAC=")) != NULL) {
+        if (p == data || p[-1] == ',') {
+            p += 9;                         /* past "CONN_MAC=" */
+            size_t n = 0;
+            while (p[n] && p[n] != ',' && n < out_sz - 1) n++;
+            memcpy(out, p, n);
+            out[n] = '\0';
+            return;
+        }
+        p += 9;
+    }
+}
+
 /* bt_link async-line subscriber -> buffer into the BT state. Runs on the
  * bt_link task; keep it quick and non-blocking. */
 static void on_bt_event(void *ctx, const bt_link_msg_t *m)
@@ -696,9 +715,12 @@ static esp_err_t bt_get_h(httpd_req_t *req)
     char sdata[BT_LINK_FIELD_MAX] = {0};
     bt_link_send("STATUS", &st, NULL, 0, sdata, sizeof(sdata));
     bool connected = (st == BT_LINK_CMD_DONE_OK) && bt_status_running(sdata);
+    char conn_mac[20] = {0};
+    if (st == BT_LINK_CMD_DONE_OK) bt_status_conn_mac(sdata, conn_mac, sizeof(conn_mac));
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "connected", connected);
+    if (conn_mac[0]) cJSON_AddStringToObject(root, "connected_mac", conn_mac);
     cJSON_AddBoolToObject(root, "scanning", ctrl_scan_active());
     xSemaphoreTake(s_bt_mtx, portMAX_DELAY);
     if (s_bt_prompt_on) cJSON_AddStringToObject(root, "prompt", s_bt_prompt);

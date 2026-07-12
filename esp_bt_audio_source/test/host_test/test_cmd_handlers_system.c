@@ -19,6 +19,7 @@
 /* Provided by mocks/mock_audio_and_btstate.c */
 void bt_manager_test_force_streaming_info_failure(bool force);
 void bt_manager_test_reset_btstate_mock(void);
+void bt_manager_test_set_connection_info(bool connected, const char *mac);
 
 void setUp(void)
 {
@@ -65,6 +66,39 @@ void test_status_contains_key_fields(void)
     TEST_ASSERT_NOT_NULL(strstr(tx, "MUTE="));
     TEST_ASSERT_NOT_NULL(strstr(tx, "SAMPLE_RATE="));
     TEST_ASSERT_NOT_NULL(strstr(tx, "PAIRED_COUNT="));
+}
+
+/* ── cmd_handle_status — CONN_MAC (connected-sink MAC for the S3/web UI) ─── */
+
+void test_status_includes_conn_mac_field(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_STATUS;
+
+    /* Not connected: the field is still present (empty value). */
+    bt_manager_test_set_connection_info(false, NULL);
+    mock_uart_reset_tx();
+    cmd_handle_status(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "CONN_MAC="));
+}
+
+void test_status_reports_connected_mac(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_STATUS;
+
+    bt_manager_test_set_connection_info(true, "48:78:5E:D9:35:A3");
+    mock_uart_reset_tx();
+    cmd_handle_status(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "CONN_MAC=48:78:5E:D9:35:A3"));
 }
 
 /* ── cmd_handle_status — streaming info failure fallback ──────────────── */
@@ -223,6 +257,8 @@ int main(void)
     RUN_TEST(test_status_streaming_info_failure_sends_unavailable);
     RUN_TEST(test_status_streaming_info_failure_still_includes_basic_fields);
     RUN_TEST(test_status_zero_callbacks_underrun_rate_is_zero);
+    RUN_TEST(test_status_includes_conn_mac_field);
+    RUN_TEST(test_status_reports_connected_mac);
 
     /* cmd_handle_help */
     RUN_TEST(test_help_sends_ok_response);

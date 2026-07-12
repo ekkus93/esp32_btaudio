@@ -70,6 +70,7 @@ export interface BtDev {
 }
 export interface BtState {
   connected: boolean;
+  connected_mac?: string; // MAC of the currently-connected A2DP sink, if any
   scanning: boolean;
   prompt?: string; // pairing confirm prompt, if any
   paired: BtDev[];

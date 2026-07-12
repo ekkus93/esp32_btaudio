@@ -45,12 +45,29 @@ export function Bluetooth() {
   const isPaired = (mac: string) => paired.some((p) => p.mac.toLowerCase() === mac.toLowerCase());
   const online = bt != null;
 
+  // Which device is on the A2DP link right now (from STATUS CONN_MAC).
+  const connMac = bt?.connected_mac?.toLowerCase();
+  const isConn = (mac: string) => !!connMac && mac.toLowerCase() === connMac;
+  const connectedName =
+    [...paired, ...discovered].find((d) => isConn(d.mac))?.name || bt?.connected_mac || "a device";
+
   return (
     <section className="card bt">
       <h2>
         Bluetooth
         <span className={`dot ${bt?.connected ? "ok" : "bad"}`} title={bt?.connected ? "connected" : "not connected"} />
       </h2>
+
+      <p className="bt-connected">
+        {bt?.connected ? (
+          <>
+            Connected to <strong>{connectedName}</strong>
+            {bt.connected_mac && <span className="mac"> {bt.connected_mac}</span>}
+          </>
+        ) : (
+          <span className="muted">No device connected.</span>
+        )}
+      </p>
 
       <div className="bt-actions">
         <button className="primary" disabled={!online || scanning} onClick={scan}>
@@ -107,11 +124,18 @@ export function Bluetooth() {
       ) : (
         <ul className="bt-list">
           {paired.map((d) => (
-            <li key={d.mac}>
-              <span className="name">{d.name || "(no name)"}</span>
+            <li key={d.mac} className={isConn(d.mac) ? "connected" : undefined}>
+              <span className="name">
+                {d.name || "(no name)"}
+                {isConn(d.mac) && <span className="bt-badge">connected</span>}
+              </span>
               <span className="mac">{d.mac}</span>
               <span className="btns">
-                <button onClick={() => act("connect", d.mac)}>Connect</button>
+                {isConn(d.mac) ? (
+                  <button onClick={() => act("disconnect")}>Disconnect</button>
+                ) : (
+                  <button onClick={() => act("connect", d.mac)}>Connect</button>
+                )}
                 <button className="danger" onClick={() => act("unpair", d.mac)}>Unpair</button>
               </span>
             </li>
