@@ -19,6 +19,12 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
+#include "radio_resampler.h"
+#include "esp_audio_simple_dec.h"
+#include "esp_audio_simple_dec_default.h"
+#include "esp_audio_dec_default.h"
+#include "esp_aac_dec.h"
+
 static const char *TAG = "radio";
 
 /* ---- PSRAM byte ring (SPSC, mutex-guarded) ---- */
@@ -55,6 +61,42 @@ size_t radio_read(uint8_t *dst, size_t len)
     return r;
 }
 
+/* ---- decoded-PCM ring (44.1 kHz stereo s16), producer=decoder, consumer=I2S ---- */
+static uint8_t          *s_pcm;
+static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
+static SemaphoreHandle_t s_pcm_mtx;
+
+static size_t pcm_write(const uint8_t *d, size_t n)
+{
+    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
+    size_t w = (n < s_pcm_cap - s_pcm_count) ? n : s_pcm_cap - s_pcm_count;
+    size_t first = s_pcm_cap - s_pcm_head;
+    if (first > w) first = w;
+    memcpy(s_pcm + s_pcm_head, d, first);
+    if (w > first) memcpy(s_pcm, d + first, w - first);
+    s_pcm_head = (s_pcm_head + w) % s_pcm_cap;
+    s_pcm_count += w;
+    xSemaphoreGive(s_pcm_mtx);
+    return w;
+}
+
+size_t radio_pcm_read(int16_t *dst, size_t frames)
+{
+    if (!s_pcm || !dst) return 0;
+    size_t want = frames * 4;   /* stereo s16 = 4 bytes/frame */
+    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
+    size_t r = (want < s_pcm_count) ? want : s_pcm_count;
+    r &= ~(size_t)3;            /* whole frames only */
+    size_t first = s_pcm_cap - s_pcm_tail;
+    if (first > r) first = r;
+    memcpy(dst, s_pcm + s_pcm_tail, first);
+    if (r > first) memcpy((uint8_t *)dst + first, s_pcm, r - first);
+    s_pcm_tail = (s_pcm_tail + r) % s_pcm_cap;
+    s_pcm_count -= r;
+    xSemaphoreGive(s_pcm_mtx);
+    return r / 4;
+}
+
 /* ---- state / telemetry ---- */
 static TaskHandle_t   s_task;
 static volatile bool  s_playing;
@@ -65,6 +107,11 @@ static radio_codec_t  s_codec;
 static int            s_bitrate, s_http_status;
 static uint64_t       s_bytes_in;
 static uint32_t       s_reconnects, s_overflow;
+
+/* decoder telemetry */
+static TaskHandle_t   s_dec_task;
+static int            s_dec_rate, s_dec_ch;
+static uint32_t       s_decode_errors;
 
 /* headers captured during fetch */
 static volatile int s_hdr_metaint;
@@ -219,16 +266,104 @@ static void stream_task(void *arg)
     vTaskDelete(NULL);
 }
 
+/* ---- decoder: compressed ring -> esp_audio_simple_dec -> resample -> PCM ring ---- */
+
+static esp_audio_simple_dec_handle_t open_decoder(radio_codec_t codec)
+{
+    esp_audio_simple_dec_cfg_t cfg = {0};
+    esp_aac_dec_cfg_t aac = { .aac_plus_enable = true };
+    if (codec == RADIO_CODEC_AAC) {
+        cfg.dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_AAC;
+        cfg.dec_cfg = &aac;
+        cfg.cfg_size = sizeof(aac);
+    } else {
+        cfg.dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_MP3;
+    }
+    esp_audio_simple_dec_handle_t h = NULL;
+    if (esp_audio_simple_dec_open(&cfg, &h) != ESP_AUDIO_ERR_OK) return NULL;
+    return h;
+}
+
+static void decoder_task(void *arg)
+{
+    (void)arg;
+    esp_audio_simple_dec_handle_t dec = NULL;
+    radio_codec_t opened = RADIO_CODEC_UNKNOWN;
+    radio_resampler_t rs;
+    bool rs_ready = false;
+    static uint8_t inbuf[4096];
+    static uint8_t pcmbuf[16384];   /* one decoded frame */
+    static int16_t rsbuf[8192];     /* resampled stereo frames (4096 max) */
+
+    while (s_playing) {
+        radio_codec_t codec = s_codec;
+        if (codec == RADIO_CODEC_UNKNOWN) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
+        if (!dec || codec != opened) {
+            if (dec) { esp_audio_simple_dec_close(dec); dec = NULL; }
+            dec = open_decoder(codec);
+            opened = codec;
+            rs_ready = false;
+            if (!dec) { s_decode_errors++; vTaskDelay(pdMS_TO_TICKS(200)); continue; }
+            ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
+        }
+
+        size_t n = radio_read(inbuf, sizeof(inbuf));
+        if (n == 0) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
+
+        esp_audio_simple_dec_raw_t raw = { .buffer = inbuf, .len = (uint32_t)n };
+        while (raw.len > 0 && s_playing) {
+            esp_audio_simple_dec_out_t out = { .buffer = pcmbuf, .len = sizeof(pcmbuf) };
+            esp_audio_err_t err = esp_audio_simple_dec_process(dec, &raw, &out);
+            if (err == ESP_AUDIO_ERR_OK && out.decoded_size > 0) {
+                esp_audio_simple_dec_info_t info;
+                esp_audio_simple_dec_get_info(dec, &info);
+                if (!rs_ready || (int)info.sample_rate != rs.src_rate || info.channel != rs.channels) {
+                    radio_resampler_init(&rs, info.sample_rate, info.channel);
+                    rs_ready = true;
+                    s_dec_rate = info.sample_rate;
+                    s_dec_ch = info.channel;
+                }
+                size_t in_frames = out.decoded_size / (2 * (info.channel ? info.channel : 1));
+                size_t used = 0;
+                size_t of = radio_resampler_run(&rs, (const int16_t *)pcmbuf, in_frames,
+                                                rsbuf, sizeof(rsbuf) / 4, &used);
+                if (of) pcm_write((const uint8_t *)rsbuf, of * 4);
+            } else if (err != ESP_AUDIO_ERR_OK) {
+                s_decode_errors++;
+                if (raw.consumed == 0) raw.consumed = 1;   /* force resync progress */
+            }
+            if (raw.consumed == 0) break;   /* needs more input */
+            raw.buffer += raw.consumed;
+            raw.len -= raw.consumed;
+            raw.consumed = 0;
+        }
+    }
+    if (dec) esp_audio_simple_dec_close(dec);
+    s_dec_rate = 0;
+    s_dec_task = NULL;
+    vTaskDelete(NULL);
+}
+
 esp_err_t radio_init(size_t ring_bytes)
 {
     s_cap = ring_bytes;
     s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_SPIRAM);
-    if (!s_ring) {
-        s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_DEFAULT);  /* fallback */
-    }
+    if (!s_ring) s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_DEFAULT);
     if (!s_ring) return ESP_ERR_NO_MEM;
+
+    /* Decoded-PCM ring: 128 KB ~= 0.74 s of 44.1 kHz stereo s16. */
+    s_pcm_cap = 128 * 1024;
+    s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_SPIRAM);
+    if (!s_pcm) s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_DEFAULT);
+    if (!s_pcm) return ESP_ERR_NO_MEM;
+
     s_mtx = xSemaphoreCreateMutex();
-    return s_mtx ? ESP_OK : ESP_ERR_NO_MEM;
+    s_pcm_mtx = xSemaphoreCreateMutex();
+    if (!s_mtx || !s_pcm_mtx) return ESP_ERR_NO_MEM;
+
+    esp_audio_dec_register_default();          /* low-level MP3/AAC decoders */
+    esp_audio_simple_dec_register_default();   /* simple/frame-parser wrappers */
+    return ESP_OK;
 }
 
 esp_err_t radio_play(const char *playlist_or_url)
@@ -245,12 +380,21 @@ esp_err_t radio_play(const char *playlist_or_url)
     s_title[0] = s_station[0] = '\0';
     s_bytes_in = 0; s_overflow = 0; s_reconnects = 0;
     s_codec = RADIO_CODEC_UNKNOWN; s_bitrate = 0; s_http_status = 0;
+    s_decode_errors = 0; s_dec_rate = 0; s_dec_ch = 0;
     xSemaphoreGive(s_mtx);
+    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
+    s_pcm_head = s_pcm_tail = s_pcm_count = 0;
+    xSemaphoreGive(s_pcm_mtx);
 
     s_playing = true;
     if (xTaskCreate(stream_task, "radio", 6144, NULL, tskIDLE_PRIORITY + 4, &s_task) != pdPASS) {
         s_playing = false;
         return ESP_ERR_NO_MEM;
+    }
+    /* Decoder: pulls from the compressed ring, decodes, resamples, fills the
+     * PCM ring. Big stack — mp3/aac working sets + our scratch buffers. */
+    if (xTaskCreate(decoder_task, "radio_dec", 8192, NULL, tskIDLE_PRIORITY + 4, &s_dec_task) != pdPASS) {
+        ESP_LOGW(TAG, "decoder task create failed");
     }
     ESP_LOGI(TAG, "play: %s", resolved);
     return ESP_OK;
@@ -259,7 +403,7 @@ esp_err_t radio_play(const char *playlist_or_url)
 void radio_stop(void)
 {
     s_playing = false;
-    for (int i = 0; i < 400 && s_task; i++) vTaskDelay(pdMS_TO_TICKS(20));  /* <=8s */
+    for (int i = 0; i < 400 && (s_task || s_dec_task); i++) vTaskDelay(pdMS_TO_TICKS(20));  /* <=8s */
 }
 
 void radio_get_status(radio_status_t *out)
@@ -280,5 +424,14 @@ void radio_get_status(radio_status_t *out)
     out->ring_cap = (uint32_t)s_cap;
     out->reconnects = s_reconnects;
     out->overflow_drops = s_overflow;
+    out->dec_rate = s_dec_rate;
+    out->dec_channels = s_dec_ch;
+    out->decode_errors = s_decode_errors;
     xSemaphoreGive(s_mtx);
+    if (s_pcm_mtx) {
+        xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
+        out->pcm_used = (uint32_t)s_pcm_count;
+        out->pcm_cap = (uint32_t)s_pcm_cap;
+        xSemaphoreGive(s_pcm_mtx);
+    }
 }

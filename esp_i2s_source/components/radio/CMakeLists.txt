@@ -6,4 +6,4 @@ idf_component_register(
     SRCS "radio_parse.c" "radio.c" "station_store.c" "stations.c" "radio_resampler.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_client esp-tls
-    PRIV_REQUIRES mbedtls nvs_flash)
+    PRIV_REQUIRES mbedtls nvs_flash espressif__esp_audio_codec)

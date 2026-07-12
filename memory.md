@@ -25399,3 +25399,21 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
     cfg.max_uri_handlers=20.
 - Host suite 9/9. RADIO-1 COMPLETE (a/b/c). Next: RADIO-2 (esp_audio_codec decode
   -> resample -> i2s) where audio finally plays and the tone retires.
+
+## 2026-07-12T02:30:32Z - Claude Opus 4.8 (1M) - RADIO-2a: esp_audio_codec MP3/AAC decoder (decoding verified)
+
+- Added espressif/esp_audio_codec ^2.6.0. radio.c decoder_task: esp_audio_simple_dec
+  (frame parser) open MP3 or AAC (aac_plus_enable=true for HE-AAC); pulls compressed
+  via radio_read, esp_audio_simple_dec_process -> PCM, get_info -> rate/ch,
+  radio_resampler -> 44.1k stereo -> 128KB decoded-PCM ring. radio_pcm_read() =
+  I2S consumer (RADIO-2c). Format-change re-open; bad-frame resync (consume 1 byte).
+- HARDWARE VERIFIED: SomaFM MP3 -> dec_rate=44100 dec_ch=2 decode_errors=0, PCM
+  ring fills (nothing drains until RADIO-2c).
+- KEY GOTCHA: open failed "AUDIO_DEC: Decoder MP3 not registered / ret -7". Must
+  call BOTH esp_audio_dec_register_default() (low-level MP3/AAC) AND
+  esp_audio_simple_dec_register_default() (wrappers). The SIMPLE Kconfig only has
+  WAV/M4A/TS/OGG toggles; MP3/AAC come from the low-level registration.
+- Also: added a 128KB PSRAM decoded-PCM ring alongside the 256KB compressed ring.
+  Radio play now spawns 2 tasks (stream + decoder); stop joins both.
+- Remaining: RADIO-2c (route radio_pcm_read into i2s with source arbitration ->
+  AUDIBLE), RADIO-2d (MP3+AAC E2E to earbuds). Host suite 10/10.

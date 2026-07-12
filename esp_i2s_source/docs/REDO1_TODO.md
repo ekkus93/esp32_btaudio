@@ -273,13 +273,17 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
 **Status:** `[ ]` Not started
 
 ### Tasks
-- [ ] **RADIO-2a** Decoder task: add `espressif/esp_audio_codec ^2.6.0`
-      managed component (plain IDF, **no ESP-ADF**); decode via
-      `esp_audio_dec.h` + simple-decoder frame-finder — MP3 + AAC-LC +
-      HE-AAC + **HE-AACv2** with **AAC-Plus (SBR/PS) enabled** in component
-      config (needed for AAC+ streams like Dance UK). Content-Type →
-      codec selection; handles mid-stream format changes; error containment
-      (bad frame → resync, not crash).
+- [x] **RADIO-2a** Decoder task (radio.c): `espressif/esp_audio_codec ^2.6.0`
+      via `esp_audio_simple_dec` (frame-parser) — MP3 + AAC (`aac_plus_enable`
+      for HE-AAC/AAC+). Pulls compressed from the network ring, decodes,
+      resamples (RADIO-2b) → 128 KB decoded-PCM ring (`radio_pcm_read` for the
+      I2S feeder). content-type→codec, format-change re-open, bad-frame resync
+      (force-consume 1 byte). **Hardware-verified**: SomaFM MP3 decodes to
+      44100/stereo, 0 decode errors, PCM ring fills. Gotcha: must call BOTH
+      `esp_audio_dec_register_default()` (low-level codecs) AND
+      `esp_audio_simple_dec_register_default()` (wrappers) — simple-dec only
+      registers container parsers (WAV/M4A/TS/OGG); MP3/AAC need the low-level
+      registration or open fails "Decoder MP3 not registered" (-7).
 - [ ] **RADIO-2b** Resampler stage to 44.1 kHz stereo s16 (decoder output
       may be 22.05/24/32/44.1/48 kHz, mono or stereo) — math host-tested
       against known-exact conversions.

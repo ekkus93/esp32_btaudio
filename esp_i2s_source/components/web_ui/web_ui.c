@@ -101,6 +101,11 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddNumberToObject(radio, "ring_used", rs.ring_used);
     cJSON_AddNumberToObject(radio, "ring_cap", rs.ring_cap);
     cJSON_AddNumberToObject(radio, "reconnects", rs.reconnects);
+    cJSON_AddNumberToObject(radio, "dec_rate", rs.dec_rate);
+    cJSON_AddNumberToObject(radio, "dec_channels", rs.dec_channels);
+    cJSON_AddNumberToObject(radio, "pcm_used", rs.pcm_used);
+    cJSON_AddNumberToObject(radio, "pcm_cap", rs.pcm_cap);
+    cJSON_AddNumberToObject(radio, "decode_errors", rs.decode_errors);
 
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);

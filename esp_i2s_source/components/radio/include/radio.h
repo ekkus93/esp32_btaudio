@@ -37,6 +37,12 @@ typedef struct {
     uint32_t      ring_cap;
     uint32_t      reconnects;
     uint32_t      overflow_drops; /* bytes dropped on ring overflow */
+    /* decoder (RADIO-2a) */
+    int           dec_rate;       /* decoded sample rate (Hz), 0 if not decoding */
+    int           dec_channels;
+    uint32_t      pcm_used;       /* decoded PCM ring fill (bytes) */
+    uint32_t      pcm_cap;
+    uint32_t      decode_errors;
 } radio_status_t;
 
 /* Allocate the PSRAM compressed-frame ring and internal sync. Call once. */
@@ -52,9 +58,13 @@ void radio_stop(void);
 /* Snapshot the current state. */
 void radio_get_status(radio_status_t *out);
 
-/* Consumer side (RADIO-2 decoder): pull up to `len` compressed bytes from the
- * ring. Non-blocking; returns the number of bytes copied (0 if empty). */
+/* Pull up to `len` compressed bytes from the network ring (used internally by
+ * the decoder). Non-blocking; returns bytes copied (0 if empty). */
 size_t radio_read(uint8_t *dst, size_t len);
+
+/* Consumer side (I2S feeder, RADIO-2c): pull up to `frames` decoded 44.1 kHz
+ * stereo s16 frames from the decoded-PCM ring. Returns frames copied. */
+size_t radio_pcm_read(int16_t *dst, size_t frames);
 
 const char *radio_codec_str(radio_codec_t c);
 

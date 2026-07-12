@@ -1,5 +1,5 @@
 ## Managed component dependencies for esp_i2s_source.
-## esp_audio_codec (radio MP3/AAC decode) is added at RADIO-2a, not here.
 dependencies:
   idf: ">=5.5"
-  espressif/mdns: "^1.2"   # WIFI-1b: esp-i2s-source.local on the LAN
+  espressif/mdns: "^1.2"           # WIFI-1b: esp-i2s-source.local on the LAN
+  espressif/esp_audio_codec: "^2.6.0"  # RADIO-2a: MP3/AAC/HE-AAC decode
