@@ -18,6 +18,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "nvs.h"
 
 #include "radio_resampler.h"
 #include "esp_audio_simple_dec.h"
@@ -68,7 +69,17 @@ size_t radio_read(uint8_t *dst, size_t len)
  * PCM_PREBUFFER_BYTES (~3 s), and re-gated if it ever fully drains, so recovery
  * re-buffers cleanly rather than restarting choppy. */
 #define PCM_RING_BYTES      (1024 * 1024)
-#define PCM_PREBUFFER_BYTES (512 * 1024)   /* ~3.0 s cushion before/again after dry */
+/* Prebuffer (jitter cushion) is runtime-adjustable via the web UI, persisted in
+ * NVS. Bounded below the PCM ring so the cushion always fits. */
+#define PCM_BYTES_PER_MS    176            /* 44100 Hz * 2ch * 2B / 1000 (rounded) */
+#define PREBUF_MS_MIN       500
+#define PREBUF_MS_MAX       5000           /* < PCM_RING_BYTES (~5.9 s) */
+#define PREBUF_MS_DEFAULT   3000           /* ~3.0 s cushion before/again after dry */
+#define NVS_NS_RADIO        "radio"
+#define NVS_KEY_PREBUF      "prebuf_ms"
+
+static volatile size_t   s_prebuffer_bytes = (size_t)PREBUF_MS_DEFAULT * PCM_BYTES_PER_MS;
+static void radio_prebuffer_load(void);
 static uint8_t          *s_pcm;
 static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
 static SemaphoreHandle_t s_pcm_mtx;
@@ -84,7 +95,7 @@ static size_t pcm_write(const uint8_t *d, size_t n)
     if (w > first) memcpy(s_pcm, d + first, w - first);
     s_pcm_head = (s_pcm_head + w) % s_pcm_cap;
     s_pcm_count += w;
-    if (!s_prebuffered && s_pcm_count >= PCM_PREBUFFER_BYTES) s_prebuffered = true;
+    if (!s_prebuffered && s_pcm_count >= s_prebuffer_bytes) s_prebuffered = true;
     xSemaphoreGive(s_pcm_mtx);
     return w;
 }
@@ -373,6 +384,7 @@ esp_err_t radio_init(size_t ring_bytes)
     s_pcm_mtx = xSemaphoreCreateMutex();
     if (!s_mtx || !s_pcm_mtx) return ESP_ERR_NO_MEM;
 
+    radio_prebuffer_load();                    /* restore persisted prebuffer depth */
     esp_audio_dec_register_default();          /* low-level MP3/AAC decoders */
     esp_audio_simple_dec_register_default();   /* simple/frame-parser wrappers */
     return ESP_OK;
@@ -432,6 +444,43 @@ bool radio_audio_ready(void)
     return s_playing && s_prebuffered;
 }
 
+static int clamp_prebuf_ms(int ms)
+{
+    if (ms < PREBUF_MS_MIN) ms = PREBUF_MS_MIN;
+    if (ms > PREBUF_MS_MAX) ms = PREBUF_MS_MAX;
+    return ms;
+}
+
+int radio_get_prebuffer_ms(void)
+{
+    return (int)(s_prebuffer_bytes / PCM_BYTES_PER_MS);
+}
+
+void radio_set_prebuffer_ms(int ms)
+{
+    ms = clamp_prebuf_ms(ms);
+    s_prebuffer_bytes = (size_t)ms * PCM_BYTES_PER_MS;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i32(h, NVS_KEY_PREBUF, ms);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "prebuffer set to %d ms (%u bytes)", ms, (unsigned)s_prebuffer_bytes);
+}
+
+/* Restore the persisted prebuffer depth (default ~3 s). Call once at init. */
+static void radio_prebuffer_load(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS_RADIO, NVS_READONLY, &h) != ESP_OK) return;
+    int32_t ms = PREBUF_MS_DEFAULT;
+    if (nvs_get_i32(h, NVS_KEY_PREBUF, &ms) == ESP_OK) {
+        s_prebuffer_bytes = (size_t)clamp_prebuf_ms((int)ms) * PCM_BYTES_PER_MS;
+    }
+    nvs_close(h);
+}
+
 void radio_get_status(radio_status_t *out)
 {
     if (!out) return;
@@ -461,4 +510,5 @@ void radio_get_status(radio_status_t *out)
         out->pcm_cap = (uint32_t)s_pcm_cap;
         xSemaphoreGive(s_pcm_mtx);
     }
+    out->prebuffer_ms = radio_get_prebuffer_ms();
 }

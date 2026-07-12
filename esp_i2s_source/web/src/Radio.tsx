@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  playRadio, stopRadio, getStations, addStation, updateStation, deleteStation, moveStation,
+  playRadio, stopRadio, getStations, addStation, updateStation, deleteStation, moveStation, setPrebuffer,
   type RadioStatus, type Station,
 } from "./api";
 
@@ -19,9 +19,15 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
   const [editName, setEditName] = useState("");
   const [editUrl, setEditUrl] = useState("");
   const [editErr, setEditErr] = useState<string | null>(null);
+  const [prebufMs, setPrebufMs] = useState(3000); // radio jitter cushion (ms)
 
   const loadStations = () => getStations().then(setStations).catch(() => {});
   useEffect(() => { loadStations(); }, []);
+
+  // Sync the buffer slider from device status (when not mid-drag).
+  useEffect(() => {
+    if (radio?.prebuffer_ms) setPrebufMs(radio.prebuffer_ms);
+  }, [radio?.prebuffer_ms]);
 
   // tick telemetry while playing
   useEffect(() => {
@@ -135,6 +141,25 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
         <button type="button" disabled={busy || !url} onClick={() => wrap(() => playRadio(url))} title="play without saving">Play</button>
       </form>
       {err && <div className="banner err">{err}</div>}
+
+      <div className="vol-row buffer-row">
+        <label>
+          Buffer <span className="muted">(jitter cushion)</span>
+        </label>
+        <input
+          type="range"
+          min={500}
+          max={5000}
+          step={250}
+          value={prebufMs}
+          onChange={(e) => setPrebufMs(Number(e.target.value))}
+          onPointerUp={(e) => setPrebuffer(Number((e.target as HTMLInputElement).value)).then(onChange)}
+        />
+        <span className="vol-val">{(prebufMs / 1000).toFixed(2)}s</span>
+      </div>
+      <p className="muted">
+        Bigger buffer rides out WiFi hiccups but adds startup delay. Takes effect on the next play (or after a dropout).
+      </p>
     </section>
   );
 }

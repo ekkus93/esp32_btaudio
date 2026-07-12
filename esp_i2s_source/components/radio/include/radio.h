@@ -44,6 +44,7 @@ typedef struct {
     uint32_t      pcm_used;       /* decoded PCM ring fill (bytes) */
     uint32_t      pcm_cap;
     uint32_t      decode_errors;
+    int           prebuffer_ms;   /* jitter cushion before playback starts */
 } radio_status_t;
 
 /* Allocate the PSRAM compressed-frame ring and internal sync. Call once. */
@@ -66,6 +67,12 @@ bool radio_audio_ready(void);
 
 /* Snapshot the current state. */
 void radio_get_status(radio_status_t *out);
+
+/* Jitter-cushion prebuffer depth (ms), persisted in NVS. set clamps to a valid
+ * range that fits the PCM ring; default ~3000 ms. Takes effect on the next
+ * prebuffer gate (immediately if the ring later drains, or on the next play). */
+void radio_set_prebuffer_ms(int ms);
+int  radio_get_prebuffer_ms(void);
 
 /* Pull up to `len` compressed bytes from the network ring (used internally by
  * the decoder). Non-blocking; returns bytes copied (0 if empty). */

@@ -41,6 +41,17 @@ export interface RadioStatus {
   ring_used: number;
   ring_cap: number;
   reconnects: number;
+  prebuffer_ms?: number;
+}
+
+// Radio jitter-cushion prebuffer depth (ms), NVS-persisted; clamped device-side.
+export async function setPrebuffer(ms: number): Promise<{ ok: boolean; ms?: number }> {
+  const r = await fetch("/api/prebuffer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ms }),
+  });
+  return r.json();
 }
 
 async function getJSON<T>(path: string): Promise<T> {

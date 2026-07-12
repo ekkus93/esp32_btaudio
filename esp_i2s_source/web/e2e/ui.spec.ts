@@ -18,7 +18,10 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.getByRole("heading", { name: "Volume" })).toBeVisible();
     await expect(page.locator(".vol-row label", { hasText: "Pre-I2S" })).toBeVisible();
     await expect(page.locator(".vol-row label", { hasText: "Post-mix" })).toBeVisible();
-    await expect(page.locator('input[type="range"]')).toHaveCount(2);
+    await expect(page.locator('input[type="range"]')).toHaveCount(3); // 2 volume + buffer
+    // Buffer (prebuffer) slider present in the Radio card.
+    await expect(page.locator(".card.radio .buffer-row")).toBeVisible();
+    await expect(page.locator(".card.radio .buffer-row label")).toContainText("Buffer");
   });
 
   test("Radio station Edit expands the row inline (accordion)", async ({ page }) => {

@@ -134,6 +134,7 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddNumberToObject(radio, "pcm_used", rs.pcm_used);
     cJSON_AddNumberToObject(radio, "pcm_cap", rs.pcm_cap);
     cJSON_AddNumberToObject(radio, "decode_errors", rs.decode_errors);
+    cJSON_AddNumberToObject(radio, "prebuffer_ms", rs.prebuffer_ms);
 
     /* RADIO-2d: I2S output health — the on-source dropout signal. underrun_*
      * must stay flat and ring_peak below ring_cap for a clean endurance run. */
@@ -325,6 +326,32 @@ static esp_err_t volume_post_h(httpd_req_t *req)
     cJSON_Delete(j);
     char out[48];
     snprintf(out, sizeof(out), "{\"ok\":true,\"pct\":%d}", i2s_out_get_gain());
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
+/* ---- /api/prebuffer: radio jitter-cushion depth (ms), NVS-persisted ---- */
+
+static esp_err_t prebuffer_post_h(httpd_req_t *req)
+{
+    char body[48];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    cJSON *ms = j ? cJSON_GetObjectItem(j, "ms") : NULL;
+    httpd_resp_set_type(req, "application/json");
+    if (!cJSON_IsNumber(ms)) {
+        cJSON_Delete(j);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing ms\"}");
+        return ESP_OK;
+    }
+    radio_set_prebuffer_ms(ms->valueint);   /* clamps to a ring-safe range */
+    cJSON_Delete(j);
+    char out[48];
+    snprintf(out, sizeof(out), "{\"ok\":true,\"ms\":%d}", radio_get_prebuffer_ms());
     httpd_resp_sendstr(req, out);
     return ESP_OK;
 }
@@ -871,7 +898,7 @@ esp_err_t web_ui_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 28;   /* status/wifi/apmode/tone/radio/stations/volume/btvolume/ctrl/bt/console/root */
+    cfg.max_uri_handlers = 29;   /* status/wifi/apmode/tone/radio/stations/volume/prebuffer/btvolume/ctrl/bt/console/root */
 
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
@@ -905,6 +932,8 @@ esp_err_t web_ui_start(void)
         .uri = "/api/apmode", .method = HTTP_POST, .handler = apmode_post_h };
     const httpd_uri_t volume_post_uri = {
         .uri = "/api/volume", .method = HTTP_POST, .handler = volume_post_h };
+    const httpd_uri_t prebuffer_post_uri = {
+        .uri = "/api/prebuffer", .method = HTTP_POST, .handler = prebuffer_post_h };
     const httpd_uri_t btvol_get_uri = {
         .uri = "/api/btvolume", .method = HTTP_GET, .handler = btvolume_get_h };
     const httpd_uri_t btvol_post_uri = {
@@ -934,6 +963,7 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &scan_post_uri);
     httpd_register_uri_handler(s_server, &apmode_post_uri);
     httpd_register_uri_handler(s_server, &volume_post_uri);
+    httpd_register_uri_handler(s_server, &prebuffer_post_uri);
     httpd_register_uri_handler(s_server, &btvol_get_uri);
     httpd_register_uri_handler(s_server, &btvol_post_uri);
     httpd_register_uri_handler(s_server, &ctrl_get_uri);
