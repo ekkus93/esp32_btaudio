@@ -93,6 +93,7 @@ static esp_err_t status_get(httpd_req_t *req)
     radio_get_status(&rs);
     cJSON *radio = cJSON_AddObjectToObject(root, "radio");
     cJSON_AddBoolToObject(radio, "playing", rs.playing);
+    cJSON_AddBoolToObject(radio, "buffering", rs.buffering);
     cJSON_AddStringToObject(radio, "codec", radio_codec_str(rs.codec));
     cJSON_AddStringToObject(radio, "station", rs.station);
     cJSON_AddStringToObject(radio, "title", rs.title);

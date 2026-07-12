@@ -26,6 +26,7 @@ typedef enum {
 
 typedef struct {
     bool          playing;
+    bool          buffering;      /* playing but PCM cushion not yet primed */
     radio_codec_t codec;
     int           http_status;
     int           bitrate_kbps;   /* icy-br, 0 if absent */
@@ -55,8 +56,13 @@ esp_err_t radio_play(const char *playlist_or_url);
 /* Stop streaming and drain the ring. */
 void radio_stop(void);
 
-/* True while a stream is active (the I2S feeder routes radio PCM when so). */
+/* True while a stream is active (UI/telemetry sense). */
 bool radio_is_playing(void);
+
+/* True only when a stream is active AND its PCM cushion is primed. The I2S
+ * feeder routes radio audio on this (not radio_is_playing), so startup and
+ * rebuffer windows emit silence/tone instead of a starving ring. */
+bool radio_audio_ready(void);
 
 /* Snapshot the current state. */
 void radio_get_status(radio_status_t *out);

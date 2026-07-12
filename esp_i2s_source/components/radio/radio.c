@@ -61,10 +61,18 @@ size_t radio_read(uint8_t *dst, size_t len)
     return r;
 }
 
-/* ---- decoded-PCM ring (44.1 kHz stereo s16), producer=decoder, consumer=I2S ---- */
+/* ---- decoded-PCM ring (44.1 kHz stereo s16), producer=decoder, consumer=I2S ----
+ * 4 bytes/frame @ 44100 Hz: 1 MiB ~= 5.9 s of decoded audio — a deep jitter
+ * buffer so a multi-second TCP/WiFi stall drains the cushion instead of the
+ * output. Playback is gated (s_prebuffered) until the ring first fills to
+ * PCM_PREBUFFER_BYTES (~3 s), and re-gated if it ever fully drains, so recovery
+ * re-buffers cleanly rather than restarting choppy. */
+#define PCM_RING_BYTES      (1024 * 1024)
+#define PCM_PREBUFFER_BYTES (512 * 1024)   /* ~3.0 s cushion before/again after dry */
 static uint8_t          *s_pcm;
 static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
 static SemaphoreHandle_t s_pcm_mtx;
+static volatile bool     s_prebuffered;    /* PCM cushion reached -> ok to feed I2S */
 
 static size_t pcm_write(const uint8_t *d, size_t n)
 {
@@ -76,6 +84,7 @@ static size_t pcm_write(const uint8_t *d, size_t n)
     if (w > first) memcpy(s_pcm, d + first, w - first);
     s_pcm_head = (s_pcm_head + w) % s_pcm_cap;
     s_pcm_count += w;
+    if (!s_prebuffered && s_pcm_count >= PCM_PREBUFFER_BYTES) s_prebuffered = true;
     xSemaphoreGive(s_pcm_mtx);
     return w;
 }
@@ -93,6 +102,9 @@ size_t radio_pcm_read(int16_t *dst, size_t frames)
     if (r > first) memcpy((uint8_t *)dst + first, s_pcm, r - first);
     s_pcm_tail = (s_pcm_tail + r) % s_pcm_cap;
     s_pcm_count -= r;
+    /* Fully drained -> re-arm the prebuffer gate so the arbiter falls back to
+     * silence until the cushion rebuilds, instead of feeding a starving ring. */
+    if (s_prebuffered && s_pcm_count == 0) s_prebuffered = false;
     xSemaphoreGive(s_pcm_mtx);
     return r / 4;
 }
@@ -351,8 +363,8 @@ esp_err_t radio_init(size_t ring_bytes)
     if (!s_ring) s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_DEFAULT);
     if (!s_ring) return ESP_ERR_NO_MEM;
 
-    /* Decoded-PCM ring: 128 KB ~= 0.74 s of 44.1 kHz stereo s16. */
-    s_pcm_cap = 128 * 1024;
+    /* Decoded-PCM ring: deep jitter buffer (~5.9 s), gated by s_prebuffered. */
+    s_pcm_cap = PCM_RING_BYTES;
     s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_SPIRAM);
     if (!s_pcm) s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_DEFAULT);
     if (!s_pcm) return ESP_ERR_NO_MEM;
@@ -384,6 +396,7 @@ esp_err_t radio_play(const char *playlist_or_url)
     xSemaphoreGive(s_mtx);
     xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
     s_pcm_head = s_pcm_tail = s_pcm_count = 0;
+    s_prebuffered = false;
     xSemaphoreGive(s_pcm_mtx);
 
     s_playing = true;
@@ -411,6 +424,14 @@ bool radio_is_playing(void)
     return s_playing;
 }
 
+/* True only once the PCM cushion is primed — the arbiter feeds the radio to
+ * I2S on this, not radio_is_playing(), so startup/rebuffer emit silence (or the
+ * tone) rather than a starving ring. */
+bool radio_audio_ready(void)
+{
+    return s_playing && s_prebuffered;
+}
+
 void radio_get_status(radio_status_t *out)
 {
     if (!out) return;
@@ -418,6 +439,7 @@ void radio_get_status(radio_status_t *out)
     if (!s_mtx) return;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     out->playing = s_playing;
+    out->buffering = s_playing && !s_prebuffered;
     out->codec = s_codec;
     out->http_status = s_http_status;
     out->bitrate_kbps = s_bitrate;

@@ -89,7 +89,7 @@ static void audio_out_task(void *arg)
     static int16_t block[AUDIO_OUT_FRAMES * 2];
     static int32_t block32[AUDIO_OUT_FRAMES * 2];
     for (;;) {
-        if (radio_is_playing()) {
+        if (radio_audio_ready()) {
             size_t got = radio_pcm_read(block, AUDIO_OUT_FRAMES);
             if (got < AUDIO_OUT_FRAMES) {
                 memset(&block[got * 2], 0, (AUDIO_OUT_FRAMES - got) * 2 * sizeof(int16_t));
