@@ -6,7 +6,13 @@ branch/PR, verify green, then move on.
 
 ## Progress (Ralph loop)
 
-**Done (7/10), each behavior-preserving, verified, committed & pushed:**
+**Done (8/10), each behavior-preserving, verified, committed & pushed:**
+#1 audio_processor.c (1692→586 + engine.c 482 + config.c 363 + sync_diag.c 171 +
+test_hooks.c 153; host 70/70 + idf.py build clean; commit dcacefcd). State was already
+externalized in audio_processor_state.c, so it was a clean function-relocation (pure
+deletions); also moved the audio_source_t enum + a few now-cross-TU fn decls into the
+internal header (behavior-neutral static→extern).
+
 #3 web_ui.c (1025→253), #4 cmd_handlers_bt.c (838→544 + new cmd_handlers_debug.c),
 #7 test_commands.c (1129→250, host 66/66 unchanged), #8 bt_a2dp_test.c (929→166,
 test-app build clean), #9 run_all_tests.py (1343→595, 725/725 host run unchanged),
@@ -22,10 +28,7 @@ the real cost was **27 host-test executables** that compile bt_manager.c directl
 needing the new .c files added (uniform path → one sed). `bt_start_audio` was ~50 lines
 (not ~330 as guessed), so ops.c also took volume/pairing to reach ≤700.
 
-**Remaining (3/10) — the hard, shared-state tier; each needs a careful dedicated
-pass, NOT a mechanical move:**
-- **#1 audio_processor.c** — heavy shared `s_*` state; do the internal-state
-  extraction first (2.x/1.x plan). Host-verifiable.
+**Remaining (2/10) — the compile-only-verifiable tier:**
 - **#5 bt_source_mock.c / #6 bt_source_stubs.c** — ~30 interspersed static vars
   incl. locally-defined struct typedefs + multi-line initializers; 5 state names
   collide with the mirror file; **only compile/link-verifiable here** (Unity suites
@@ -59,7 +62,21 @@ pass, NOT a mechanical move:**
 
 ---
 
-## 1. `esp_bt_audio_source/components/audio_processor/audio_processor.c` — 1692 → ≤700
+## 1. `esp_bt_audio_source/components/audio_processor/audio_processor.c` — 1692 → 586 ✅ DONE
+
+**Done (commit dcacefcd).** State was already externalized (audio_processor_state.c +
+externs in audio_processor_internal.h), so this was a clean function-relocation like #2
+(audio_processor.c diff is 0 insertions / 1106 deletions). Split into: engine.c (482,
+get_active_source/produce_audio_chunk both copies + audio_engine_task + volume timer),
+config.c (363, setters/getters/configure_i2s/set_i2s_pins), sync_diag.c (171,
+emit_sync_worker_diag + mock_generate_i2s_audio), test_hooks.c (153, audio_processor_test_*);
+slim audio_processor.c (586, lifecycle + is_* + set_synth_mode). Necessary behavior-neutral
+extras: moved audio_source_t enum + a few now-cross-TU fn decls into the internal header,
+externalized s_test_force_beep_overlay_fail. Only 2 host-test executables compile
+audio_processor.c → both got the new sources. Verified host 70/70 + idf.py build. The
+1.1–1.7 sub-steps below are superseded by this outcome.
+
+
 
 The component already has `audio_processor_read.c` / `audio_processor_diag.c` /
 `audio_processor_internal.h`; this is the remaining monolith (engine + lifecycle +
