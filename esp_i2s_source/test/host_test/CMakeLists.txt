@@ -101,4 +101,8 @@ target_include_directories(test_station_store PRIVATE ${RADIO_DIR}/include)
 target_link_libraries(test_station_store unity)
 add_test(NAME test_station_store COMMAND test_station_store)
 
-# Further suites appended by RADIO-2b (test_resampler), etc.
+# RADIO-2b: resampler math
+add_executable(test_radio_resampler test_radio_resampler.c ${RADIO_DIR}/radio_resampler.c)
+target_include_directories(test_radio_resampler PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(test_radio_resampler unity)
+add_test(NAME test_radio_resampler COMMAND test_radio_resampler)

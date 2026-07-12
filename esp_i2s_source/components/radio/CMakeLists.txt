@@ -3,7 +3,7 @@
 # + ICY parser (host-tested); radio.c is the stream task (RADIO-1b); the
 # decoder lands in RADIO-2.
 idf_component_register(
-    SRCS "radio_parse.c" "radio.c" "station_store.c" "stations.c"
+    SRCS "radio_parse.c" "radio.c" "station_store.c" "stations.c" "radio_resampler.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_client esp-tls
     PRIV_REQUIRES mbedtls nvs_flash)
