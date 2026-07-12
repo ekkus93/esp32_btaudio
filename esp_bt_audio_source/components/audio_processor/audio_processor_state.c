@@ -113,6 +113,7 @@ volatile bool s_drop_ring_audio = false;  /* F1.4: Drain ring buffer on beep sta
 bool s_trace_next_read_call = false;
 bool s_trace_read_until_beep_done = false;
 bool s_last_source_was_synth = false;
+bool s_test_force_beep_overlay_fail = false;
 unsigned s_i2s_read_ops = 0;
 unsigned s_i2s_total_read_bytes = 0;
 unsigned s_i2s_timeout_count = 0;

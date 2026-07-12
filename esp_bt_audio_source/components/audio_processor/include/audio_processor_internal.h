@@ -130,6 +130,33 @@ typedef struct {
 
 /* Shared state (defined in audio_processor_state.c) */
 
+/* Audio source arbitration. Definition shared so the produce path
+ * (audio_processor_engine.c) and the test hooks (audio_processor_test_hooks.c)
+ * agree on the enum values. */
+typedef enum {
+    AUDIO_SOURCE_I2S = 0,
+    AUDIO_SOURCE_SYNTH,
+    AUDIO_SOURCE_UART,     /* UARTAUDIO: laptop PCM stream over UART0 */
+    AUDIO_SOURCE_SILENCE,
+    NUM_AUDIO_SOURCES
+} audio_source_t;
+
+/* Engine produce path (defined in audio_processor_engine.c). Non-static so the
+ * UNIT_TEST test hooks in audio_processor_test_hooks.c can drive them. */
+extern audio_source_t s_last_source;
+audio_source_t get_active_source(void);
+size_t produce_audio_chunk(uint8_t *dst, size_t dst_bytes);
+
+#ifndef UNIT_TEST
+/* Device-only engine entry points (defined in audio_processor_engine.c). */
+void volume_commit_timer_callback(void* arg);
+void audio_engine_task(void *arg);
+#endif
+
+/* Test-only injection flag: force the beep overlay path to fail.
+ * Defined (non-static) in audio_processor_state.c. */
+extern bool s_test_force_beep_overlay_fail;
+
 /* Ring buffer for audio engine architecture (CODE_REVIEW6 Phase 1) */
 extern audio_rb_t *s_audio_ring;
 

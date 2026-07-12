@@ -438,6 +438,9 @@ add_test(NAME test_audio_processor_idle_i2s COMMAND $<TARGET_FILE:test_audio_pro
 add_executable(test_audio_processor_core_logic
     test_audio_processor_core_logic.c
     ../../components/audio_processor/audio_processor.c
+    ../../components/audio_processor/audio_processor_engine.c
+    ../../components/audio_processor/audio_processor_config.c
+    ../../components/audio_processor/audio_processor_test_hooks.c
     ../../components/audio_processor/audio_processor_state.c
     mocks/audio_processor_core_logic_stubs.c
     mocks/fake_log.c
@@ -597,6 +600,7 @@ add_test(NAME test_audio_processor_state COMMAND $<TARGET_FILE:test_audio_proces
 # Audio processor read-path tests (Phase 6.2 - ring drop/underrun/null bytes_read)
 add_executable(test_audio_processor_read
     test_audio_processor_read.c
+    ../../components/audio_processor/audio_util.c
     ../../components/audio_processor/audio_processor_read.c
     ../../components/audio_processor/audio_processor_state.c
     ../../components/audio_processor/audio_processor_diag.c
@@ -610,14 +614,18 @@ target_include_directories(test_audio_processor_read PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 target_compile_definitions(test_audio_processor_read PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
-target_link_libraries(test_audio_processor_read unity util_safe_host platform_shim_host)
+target_link_libraries(test_audio_processor_read unity m util_safe_host platform_shim_host)
 add_test(NAME test_audio_processor_read COMMAND $<TARGET_FILE:test_audio_processor_read>)
 
 # Audio processor diagnostics/status tests (Phase 6.4)
 add_executable(test_audio_processor_diag
     test_audio_processor_diag.c
     ../../components/audio_processor/audio_processor.c
+    ../../components/audio_processor/audio_processor_engine.c
+    ../../components/audio_processor/audio_processor_config.c
+    ../../components/audio_processor/audio_processor_test_hooks.c
     ../../components/audio_processor/audio_processor_diag.c
+    ../../components/audio_processor/audio_processor_sync_diag.c
     ../../components/audio_processor/audio_processor_state.c
     mocks/audio_processor_core_logic_stubs.c
     mocks/fake_log.c

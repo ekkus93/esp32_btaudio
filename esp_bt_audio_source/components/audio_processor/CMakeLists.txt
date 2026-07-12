@@ -2,10 +2,14 @@ idf_component_register(
     SRCS
         "audio_processor.c"
         "audio_processor_state.c"
+        "audio_processor_engine.c"
+        "audio_processor_config.c"
+        "audio_processor_test_hooks.c"
        
         "audio_processor_beep.c"
         "audio_processor_read.c"
         "audio_processor_diag.c"
+        "audio_processor_sync_diag.c"
        
         "audio_ringbuffer.c"
         "audio_span_log.c"
