@@ -133,8 +133,18 @@ cmd_status_t cmd_execute(const cmd_context_t* ctx);
  * @param data Additional data (or NULL)
  * @return CMD_SUCCESS if successful
  */
-cmd_status_t cmd_send_response(const char* status, const char* command, 
+cmd_status_t cmd_send_response(const char* status, const char* command,
                               const char* result, const char* data);
+
+/**
+ * Like cmd_send_response(), but broadcasts to EVERY command port instead of the
+ * one the current command arrived on. Use for asynchronous results that are
+ * emitted after the initiating command's cmd_process() cycle has ended (e.g.
+ * scan INFO|SCAN|RESULT lines), which would otherwise misroute to the primary
+ * UART regardless of which port requested them.
+ */
+cmd_status_t cmd_send_response_all(const char* status, const char* command,
+                                   const char* result, const char* data);
 
 /**
  * Process incoming serial data

@@ -120,12 +120,15 @@ static void bt_scan_emit_results(void)
         safe_snprintf(result_data, sizeof(result_data), "%s,%s",
                       bt_ctx.discovered_devices.devices[i].mac,
                       bt_ctx.discovered_devices.devices[i].name);
-        cmd_send_response("INFO", "SCAN", "RESULT", result_data);
+        /* Broadcast: these fire asynchronously after the SCAN command's
+         * cmd_process() cycle, so route to every port (incl. the bt_link UART
+         * the S3 requested the scan on), not just the reset-to-primary one. */
+        cmd_send_response_all("INFO", "SCAN", "RESULT", result_data);
     }
     char count_str[16];
     safe_snprintf(count_str, sizeof(count_str), "count=%d",
                   bt_ctx.discovered_devices.count);
-    cmd_send_response("OK", "SCAN", "DONE", count_str);
+    cmd_send_response_all("OK", "SCAN", "DONE", count_str);
 }
 #endif
 

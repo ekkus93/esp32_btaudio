@@ -25694,3 +25694,22 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   a superseded note's timer can't cut a newer one. Verified via mocked timing test.
 - Restored state: unpaired laptop from WROOM32 (+ removed laptop-side bond), Echo Buds
   reconnected, S3 autostart re-enabled. FIX NOT YET FLASHED (needs S3 flash to deploy).
+
+## 2026-07-12T13:41:53Z - Claude Opus 4.8 (1M) - Root-caused empty scan list: WROOM32 misroutes SCAN results
+
+- Find & pair (and plain Scan) showed no devices. Root cause (empirically confirmed by
+  sniffing /dev/ttyUSB0): WROOM32 bt_scan_emit_results() used cmd_send_response() for the
+  async INFO|SCAN|RESULT + OK|SCAN|DONE lines. Those fire seconds AFTER the SCAN command's
+  cmd_process() cycle, when s_reply_uart has reset to primary (USB) — so they went to the
+  USB console instead of back over bt_link to the S3. Raw serial SCAN finds the laptop +
+  SICKLUGGAGE fine; the S3 just never received the results.
+- Fix (esp_bt_audio_source): new cmd_send_response_all() broadcasts to every command port;
+  bt_scan_emit_results() now uses it for RESULT + DONE (keeps INFO|SCAN|RESULT wire format
+  the S3 parses). S3 bt_link already handles these safely (INFO fans to subs regardless of
+  pending; stray terminals with wrong verb / none pending are ignored — bt_link_session.c
+  62-76). Host test added (test_cmd_dual_uart: broadcast reaches both ports after a
+  secondary command). 67/67 WROOM32 host tests pass; builds clean. NEEDS WROOM32 FLASH.
+- HELP over bt_link is FINE (verified: 0 HELP lines leaked to USB primary). It's emitted
+  synchronously so s_reply_uart is still bt_link. The empty /api/console HELP output is a
+  display gap — console_post_h returns only the terminal OK, not the streamed INFO|HELP|ENTRY
+  lines. Follow-up idea: have console collect INFO frames during a command.

@@ -237,6 +237,30 @@ void test_async_response_defaults_to_primary_after_secondary_command(void)
     TEST_ASSERT_NULL(strstr(mock_uart_get_tx_data_port(SECONDARY), "INFO|ASYNC|TICK"));
 }
 
+/* ── async broadcast reaches BOTH ports (scan results fix) ──────────────── */
+
+/* Scan results (INFO|SCAN|RESULT / OK|SCAN|DONE) fire asynchronously long after
+ * the SCAN command's cmd_process() cycle, when s_reply_uart has reset to the
+ * primary. cmd_send_response_all() must broadcast so a secondary (bt_link)
+ * requester still receives them — otherwise the S3's scan list stays empty. */
+void test_scan_broadcast_reaches_both_ports_after_secondary_command(void)
+{
+    /* a secondary command completes -> reply port resets to primary */
+    mock_uart_inject_rx_data_port(SECONDARY, "VERSION\r\n", 9);
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_process());
+    mock_uart_reset_tx_port(PRIMARY);
+    mock_uart_reset_tx_port(SECONDARY);
+
+    /* async scan-style emission, as bt_scan_emit_results() does */
+    cmd_send_response_all("INFO", "SCAN", "RESULT", "aa:bb:cc:dd:ee:ff,Test Dev");
+    cmd_send_response_all("OK", "SCAN", "DONE", "count=1");
+
+    /* both ports get them — the secondary (bt_link) is what matters here */
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data_port(SECONDARY), "INFO|SCAN|RESULT|aa:bb:cc:dd:ee:ff,Test Dev"));
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data_port(SECONDARY), "OK|SCAN|DONE|count=1"));
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data_port(PRIMARY), "INFO|SCAN|RESULT|aa:bb:cc:dd:ee:ff,Test Dev"));
+}
+
 /* ── mid-stream control via the secondary port (the headline feature) ───── */
 
 void test_volume_change_via_secondary_during_streaming(void)
@@ -291,6 +315,7 @@ int main(void)
     RUN_TEST(test_line_overflow_on_secondary_does_not_disturb_primary);
     RUN_TEST(test_secondary_accepts_lf_only_and_cr_only);
     RUN_TEST(test_async_response_defaults_to_primary_after_secondary_command);
+    RUN_TEST(test_scan_broadcast_reaches_both_ports_after_secondary_command);
     RUN_TEST(test_volume_change_via_secondary_during_streaming);
     RUN_TEST(test_uartaudio_start_from_secondary_responds_on_secondary);
     return UNITY_END();

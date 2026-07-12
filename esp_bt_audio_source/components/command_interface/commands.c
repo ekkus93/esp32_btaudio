@@ -131,6 +131,29 @@ cmd_status_t cmd_send_response(const char *status, const char *command, const ch
     return CMD_SUCCESS;
 }
 
+cmd_status_t cmd_send_response_all(const char *status, const char *command, const char *result, const char *data)
+{
+    /* Broadcast to every command port. Used for ASYNC results (e.g. scan
+     * INFO|SCAN|RESULT / OK|SCAN|DONE) that arrive long after the initiating
+     * command's cmd_process() cycle ended — by then s_reply_uart has reset to
+     * the primary, so a plain cmd_send_response() would misroute them to USB
+     * even when the scan was requested over the secondary (bt_link) UART. */
+    char buf[512];
+    const char *d = data ? data : "";
+    int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n",
+                       status ? status : "", command ? command : "",
+                       result ? result : "", d);
+    for (size_t i = 0; i < CMD_PORT_COUNT; i++)
+    {
+        cmd_write_port(s_cmd_ports[i], buf, (size_t)len);
+    }
+    if (cmd_test_capture_response)
+    {
+        cmd_test_capture_response(buf);
+    }
+    return CMD_SUCCESS;
+}
+
 cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
 {
     uint32_t seq = ++s_event_sequence;
