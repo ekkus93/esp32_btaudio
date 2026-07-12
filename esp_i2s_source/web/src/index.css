@@ -398,6 +398,48 @@ header h1 {
 .tone-presets { display: flex; gap: 8px; margin-bottom: 8px; }
 .tone-presets button { flex: 1; }
 
+/* Piano keyboard: 2 octaves (C3–C5). White keys flex in a row; black keys sit
+ * absolutely over each white's right edge. Full-width card. */
+.card.piano { grid-column: 1 / -1; }
+.piano-keys {
+  position: relative;
+  display: flex;
+  height: 140px;
+  margin: 8px 0 10px;
+  user-select: none;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.pkey.white {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 30px;
+  background: #f5f7fb;
+  border: 1px solid #2a303b;
+  border-radius: 0 0 5px 5px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: pointer;
+}
+.pkey.white:active, .pkey.white.on { background: var(--accent); }
+.pkey.white.mid { background: #e6ecfa; }
+.pkey.white.mid.on { background: var(--accent); }
+.pkey.black {
+  position: absolute;
+  top: 0;
+  right: -10px;
+  width: 20px;
+  height: 62%;
+  background: #10141b;
+  border: 1px solid #000;
+  border-radius: 0 0 4px 4px;
+  z-index: 2;
+  cursor: pointer;
+}
+.pkey.black:active, .pkey.black.on { background: var(--accent); }
+.klabel { font-size: 10px; color: #2a303b; padding-bottom: 4px; pointer-events: none; }
+
 footer {
   margin-top: 26px;
   text-align: center;

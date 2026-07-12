@@ -49,6 +49,21 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.getByRole("heading", { name: "Volume" })).toBeVisible();
   });
 
+  test("Tone tab has a Piano card (2 octaves) between Tone and Volume", async ({ page }) => {
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Tone" }).click();
+    const piano = page.locator(".card.piano");
+    await expect(piano.getByRole("heading", { name: "Piano" })).toBeVisible();
+    await expect(piano.locator(".pkey.white")).toHaveCount(15); // C3..C5
+    await expect(piano.locator(".pkey.black")).toHaveCount(10);
+    for (const c of ["C3", "C4", "C5"]) await expect(piano.getByText(c, { exact: true })).toBeVisible();
+    // DOM order: Tone card, then Piano, then Volume.
+    const cards = page.locator(".grid .card");
+    await expect(cards.nth(0).locator("h2")).toContainText("Tone");
+    await expect(cards.nth(1).locator("h2")).toHaveText("Piano");
+    await expect(cards.nth(2).locator("h2")).toHaveText("Volume");
+  });
+
   test("Settings tab shows WiFi setup, Network, Control AP, Bluetooth", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Settings" }).click();
