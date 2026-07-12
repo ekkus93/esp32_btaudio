@@ -4,6 +4,30 @@
 refactors: split by responsibility, no logic changes. Do each file as its own
 branch/PR, verify green, then move on.
 
+## Progress (Ralph loop)
+
+**Done (6/10), each behavior-preserving, verified, committed & pushed:**
+#3 web_ui.c (1025→253), #4 cmd_handlers_bt.c (838→544 + new cmd_handlers_debug.c),
+#7 test_commands.c (1129→250, host 66/66 unchanged), #8 bt_a2dp_test.c (929→166,
+test-app build clean), #9 run_all_tests.py (1343→595, 725/725 host run unchanged),
+#10 run_test_scenarios.py (833→247, import/dispatch smoke). Verified per project:
+WROOM32 host CTest + `idf.py build`; S3 `idf.py build`; test_bluetooth app build;
+flake8 parity (no new findings).
+
+**Remaining (4/10) — the hard, shared-state tier; each needs a careful dedicated
+pass, NOT a mechanical move:**
+- **#2 bt_manager.c** — no file-static state (good), but functions are wrapped in
+  interleaved `#ifdef ESP_PLATFORM / UNIT_TEST / CONFIG_BT_MOCK_TESTING` guards;
+  a naive move risks guard-boundary errors that change what compiles per build.
+  CLAUDE.md: consult `code_review/` before refactoring bt_manager. Host-verifiable.
+- **#1 audio_processor.c** — heavy shared `s_*` state; do the internal-state
+  extraction first (2.x/1.x plan). Host-verifiable.
+- **#5 bt_source_mock.c / #6 bt_source_stubs.c** — ~30 interspersed static vars
+  incl. locally-defined struct typedefs + multi-line initializers; 5 state names
+  collide with the mirror file; **only compile/link-verifiable here** (Unity suites
+  need hardware). Extern-the-state approach works but needs typedef relocation and
+  collision-safe naming.
+
 ## Ground rules (apply to every task)
 
 - [ ] **Structural-only commits.** No behavior change in a split commit. If you
