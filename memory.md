@@ -25670,3 +25670,10 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   station id, so reordering remaps ctrl_cfg.last_station (same as delete already does).
 - Built SPA+firmware, flashed S3 (/dev/ttyACM0, user-authorized). Verified reorder
   round-trip on device (move up then restore, persists). 13/13 S3 host tests, UI 9/9.
+
+## 2026-07-12T12:35:18Z - Claude Opus 4.8 (1M) - Piano card flashed + verified
+
+- Flashed S3 (/dev/ttyACM0, user-authorized) with the Piano card (Tone tab, C3-C5,
+  press-to-play via /api/tone). Verified on device: UI test passes, and a middle-C
+  (261 Hz) tone played + stopped cleanly over the Echo Buds A2DP link. Frontend-only
+  feature (Piano.tsx), no C changes.
