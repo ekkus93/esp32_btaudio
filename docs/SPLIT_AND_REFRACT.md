@@ -205,17 +205,19 @@ device test app (`app_main` → `UNITY_BEGIN`).
 entry path must stay. Convert to a package `tools/run_all_tests_lib/` (or
 `tools/rat/`) and keep `run_all_tests.py` as a thin CLI.
 
-- [ ] **9.1 `tools/rat/proc.py`** — `run_cmd`, `run_with_pty`, `ensure_esptool`.
-- [ ] **9.2 `tools/rat/cleanup.py`** — `cleanup_previous_artifacts`, `_unlink_artifact`.
-- [ ] **9.3 `tools/rat/host.py`** — `run_host_tests`, `run_standalone_host_tests`,
-      `run_cmake_unity_suite`, `generate_coverage_report`.
-- [ ] **9.4 `tools/rat/device.py`** — `run_device_suite`.
-- [ ] **9.5 `tools/rat/report.py`** — `aggregate_summary`, `count_unity_results`,
-      `_unity_counts_from_output`, `parse_flash_time_from_log`, `parse_ctest_duration`.
-- [ ] **9.6 `run_all_tests.py`** keeps only `main(argv)` + argparse, importing the
-      above (~200 lines). **Do not** move/rename the entry file.
-- [ ] **9.7 Verify:** `python tools/run_all_tests.py --no-device --no-standalone`
-      still green; `flake8 tools/run_all_tests.py tools/rat --max-line-length=120`.
+- [x] **9.1 `tools/rat/proc.py`** — `run_cmd`, `run_with_pty`, `ensure_esptool`. 93 lines.
+- [x] **9.2 `tools/rat/cleanup.py`** — `cleanup_previous_artifacts`, `_unlink_artifact`. 46 lines.
+- [x] **9.3 `tools/rat/host.py`** — `run_host_tests`, `run_standalone_host_tests`,
+      `run_cmake_unity_suite`, `generate_coverage_report`. 387 lines.
+- [x] **9.4 `tools/rat/device.py`** — `run_device_suite`. 69 lines.
+- [x] **9.5 `tools/rat/report.py`** — `aggregate_summary`, `count_unity_results`,
+      `_unity_counts_from_output`, `parse_flash_time_from_log`, `parse_ctest_duration`. 200 lines.
+      (Plus `tools/rat/common.py` for the shared `ROOT`/`TMP_DIR`, and `__init__.py`.)
+- [x] **9.6 `run_all_tests.py`** keeps `main(argv)` + argparse, importing the above.
+      **595 lines** (main() alone is ~550). Entry path unchanged.
+- [x] **9.7 Verify:** `flake8 tools/run_all_tests.py tools/rat --max-line-length=120`
+      shows **zero new findings** vs the original (identical advisory code counts);
+      `python tools/run_all_tests.py --no-device --no-standalone` green (see below).
 
 ---
 
