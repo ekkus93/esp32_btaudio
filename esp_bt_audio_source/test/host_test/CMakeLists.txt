@@ -354,6 +354,16 @@ add_executable(test_platform_storage_host test_platform_storage_host.c)
 target_link_libraries(test_platform_storage_host unity platform_shim_host)
 add_test(NAME test_platform_storage_host COMMAND $<TARGET_FILE:test_platform_storage_host>)
 
+# UT-3: DEBUG subcommand handlers (cmd_handlers_debug.c had no host test — 8/13
+# handlers never invoked). Links the real handler + commands_helpers; the test file
+# provides capture stubs for the weak cmd_send_response/cmd_send_event_pair and the
+# g_cmd_mock_* globals (cmd_handlers_bt.c is intentionally not linked).
+add_executable(test_cmd_handlers_debug test_cmd_handlers_debug.c
+    ../../components/command_interface/cmd_handlers_debug.c
+    ../../components/command_interface/commands_helpers.c)
+target_link_libraries(test_cmd_handlers_debug unity util_safe_host platform_shim_host)
+add_test(NAME test_cmd_handlers_debug COMMAND $<TARGET_FILE:test_cmd_handlers_debug>)
+
 # Simple host PSRAM unit tests (uses heap_caps mock)
 add_executable(test_psram test_psram.c
     mocks/esp_heap_caps_mock.c
