@@ -348,6 +348,12 @@ add_executable(test_nvs_storage_errors
 target_link_libraries(test_nvs_storage_errors unity util_safe_host platform_shim_host)
 add_test(NAME test_nvs_storage_errors COMMAND $<TARGET_FILE:test_nvs_storage_errors>)
 
+# UT-1: direct coverage of the REAL host storage KV store (platform_storage_host.c),
+# which the mock-backed nvs suites shadow (0% baseline). Links the real object.
+add_executable(test_platform_storage_host test_platform_storage_host.c)
+target_link_libraries(test_platform_storage_host unity platform_shim_host)
+add_test(NAME test_platform_storage_host COMMAND $<TARGET_FILE:test_platform_storage_host>)
+
 # Simple host PSRAM unit tests (uses heap_caps mock)
 add_executable(test_psram test_psram.c
     mocks/esp_heap_caps_mock.c
