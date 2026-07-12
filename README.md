@@ -133,7 +133,14 @@ For detailed coverage analysis, download the HTML report artifact from the CI ru
 
 #### GPIO Assignments
 
-**I2S Audio Interface:**
+> **⚠️ I2S pin map superseded.** The GPIO26/25/22/21 values below are the old
+> single-board plan. The actual two-board I2S contract (S3 slave-TX ↔ WROOM32
+> master-RX, 16-bit-in-32-bit slots) is in
+> [`esp_i2s_source/docs/SPEC.md`](esp_i2s_source/docs/SPEC.md) §3 and
+> [`esp_i2s_source/README.md`](esp_i2s_source/README.md): S3 **BCLK=GPIO15,
+> WS=GPIO16, DOUT=GPIO7**. Treat SPEC.md as authoritative for wiring.
+
+**I2S Audio Interface (superseded — see note above):**
 - BCLK (Bit Clock): GPIO26
 - WCLK/LRCLK (Word/LR Clock): GPIO25
 - DATA OUT: GPIO22 (from external device to ESP32)

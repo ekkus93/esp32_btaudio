@@ -348,16 +348,23 @@ the sink-available path (see CTRL-1c caveat).
 
 ## DOC-1 — Documentation + regression
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` Done.
 
 ### Tasks
-- [ ] **DOC-1a** esp_i2s_source README rewritten (supersede README_orig.md);
-      root README wiring/system diagrams updated to SPEC §3.2 (they still
-      show the old GPIO21 plan).
-- [ ] **DOC-1b** Host tests wired into a `run_all_tests`-style entry;
-      counts recorded here.
-- [ ] **DOC-1c** SPEC.md changelog with contract deviations found on
-      hardware.
+- [x] **DOC-1a** `README.md` rewritten to describe the built S3 system
+      (architecture, component table, S3↔WROOM32 wiring incl. the real
+      GPIO15/16/7 I2S pins, build/test/flash, the actual `/api/*` + `/ws`
+      surface, two-stage volume). Explicitly supersedes `README_orig.md`
+      (the WROOM32-era stub, kept for reference).
+- [x] **DOC-1b** Host tests run via `tools/run_host_tests.sh` (CTest, reports
+      pass/fail counts; `--coverage`/`--asan` flags). **13 suites**: sanity,
+      signal_gen, pcm_ring, i2s_out_pump, i2s_out_gain, bt_link_parser,
+      bt_link_session, wifi_sm, radio_parse, station_store, radio_resampler,
+      ctrl_cfg, ctrl_sm — 13/13 passing.
+- [x] **DOC-1c** SPEC.md §9 "Hardware changelog" added — records the on-bench
+      contract deviations (I2S pins 15/16/7, 16-in-32 slots, WiFi PS_NONE, ~5.9 s
+      PCM buffer, audio/aacp detection, WROOM32 volume dead-code + s16 fix,
+      laptop-sink cold-connect limitation, orchestrator RUN=1 wait, VOL-reset).
 
 ---
 

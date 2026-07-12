@@ -290,3 +290,46 @@ tree). Build output is a single minified JS bundle + CSS + `index.html`.
 Task breakdown: see `REDO1_TODO.md`. (A PC→WiFi raw-PCM streaming mode,
 formerly NET-2, is parked as optional future work — radio covers the
 primary use case.)
+
+## 9. Hardware changelog — contract deviations found on the bench (DOC-1c)
+
+Things that differ from the spec-as-written above, or that were only learned by
+running on real hardware. Newest first.
+
+- **I2S pins (§3.1/§3.2):** the built firmware uses **BCLK=GPIO15, WS=GPIO16,
+  DOUT=GPIO7**, not the earlier GPIO21-based plan. The 15/16 pins were proven to
+  lock the slave to the WROOM32 master during bring-up; the wiring table here
+  reflects the plan, the code (`components/i2s_out`) is authoritative.
+- **I2S slot format (§3.3):** confirmed 16-bit data in 32-bit slots with
+  `slot_bit_width=32, ws_width=32, ws_pol=false, bit_shift=true`. The S3 sends
+  full 32-bit samples with the audio in the top 16 bits; any disagreement
+  garbles to static.
+- **WiFi power-save:** IDF's default `WIFI_PS_MIN_MODEM` throttled a sustained
+  TCP audio stream to ~119 kbps with heavy jitter (below a 128 kbps station).
+  `esp_wifi_set_ps(WIFI_PS_NONE)` in `wifi_mgr` is required for gapless radio.
+- **PCM jitter buffer:** the decoded-PCM ring is **~5.9 s** (1 MiB) with a ~3 s
+  prebuffer gate (`radio_audio_ready`), re-armed on full drain — needed to ride
+  out normal WiFi/TCP hiccups. The original shallow buffer caused choppy audio.
+- **AAC codec detection:** SHOUTcast AAC+ streams report `Content-Type:
+  audio/aacp` (not `audio/aac`); the substring match handles it and enables
+  HE-AAC (SBR) so a 32 kbps base decodes to 44.1 kHz.
+- **WROOM32 VOLUME was a no-op** (a separate project, but it gates M6/M7 UX):
+  its `apply_volume()` existed but was never called, and once wired in it
+  scaled the 16-bit A2DP/SBC buffer with 32-bit math (dispatching on the I2S
+  input `bit_depth=32`) → loud static. Fixed with `apply_volume_s16()` on the
+  A2DP output. Volume verified linear via laptop A2DP capture (both the WROOM32
+  post-mix control and the new S3 pre-I2S `/api/volume` trim).
+- **A2DP connect direction (M7):** a Linux **laptop** sink refuses a cold,
+  WROOM32-**initiated** A2DP-source connection (transient pairing →
+  `br-connection-timeout`); it only accepts when the *laptop* initiates. Real
+  earbuds/speakers accept the incoming connection, so M7 is validated against
+  the product sink (Echo Buds), not the laptop.
+- **Orchestrator connect confirmation (CTRL-1b):** the WROOM32 emits **no**
+  connect/disconnect EVENT, and its `START` can report failure while a slow sink
+  is still linking. The orchestrator therefore nudges `START` then **polls
+  `STATUS` for `RUN=1`** as the real link-up signal, rather than trusting
+  `START`'s result. Cold-start to music measured ~6 s.
+- **VOLUME reset on connect:** the WROOM32 resets `VOL` to 40 on a fresh A2DP
+  connection (AVRCP/default), so autostart music currently comes up at 40 rather
+  than the persisted level. Open polish item (orchestrator could set a target
+  volume post-connect).

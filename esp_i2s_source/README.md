@@ -1,183 +1,118 @@
-# ESP32 I2S Audio Source with WebSocket Interface
+# esp_i2s_source — ESP32-S3 internet-radio / tone source
 
-This project implements an ESP32-based I2S audio source with a WebSocket interface for control. It generates audio data and sends it to the Bluetooth Audio Source ESP32 via I2S.
-
-## Build and Installation Guide
-
-### Prerequisites
-
-- ESP-IDF v4.4 or newer
-- Python 3.6 or newer
-- Git
-- A compatible ESP32 development board (WROOM32)
-- USB cable for connecting to your development board
-- WiFi network for the WebSocket interface
-
-### Setting up the Environment
-
-1. Install ESP-IDF following the [official installation guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html)
-
-2. Activate the ESP-IDF environment:
-   ```bash
-   . $HOME/esp/esp-idf/export.sh  # Adjust path if necessary
-   ```
-
-### Configuring the Project
-
-1. Navigate to the project directory:
-   ```bash
-   cd /home/phil/work/esp32/esp32_btaudio/esp_i2s_source
-   ```
-
-2. Configure the project using the ESP-IDF tool:
-   ```bash
-   idf.py menuconfig
-   ```
-
-3. Configure WiFi settings:
-   - Navigate to "Example Connection Configuration"
-   - Enter your WiFi SSID and password
-
-4. Configure any additional project settings:
-   - I2S pin assignments (if necessary)
-   - Other project-specific options
-
-### Building the Project
-
-1. Build the project:
-   ```bash
-   idf.py build
-   ```
-
-2. This will generate the binary files in the `build` directory.
-
-### Flashing to ESP32
-
-1. Connect your ESP32 board to your computer with a USB cable.
-
-2. Flash the firmware to the ESP32:
-   ```bash
-   idf.py -p PORT flash
-   ```
-   Replace `PORT` with your device's serial port:
-   - Linux: `/dev/ttyUSB0` or `/dev/ttyACM0`
-   - macOS: `/dev/cu.usbserial-XXX`
-   - Windows: `COM3` (or other COM port number)
-
-3. To build, flash, and monitor output in one command:
-   ```bash
-   idf.py -p PORT flash monitor
-   ```
-
-4. To exit the serial monitor, press `Ctrl+]`.
-
-### Verifying the Installation
-
-1. After flashing, the ESP32 will restart and attempt to connect to the configured WiFi network.
-
-2. Check the serial monitor for IP address information:
-   ```
-   I (4942) example_connect: Connected to [YOUR_WIFI_SSID]
-   I (4942) example_connect: IPv4 address: 192.168.x.x
-   ```
-
-3. Once connected, the WebSocket server will start:
-   ```
-   I (4962) ws_server: Starting server on port: '80'
-   I (4962) ws_server: Registering URI handlers
-   ```
-
-4. The I2S output will be available on the configured pins to connect to the Bluetooth ESP32.
-
-## WebSocket API
-
-The WebSocket interface allows control over the I2S audio source and provides a bridge to the Bluetooth ESP32. Commands and responses are sent as JSON objects.
-
-### Command Format
-
-Commands are sent as JSON objects:
-```json
-{
-  "cmd": "COMMAND_NAME",
-  "params": {
-    "param1": "value1",
-    "param2": "value2"
-  }
-}
-```
-
-Responses are also JSON objects:
-```json
-{
-  "status": "ok|error|info",
-  "cmd": "COMMAND_NAME",
-  "result": "RESULT",
-  "data": {
-    "key1": "value1",
-    "key2": "value2"
-  }
-}
-```
-
-### WebSocket Commands
-
-#### Audio Source Control
-| Command | Description | Parameters | Example |
-|---------|-------------|------------|---------|
-| `audio_source` | Set audio source | `{"type": "sine/mp3/stream"}` | `{"cmd": "audio_source", "params": {"type": "sine"}}` |
-| `play` | Start audio playback | None | `{"cmd": "play"}` |
-| `stop` | Stop audio playback | None | `{"cmd": "stop"}` |
-| `volume` | Set volume | `{"level": 0-100}` | `{"cmd": "volume", "params": {"level": 75}}` |
-
-#### Bluetooth Control (Pass-through to Bluetooth ESP32)
-| Command | Description | Parameters | Example |
-|---------|-------------|------------|---------|
-| `bt_scan` | Scan for Bluetooth devices | None | `{"cmd": "bt_scan"}` |
-| `bt_connect` | Connect to Bluetooth device | `{"mac": "XX:XX:XX:XX:XX:XX"}` | `{"cmd": "bt_connect", "params": {"mac": "AA:BB:CC:DD:EE:FF"}}` |
-| `bt_status` | Get Bluetooth status | None | `{"cmd": "bt_status"}` |
-
-#### System Commands
-| Command | Description | Parameters | Example |
-|---------|-------------|------------|---------|
-| `wifi_status` | Get WiFi connection status | None | `{"cmd": "wifi_status"}` |
-| `system_info` | Get system information | None | `{"cmd": "system_info"}` |
-| `restart` | Restart the ESP32 | None | `{"cmd": "restart"}` |
-
-### WebSocket Events
-
-The server will push events to connected clients:
-
-| Event | Description | Format |
-|-------|-------------|--------|
-| `bt_status_change` | Bluetooth status update | `{"event": "bt_status_change", "data": {"status": "connected", "device": "Speaker"}}` |
-| `audio_status` | Audio playback status change | `{"event": "audio_status", "data": {"status": "playing", "source": "sine"}}` |
-| `bt_scan_result` | Device found during scan | `{"event": "bt_scan_result", "data": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Speaker"}}` |
-
-### Example WebSocket Communication
+The "brain" board of a two-ESP32 internet-radio system. This **ESP32-S3**
+(WROOM-1 N16R8, 16 MB flash / 8 MB PSRAM) fetches internet radio (or generates
+a test tone), decodes + resamples it to 44.1 kHz stereo, and streams PCM over
+**I2S** to a second ESP32 (`esp_bt_audio_source`, a WROOM32) which bridges it to
+a Bluetooth A2DP speaker/earbuds. WiFi provisioning, a web UI, station presets,
+and the Bluetooth control link all live here; the WROOM32 is a thin A2DP sink
+driver commanded over UART.
 
 ```
-// Client -> Server: Start scanning for Bluetooth devices
-{"cmd": "bt_scan"}
-
-// Server -> Client: Device found (event)
-{"event": "bt_scan_result", "data": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Living Room Speaker"}}
-
-// Server -> Client: Scan complete
-{"status": "ok", "cmd": "bt_scan", "result": "complete", "data": {"count": 1}}
-
-// Client -> Server: Connect to the device
-{"cmd": "bt_connect", "params": {"mac": "AA:BB:CC:DD:EE:FF"}}
-
-// Server -> Client: Connection result
-{"status": "ok", "cmd": "bt_connect", "result": "connected", "data": {"mac": "AA:BB:CC:DD:EE:FF"}}
-
-// Client -> Server: Start playback
-{"cmd": "play"}
-
-// Server -> Client: Playback started
-{"status": "ok", "cmd": "play", "result": "success"}
+  Internet ──WiFi──▶ ESP32-S3 (this) ──I2S──▶ ESP32-WROOM32 ──A2DP──▶ speaker/earbuds
+                     radio decode +           esp_bt_audio_source
+                     resample + web UI        (commanded over UART1)
 ```
 
-## Hardware Connections
+> This supersedes `README_orig.md` (the original WROOM32-era stub — its
+> WebSocket JSON command API never matched the built firmware and is kept only
+> for historical reference). The authoritative design is `docs/SPEC.md`; the
+> task history is `docs/REDO1_TODO.md`.
 
-Please refer to the main project README for GPIO pin assignments and hardware connections between this ESP32 and the Bluetooth Audio Source ESP32.
+## Architecture
+
+Component (in `components/`) responsibilities:
+
+| Component | Role |
+|---|---|
+| `signal_gen` | pure sample generators (sine tone) |
+| `i2s_out` | I2S slave-TX channel + pure pump + PSRAM ring + pre-I2S software volume |
+| `tone` | controllable test-tone fill source |
+| `bt_link` | UART1 command protocol to the WROOM32 (line parser + session state machine + device glue) |
+| `wifi_mgr` | STA/AP fallback state machine + provisioning + mDNS |
+| `radio` | HTTP(S) stream client + ICY demux + PSRAM rings + `esp_audio_codec` MP3/AAC decoder + streaming resampler + station store |
+| `web_ui` | `esp_http_server`: embedded SPA + REST API + WebSocket terminal/EVENT feed |
+| `ctrl` | boot orchestrator: NVS config + pure FSM that auto-connects the sink and resumes the last station |
+| `cmd_console` | UART console for runtime WiFi provisioning |
+
+The single audio output path: `main`'s `audio_out` task arbitrates the source
+(radio decoded PCM when playing, else the tone, else silence), applies the
+pre-I2S software volume, packs 16-in-32, and writes to `i2s_out`.
+
+## Hardware wiring (S3 ↔ WROOM32)
+
+See `docs/SPEC.md` §3 for the full contract. Summary:
+
+| Signal | S3 (slave) | WROOM32 (master) |
+|---|---|---|
+| I2S BCLK | GPIO15 | (master out) |
+| I2S WS | GPIO16 | (master out) |
+| I2S DOUT→DIN | GPIO7 → | (data in) |
+| UART1 TX→RX | GPIO17 → | GPIO16 |
+| UART1 RX←TX | GPIO18 ← | GPIO17 |
+
+I2S is **16-bit data in 32-bit slots** (`ws_width=32`, `bit_shift`) — both sides
+must agree exactly or the audio garbles. The S3 is the I2S **slave**; the
+WROOM32 drives the clocks.
+
+## Build
+
+ESP-IDF **v5.5.1**, target `esp32s3`. WiFi credentials and other settings are
+generated config — edit `sdkconfig.defaults`, not `sdkconfig` (which is
+regenerated). `managed_components/` is gitignored (restored by the build).
+
+```bash
+. $HOME/esp/esp-idf/export.sh
+idf.py build
+idf.py -p /dev/ttyACM0 flash monitor    # S3 is on /dev/ttyACM0 (USB-JTAG)
+```
+
+The WROOM32 is on `/dev/ttyUSB0` — a **different** device; never flash it from
+here (see the repo-root CLAUDE.md).
+
+## Host tests (no hardware)
+
+Pure logic is host-tested off-device with CTest + Unity:
+
+```bash
+tools/run_host_tests.sh            # build + run all host tests
+tools/run_host_tests.sh --coverage # optional gcov/lcov
+tools/run_host_tests.sh --asan     # optional AddressSanitizer
+```
+
+Current inventory: **13 suites** — `test_sanity`, `test_signal_gen`,
+`test_pcm_ring`, `test_i2s_out_pump`, `test_i2s_out_gain`, `test_bt_link_parser`,
+`test_bt_link_session`, `test_wifi_sm`, `test_radio_parse`, `test_station_store`,
+`test_radio_resampler`, `test_ctrl_cfg`, `test_ctrl_sm`. Device/E2E behaviour
+(A2DP output, endurance, cold-start) is validated on hardware — see
+`docs/SPEC.md` §7 and the changelog in §9.
+
+## Web API
+
+Served on port 80 (also `http://esp-i2s-source.local/` via mDNS). The SPA is
+embedded as a gzip blob; the same endpoints back it:
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/` | GET | embedded single-page UI |
+| `/api/status` | GET | aggregated status (wifi, wroom, tone, radio, i2s telemetry) |
+| `/api/wifi` | POST | STA provisioning (`{ssid, pass}`) |
+| `/api/tone` | POST/DELETE | enable (`{hz}`) / disable the test tone |
+| `/api/radio` | POST/DELETE | play (`{url[, id]}`) / stop a stream |
+| `/api/stations` | GET/POST/PUT/DELETE | station preset CRUD |
+| `/api/volume` | POST | S3 pre-I2S software gain (`{pct}` 0–100) |
+| `/api/ctrl` | GET/POST | boot-orchestrator config (`{sink_mac, autostart}`) |
+| `/ws` | WS | terminal console (`term_in`/`term_out`) + live WROOM32 EVENT feed |
+
+The `/ws` terminal forwards typed commands to the WROOM32 over `bt_link`
+(`STATUS`, `CONNECT <mac>`, `VOLUME <0-100>`, `PAIRED`, …) and streams its
+INFO/EVENT lines back.
+
+## Volume — two stages
+
+- **S3 pre-I2S** (`/api/volume {pct}`): trims the source level before I2S.
+  In-memory (resets to 100 on boot).
+- **WROOM32 post-mix** (`VOLUME 0-100` via the console): scales the final A2DP
+  PCM; persisted in NVS. This is the primary control.
+
+Both are linear and were verified on hardware via an A2DP capture sweep.
