@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   getStatus, setWifi, setTone, toneOff,
-  setS3Volume, getBtVolume, setBtVolume,
-  type DeviceStatus,
+  setS3Volume, getBtVolume, setBtVolume, setApEnabled,
+  type DeviceStatus, type ApStatus,
 } from "./api";
 import { Terminal } from "./Terminal";
 import { Bluetooth } from "./Bluetooth";
@@ -153,6 +153,42 @@ function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; o
   );
 }
 
+function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  if (!ap) return null;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setApEnabled(!ap.enabled);
+    } finally {
+      setBusy(false);
+      onChange();
+    }
+  };
+
+  return (
+    <section className="card">
+      <h2>
+        Control AP
+        <span className={`dot ${ap.on ? "ok" : "bad"}`} title={ap.on ? "broadcasting" : "off"} />
+      </h2>
+      <p className="muted">
+        The device's own WiFi. Connect to it to reach this page directly — even
+        away from your home network.
+      </p>
+      <Field k="Network" v={ap.ssid} />
+      <Field k="Password" v={ap.pass} />
+      <Field k="Address" v={ap.on ? `http://${ap.ip ?? "192.168.4.1"}` : "—"} />
+      {ap.on && typeof ap.clients === "number" && <Field k="Clients" v={ap.clients} />}
+      <label className="ap-toggle">
+        <input type="checkbox" checked={ap.enabled} onChange={toggle} disabled={busy} />
+        Keep AP on alongside WiFi
+      </label>
+    </section>
+  );
+}
+
 function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => void }) {
   const [pre, setPre] = useState(100); // ESP32-S3 pre-I2S gain %
   const [post, setPost] = useState(40); // WROOM32 post-mix volume
@@ -218,16 +254,16 @@ function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => 
 }
 
 const TABS = [
-  { id: "setup", label: "Setup" },
   { id: "radio", label: "Radio" },
   { id: "tone", label: "Tone" },
   { id: "terminal", label: "Terminal" },
+  { id: "settings", label: "Settings" },
 ] as const;
 
 export function App() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<string>("setup");
+  const [tab, setTab] = useState<string>("radio");
 
   const refresh = () =>
     getStatus()
@@ -270,7 +306,7 @@ export function App() {
         ))}
       </nav>
 
-      {tab === "setup" && (
+      {tab === "settings" && (
         <div className="grid">
           <Card title="Network">
             {w ? (
@@ -297,14 +333,30 @@ export function App() {
             />
           </Card>
 
+          <ApControl ap={w?.ap} onChange={refresh} />
           <Bluetooth />
         </div>
       )}
 
       {tab === "radio" && (
         <div className="grid">
-          <Radio radio={status?.radio} onChange={refresh} />
-          <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
+          {status && w?.state !== "CONNECTED" ? (
+            <section className="card wifi-gate">
+              <h2>WiFi required</h2>
+              <p className="muted">
+                Internet radio needs a WiFi connection, and this device isn't on your
+                network yet. Set up WiFi first, then come back to play a station.
+              </p>
+              <button className="primary" onClick={() => setTab("settings")}>
+                Go to Settings
+              </button>
+            </section>
+          ) : (
+            <>
+              <Radio radio={status?.radio} onChange={refresh} />
+              <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
+            </>
+          )}
         </div>
       )}
 

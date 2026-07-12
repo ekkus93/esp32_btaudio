@@ -79,6 +79,16 @@ static esp_err_t status_get(httpd_req_t *req)
     if (wi.ssid[0]) cJSON_AddStringToObject(wifi, "ssid", wi.ssid);
     cJSON_AddStringToObject(wifi, "ip", wi.ip);
     cJSON_AddNumberToObject(wifi, "rssi", wi.rssi);
+    /* Concurrent SoftAP (control access point) info. */
+    cJSON *ap = cJSON_AddObjectToObject(wifi, "ap");
+    cJSON_AddBoolToObject(ap, "on", wi.ap_on);
+    cJSON_AddBoolToObject(ap, "enabled", wifi_mgr_ap_enabled());
+    cJSON_AddStringToObject(ap, "ssid", wi.ap_ssid);
+    cJSON_AddStringToObject(ap, "pass", wi.ap_pass);
+    if (wi.ap_on) {
+        cJSON_AddStringToObject(ap, "ip", wi.ap_ip);
+        cJSON_AddNumberToObject(ap, "clients", wi.ap_clients);
+    }
 
     cJSON *wroom = cJSON_AddObjectToObject(root, "wroom");
     cJSON_AddBoolToObject(wroom, "reachable", s_wroom_reachable);
@@ -297,6 +307,33 @@ static esp_err_t volume_post_h(httpd_req_t *req)
     cJSON_Delete(j);
     char out[48];
     snprintf(out, sizeof(out), "{\"ok\":true,\"pct\":%d}", i2s_out_get_gain());
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
+/* ---- /api/apmode: toggle the concurrent control AP (AP+STA vs STA-only) ---- */
+
+static esp_err_t apmode_post_h(httpd_req_t *req)
+{
+    char body[48];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    cJSON *en = j ? cJSON_GetObjectItem(j, "enabled") : NULL;
+    httpd_resp_set_type(req, "application/json");
+    if (!cJSON_IsBool(en)) {
+        cJSON_Delete(j);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing enabled\"}");
+        return ESP_OK;
+    }
+    bool enabled = cJSON_IsTrue(en);
+    cJSON_Delete(j);
+    wifi_mgr_set_ap_enabled(enabled);
+    char out[40];
+    snprintf(out, sizeof(out), "{\"ok\":true,\"enabled\":%s}", enabled ? "true" : "false");
     httpd_resp_sendstr(req, out);
     return ESP_OK;
 }
@@ -625,7 +662,7 @@ esp_err_t web_ui_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 20;   /* status/wifi/tone/radio/stations(x4)/ws/root */
+    cfg.max_uri_handlers = 28;   /* status/wifi/apmode/tone/radio/stations/volume/btvolume/ctrl/ws/root */
 
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
@@ -653,6 +690,8 @@ esp_err_t web_ui_start(void)
         .uri = "/api/stations", .method = HTTP_PUT, .handler = stations_put_h };
     const httpd_uri_t st_del_uri = {
         .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
+    const httpd_uri_t apmode_post_uri = {
+        .uri = "/api/apmode", .method = HTTP_POST, .handler = apmode_post_h };
     const httpd_uri_t volume_post_uri = {
         .uri = "/api/volume", .method = HTTP_POST, .handler = volume_post_h };
     const httpd_uri_t btvol_get_uri = {
@@ -677,6 +716,7 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &st_post_uri);
     httpd_register_uri_handler(s_server, &st_put_uri);
     httpd_register_uri_handler(s_server, &st_del_uri);
+    httpd_register_uri_handler(s_server, &apmode_post_uri);
     httpd_register_uri_handler(s_server, &volume_post_uri);
     httpd_register_uri_handler(s_server, &btvol_get_uri);
     httpd_register_uri_handler(s_server, &btvol_post_uri);

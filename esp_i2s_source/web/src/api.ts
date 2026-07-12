@@ -1,11 +1,21 @@
 // Thin fetch layer over the device REST API (SPEC §5.2).
 
+export interface ApStatus {
+  on: boolean;       // AP currently broadcasting
+  enabled: boolean;  // user setting (keep AP up alongside STA)
+  ssid: string;
+  pass: string;
+  ip?: string;
+  clients?: number;
+}
+
 export interface WifiStatus {
   mode: string; // STA | AP
   state?: string; // CONNECTING | CONNECTED
   ssid?: string;
   ip?: string;
   rssi?: number;
+  ap?: ApStatus;
 }
 
 export interface DeviceStatus {
@@ -45,6 +55,16 @@ export interface ProvisionResult {
   ok: boolean;
   host?: string;
   error?: string;
+}
+
+// Toggle the concurrent control AP (keep it up alongside STA, or STA-only).
+export async function setApEnabled(enabled: boolean): Promise<{ ok: boolean; enabled?: boolean }> {
+  const r = await fetch("/api/apmode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  return r.json();
 }
 
 export async function setWifi(ssid: string, pass: string): Promise<ProvisionResult> {

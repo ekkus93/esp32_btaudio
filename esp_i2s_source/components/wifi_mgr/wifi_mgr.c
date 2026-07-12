@@ -23,6 +23,7 @@ static const char *TAG = "wifi_mgr";
 #define NVS_NS        "wifi"
 #define NVS_KEY_SSID  "ssid"
 #define NVS_KEY_PASS  "pass"
+#define NVS_KEY_AP_ON "ap_on"
 
 static wifi_sm_t     s_sm;
 static esp_netif_t  *s_sta_netif;
@@ -33,6 +34,7 @@ static char          s_ap_pass[WIFI_MGR_PASS_MAX + 1];
 static bool          s_mdns_up;
 static bool          s_sta_got_ip;   /* true between GOT_IP and DISCONNECTED */
 static bool          s_wifi_started;  /* esp_wifi_start() called (any mode) */
+static bool          s_ap_enabled = true; /* keep the control AP up alongside STA */
 
 /* ---- credential persistence ---- */
 
@@ -68,11 +70,33 @@ static void erase_creds(void)
 {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_all(h);
+        nvs_erase_key(h, NVS_KEY_SSID);
+        nvs_erase_key(h, NVS_KEY_PASS);   /* keep ap_on across a WIFI RESET */
         nvs_commit(h);
         nvs_close(h);
     }
     s_ssid[0] = s_pass[0] = '\0';
+}
+
+static void load_ap_enabled(void)
+{
+    s_ap_enabled = true;   /* default: keep the control AP up */
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
+    uint8_t v = 1;
+    if (nvs_get_u8(h, NVS_KEY_AP_ON, &v) == ESP_OK) s_ap_enabled = (v != 0);
+    nvs_close(h);
+}
+
+static esp_err_t save_ap_enabled(bool on)
+{
+    nvs_handle_t h;
+    esp_err_t e = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (e != ESP_OK) return e;
+    e = nvs_set_u8(h, NVS_KEY_AP_ON, on ? 1 : 0);
+    if (e == ESP_OK) e = nvs_commit(h);
+    nvs_close(h);
+    return e;
 }
 
 /* ---- mode application ---- */
@@ -88,20 +112,35 @@ static void start_mdns(void)
     ESP_LOGI(TAG, "mDNS up: %s.local", WIFI_MGR_HOSTNAME);
 }
 
+/* Set the SoftAP interface config (idempotent). */
+static void ensure_ap_config(void)
+{
+    wifi_config_t cfg = {0};
+    strlcpy((char *)cfg.ap.ssid, WIFI_MGR_AP_SSID, sizeof(cfg.ap.ssid));
+    cfg.ap.ssid_len = strlen(WIFI_MGR_AP_SSID);
+    strlcpy((char *)cfg.ap.password, s_ap_pass, sizeof(cfg.ap.password));
+    cfg.ap.max_connection = 4;
+    cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    esp_wifi_set_config(WIFI_IF_AP, &cfg);
+}
+
 static void apply_sta(void)
 {
+    /* Concurrent AP+STA: keep the control AP up alongside STA when enabled, so
+     * the UI stays reachable at 192.168.4.1. STA-only when the AP is disabled. */
+    esp_wifi_set_mode(s_ap_enabled ? WIFI_MODE_APSTA : WIFI_MODE_STA);
+    if (s_ap_enabled) ensure_ap_config();
+
     wifi_config_t cfg = {0};
     strlcpy((char *)cfg.sta.ssid, s_ssid, sizeof(cfg.sta.ssid));
     strlcpy((char *)cfg.sta.password, s_pass, sizeof(cfg.sta.password));
-    esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
-    ESP_LOGI(TAG, "STA: associating with \"%s\"", s_ssid);
+    ESP_LOGI(TAG, "STA: associating with \"%s\" (control AP %s)",
+             s_ssid, s_ap_enabled ? "up" : "off");
     /* First start: STA_START fires -> on_wifi_event calls esp_wifi_connect().
-     * Already started (AP->STA switch or re-provision):
-     *   - holding an IP -> disconnect() first; the DISCONNECTED event re-drives
-     *     connect() with the new config (connect() is a no-op while associated,
-     *     which would strand us in CONNECTING).
-     *   - otherwise connect() directly. */
+     * Already started (re-provision): holding an IP -> disconnect() first (the
+     * DISCONNECTED event re-drives connect() with the new config); else
+     * connect() directly. */
     if (!s_wifi_started) {
         esp_wifi_start();
         s_wifi_started = true;
@@ -114,21 +153,15 @@ static void apply_sta(void)
 
 static void apply_ap(void)
 {
-    wifi_config_t cfg = {0};
-    strlcpy((char *)cfg.ap.ssid, WIFI_MGR_AP_SSID, sizeof(cfg.ap.ssid));
-    cfg.ap.ssid_len = strlen(WIFI_MGR_AP_SSID);
-    strlcpy((char *)cfg.ap.password, s_ap_pass, sizeof(cfg.ap.password));
-    cfg.ap.max_connection = 4;
-    cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
-    esp_wifi_set_mode(WIFI_MODE_AP);
-    esp_wifi_set_config(WIFI_IF_AP, &cfg);
+    /* No creds (or STA gave up): the AP must be up for setup/access. Use APSTA
+     * so a later START_STA doesn't need a disruptive mode flip. */
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    ensure_ap_config();
     if (!s_wifi_started) {
         esp_wifi_start();
         s_wifi_started = true;
     }
-    /* If already started (STA->AP on WIFI RESET), the mode/config change above
-     * takes effect immediately. */
-    ESP_LOGW(TAG, "AP provisioning: SSID=\"%s\" PASS=\"%s\"  (join and open the UI)",
+    ESP_LOGW(TAG, "control AP up: SSID=\"%s\" PASS=\"%s\"  (join and open http://192.168.4.1)",
              WIFI_MGR_AP_SSID, s_ap_pass);
     printf("DIAG|WIFI|AP|ssid=%s,pass=%s\n", WIFI_MGR_AP_SSID, s_ap_pass);
     fflush(stdout);
@@ -214,6 +247,7 @@ esp_err_t wifi_mgr_init(void)
         IP_EVENT, IP_EVENT_STA_GOT_IP, on_ip_event, NULL, NULL));
 
     derive_ap_password();
+    load_ap_enabled();
     bool has = load_creds();
     wifi_sm_init(&s_sm, has, WIFI_SM_DEFAULT_MAX_RETRIES);
     ESP_LOGI(TAG, "init: creds=%s -> %s", has ? "present" : "none",
@@ -273,21 +307,57 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out)
     if (!out) return;
     memset(out, 0, sizeof(*out));
     wifi_sm_state_t st = wifi_sm_state(&s_sm);
+
+    /* STA-side (the provisioning indicator the UI keys off). */
     if (st == WIFI_SM_AP_MODE) {
-        esp_netif_ip_info_t ip = {0};
-        if (s_ap_netif) esp_netif_get_ip_info(s_ap_netif, &ip);
         strlcpy(out->mode, "AP", sizeof(out->mode));
         strlcpy(out->ssid, WIFI_MGR_AP_SSID, sizeof(out->ssid));
+    } else {
+        esp_netif_ip_info_t ip = {0};
+        if (s_sta_netif) esp_netif_get_ip_info(s_sta_netif, &ip);
+        wifi_ap_record_t ap = {0};
+        strlcpy(out->mode, "STA", sizeof(out->mode));
+        strlcpy(out->state, (st == WIFI_SM_STA_CONNECTED) ? "CONNECTED" : "CONNECTING",
+                sizeof(out->state));
+        strlcpy(out->ssid, s_ssid, sizeof(out->ssid));
         snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&ip.ip));
-        return;
+        out->rssi = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) ? ap.rssi : 0;
     }
-    esp_netif_ip_info_t ip = {0};
-    if (s_sta_netif) esp_netif_get_ip_info(s_sta_netif, &ip);
-    wifi_ap_record_t ap = {0};
-    strlcpy(out->mode, "STA", sizeof(out->mode));
-    strlcpy(out->state, (st == WIFI_SM_STA_CONNECTED) ? "CONNECTED" : "CONNECTING",
-            sizeof(out->state));
-    strlcpy(out->ssid, s_ssid, sizeof(out->ssid));
-    snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&ip.ip));
-    out->rssi = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) ? ap.rssi : 0;
+
+    /* SoftAP block — reflects whatever the radio is actually running now. */
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&mode);
+    out->ap_on = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
+    strlcpy(out->ap_ssid, WIFI_MGR_AP_SSID, sizeof(out->ap_ssid));
+    strlcpy(out->ap_pass, s_ap_pass, sizeof(out->ap_pass));
+    if (out->ap_on) {
+        esp_netif_ip_info_t apip = {0};
+        if (s_ap_netif) esp_netif_get_ip_info(s_ap_netif, &apip);
+        snprintf(out->ap_ip, sizeof(out->ap_ip), IPSTR, IP2STR(&apip.ip));
+        wifi_sta_list_t clients = {0};
+        if (esp_wifi_ap_get_sta_list(&clients) == ESP_OK) out->ap_clients = clients.num;
+    }
+}
+
+bool wifi_mgr_ap_enabled(void)
+{
+    return s_ap_enabled;
+}
+
+esp_err_t wifi_mgr_set_ap_enabled(bool enabled)
+{
+    esp_err_t e = save_ap_enabled(enabled);
+    s_ap_enabled = enabled;
+    /* Flip the AP up/down WITHOUT disturbing an active STA link (just a mode
+     * change). When there's no STA, force the AP up regardless of the flag. */
+    wifi_sm_state_t st = wifi_sm_state(&s_sm);
+    bool sta_active = (st == WIFI_SM_STA_CONNECTED || st == WIFI_SM_STA_CONNECTING);
+    if (sta_active && !enabled) {
+        esp_wifi_set_mode(WIFI_MODE_STA);
+    } else {
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+        ensure_ap_config();
+    }
+    ESP_LOGI(TAG, "control AP %s", enabled ? "enabled" : "disabled");
+    return e;
 }

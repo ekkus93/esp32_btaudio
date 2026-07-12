@@ -9,6 +9,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdbool.h>
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -38,14 +39,27 @@ void wifi_mgr_get_status(char *buf, size_t buf_sz);
 
 /* Structured snapshot (for the web API). */
 typedef struct {
-    char mode[4];    /* "STA" | "AP" */
+    char mode[4];    /* "STA" | "AP" — STA-side provisioning indicator */
     char state[12];  /* "CONNECTED" | "CONNECTING" | "" (AP) */
     char ssid[WIFI_MGR_SSID_MAX + 1];
     char ip[16];
     int  rssi;       /* STA only; 0 otherwise */
+    /* SoftAP (concurrent AP+STA): the control AP is kept up alongside STA when
+     * enabled, so the UI is always reachable via 192.168.4.1. */
+    bool ap_on;      /* is the SoftAP currently broadcasting */
+    char ap_ssid[WIFI_MGR_SSID_MAX + 1];
+    char ap_pass[WIFI_MGR_PASS_MAX + 1];
+    char ap_ip[16];
+    int  ap_clients; /* stations currently associated to the SoftAP */
 } wifi_mgr_info_t;
 
 void wifi_mgr_get_info(wifi_mgr_info_t *out);
+
+/* Concurrent-AP control: when enabled (default), the SoftAP stays up alongside
+ * STA (APSTA). When disabled, the AP drops once STA is connected (STA-only).
+ * The AP is always forced up when there are no STA creds (setup). Persisted. */
+esp_err_t wifi_mgr_set_ap_enabled(bool enabled);
+bool      wifi_mgr_ap_enabled(void);
 
 #ifdef __cplusplus
 }

@@ -23,8 +23,8 @@ export function Bluetooth() {
   const [devices, setDevices] = useState<Dev[]>([]);
   const [paired, setPaired] = useState<Dev[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState(false);   // a scan has completed at least once
   const [prompt, setPrompt] = useState<PairPrompt | null>(null);
-  const [vol, setVol] = useState(60);
   const [note, setNote] = useState<string>("");
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,10 +65,15 @@ export function Bluetooth() {
 
   const scan = () => {
     setDevices([]);
+    setScanned(false);
     setScanning(true);
     command("SCAN");
     if (scanTimer.current) clearTimeout(scanTimer.current);
-    scanTimer.current = setTimeout(() => setScanning(false), 12000);
+    // The WROOM32 inquiry runs ~13s and reports at the end, so wait past it.
+    scanTimer.current = setTimeout(() => {
+      setScanning(false);
+      setScanned(true);
+    }, 15000);
   };
 
   const isPaired = (mac: string) => paired.some((p) => p.mac === mac);
@@ -86,6 +91,22 @@ export function Bluetooth() {
         </button>
         <button disabled={!connected} onClick={() => command("DISCONNECT")}>Disconnect</button>
       </div>
+
+      {scanning ? (
+        <p className="muted bt-hint">
+          Scanning… put the speaker/headphones you want in <strong>pairing mode</strong> now —
+          only devices actively in pairing mode are discoverable.
+        </p>
+      ) : scanned && devices.length === 0 ? (
+        <p className="muted bt-hint">
+          No devices found. Bluetooth speakers/earbuds only appear while they're in
+          <strong> pairing mode</strong> — put yours in pairing mode and scan again.
+        </p>
+      ) : devices.length === 0 ? (
+        <p className="muted bt-hint">
+          Tip: put your Bluetooth speaker/headphones in <strong>pairing mode</strong> before scanning.
+        </p>
+      ) : null}
 
       {devices.length > 0 && (
         <>
@@ -122,21 +143,6 @@ export function Bluetooth() {
           ))}
         </ul>
       )}
-
-      <h3>Volume</h3>
-      <div className="bt-vol">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={vol}
-          onChange={(e) => setVol(Number(e.target.value))}
-          onMouseUp={() => command(`VOLUME ${vol}`)}
-          onTouchEnd={() => command(`VOLUME ${vol}`)}
-          disabled={!connected}
-        />
-        <span className="v">{vol}</span>
-      </div>
 
       {note && <div className="banner ok">{note}</div>}
 

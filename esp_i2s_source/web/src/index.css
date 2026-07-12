@@ -285,7 +285,24 @@ header h1 {
 .vol-row input[type="range"] { flex: 1; }
 .vol-row .vol-val { flex: 0 0 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
-.tone-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.ap-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fg); cursor: pointer; }
+.ap-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.bt-hint { margin: 10px 0 2px; line-height: 1.5; }
+.bt-hint strong { color: var(--fg); }
+
+.wifi-gate button.primary {
+  margin-top: 12px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #04122a;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tone-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 .tone-row input {
   width: 90px;
   padding: 8px 10px;
@@ -314,4 +331,23 @@ footer {
   margin-top: 26px;
   text-align: center;
   font-size: 12px;
+}
+
+/* ---- Phones (narrow screens) ---- */
+@media (max-width: 520px) {
+  .app { padding: 16px 12px 32px; }
+  header h1 { font-size: 18px; }
+
+  /* Stack volume rows: full-width label above a full-width slider. */
+  .vol-row { flex-wrap: wrap; }
+  .vol-row label { flex: 1 1 auto; }
+  .vol-row input[type="range"] { flex: 1 1 100%; order: 3; }
+  .vol-row .vol-val { flex: 0 0 auto; }
+
+  /* Let the add-station name field grow instead of a fixed 150px. */
+  .radio-add input:first-of-type { width: auto; flex: 1 1 100%; }
+
+  /* Roomier tap targets on touch. */
+  .tab { padding: 10px 14px; }
+  .tone button, .tone-presets button, .card.radio button { padding: 9px 14px; }
 }
