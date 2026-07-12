@@ -21,12 +21,22 @@ void bt_manager_test_force_streaming_info_failure(bool force);
 void bt_manager_test_reset_btstate_mock(void);
 void bt_manager_test_set_connection_info(bool connected, const char *mac);
 
+/* Test-controlled VERSION override. cmd_handle_version() (host build) calls the weak
+ * cmd_version_host_override(): returning NULL exercises the HOST-MOCK default branch,
+ * a non-empty string exercises the override branch. */
+static const char *g_ver_override = NULL;
+const char *cmd_version_host_override(void)
+{
+    return g_ver_override;
+}
+
 void setUp(void)
 {
     mock_uart_init(115200);
     cmd_init();
     mock_uart_reset_tx();
     bt_manager_test_reset_btstate_mock();
+    g_ver_override = NULL;
 }
 
 void tearDown(void)
@@ -247,6 +257,107 @@ void test_spanlog_host_returns_without_crash(void)
     TEST_ASSERT_TRUE(result == CMD_SUCCESS || result == CMD_ERROR_INVALID_PARAM);
 }
 
+/* ── cmd_handle_version — override branch ──────────────────────────────── */
+
+void test_version_override_used_when_present(void)
+{
+    g_ver_override = "9.9.9-test";
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_VERSION;
+
+    mock_uart_reset_tx();
+    cmd_handle_version(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|9.9.9-test"));
+}
+
+void test_version_defaults_to_host_mock(void)
+{
+    g_ver_override = NULL; /* no override → HOST-MOCK default branch */
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.type = CMD_TYPE_VERSION;
+
+    mock_uart_reset_tx();
+    cmd_handle_version(&ctx);
+
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|VERSION|HOST-MOCK"));
+}
+
+/* ── cmd_handle_mem / audio_status / reset / parts (host #else branches) ─── */
+
+void test_mem_reports_mock_stats(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    mock_uart_reset_tx();
+    cmd_handle_mem(&ctx);
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|MEM|MOCK"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "DRAM=0"));
+}
+
+void test_audio_status_reports_mock(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    mock_uart_reset_tx();
+    cmd_handle_audio_status(&ctx);
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|AUDIO_STATUS|MOCK"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "SOURCE=MOCK"));
+}
+
+void test_reset_sends_mock_reboot(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    mock_uart_reset_tx();
+    cmd_status_t r = cmd_handle_reset(&ctx);
+    TEST_ASSERT_EQUAL_INT(CMD_SUCCESS, r); /* host: does not actually restart */
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|RESET|MOCK_REBOOT"));
+}
+
+void test_parts_unsupported_on_host(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    mock_uart_reset_tx();
+    cmd_handle_parts(&ctx);
+    const char *tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|PARTS|UNSUPPORTED"));
+}
+
+/* ── I2S diagnostic handlers (host #else MOCK branches) ────────────────── */
+
+void test_i2s_probe_rxtest_clkgen_mock(void)
+{
+    cmd_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
+    mock_uart_reset_tx();
+    cmd_handle_i2s_probe(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data(), "OK|I2SPROBE|MOCK"));
+
+    mock_uart_reset_tx();
+    cmd_handle_i2s_rxtest(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data(), "OK|I2SRXTEST|MOCK"));
+
+    mock_uart_reset_tx();
+    cmd_handle_i2s_clkgen(&ctx);
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data(), "OK|I2SCLKGEN|MOCK"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -267,6 +378,17 @@ int main(void)
     /* cmd_handle_version */
     RUN_TEST(test_version_sends_ok_response);
     RUN_TEST(test_version_string_is_non_empty);
+    RUN_TEST(test_version_override_used_when_present);
+    RUN_TEST(test_version_defaults_to_host_mock);
+
+    /* cmd_handle_mem / audio_status / reset / parts */
+    RUN_TEST(test_mem_reports_mock_stats);
+    RUN_TEST(test_audio_status_reports_mock);
+    RUN_TEST(test_reset_sends_mock_reboot);
+    RUN_TEST(test_parts_unsupported_on_host);
+
+    /* I2S diagnostics */
+    RUN_TEST(test_i2s_probe_rxtest_clkgen_mock);
 
     /* cmd_handle_spanlog */
     RUN_TEST(test_spanlog_host_returns_without_crash);
