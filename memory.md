@@ -25738,3 +25738,11 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   5000; /api/status.radio.prebuffer_ms reports it; NVS persistence confirmed across a
   hard reboot (set 2000 -> reboot -> 2000). Left at 3000ms default. UI buffer slider
   test passes on device.
+
+## 2026-07-12T15:19:30Z - Claude Opus 4.8 (1M) - Piano voice flashed
+
+- Flashed S3 with the piano-like voice (sg_piano_fill: additive harmonics + fast
+  attack + per-harmonic exponential decay; tone voice mode; /api/tone {voice}).
+  Piano + Arpeggios cards request voice="piano"; Tone card stays sine. Verified
+  device up + /api/tone accepts voice:piano. 13/13 host tests. MIDI unchanged
+  (note->pitch only); this changed the timbre.
