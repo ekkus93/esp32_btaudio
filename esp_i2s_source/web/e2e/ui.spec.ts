@@ -45,6 +45,26 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(rows.nth(n - 1).getByRole("button", { name: "Move down" })).toBeDisabled();
   });
 
+  test("Terminal shows multi-line command output (e.g. HELP)", async ({ page }) => {
+    await page.route("**/api/console", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "OK", result: "DONE", data: "",
+          lines: ["3 commands available", "VOLUME 0-100 - Set volume", "STATUS - Show status"],
+        }),
+      }));
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Terminal" }).click();
+    await page.locator(".card.terminal input").fill("HELP");
+    await page.locator(".card.terminal button", { hasText: "Send" }).click();
+    const log = page.locator(".card.terminal .term-log");
+    await expect(log).toContainText("VOLUME 0-100 - Set volume");
+    await expect(log).toContainText("STATUS - Show status");
+    await expect(log).toContainText("OK | DONE");
+  });
+
   test("Tone tab has the tone control + a volume card", async ({ page }) => {
     await page.goto("/");
     await page.locator(".tab", { hasText: "Tone" }).click();

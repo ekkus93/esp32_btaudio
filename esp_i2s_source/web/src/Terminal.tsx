@@ -26,6 +26,8 @@ export function Terminal() {
     setBusy(true);
     try {
       const r = await consoleCmd(cmd);
+      // Multi-line commands (HELP, PAIRED, ...) stream INFO lines first.
+      (r.lines ?? []).forEach((l) => push({ kind: "out", text: l }));
       const parts = [r.result, r.data].filter(Boolean).join(" | ");
       push({ kind: "out", text: `${r.status}${parts ? " | " + parts : ""}` });
     } catch {

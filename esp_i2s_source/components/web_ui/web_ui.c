@@ -47,6 +47,15 @@ static char              s_bt_prompt[80];
 static bool              s_bt_prompt_on;
 static SemaphoreHandle_t s_bt_mtx;
 
+/* Console INFO capture: multi-line commands (HELP, PAIRED, ...) stream their
+ * output as INFO| lines before the terminal OK|. While a console command runs
+ * we buffer those so /api/console can return them to the Terminal. */
+#define CONSOLE_MAX_LINES 40
+#define CONSOLE_LINE_MAX  100
+static char              s_console_lines[CONSOLE_MAX_LINES][CONSOLE_LINE_MAX];
+static int               s_console_n;
+static bool              s_console_capturing;
+
 /* WROOM32 identity, cached once at startup (a live bt_link query per status
  * poll would block the httpd handler on UART). Refreshed lazily on demand. */
 static char s_wroom_version[48];
@@ -709,6 +718,12 @@ static void on_bt_event(void *ctx, const bt_link_msg_t *m)
     if (!s_bt_mtx) return;
     char mac[20], name[36];
     xSemaphoreTake(s_bt_mtx, portMAX_DELAY);
+    /* Buffer any INFO line while a console command is capturing (e.g. HELP
+     * entries), so /api/console can return the full multi-line output. */
+    if (s_console_capturing && m->status == BT_LINK_INFO && s_console_n < CONSOLE_MAX_LINES) {
+        const char *txt = (m->data && m->data[0]) ? m->data : m->result;
+        strlcpy(s_console_lines[s_console_n++], txt ? txt : "", CONSOLE_LINE_MAX);
+    }
     if (m->status == BT_LINK_INFO && strcmp(m->command, "SCAN") == 0 &&
         strcmp(m->result, "RESULT") == 0) {
         bt_split(m->data, mac, sizeof(mac), name, sizeof(name));
@@ -877,6 +892,13 @@ static esp_err_t console_post_h(httpd_req_t *req)
     strlcpy(cmd, incmd, sizeof(cmd));
     cJSON_Delete(j);
 
+    /* Capture any INFO lines streamed during the command (HELP, PAIRED, ...). */
+    if (s_bt_mtx) {
+        xSemaphoreTake(s_bt_mtx, portMAX_DELAY);
+        s_console_n = 0;
+        s_console_capturing = true;
+        xSemaphoreGive(s_bt_mtx);
+    }
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char result[BT_LINK_FIELD_MAX] = {0}, data[BT_LINK_FIELD_MAX] = {0};
     bt_link_send(cmd, &st, result, sizeof(result), data, sizeof(data));
@@ -886,6 +908,17 @@ static esp_err_t console_post_h(httpd_req_t *req)
     cJSON_AddStringToObject(o, "status", status);
     cJSON_AddStringToObject(o, "result", result);
     cJSON_AddStringToObject(o, "data", data);
+    /* Snapshot + emit the captured INFO lines (bt_link task is done appending
+     * once the terminal response above has arrived). */
+    cJSON *lines = cJSON_AddArrayToObject(o, "lines");
+    if (s_bt_mtx) {
+        xSemaphoreTake(s_bt_mtx, portMAX_DELAY);
+        s_console_capturing = false;
+        for (int i = 0; i < s_console_n; i++) {
+            cJSON_AddItemToArray(lines, cJSON_CreateString(s_console_lines[i]));
+        }
+        xSemaphoreGive(s_bt_mtx);
+    }
     char *s = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
     httpd_resp_sendstr(req, s ? s : "{\"status\":\"TIMEOUT\"}");

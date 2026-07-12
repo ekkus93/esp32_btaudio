@@ -101,7 +101,9 @@ export async function btAction(action: string, mac?: string): Promise<{ ok: bool
 }
 
 // Run a raw WROOM32 command and get its response (replaces the WS terminal).
-export async function consoleCmd(cmd: string): Promise<{ status: string; result: string; data: string }> {
+export async function consoleCmd(
+  cmd: string
+): Promise<{ status: string; result: string; data: string; lines?: string[] }> {
   const r = await fetch("/api/console", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
