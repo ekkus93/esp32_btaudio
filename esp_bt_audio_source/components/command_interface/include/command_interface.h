@@ -63,8 +63,6 @@ typedef enum {
     CMD_TYPE_SET_DEFAULT_PIN,
     CMD_TYPE_UNPAIR,
     CMD_TYPE_UNPAIR_ALL,
-    CMD_TYPE_FILE,
-    CMD_TYPE_FILES,
     CMD_TYPE_PARTS,
     CMD_TYPE_HELP,
     // Add new command types here
@@ -165,8 +163,6 @@ cmd_status_t cmd_process(void);
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data);
 
 #if defined(UNIT_TEST)
-typedef void (*cmd_test_spiffs_mount_hook_t)(void);
-void cmd_test_install_spiffs_mount_hook(cmd_test_spiffs_mount_hook_t hook);
 void cmd_test_reset_cmd_process_state(void);
 #endif
 

@@ -5,12 +5,9 @@
 #if !defined(ESP_PLATFORM)
 int g_mock_log_level = ESP_LOG_INFO;
 #if defined(__GNUC__)
-extern const char *cmd_files_host_mount_override(void) __attribute__((weak));
 extern const char *cmd_version_host_override(void) __attribute__((weak));
 #else
-extern const char *cmd_files_host_mount_override(void);
 extern const char *cmd_version_host_override(void);
-#pragma weak cmd_files_host_mount_override
 #pragma weak cmd_version_host_override
 #endif
 #endif
@@ -182,65 +179,3 @@ void cmd_append_metadata(char *buf, size_t buf_len, const char *key, const char 
     }
 }
 
-const char *cmd_files_get_root(void)
-{
-#ifdef ESP_PLATFORM
-    return "/spiffs";
-#else
-    const char *(*override_fn)(void) = cmd_files_host_mount_override;
-    if (override_fn != NULL)
-    {
-        const char *override = override_fn();
-        if (override != NULL)
-        {
-            // Trust override even if empty - allows tests to simulate "no root"
-            return override;
-        }
-    }
-    return "/spiffs";
-#endif
-}
-
-#if defined(UNIT_TEST)
-static cmd_test_spiffs_mount_hook_t s_cmd_spiffs_mount_hook = NULL;
-
-void cmd_test_install_spiffs_mount_hook(cmd_test_spiffs_mount_hook_t hook)
-{
-    s_cmd_spiffs_mount_hook = hook;
-}
-
-void cmd_test_notify_spiffs_mount_hook(void)
-{
-    if (s_cmd_spiffs_mount_hook)
-    {
-        s_cmd_spiffs_mount_hook();
-    }
-}
-#endif
-
-esp_err_t cmd_mount_spiffs_if_needed(void)
-{
-    cmd_test_notify_spiffs_mount_hook();
-#ifdef ESP_PLATFORM
-    if (esp_spiffs_mounted("spiffs"))
-    {
-        return ESP_OK;
-    }
-
-    esp_vfs_spiffs_conf_t cfg = {
-        .base_path = "/spiffs",
-        .partition_label = "spiffs",
-        .max_files = 5,
-        .format_if_mount_failed = false,
-    };
-
-    esp_err_t err = esp_vfs_spiffs_register(&cfg);
-    if (err == ESP_ERR_INVALID_STATE && esp_spiffs_mounted("spiffs"))
-    {
-        return ESP_OK;
-    }
-    return err;
-#else
-    return ESP_OK;
-#endif
-}

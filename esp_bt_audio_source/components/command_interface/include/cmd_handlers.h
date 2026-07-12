@@ -30,8 +30,6 @@ cmd_status_t cmd_handle_unmute(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_audio_autostart(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_last_mac(const cmd_context_t *ctx);
 
-cmd_status_t cmd_handle_file(const cmd_context_t *ctx);
-cmd_status_t cmd_handle_files(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_parts(const cmd_context_t *ctx);
 
 cmd_status_t cmd_handle_connect(const cmd_context_t *ctx);

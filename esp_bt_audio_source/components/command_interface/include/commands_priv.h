@@ -24,8 +24,6 @@
 #include "esp_timer.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
-#include "esp_spiffs.h"
-#include "esp_vfs.h"
 #include "esp_partition.h"
 #else
 #include "esp_bt.h"
@@ -70,9 +68,6 @@
 #define CMD_UART_SECONDARY UART_NUM_0
 #endif
 
-#define CMD_FILES_WARN_NAME_MAX 80
-#define CMD_FILES_ITEM_NAME_MAX 128
-#define CMD_FILES_SUMMARY_ROOT_MAX 120
 #define CMD_BEEP_DURATION_MS 10000U
 #define CMD_BEEP_FREQ_HZ 261.63
 
@@ -99,16 +94,5 @@ bool cmd_parse_log_level(const char *level_str, int *out_level);
 
 uint64_t cmd_get_timestamp_ms(void);
 void cmd_append_metadata(char *buf, size_t buf_len, const char *key, const char *value);
-
-const char *cmd_files_get_root(void);
-esp_err_t cmd_mount_spiffs_if_needed(void);
-
-#if defined(UNIT_TEST)
-typedef void (*cmd_test_spiffs_mount_hook_t)(void);
-void cmd_test_install_spiffs_mount_hook(cmd_test_spiffs_mount_hook_t hook);
-void cmd_test_notify_spiffs_mount_hook(void);
-#else
-static inline void cmd_test_notify_spiffs_mount_hook(void) {}
-#endif
 
 #endif /* COMMANDS_PRIV_H */

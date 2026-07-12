@@ -62,7 +62,6 @@ add_library(command_interface_host OBJECT
     ../../components/command_interface/commands_helpers.c
     ../../components/command_interface/cmd_handlers_system.c
     ../../components/command_interface/cmd_handlers_audio.c
-    ../../components/command_interface/cmd_handlers_files.c
     ../../components/command_interface/cmd_handlers_bt.c
     ../../components/command_interface/uart_audio.c)
 
@@ -149,29 +148,6 @@ target_sources(test_cmd_handlers_bt PRIVATE mocks/bt_manager_test_hooks.c)
 target_link_libraries(test_cmd_handlers_bt unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_cmd_handlers_bt PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_handlers_bt COMMAND $<TARGET_FILE:test_cmd_handlers_bt>)
-
-# Command handler files tests (Phase 1 - File/partition command error paths)
-add_executable(test_cmd_handlers_files test_cmd_handlers_files.c
-    ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_cmd_handlers_files PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_cmd_handlers_files PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_cmd_handlers_files PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_cmd_handlers_files PRIVATE mocks/fake_esp_err.c)
-target_sources(test_cmd_handlers_files PRIVATE mocks/bt_manager_test_hooks.c)
-target_link_libraries(test_cmd_handlers_files unity util_safe_host command_interface_host platform_shim_host)
-target_compile_definitions(test_cmd_handlers_files PRIVATE UNIT_TEST)
-add_test(NAME test_cmd_handlers_files COMMAND $<TARGET_FILE:test_cmd_handlers_files>)
 
 # Phase 7.1: component integration flows (command -> BT -> audio, pairing persistence)
 add_executable(test_integration_flows test_integration_flows.c

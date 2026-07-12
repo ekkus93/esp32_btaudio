@@ -323,12 +323,6 @@ cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
     else if (strcasecmp(token, "UNPAIR_ALL") == 0) {
         ctx->type = CMD_TYPE_UNPAIR_ALL;
     }
-    else if (strcasecmp(token, "FILE") == 0) {
-        ctx->type = CMD_TYPE_FILE;
-    }
-    else if (strcasecmp(token, "FILES") == 0) {
-        ctx->type = CMD_TYPE_FILES;
-    }
     else if (strcasecmp(token, "PARTS") == 0) {
         ctx->type = CMD_TYPE_PARTS;
     }
@@ -515,10 +509,6 @@ cmd_status_t cmd_execute(const cmd_context_t *ctx)
         return cmd_handle_start(ctx);
     case CMD_TYPE_STOP:
         return cmd_handle_stop(ctx);
-    case CMD_TYPE_FILE:
-        return cmd_handle_file(ctx);
-    case CMD_TYPE_FILES:
-        return cmd_handle_files(ctx);
     case CMD_TYPE_PARTS:
         return cmd_handle_parts(ctx);
     case CMD_TYPE_CONNECT_NAME:

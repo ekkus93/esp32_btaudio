@@ -46,8 +46,6 @@ static const struct
     {"PAIRED", NULL, "List stored paired devices"},
     {"UNPAIR", "<MAC>", "Remove a paired device"},
     {"UNPAIR_ALL", NULL, "Erase all paired devices"},
-    {"FILE", "<NAME>", "Report file size if present"},
-    {"FILES", NULL, "List files stored on /spiffs"},
     {"PARTS", NULL, "List partitions visible to esp_partition API"},
     {"SET_NAME", "<NAME>", "Persist the local Bluetooth name"},
     {"START", NULL, "Start A2DP audio streaming"},
@@ -583,6 +581,39 @@ cmd_status_t cmd_handle_reset(const cmd_context_t *ctx)
     esp_restart();
 #else
     cmd_send_response("OK", "RESET", "MOCK_REBOOT", NULL);
+#endif
+    return CMD_SUCCESS;
+}
+
+/* PARTS — list the partitions visible to the esp_partition API. (Was in the
+ * now-removed cmd_handlers_files.c alongside the dead FILE/FILES commands.) */
+cmd_status_t cmd_handle_parts(const cmd_context_t *ctx)
+{
+    (void)ctx;
+#ifdef ESP_PLATFORM
+    esp_partition_iterator_t partition_iter = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    if (partition_iter == NULL) {
+        cmd_send_response("ERR", "PARTS", "NONE", NULL);
+        return CMD_SUCCESS;
+    }
+    int count = 0;
+    for (esp_partition_iterator_t cur = partition_iter; cur != NULL; cur = esp_partition_next(cur)) {
+        const esp_partition_t *p = esp_partition_get(cur);
+        if (p) {
+            char data[128];
+            const char *label = (p->label[0] != '\0') ? p->label : "<none>";
+            int type = (int)p->type;
+            int subtype = (int)p->subtype;
+            snprintf(data, sizeof(data), "%s,type=%d,sub=%d,off=0x%08x,size=0x%08x", label, type, subtype, (unsigned)p->address, (unsigned)p->size);
+            cmd_send_response("INFO", "PARTS", "ITEM", data);
+            ++count;
+        }
+    }
+    char summary[64];
+    snprintf(summary, sizeof(summary), "COUNT=%d", count);
+    cmd_send_response("OK", "PARTS", "SUMMARY", summary);
+#else
+    cmd_send_response("ERR", "PARTS", "UNSUPPORTED", NULL);
 #endif
     return CMD_SUCCESS;
 }

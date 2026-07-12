@@ -3,7 +3,6 @@ set(priv_requires
     bt
     driver
     esp_app_format
-    spiffs
     util_safe
     platform_shim)
 
@@ -23,7 +22,6 @@ idf_component_register(
         "commands_helpers.c"
         "cmd_handlers_system.c"
         "cmd_handlers_audio.c"
-        "cmd_handlers_files.c"
         "cmd_handlers_bt.c"
         "uart_audio_frame.c"
         "uart_audio_rx.c"
