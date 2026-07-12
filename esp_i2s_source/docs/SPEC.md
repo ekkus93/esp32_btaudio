@@ -329,7 +329,10 @@ running on real hardware. Newest first.
   is still linking. The orchestrator therefore nudges `START` then **polls
   `STATUS` for `RUN=1`** as the real link-up signal, rather than trusting
   `START`'s result. Cold-start to music measured ~6 s.
-- **VOLUME reset on connect:** the WROOM32 resets `VOL` to 40 on a fresh A2DP
-  connection (AVRCP/default), so autostart music currently comes up at 40 rather
-  than the persisted level. Open polish item (orchestrator could set a target
-  volume post-connect).
+- **VOLUME reset on connect (resolved):** the WROOM32 resets `VOL` to 40 on a
+  fresh A2DP connection (AVRCP/default). The orchestrator now stores a target
+  volume in `ctrl_cfg` (NVS, default 15, settable via `/api/ctrl {volume}`) and
+  sends `VOLUME <target>` in the resume path *before* `radio_play`, so autostart
+  music comes up at the user's level (verified: cold-start ends at VOL=12, not
+  40). Note: `link_selftest` still sends a boot-time `VOLUME 40`, harmlessly
+  overridden by the orchestrator before audio resumes.

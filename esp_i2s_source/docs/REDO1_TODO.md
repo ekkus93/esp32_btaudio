@@ -342,9 +342,11 @@ the sink-available path (see CTRL-1c caveat).
       START (result ignored) → poll STATUS until `RUN=1` or connect_timeout →
       resume. Note: a laptop test-sink refuses a cold WROOM32-initiated A2DP
       connection (environmental), but a real speaker/earbud accepts it — so M7
-      is demonstrated against the actual product sink. Known polish item: the
-      WROOM32 resets VOL to 40 on a fresh A2DP connection, so autostart music
-      currently comes up at 40 rather than the persisted level.
+      is demonstrated against the actual product sink. Polish (done): the
+      orchestrator now stores a target volume (`ctrl_cfg.volume`, `/api/ctrl
+      {volume}`) and applies `VOLUME <target>` before resume, so autostart music
+      comes up at the user's level (verified cold-start ends at VOL=12, not 40)
+      rather than the WROOM32's post-connect default.
 
 ## DOC-1 — Documentation + regression
 

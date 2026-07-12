@@ -25523,3 +25523,28 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   default), so autostart music comes up at 40 not the persisted level; orchestrator
   could set a target volume post-connect. Not blocking M7.
 - CTRL-1 (a/b/c) COMPLETE. Remaining: DOC-1.
+
+## 2026-07-12T08:07:29Z - Claude Opus 4.8 (1M) - DOC-1 done -> REDO1 roadmap COMPLETE
+
+- DOC-1a: rewrote esp_i2s_source/README.md for the actual built S3 system
+  (arch, component table, real GPIO15/16/7 I2S wiring, build/test/flash, the
+  live /api/* + /ws surface, two-stage volume); supersedes README_orig.md. Root
+  README I2S pins annotated as superseded -> SPEC 3.
+- DOC-1b: tools/run_host_tests.sh is the entry (CTest, 13 suites, 13/13);
+  inventory recorded in README + REDO1_TODO.
+- DOC-1c: SPEC.md 9 "Hardware changelog" of on-bench deviations (I2S pins,
+  16-in-32, WiFi PS_NONE, ~5.9s PCM buffer, audio/aacp, WROOM32 volume fix,
+  laptop cold-connect limit, orchestrator RUN=1 wait, VOL reset). Commit c753f125.
+- REDO1 roadmap DONE: INFRA/SIG/LINK/WIFI/WEB/BTUI/RADIO-1/RADIO-2/CTRL-1/DOC-1.
+  All milestones M1-M7 met. Only open user-driven gates remain (BTUI-1d M5 real
+  Echo Buds SCAN sign-off, WEB-1b M4 browser walk-through) + polish items.
+
+## 2026-07-12T08:15:55Z - Claude Opus 4.8 (1M) - Polish: autostart applies configured volume
+
+- Fixed VOL-resets-to-40-on-connect: added ctrl_cfg.volume (NVS, default 15,
+  /api/ctrl {volume}); orchestrator sends VOLUME <target> in the resume path
+  BEFORE radio_play. Verified cold-start: START fail -> wait RUN=1 -> "set volume
+  12 -> ok" -> resume station 5 -> jazz at VOL=12 (not 40). Commit d2093a83.
+  Note: adding the field grew the ctrl_cfg blob so old NVS config was dropped
+  (reconfigured post-flash). link_selftest still sends boot VOLUME 40, harmlessly
+  overridden. Host 13/13. REDO1 roadmap + this polish all complete.
