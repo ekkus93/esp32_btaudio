@@ -33,6 +33,7 @@
 #include "web_ui.h"
 #include "radio.h"
 #include "stations.h"
+#include "ctrl.h"
 
 static const char *TAG = "main";
 
@@ -198,6 +199,9 @@ void app_main(void)
     ESP_ERROR_CHECK(console_start());
     /* WEB-1a: HTTP server (embedded SPA + /api/status). */
     ESP_ERROR_CHECK(web_ui_start());
+    /* CTRL-1b: boot orchestrator — if autostart+sink configured, connect the
+     * A2DP sink over bt_link and resume the last station with no interaction. */
+    ESP_ERROR_CHECK(ctrl_start());
 
     /* I2S stats beacon: bytes_written must climb and underruns stay flat once
      * the ring primes; the PCNT freq meter confirms the WROOM32 master clock

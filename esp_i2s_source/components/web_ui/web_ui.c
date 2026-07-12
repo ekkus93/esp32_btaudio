@@ -10,6 +10,7 @@
 #include "stations.h"
 #include "station_store.h"
 #include "i2s_out.h"
+#include "ctrl.h"
 
 #include <string.h>
 
@@ -255,6 +256,9 @@ static esp_err_t radio_post(httpd_req_t *req)
         return ESP_OK;
     }
     strlcpy(s_radio_url, url, sizeof(s_radio_url));
+    /* Optional station index: record it so CTRL-1 autostart can resume it. */
+    cJSON *id = cJSON_GetObjectItem(j, "id");
+    if (cJSON_IsNumber(id)) ctrl_note_station(id->valueint);
     cJSON_Delete(j);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -267,6 +271,51 @@ static esp_err_t radio_delete(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true}");
     xTaskCreate(radio_stop_task, "radiostop", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
+    return ESP_OK;
+}
+
+/* ---- /api/ctrl: orchestration config (CTRL-1b) ---- */
+
+static esp_err_t ctrl_get_h(httpd_req_t *req)
+{
+    ctrl_cfg_t c;
+    ctrl_get_cfg(&c);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "sink_mac", c.sink_mac);
+    cJSON_AddBoolToObject(root, "autostart", c.autostart);
+    cJSON_AddNumberToObject(root, "last_station", c.last_station);
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) return httpd_resp_send_500(req);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t e = httpd_resp_sendstr(req, body);
+    cJSON_free(body);
+    return e;
+}
+
+static esp_err_t ctrl_post_h(httpd_req_t *req)
+{
+    char body[256];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    /* Carry current values for any field the caller omits. */
+    ctrl_cfg_t cur;
+    ctrl_get_cfg(&cur);
+    const char *mac = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "sink_mac")) : NULL;
+    cJSON *as = j ? cJSON_GetObjectItem(j, "autostart") : NULL;
+    bool autostart = cJSON_IsBool(as) ? cJSON_IsTrue(as) : (bool)cur.autostart;
+    esp_err_t e = ctrl_set_sink(mac, autostart);
+    cJSON_Delete(j);
+    httpd_resp_set_type(req, "application/json");
+    if (e != ESP_OK) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid mac\"}");
+    } else {
+        httpd_resp_sendstr(req, "{\"ok\":true}");
+    }
     return ESP_OK;
 }
 
@@ -518,6 +567,10 @@ esp_err_t web_ui_start(void)
         .uri = "/api/stations", .method = HTTP_PUT, .handler = stations_put_h };
     const httpd_uri_t st_del_uri = {
         .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
+    const httpd_uri_t ctrl_get_uri = {
+        .uri = "/api/ctrl", .method = HTTP_GET, .handler = ctrl_get_h };
+    const httpd_uri_t ctrl_post_uri = {
+        .uri = "/api/ctrl", .method = HTTP_POST, .handler = ctrl_post_h };
     const httpd_uri_t ws_uri = {
         .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     const httpd_uri_t root_uri = {
@@ -532,6 +585,8 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &st_post_uri);
     httpd_register_uri_handler(s_server, &st_put_uri);
     httpd_register_uri_handler(s_server, &st_del_uri);
+    httpd_register_uri_handler(s_server, &ctrl_get_uri);
+    httpd_register_uri_handler(s_server, &ctrl_post_uri);
     httpd_register_uri_handler(s_server, &ws_uri);
     httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
 
