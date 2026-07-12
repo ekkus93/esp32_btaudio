@@ -25746,3 +25746,18 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   Piano + Arpeggios cards request voice="piano"; Tone card stays sine. Verified
   device up + /api/tone accepts voice:piano. 13/13 host tests. MIDI unchanged
   (note->pitch only); this changed the timbre.
+
+## 2026-07-12T19:09:57Z - Claude Opus 4.8 (1M) - Host coverage analysis + unit-test TODO
+
+- Ran full device sweep (`run_all_tests.py --port /dev/ttyUSB0`): 725/725 host cases + 99/99 device Unity (test_bluetooth 46, test_app_audio 35, test_manager 18) all pass. Confirms the 6 earlier behavior-preserving splits are clean on real WROOM32 hardware.
+- Generated real host line coverage via `-DENABLE_COVERAGE=ON` lcov build (scratch dir test/host_test/build_cov/, untracked): **68.0% overall**, 4750 instrumented lines, all 66 host suites green.
+- Key gaps: audio_processor.c 19.5% (mostly device-only), nvs_storage.c 47.7%, synth_manager.c 46.4%, platform_storage_host.c 0% (linked but shadowed by mocks/nvs_storage_mock.c), cmd_handlers_debug.c 38.5% func (no test file), cmd_handlers_system.c 45.5% func. Several low numbers are mock-shadowing, not missing tests.
+- Wrote `docs/UNIT_TESTS1_TODO.md`: 10 tasks (UT-1..UT-10) P0/P1/P2 with concrete per-function subtasks, CMake registration pattern, "link real unit / mock only collaborators" discipline, and an Out-of-scope list of device-only paths. Projected ~80%+ host coverage after P0+P1. Not committed yet.
+
+## 2026-07-12T19:52:36Z - Claude Opus 4.8 (1M) - Ralph loop: UNIT_TESTS1_TODO.md complete (10/10)
+
+- Worked the full UNIT_TESTS1_TODO.md list autonomously; one `test:` commit per task, each verified by host ctest + isolated lcov before commit. No flashing.
+- **Overall host coverage 68.0%→78.1% line, 70.4%→84.7% func; all 70 CTest suites pass.**
+- New suites: test_platform_storage_host (UT-1, 0→93%), test_cmd_handlers_debug (UT-3, 38→100% func), test_nvs_storage_domain (UT-4, 48→90% aggregate), test_cmd_status_to_name (UT-9, →100%). Extended: synth_manager (UT-2 46→67%), cmd_handlers_system (UT-5 →98.6%/100% func), bt_app_core (UT-6 →76%), cmd_handlers_audio (UT-7 →91% aggregate), beep_manager (UT-8 →93%), audio_processor core_logic (UT-10 →23.5%/40.5% func).
+- Honest ceilings documented in the doc: synth_manager fade envelope is dead code (no fade-activation API); bt_app_core task loop + audio_processor device I/O are ESP_PLATFORM-only (unreachable on host). audio_processor's ≥40% line target needs the pending #1 split first.
+- Key discipline that paid off: "link the real unit, mock only collaborators" — UT-1 and UT-4 link real platform_storage_host/nvs_storage instead of the mocks that shadow them (the reason for the 0%/48% baselines). Commits e3343f73,6d020d1d,fe977536,8ca74ba8,4aba9d38,7d917c9c,2ab3f6f5,ad49602b,ca26539e,2e25a3c1.
