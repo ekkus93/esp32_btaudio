@@ -1,0 +1,251 @@
+# Split & Refactor — get the 10 largest code files under 700 lines
+
+**Goal:** every source file below **700 lines**. These are **behavior-preserving**
+refactors: split by responsibility, no logic changes. Do each file as its own
+branch/PR, verify green, then move on.
+
+## Ground rules (apply to every task)
+
+- [ ] **Structural-only commits.** No behavior change in a split commit. If you
+      must also fix behavior, do it in a *separate* commit (per
+      `esp_bt_audio_source/CLAUDE.md`).
+- [ ] **Verify after each split** with that project's tests before committing:
+  - `esp_bt_audio_source` (WROOM32): host suite —
+    `cd esp_bt_audio_source/test/host_test && cmake -S . -B build_host_tests && cmake --build build_host_tests -j && ctest --test-dir build_host_tests`
+    then `idf.py build` (device compile). On-device Unity suites only if the
+    change touches them and hardware is available (confirm before flashing).
+  - `esp_i2s_source` (S3): `cd web && npx tsc --noEmit`, host CTest under
+    `test/host_test`, `idf.py build`, and Playwright (`DEVICE_URL=… npx playwright test`).
+  - Python: `conda run -n python310 python -m flake8 <files> --max-line-length=120`.
+- [ ] **Keep public headers stable.** Callers/`#include`s shouldn't change. Split
+      *implementation* across `.c` files that share one internal header; the public
+      API header stays put.
+- [ ] **File-static state is the hard part.** A `static` var can't be shared across
+      `.c` files. When functions that touch the same `s_*` state land in different
+      files, either (a) move that state into one `.c` and expose **accessors** in an
+      internal header, or (b) declare it `extern` in an internal header and define it
+      once. Prefer (a). Note this per-file below where it bites.
+- [ ] **Update the build** (`CMakeLists.txt` SRCS / host-test `CMakeLists.txt` /
+      Python imports) in the same commit as the split.
+- [ ] Re-run `git ls-files … | xargs wc -l | sort -rn` at the end; confirm all ≤ 700.
+
+---
+
+## 1. `esp_bt_audio_source/components/audio_processor/audio_processor.c` — 1692 → ≤700
+
+The component already has `audio_processor_read.c` / `audio_processor_diag.c` /
+`audio_processor_internal.h`; this is the remaining monolith (engine + lifecycle +
+config + state queries + test hooks). Heavy shared `s_*` state — do the internal-header
+extraction *first*.
+
+- [ ] **1.1 Inventory shared state.** List every file-static (`s_*`, mutexes, ring,
+      timers, config, flags) and which functions touch it. Decide accessor vs `extern`.
+- [ ] **1.2 `audio_processor_state.{c,h}` (internal).** Move the shared statics into
+      one `.c` with a small accessor/`extern` surface in `audio_processor_internal.h`.
+- [ ] **1.3 Extract `audio_processor_engine.c`** (~400 lines): `audio_engine_task`,
+      `get_active_source`, `produce_audio_chunk`, `mock_generate_i2s_audio` (both the
+      device and `UNIT_TEST` copies — dedupe if trivial, else keep guarded).
+- [ ] **1.4 Extract `audio_processor_config.c`** (~450 lines):
+      `set_sample_rate/volume/mute/channels/bit_depth`, `get_config/get_stats/
+      get_status`, `configure_i2s`, `set_i2s_pins`, `volume_commit_timer_callback`.
+- [ ] **1.5 Move diag** `emit_sync_worker_diag` + diag state queries into the existing
+      `audio_processor_diag.c`.
+- [ ] **1.6 Extract `audio_processor_test_hooks.c`** (~150 lines): all
+      `audio_processor_test_*` (guard with `UNIT_TEST`/test define).
+- [ ] **1.7 Slim `audio_processor.c`** to lifecycle (`init/start/stop/deinit/
+      drain`) + `is_running/is_i2s_active/…` (~500 lines).
+- [ ] **1.8 CMake:** add the new `.c` files to the component `SRCS`.
+- [ ] **1.9 Verify:** host CTest (`test_audio_processor*`, `test_commands`) + `idf.py build`.
+
+---
+
+## 2. `esp_bt_audio_source/components/bt_manager/bt_manager.c` — 1315 → ≤700
+
+Component already split (`bt_connection.c`, `bt_scan.c`, `bt_pairing_store.c`,
+`bt_events_*.c`, `bt_streaming_manager.c`, `bt_connection_manager.c`). `bt_manager.c`
+is the facade + a large block of test/mock hooks.
+
+- [ ] **2.1 Extract `bt_manager_mocks.c`** (~450 lines): all `MAYBE_WEAK` weak hooks,
+      `bt_manager_mock_*` (device_found / connection_established / connection_closed /
+      audio_state_changed / pairing_complete), `bt_manager_force_initialized`,
+      `bt_manager_debug_print`, and `bt_manager_test_*`. Guard with
+      `CONFIG_BT_MOCK_TESTING` / `UNIT_TEST` as today.
+- [ ] **2.2 Extract `bt_manager_status.c`** (~350 lines): `bt_manager_get_status`,
+      `bt_mgr_handle_get_status`, `bt_mgr_request_handler`, `bt_manager_is_connected`,
+      `bt_get_device_list/paired_devices` + `*_snapshot`.
+- [ ] **2.3 Extract `bt_manager_control.c`** (~350 lines): `bt_manager_pair/connect/
+      disconnect/start_audio/stop_audio/start_scan/start_pair/set_name/
+      set_autostart_enabled/is_autostart_enabled`, `bt_manager_init_profiles`.
+- [ ] **2.4 Slim `bt_manager.c`** to init + shared ctx wiring (~350 lines). Note the
+      `bt_ctx` access contract in `code_review/BT_STATE_ACCESS_CONTRACT.md` — don't
+      change the write-via-queue / read-from-cmd_proc pattern, just relocate.
+- [ ] **2.5 CMake + verify:** host CTest (`test_bt_manager*`, `test_bluetooth`,
+      `test_commands`) + `idf.py build`.
+
+---
+
+## 3. `esp_i2s_source/components/web_ui/web_ui.c` — 1025 → ≤700
+
+Grew a lot this session (all the REST endpoints). Split handlers by feature; keep
+`web_ui_start()` as the registrar. Shared `s_bt_*` state + `s_bt_mtx` + `recv_body`
+need an internal header.
+
+- [ ] **3.1 `web_ui_internal.h`.** Declare `recv_body`, the shared BT state (or
+      accessors), `on_bt_event`, and every handler prototype so `web_ui_start` can
+      register them across files. Define the BT state + `s_bt_mtx` in one `.c`
+      (`web_ui_bt.c`).
+- [ ] **3.2 Extract `web_ui_bt.c`** (~400 lines): `bt_split/bt_add/bt_remove/
+      bt_status_conn_mac`, `on_bt_event`, `bt_dev_array`, `bt_get_h`, `bt_post_h`,
+      `connect_volume_task`, `scan_post_h`, `console_post_h`, `ctrl_get_h/ctrl_post_h`,
+      `parse_wroom_kv/parse_wroom_vol`, `btvolume_get_h/btvolume_post_h`.
+- [ ] **3.3 Extract `web_ui_radio.c`** (~180 lines): `radio_post/radio_delete`,
+      `radio_play_task/radio_stop_task`, stations CRUD (`stations_get/post/put/
+      delete_h`, `station_id_param/station_body/station_reply`).
+- [ ] **3.4 Extract `web_ui_audio.c`** (~130 lines): `tone_post/tone_delete`,
+      `volume_post_h`, `prebuffer_post_h`.
+- [ ] **3.5 Extract `web_ui_wifi.c`** (~120 lines): `wifi_post`, `apmode_post_h`,
+      `provision_task`.
+- [ ] **3.6 Slim `web_ui.c`** to `root_get`, `status_get`, `refresh_wroom`,
+      `recv_body`, and `web_ui_start()` (httpd config + `max_uri_handlers` + all
+      `httpd_register_uri_handler` calls) (~300 lines).
+- [ ] **3.7 CMake + verify:** `tsc --noEmit`, host CTest, `idf.py build`, Playwright
+      suite (endpoints unchanged → all 14 UI tests still pass).
+
+---
+
+## 4. `esp_bt_audio_source/components/command_interface/cmd_handlers_bt.c` — 838 → ≤700
+
+Real BT command handlers + a big `handle_debug_*` mock/diag block.
+
+- [x] **4.1 Extract `cmd_handlers_debug.c`** (~320 lines): `handle_debug_mock_on/add/
+      pair`, `handle_debug_beep_diag/worker_diag/audio_diag/audio_diag_summary/
+      audio_diag_probe`, `handle_debug_log/force_beep/drain_queue/dram`, and the
+      `cmd_handle_debug` dispatcher (already declared in `cmd_handlers.h`). Shared
+      mock statics moved to `cmd_handlers_internal.h` as `g_cmd_mock_*` (defined in
+      `cmd_handlers_bt.c`, referenced from both). Result: **296 lines**.
+- [x] **4.2 Keep `cmd_handlers_bt.c`** (~520 lines): `cmd_handle_scan/connect/
+      connect_name/disconnect/pair/paired/confirm_pin/enter_pin/set_default_pin/
+      unpair/unpair_all/set_name/last_mac`. Result: **544 lines**.
+- [x] **4.3 CMake + verify:** host CTest (`test_cmd_handlers_bt`, `test_commands`) 66/66
+      + `idf.py build` (see below).
+
+---
+
+## 5. `esp_bt_audio_source/test/test_bluetooth/main/bt_source_mock.c` — 1937 → ≤700
+
+On-device BT API mock, guarded by `BT_MOCK_PROVIDES_PROTOTYPES` /
+`CONFIG_BT_MOCK_TESTING`. Split by ESP BT API domain. Heaviest split — budget for 3–4
+files.
+
+- [ ] **5.1 `bt_source_mock_internal.h`.** Shared mock state (connection/pairing/scan
+      state, TAG) + accessors; keep the conditional-prototype guards centralized.
+- [ ] **5.2 Extract `bt_source_mock_a2dp.c`** — A2DP source + streaming mocks.
+- [ ] **5.3 Extract `bt_source_mock_gap.c`** — GAP / pairing / SSP / auth mocks.
+- [ ] **5.4 Extract `bt_source_mock_scan.c`** — inquiry/scan + reconnect controls
+      (the `CONFIG_BT_MOCK_TESTING` reconnect block).
+- [ ] **5.5 Keep `bt_source_mock.c`** — init/state/accessors + anything cross-cutting.
+- [ ] **5.6 CMake** (`test/test_bluetooth/main/CMakeLists.txt` SRCS) **+ verify:**
+      builds under the test app; run the Unity suite only with hardware (confirm first).
+
+---
+
+## 6. `esp_bt_audio_source/test/test_bluetooth/main/bt_source_stubs.c` — 1763 → ≤700
+
+Same shape as #5 (stub implementations of the BT APIs for the test app). Mirror the
+domain split so mock/stub stay parallel.
+
+- [ ] **6.1 Extract `bt_source_stubs_a2dp.c`** — A2DP/streaming stubs.
+- [ ] **6.2 Extract `bt_source_stubs_gap.c`** — GAP/pairing stubs.
+- [ ] **6.3 Extract `bt_source_stubs_scan.c`** — scan/timeout stubs.
+- [ ] **6.4 Keep `bt_source_stubs.c`** — connection/paired-device/streaming accessors
+      + shared stub state.
+- [ ] **6.5 CMake + verify** (test-app build; hardware run gated).
+
+---
+
+## 7. `esp_bt_audio_source/test/host_test/test_commands.c` — 1129 → ≤700
+
+88 host tests, one executable (`test_commands`). **Keep one executable** — move test
+*bodies* into grouped `.c` files linked into it; the runner keeps `setUp/tearDown` +
+`main()` + `RUN_TEST`s (the file already uses `extern void test_*`).
+
+- [ ] **7.1 `test_commands_shared.h`** — declare the fixture helpers + any shared
+      statics used by moved tests; keep `setUp/tearDown` + fixtures in the runner.
+- [ ] **7.2 Extract `test_commands_parse.c`** — the `cmd_parse` tests.
+- [ ] **7.3 Extract `test_commands_audio.c`** — beep / synth / volume / mute /
+      autostart command tests.
+- [ ] **7.4 Extract `test_commands_bt.c`** — scan / pair / connect / unpair / pin /
+      last_mac command tests.
+- [ ] **7.5 Keep `test_commands.c`** as the runner (`main`, `setUp/tearDown`,
+      `extern` decls, `RUN_TEST` list) (~250 lines).
+- [ ] **7.6 host-test `CMakeLists.txt`:** add the new `.c` files to the
+      `test_commands` executable sources (same target, not new executables).
+- [ ] **7.7 Verify:** `ctest -R test_commands` — same 88 cases pass.
+
+---
+
+## 8. `esp_bt_audio_source/test/test_bluetooth/main/bt_a2dp_test.c` — 929 → ≤700
+
+62 on-device Unity tests. Same "one app, split bodies" approach as #7, but this is the
+device test app (`app_main` → `UNITY_BEGIN`).
+
+- [ ] **8.1 Group the 62 tests** by scenario (connection / streaming / control /
+      pairing) via `grep -n 'void test_'`.
+- [ ] **8.2 Move bodies** into `bt_a2dp_test_<group>.c` files; keep `app_main` +
+      fixtures + `RUN_TEST` list in `bt_a2dp_test.c`.
+- [ ] **8.3 CMakeLists + verify** (test-app build; on-device run gated on hardware +
+      confirmation).
+
+---
+
+## 9. `tools/run_all_tests.py` — 1343 → ≤700
+
+**Referenced by CI and the `lint-n-test` skill as `tools/run_all_tests.py`** — the
+entry path must stay. Convert to a package `tools/run_all_tests_lib/` (or
+`tools/rat/`) and keep `run_all_tests.py` as a thin CLI.
+
+- [ ] **9.1 `tools/rat/proc.py`** — `run_cmd`, `run_with_pty`, `ensure_esptool`.
+- [ ] **9.2 `tools/rat/cleanup.py`** — `cleanup_previous_artifacts`, `_unlink_artifact`.
+- [ ] **9.3 `tools/rat/host.py`** — `run_host_tests`, `run_standalone_host_tests`,
+      `run_cmake_unity_suite`, `generate_coverage_report`.
+- [ ] **9.4 `tools/rat/device.py`** — `run_device_suite`.
+- [ ] **9.5 `tools/rat/report.py`** — `aggregate_summary`, `count_unity_results`,
+      `_unity_counts_from_output`, `parse_flash_time_from_log`, `parse_ctest_duration`.
+- [ ] **9.6 `run_all_tests.py`** keeps only `main(argv)` + argparse, importing the
+      above (~200 lines). **Do not** move/rename the entry file.
+- [ ] **9.7 Verify:** `python tools/run_all_tests.py --no-device --no-standalone`
+      still green; `flake8 tools/run_all_tests.py tools/rat --max-line-length=120`.
+
+---
+
+## 10. `rpi_i2s_source/tools/run_test_scenarios.py` — 833 → ≤700
+
+One giant `TestScenarioRunner` class (lines 73–739). Split the class's method groups
+into modules; keep the CLI (`main`, `list_scenarios`) thin.
+
+- [ ] **10.1 Map the methods** on `TestScenarioRunner` into logical groups
+      (setup/teardown, per-scenario runners, reporting/results).
+- [ ] **10.2 Extract scenario runners** into `scenarios/*.py` (or mixin modules the
+      class composes), keeping `TestResult`/`ScenarioResult` in a small `types.py`.
+- [ ] **10.3 Slim `run_test_scenarios.py`** to the class shell + `list_scenarios` +
+      `main` (~300 lines).
+- [ ] **10.4 Verify:** import/run smoke + `flake8 … --max-line-length=120`. (This is
+      the separate rpi project — no ESP toolchain involved.)
+
+---
+
+## Suggested order
+
+1. **#3 web_ui.c** and **#4 cmd_handlers_bt.c** — smallest, cleanest wins; validate the
+   approach (internal header + CMake SRCS) on both projects.
+2. **#9 run_all_tests.py**, **#10 run_test_scenarios.py** — pure-Python, low risk.
+3. **#7 test_commands.c**, **#8 bt_a2dp_test.c** — test-body splits (one executable).
+4. **#1 audio_processor.c**, **#2 bt_manager.c** — production, shared-state heavy; do
+   the internal-state extraction carefully.
+5. **#5 bt_source_mock.c**, **#6 bt_source_stubs.c** — largest, but mechanical
+   domain splits; do them last, in parallel (keep mock/stub structure mirrored).
+
+## Done when
+
+- [ ] `git ls-files -- '*.c' '*.h' '*.ts' '*.tsx' '*.py' | grep -vE 'node_modules|/build/' | xargs wc -l | sort -rn | head` shows **no file > 700**.
+- [ ] All host suites green (both ESP projects), both `idf.py build`s clean, S3 Playwright green, flake8 no new findings.
