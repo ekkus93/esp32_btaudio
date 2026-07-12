@@ -11,6 +11,13 @@ export function Bluetooth() {
   const [note, setNote] = useState<string>("");
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Scan-until-found, then pair (by name).
+  const [findName, setFindName] = useState("");
+  const [findSecs, setFindSecs] = useState(60);
+  const [finding, setFinding] = useState(false);
+  const [findMsg, setFindMsg] = useState("");
+  const cancelFind = useRef(false);
+
   const refresh = () => getBt().then(setBt).catch(() => {});
 
   useEffect(() => {
@@ -39,6 +46,57 @@ export function Bluetooth() {
       setScanned(true);
     }, 20000);
   };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Repeatedly scan for up to `findSecs`, and pair with the first discovered
+  // device whose name contains the entered text (case-insensitive).
+  const findAndPair = async () => {
+    const target = findName.trim().toLowerCase();
+    if (!target || finding) return;
+    cancelFind.current = false;
+    setFinding(true);
+    setFindMsg(`Scanning for "${findName.trim()}" — put it in pairing mode now.`);
+    const deadline = Date.now() + findSecs * 1000;
+    let done = false;
+    try {
+      while (Date.now() < deadline && !cancelFind.current && !done) {
+        await triggerScan().catch(() => {});
+        await sleep(2000); // let the inquiry actually start
+        while (Date.now() < deadline && !cancelFind.current) {
+          const st = await getBt().catch(() => null);
+          if (st) {
+            setBt(st);
+            const hit = st.discovered.find((d) => (d.name || "").toLowerCase().includes(target));
+            if (hit) {
+              setFindMsg(`Found ${hit.name || hit.mac} — pairing…`);
+              const r = await btAction("pair", hit.mac).catch(() => ({ ok: false }));
+              setFindMsg(
+                r.ok
+                  ? `Paired with ${hit.name || hit.mac}. You can connect it below.`
+                  : `Found ${hit.name || hit.mac} but pairing failed — try again.`
+              );
+              done = true;
+              break;
+            }
+            if (!st.scanning) break; // this inquiry finished — loop to re-scan
+          }
+          await sleep(1500);
+        }
+      }
+      if (!done) {
+        setFindMsg(
+          cancelFind.current
+            ? "Stopped."
+            : `"${findName.trim()}" not found. Make sure it's in pairing mode and try again.`
+        );
+      }
+    } finally {
+      setFinding(false);
+      setTimeout(refresh, 800);
+    }
+  };
+  const stopFind = () => { cancelFind.current = true; };
 
   const paired: BtDev[] = bt?.paired ?? [];
   const discovered: BtDev[] = bt?.discovered ?? [];
@@ -70,13 +128,51 @@ export function Bluetooth() {
       </p>
 
       <div className="bt-actions">
-        <button className="primary" disabled={!online || scanning} onClick={scan}>
+        <button className="primary" disabled={!online || scanning || finding} onClick={scan}>
           {scanning ? "Scanning…" : "Scan"}
         </button>
-        <button disabled={!online || !bt?.connected} onClick={() => act("disconnect")}>
+        <button disabled={!online || !bt?.connected || finding} onClick={() => act("disconnect")}>
           Disconnect
         </button>
       </div>
+
+      <div className="bt-findpair">
+        <input
+          type="text"
+          value={findName}
+          onChange={(e) => setFindName(e.target.value)}
+          placeholder="device name to find (e.g. Echo Buds)"
+          disabled={finding}
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+        <label className="bt-secs">
+          for
+          <input
+            type="number"
+            min={15}
+            max={300}
+            value={findSecs}
+            onChange={(e) => setFindSecs(Math.max(15, Math.min(300, Number(e.target.value) || 60)))}
+            disabled={finding}
+          />
+          s
+        </label>
+        {finding ? (
+          <button className="danger" onClick={stopFind}>Stop</button>
+        ) : (
+          <button className="primary" disabled={!online || !findName.trim()} onClick={findAndPair}>
+            Find &amp; pair
+          </button>
+        )}
+      </div>
+      {(finding || findMsg) && (
+        <p className="muted bt-hint bt-findmsg">
+          {finding && <span className="bt-spin">⟳ </span>}
+          {findMsg}
+        </p>
+      )}
 
       {scanning ? (
         <p className="muted bt-hint">

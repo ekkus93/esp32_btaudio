@@ -356,6 +356,30 @@ header h1 {
 .ap-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fg); cursor: pointer; }
 .ap-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 
+.bt-findpair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 2px; }
+.bt-findpair > input[type="text"] {
+  flex: 1;
+  min-width: 160px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 13px;
+}
+.bt-findpair input:focus { outline: none; border-color: var(--accent); }
+.bt-secs { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.bt-secs input {
+  width: 60px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 13px;
+}
+.bt-findmsg { color: var(--fg); }
+
 .bt-hint { margin: 10px 0 2px; line-height: 1.5; }
 .bt-hint strong { color: var(--fg); }
 .bt-refresh { margin-left: 8px; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }

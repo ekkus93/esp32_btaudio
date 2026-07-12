@@ -128,6 +128,35 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     await expect(page.getByRole("heading", { name: "Bluetooth" })).toBeVisible();
   });
 
+  test("Find & pair scans for a named device and pairs the match", async ({ page }) => {
+    // Fully mocked — no real scan/pair hits the device.
+    await page.route("**/api/scan", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
+    let pairBody: { action?: string; mac?: string } | null = null;
+    await page.route("**/api/bt", async (route) => {
+      if (route.request().method() === "POST") {
+        pairBody = JSON.parse(route.request().postData() || "{}");
+        return route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true,"result":"OK"}' });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          connected: false, scanning: true, paired: [],
+          discovered: [{ mac: "AA:BB:CC:DD:EE:FF", name: "Test Buds Pro" }],
+        }),
+      });
+    });
+    await page.goto("/");
+    await page.locator(".tab", { hasText: "Settings" }).click();
+    const bt = page.locator(".card.bt");
+    await bt.locator(".bt-findpair input[type='text']").fill("test buds");
+    await bt.getByRole("button", { name: "Find & pair" }).click();
+    await expect(bt.locator(".bt-findmsg")).toContainText(/Paired with Test Buds Pro/i, { timeout: 15_000 });
+    expect(pairBody?.action).toBe("pair");
+    expect(pairBody?.mac).toBe("AA:BB:CC:DD:EE:FF");
+  });
+
   // THE bug the user hit: paired devices don't show up.
   test("Bluetooth card lists paired devices", async ({ page }) => {
     await page.goto("/");
