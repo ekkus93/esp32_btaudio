@@ -25761,3 +25761,23 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - New suites: test_platform_storage_host (UT-1, 0→93%), test_cmd_handlers_debug (UT-3, 38→100% func), test_nvs_storage_domain (UT-4, 48→90% aggregate), test_cmd_status_to_name (UT-9, →100%). Extended: synth_manager (UT-2 46→67%), cmd_handlers_system (UT-5 →98.6%/100% func), bt_app_core (UT-6 →76%), cmd_handlers_audio (UT-7 →91% aggregate), beep_manager (UT-8 →93%), audio_processor core_logic (UT-10 →23.5%/40.5% func).
 - Honest ceilings documented in the doc: synth_manager fade envelope is dead code (no fade-activation API); bt_app_core task loop + audio_processor device I/O are ESP_PLATFORM-only (unreachable on host). audio_processor's ≥40% line target needs the pending #1 split first.
 - Key discipline that paid off: "link the real unit, mock only collaborators" — UT-1 and UT-4 link real platform_storage_host/nvs_storage instead of the mocks that shadow them (the reason for the 0%/48% baselines). Commits e3343f73,6d020d1d,fe977536,8ca74ba8,4aba9d38,7d917c9c,2ab3f6f5,ad49602b,ca26539e,2e25a3c1.
+
+## 2026-07-12T22:15:08Z - Claude Opus 4.8 (1M context) - SPLIT_AND_REFRACT #5: bt_source_mock.c
+
+- Split `test/test_bluetooth/main/bt_source_mock.c` (1937 lines) by BT API domain into
+  4 sibling files + a shared internal header, keeping the core file at 369 lines:
+  `bt_source_mock_a2dp.c` (140), `bt_source_mock_conn.c` (415), `bt_source_mock_gap.c`
+  (398), `bt_source_mock_scan.c` (572), `bt_source_mock_internal.h` (141). No file >700.
+- Method: built a state/helper usage matrix (nearly all 40 file-scope vars are
+  cross-domain), so de-static'd all state + declared `extern` in the internal header
+  with definitions kept in the core TU; moved whole function bodies verbatim. A
+  round-trip identity check (split-then-rejoin == original byte-for-byte) validated
+  every function boundary before writing. The trailing `#ifdef CONFIG_BT_MOCK_TESTING`
+  span (5 test-only funcs) was re-applied per-function in the destination files.
+- Collision-checked de-static promotion across the whole component tree + bt_source_stubs.c
+  (its same-named vars are all `static` → no link conflict); confirmed only
+  test/test_bluetooth's CMakeLists compiles the file. Added the 4 files to its SRCS.
+- Verified: clean `idf.py build` of test/test_bluetooth links with zero new warnings
+  (compile-only tier; on-device Unity gated on hardware). Committed 3050c291.
+- Remaining SPLIT_AND_REFRACT work: #6 `bt_source_stubs.c` (1763, the mirror of #5).
+  audio_processor_test.c (709) is dead code → deferred to the low-pri dead-code sweep.

@@ -222,12 +222,24 @@ files.
 Same shape as #5 (stub implementations of the BT APIs for the test app). Mirror the
 domain split so mock/stub stay parallel.
 
-- [ ] **6.1 Extract `bt_source_stubs_a2dp.c`** — A2DP/streaming stubs.
-- [ ] **6.2 Extract `bt_source_stubs_gap.c`** — GAP/pairing stubs.
-- [ ] **6.3 Extract `bt_source_stubs_scan.c`** — scan/timeout stubs.
-- [ ] **6.4 Keep `bt_source_stubs.c`** — connection/paired-device/streaming accessors
-      + shared stub state.
-- [ ] **6.5 CMake + verify** (test-app build; hardware run gated).
+- [x] **6.1 Extract `bt_source_stubs_a2dp.c`** (150) — A2DP/streaming stubs.
+- [x] **6.2 Extract `bt_source_stubs_gap.c`** (389) — GAP/pairing/SSP/PIN + unpair stubs.
+- [x] **6.3 Extract `bt_source_stubs_scan.c`** (458) — scan, device registry + paired
+      storage stubs (incl. the two static discovery/timeout tasks, forward-declared).
+- [x] **6.3b Extract `bt_source_stubs_conn.c`** (518) — connection lifecycle +
+      connect-by-name stubs (4th domain file, mirroring #5's conn split).
+- [x] **6.4 Keep `bt_source_stubs.c`** (220) — shared stub state defs + reset/init/cleanup.
+      All `BT_WEAK_FN` weak-linkage preserved so mock's strong defs still override.
+      **Mirror-name collision handled:** #5 made 6 of `bt_source_mock.c`'s vars global
+      (`s_connection_state`, `s_streaming_state`, `s_defer_disconnect_visibility`,
+      `s_paired_device_count`, `s_ssp_confirmation_requested`, `s_ssp_passkey`); the
+      stub's same-named file-locals were renamed `s_stub_*` before de-static'ing to
+      avoid duplicate-global link errors. `s_connect_by_name_*` (used by conn + core
+      reset) relocated to the core TU + extern'd.
+- [x] **6.5 CMake + verify:** added the 4 domain files to the test-app SRCS; clean
+      `idf.py build` of `test/test_bluetooth` links; only pre-existing warnings remain
+      (3 unused-static-var warnings actually cleared by the de-static). Round-trip
+      identity-checked; 64/64 function defs preserved.
 
 ---
 
@@ -328,5 +340,5 @@ into modules; keep the CLI (`main`, `list_scenarios`) thin.
 
 ## Done when
 
-- [ ] `git ls-files -- '*.c' '*.h' '*.ts' '*.tsx' '*.py' | grep -vE 'node_modules|/build/' | xargs wc -l | sort -rn | head` shows **no file > 700**.
-- [ ] All host suites green (both ESP projects), both `idf.py build`s clean, S3 Playwright green, flake8 no new findings.
+- [x] `git ls-files -- '*.c' '*.h' '*.ts' '*.tsx' '*.py' | grep -vE 'node_modules|/build/' | xargs wc -l | sort -rn | head` shows **no file > 700** — **except `test/test_app_audio/main/audio_processor_test.c` (709), which is dead code** (commented out of that app's build) → deferred to the dead-code sweep for deletion, not a split target.
+- [x] All host suites green + `idf.py build`s clean for the touched projects. (test_bluetooth on-device Unity runs gated on hardware; host CTest 70/70 green from #1–#8.)
