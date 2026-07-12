@@ -27,8 +27,8 @@ typedef enum {
     CTRL_ST_WAIT_WIFI,     /* waiting for WiFi before orchestrating */
     CTRL_ST_QUERY,         /* STATUS sent, awaiting reply */
     CTRL_ST_CONNECTING,    /* CONNECT sent, awaiting ack */
-    CTRL_ST_CONNECT_WAIT,  /* CONNECT async — settling before START */
-    CTRL_ST_STARTING,      /* START sent, awaiting ack */
+    CTRL_ST_STARTING,      /* START nudge sent, awaiting ack (result ignored) */
+    CTRL_ST_CONNECT_WAIT,  /* polling STATUS until RUN=1 (link up) or timeout */
     CTRL_ST_RESUMING,      /* radio resume dispatched */
     CTRL_ST_RUNNING,       /* connected + streaming; health-poll STATUS */
     CTRL_ST_BACKOFF,       /* dropped/failed; wait then retry CONNECT */
@@ -63,8 +63,8 @@ typedef struct {
 /* Tunables (ms / counts). Defaults set by ctrl_sm_init; overwrite before use
  * in a test to shorten waits. */
 typedef struct {
-    uint32_t poll_interval_ms;  /* gap between health STATUS polls while RUNNING */
-    uint32_t connect_settle_ms; /* wait after CONNECT (async) before START */
+    uint32_t poll_interval_ms;  /* gap between STATUS polls (connect-wait + running) */
+    uint32_t connect_timeout_ms;/* max wait for RUN=1 after CONNECT before backoff */
     uint32_t backoff_ms;        /* wait before a reconnect attempt */
     int      max_retries;       /* CONNECT attempts before GAVEUP (<0 = infinite) */
 } ctrl_sm_cfg_t;

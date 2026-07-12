@@ -71,18 +71,43 @@ static void test_happy_path_connect_start_resume(void)
     TEST_ASSERT_EQUAL(CTRL_ACT_SEND_CONNECT, status(&sm, false));
     TEST_ASSERT_EQUAL(CTRL_ST_CONNECTING, sm.state);
 
-    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, connect_ack(&sm, true));
-    TEST_ASSERT_EQUAL(CTRL_ST_CONNECT_WAIT, sm.state);
-
-    /* settle delay elapses -> START */
-    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_START, run_ticks(&sm, 5000, 500));
+    /* CONNECT accepted -> nudge START */
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_START, connect_ack(&sm, true));
     TEST_ASSERT_EQUAL(CTRL_ST_STARTING, sm.state);
 
-    TEST_ASSERT_EQUAL(CTRL_ACT_RESUME_RADIO, start_ack(&sm, true));
+    /* START result ignored -> poll STATUS for RUN=1 */
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, start_ack(&sm, true));
+    TEST_ASSERT_EQUAL(CTRL_ST_CONNECT_WAIT, sm.state);
+
+    /* a poll fires; still not up */
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, run_ticks(&sm, 2500, 500));
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, status(&sm, false));
+    /* now RUN=1 -> resume the station */
+    TEST_ASSERT_EQUAL(CTRL_ACT_RESUME_RADIO, status(&sm, true));
     TEST_ASSERT_EQUAL(CTRL_ST_RESUMING, sm.state);
 
     TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, resume_done(&sm));
     TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);
+}
+
+/* Cold-connect to a slow sink: START reports failure (link not up yet) but the
+ * connection comes up shortly after; the machine must wait for RUN=1 and resume,
+ * NOT back off on the failed START. This is the earbud cold-start regression. */
+static void test_slow_sink_start_fails_but_connects(void)
+{
+    ctrl_sm_t sm;
+    ctrl_sm_init(&sm, true, true);
+    wifi_up(&sm);
+    status(&sm, false);                       /* -> CONNECTING */
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_START, connect_ack(&sm, true));
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, start_ack(&sm, false));  /* START failed... */
+    TEST_ASSERT_EQUAL(CTRL_ST_CONNECT_WAIT, sm.state);        /* ...but we wait, not backoff */
+    /* poll a few times still down, then link comes up */
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, run_ticks(&sm, 2500, 500));
+    status(&sm, false);
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, run_ticks(&sm, 2500, 500));
+    TEST_ASSERT_EQUAL(CTRL_ACT_RESUME_RADIO, status(&sm, true));
+    TEST_ASSERT_EQUAL(CTRL_ST_RESUMING, sm.state);
 }
 
 static void test_already_connected_skips_connect(void)
@@ -99,22 +124,28 @@ static void test_no_station_goes_running_without_resume(void)
     ctrl_sm_t sm;
     ctrl_sm_init(&sm, true, /*have_station*/false);
     wifi_up(&sm);
-    status(&sm, true);                 /* -> STARTING */
-    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, start_ack(&sm, true));
-    TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);   /* no RESUME */
+    status(&sm, true);                 /* QUERY connected -> STARTING */
+    start_ack(&sm, true);              /* -> CONNECT_WAIT */
+    run_ticks(&sm, 2500, 500);         /* poll */
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, status(&sm, true));   /* RUN=1, no station */
+    TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);          /* -> RUNNING, no RESUME */
 }
 
-static void test_start_fails_then_retry(void)
+static void test_connect_timeout_backs_off_and_retries(void)
 {
     ctrl_sm_t sm;
     ctrl_sm_init(&sm, true, true);
     wifi_up(&sm);
     status(&sm, false);                /* -> CONNECTING */
-    connect_ack(&sm, true);            /* -> CONNECT_WAIT */
-    /* settle -> START */
-    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_START, run_ticks(&sm, 5000, 500));
-    /* link never came up: START fails -> BACKOFF */
-    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, start_ack(&sm, false));
+    connect_ack(&sm, true);            /* -> STARTING */
+    start_ack(&sm, true);              /* -> CONNECT_WAIT */
+
+    /* link never comes up; answer every poll "down" until connect_timeout (20s) */
+    for (uint32_t t = 0; t < 22000; t += 500) {
+        ctrl_action_t a = tick(&sm, 500);
+        if (sm.state == CTRL_ST_BACKOFF) break;
+        if (a == CTRL_ACT_SEND_STATUS) status(&sm, false);
+    }
     TEST_ASSERT_EQUAL(CTRL_ST_BACKOFF, sm.state);
 
     /* backoff (5s default) elapses -> retry CONNECT, retries incremented */
@@ -133,17 +164,25 @@ static void test_connect_rejected_backs_off(void)
     TEST_ASSERT_EQUAL(CTRL_ST_BACKOFF, sm.state);
 }
 
+/* Drive a no-station machine all the way to RUNNING via the new flow. */
+static void reach_running(ctrl_sm_t *sm)
+{
+    wifi_up(sm);
+    status(sm, true);           /* QUERY connected -> STARTING */
+    start_ack(sm, true);        /* -> CONNECT_WAIT */
+    run_ticks(sm, 2500, 500);   /* poll -> SEND_STATUS */
+    status(sm, true);           /* RUN=1, no station -> RUNNING */
+}
+
 static void test_running_detects_drop_and_reconnects(void)
 {
     ctrl_sm_t sm;
     ctrl_sm_init(&sm, true, false);
-    wifi_up(&sm);
-    status(&sm, true);
-    start_ack(&sm, true);
+    reach_running(&sm);
     TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);
 
     /* health poll fires, reports disconnected -> BACKOFF -> reconnect */
-    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, run_ticks(&sm, 3500, 500));
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, run_ticks(&sm, 2500, 500));
     TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, status(&sm, false));
     TEST_ASSERT_EQUAL(CTRL_ST_BACKOFF, sm.state);
     TEST_ASSERT_EQUAL(CTRL_ACT_SEND_CONNECT, run_ticks(&sm, 6000, 500));
@@ -153,11 +192,9 @@ static void test_running_healthy_poll_resets_retries(void)
 {
     ctrl_sm_t sm;
     ctrl_sm_init(&sm, true, false);
-    wifi_up(&sm);
-    status(&sm, true);
-    start_ack(&sm, true);
+    reach_running(&sm);
     sm.retries = 3;                    /* pretend we recovered after retries */
-    run_ticks(&sm, 3500, 500);         /* -> SEND_STATUS */
+    run_ticks(&sm, 2500, 500);         /* -> SEND_STATUS */
     status(&sm, true);                 /* healthy */
     TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);
     TEST_ASSERT_EQUAL(0, sm.retries);
@@ -188,9 +225,10 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_autostart_off_is_idle);
     RUN_TEST(test_happy_path_connect_start_resume);
+    RUN_TEST(test_slow_sink_start_fails_but_connects);
     RUN_TEST(test_already_connected_skips_connect);
     RUN_TEST(test_no_station_goes_running_without_resume);
-    RUN_TEST(test_start_fails_then_retry);
+    RUN_TEST(test_connect_timeout_backs_off_and_retries);
     RUN_TEST(test_connect_rejected_backs_off);
     RUN_TEST(test_running_detects_drop_and_reconnects);
     RUN_TEST(test_running_healthy_poll_resets_retries);

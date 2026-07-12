@@ -7,8 +7,8 @@ void ctrl_sm_init(ctrl_sm_t *sm, bool autostart_wanted, bool have_station)
 {
     memset(sm, 0, sizeof(*sm));
     sm->have_station = have_station;
-    sm->cfg.poll_interval_ms   = 3000;
-    sm->cfg.connect_settle_ms  = 4000;
+    sm->cfg.poll_interval_ms   = 2000;
+    sm->cfg.connect_timeout_ms = 20000;  /* generous: earbuds link slowly */
     sm->cfg.backoff_ms         = 5000;
     sm->cfg.max_retries        = 10;
     sm->state = autostart_wanted ? CTRL_ST_WAIT_WIFI : CTRL_ST_IDLE;
@@ -49,35 +49,51 @@ ctrl_action_t ctrl_sm_step(ctrl_sm_t *sm, const ctrl_input_t *in)
 
     case CTRL_ST_CONNECTING:
         if (in->ev == CTRL_EV_CONNECT_ACK) {
-            /* ok = CONNECT accepted (INITIATED). A rejected CONNECT backs off. */
-            enter(sm, in->ok ? CTRL_ST_CONNECT_WAIT : CTRL_ST_BACKOFF);
-        }
-        return CTRL_ACT_WAIT;
-
-    case CTRL_ST_CONNECT_WAIT:
-        /* CONNECT completion is async and the WROOM32 exposes no pre-stream
-         * "connected" flag, so settle briefly then START — START only returns
-         * STARTED if the A2DP link actually came up (else -> backoff). */
-        if (in->ev == CTRL_EV_TICK) {
-            sm->timer_ms += in->dt_ms;
-            if (sm->timer_ms >= sm->cfg.connect_settle_ms) {
+            /* ok = CONNECT accepted (INITIATED). A rejected CONNECT backs off.
+             * Otherwise nudge START and then wait for the async link to come up
+             * (confirmed by STATUS RUN=1) rather than trusting START's result. */
+            if (in->ok) {
                 enter(sm, CTRL_ST_STARTING);
                 return CTRL_ACT_SEND_START;
             }
+            enter(sm, CTRL_ST_BACKOFF);
         }
         return CTRL_ACT_WAIT;
 
     case CTRL_ST_STARTING:
+        /* START is only a nudge — some sinks auto-start media on connect, and a
+         * slow sink (earbuds) isn't linked yet when START is sent, so START may
+         * report failure even though the connection is coming up. Ignore its
+         * result and poll STATUS for the real RUN=1 confirmation. */
         if (in->ev == CTRL_EV_START_ACK) {
-            if (!in->ok) {
-                enter(sm, CTRL_ST_BACKOFF);  /* link not up -> retry CONNECT */
+            enter(sm, CTRL_ST_CONNECT_WAIT);
+        }
+        return CTRL_ACT_WAIT;
+
+    case CTRL_ST_CONNECT_WAIT:
+        /* Poll STATUS until the sink is actually connected+streaming (RUN=1),
+         * or give up this attempt after connect_timeout and back off. */
+        if (in->ev == CTRL_EV_STATUS) {
+            if (in->connected) {
+                if (sm->have_station) {
+                    enter(sm, CTRL_ST_RESUMING);
+                    return CTRL_ACT_RESUME_RADIO;
+                }
+                enter(sm, CTRL_ST_RUNNING);
+            }
+            return CTRL_ACT_WAIT;         /* not up yet; await next poll */
+        }
+        if (in->ev == CTRL_EV_TICK) {
+            sm->timer_ms += in->dt_ms;
+            sm->poll_ms  += in->dt_ms;
+            if (sm->timer_ms >= sm->cfg.connect_timeout_ms) {
+                enter(sm, CTRL_ST_BACKOFF);
                 return CTRL_ACT_WAIT;
             }
-            if (sm->have_station) {
-                enter(sm, CTRL_ST_RESUMING);
-                return CTRL_ACT_RESUME_RADIO;
+            if (sm->poll_ms >= sm->cfg.poll_interval_ms) {
+                sm->poll_ms = 0;
+                return CTRL_ACT_SEND_STATUS;
             }
-            enter(sm, CTRL_ST_RUNNING);   /* connected, no station to resume */
         }
         return CTRL_ACT_WAIT;
 
