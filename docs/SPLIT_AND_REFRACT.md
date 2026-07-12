@@ -6,20 +6,24 @@ branch/PR, verify green, then move on.
 
 ## Progress (Ralph loop)
 
-**Done (6/10), each behavior-preserving, verified, committed & pushed:**
+**Done (7/10), each behavior-preserving, verified, committed & pushed:**
 #3 web_ui.c (1025→253), #4 cmd_handlers_bt.c (838→544 + new cmd_handlers_debug.c),
 #7 test_commands.c (1129→250, host 66/66 unchanged), #8 bt_a2dp_test.c (929→166,
 test-app build clean), #9 run_all_tests.py (1343→595, 725/725 host run unchanged),
-#10 run_test_scenarios.py (833→247, import/dispatch smoke). Verified per project:
+#10 run_test_scenarios.py (833→247, import/dispatch smoke),
+#2 bt_manager.c (1315→695 + new bt_manager_ops.c 430 + bt_manager_mocks.c 338;
+host CTest 70/70 + idf.py build clean; commit b1d20893). Verified per project:
 WROOM32 host CTest + `idf.py build`; S3 `idf.py build`; test_bluetooth app build;
 flake8 parity (no new findings).
 
-**Remaining (4/10) — the hard, shared-state tier; each needs a careful dedicated
+**bt_manager.c gotcha (worth remembering for #1):** the state was easy (clean
+globals — bt_ctx/s_autostart_enabled/s_autostart_attempts, defs kept in bt_manager.c);
+the real cost was **27 host-test executables** that compile bt_manager.c directly, all
+needing the new .c files added (uniform path → one sed). `bt_start_audio` was ~50 lines
+(not ~330 as guessed), so ops.c also took volume/pairing to reach ≤700.
+
+**Remaining (3/10) — the hard, shared-state tier; each needs a careful dedicated
 pass, NOT a mechanical move:**
-- **#2 bt_manager.c** — no file-static state (good), but functions are wrapped in
-  interleaved `#ifdef ESP_PLATFORM / UNIT_TEST / CONFIG_BT_MOCK_TESTING` guards;
-  a naive move risks guard-boundary errors that change what compiles per build.
-  CLAUDE.md: consult `code_review/` before refactoring bt_manager. Host-verifiable.
 - **#1 audio_processor.c** — heavy shared `s_*` state; do the internal-state
   extraction first (2.x/1.x plan). Host-verifiable.
 - **#5 bt_source_mock.c / #6 bt_source_stubs.c** — ~30 interspersed static vars
@@ -83,7 +87,19 @@ extraction *first*.
 
 ---
 
-## 2. `esp_bt_audio_source/components/bt_manager/bt_manager.c` — 1315 → ≤700
+## 2. `esp_bt_audio_source/components/bt_manager/bt_manager.c` — 1315 → 695 ✅ DONE
+
+**Done (commit b1d20893).** Split into 2 new files instead of the 3 planned below
+(the audio/status/control breakdown assumed a ~330-line bt_start_audio; it's ~50):
+- **bt_manager_ops.c (430)** — device ops: bt_start_audio/bt_stop_audio, bt_set_volume,
+  bt_pair/bt_unpair/bt_unpair_all, bt_set_pin (+ forward-decls for the moved test hooks).
+- **bt_manager_mocks.c (338)** — weak failure hooks + all UNIT_TEST/CONFIG_BT_MOCK_TESTING
+  bt_manager_test_*/bt_manager_mock_* functions.
+- **bt_manager.c (695)** — init/deinit, status/request-handler, connect/disconnect/scan/
+  pair wrappers, init_profiles + test_init_profiles; keeps the 3 shared global defs.
+- Build: added both to component SRCS + all 27 host-test executables. Verified host
+  CTest 70/70 + idf.py build clean. bt_manager.c diff is pure deletions (byte-identical
+  remaining code). The original 2.1–2.4 sub-steps below are superseded by this outcome.
 
 Component already split (`bt_connection.c`, `bt_scan.c`, `bt_pairing_store.c`,
 `bt_events_*.c`, `bt_streaming_manager.c`, `bt_connection_manager.c`). `bt_manager.c`
