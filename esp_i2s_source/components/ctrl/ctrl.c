@@ -74,6 +74,16 @@ static ctrl_action_t do_action(ctrl_action_t act)
         ESP_LOGI(TAG, "START -> %s", in.ok ? "started" : "fail");
         break;
     case CTRL_ACT_RESUME_RADIO: {
+        /* Re-assert the configured volume BEFORE audio resumes — the WROOM32
+         * resets VOL to 40 on a fresh A2DP link, so without this autostart music
+         * would come up loud rather than at the user's level. */
+        char cmd[16];
+        snprintf(cmd, sizeof(cmd), "VOLUME %u", s_cfg.volume);
+        bt_link_cmd_state_t vst = BT_LINK_CMD_TIMEOUT;
+        bt_link_send(cmd, &vst, NULL, 0, NULL, 0);
+        ESP_LOGI(TAG, "set volume %u -> %s", s_cfg.volume,
+                 vst == BT_LINK_CMD_DONE_OK ? "ok" : "fail");
+
         char url[RADIO_URL_MAX];
         int idx = s_cfg.last_station;
         if (stations_get_url(idx, url, sizeof(url))) {
@@ -152,16 +162,19 @@ void ctrl_get_cfg(ctrl_cfg_t *out)
     xSemaphoreGive(s_mtx);
 }
 
-esp_err_t ctrl_set_sink(const char *mac, bool autostart)
+esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume)
 {
     if (mac && mac[0] && !ctrl_cfg_mac_valid(mac)) return ESP_ERR_INVALID_ARG;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     if (mac) strlcpy(s_cfg.sink_mac, mac, sizeof(s_cfg.sink_mac));
     s_cfg.autostart = autostart ? 1 : 0;
+    if (volume >= 0) {
+        s_cfg.volume = (volume > 100) ? 100 : (uint8_t)volume;
+    }
     esp_err_t e = ctrl_cfg_save(&s_cfg);
     xSemaphoreGive(s_mtx);
-    ESP_LOGI(TAG, "config set: sink=%s autostart=%u (%s)",
-             s_cfg.sink_mac, s_cfg.autostart, esp_err_to_name(e));
+    ESP_LOGI(TAG, "config set: sink=%s autostart=%u volume=%u (%s)",
+             s_cfg.sink_mac, s_cfg.autostart, s_cfg.volume, esp_err_to_name(e));
     return e;
 }
 

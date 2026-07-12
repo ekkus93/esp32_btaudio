@@ -311,6 +311,7 @@ static esp_err_t ctrl_get_h(httpd_req_t *req)
     cJSON_AddStringToObject(root, "sink_mac", c.sink_mac);
     cJSON_AddBoolToObject(root, "autostart", c.autostart);
     cJSON_AddNumberToObject(root, "last_station", c.last_station);
+    cJSON_AddNumberToObject(root, "volume", c.volume);
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!body) return httpd_resp_send_500(req);
@@ -334,7 +335,9 @@ static esp_err_t ctrl_post_h(httpd_req_t *req)
     const char *mac = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "sink_mac")) : NULL;
     cJSON *as = j ? cJSON_GetObjectItem(j, "autostart") : NULL;
     bool autostart = cJSON_IsBool(as) ? cJSON_IsTrue(as) : (bool)cur.autostart;
-    esp_err_t e = ctrl_set_sink(mac, autostart);
+    cJSON *vol = j ? cJSON_GetObjectItem(j, "volume") : NULL;
+    int volume = cJSON_IsNumber(vol) ? vol->valueint : -1;   /* -1 = keep current */
+    esp_err_t e = ctrl_set_sink(mac, autostart, volume);
     cJSON_Delete(j);
     httpd_resp_set_type(req, "application/json");
     if (e != ESP_OK) {

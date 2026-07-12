@@ -42,6 +42,7 @@ void ctrl_cfg_load(ctrl_cfg_t *out)
     if (!out) return;
     memset(out, 0, sizeof(*out));
     out->last_station = CTRL_STATION_NONE;
+    out->volume = CTRL_VOLUME_DEFAULT;
 
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
@@ -49,12 +50,13 @@ void ctrl_cfg_load(ctrl_cfg_t *out)
     size_t sz = sizeof(blob);
     if (nvs_get_blob(h, NVS_KEY, &blob, &sz) == ESP_OK &&
         sz == sizeof(blob) && blob.magic == BLOB_MAGIC) {
-        /* Guard against a stray unterminated MAC from a corrupt blob. */
+        /* Guard against a stray unterminated MAC / out-of-range volume. */
         blob.cfg.sink_mac[CTRL_MAC_LEN - 1] = '\0';
+        if (blob.cfg.volume > 100) blob.cfg.volume = 100;
         *out = blob.cfg;
-        ESP_LOGI(TAG, "loaded: mac=%s autostart=%u last_station=%d",
+        ESP_LOGI(TAG, "loaded: mac=%s autostart=%u last_station=%d volume=%u",
                  out->sink_mac[0] ? out->sink_mac : "(none)",
-                 out->autostart, out->last_station);
+                 out->autostart, out->last_station, out->volume);
     }
     nvs_close(h);
 }

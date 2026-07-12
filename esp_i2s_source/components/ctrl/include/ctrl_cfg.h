@@ -19,10 +19,15 @@ extern "C" {
 #define CTRL_MAC_LEN      18   /* "AA:BB:CC:DD:EE:FF" + NUL */
 #define CTRL_STATION_NONE (-1) /* last_station: idle (no radio resume) */
 
+#define CTRL_VOLUME_DEFAULT 15         /* comfortable earbud level (0..100) */
+
 typedef struct {
     char    sink_mac[CTRL_MAC_LEN]; /* target A2DP sink; "" = none set */
     uint8_t autostart;              /* 0/1: connect + resume on boot */
     int16_t last_station;           /* station index to resume, or CTRL_STATION_NONE */
+    uint8_t volume;                 /* WROOM32 VOLUME (0..100) to apply on connect
+                                     * — the WROOM32 resets VOL to 40 on a fresh
+                                     * A2DP link, so autostart re-asserts this */
 } ctrl_cfg_t;
 
 /* Validate a Bluetooth MAC string: exactly "XX:XX:XX:XX:XX:XX", hex digits,

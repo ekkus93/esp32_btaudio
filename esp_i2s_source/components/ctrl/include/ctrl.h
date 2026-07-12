@@ -24,9 +24,10 @@ esp_err_t ctrl_start(void);
 /* Snapshot the current config (thread-safe). */
 void ctrl_get_cfg(ctrl_cfg_t *out);
 
-/* Update the target sink + autostart flag and persist. A non-empty mac must be
- * a valid "XX:.." MAC (else ESP_ERR_INVALID_ARG). */
-esp_err_t ctrl_set_sink(const char *mac, bool autostart);
+/* Update the target sink + autostart flag + autostart volume and persist. A
+ * non-empty mac must be a valid "XX:.." MAC (else ESP_ERR_INVALID_ARG). Pass
+ * volume < 0 to leave the stored volume unchanged; otherwise clamped to [0,100]. */
+esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume);
 
 /* Record the last played station index (persisted) so autostart can resume it.
  * Called from the radio play path; cheap no-op if unchanged. */
