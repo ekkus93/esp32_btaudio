@@ -1,0 +1,177 @@
+/* ctrl — boot orchestrator device glue (CTRL-1b). See ctrl.h. */
+#include "ctrl.h"
+#include "ctrl_sm.h"
+
+#include <string.h>
+#include <stdio.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "esp_log.h"
+
+#include "bt_link.h"
+#include "wifi_mgr.h"
+#include "radio.h"
+#include "stations.h"
+
+static const char *TAG = "ctrl";
+
+#define CTRL_LOOP_MS 500
+
+static ctrl_cfg_t        s_cfg;
+static ctrl_sm_t         s_sm;
+static TaskHandle_t      s_task;
+static SemaphoreHandle_t s_mtx;
+
+static bool wifi_connected(void)
+{
+    wifi_mgr_info_t wi;
+    wifi_mgr_get_info(&wi);
+    return strcmp(wi.state, "CONNECTED") == 0;
+}
+
+/* Parse the WROOM32 STATUS data ("...,RUN=1,...") for the streaming flag. Only
+ * the standalone RUN= token counts (skips UNDERRUN_RATE=, UNDERRUNS=). */
+static bool status_running(const char *data)
+{
+    const char *p = data;
+    while ((p = strstr(p, "RUN=")) != NULL) {
+        if (p == data || p[-1] == ',') return p[4] == '1';
+        p += 4;
+    }
+    return false;
+}
+
+/* Execute one FSM action against the hardware and feed the result back into the
+ * machine, returning the next action. */
+static ctrl_action_t do_action(ctrl_action_t act)
+{
+    ctrl_input_t in = {0};
+    bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+
+    switch (act) {
+    case CTRL_ACT_SEND_STATUS: {
+        char data[BT_LINK_FIELD_MAX] = {0};
+        bt_link_send("STATUS", &st, NULL, 0, data, sizeof(data));
+        in.ev = CTRL_EV_STATUS;
+        in.connected = (st == BT_LINK_CMD_DONE_OK) && status_running(data);
+        break;
+    }
+    case CTRL_ACT_SEND_CONNECT: {
+        char cmd[16 + CTRL_MAC_LEN];
+        snprintf(cmd, sizeof(cmd), "CONNECT %s", s_cfg.sink_mac);
+        bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+        in.ev = CTRL_EV_CONNECT_ACK;
+        in.ok = (st == BT_LINK_CMD_DONE_OK);
+        ESP_LOGI(TAG, "CONNECT %s -> %s", s_cfg.sink_mac, in.ok ? "initiated" : "fail");
+        break;
+    }
+    case CTRL_ACT_SEND_START:
+        bt_link_send("START", &st, NULL, 0, NULL, 0);
+        in.ev = CTRL_EV_START_ACK;
+        in.ok = (st == BT_LINK_CMD_DONE_OK);
+        ESP_LOGI(TAG, "START -> %s", in.ok ? "started" : "fail");
+        break;
+    case CTRL_ACT_RESUME_RADIO: {
+        char url[RADIO_URL_MAX];
+        int idx = s_cfg.last_station;
+        if (stations_get_url(idx, url, sizeof(url))) {
+            ESP_LOGI(TAG, "resume station %d", idx);
+            radio_play(url);   /* blocking; fine on this task */
+        } else {
+            ESP_LOGW(TAG, "resume: station %d unavailable", idx);
+        }
+        in.ev = CTRL_EV_RESUME_DONE;
+        break;
+    }
+    default:
+        return CTRL_ACT_WAIT;
+    }
+    return ctrl_sm_step(&s_sm, &in);
+}
+
+static void orchestrator_task(void *arg)
+{
+    (void)arg;
+    bool mac_ok = ctrl_cfg_mac_valid(s_cfg.sink_mac);
+    bool autostart = s_cfg.autostart && mac_ok;
+    ctrl_sm_init(&s_sm, autostart, s_cfg.last_station >= 0);
+
+    if (!autostart) {
+        ESP_LOGI(TAG, "autostart off (flag=%u mac=%s) -> manual mode",
+                 s_cfg.autostart, mac_ok ? s_cfg.sink_mac : "(unset/invalid)");
+        s_task = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+    ESP_LOGI(TAG, "orchestrating: sink=%s resume_station=%d",
+             s_cfg.sink_mac, s_cfg.last_station);
+
+    for (;;) {
+        ctrl_input_t in = {0};
+        if (s_sm.state == CTRL_ST_WAIT_WIFI && wifi_connected()) {
+            in.ev = CTRL_EV_WIFI_UP;
+        } else {
+            in.ev = CTRL_EV_TICK;
+            in.dt_ms = CTRL_LOOP_MS;
+        }
+        ctrl_action_t act = ctrl_sm_step(&s_sm, &in);
+        while (act != CTRL_ACT_WAIT && act != CTRL_ACT_IDLE) {
+            act = do_action(act);
+        }
+        if (s_sm.state == CTRL_ST_IDLE || s_sm.state == CTRL_ST_GAVEUP) {
+            ESP_LOGW(TAG, "orchestrator done: %s", ctrl_state_str(s_sm.state));
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(CTRL_LOOP_MS));
+    }
+    s_task = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t ctrl_start(void)
+{
+    if (!s_mtx) {
+        s_mtx = xSemaphoreCreateMutex();
+        if (!s_mtx) return ESP_ERR_NO_MEM;
+    }
+    ctrl_cfg_load(&s_cfg);
+    if (xTaskCreate(orchestrator_task, "ctrl", 4096, NULL,
+                    tskIDLE_PRIORITY + 3, &s_task) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+void ctrl_get_cfg(ctrl_cfg_t *out)
+{
+    if (!out) return;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    *out = s_cfg;
+    xSemaphoreGive(s_mtx);
+}
+
+esp_err_t ctrl_set_sink(const char *mac, bool autostart)
+{
+    if (mac && mac[0] && !ctrl_cfg_mac_valid(mac)) return ESP_ERR_INVALID_ARG;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    if (mac) strlcpy(s_cfg.sink_mac, mac, sizeof(s_cfg.sink_mac));
+    s_cfg.autostart = autostart ? 1 : 0;
+    esp_err_t e = ctrl_cfg_save(&s_cfg);
+    xSemaphoreGive(s_mtx);
+    ESP_LOGI(TAG, "config set: sink=%s autostart=%u (%s)",
+             s_cfg.sink_mac, s_cfg.autostart, esp_err_to_name(e));
+    return e;
+}
+
+void ctrl_note_station(int idx)
+{
+    if (!s_mtx) return;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    if (idx != s_cfg.last_station) {
+        s_cfg.last_station = (int16_t)idx;
+        ctrl_cfg_save(&s_cfg);
+    }
+    xSemaphoreGive(s_mtx);
+}
