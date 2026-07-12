@@ -364,6 +364,15 @@ add_executable(test_cmd_handlers_debug test_cmd_handlers_debug.c
 target_link_libraries(test_cmd_handlers_debug unity util_safe_host platform_shim_host)
 add_test(NAME test_cmd_handlers_debug COMMAND $<TARGET_FILE:test_cmd_handlers_debug>)
 
+# UT-4: nvs_storage domain layer against the REAL platform store (wrappers intact),
+# covering the typed accessors + paired-device add/remove/shift logic that the
+# mock-backed nvs suites skip (47.7% baseline). Distinct from test_nvs_storage_errors,
+# which overrides the weak wrappers for fault injection.
+add_executable(test_nvs_storage_domain test_nvs_storage_domain.c
+    ../../components/nvs_storage/nvs_storage.c)
+target_link_libraries(test_nvs_storage_domain unity util_safe_host platform_shim_host)
+add_test(NAME test_nvs_storage_domain COMMAND $<TARGET_FILE:test_nvs_storage_domain>)
+
 # Simple host PSRAM unit tests (uses heap_caps mock)
 add_executable(test_psram test_psram.c
     mocks/esp_heap_caps_mock.c
