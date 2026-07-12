@@ -13,6 +13,8 @@ endif()
 idf_component_register(
     SRCS
         "bt_manager.c"
+        "bt_manager_ops.c"
+        "bt_manager_mocks.c"
         "bt_pairing_store.c"
         "bt_scan.c"
         "bt_connection.c"
