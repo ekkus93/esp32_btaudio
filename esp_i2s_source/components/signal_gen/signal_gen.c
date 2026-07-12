@@ -59,12 +59,14 @@ void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
 
 /* --- Piano-ish voice (additive harmonics + struck-string envelope) --- */
 
-#define PIANO_HARMONICS   5
-#define PIANO_TAU_S       1.2    /* fundamental decay time constant (seconds) */
-#define PIANO_ATTACK_S    0.004  /* 4 ms attack ramp (percussive) */
+#define PIANO_HARMONICS   3
+#define PIANO_TAU_S       0.9    /* fundamental decay time constant (seconds) */
+#define PIANO_ATTACK_S    0.003  /* 3 ms attack ramp (percussive) */
 
-/* Relative harmonic weights (fundamental, 2nd, 3rd, ...). */
-static const double PIANO_W[PIANO_HARMONICS] = {1.0, 0.5, 0.30, 0.16, 0.08};
+/* Relative harmonic weights (fundamental, 2nd, 3rd). Mostly fundamental with
+ * only light overtones — a clean mallet/EP-ish tone rather than a muddy,
+ * sawtooth-heavy stack. Higher harmonics still decay faster (below). */
+static const double PIANO_W[PIANO_HARMONICS] = {1.0, 0.22, 0.07};
 
 void sg_piano_note_on(sg_piano_state_t *st)
 {
