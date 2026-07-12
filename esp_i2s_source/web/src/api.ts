@@ -134,11 +134,12 @@ export interface ToneState {
   hz?: number;
 }
 
-export async function setTone(hz: number): Promise<ToneState> {
+// amp (0..100 %) is optional; omit to keep the device's current amplitude.
+export async function setTone(hz: number, amp?: number): Promise<ToneState> {
   const r = await fetch("/api/tone", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hz }),
+    body: JSON.stringify(amp == null ? { hz } : { hz, amp }),
   });
   return r.json() as Promise<ToneState>;
 }

@@ -398,6 +398,24 @@ header h1 {
 .tone-presets { display: flex; gap: 8px; margin-bottom: 8px; }
 .tone-presets button { flex: 1; }
 
+/* Tone tab: Tone + Arpeggios share the top row (half each); Piano and Volume
+ * span the full width below (via .card.piano / .card.volume). */
+.grid.tone-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 620px) { .grid.tone-grid { grid-template-columns: 1fr; } }
+.arp-btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.arp-btns button {
+  flex: 1 1 30%;
+  min-width: 88px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.arp-btns button.primary { background: var(--accent); color: #04122a; border: none; font-weight: 600; }
+
 /* Piano keyboard: 2 octaves (C3–C5). White keys flex in a row; black keys sit
  * absolutely over each white's right edge. Full-width card. */
 .card.piano { grid-column: 1 / -1; }

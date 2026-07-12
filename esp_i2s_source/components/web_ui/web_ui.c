@@ -220,7 +220,8 @@ static esp_err_t wifi_post(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* POST /api/tone {hz} — enable the test tone; DELETE /api/tone — silence it. */
+/* POST /api/tone {hz, amp?} — enable the test tone (amp = 0..100% amplitude,
+ * optional); DELETE /api/tone — silence it. */
 static esp_err_t tone_post(httpd_req_t *req)
 {
     char body[128];
@@ -229,6 +230,8 @@ static esp_err_t tone_post(httpd_req_t *req)
         cJSON *j = cJSON_Parse(body);
         cJSON *h = j ? cJSON_GetObjectItem(j, "hz") : NULL;
         if (cJSON_IsNumber(h)) hz = h->valueint;
+        cJSON *a = j ? cJSON_GetObjectItem(j, "amp") : NULL;
+        if (cJSON_IsNumber(a)) tone_set_amplitude(a->valueint);   /* clamps [0,100] */
         cJSON_Delete(j);
     }
     tone_set(hz);

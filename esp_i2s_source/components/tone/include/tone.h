@@ -25,6 +25,10 @@ void tone_fill(int16_t *out, size_t frames);
 /* Enable the tone at freq_hz (clamped to [TONE_HZ_MIN, TONE_HZ_MAX]). */
 void tone_set(int freq_hz);
 
+/* Set the tone amplitude as a percent of full scale (0..100, clamped).
+ * Independent of on/off and frequency; default 30%. */
+void tone_set_amplitude(int pct);
+
 /* Disable — tone_fill() emits silence. */
 void tone_off(void);
 

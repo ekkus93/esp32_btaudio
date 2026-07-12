@@ -27,23 +27,46 @@ const WHITES: White[] = (() => {
 
 export function Piano() {
   const [active, setActive] = useState<number | null>(null);
+  const [durMs, setDurMs] = useState(500); // note length (ms)
+  const [vol, setVol] = useState(30); // note amplitude (% of full scale)
   const heldRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const press = (midi: number) => {
-    heldRef.current = true;
-    setActive(midi);
-    setTone(Math.round(midiToFreq(midi))).catch(() => {});
-  };
-  const release = () => {
-    if (!heldRef.current) return;
+  const stop = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     heldRef.current = false;
     setActive(null);
     toneOff().catch(() => {});
   };
 
+  const press = (midi: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    heldRef.current = true;
+    setActive(midi);
+    setTone(Math.round(midiToFreq(midi)), vol).catch(() => {});
+    // Auto-stop after the set duration (a held key still ends here).
+    timerRef.current = setTimeout(stop, durMs);
+  };
+  // Releasing early stops the note; if already auto-stopped, this is a no-op.
+  const release = () => {
+    if (heldRef.current) stop();
+  };
+
   return (
     <section className="card piano">
       <h2>Piano</h2>
+
+      <div className="vol-row">
+        <label>Note length</label>
+        <input type="range" min={100} max={2000} step={50} value={durMs} onChange={(e) => setDurMs(Number(e.target.value))} />
+        <span className="vol-val">{(durMs / 1000).toFixed(2)}s</span>
+      </div>
+      <div className="vol-row">
+        <label>Note volume</label>
+        <input type="range" min={0} max={100} value={vol} onChange={(e) => setVol(Number(e.target.value))} />
+        <span className="vol-val">{vol}%</span>
+      </div>
+
       <div className="piano-keys" onPointerUp={release} onPointerLeave={release} onPointerCancel={release}>
         {WHITES.map((w) => (
           <div
@@ -62,7 +85,7 @@ export function Piano() {
         ))}
       </div>
       <p className="muted">
-        Press a key to play its note as a test tone over Bluetooth (hold to sustain). C4 is middle C.
+        Each key plays its note (over Bluetooth) for the set length at the set volume; release early to cut it short. C4 is middle C.
       </p>
     </section>
   );

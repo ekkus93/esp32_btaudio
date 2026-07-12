@@ -8,6 +8,7 @@ import { Terminal } from "./Terminal";
 import { Bluetooth } from "./Bluetooth";
 import { Radio } from "./Radio";
 import { Piano } from "./Piano";
+import { Arpeggios } from "./Arpeggios";
 
 function fmtUptime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -483,8 +484,9 @@ export function App() {
       )}
 
       {tab === "tone" && (
-        <div className="grid">
+        <div className="grid tone-grid">
           <ToneControl tone={status?.tone} onChange={refresh} />
+          <Arpeggios />
           <Piano />
           <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
         </div>
