@@ -226,14 +226,20 @@ entry path must stay. Convert to a package `tools/run_all_tests_lib/` (or
 One giant `TestScenarioRunner` class (lines 73–739). Split the class's method groups
 into modules; keep the CLI (`main`, `list_scenarios`) thin.
 
-- [ ] **10.1 Map the methods** on `TestScenarioRunner` into logical groups
-      (setup/teardown, per-scenario runners, reporting/results).
-- [ ] **10.2 Extract scenario runners** into `scenarios/*.py` (or mixin modules the
-      class composes), keeping `TestResult`/`ScenarioResult` in a small `types.py`.
-- [ ] **10.3 Slim `run_test_scenarios.py`** to the class shell + `list_scenarios` +
-      `main` (~300 lines).
-- [ ] **10.4 Verify:** import/run smoke + `flake8 … --max-line-length=120`. (This is
-      the separate rpi project — no ESP toolchain involved.)
+- [x] **10.1 Map the methods** — core/api (`__init__`, `run_scenario`,
+      `run_all_scenarios`, `_api_get/_api_post/_wait_for_status`), 7 `_scenario_*`
+      runners, and 3 report/summary methods.
+- [x] **10.2 Extract via mixins** (method bodies use `self.*`, so mixins compose
+      cleanly): `rts/types.py` (`TestResult`+`ScenarioResult`, 33 lines),
+      `rts/scenarios.py` (`ScenariosMixin`, 343), `rts/reporting.py`
+      (`ReportingMixin`, 224), plus `rts/__init__.py`.
+- [x] **10.3 Slim `run_test_scenarios.py`** to `class TestScenarioRunner(
+      ScenariosMixin, ReportingMixin)` (core/api methods) + `list_scenarios` +
+      `main`. **247 lines**; entry path unchanged.
+- [x] **10.4 Verify:** import + dispatch smoke (`run_scenario('system')` returns a
+      `ScenarioResult`, all 7 scenario methods + reporting resolve via the mixins);
+      `flake8 … --max-line-length=120` shows **no new findings** (F401 count actually
+      dropped 2→0). No ESP toolchain involved.
 
 ---
 
