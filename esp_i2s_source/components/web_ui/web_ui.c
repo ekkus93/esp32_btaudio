@@ -301,6 +301,62 @@ static esp_err_t volume_post_h(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ---- /api/btvolume: WROOM32 post-mix VOLUME (0..100) over bt_link ---- */
+
+/* Pull the standalone VOL= token out of a WROOM32 STATUS data string. */
+static int parse_wroom_vol(const char *data)
+{
+    const char *p = data;
+    while ((p = strstr(p, "VOL=")) != NULL) {
+        if (p == data || p[-1] == ',') return atoi(p + 4);
+        p += 4;
+    }
+    return -1;
+}
+
+static esp_err_t btvolume_get_h(httpd_req_t *req)
+{
+    bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+    char data[BT_LINK_FIELD_MAX] = {0};
+    bt_link_send("STATUS", &st, NULL, 0, data, sizeof(data));
+    int vol = (st == BT_LINK_CMD_DONE_OK) ? parse_wroom_vol(data) : -1;
+    char out[32];
+    snprintf(out, sizeof(out), "{\"vol\":%d}", vol);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, out);
+}
+
+static esp_err_t btvolume_post_h(httpd_req_t *req)
+{
+    char body[64];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    cJSON *v = j ? cJSON_GetObjectItem(j, "vol") : NULL;
+    httpd_resp_set_type(req, "application/json");
+    if (!cJSON_IsNumber(v)) {
+        cJSON_Delete(j);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing vol\"}");
+        return ESP_OK;
+    }
+    int vol = v->valueint;
+    if (vol < 0) vol = 0;
+    if (vol > 100) vol = 100;
+    cJSON_Delete(j);
+    char cmd[16];
+    snprintf(cmd, sizeof(cmd), "VOLUME %d", vol);
+    bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+    bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+    char out[48];
+    snprintf(out, sizeof(out), "{\"ok\":%s,\"vol\":%d}",
+             st == BT_LINK_CMD_DONE_OK ? "true" : "false", vol);
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
 /* ---- /api/ctrl: orchestration config (CTRL-1b) ---- */
 
 static esp_err_t ctrl_get_h(httpd_req_t *req)
@@ -599,6 +655,10 @@ esp_err_t web_ui_start(void)
         .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
     const httpd_uri_t volume_post_uri = {
         .uri = "/api/volume", .method = HTTP_POST, .handler = volume_post_h };
+    const httpd_uri_t btvol_get_uri = {
+        .uri = "/api/btvolume", .method = HTTP_GET, .handler = btvolume_get_h };
+    const httpd_uri_t btvol_post_uri = {
+        .uri = "/api/btvolume", .method = HTTP_POST, .handler = btvolume_post_h };
     const httpd_uri_t ctrl_get_uri = {
         .uri = "/api/ctrl", .method = HTTP_GET, .handler = ctrl_get_h };
     const httpd_uri_t ctrl_post_uri = {
@@ -618,6 +678,8 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &st_put_uri);
     httpd_register_uri_handler(s_server, &st_del_uri);
     httpd_register_uri_handler(s_server, &volume_post_uri);
+    httpd_register_uri_handler(s_server, &btvol_get_uri);
+    httpd_register_uri_handler(s_server, &btvol_post_uri);
     httpd_register_uri_handler(s_server, &ctrl_get_uri);
     httpd_register_uri_handler(s_server, &ctrl_post_uri);
     httpd_register_uri_handler(s_server, &ws_uri);

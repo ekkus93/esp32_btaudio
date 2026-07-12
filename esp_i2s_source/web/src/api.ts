@@ -17,6 +17,7 @@ export interface DeviceStatus {
   wroom?: { reachable: boolean; version?: string };
   tone?: { on: boolean; hz: number };
   radio?: RadioStatus;
+  i2s?: { gain: number };
 }
 
 export interface RadioStatus {
@@ -73,6 +74,30 @@ export async function setTone(hz: number): Promise<ToneState> {
 export async function toneOff(): Promise<ToneState> {
   const r = await fetch("/api/tone", { method: "DELETE" });
   return r.json() as Promise<ToneState>;
+}
+
+// Pre-I2S (ESP32-S3) software gain, 0..100 %.
+export async function setS3Volume(pct: number): Promise<{ ok: boolean; pct?: number }> {
+  const r = await fetch("/api/volume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pct }),
+  });
+  return r.json();
+}
+
+// Post-mix (ESP32-WROOM32) A2DP volume, 0..100. -1 = unknown.
+export async function getBtVolume(): Promise<{ vol: number }> {
+  return getJSON<{ vol: number }>("/api/btvolume");
+}
+
+export async function setBtVolume(vol: number): Promise<{ ok: boolean; vol?: number }> {
+  const r = await fetch("/api/btvolume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vol }),
+  });
+  return r.json();
 }
 
 export async function playRadio(url: string): Promise<{ ok: boolean; error?: string }> {

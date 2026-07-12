@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { getStatus, setWifi, setTone, toneOff, type DeviceStatus } from "./api";
+import {
+  getStatus, setWifi, setTone, toneOff,
+  setS3Volume, getBtVolume, setBtVolume,
+  type DeviceStatus,
+} from "./api";
 import { Terminal } from "./Terminal";
 import { Bluetooth } from "./Bluetooth";
 import { Radio } from "./Radio";
@@ -149,6 +153,70 @@ function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; o
   );
 }
 
+function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => void }) {
+  const [pre, setPre] = useState(100); // ESP32-S3 pre-I2S gain %
+  const [post, setPost] = useState(40); // WROOM32 post-mix volume
+  const [postKnown, setPostKnown] = useState(false);
+
+  // Sync the pre-I2S slider from device status (polled).
+  useEffect(() => {
+    if (typeof s3gain === "number") setPre(s3gain);
+  }, [s3gain]);
+
+  // Fetch the WROOM32 volume once on mount (a bt_link round-trip — not polled).
+  useEffect(() => {
+    getBtVolume()
+      .then((v) => {
+        if (v.vol >= 0) {
+          setPost(v.vol);
+          setPostKnown(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <section className="card">
+      <h2>Volume</h2>
+
+      <div className="vol-row">
+        <label>
+          Pre-I2S <span className="muted">(ESP32-S3 source)</span>
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={pre}
+          onChange={(e) => setPre(Number(e.target.value))}
+          onPointerUp={(e) => setS3Volume(Number((e.target as HTMLInputElement).value)).then(onChange)}
+        />
+        <span className="vol-val">{pre}%</span>
+      </div>
+
+      <div className="vol-row">
+        <label>
+          Post-mix <span className="muted">(WROOM32 → A2DP)</span>
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={post}
+          onChange={(e) => setPost(Number(e.target.value))}
+          onPointerUp={(e) => setBtVolume(Number((e.target as HTMLInputElement).value)).then(() => setPostKnown(true))}
+        />
+        <span className="vol-val">{postKnown ? post : "?"}</span>
+      </div>
+
+      <p className="muted">
+        Pre-I2S trims the S3 source before it leaves over I2S; post-mix is the
+        WROOM32's final A2DP level (persisted). Use post-mix as your main control.
+      </p>
+    </section>
+  );
+}
+
 export function App() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -209,6 +277,7 @@ export function App() {
         </Card>
 
         <Terminal />
+        <VolumeControl s3gain={status?.i2s?.gain} onChange={refresh} />
         <ToneControl tone={status?.tone} onChange={refresh} />
         <Radio radio={status?.radio} onChange={refresh} />
         <Bluetooth />
