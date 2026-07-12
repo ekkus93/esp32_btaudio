@@ -25821,3 +25821,12 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Also dropped 2 stale commented-out SRCS lines in test_app_audio CMakeLists.
 - Verified: host CTest 70/70; test_bluetooth + test_app_audio idf.py build clean.
 - Not yet pushed (commit 3241ef59 local).
+
+## 2026-07-12T22:58:07Z - Claude Opus 4.8 (1M context) - Build + flash both boards (latest code @ 57e454df)
+
+- Built and flashed the current code (post refactoring + dead-code sweep) to both boards:
+  - WROOM32: esp_bt_audio_source (target esp32) -> /dev/ttyUSB0. Build OK, flash OK,
+    hash verified, hard reset. Image ~925 KB.
+  - ESP32-S3: esp_i2s_source (target esp32s3) -> /dev/ttyACM0. Build OK, flash OK,
+    hash verified, hard reset. Image ~1.8 MB.
+- User explicitly authorized the flash of both boards.
