@@ -25378,3 +25378,24 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
     worked — TLS quirk with those servers; SomaFM (HTTP) fine. Revisit if needed.
 - Host suite 8/8. Next: RADIO-1c (NVS station store + /api/stations + UI) and
   RADIO-2 (esp_audio_codec decode -> resample -> i2s, where audio finally plays).
+
+## 2026-07-12T01:43:31Z - Claude Opus 4.8 (1M) - RADIO-1c: NVS station store + /api/stations CRUD
+
+- Pure station_store (radio component): add/update/delete + http(s) URL validate
+  + blank-name->host defaulting + exact-URL dedupe, cap 40. 7 host tests.
+- stations.c device wrapper: NVS blob (magic-versioned stations_blob_t) persist +
+  first-boot seed (SomaFM, since SPEC 5.4 stations unreachable) + mutex. web_ui:
+  /api/stations GET/POST/PUT(?id)/DELETE(?id), 400 on invalid/dup/full. Radio.tsx
+  UI: station list (play/edit/delete) + add form + one-off Play (getStations/
+  add/update/delete API).
+- HARDWARE VERIFIED: seed 5 -> add -> PUT rename -> DELETE, all over REST; edits
+  persist across reboot (Groove Salad -> "Groove (edited)" survived watchdog reset).
+- TWO CRASHES FOUND + FIXED:
+  * save_locked() put the ~12KB stations_blob_t on the STACK -> main task stack
+    (~4KB) overflow -> LoadProhibited boot loop right after "seeded 5 stations".
+    Fixed: make the scratch blob static (safe under s_mtx).
+  * esp_http_server default max_uri_handlers=8, but we now have 12 routes ->
+    PUT/DELETE (+ws/root) silently failed to register ("method invalid"). Set
+    cfg.max_uri_handlers=20.
+- Host suite 9/9. RADIO-1 COMPLETE (a/b/c). Next: RADIO-2 (esp_audio_codec decode
+  -> resample -> i2s) where audio finally plays and the tone retires.

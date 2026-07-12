@@ -88,3 +88,34 @@ export async function stopRadio(): Promise<{ ok: boolean }> {
   const r = await fetch("/api/radio", { method: "DELETE" });
   return r.json();
 }
+
+export interface Station {
+  id: number;
+  name: string;
+  url: string;
+}
+
+export const getStations = () => getJSON<Station[]>("/api/stations");
+
+export async function addStation(name: string, url: string): Promise<{ ok: boolean; id?: number; error?: string }> {
+  const r = await fetch("/api/stations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, url }),
+  });
+  return r.json();
+}
+
+export async function updateStation(id: number, name: string, url: string): Promise<{ ok: boolean }> {
+  const r = await fetch(`/api/stations?id=${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, url }),
+  });
+  return r.json();
+}
+
+export async function deleteStation(id: number): Promise<{ ok: boolean }> {
+  const r = await fetch(`/api/stations?id=${id}`, { method: "DELETE" });
+  return r.json();
+}

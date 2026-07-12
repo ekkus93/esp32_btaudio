@@ -31,6 +31,7 @@
 #include "console.h"
 #include "web_ui.h"
 #include "radio.h"
+#include "stations.h"
 
 static const char *TAG = "main";
 
@@ -155,6 +156,8 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_mgr_init());
     /* RADIO-1b: internet-radio stream client (256 KB PSRAM compressed ring). */
     ESP_ERROR_CHECK(radio_init(256 * 1024));
+    /* RADIO-1c: NVS station presets (seeded on first boot). */
+    ESP_ERROR_CHECK(stations_init());
     /* WIFI-1c: console for runtime provisioning (WIFI <ssid> <pass> / STATUS). */
     ESP_ERROR_CHECK(console_start());
     /* WEB-1a: HTTP server (embedded SPA + /api/status). */

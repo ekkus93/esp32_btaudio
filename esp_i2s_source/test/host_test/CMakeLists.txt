@@ -95,4 +95,10 @@ target_include_directories(test_radio_parse PRIVATE ${RADIO_DIR}/include)
 target_link_libraries(test_radio_parse unity)
 add_test(NAME test_radio_parse COMMAND test_radio_parse)
 
+# RADIO-1c: station store CRUD
+add_executable(test_station_store test_station_store.c ${RADIO_DIR}/station_store.c)
+target_include_directories(test_station_store PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(test_station_store unity)
+add_test(NAME test_station_store COMMAND test_station_store)
+
 # Further suites appended by RADIO-2b (test_resampler), etc.

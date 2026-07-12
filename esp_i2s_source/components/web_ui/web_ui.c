@@ -7,6 +7,8 @@
 #include "bt_link.h"
 #include "tone.h"
 #include "radio.h"
+#include "stations.h"
+#include "station_store.h"
 
 #include <string.h>
 
@@ -251,6 +253,100 @@ static esp_err_t radio_delete(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ---- /api/stations CRUD (RADIO-1c) ---- */
+
+static int station_id_param(httpd_req_t *req)
+{
+    char q[48], v[12];
+    if (httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK &&
+        httpd_query_key_value(q, "id", v, sizeof(v)) == ESP_OK) {
+        return atoi(v);
+    }
+    return -1;
+}
+
+static esp_err_t stations_get_h(httpd_req_t *req)
+{
+    cJSON *arr = cJSON_CreateArray();
+    int n = stations_count();
+    for (int i = 0; i < n; i++) {
+        char name[STATION_NAME_MAX], url[STATION_URL_MAX];
+        if (!stations_get(i, name, sizeof(name), url, sizeof(url))) continue;
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", i);
+        cJSON_AddStringToObject(o, "name", name);
+        cJSON_AddStringToObject(o, "url", url);
+        cJSON_AddItemToArray(arr, o);
+    }
+    char *body = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    if (!body) return httpd_resp_send_500(req);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t e = httpd_resp_sendstr(req, body);
+    cJSON_free(body);
+    return e;
+}
+
+/* Parse {name,url} from the body into caller buffers; returns url ptr or NULL. */
+static bool station_body(httpd_req_t *req, char *name, size_t nsz, char *url, size_t usz)
+{
+    char b[STATION_URL_MAX + STATION_NAME_MAX + 64];
+    if (recv_body(req, b, sizeof(b)) != ESP_OK) return false;
+    cJSON *j = cJSON_Parse(b);
+    const char *jn = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "name")) : NULL;
+    const char *ju = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "url")) : NULL;
+    name[0] = url[0] = '\0';
+    if (jn) strlcpy(name, jn, nsz);
+    if (ju) strlcpy(url, ju, usz);
+    bool ok = ju && ju[0];
+    cJSON_Delete(j);
+    return ok;
+}
+
+static void station_reply(httpd_req_t *req, bool ok, int id)
+{
+    char r[48];
+    httpd_resp_set_type(req, "application/json");
+    if (ok) {
+        snprintf(r, sizeof(r), "{\"ok\":true,\"id\":%d}", id);
+    } else {
+        httpd_resp_set_status(req, "400 Bad Request");
+        strlcpy(r, "{\"ok\":false,\"error\":\"invalid/duplicate/full\"}", sizeof(r));
+    }
+    httpd_resp_sendstr(req, r);
+}
+
+static esp_err_t stations_post_h(httpd_req_t *req)
+{
+    char name[STATION_NAME_MAX], url[STATION_URL_MAX];
+    if (!station_body(req, name, sizeof(name), url, sizeof(url))) {
+        station_reply(req, false, -1);
+        return ESP_OK;
+    }
+    int id = stations_add(name, url);
+    station_reply(req, id >= 0, id);
+    return ESP_OK;
+}
+
+static esp_err_t stations_put_h(httpd_req_t *req)
+{
+    int id = station_id_param(req);
+    char name[STATION_NAME_MAX], url[STATION_URL_MAX];
+    if (id < 0 || !station_body(req, name, sizeof(name), url, sizeof(url))) {
+        station_reply(req, false, id);
+        return ESP_OK;
+    }
+    station_reply(req, stations_update(id, name, url), id);
+    return ESP_OK;
+}
+
+static esp_err_t stations_delete_h(httpd_req_t *req)
+{
+    int id = station_id_param(req);
+    station_reply(req, id >= 0 && stations_remove(id), id);
+    return ESP_OK;
+}
+
 /* ---- WebSocket /ws: terminal I/O (term_in/term_out) + EVENT feed ---- */
 
 #define WS_MAX_CLIENTS 4
@@ -377,6 +473,7 @@ esp_err_t web_ui_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.lru_purge_enable = true;
+    cfg.max_uri_handlers = 20;   /* status/wifi/tone/radio/stations(x4)/ws/root */
 
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
@@ -396,6 +493,14 @@ esp_err_t web_ui_start(void)
         .uri = "/api/radio", .method = HTTP_POST, .handler = radio_post };
     const httpd_uri_t radio_del_uri = {
         .uri = "/api/radio", .method = HTTP_DELETE, .handler = radio_delete };
+    const httpd_uri_t st_get_uri = {
+        .uri = "/api/stations", .method = HTTP_GET, .handler = stations_get_h };
+    const httpd_uri_t st_post_uri = {
+        .uri = "/api/stations", .method = HTTP_POST, .handler = stations_post_h };
+    const httpd_uri_t st_put_uri = {
+        .uri = "/api/stations", .method = HTTP_PUT, .handler = stations_put_h };
+    const httpd_uri_t st_del_uri = {
+        .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
     const httpd_uri_t ws_uri = {
         .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     const httpd_uri_t root_uri = {
@@ -406,6 +511,10 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &tone_del_uri);
     httpd_register_uri_handler(s_server, &radio_post_uri);
     httpd_register_uri_handler(s_server, &radio_del_uri);
+    httpd_register_uri_handler(s_server, &st_get_uri);
+    httpd_register_uri_handler(s_server, &st_post_uri);
+    httpd_register_uri_handler(s_server, &st_put_uri);
+    httpd_register_uri_handler(s_server, &st_del_uri);
     httpd_register_uri_handler(s_server, &ws_uri);
     httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
 

@@ -253,16 +253,20 @@ Compressed-frame ring in PSRAM decouples network jitter from decode.
       the default ~1 MB single-app. Notes: the SPEC §5.4 snapshot stations had
       unreachable stream ports here (laptop failed too) — presets swapped to
       SomaFM until RADIO-1c; audio plays once the RADIO-2 decoder drains the ring.
-- [ ] **RADIO-1c** Station store: NVS-backed preset CRUD (host-tested
-      logic) + `/api/stations` endpoints + UI list/add/edit/delete +
-      custom-URL field. Seed defaults from internet-radio.com's Popular
-      Stations list (SPEC §5.4 — 5 `.pls` presets); all web-editable.
-  - [ ] **RADIO-1c-i** User-entered stations: UI "Add station" (name + URL)
-        and "Save station" on a one-off custom-URL audition both persist to
-        NVS so they survive reboot and replay from the list. URL validation
-        (scheme http/https, length cap); name defaults to host/ICY name if
-        blank. Store as a versioned NVS blob (or per-slot keys), capacity
-        **≥ 32 stations**; host-test add/edit/delete/persist/dedupe logic.
+- [x] **RADIO-1c** Station store. Pure `station_store` CRUD (host-tested, 7
+      cases): add/update/delete, http(s) URL validation, blank-name→host
+      defaulting, exact-URL dedupe, capacity 40 (≥32). `stations.c` device
+      wrapper: NVS blob persistence (magic-versioned) + first-boot seed + mutex.
+      `/api/stations` GET/POST/PUT(?id)/DELETE(?id) with 400 on
+      invalid/duplicate/full. Radio UI: station list (play/edit/delete) + add
+      form + one-off "Play". **Hardware-verified**: seed→add→edit→delete over
+      REST, and edits persist across reboot. Bumped httpd `max_uri_handlers`
+      (12 routes now).
+  - [x] **RADIO-1c-i** Add-station + edit + one-off Play all persist to NVS;
+        URL validated (http/https), blank name → URL host; capacity ≥ 32.
+        NVS seed uses SomaFM (the SPEC §5.4 snapshot stations were unreachable
+        here — see RADIO-1b); the list is web-editable so the SPEC set / any
+        station can be added. Persist/dedupe host-tested.
 
 ## RADIO-2 — Decode, resample, play
 

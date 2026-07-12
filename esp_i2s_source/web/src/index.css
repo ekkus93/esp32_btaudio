@@ -199,20 +199,17 @@ header h1 {
 .bt-prompt p { margin: 0 0 6px; }
 
 .card.radio { grid-column: 1 / -1; }
-.radio-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.radio-presets button {
-  padding: 6px 11px;
-  border-radius: 999px;
+.radio-play {
+  width: 30px; height: 30px; flex: none;
+  border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--panel-2);
-  color: var(--fg);
-  font-size: 12.5px;
+  color: var(--accent);
   cursor: pointer;
+  font-size: 12px;
 }
-.radio-presets button:disabled { opacity: 0.5; cursor: default; }
-.radio-url { display: flex; gap: 8px; margin-bottom: 10px; }
-.radio-url input {
-  flex: 1;
+.radio-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.radio-add input {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -220,7 +217,10 @@ header h1 {
   color: var(--fg);
   font-size: 13px;
 }
-.radio-url input:focus { outline: none; border-color: var(--accent); }
+.radio-add input:first-of-type { width: 150px; }
+.radio-add input:nth-of-type(2) { flex: 1; min-width: 180px; }
+.radio-add input:focus { outline: none; border-color: var(--accent); }
+.radio-now .stop { padding: 3px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); cursor: pointer; }
 .card.radio button {
   padding: 8px 14px;
   border-radius: 8px;
