@@ -25804,3 +25804,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   test/test_app_audio/main/audio_processor_test.c (709) — dead code (commented out of
   its build) → deferred to the low-priority dead-code sweep for deletion, not a split.
 - Two split commits (3050c291 #5, a4efad74 #6) not yet pushed as of this entry.
+
+## 2026-07-12T22:53:32Z - Claude Opus 4.8 (1M context) - Dead-code sweep (esp_bt_audio_source)
+
+- Ran the deferred dead-code sweep. Removed 13 unbuilt files (~2100 lines), all test
+  scaffolding — production code (components/, main/) had ZERO orphans. Commit 3241ef59.
+- Deleted: audio_processor_test.c (was commented out); test_app2-merge leftover
+  stubs/mocks (audio_processor_stub.c, bt_connection_shim.c, bt_streaming_mock.c,
+  command_interface_mock.c, audio_processor_beep_stub.c) + test_compat/src/dummy.c;
+  orphaned host_test suites never in host_test/CMakeLists (test_audio_i2s_host.c,
+  test_i2s_audio_host.c, test_audio_processor_real.c, test_pair_command.c,
+  test_bt_mock_pairing.c) + orphaned device test test_pairing_seq_hardening_device.c.
+- Presented two groups (clearly-dead stubs vs orphaned-tests-that-are-possibly-lost-
+  coverage); user chose delete-all for both. Kept bt_connection_shim.h (still #included
+  by built test_bt_connection.c) and WAV/SPIFFS traceability comments.
+- Also dropped 2 stale commented-out SRCS lines in test_app_audio CMakeLists.
+- Verified: host CTest 70/70; test_bluetooth + test_app_audio idf.py build clean.
+- Not yet pushed (commit 3241ef59 local).
