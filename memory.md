@@ -25729,3 +25729,12 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Enhanced Bluetooth.tsx Find & pair to auto-accept the SSP prompt (pin_accept) and verify
   the device lands in paired[] before declaring success (needs S3 flash to deploy).
 - Restored: laptop adapter powered + discoverable off; WROOM32 paired=[Echo Buds] only.
+
+## 2026-07-12T14:57:53Z - Claude Opus 4.8 (1M) - Adjustable prebuffer flashed + verified
+
+- Flashed S3 with the runtime-adjustable radio prebuffer (also carried the title
+  change "ESP32 Bluetooth Audio Source" + enhanced Find & pair auto-accept).
+- Verified on device: default 3000ms; POST /api/prebuffer sets it; 9000 clamps to
+  5000; /api/status.radio.prebuffer_ms reports it; NVS persistence confirmed across a
+  hard reboot (set 2000 -> reboot -> 2000). Left at 3000ms default. UI buffer slider
+  test passes on device.
