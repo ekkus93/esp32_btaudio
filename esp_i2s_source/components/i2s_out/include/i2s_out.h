@@ -52,6 +52,10 @@ size_t i2s_out_pump_once(pcm_ring_t *ring, uint8_t *scratch, size_t block_len,
                          i2s_out_sink_fn sink, void *ctx,
                          i2s_out_stats_t *stats);
 
+/* Pure pre-I2S volume: scale `count` interleaved int16 samples in place by
+ * `pct` (0..100). pct>=100 is a no-op (unity), pct<=0 mutes. Host-tested. */
+void i2s_out_apply_gain(int16_t *samples, size_t count, int pct);
+
 #ifdef ESP_PLATFORM
 #include "esp_err.h"
 
@@ -61,6 +65,13 @@ esp_err_t i2s_out_start(void);                        /* enable + spawn writer *
 esp_err_t i2s_out_stop(void);
 size_t    i2s_out_write(const uint8_t *data, size_t len);  /* producer -> ring */
 void      i2s_out_get_stats(i2s_out_stats_t *out);
+
+/* Pre-I2S software volume state (0..100 %). The audio_out feeder reads
+ * i2s_out_get_gain() and applies it via i2s_out_apply_gain() to the mixed PCM
+ * before I2S — a source-side trim independent of the WROOM32's post-mix VOLUME.
+ * Default 100 (unity). set clamps to [0,100]. */
+void      i2s_out_set_gain(int pct);
+int       i2s_out_get_gain(void);
 #endif /* ESP_PLATFORM */
 
 #ifdef __cplusplus

@@ -98,6 +98,9 @@ static void audio_out_task(void *arg)
         } else {
             tone_fill(block, AUDIO_OUT_FRAMES);
         }
+        /* Pre-I2S source trim (RADIO/CTRL volume): scale the mixed PCM before the
+         * 16-in-32 pack. Independent of the WROOM32's post-mix VOLUME. */
+        i2s_out_apply_gain(block, AUDIO_OUT_FRAMES * 2, i2s_out_get_gain());
         for (size_t i = 0; i < AUDIO_OUT_FRAMES * 2; i++) {
             block32[i] = (int32_t)block[i] << 16;   /* top half of the 32-bit slot */
         }

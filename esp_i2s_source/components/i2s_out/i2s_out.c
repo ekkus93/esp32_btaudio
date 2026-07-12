@@ -163,6 +163,23 @@ size_t i2s_out_write(const uint8_t *data, size_t len)
     return pcm_ring_write(s_ring, data, len);
 }
 
+/* Pre-I2S software volume (0..100). The scaling itself is the pure
+ * i2s_out_apply_gain(); the audio_out feeder reads this and applies it. */
+static volatile int s_gain_pct = 100;
+
+void i2s_out_set_gain(int pct)
+{
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    s_gain_pct = pct;
+    ESP_LOGI(TAG, "pre-I2S gain set to %d%%", pct);
+}
+
+int i2s_out_get_gain(void)
+{
+    return s_gain_pct;
+}
+
 void i2s_out_get_stats(i2s_out_stats_t *out)
 {
     if (out) *out = s_stats;

@@ -119,6 +119,7 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddNumberToObject(i2s, "underrun_bytes", (double)is.underrun_bytes);
     cJSON_AddNumberToObject(i2s, "underrun_events", (double)is.underrun_events);
     cJSON_AddNumberToObject(i2s, "ring_peak", (double)is.ring_peak);
+    cJSON_AddNumberToObject(i2s, "gain", i2s_out_get_gain());   /* pre-I2S volume % */
 
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -271,6 +272,32 @@ static esp_err_t radio_delete(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true}");
     xTaskCreate(radio_stop_task, "radiostop", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
+    return ESP_OK;
+}
+
+/* ---- /api/volume: S3 pre-I2S software gain (0..100) ---- */
+
+static esp_err_t volume_post_h(httpd_req_t *req)
+{
+    char body[64];
+    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    cJSON *pct = j ? cJSON_GetObjectItem(j, "pct") : NULL;
+    httpd_resp_set_type(req, "application/json");
+    if (!cJSON_IsNumber(pct)) {
+        cJSON_Delete(j);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing pct\"}");
+        return ESP_OK;
+    }
+    i2s_out_set_gain(pct->valueint);       /* clamps to [0,100] */
+    cJSON_Delete(j);
+    char out[48];
+    snprintf(out, sizeof(out), "{\"ok\":true,\"pct\":%d}", i2s_out_get_gain());
+    httpd_resp_sendstr(req, out);
     return ESP_OK;
 }
 
@@ -567,6 +594,8 @@ esp_err_t web_ui_start(void)
         .uri = "/api/stations", .method = HTTP_PUT, .handler = stations_put_h };
     const httpd_uri_t st_del_uri = {
         .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
+    const httpd_uri_t volume_post_uri = {
+        .uri = "/api/volume", .method = HTTP_POST, .handler = volume_post_h };
     const httpd_uri_t ctrl_get_uri = {
         .uri = "/api/ctrl", .method = HTTP_GET, .handler = ctrl_get_h };
     const httpd_uri_t ctrl_post_uri = {
@@ -585,6 +614,7 @@ esp_err_t web_ui_start(void)
     httpd_register_uri_handler(s_server, &st_post_uri);
     httpd_register_uri_handler(s_server, &st_put_uri);
     httpd_register_uri_handler(s_server, &st_del_uri);
+    httpd_register_uri_handler(s_server, &volume_post_uri);
     httpd_register_uri_handler(s_server, &ctrl_get_uri);
     httpd_register_uri_handler(s_server, &ctrl_post_uri);
     httpd_register_uri_handler(s_server, &ws_uri);

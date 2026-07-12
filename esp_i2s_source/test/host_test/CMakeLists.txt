@@ -71,6 +71,12 @@ target_include_directories(test_i2s_out_pump PRIVATE ${I2S_OUT_DIR}/include)
 target_link_libraries(test_i2s_out_pump unity)
 add_test(NAME test_i2s_out_pump COMMAND test_i2s_out_pump)
 
+# S3 pre-I2S volume: pure gain scaler
+add_executable(test_i2s_out_gain test_i2s_out_gain.c ${I2S_OUT_DIR}/i2s_out_gain.c)
+target_include_directories(test_i2s_out_gain PRIVATE ${I2S_OUT_DIR}/include)
+target_link_libraries(test_i2s_out_gain unity)
+add_test(NAME test_i2s_out_gain COMMAND test_i2s_out_gain)
+
 # LINK-1a: bt_link line/response parser
 add_executable(test_bt_link_parser test_bt_link_parser.c ${BT_LINK_DIR}/bt_link_parser.c)
 target_include_directories(test_bt_link_parser PRIVATE ${BT_LINK_DIR}/include)
