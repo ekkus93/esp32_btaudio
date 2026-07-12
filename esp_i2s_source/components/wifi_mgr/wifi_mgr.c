@@ -201,6 +201,13 @@ esp_err_t wifi_mgr_init(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    /* RADIO-2d: disable modem power-save. The IDF default (WIFI_PS_MIN_MODEM)
+     * sleeps the radio between DTIM beacons, which throttles a sustained TCP
+     * audio stream to ~100 kbps with heavy jitter — enough to starve the
+     * decoder on a 128 kbps station (choppy playback). PS_NONE keeps the radio
+     * awake for full throughput; this is a mains/USB-powered device so the
+     * extra current draw is acceptable. */
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi_event, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
