@@ -2,4 +2,4 @@
 # channel/writer task (i2s_out). SIG-1b. pcm_ring + pump are host-tested.
 idf_component_register(SRCS "pcm_ring.c" "i2s_out_pump.c" "i2s_out_gain.c" "i2s_out.c"
                        INCLUDE_DIRS "include"
-                       REQUIRES driver esp_psram)
+                       REQUIRES driver esp_psram nvs_flash)

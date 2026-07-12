@@ -348,30 +348,43 @@ static esp_err_t scan_post_h(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* ---- /api/apmode: toggle the concurrent control AP (AP+STA vs STA-only) ---- */
+/* ---- /api/apmode: control the concurrent AP — toggle (AP+STA vs STA-only)
+ * and/or change the AP name/password. Accepts {enabled?} and/or {ssid, pass?}. */
 
 static esp_err_t apmode_post_h(httpd_req_t *req)
 {
-    char body[48];
+    char body[160];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
         return ESP_OK;
     }
     cJSON *j = cJSON_Parse(body);
-    cJSON *en = j ? cJSON_GetObjectItem(j, "enabled") : NULL;
     httpd_resp_set_type(req, "application/json");
-    if (!cJSON_IsBool(en)) {
+    cJSON *en = j ? cJSON_GetObjectItem(j, "enabled") : NULL;
+    const char *ssid = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "ssid")) : NULL;
+    cJSON *passj = j ? cJSON_GetObjectItem(j, "pass") : NULL;
+    const char *pass = cJSON_IsString(passj) ? passj->valuestring : NULL;
+
+    if (ssid) {   /* rename / re-key the control AP */
+        esp_err_t e = wifi_mgr_set_ap_config(ssid, pass ? pass : "");
+        if (e != ESP_OK) {
+            cJSON_Delete(j);
+            httpd_resp_set_status(req, "400 Bad Request");
+            httpd_resp_sendstr(req,
+                "{\"ok\":false,\"error\":\"SSID 1-32 chars; password blank or 8-64\"}");
+            return ESP_OK;
+        }
+    }
+    if (cJSON_IsBool(en)) {
+        wifi_mgr_set_ap_enabled(cJSON_IsTrue(en));
+    } else if (!ssid) {
         cJSON_Delete(j);
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing enabled\"}");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing enabled or ssid\"}");
         return ESP_OK;
     }
-    bool enabled = cJSON_IsTrue(en);
     cJSON_Delete(j);
-    wifi_mgr_set_ap_enabled(enabled);
-    char out[40];
-    snprintf(out, sizeof(out), "{\"ok\":true,\"enabled\":%s}", enabled ? "true" : "false");
-    httpd_resp_sendstr(req, out);
+    httpd_resp_sendstr(req, "{\"ok\":true}");
     return ESP_OK;
 }
 
@@ -424,6 +437,14 @@ static esp_err_t btvolume_post_h(httpd_req_t *req)
     snprintf(cmd, sizeof(cmd), "VOLUME %d", vol);
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+    /* Persist as the post-mix level so it survives reboot / A2DP reconnect —
+     * the orchestrator re-asserts ctrl_cfg.volume on connect (the WROOM32
+     * resets VOL to 40 on a fresh link). mac NULL => keep current sink. */
+    if (st == BT_LINK_CMD_DONE_OK) {
+        ctrl_cfg_t cur;
+        ctrl_get_cfg(&cur);
+        ctrl_set_sink(NULL, cur.autostart, vol);
+    }
     char out[48];
     snprintf(out, sizeof(out), "{\"ok\":%s,\"vol\":%d}",
              st == BT_LINK_CMD_DONE_OK ? "true" : "false", vol);

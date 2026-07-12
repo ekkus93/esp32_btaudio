@@ -61,6 +61,11 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out);
 esp_err_t wifi_mgr_set_ap_enabled(bool enabled);
 bool      wifi_mgr_ap_enabled(void);
 
+/* Change the control-AP name/password (persisted to NVS, re-applied live).
+ * ssid 1..32 chars; pass "" (open AP) or 8..64 chars (WPA2). Changing these
+ * bounces any stations currently on the AP — they must rejoin. */
+esp_err_t wifi_mgr_set_ap_config(const char *ssid, const char *pass);
+
 #ifdef __cplusplus
 }
 #endif

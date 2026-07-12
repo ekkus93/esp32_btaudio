@@ -20,16 +20,19 @@
 
 static const char *TAG = "wifi_mgr";
 
-#define NVS_NS        "wifi"
-#define NVS_KEY_SSID  "ssid"
-#define NVS_KEY_PASS  "pass"
-#define NVS_KEY_AP_ON "ap_on"
+#define NVS_NS          "wifi"
+#define NVS_KEY_SSID    "ssid"
+#define NVS_KEY_PASS    "pass"
+#define NVS_KEY_AP_ON   "ap_on"
+#define NVS_KEY_AP_SSID "ap_ssid"
+#define NVS_KEY_AP_PASS "ap_pass"
 
 static wifi_sm_t     s_sm;
 static esp_netif_t  *s_sta_netif;
 static esp_netif_t  *s_ap_netif;
 static char          s_ssid[WIFI_MGR_SSID_MAX + 1];
 static char          s_pass[WIFI_MGR_PASS_MAX + 1];
+static char          s_ap_ssid[WIFI_MGR_SSID_MAX + 1] = WIFI_MGR_AP_SSID;
 static char          s_ap_pass[WIFI_MGR_PASS_MAX + 1];
 static bool          s_mdns_up;
 static bool          s_sta_got_ip;   /* true between GOT_IP and DISCONNECTED */
@@ -99,6 +102,23 @@ static esp_err_t save_ap_enabled(bool on)
     return e;
 }
 
+/* Load a user-customised control-AP SSID/password over the defaults (fixed
+ * SSID + MAC-derived password already in s_ap_ssid/s_ap_pass). */
+static void load_ap_creds(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
+    char ssid[WIFI_MGR_SSID_MAX + 1], pass[WIFI_MGR_PASS_MAX + 1];
+    size_t sl = sizeof(ssid), pl = sizeof(pass);
+    if (nvs_get_str(h, NVS_KEY_AP_SSID, ssid, &sl) == ESP_OK && ssid[0]) {
+        strlcpy(s_ap_ssid, ssid, sizeof(s_ap_ssid));
+    }
+    if (nvs_get_str(h, NVS_KEY_AP_PASS, pass, &pl) == ESP_OK) {
+        strlcpy(s_ap_pass, pass, sizeof(s_ap_pass));   /* "" = open AP */
+    }
+    nvs_close(h);
+}
+
 /* ---- mode application ---- */
 
 static void start_mdns(void)
@@ -116,11 +136,12 @@ static void start_mdns(void)
 static void ensure_ap_config(void)
 {
     wifi_config_t cfg = {0};
-    strlcpy((char *)cfg.ap.ssid, WIFI_MGR_AP_SSID, sizeof(cfg.ap.ssid));
-    cfg.ap.ssid_len = strlen(WIFI_MGR_AP_SSID);
+    strlcpy((char *)cfg.ap.ssid, s_ap_ssid, sizeof(cfg.ap.ssid));
+    cfg.ap.ssid_len = strlen(s_ap_ssid);
     strlcpy((char *)cfg.ap.password, s_ap_pass, sizeof(cfg.ap.password));
     cfg.ap.max_connection = 4;
-    cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    /* Empty password => open AP (WPA2 requires an 8-char key). */
+    cfg.ap.authmode = (s_ap_pass[0] == '\0') ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
     esp_wifi_set_config(WIFI_IF_AP, &cfg);
 }
 
@@ -162,8 +183,8 @@ static void apply_ap(void)
         s_wifi_started = true;
     }
     ESP_LOGW(TAG, "control AP up: SSID=\"%s\" PASS=\"%s\"  (join and open http://192.168.4.1)",
-             WIFI_MGR_AP_SSID, s_ap_pass);
-    printf("DIAG|WIFI|AP|ssid=%s,pass=%s\n", WIFI_MGR_AP_SSID, s_ap_pass);
+             s_ap_ssid, s_ap_pass);
+    printf("DIAG|WIFI|AP|ssid=%s,pass=%s\n", s_ap_ssid, s_ap_pass);
     fflush(stdout);
 }
 
@@ -247,6 +268,7 @@ esp_err_t wifi_mgr_init(void)
         IP_EVENT, IP_EVENT_STA_GOT_IP, on_ip_event, NULL, NULL));
 
     derive_ap_password();
+    load_ap_creds();      /* user overrides of AP SSID/pass, if any */
     load_ap_enabled();
     bool has = load_creds();
     wifi_sm_init(&s_sm, has, WIFI_SM_DEFAULT_MAX_RETRIES);
@@ -290,7 +312,7 @@ void wifi_mgr_get_status(char *buf, size_t buf_sz)
         wifi_sta_list_t clients = {0};
         esp_wifi_ap_get_sta_list(&clients);
         snprintf(buf, buf_sz, "MODE=AP,SSID=%s,IP=" IPSTR ",CLIENTS=%d",
-                 WIFI_MGR_AP_SSID, IP2STR(&ip.ip), clients.num);
+                 s_ap_ssid, IP2STR(&ip.ip), clients.num);
         return;
     }
     const char *sname = (st == WIFI_SM_STA_CONNECTED) ? "CONNECTED" : "CONNECTING";
@@ -311,7 +333,7 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out)
     /* STA-side (the provisioning indicator the UI keys off). */
     if (st == WIFI_SM_AP_MODE) {
         strlcpy(out->mode, "AP", sizeof(out->mode));
-        strlcpy(out->ssid, WIFI_MGR_AP_SSID, sizeof(out->ssid));
+        strlcpy(out->ssid, s_ap_ssid, sizeof(out->ssid));
     } else {
         esp_netif_ip_info_t ip = {0};
         if (s_sta_netif) esp_netif_get_ip_info(s_sta_netif, &ip);
@@ -328,7 +350,7 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out)
     wifi_mode_t mode = WIFI_MODE_NULL;
     esp_wifi_get_mode(&mode);
     out->ap_on = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
-    strlcpy(out->ap_ssid, WIFI_MGR_AP_SSID, sizeof(out->ap_ssid));
+    strlcpy(out->ap_ssid, s_ap_ssid, sizeof(out->ap_ssid));
     strlcpy(out->ap_pass, s_ap_pass, sizeof(out->ap_pass));
     if (out->ap_on) {
         esp_netif_ip_info_t apip = {0};
@@ -360,4 +382,33 @@ esp_err_t wifi_mgr_set_ap_enabled(bool enabled)
     }
     ESP_LOGI(TAG, "control AP %s", enabled ? "enabled" : "disabled");
     return e;
+}
+
+esp_err_t wifi_mgr_set_ap_config(const char *ssid, const char *pass)
+{
+    if (!ssid || ssid[0] == '\0' || strlen(ssid) > WIFI_MGR_SSID_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    size_t plen = pass ? strlen(pass) : 0;
+    if (plen != 0 && (plen < 8 || plen > WIFI_MGR_PASS_MAX)) {
+        return ESP_ERR_INVALID_ARG;   /* WPA2 needs 8..64; "" = open AP */
+    }
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(h, NVS_KEY_AP_SSID, ssid);
+    if (err == ESP_OK) err = nvs_set_str(h, NVS_KEY_AP_PASS, pass ? pass : "");
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    if (err != ESP_OK) return err;
+
+    strlcpy(s_ap_ssid, ssid, sizeof(s_ap_ssid));
+    strlcpy(s_ap_pass, pass ? pass : "", sizeof(s_ap_pass));
+    /* Re-apply live if the AP is currently broadcasting — this bounces any
+     * stations currently on the AP; they must rejoin with the new creds. */
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&mode);
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) ensure_ap_config();
+    ESP_LOGI(TAG, "control AP creds updated: SSID=\"%s\"", s_ap_ssid);
+    return ESP_OK;
 }

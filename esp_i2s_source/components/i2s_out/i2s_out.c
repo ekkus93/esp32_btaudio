@@ -22,6 +22,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "nvs.h"
 
 #include <string.h>
 
@@ -67,6 +68,7 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
     s_ring = pcm_ring_create(ring_capacity_bytes, /*use_psram=*/true);
     if (!s_ring) return ESP_ERR_NO_MEM;
     memset(&s_stats, 0, sizeof(s_stats));
+    i2s_out_gain_load();   /* restore persisted pre-I2S volume (default 30%) */
 
     /* SLAVE: the WROOM32 master drives BCLK/WS; the S3 clocks data out on them. */
     i2s_chan_config_t chan_cfg =
@@ -164,14 +166,38 @@ size_t i2s_out_write(const uint8_t *data, size_t len)
 }
 
 /* Pre-I2S software volume (0..100). The scaling itself is the pure
- * i2s_out_apply_gain(); the audio_out feeder reads this and applies it. */
-static volatile int s_gain_pct = 100;
+ * i2s_out_apply_gain(); the audio_out feeder reads this and applies it.
+ * Persisted in NVS so it survives reboot; default a conservative 30%. */
+#define I2S_GAIN_DEFAULT 30
+#define I2S_GAIN_NVS_NS  "i2s"
+#define I2S_GAIN_NVS_KEY "gain"
+
+static volatile int s_gain_pct = I2S_GAIN_DEFAULT;
+
+/* Load the persisted pre-I2S gain (default 30%). Call once at init. */
+void i2s_out_gain_load(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(I2S_GAIN_NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
+    uint8_t v = I2S_GAIN_DEFAULT;
+    if (nvs_get_u8(h, I2S_GAIN_NVS_KEY, &v) == ESP_OK) {
+        s_gain_pct = (v > 100) ? 100 : v;
+    }
+    nvs_close(h);
+    ESP_LOGI(TAG, "pre-I2S gain loaded: %d%%", s_gain_pct);
+}
 
 void i2s_out_set_gain(int pct)
 {
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     s_gain_pct = pct;
+    nvs_handle_t h;
+    if (nvs_open(I2S_GAIN_NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, I2S_GAIN_NVS_KEY, (uint8_t)pct);
+        nvs_commit(h);
+        nvs_close(h);
+    }
     ESP_LOGI(TAG, "pre-I2S gain set to %d%%", pct);
 }
 

@@ -25548,3 +25548,49 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   Note: adding the field grew the ctrl_cfg blob so old NVS config was dropped
   (reconfigured post-flash). link_selftest still sends boot VOLUME 40, harmlessly
   overridden. Host 13/13. REDO1 roadmap + this polish all complete.
+
+## 2026-07-12T10:27:58Z - Claude Opus 4.8 (1M) - Web UI: WebSocket -> REST refactor (fixes socket exhaustion) + Playwright
+
+- ROOT CAUSE of "buggy" UI (terminal/BT/scan dead while music plays): the browser
+  held a persistent WebSocket AND polled /api/status; the radio HTTPS stream +
+  APSTA DHCP + mDNS exhausted CONFIG_LWIP_MAX_SOCKETS=10, so new WS handshakes were
+  RESET. A WebSocket server on a 10-socket lwIP stack was the wrong design.
+- FIX: removed /ws. web_ui buffers WROOM32 async lines (SCAN/PAIRED/PAIR-prompt)
+  into BT state; browser polls GET /api/bt {connected,scanning,prompt,paired,
+  discovered}. Actions POST /api/bt {action,mac}; terminal POST /api/console {cmd}.
+  Bluetooth.tsx/Terminal.tsx rewritten to REST polling; ws.ts deleted. Bumped
+  LWIP_MAX_SOCKETS 10->16. Commit ca22a097.
+- SCAN now suspends A2DP (ctrl_scan: stop radio, DISCONNECT, SCAN, reconnect+resume)
+  — classic inquiry is unreliable while A2DP streams. Confirmed earlier: WROOM32
+  inquiry works (finds discoverable devices), only finds devices in PAIRING MODE.
+- KEY TOOLING: Playwright UI tests added (web/e2e/ui.spec.ts, playwright.config.ts,
+  system chromium at /usr/bin/chromium-browser, no browser download). Run:
+  cd web && DEVICE_URL=http://10.1.2.52 npx playwright test. Caught the WS-reset bug
+  that code review missed. 6/6 pass WITH radio streaming incl. the paired list.
+  vite.config already proxies /api+/ws to the device for reflash-free iteration.
+- Earlier this session also: concurrent AP+STA (APSTA, /api/apmode, wifi.ap), tabbed
+  UI (Radio/Tone/Terminal/Settings), two-slider volume, removed redundant BT-card
+  volume, responsive CSS, Radio-tab WiFi gate, scan pairing-mode hints. Commit d3a313b2.
+
+## 2026-07-12T11:07:53Z - Claude Opus 4.8 (1M) - Settings layout + NVS-persisted AP creds & volumes
+
+- Settings tab relaid out to a fixed 2-col grid (`.grid.settings`): row1 Network+System,
+  row2 WiFi+Control AP, row3 Bluetooth (full width); collapses to 1-col <620px.
+- WiFi (ProvisionForm): SSID pre-filled from current network (didFill ref); password shown
+  as masked dots placeholder (device never sends real pw); submitting unchanged net = no-op.
+- Control AP now user-editable (was hardcoded SSID + MAC-derived pw). New
+  `wifi_mgr_set_ap_config(ssid,pass)` persists NVS keys ap_ssid/ap_pass (namespace "wifi"),
+  re-applies live (bounces AP clients); empty pass => WIFI_AUTH_OPEN. `load_ap_creds()` at
+  init overrides derive_ap_password() default. `/api/apmode` extended to accept {ssid,pass?}
+  in addition to {enabled}. api.ts setApConfig; ApControl card has editable SSID/pass + Save.
+- Pre-I2S (S3) gain now NVS-persisted (namespace "i2s", key "gain"), default 30% (was 100,
+  non-persisted). i2s_out_gain_load() called in i2s_out_init; set_gain persists. Added
+  nvs_flash to i2s_out CMakeLists REQUIRES.
+- Post-mix (WROOM32) volume: CTRL_VOLUME_DEFAULT 15->10; /api/btvolume now persists to
+  ctrl_cfg.volume via ctrl_set_sink(NULL,...) so it survives reboot/A2DP reconnect.
+- UI: both volume sliders now display "%" (they're the same 0-100 full-scale; label was the
+  only difference between the two code paths). Help text clarified.
+- Verified: 13 host tests green; device build clean; flashed S3 (/dev/ttyACM0). Live checks:
+  i2s.gain=30 after flash, AP-config POST round-trips + short-pass rejected 400. Playwright
+  6/6 vs 10.1.2.52. NOTE: during verify, restored AP with empty pass -> control AP is now
+  OPEN (named ESP32-S3-Audio); user should set their own name/pw in the new card to re-secure.

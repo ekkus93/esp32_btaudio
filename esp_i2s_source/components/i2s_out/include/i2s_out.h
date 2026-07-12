@@ -69,7 +69,8 @@ void      i2s_out_get_stats(i2s_out_stats_t *out);
 /* Pre-I2S software volume state (0..100 %). The audio_out feeder reads
  * i2s_out_get_gain() and applies it via i2s_out_apply_gain() to the mixed PCM
  * before I2S — a source-side trim independent of the WROOM32's post-mix VOLUME.
- * Default 100 (unity). set clamps to [0,100]. */
+ * NVS-persisted; default 30%. set clamps to [0,100] and persists. */
+void      i2s_out_gain_load(void);   /* restore persisted gain; called by init */
 void      i2s_out_set_gain(int pct);
 int       i2s_out_get_gain(void);
 #endif /* ESP_PLATFORM */

@@ -42,7 +42,10 @@ test.describe("ESP32-S3 Audio Source UI", () => {
     );
     await expect(page.getByRole("heading", { name: "Network" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Control AP" })).toBeVisible();
-    await expect(page.getByText("ESP32-S3-Audio")).toBeVisible();
+    // Control-AP name/password are editable (pre-filled) with a Save button.
+    const apCard = page.locator(".card.provision").filter({ hasText: "Control AP" });
+    await expect(apCard.locator("input").first()).not.toHaveValue("");
+    await expect(apCard.getByRole("button", { name: /Save AP/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Bluetooth" })).toBeVisible();
   });
 

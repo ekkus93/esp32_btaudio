@@ -108,6 +108,16 @@ export async function setApEnabled(enabled: boolean): Promise<{ ok: boolean; ena
   return r.json();
 }
 
+// Change the control-AP name/password. pass "" = open AP; else 8-64 chars.
+export async function setApConfig(ssid: string, pass: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await fetch("/api/apmode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ssid, pass }),
+  });
+  return r.json();
+}
+
 export async function setWifi(ssid: string, pass: string): Promise<ProvisionResult> {
   const r = await fetch("/api/wifi", {
     method: "POST",

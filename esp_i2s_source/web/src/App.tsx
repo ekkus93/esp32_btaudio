@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getStatus, setWifi, setTone, toneOff,
-  setS3Volume, getBtVolume, setBtVolume, setApEnabled,
+  setS3Volume, getBtVolume, setBtVolume, setApEnabled, setApConfig,
   type DeviceStatus, type ApStatus, type WifiStatus,
 } from "./api";
 import { Terminal } from "./Terminal";
@@ -169,6 +169,20 @@ function ToneControl({ tone, onChange }: { tone?: { on: boolean; hz: number }; o
 
 function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [ssid, setSsid] = useState("");
+  const [pass, setPass] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Pre-fill the editable fields from the device's current AP config, once.
+  const didFill = useRef(false);
+  useEffect(() => {
+    if (!didFill.current && ap?.ssid) {
+      setSsid(ap.ssid);
+      setPass(ap.pass ?? "");
+      didFill.current = true;
+    }
+  }, [ap?.ssid, ap?.pass]);
+
   if (!ap) return null;
 
   const toggle = async () => {
@@ -181,8 +195,36 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
     }
   };
 
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ssid) return;
+    if (pass && (pass.length < 8 || pass.length > 64)) {
+      setMsg({ ok: false, text: "Password must be blank (open) or 8-64 characters." });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await setApConfig(ssid, pass);
+      if (r.ok) {
+        setMsg({
+          ok: true,
+          text: `Control AP is now "${ssid}". If you're connected to the AP, rejoin with the new name/password.`,
+        });
+      } else {
+        setMsg({ ok: false, text: r.error ?? "update failed" });
+      }
+    } catch {
+      // Renaming the AP can drop the very connection serving this request.
+      setMsg({ ok: true, text: `Applying "${ssid}"… reconnect to the AP with the new name/password.` });
+    } finally {
+      setBusy(false);
+      onChange();
+    }
+  };
+
   return (
-    <section className="card">
+    <section className="card provision">
       <h2>
         Control AP
         <span className={`dot ${ap.on ? "ok" : "bad"}`} title={ap.on ? "broadcasting" : "off"} />
@@ -191,8 +233,29 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
         The device's own WiFi. Connect to it to reach this page directly — even
         away from your home network.
       </p>
-      <Field k="Network" v={ap.ssid} />
-      <Field k="Password" v={ap.pass} />
+      <form onSubmit={save}>
+        <label>
+          Network (SSID)
+          <input value={ssid} onChange={(e) => setSsid(e.target.value)} disabled={busy} />
+        </label>
+        <label>
+          Password
+          <input
+            type="text"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            placeholder="(blank = open network)"
+            disabled={busy}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+        </label>
+        <button type="submit" disabled={busy || !ssid}>
+          {busy ? "Saving…" : "Save AP name/password"}
+        </button>
+      </form>
+      {msg && <div className={`banner ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
       <Field k="Address" v={ap.on ? `http://${ap.ip ?? "192.168.4.1"}` : "—"} />
       {ap.on && typeof ap.clients === "number" && <Field k="Clients" v={ap.clients} />}
       <label className="ap-toggle">
@@ -204,8 +267,8 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
 }
 
 function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => void }) {
-  const [pre, setPre] = useState(100); // ESP32-S3 pre-I2S gain %
-  const [post, setPost] = useState(40); // WROOM32 post-mix volume
+  const [pre, setPre] = useState(30); // ESP32-S3 pre-I2S gain % (device default)
+  const [post, setPost] = useState(10); // WROOM32 post-mix volume (device default)
   const [postKnown, setPostKnown] = useState(false);
 
   // Sync the pre-I2S slider from device status (polled).
@@ -256,12 +319,13 @@ function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => 
           onChange={(e) => setPost(Number(e.target.value))}
           onPointerUp={(e) => setBtVolume(Number((e.target as HTMLInputElement).value)).then(() => setPostKnown(true))}
         />
-        <span className="vol-val">{postKnown ? post : "?"}</span>
+        <span className="vol-val">{postKnown ? `${post}%` : "?"}</span>
       </div>
 
       <p className="muted">
-        Pre-I2S trims the S3 source before it leaves over I2S; post-mix is the
-        WROOM32's final A2DP level (persisted). Use post-mix as your main control.
+        Both are 0–100% of full scale. Pre-I2S trims the S3 source before it
+        leaves over I2S; post-mix is the WROOM32's final A2DP level. Both are
+        saved and restored on reboot — use post-mix as your main control.
       </p>
     </section>
   );

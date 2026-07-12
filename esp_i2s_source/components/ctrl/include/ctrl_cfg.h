@@ -19,7 +19,7 @@ extern "C" {
 #define CTRL_MAC_LEN      18   /* "AA:BB:CC:DD:EE:FF" + NUL */
 #define CTRL_STATION_NONE (-1) /* last_station: idle (no radio resume) */
 
-#define CTRL_VOLUME_DEFAULT 15         /* comfortable earbud level (0..100) */
+#define CTRL_VOLUME_DEFAULT 10         /* conservative earbud level (0..100) */
 
 typedef struct {
     char    sink_mac[CTRL_MAC_LEN]; /* target A2DP sink; "" = none set */
