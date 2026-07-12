@@ -390,16 +390,20 @@ static esp_err_t apmode_post_h(httpd_req_t *req)
 
 /* ---- /api/btvolume: WROOM32 post-mix VOLUME (0..100) over bt_link ---- */
 
-/* Pull the standalone VOL= token out of a WROOM32 STATUS data string. */
-static int parse_wroom_vol(const char *data)
+/* Pull a standalone "KEY=" integer token out of a comma-separated WROOM32
+ * STATUS data string (e.g. "...,RUN=1,VOL=12,..."). -1 if absent. */
+static int parse_wroom_kv(const char *data, const char *key)
 {
+    size_t klen = strlen(key);
     const char *p = data;
-    while ((p = strstr(p, "VOL=")) != NULL) {
-        if (p == data || p[-1] == ',') return atoi(p + 4);
-        p += 4;
+    while ((p = strstr(p, key)) != NULL) {
+        if (p == data || p[-1] == ',') return atoi(p + klen);
+        p += klen;
     }
     return -1;
 }
+
+static int parse_wroom_vol(const char *data) { return parse_wroom_kv(data, "VOL="); }
 
 static esp_err_t btvolume_get_h(httpd_req_t *req)
 {
@@ -712,6 +716,34 @@ static esp_err_t bt_get_h(httpd_req_t *req)
 }
 
 /* POST /api/bt {action, mac?} — connect/disconnect/pair/unpair/pin/refresh. */
+/* A manual "connect" is async on the WROOM32: CONNECT returns INITIATED, the
+ * A2DP link comes up seconds later, and the WROOM32 resets its volume to 40 on
+ * that fresh link. Poll STATUS until RUN=1, then re-assert the persisted
+ * post-mix volume so a hand-initiated connect lands at the user's saved level
+ * (mirrors the orchestrator's autostart path). One at a time. */
+static TaskHandle_t s_conn_vol_task;
+
+static void connect_volume_task(void *arg)
+{
+    (void)arg;
+    ctrl_cfg_t c;
+    ctrl_get_cfg(&c);
+    for (int i = 0; i < 30; i++) {          /* ~15 s at 500 ms */
+        vTaskDelay(pdMS_TO_TICKS(500));
+        bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
+        char data[BT_LINK_FIELD_MAX] = {0};
+        bt_link_send("STATUS", &st, NULL, 0, data, sizeof(data));
+        if (st == BT_LINK_CMD_DONE_OK && parse_wroom_kv(data, "RUN=") == 1) {
+            char cmd[16];
+            snprintf(cmd, sizeof(cmd), "VOLUME %u", c.volume);
+            bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+            break;
+        }
+    }
+    s_conn_vol_task = NULL;
+    vTaskDelete(NULL);
+}
+
 static esp_err_t bt_post_h(httpd_req_t *req)
 {
     char body[128];
@@ -724,7 +756,8 @@ static esp_err_t bt_post_h(httpd_req_t *req)
     const char *mac = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "mac")) : NULL;
     char cmd[64] = {0};
 
-    if (action && !strcmp(action, "connect") && mac) snprintf(cmd, sizeof(cmd), "CONNECT %s", mac);
+    bool is_connect = action && !strcmp(action, "connect") && mac;
+    if (is_connect) snprintf(cmd, sizeof(cmd), "CONNECT %s", mac);
     else if (action && !strcmp(action, "disconnect")) strlcpy(cmd, "DISCONNECT", sizeof(cmd));
     else if (action && !strcmp(action, "pair") && mac) snprintf(cmd, sizeof(cmd), "PAIR %s", mac);
     else if (action && !strcmp(action, "unpair") && mac) snprintf(cmd, sizeof(cmd), "UNPAIR %s", mac);
@@ -751,6 +784,12 @@ static esp_err_t bt_post_h(httpd_req_t *req)
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char result[BT_LINK_FIELD_MAX] = {0};
     bt_link_send(cmd, &st, result, sizeof(result), NULL, 0);
+    /* Connect accepted (INITIATED): re-assert the saved post-mix volume once the
+     * A2DP link is actually up, so it isn't left at the WROOM32's fresh-link 40. */
+    if (is_connect && st == BT_LINK_CMD_DONE_OK && s_conn_vol_task == NULL) {
+        xTaskCreate(connect_volume_task, "connvol", 4096, NULL,
+                    tskIDLE_PRIORITY + 3, &s_conn_vol_task);
+    }
     cJSON *r = cJSON_CreateObject();
     cJSON_AddBoolToObject(r, "ok", st == BT_LINK_CMD_DONE_OK);
     cJSON_AddStringToObject(r, "result", result);

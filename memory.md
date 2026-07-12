@@ -25594,3 +25594,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   i2s.gain=30 after flash, AP-config POST round-trips + short-pass rejected 400. Playwright
   6/6 vs 10.1.2.52. NOTE: during verify, restored AP with empty pass -> control AP is now
   OPEN (named ESP32-S3-Audio); user should set their own name/pw in the new card to re-secure.
+
+## 2026-07-12T11:21:43Z - Claude Opus 4.8 (1M) - Manual-connect re-asserts persisted post-mix volume
+
+- Closed the gap where a hand-initiated BT connect (POST /api/bt action=connect) left
+  the WROOM32 at its fresh-A2DP-link default (~40) instead of the saved ctrl_cfg.volume.
+  Previously only the orchestrator's autostart path (ctrl.c RESUME_RADIO) and scan-restore
+  re-asserted volume; a manual connect sent a bare CONNECT with no follow-up VOLUME.
+- web_ui.c bt_post_h: on a successful CONNECT (INITIATED), spawn connect_volume_task which
+  polls STATUS until RUN=1 (async link comes up seconds later; WROOM32 resets VOL to 40 on
+  the fresh link) then sends "VOLUME <cfg.volume>". Guarded by s_conn_vol_task (one at a
+  time), ~15s poll budget. Generalized parse_wroom_vol -> parse_wroom_kv(data,"KEY=") and
+  reused it for RUN=.
+- Verified on-device conclusively: set autostart OFF + saved volume 22, hard-reset S3 so the
+  orchestrator exits to manual mode (only actor that could send VOLUME 22 is the new task),
+  manual-connect ArIsu -> WROOM32 settled at VOL=22 (would be 40 without the fix). Restored
+  user config: autostart on, sink Echo Buds, volume 10. NOTE: orchestrator is in manual mode
+  until next power-cycle (side effect of the verification reboot); autostart re-engages on boot.
