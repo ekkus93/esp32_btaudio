@@ -34,12 +34,11 @@ void sg_sine_reset(sg_sine_state_t *st);
 void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
                   double freq_hz, double amplitude);
 
-/* --- Piano-ish voice ---
- * Additive synthesis: fundamental + harmonics with a struck-string envelope
- * (fast attack, exponential decay; higher harmonics decay faster, so the note
- * is bright on attack and mellows as it rings). Retrigger the envelope on each
- * note with sg_piano_note_on(). Anti-aliased (harmonics past Nyquist dropped).
- * A far more piano-like sound than a pure sine for the same MIDI pitch. */
+/* --- Piano/keyboard voice ---
+ * A band-limited (PolyBLEP) sawtooth with a struck-string envelope (fast attack,
+ * exponential decay) — more texture than a sine, one simple waveform rather than
+ * an additive stack, and alias-suppressed so the high notes stay clean.
+ * Retrigger the envelope on each note with sg_piano_note_on(). */
 typedef struct {
     double   phase;     /* fundamental phase, [0, 2*PI) */
     uint32_t elapsed;   /* samples since note-on (envelope clock) */

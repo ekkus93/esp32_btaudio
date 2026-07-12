@@ -166,6 +166,23 @@ void test_piano_silent_at_zero_amplitude(void)
     free(buf);
 }
 
+void test_piano_is_sawtooth_ramp(void)
+{
+    const size_t N = 2000;             /* ~45 ms: envelope ~flat, ramp dominates */
+    int16_t *buf = malloc(N * 2 * sizeof(int16_t));
+    sg_piano_state_t st;
+    sg_piano_note_on(&st);
+    sg_piano_fill(&st, buf, N, 100.0, 1.0);   /* 100 Hz -> 441-sample period */
+    int rising = 0, falling = 0;
+    for (size_t i = 401; i < N; i++) {         /* skip the attack ramp */
+        if (buf[i * 2] > buf[(i - 1) * 2]) rising++;
+        else if (buf[i * 2] < buf[(i - 1) * 2]) falling++;
+    }
+    /* A sawtooth ramps up almost the whole period, dropping sharply once/cycle. */
+    TEST_ASSERT_TRUE_MESSAGE(rising > falling * 3, "sawtooth should ramp up most of each period");
+    free(buf);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -180,5 +197,6 @@ int main(void)
     RUN_TEST(test_piano_stereo_equal);
     RUN_TEST(test_piano_envelope_decays);
     RUN_TEST(test_piano_silent_at_zero_amplitude);
+    RUN_TEST(test_piano_is_sawtooth_ramp);
     return UNITY_END();
 }

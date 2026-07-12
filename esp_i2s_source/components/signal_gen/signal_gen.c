@@ -57,67 +57,56 @@ void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
     st->phase = phase;
 }
 
-/* --- Piano-ish voice (additive harmonics + struck-string envelope) --- */
-
-#define PIANO_HARMONICS   3
-#define PIANO_TAU_S       0.9    /* fundamental decay time constant (seconds) */
+/* --- Piano/keyboard voice: band-limited sawtooth + struck-string envelope ---
+ * A single sawtooth (all harmonics, 1/n rolloff — more texture than a sine,
+ * simpler and cheaper than a big additive stack) with a fast attack and
+ * exponential decay so each note is struck and rings down. PolyBLEP smooths the
+ * wrap discontinuity so the higher notes don't alias/screech. */
+#define PIANO_TAU_S       0.9    /* decay time constant (seconds) */
 #define PIANO_ATTACK_S    0.003  /* 3 ms attack ramp (percussive) */
-
-/* Relative harmonic weights (fundamental, 2nd, 3rd). Mostly fundamental with
- * only light overtones — a clean mallet/EP-ish tone rather than a muddy,
- * sawtooth-heavy stack. Higher harmonics still decay faster (below). */
-static const double PIANO_W[PIANO_HARMONICS] = {1.0, 0.22, 0.07};
+#define PIANO_ENV_BLOCK   32     /* re-evaluate the envelope every N samples */
 
 void sg_piano_note_on(sg_piano_state_t *st)
 {
-    st->phase = 0.0;
+    st->phase = 0.0;   /* normalized phase [0, 1) for the sawtooth */
     st->elapsed = 0;
 }
 
-/* Envelope re-evaluated every PIANO_ENV_BLOCK samples (~0.7 ms) so it stays
- * smooth for any fill size, while keeping exp() calls negligible. */
-#define PIANO_ENV_BLOCK 32
+/* PolyBLEP correction at the sawtooth's [0,1) wrap — suppresses alias energy. */
+static inline double poly_blep(double t, double dt)
+{
+    if (t < dt) { t /= dt; return (t + t) - (t * t) - 1.0; }
+    if (t > 1.0 - dt) { t = (t - 1.0) / dt; return (t * t) + (t + t) + 1.0; }
+    return 0.0;
+}
 
 void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
                    double freq_hz, double amplitude)
 {
     if (amplitude < 0.0) amplitude = 0.0;
     if (amplitude > 1.0) amplitude = 1.0;
-    const double nyquist = SIGNAL_GEN_SAMPLE_RATE_HZ / 2.0;
-    const double dphi = TWO_PI * freq_hz / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
-
-    double norm = 0.0;
-    for (int n = 0; n < PIANO_HARMONICS; n++) norm += PIANO_W[n];
-    if (norm <= 0.0) norm = 1.0;
+    const double dt = freq_hz / (double)SIGNAL_GEN_SAMPLE_RATE_HZ; /* phase step */
 
     double phase = st->phase;
     uint32_t elapsed = st->elapsed;
     size_t f = 0;
     while (f < frames) {
-        /* Envelope for this sub-block: fast attack, then per-harmonic decay
-         * (higher harmonics fade faster -> bright attack, mellow ring). */
+        /* Envelope for this sub-block: fast attack, then exponential decay. */
         const double t = (double)elapsed / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
         const double attack = (t < PIANO_ATTACK_S) ? (t / PIANO_ATTACK_S) : 1.0;
-        double gain[PIANO_HARMONICS];
-        for (int n = 0; n < PIANO_HARMONICS; n++) {
-            if (freq_hz * (n + 1) >= nyquist) { gain[n] = 0.0; continue; }
-            gain[n] = PIANO_W[n] * exp(-t / (PIANO_TAU_S / (double)(n + 1)));
-        }
-        const double scale = amplitude * attack / norm;
+        const double scale = amplitude * attack * exp(-t / PIANO_TAU_S);
 
         size_t blk = frames - f;
         if (blk > PIANO_ENV_BLOCK) blk = PIANO_ENV_BLOCK;
         for (size_t k = 0; k < blk; k++) {
-            double v = 0.0;
-            for (int n = 0; n < PIANO_HARMONICS; n++) {
-                if (gain[n] != 0.0) v += gain[n] * sin((double)(n + 1) * phase);
-            }
-            long s = lround(scale * v * S16_MAX);
+            double saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
+            long s = lround(scale * saw * S16_MAX);
             if (s > 32767) s = 32767;
             if (s < -32768) s = -32768;
             out[(f + k) * 2] = (int16_t)s;
             out[(f + k) * 2 + 1] = (int16_t)s;
-            phase = wrap_phase(phase + dphi);
+            phase += dt;
+            if (phase >= 1.0) phase -= 1.0;
         }
         elapsed += (uint32_t)blk;
         f += blk;
