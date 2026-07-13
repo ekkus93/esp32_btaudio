@@ -17,6 +17,9 @@
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+
+static const char *TAG = "web_ui_radio";
 
 /* POST /api/radio {url} — resolve + play; DELETE /api/radio — stop. The play/
  * stop paths can fetch a playlist or wait on a reconnect, so run them off the
@@ -26,13 +29,19 @@ static char s_radio_url[RADIO_URL_MAX];
 static void radio_play_task(void *arg)
 {
     (void)arg;
-    radio_play(s_radio_url);
+    esp_err_t err = radio_play(s_radio_url);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "radio_play failed: %s", esp_err_to_name(err));
+    }
     vTaskDelete(NULL);
 }
 static void radio_stop_task(void *arg)
 {
     (void)arg;
-    radio_stop();
+    esp_err_t err = radio_stop();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "radio_stop failed: %s", esp_err_to_name(err));
+    }
     vTaskDelete(NULL);
 }
 

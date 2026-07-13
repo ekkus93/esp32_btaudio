@@ -172,7 +172,10 @@ static void scan_task(void *arg)
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
 
     /* Suspend A2DP: stop feeding I2S, drop the sink so the radio is free. */
-    if (was_playing) radio_stop();
+    if (was_playing) {
+        esp_err_t e = radio_stop();
+        if (e != ESP_OK) ESP_LOGW(TAG, "scan: radio_stop failed: %s", esp_err_to_name(e));
+    }
     ESP_LOGI(TAG, "scan: suspending A2DP (disconnect sink)");
     bt_link_send("DISCONNECT", &st, NULL, 0, NULL, 0);
     vTaskDelay(pdMS_TO_TICKS(1500));

@@ -20,9 +20,30 @@ typedef enum {
     RADIO_CODEC_AAC,
 } radio_codec_t;
 
+/* Radio lifecycle state (RH-S3-02). */
+typedef enum {
+    RADIO_STATE_STOPPED = 0,
+    RADIO_STATE_STARTING,
+    RADIO_STATE_RUNNING,
+    RADIO_STATE_STOPPING,
+    RADIO_STATE_FAULTED,
+} radio_state_t;
+
 #define RADIO_URL_MAX      256
 #define RADIO_NAME_MAX      64
 #define RADIO_TITLE_MAX    160
+
+/* Last-error reason codes for the status snapshot. */
+typedef enum {
+    RADIO_ERR_NONE = 0,
+    RADIO_ERR_HTTP_CLIENT_ALLOC,
+    RADIO_ERR_UNSUPPORTED_CONTENT,
+    RADIO_ERR_DECODER_OPEN_FAILED,
+    RADIO_ERR_NETWORK_OPEN_FAILED,
+    RADIO_ERR_DECODER_STALLED,
+    RADIO_ERR_STOP_TIMEOUT,
+    RADIO_ERR_RESAMPLER_STALLED,
+} radio_err_t;
 
 typedef struct {
     bool          playing;
@@ -45,28 +66,38 @@ typedef struct {
     uint32_t      pcm_cap;
     uint32_t      decode_errors;
     int           prebuffer_ms;   /* jitter cushion before playback starts */
+    /* session state (RH-S3-02) */
+    uint32_t      generation;     /* monotonically increasing generation ID */
+    radio_state_t state;
+    radio_err_t   last_error;
+    char          last_error_detail[64];  /* content-type or error context */
 } radio_status_t;
 
 /* Allocate the PSRAM compressed-frame ring and internal sync. Call once. */
 esp_err_t radio_init(size_t ring_bytes);
 
 /* Resolve `playlist_or_url` (.pls/.m3u fetched + resolved, else used directly)
- * and start streaming into the ring. Replaces any current stream. */
+ * and start streaming into the ring. Replaces any current stream. Returns
+ * ESP_OK only after both stream and decoder tasks are created and running. */
 esp_err_t radio_play(const char *playlist_or_url);
 
-/* Stop streaming and drain the ring. */
-void radio_stop(void);
+/* Stop streaming and drain the ring. Returns ESP_OK if both workers exited,
+ * ESP_ERR_TIMEOUT if the deadline passed (session remains FAULTED). */
+esp_err_t radio_stop(void);
 
 /* True while a stream is active (UI/telemetry sense). */
 bool radio_is_playing(void);
 
 /* True only when a stream is active AND its PCM cushion is primed. The I2S
- * feeder routes radio audio on this (not radio_is_playing), so startup and
+ * feeder routes radio audio on this (not radio_is_playing()), so startup and
  * rebuffer windows emit silence/tone instead of a starving ring. */
 bool radio_audio_ready(void);
 
 /* Snapshot the current state. */
 void radio_get_status(radio_status_t *out);
+
+/* Return the current lifecycle state. */
+radio_state_t radio_get_state(void);
 
 /* Jitter-cushion prebuffer depth (ms), persisted in NVS. set clamps to a valid
  * range that fits the PCM ring; default ~3000 ms. Takes effect on the next
