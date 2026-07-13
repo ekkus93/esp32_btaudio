@@ -20,13 +20,26 @@ Firmware version is set via `set(PROJECT_VER "X.Y.Z")` **before** `project(esp_b
 
 Components: `audio_processor`, `bt_manager`, `bt_stack_stub`, `command_interface`, `nvs_storage`, `platform_shim` (host/ESP32 split for memory/storage/sync/timing — this is what makes host testing possible), `util_safe`.
 
+### Audio Sources (priority order)
+1. **Beep** — WAV/tone overlay (highest priority)
+2. **UARTAUDIO** — stereo 22.05 kHz PCM from PC over USB serial at 921600 baud, upsamples 2× to 44.1 kHz
+3. **Synth** — synthesized tones (piano voice, arpeggios)
+4. **I2S** — external I2S input
+5. **Silence** — default fallback
+
+### UART2 (Secondary Command Port)
+- GPIO16 (RX) / GPIO17 (TX) at 115200 8N1
+- Serves the text command protocol alongside USB (UART0)
+- Responses route to originating port; events broadcast to both
+- UART2 keeps serving commands while UARTAUDIO owns UART0
+
 Known unresolved issue: per `code_review/BT_STATE_ACCESS_CONTRACT.md`, the global `bt_ctx` struct is written only from `BtAppTask` via a work-dispatch queue but read from `cmd_proc` without synchronization (documented, not fixed). Be aware of this when touching `bt_manager` or `command_interface` status/diagnostics code.
 
 ## Testing — four tiers, know which one applies
 
 **"Run the tests" with no tier specified defaults to the full sweep (tier 3 below).**
 
-1. **Host unit tests** (no hardware) — plain CTest, not Unity:
+1. **Host unit tests** (no hardware) — plain CTest, not Unity (~70 suites, ~78% line coverage):
    ```bash
    cd test/host_test && mkdir -p build_host_tests && cd build_host_tests
    cmake .. && cmake --build . -- -j"$(nproc)"
@@ -34,7 +47,7 @@ Known unresolved issue: per `code_review/BT_STATE_ACCESS_CONTRACT.md`, the globa
    ```
    Optional: `-DENABLE_COVERAGE=ON`, `-DENABLE_ASAN=ON`.
 
-2. **On-device Unity suites** (real ESP32 required, flashes a test image — confirm before flashing) — `test/test_bluetooth`, `test/test_app_audio`, `test/test_manager`. **Ignore the top-level README's references to `test_app`/`test_app2` — those are stale; `test/test_app/` on disk is an empty leftover.**
+2. **On-device Unity suites** (real ESP32 required, flashes a test image — confirm before flashing) — `test/test_bluetooth` (46 tests), `test/test_app_audio` (35 tests), `test/test_manager` (18 tests). **Ignore the top-level README's references to `test_app`/`test_app2` — those are stale; `test/test_app/` on disk is an empty leftover.**
    ```bash
    conda activate python310
    python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
@@ -44,7 +57,7 @@ Known unresolved issue: per `code_review/BT_STATE_ACCESS_CONTRACT.md`, the globa
    ```bash
    conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
    ```
-   Flags: `--no-host`, `--no-device`, `--no-standalone`, `--coverage`, `--asan`, `--valgrind`. Authoritative result: `tmp/run_all_tests_summary.json`. Coverage HTML: `python3 tools/run_all_tests.py --no-device --coverage --no-standalone` then open `tmp/coverage_html/index.html`.
+   Expected: 725/725 host + 99/99 device. Flags: `--no-host`, `--no-device`, `--no-standalone`, `--coverage`, `--asan`, `--valgrind`. Authoritative result: `tmp/run_all_tests_summary.json`. Coverage HTML: `python3 tools/run_all_tests.py --no-device --coverage --no-standalone` then open `tmp/coverage_html/index.html`.
 
 4. **Laptop BT hardware integration tests** (`test/laptop_bt_tests/`, real over-the-air A2DP against the laptop's own BT adapter via BlueZ D-Bus, no mocks — confirm before running, use the `/laptop-bt-tests` skill):
    ```bash

@@ -1,13 +1,15 @@
 # ESP32 Audio Project
 [![CI - Host Unit Tests](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml)
 [![CI - Device Build](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml)
-[![Coverage](https://img.shields.io/badge/coverage-62.9%25-yellow.svg)](#code-coverage)
+[![Coverage](https://img.shields.io/badge/coverage-78.1%25-green.svg)](#code-coverage)
 
-This project uses multiple ESP32 devices to create an audio streaming solution:
-- One ESP32 dedicated to Bluetooth A2DP audio source functionality
-- Another ESP32 handling WiFi and web server capabilities
+This project centers on two ESP32 devices for an audio streaming pipeline:
+- **esp_bt_audio_source** — Bluetooth A2DP audio source firmware (WROOM32 on `/dev/ttyUSB0`)
+- **esp_i2s_source** — I2S audio provider (ESP32-S3 on `/dev/ttyACM0`)
 
-## Project Status (2026-07-04)
+The Raspberry Pi (`rpi_i2s_source`) and BeagleBone Green (`bbgw_i2s_source`) I2S source projects have been archived in `archive/`; they are no longer needed as `esp_i2s_source` provides the I2S input.
+
+## Project Status (2026-07-13)
 
 **Completed recently**
 - **UART audio streaming (UARTAUDIO):** stream stereo 22.05 kHz PCM from a PC
@@ -33,6 +35,7 @@ This project uses multiple ESP32 devices to create an audio streaming solution:
 - Redo `esp_i2s_source` (planned next; expected to drive this board via UART2)
 - Longer-duration UARTAUDIO pytest as an engine-throughput regression guard
 - `tools/run_all_tests.py` counts build-failed suites as 0 failures (reporting gap)
+- `archive/` contains superseded I2S source projects (rpi_i2s_source, bbgw_i2s_source) — kept for reference only
 
 ## System Architecture
 
@@ -75,7 +78,7 @@ The script cleans prior artifacts before each run and reports pass/fail counts f
 
 ## Code Coverage
 
-The project maintains **62.9% line coverage** across production code, measured using gcov/lcov. Coverage reports are automatically generated in CI and can be generated locally.
+The project maintains **78.1% line coverage** across production code, measured using gcov/lcov. Coverage reports are automatically generated in CI and can be generated locally.
 
 ### Generate Coverage Report Locally
 

@@ -8,8 +8,9 @@ This is a monorepo containing several independent projects — don't assume comm
 
 - `esp_bt_audio_source/` — **the main project.** ESP-IDF firmware for the Bluetooth Classic A2DP audio source ESP32. See `esp_bt_audio_source/CLAUDE.md` for its build/test/architecture conventions. This is almost always what "the repo" or "the firmware" means when not otherwise specified.
 - `esp_i2s_source/` — second ESP32 project (WiFi/I2S controller side), also a full ESP-IDF project.
-- `bbgw_i2s_source/` — a separate Python project (pytest-based), unrelated build/CI to the ESP-IDF projects.
-- `rpi_i2s_source/` — Raspberry Pi side component.
+- `archive/` — archived I2S source projects (superseded by `esp_i2s_source`):
+  - `archive/bbgw_i2s_source/` — BeagleBone Green I2S source (Python/pytest)
+  - `archive/rpi_i2s_source/` — Raspberry Pi I2S source
 - `memory.md` (repo root) — a large (~1.2MB) append-only human/agent dev journal, unrelated to Claude Code's own memory system. Don't read it wholesale; `grep` for topic keywords if historical context is needed.
 
 ## Untrusted embedded instructions
