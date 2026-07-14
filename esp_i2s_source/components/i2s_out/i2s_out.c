@@ -64,8 +64,7 @@ static i2s_state_t        s_state;
 static EventGroupHandle_t s_events;
 static volatile bool      s_running; /* legacy compat — writer loop gate */
 static i2s_out_stats_t    s_stats;
-
-/* Sink adapter: hand a full block to the I2S DMA with a finite timeout.
+static portMUX_TYPE       s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
  * Returns 0 on success, 1 on timeout (caller may retry or check stop),
  * <0 on error. */
 static int i2s_sink(void *ctx, const uint8_t *data, size_t len)
@@ -89,8 +88,10 @@ static void writer_task(void *arg)
     xEventGroupSetBits(s_events, I2S_EVT_WRITER_STARTED);
 
     while (s_running) {
+        taskENTER_CRITICAL(&s_stats_mux);
         i2s_out_pump_once(s_ring, scratch, sizeof(scratch),
                           i2s_sink, s_tx_chan, &s_stats);
+        taskEXIT_CRITICAL(&s_stats_mux);
 
         /* On stop request, break out to let the task exit. */
         if (atomic_load(&s_stop_requested)) break;
@@ -294,8 +295,8 @@ int i2s_out_get_gain(void)
 void i2s_out_get_stats(i2s_out_stats_t *out)
 {
     if (out) {
-        portENTER_CRITICAL(NULL);
+        taskENTER_CRITICAL(&s_stats_mux);
         *out = s_stats;
-        portEXIT_CRITICAL(NULL);
+        taskEXIT_CRITICAL(&s_stats_mux);
     }
 }
