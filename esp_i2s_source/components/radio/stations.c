@@ -22,6 +22,7 @@ typedef struct {
 
 static station_store_t   s_store;
 static SemaphoreHandle_t s_mtx;
+static stations_blob_t   s_blob;  /* static scratch for NVS writes (mutex-protected) */
 
 /* Default presets. NOTE: the SPEC §5.4 internet-radio.com snapshot stations had
  * unreachable stream ports from our test network (verified — the laptop failed
@@ -44,19 +45,17 @@ static void seed(void)
     ESP_LOGI(TAG, "seeded %d default stations", s_store.count);
 }
 
-static void save_locked(void)
+static esp_err_t save_locked(stations_blob_t const *blob)
 {
     nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
-    /* ~12 KB — must NOT go on the (small) task stack; save_locked is always
-     * called under s_mtx, so a static scratch is safe. */
-    static stations_blob_t blob;
-    blob.magic = BLOB_MAGIC;
-    blob.store = s_store;
-    if (nvs_set_blob(h, NVS_KEY, &blob, sizeof(blob)) == ESP_OK) {
-        nvs_commit(h);
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, NVS_KEY, blob, sizeof(stations_blob_t));
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
     }
     nvs_close(h);
+    return err;
 }
 
 esp_err_t stations_init(void)
@@ -67,12 +66,11 @@ esp_err_t stations_init(void)
     bool loaded = false;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        static stations_blob_t blob;
-        size_t sz = sizeof(blob);
-        if (nvs_get_blob(h, NVS_KEY, &blob, &sz) == ESP_OK &&
-            sz == sizeof(blob) && blob.magic == BLOB_MAGIC &&
-            blob.store.count >= 0 && blob.store.count <= STATION_MAX) {
-            s_store = blob.store;
+        size_t sz = sizeof(s_blob);
+        if (nvs_get_blob(h, NVS_KEY, &s_blob, &sz) == ESP_OK &&
+            sz == sizeof(s_blob) && s_blob.magic == BLOB_MAGIC &&
+            s_blob.store.count >= 0 && s_blob.store.count <= STATION_MAX) {
+            s_store = s_blob.store;
             loaded = true;
         }
         nvs_close(h);
@@ -82,7 +80,9 @@ esp_err_t stations_init(void)
     } else {
         seed();
         xSemaphoreTake(s_mtx, portMAX_DELAY);
-        save_locked();
+        s_blob.magic = BLOB_MAGIC;
+        s_blob.store = s_store;
+        save_locked(&s_blob);
         xSemaphoreGive(s_mtx);
     }
     return ESP_OK;
@@ -112,42 +112,94 @@ bool stations_get_url(int idx, char *url, size_t usz)
     return stations_get(idx, NULL, 0, url, usz);
 }
 
-int stations_add(const char *name, const char *url)
+esp_err_t stations_add(const char *name, const char *url, int *out_idx)
 {
-    if (!s_mtx) return -1;
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    int i = station_store_add(&s_store, name, url);
-    if (i >= 0) save_locked();
+
+    /* Build a candidate blob with the mutation applied. */
+    s_blob.magic = BLOB_MAGIC;
+    s_blob.store = s_store;
+    int idx = station_store_add(&s_blob.store, name, url);
+    if (idx < 0) {
+        xSemaphoreGive(s_mtx);
+        if (out_idx) *out_idx = -1;
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Persist first — only swap into RAM on success. */
+    esp_err_t err = save_locked(&s_blob);
+    if (err == ESP_OK) {
+        s_store = s_blob.store;  /* swap on success */
+    }
     xSemaphoreGive(s_mtx);
-    return i;
+
+    if (err == ESP_OK && out_idx) *out_idx = idx;
+    return err;
 }
 
-bool stations_update(int idx, const char *name, const char *url)
+esp_err_t stations_update(int idx, const char *name, const char *url)
 {
-    if (!s_mtx) return false;
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    bool ok = station_store_update(&s_store, idx, name, url);
-    if (ok) save_locked();
+
+    s_blob.magic = BLOB_MAGIC;
+    s_blob.store = s_store;
+    bool ok = station_store_update(&s_blob.store, idx, name, url);
+    if (!ok) {
+        xSemaphoreGive(s_mtx);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = save_locked(&s_blob);
+    if (err == ESP_OK) {
+        s_store = s_blob.store;
+    }
     xSemaphoreGive(s_mtx);
-    return ok;
+
+    return err;
 }
 
-bool stations_remove(int idx)
+esp_err_t stations_remove(int idx)
 {
-    if (!s_mtx) return false;
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    bool ok = station_store_remove(&s_store, idx);
-    if (ok) save_locked();
+
+    s_blob.magic = BLOB_MAGIC;
+    s_blob.store = s_store;
+    bool ok = station_store_remove(&s_blob.store, idx);
+    if (!ok) {
+        xSemaphoreGive(s_mtx);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = save_locked(&s_blob);
+    if (err == ESP_OK) {
+        s_store = s_blob.store;
+    }
     xSemaphoreGive(s_mtx);
-    return ok;
+
+    return err;
 }
 
-bool stations_move(int idx, int delta)
+esp_err_t stations_move(int idx, int delta)
 {
-    if (!s_mtx) return false;
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    bool ok = station_store_move(&s_store, idx, delta);
-    if (ok) save_locked();
+
+    s_blob.magic = BLOB_MAGIC;
+    s_blob.store = s_store;
+    bool ok = station_store_move(&s_blob.store, idx, delta);
+    if (!ok) {
+        xSemaphoreGive(s_mtx);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = save_locked(&s_blob);
+    if (err == ESP_OK) {
+        s_store = s_blob.store;
+    }
     xSemaphoreGive(s_mtx);
-    return ok;
+
+    return err;
 }

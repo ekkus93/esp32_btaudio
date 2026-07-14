@@ -56,12 +56,20 @@ esp_err_t wifi_post(httpd_req_t *req)
     strlcpy(s_prov_pass, pass ? pass : "", sizeof(s_prov_pass));
     cJSON_Delete(j);
 
-    /* Reply BEFORE switching so the client sees success over the AP. */
+    /* Create the provisioning task BEFORE replying. The task delays 400ms
+     * before applying creds, so the response flushes over the SoftAP link
+     * before the STA connection tears it down. If task creation fails, the
+     * reply is an error — provisioning never happens. */
+    TaskHandle_t prov_task;
+    if (xTaskCreate(provision_task, "provision", 4096, NULL,
+                    tskIDLE_PRIORITY + 3, &prov_task) != pdPASS) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"task creation failed\"}");
+        return ESP_OK;
+    }
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true,\"host\":\"esp-i2s-source.local\"}");
-
-    /* Apply asynchronously; the AP tears down as STA comes up. */
-    xTaskCreate(provision_task, "provision", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
     return ESP_OK;
 }
 

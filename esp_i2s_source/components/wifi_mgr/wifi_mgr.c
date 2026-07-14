@@ -69,16 +69,18 @@ static esp_err_t save_creds(const char *ssid, const char *pass)
     return err;
 }
 
-static void erase_creds(void)
+static esp_err_t erase_creds(void)
 {
     nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, NVS_KEY_SSID);
-        nvs_erase_key(h, NVS_KEY_PASS);   /* keep ap_on across a WIFI RESET */
-        nvs_commit(h);
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_erase_key(h, NVS_KEY_SSID);
+        if (err == ESP_OK) err = nvs_erase_key(h, NVS_KEY_PASS);  /* keep ap_on across a WIFI RESET */
+        if (err == ESP_OK) err = nvs_commit(h);
         nvs_close(h);
     }
     s_ssid[0] = s_pass[0] = '\0';
+    return err;
 }
 
 static void load_ap_enabled(void)
@@ -182,9 +184,9 @@ static void apply_ap(void)
         esp_wifi_start();
         s_wifi_started = true;
     }
-    ESP_LOGW(TAG, "control AP up: SSID=\"%s\" PASS=\"%s\"  (join and open http://192.168.4.1)",
-             s_ap_ssid, s_ap_pass);
-    printf("DIAG|WIFI|AP|ssid=%s,pass=%s\n", s_ap_ssid, s_ap_pass);
+    ESP_LOGW(TAG, "control AP up: SSID=\"%s\"  (join and open http://192.168.4.1)",
+             s_ap_ssid);
+    printf("DIAG|WIFI|AP|ssid=%s,pass=<redacted>\n", s_ap_ssid);
     fflush(stdout);
 }
 
@@ -297,9 +299,9 @@ esp_err_t wifi_mgr_set_creds(const char *ssid, const char *pass)
 
 esp_err_t wifi_mgr_reset(void)
 {
-    erase_creds();
+    esp_err_t err = erase_creds();
     apply_action(wifi_sm_on_clear_creds(&s_sm));
-    return ESP_OK;
+    return err;
 }
 
 void wifi_mgr_get_status(char *buf, size_t buf_sz)

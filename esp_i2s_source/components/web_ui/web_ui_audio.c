@@ -65,8 +65,13 @@ esp_err_t volume_post_h(httpd_req_t *req)
         httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing pct\"}");
         return ESP_OK;
     }
-    i2s_out_set_gain(pct->valueint);       /* clamps to [0,100] */
+    esp_err_t err = i2s_out_set_gain(pct->valueint);  /* clamps to [0,100] */
     cJSON_Delete(j);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"failed to persist gain\"}");
+        return ESP_OK;
+    }
     char out[48];
     snprintf(out, sizeof(out), "{\"ok\":true,\"pct\":%d}", i2s_out_get_gain());
     httpd_resp_sendstr(req, out);
@@ -91,8 +96,13 @@ esp_err_t prebuffer_post_h(httpd_req_t *req)
         httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing ms\"}");
         return ESP_OK;
     }
-    radio_set_prebuffer_ms(ms->valueint);   /* clamps to a ring-safe range */
+    esp_err_t err = radio_set_prebuffer_ms(ms->valueint);  /* clamps to a ring-safe range */
     cJSON_Delete(j);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"failed to persist prebuffer\"}");
+        return ESP_OK;
+    }
     char out[48];
     snprintf(out, sizeof(out), "{\"ok\":true,\"ms\":%d}", radio_get_prebuffer_ms());
     httpd_resp_sendstr(req, out);

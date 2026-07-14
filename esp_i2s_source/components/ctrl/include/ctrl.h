@@ -41,8 +41,9 @@ void ctrl_get_cfg(ctrl_cfg_t *out);
 esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume);
 
 /* Record the last played station index (persisted) so autostart can resume it.
- * Called from the radio play path; cheap no-op if unchanged. */
-void ctrl_note_station(int idx);
+ * Called from the radio play path; cheap no-op if unchanged. Returns ESP_OK on
+ * success or an NVS error if persistence failed. */
+esp_err_t ctrl_note_station(int idx);
 
 /* Run a Bluetooth device scan with A2DP suspended for a clean inquiry: stops
  * the stream + disconnects the sink, runs SCAN (results arrive over the /ws as

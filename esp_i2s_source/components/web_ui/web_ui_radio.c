@@ -42,12 +42,19 @@ esp_err_t radio_post(httpd_req_t *req)
     }
     /* Optional station index: record it so CTRL-1 autostart can resume it. */
     cJSON *id = cJSON_GetObjectItem(j, "id");
-    if (cJSON_IsNumber(id)) ctrl_note_station(id->valueint);
+    esp_err_t note_err = ESP_OK;
+    if (cJSON_IsNumber(id)) note_err = ctrl_note_station(id->valueint);
     cJSON_Delete(j);
 
     /* Queue the play command (RH-S3-09). */
     esp_err_t err = radio_play_async(url);
     httpd_resp_set_type(req, "application/json");
+    if (note_err != ESP_OK) {
+        ESP_LOGW(TAG, "failed to persist station note: %s", esp_err_to_name(note_err));
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"failed to persist station\"}");
+        return ESP_OK;
+    }
     if (err != ESP_OK) {
         httpd_resp_set_status(req, "503 Service Unavailable");
         httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"radio queue full\"}");
@@ -134,6 +141,15 @@ static void station_reply(httpd_req_t *req, bool ok, int id)
     httpd_resp_sendstr(req, r);
 }
 
+static void station_reply_err(httpd_req_t *req, const char *err, int id)
+{
+    char r[64];
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    snprintf(r, sizeof(r), "{\"ok\":false,\"error\":\"%s\",\"id\":%d}", err, id);
+    httpd_resp_sendstr(req, r);
+}
+
 esp_err_t stations_post_h(httpd_req_t *req)
 {
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
@@ -141,8 +157,15 @@ esp_err_t stations_post_h(httpd_req_t *req)
         station_reply(req, false, -1);
         return ESP_OK;
     }
-    int id = stations_add(name, url);
-    station_reply(req, id >= 0, id);
+    int id = -1;
+    esp_err_t err = stations_add(name, url, &id);
+    if (err == ESP_ERR_NO_MEM || err == ESP_ERR_INVALID_ARG) {
+        station_reply(req, false, id);
+    } else if (err != ESP_OK) {
+        station_reply_err(req, "failed to persist", id);
+    } else {
+        station_reply(req, true, id);
+    }
     return ESP_OK;
 }
 
@@ -155,7 +178,14 @@ esp_err_t stations_put_h(httpd_req_t *req)
         httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK &&
         httpd_query_key_value(q, "move", mv, sizeof(mv)) == ESP_OK) {
         int delta = !strcmp(mv, "up") ? -1 : (!strcmp(mv, "down") ? 1 : 0);
-        station_reply(req, delta != 0 && stations_move(id, delta), id);
+        esp_err_t err = delta != 0 ? stations_move(id, delta) : ESP_ERR_INVALID_ARG;
+        if (err == ESP_ERR_INVALID_ARG) {
+            station_reply(req, false, id);
+        } else if (err != ESP_OK) {
+            station_reply_err(req, "failed to persist", id);
+        } else {
+            station_reply(req, true, id);
+        }
         return ESP_OK;
     }
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
@@ -163,13 +193,27 @@ esp_err_t stations_put_h(httpd_req_t *req)
         station_reply(req, false, id);
         return ESP_OK;
     }
-    station_reply(req, stations_update(id, name, url), id);
+    esp_err_t err = stations_update(id, name, url);
+    if (err == ESP_ERR_INVALID_ARG) {
+        station_reply(req, false, id);
+    } else if (err != ESP_OK) {
+        station_reply_err(req, "failed to persist", id);
+    } else {
+        station_reply(req, true, id);
+    }
     return ESP_OK;
 }
 
 esp_err_t stations_delete_h(httpd_req_t *req)
 {
     int id = station_id_param(req);
-    station_reply(req, id >= 0 && stations_remove(id), id);
+    esp_err_t err = id >= 0 ? stations_remove(id) : ESP_ERR_INVALID_ARG;
+    if (err == ESP_ERR_INVALID_ARG) {
+        station_reply(req, false, id);
+    } else if (err != ESP_OK) {
+        station_reply_err(req, "failed to persist", id);
+    } else {
+        station_reply(req, true, id);
+    }
     return ESP_OK;
 }

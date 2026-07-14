@@ -21,12 +21,13 @@ bool stations_get(int idx, char *name, size_t nsz, char *url, size_t usz);
 /* Copy just the URL of entry idx (for play-by-id). */
 bool stations_get_url(int idx, char *url, size_t usz);
 
-/* Mutations (persist to NVS). add returns the new index or -1. */
-int  stations_add(const char *name, const char *url);
-bool stations_update(int idx, const char *name, const char *url);
-bool stations_remove(int idx);
+/* Mutations (persist to NVS). Returns ESP_OK on success.
+ * stations_add() passes the new index out via *out_idx (may be NULL). */
+esp_err_t stations_add(const char *name, const char *url, int *out_idx);
+esp_err_t stations_update(int idx, const char *name, const char *url);
+esp_err_t stations_remove(int idx);
 /* Reorder: swap entry idx with its neighbour (delta -1 up, +1 down). */
-bool stations_move(int idx, int delta);
+esp_err_t stations_move(int idx, int delta);
 
 #ifdef __cplusplus
 }

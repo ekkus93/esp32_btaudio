@@ -273,18 +273,20 @@ void i2s_out_gain_load(void)
     ESP_LOGI(TAG, "pre-I2S gain loaded: %d%%", s_gain_pct);
 }
 
-void i2s_out_set_gain(int pct)
+esp_err_t i2s_out_set_gain(int pct)
 {
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     s_gain_pct = pct;
     nvs_handle_t h;
-    if (nvs_open(I2S_GAIN_NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+    esp_err_t err = nvs_open(I2S_GAIN_NVS_NS, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
         nvs_set_u8(h, I2S_GAIN_NVS_KEY, (uint8_t)pct);
         nvs_commit(h);
         nvs_close(h);
     }
     ESP_LOGI(TAG, "pre-I2S gain set to %d%%", pct);
+    return err;
 }
 
 int i2s_out_get_gain(void)

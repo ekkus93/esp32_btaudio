@@ -28,8 +28,12 @@ static void handle_wifi(char *args)
         return;
     }
     if (strcasecmp(args, "RESET") == 0) {
-        wifi_mgr_reset();
-        printf("OK|WIFI|RESET|AP\n");
+        esp_err_t e = wifi_mgr_reset();
+        if (e == ESP_OK) {
+            printf("OK|WIFI|RESET|AP\n");
+        } else {
+            printf("ERR|WIFI|RESET|%s\n", esp_err_to_name(e));
+        }
         return;
     }
     /* WIFI <ssid> [pass] — ssid is the first token, pass is the rest (may be

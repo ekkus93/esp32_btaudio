@@ -273,13 +273,15 @@ esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume)
     return e;
 }
 
-void ctrl_note_station(int idx)
+esp_err_t ctrl_note_station(int idx)
 {
-    if (!s_mtx) return;  /* RH-S3-10: defensive — not initialised */
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive — not initialised */
+    esp_err_t err = ESP_OK;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     if (idx != s_cfg.last_station) {
         s_cfg.last_station = (int16_t)idx;
-        ctrl_cfg_save(&s_cfg);
+        err = ctrl_cfg_save(&s_cfg);
     }
     xSemaphoreGive(s_mtx);
+    return err;
 }

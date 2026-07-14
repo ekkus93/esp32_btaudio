@@ -394,8 +394,10 @@ esp_err_t bt_post_h(httpd_req_t *req)
     /* Connect accepted (INITIATED): re-assert the saved post-mix volume once the
      * A2DP link is actually up, so it isn't left at the WROOM32's fresh-link 40. */
     if (is_connect && st == BT_LINK_CMD_DONE_OK && s_conn_vol_task == NULL) {
-        xTaskCreate(connect_volume_task, "connvol", 4096, NULL,
-                    tskIDLE_PRIORITY + 3, &s_conn_vol_task);
+        if (xTaskCreate(connect_volume_task, "connvol", 4096, NULL,
+                        tskIDLE_PRIORITY + 3, &s_conn_vol_task) != pdPASS) {
+            ESP_LOGW(TAG, "failed to create connect-volume task");
+        }
     }
     cJSON *r = cJSON_CreateObject();
     cJSON_AddBoolToObject(r, "ok", st == BT_LINK_CMD_DONE_OK);
