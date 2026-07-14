@@ -1071,7 +1071,7 @@ Do not externally delete a worker that might be active; init failure happens bef
 - [x] Delete partially created mutexes.
 - [x] Reset capacities/pointers.
 - [x] Reject duplicate successful init or define idempotence.
-- [ ] Add allocation failure tests for every stage. (no dedicated test)
+- [x] Add allocation failure tests for every stage.
 
 ---
 
@@ -1404,7 +1404,8 @@ Acceptance:
 ## P1 reliability
 
 - [x] RH-S3-04 through RH-S3-15.
-- [ ] RH-S3-16 through RH-S3-21. (NOT started)
+- [x] RH-S3-16 (done)
+- [ ] RH-S3-17 through RH-S3-21. (NOT started)
 - [ ] RH-WR-03 through RH-WR-05. (NOT started)
 
 ## Validation
