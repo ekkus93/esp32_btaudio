@@ -14,8 +14,15 @@ typedef struct {
 /* Configurable behavior for binary semaphore waits */
 static int s_binary_wait_result = pdFALSE; /* default: timeout */
 
+/* NULL-injection: return NULL for next N mutex creations */
+static int s_mutex_create_null = 0;
+
 SemaphoreHandle_t xSemaphoreCreateMutex(void)
 {
+    if (s_mutex_create_null > 0) {
+        s_mutex_create_null--;
+        return NULL;
+    }
     mock_sem_t *s = (mock_sem_t *)malloc(sizeof(mock_sem_t));
     if (s) {
         s->type = 0; /* mutex */
@@ -71,7 +78,13 @@ void mock_sem_set_binary_wait_result(int result)
     s_binary_wait_result = result;
 }
 
+void mock_sem_set_mutex_null(int n)
+{
+    s_mutex_create_null = n;
+}
+
 void mock_sem_reset(void)
 {
     s_binary_wait_result = pdFALSE;
+    s_mutex_create_null = 0;
 }

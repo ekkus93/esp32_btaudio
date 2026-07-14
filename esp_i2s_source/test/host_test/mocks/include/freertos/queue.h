@@ -22,6 +22,7 @@ void vQueueDelete(QueueHandle_t xQueue);
 unsigned uxQueueMessagesWaiting(QueueHandle_t xQueue);
 
 /* Mock control */
+void mock_queue_set_create_null(int n); /* return NULL for next N queue creations */
 void mock_queue_reset(void);
 
 #endif /* MOCK_FREERTOS_QUEUE_H */

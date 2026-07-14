@@ -32,8 +32,15 @@ static mock_queue_t *create_queue(unsigned depth, unsigned item_size)
     return q;
 }
 
+/* NULL-injection: return NULL for next N queue creations */
+static int s_queue_create_null = 0;
+
 QueueHandle_t xQueueCreate(unsigned depth, unsigned item_size)
 {
+    if (s_queue_create_null > 0) {
+        s_queue_create_null--;
+        return NULL;
+    }
     if (depth == 0 || item_size == 0) return NULL;
     return (QueueHandle_t)create_queue(depth, item_size);
 }
@@ -94,7 +101,12 @@ unsigned uxQueueMessagesWaiting(QueueHandle_t xQueue)
     return q->count;
 }
 
+void mock_queue_set_create_null(int n)
+{
+    s_queue_create_null = n;
+}
+
 void mock_queue_reset(void)
 {
-    /* No global state to reset */
+    s_queue_create_null = 0;
 }

@@ -18,6 +18,7 @@ void vSemaphoreDelete(SemaphoreHandle_t xSemaphore);
 
 /* Mock control */
 void mock_sem_set_binary_wait_result(int result);
+void mock_sem_set_mutex_null(int n); /* return NULL for next N mutex creations */
 void mock_sem_reset(void);
 
 /* Critical section macros no-op in host tests */

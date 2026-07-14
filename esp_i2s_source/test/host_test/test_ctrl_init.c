@@ -57,8 +57,9 @@ static void test_ctrl_get_cfg_before_init_noop(void)
 
 static void test_ctrl_note_station_before_init_noop(void)
 {
-    /* ctrl_note_station() should be a safe no-op before init. */
-    ctrl_note_station(42);  /* should not crash */
+    /* ctrl_note_station() should return ESP_ERR_INVALID_STATE before init. */
+    esp_err_t err = ctrl_note_station(42);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, err);
 }
 
 static void test_ctrl_scan_active_before_init(void)
@@ -116,7 +117,8 @@ static void test_ctrl_note_station_after_init(void)
     esp_err_t err = ctrl_init();
     TEST_ASSERT_EQUAL(ESP_OK, err);
 
-    ctrl_note_station(7);  /* should not crash */
+    err = ctrl_note_station(7);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
 int main(void)

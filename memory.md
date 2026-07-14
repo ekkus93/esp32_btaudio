@@ -25877,3 +25877,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   protected stats snapshot with critical section.
 - Commit: b637b21e
 - All 16 host test suites pass (133 tests). Firmware builds cleanly.
+## 2026-07-14T10:29:43Z - Claude Fable 5 - RH-S3-18: Propagate controller and Wi-Fi persistence errors
+
+- `ctrl_note_station()` now returns `esp_err_t` propagating NVS errors from `ctrl_cfg_save()`
+- `erase_creds()` now returns `esp_err_t` checking all NVS operations (open, erase_key x2, commit)
+- `wifi_mgr_reset()` propagates the error from `erase_creds()`
+- Password redacted from log lines in `wifi_mgr.c` (ESP_LOGW and DIAG printf)
+- HTTP handler checks `ctrl_note_station()` return; returns 500 on persistence failure
+- Console handler checks `wifi_mgr_reset()` result
+- Host tests pass (17/17)
+## 2026-07-14T10:54:53Z - Claude Fable 5 - RH-S3-18/19 commit
+
+- Committed 415b8188: "reliability: propagate persistence errors and check task creation (RH-S3-18/19)"
+- Made all NVS persistence functions return esp_err_t to callers
+- Added xTaskCreate() return value checks before HTTP success responses
+- Redacted password from log lines
+- HTTP handlers now return proper error status codes for persistence failures
+- 13 files changed, 213 insertions(+), 81 deletions(-)
