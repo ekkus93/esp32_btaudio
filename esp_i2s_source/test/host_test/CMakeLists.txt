@@ -169,3 +169,22 @@ target_include_directories(test_bt_link_lifecycle PRIVATE
 target_compile_definitions(test_bt_link_lifecycle PRIVATE UNIT_TEST ESP_PLATFORM)
 target_link_libraries(test_bt_link_lifecycle unity)
 add_test(NAME test_bt_link_lifecycle COMMAND test_bt_link_lifecycle)
+
+# RH-S3-10: ctrl_init() startup ordering — mutex before web UI
+add_executable(test_ctrl_init test_ctrl_init.c
+    ${CTRL_DIR}/ctrl.c
+    ${CTRL_DIR}/ctrl_cfg.c
+    ${CTRL_DIR}/ctrl_sm.c
+    mocks/fake_semphr.c
+    mocks/fake_task.c
+    mocks/fake_esp_err.c
+    mocks/stubs/ctrl_cfg_host.c
+    mocks/stubs/ctrl_device_stubs.c)
+target_include_directories(test_ctrl_init PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs  # stubs take precedence
+    ${CTRL_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_ctrl_init PRIVATE UNIT_TEST)
+target_link_libraries(test_ctrl_init unity)
+add_test(NAME test_ctrl_init COMMAND test_ctrl_init)

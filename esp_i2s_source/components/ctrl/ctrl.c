@@ -151,10 +151,11 @@ static void orchestrator_task(void *arg)
     vTaskDelete(NULL);
 }
 
-/* Suspend A2DP for a clean classic-BT inquiry, then restore. Classic inquiry is
- * unreliable while an A2DP link is active (they share one radio), so stop the
- * stream, disconnect the sink, run SCAN, then reconnect + resume. Discovery
- * results fan out over the WS as INFO|SCAN|RESULT during the inquiry window. */
+/* Suspend A2DP for a clean classic-BT inquiry, then restore. Classic inquiry
+ * is unreliable while an A2DP link is active (they share one radio), so stop
+ * the stream, disconnect the sink, run SCAN, then reconnect + resume.
+ * Discovery results fan out over the WS as INFO|SCAN|RESULT during the inquiry
+ * window. */
 #define SCAN_INQUIRY_MS  15000
 #define SCAN_SETTLE_MS    4000
 
@@ -209,6 +210,7 @@ static void scan_task(void *arg)
 
 esp_err_t ctrl_scan(void)
 {
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive check */
     if (s_scan_task) return ESP_ERR_INVALID_STATE;   /* already scanning */
     if (xTaskCreate(scan_task, "ctrl_scan", 4096, NULL,
                     tskIDLE_PRIORITY + 3, &s_scan_task) != pdPASS) {
@@ -222,13 +224,22 @@ bool ctrl_scan_active(void)
     return s_scan_active;
 }
 
+/* RH-S3-10: split initialisation from start so mutex exists before web UI. */
+esp_err_t ctrl_init(void)
+{
+    if (s_mtx) return ESP_OK;  /* already initialised — idempotent */
+    s_mtx = xSemaphoreCreateMutex();
+    if (!s_mtx) return ESP_ERR_NO_MEM;
+    /* Zero config — ctrl_cfg_load fills it in below. */
+    memset(&s_cfg, 0, sizeof(s_cfg));
+    ctrl_cfg_load(&s_cfg);
+    return ESP_OK;
+}
+
 esp_err_t ctrl_start(void)
 {
-    if (!s_mtx) {
-        s_mtx = xSemaphoreCreateMutex();
-        if (!s_mtx) return ESP_ERR_NO_MEM;
-    }
-    ctrl_cfg_load(&s_cfg);
+    /* RH-S3-10: require ctrl_init() to have been called first. */
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;
     if (xTaskCreate(orchestrator_task, "ctrl", 4096, NULL,
                     tskIDLE_PRIORITY + 3, &s_task) != pdPASS) {
         return ESP_ERR_NO_MEM;
@@ -239,6 +250,7 @@ esp_err_t ctrl_start(void)
 void ctrl_get_cfg(ctrl_cfg_t *out)
 {
     if (!out) return;
+    if (!s_mtx) return;  /* RH-S3-10: defensive — not initialised yet */
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     *out = s_cfg;
     xSemaphoreGive(s_mtx);
@@ -246,6 +258,7 @@ void ctrl_get_cfg(ctrl_cfg_t *out)
 
 esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume)
 {
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive check */
     if (mac && mac[0] && !ctrl_cfg_mac_valid(mac)) return ESP_ERR_INVALID_ARG;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     if (mac) strlcpy(s_cfg.sink_mac, mac, sizeof(s_cfg.sink_mac));
@@ -262,7 +275,7 @@ esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume)
 
 void ctrl_note_station(int idx)
 {
-    if (!s_mtx) return;
+    if (!s_mtx) return;  /* RH-S3-10: defensive — not initialised */
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     if (idx != s_cfg.last_station) {
         s_cfg.last_station = (int16_t)idx;

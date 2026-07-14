@@ -6,6 +6,10 @@
  * bt_link, STARTs A2DP, resumes the last station, then health-polls STATUS and
  * reconnects on drop. Also exposes config accessors for the web API and a hook
  * to record the last played station.
+ *
+ * RH-S3-10: ctrl_init() creates the mutex and zeroes state BEFORE the web UI
+ * starts (so HTTP handlers never see a NULL mutex). ctrl_start() then spawns
+ * the orchestrator task.
  */
 #pragma once
 
@@ -16,9 +20,16 @@
 extern "C" {
 #endif
 
+/* Create the controller mutex and load config. Must be called before
+ * web_ui_start() so HTTP handlers never access an uninitialised mutex.
+ * Idempotent — safe to call multiple times. Returns ESP_ERR_NO_MEM if mutex
+ * creation fails. */
+esp_err_t ctrl_init(void);
+
 /* Load config and spawn the orchestrator task. Call after bt_link, wifi_mgr,
  * radio and stations are initialised. No-op-ish (task exits) if autostart is
- * off or the sink MAC is unset/invalid. */
+ * off or the sink MAC is unset/invalid. Requires ctrl_init() to have been
+ * called first (returns ESP_ERR_INVALID_STATE otherwise). */
 esp_err_t ctrl_start(void);
 
 /* Snapshot the current config (thread-safe). */

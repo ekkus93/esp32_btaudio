@@ -201,6 +201,10 @@ void app_main(void)
     ESP_ERROR_CHECK(stations_init());
     /* WIFI-1c: console for runtime provisioning (WIFI <ssid> <pass> / STATUS). */
     ESP_ERROR_CHECK(console_start());
+    /* RH-S3-10: ctrl_init() creates the mutex BEFORE web_ui_start(), so HTTP
+     * handlers never access an uninitialised mutex. ctrl_start() spawns the
+     * orchestrator task after. */
+    ESP_ERROR_CHECK(ctrl_init());
     /* WEB-1a: HTTP server (embedded SPA + /api/status). */
     ESP_ERROR_CHECK(web_ui_start());
     /* CTRL-1b: boot orchestrator — if autostart+sink configured, connect the

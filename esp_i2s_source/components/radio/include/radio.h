@@ -118,6 +118,11 @@ size_t radio_read(uint8_t *dst, size_t len);
  * stereo s16 frames from the decoded-PCM ring. Returns frames copied. */
 size_t radio_pcm_read(int16_t *dst, size_t frames);
 
+/* Initialise the radio module (allocates compressed-ring, PCM-ring, mutexes).
+ * Call before radio_play_async(). Idempotent. Returns ESP_ERR_NO_MEM on
+ * allocation failure. */
+esp_err_t radio_init(size_t ring_bytes);
+
 /* Release the compressed-frame ring and internal sync. Call before process exit. */
 void radio_deinit(void);
 
