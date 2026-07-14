@@ -13,7 +13,6 @@
 /* Signal for BT app task */
 enum {
     BT_APP_SIG_WORK_DISPATCH = 0,
-    BT_APP_SIG_MGR_REQUEST,        /* BT manager state request (CODE_REVIEW8 P2) */
 };
 
 /* BT app task handler */
@@ -61,14 +60,6 @@ void bt_app_param_free_cb(void *param);
  * @brief     Work dispatcher
  */
 bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback);
-
-/**
- * @brief     Send a manager state request to BtAppTask (CODE_REVIEW8 P2)
- * @param     request Pointer to bt_mgr_request_t structure (caller retains ownership)
- * @return    true on success, false if queue is full or not initialized
- * @note      Caller must wait on request->done_sem and then free the semaphore
- */
-bool bt_app_send_mgr_request(void *request);
 
 #if UNIT_TEST
 /* Test-only helpers to observe and drain the queue in host/unit builds. */

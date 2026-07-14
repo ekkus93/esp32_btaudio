@@ -12,7 +12,6 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
-#include "bt_manager_internal.h"  /* For bt_mgr_request_handler */
 #include "osi/allocator.h"
 #include "util_safe.h"
 #include <stdarg.h>
@@ -41,7 +40,7 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param);
 bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, int param_len, bt_app_copy_cb_t p_copy_cback)
 {
     ESP_LOGD(TAG, "%s event: 0x%x, param len: %d", __func__, event, param_len);  // NOLINT(bugprone-branch-clone)
-    
+
     bt_app_msg_t msg;
     safe_memset(&msg, sizeof(msg), 0, sizeof(msg));
 
@@ -76,7 +75,7 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
 void bt_app_task_start_up(void)
 {
     ESP_LOGI(TAG, "%s", __func__);  // NOLINT(bugprone-branch-clone)
-    
+
     if (s_bt_app_queue == NULL) {
         s_bt_app_queue = xQueueCreate(20, sizeof(bt_app_evt_msg_t)); // Increased from 10 to 20
         if (!s_bt_app_queue) {
@@ -84,7 +83,7 @@ void bt_app_task_start_up(void)
             return;
         }
     }
-    
+
     if (s_bt_app_task_handle == NULL) {
         xTaskCreate(bt_app_task_handler, "BtAppTask", 8192, NULL, 10, &s_bt_app_task_handle); // Increased from 4096 to 8192
         if (!s_bt_app_task_handle) {
@@ -97,12 +96,12 @@ void bt_app_task_start_up(void)
 void bt_app_task_shut_down(void)
 {
     ESP_LOGI(TAG, "%s", __func__);  // NOLINT(bugprone-branch-clone)
-    
+
     if (s_bt_app_task_handle) {
         vTaskDelete(s_bt_app_task_handle);
         s_bt_app_task_handle = NULL;
     }
-    
+
     if (s_bt_app_queue) {
         /* Drain pending messages and free any heap-copied params to prevent
          * leaks when shutdown races with in-flight dispatches. */
@@ -123,7 +122,7 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
         ESP_LOGE(TAG, "%s: bt_app_queue is not initialized", __func__);  // NOLINT(bugprone-branch-clone)
         return false;
     }
-    
+
     bt_app_evt_msg_t evt_msg;
     evt_msg.msg = msg;
     /* Prefer the parameter stored inside the message (msg.param) which
@@ -131,7 +130,7 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
      * The caller may pass `param` as NULL (the prior bug), so using
      * msg.param ensures handlers receive the actual data pointer. */
     evt_msg.param = msg.param;
-    
+
     if (xQueueSend(s_bt_app_queue, &evt_msg, 10 / portTICK_PERIOD_MS) != pdTRUE) {
         /* Queue full: the message is dropped.  Callers waiting on a semaphore
          * that BtAppTask would have signalled will time out instead of
@@ -148,27 +147,17 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
     return true;
 }
 
-bool bt_app_send_mgr_request(void *request)
-{
-    bt_app_msg_t msg;
-    safe_memset(&msg, sizeof(msg), 0, sizeof(msg));
-    msg.sig = BT_APP_SIG_MGR_REQUEST;
-    msg.param = request;  /* Caller retains ownership - no param_free_cb */
-    
-    return bt_app_send_msg(msg, request);
-}
-
 static void bt_app_task_handler(void *arg)
 {
     bt_app_evt_msg_t evt_msg;
-    
+
     ESP_LOGI(TAG, "%s: starting", __func__);  // NOLINT(bugprone-branch-clone)
-    
+
     while (1) {
         /* Wait for event */
         if (pdTRUE == xQueueReceive(s_bt_app_queue, &evt_msg, (TickType_t)portMAX_DELAY)) {
             ESP_LOGD(TAG, "%s: received signal 0x%x", __func__, evt_msg.msg.sig);  // NOLINT(bugprone-branch-clone)
-            
+
             switch (evt_msg.msg.sig) {
             case BT_APP_SIG_WORK_DISPATCH:
                 ESP_LOGD(TAG, "%s: dispatching event 0x%x", __func__, evt_msg.msg.event);  // NOLINT(bugprone-branch-clone)
@@ -176,21 +165,11 @@ static void bt_app_task_handler(void *arg)
                     evt_msg.msg.cb(evt_msg.msg.event, evt_msg.param);
                 }
                 break;
-            case BT_APP_SIG_MGR_REQUEST:
-                /* BT Manager state request (CODE_REVIEW8 P2: State Access Contract)
-                 * Route to dedicated handler which processes request and signals
-                 * completion semaphore. No param_free_cb needed - caller owns
-                 * request struct and waits on semaphore. */
-                ESP_LOGD(TAG, "%s: processing MGR_REQUEST", __func__);  // NOLINT(bugprone-branch-clone)
-#ifdef ESP_PLATFORM
-                bt_mgr_request_handler(evt_msg.msg.event, evt_msg.param);
-#endif
-                break;
             default:
                 ESP_LOGW(TAG, "%s: unhandled signal 0x%x", __func__, evt_msg.msg.sig);  // NOLINT(bugprone-branch-clone)
                 break;
             }
-            
+
             /* Free parameter buffer if needed */
             if (evt_msg.param && evt_msg.msg.param_free_cb) {
                 evt_msg.msg.param_free_cb(evt_msg.param);
@@ -207,12 +186,12 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
     if (msg == NULL || p_dest == NULL || len < 0) {
         return BT_APP_WORK_FAIL;
     }
-    
+
     if (msg->param) {
         ESP_LOGE(TAG, "%s: already has param", __func__);  // NOLINT(bugprone-branch-clone)
         return BT_APP_WORK_FAIL;
     }
-    
+
     msg->param = osi_malloc(len);
     if (msg->param) {
         safe_memcpy(msg->param, (size_t)len, p_dest, (size_t)len);

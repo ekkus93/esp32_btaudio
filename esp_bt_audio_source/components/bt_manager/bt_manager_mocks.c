@@ -266,6 +266,16 @@ void bt_manager_mock_pairing_complete(const char* mac, bool success) {
 #endif
 
 #ifdef UNIT_TEST
+/* Mock bt_manager_get_status() for host tests.
+ * Host tests are single-threaded so direct access is safe. */
+esp_err_t bt_manager_get_status(bt_manager_status_t *status) {
+    if (!status) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memcpy(status, &bt_ctx, sizeof(bt_manager_status_t));
+    return ESP_OK;
+}
+
 // Expose a function to force-initialize bt_ctx for unit tests
 void bt_manager_force_initialized(bool value) {
     bt_ctx.initialized = value;

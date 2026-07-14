@@ -14,7 +14,7 @@ void *osi_calloc_func(size_t size) { return calloc(1, size); }
 void osi_free_func(void *ptr) { free(ptr); }
 
 // The production code uses FreeRTOS queues/tasks; host mocks keep counts
-// and never run the created task, which lets us fill the queue deterministically.
+//and never run the created task, which lets us fill the queue deterministically.
 
 static unsigned s_cb_calls;
 static uint16_t s_last_event;
@@ -300,29 +300,6 @@ void test_bt_app_core_zero_drain_leaves_queue_intact(void)
     TEST_ASSERT_EQUAL_UINT(2, bt_app_core_queue_depth());
 }
 
-/* ── bt_app_send_mgr_request + process_once default (MGR_REQUEST) branch ── */
-
-void test_bt_app_send_mgr_request_enqueues_and_processes(void)
-{
-    bt_app_task_start_up();
-
-    int request = 0xABCD;
-    TEST_ASSERT_TRUE(bt_app_send_mgr_request(&request));
-    TEST_ASSERT_EQUAL_UINT(1, bt_app_core_queue_depth());
-
-    /* process_once handles the MGR_REQUEST sig via its default branch (no cb on
-     * host; bt_mgr_request_handler is ESP_PLATFORM-only) and drains it. */
-    TEST_ASSERT_TRUE(bt_app_core_process_once());
-    TEST_ASSERT_EQUAL_UINT(0, bt_app_core_queue_depth());
-    TEST_ASSERT_EQUAL_UINT(0, s_cb_calls); /* MGR_REQUEST does not invoke a work cb */
-}
-
-void test_bt_app_send_mgr_request_fails_without_queue(void)
-{
-    /* No start_up → queue is NULL → send must fail closed. */
-    TEST_ASSERT_FALSE(bt_app_send_mgr_request((void *)0x1234));
-}
-
 /* ── bt_app_work_copy_cb error branches (called directly) ──────────────── */
 
 void test_bt_app_work_copy_cb_rejects_bad_args(void)
@@ -368,8 +345,6 @@ int main(void)
     RUN_TEST(test_bt_app_core_queue_recovers_after_partial_drain);
     RUN_TEST(test_bt_app_core_queue_recovers_after_full_drain);
     RUN_TEST(test_bt_app_core_burst_dispatch_stress_with_periodic_drain);
-    RUN_TEST(test_bt_app_send_mgr_request_enqueues_and_processes);
-    RUN_TEST(test_bt_app_send_mgr_request_fails_without_queue);
     RUN_TEST(test_bt_app_work_copy_cb_rejects_bad_args);
     RUN_TEST(test_bt_app_work_copy_cb_rejects_when_param_already_set);
     RUN_TEST(test_bt_app_param_free_cb_handles_null);

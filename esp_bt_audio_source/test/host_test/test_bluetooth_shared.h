@@ -8,6 +8,22 @@
 #include "unity.h"
 #include "bt_manager.h"
 #include "esp_err.h"
+
+/* bt_manager_status_t is defined in bt_source.h, but including that header
+ * creates a conflict with bt_device_t from bt_manager.h. Forward-declare the
+ * struct here for the snapshot test. */
+typedef struct {
+    bool initialized;
+    bool connected;
+    bool audio_playing;
+    bool scanning;
+    char connected_mac[18];
+    char connected_name[32];
+} bt_manager_status_t;
+
+/* bt_manager_get_status() is defined in bt_manager.c. It's not exposed via
+ * bt_manager.h, so we declare it here for the snapshot test. */
+esp_err_t bt_manager_get_status(bt_manager_status_t *status);
 #include "mock_i2s.h"
 #include "esp_bt.h"
 #include "nvs_storage.h"

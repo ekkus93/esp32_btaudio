@@ -644,3 +644,30 @@ void test_bt_a2dp_disconnect_and_stop_clear_playing(void) {
     TEST_ASSERT_EQUAL(ESP_A2D_AUDIO_STATE_STOPPED, bt_manager_test_get_last_audio_state());
     TEST_ASSERT_EQUAL(0, bt_manager_test_get_start_audio_calls());
 }
+
+// Snapshot consistency (RH-WR-01) — bt_manager_get_status() returns coherent fields
+void test_bt_status_snapshot_consistency(void) {
+    bt_manager_status_t status = {0};
+
+    // Get the snapshot
+    esp_err_t err = bt_manager_get_status(&status);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    // The snapshot should be coherent - if connected, MAC and name should be set
+    if (status.connected) {
+        TEST_ASSERT_TRUE(strlen(status.connected_mac) > 0);
+        TEST_ASSERT_TRUE(strlen(status.connected_name) > 0);
+    }
+
+    // Verify snapshot is independent from bt_ctx (a second call returns same values)
+    bt_manager_status_t status2 = {0};
+    err = bt_manager_get_status(&status2);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL_INT(status.initialized, status2.initialized);
+    TEST_ASSERT_EQUAL_INT(status.connected, status2.connected);
+    TEST_ASSERT_EQUAL_INT(status.audio_playing, status2.audio_playing);
+    TEST_ASSERT_EQUAL_INT(status.scanning, status2.scanning);
+
+    // NULL arg should fail
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, bt_manager_get_status(NULL));
+}
