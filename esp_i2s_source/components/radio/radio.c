@@ -417,11 +417,35 @@ static void decoder_task(void *arg)
                     s_dec_ch = info.channel;
                     xSemaphoreGive(s_mtx);
                 }
+                /* RH-S3-04: loop resampler until all input frames consumed. */
                 size_t in_frames = out.decoded_size / (2 * (info.channel ? info.channel : 1));
-                size_t used = 0;
-                size_t of = radio_resampler_run(&rs, (const int16_t *)pcmbuf, in_frames,
-                                                rsbuf, sizeof(rsbuf) / 4, &used);
-                if (of) pcm_write((const uint8_t *)rsbuf, of * 4);
+                size_t channels = (info.channel == 1) ? 1 : 2;
+                size_t offset = 0;
+                while (offset < in_frames && session_should_run(s)) {
+                    size_t used = 0;
+                    size_t of = radio_resampler_run(&rs,
+                                                    (const int16_t *)pcmbuf + channels * offset,
+                                                    in_frames - offset,
+                                                    rsbuf,
+                                                    sizeof(rsbuf) / (2 * sizeof(int16_t)),
+                                                    &used);
+                    if (of) {
+                        size_t bytes = of * 4;
+                        size_t written = 0;
+                        while (written < bytes && session_should_run(s)) {
+                            size_t n = pcm_write((const uint8_t *)rsbuf + written, bytes - written);
+                            if (n == 0) {
+                                vTaskDelay(pdMS_TO_TICKS(5));
+                                continue;
+                            }
+                            written += n;
+                        }
+                        if (written != bytes) break;  /* PCM ring full */
+                    } else if (used == 0) {
+                        break;  /* resampler stalled */
+                    }
+                    offset += used;
+                }
             } else if (err != ESP_AUDIO_ERR_OK) {
                 xSemaphoreTake(s_mtx, portMAX_DELAY);
                 s_decode_errors++;

@@ -96,6 +96,148 @@ void test_output_bounded_by_cap(void)
     TEST_ASSERT_TRUE(used <= 100);
 }
 
+/* RH-S3-04: all input frames must be consumed by looping the resampler call.
+ * These tests verify the looping pattern consumes all input across rates. */
+
+void test_resampler_consumes_all_22050(void)
+{
+    /* 22.05 kHz stereo -> 44.1 kHz: 2x upsampling.
+     * 4096 input frames -> 8192 output frames.
+     * Output buffer smaller than total output forces multiple calls. */
+    radio_resampler_t r;
+    radio_resampler_init(&r, 22050, 2);
+
+    const size_t in_frames = 4096;
+    int16_t *in = (int16_t *)calloc(in_frames * 2, sizeof(int16_t));
+    for (size_t i = 0; i < in_frames; i++) {
+        in[2 * i] = (int16_t)(i % 1000);
+        in[2 * i + 1] = (int16_t)(i % 1000);
+    }
+
+    int16_t out[4096];  /* forces multiple resampler calls */
+    size_t total_used = 0, offset = 0;
+    while (offset < in_frames) {
+        size_t used = 0;
+        size_t o = radio_resampler_run(&r, in + 2 * offset, in_frames - offset,
+                                       out, sizeof(out) / (2 * sizeof(int16_t)), &used);
+        TEST_ASSERT_TRUE(o > 0);
+        offset += used;
+        total_used += used;
+    }
+    TEST_ASSERT_EQUAL_UINT(in_frames, total_used);  /* all consumed */
+    free(in);
+}
+
+void test_resampler_consumes_all_32k(void)
+{
+    radio_resampler_t r;
+    radio_resampler_init(&r, 32000, 2);
+
+    const size_t in_frames = 2048;
+    int16_t *in = (int16_t *)calloc(in_frames * 2, sizeof(int16_t));
+    for (size_t i = 0; i < in_frames; i++) {
+        in[2 * i] = (int16_t)(i % 500);
+        in[2 * i + 1] = (int16_t)(i % 500);
+    }
+
+    int16_t out[4096];
+    size_t total_used = 0, offset = 0;
+    while (offset < in_frames) {
+        size_t used = 0;
+        size_t o = radio_resampler_run(&r, in + 2 * offset, in_frames - offset,
+                                       out, sizeof(out) / (2 * sizeof(int16_t)), &used);
+        TEST_ASSERT_TRUE(o > 0);
+        offset += used;
+        total_used += used;
+    }
+    TEST_ASSERT_EQUAL_UINT(in_frames, total_used);
+    free(in);
+}
+
+void test_resampler_consumes_all_48k(void)
+{
+    /* 48 kHz -> 44.1 kHz downsample. */
+    radio_resampler_t r;
+    radio_resampler_init(&r, 48000, 2);
+
+    const size_t in_frames = 4800;
+    int16_t *in = (int16_t *)calloc(in_frames * 2, sizeof(int16_t));
+    for (size_t i = 0; i < in_frames; i++) {
+        in[2 * i] = (int16_t)(i % 3000);
+        in[2 * i + 1] = (int16_t)(i % 3000);
+    }
+
+    int16_t out[4096];
+    size_t total_used = 0, offset = 0;
+    while (offset < in_frames) {
+        size_t used = 0;
+        size_t o = radio_resampler_run(&r, in + 2 * offset, in_frames - offset,
+                                       out, sizeof(out) / (2 * sizeof(int16_t)), &used);
+        TEST_ASSERT_TRUE(o > 0);
+        offset += used;
+        total_used += used;
+    }
+    TEST_ASSERT_EQUAL_UINT(in_frames, total_used);
+    free(in);
+}
+
+void test_resampler_small_output_no_data_loss(void)
+{
+    /* Tiny output capacity forces many resampler calls.
+     * Verify no data loss (all input consumed, output count correct). */
+    radio_resampler_t r;
+    radio_resampler_init(&r, 22050, 2);
+
+    const size_t in_frames = 64;
+    int16_t in[128];
+    for (size_t i = 0; i < in_frames; i++) {
+        in[2 * i] = (int16_t)i;
+        in[2 * i + 1] = (int16_t)(i * 2);
+    }
+
+    int16_t out[8];  /* tiny buffer */
+    size_t total_used = 0, total_out = 0, offset = 0;
+    while (offset < in_frames) {
+        size_t used = 0;
+        size_t o = radio_resampler_run(&r, in + 2 * offset, in_frames - offset,
+                                       out, sizeof(out) / (2 * sizeof(int16_t)), &used);
+        TEST_ASSERT_TRUE(o > 0);
+        TEST_ASSERT_TRUE(used > 0);
+        offset += used;
+        total_used += used;
+        total_out += o;
+    }
+    TEST_ASSERT_EQUAL_UINT(in_frames, total_used);
+    /* 22.05k -> 44.1k = 2x upsampling */
+    TEST_ASSERT_EQUAL_UINT(in_frames * 2, total_out);
+}
+
+void test_resampler_mono_all_consumed(void)
+{
+    /* Mono input: offset arithmetic uses 1 sample/frame (not 2). */
+    radio_resampler_t r;
+    radio_resampler_init(&r, 44100, 1);  /* mono */
+
+    const size_t in_frames = 1024;
+    int16_t *in = (int16_t *)calloc(in_frames, sizeof(int16_t));
+    for (size_t i = 0; i < in_frames; i++) {
+        in[i] = (int16_t)(i % 1000);
+    }
+
+    int16_t out[4096];  /* stereo output */
+    size_t total_used = 0, offset = 0;
+    while (offset < in_frames) {
+        size_t used = 0;
+        size_t o = radio_resampler_run(&r, in + offset, in_frames - offset,
+                                       out, sizeof(out) / (2 * sizeof(int16_t)), &used);
+        TEST_ASSERT_TRUE(o > 0);
+        offset += used;
+        total_used += used;
+    }
+    TEST_ASSERT_EQUAL_UINT(in_frames, total_used);
+    free(in);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -105,5 +247,10 @@ int main(void)
     RUN_TEST(test_downsample_produces_fewer_frames);
     RUN_TEST(test_streaming_continuity_dc);
     RUN_TEST(test_output_bounded_by_cap);
+    RUN_TEST(test_resampler_consumes_all_22050);
+    RUN_TEST(test_resampler_consumes_all_32k);
+    RUN_TEST(test_resampler_consumes_all_48k);
+    RUN_TEST(test_resampler_small_output_no_data_loss);
+    RUN_TEST(test_resampler_mono_all_consumed);
     return UNITY_END();
 }
