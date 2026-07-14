@@ -13,6 +13,7 @@
  */
 
 #include "unity.h"
+#include "platform_sync.h"
 #include "platform_memory.h"
 #include "platform_timing.h"
 #include <string.h>
@@ -167,6 +168,141 @@ void test_platform_get_time_ms_and_us_should_be_consistent(void) {
 }
 
 /* ============================================================================
+ * Platform Mutex Tests (RH-WR-01: mutex lock/unlock + NULL safety)
+ * ========================================================================= */
+
+void test_platform_mutex_create_should_return_non_null(void) {
+    /* Act */
+    platform_mutex_t mutex = platform_mutex_create();
+
+    /* Assert */
+    TEST_ASSERT_NOT_NULL(mutex);
+
+    /* Cleanup */
+    platform_mutex_delete(mutex);
+}
+
+void test_platform_mutex_delete_null_should_be_safe(void) {
+    /* Act - must not crash */
+    platform_mutex_delete(NULL);
+
+    /* Assert */
+    TEST_PASS();
+}
+
+void test_platform_mutex_lock_unlock_cycle(void) {
+    /* Arrange */
+    platform_mutex_t mutex = platform_mutex_create();
+    TEST_ASSERT_NOT_NULL(mutex);
+
+    /* Act */
+    esp_err_t err = platform_mutex_lock(mutex, PLATFORM_WAIT_FOREVER);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Assert - unlock must succeed */
+    err = platform_mutex_unlock(mutex);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Cleanup */
+    platform_mutex_delete(mutex);
+}
+
+void test_platform_mutex_lock_null_should_return_invalid_arg(void) {
+    /* Act */
+    esp_err_t err = platform_mutex_lock(NULL, PLATFORM_WAIT_FOREVER);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+}
+
+void test_platform_mutex_unlock_null_should_return_invalid_arg(void) {
+    /* Act */
+    esp_err_t err = platform_mutex_unlock(NULL);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+}
+
+void test_platform_mutex_lock_then_delete(void) {
+    /* Arrange */
+    platform_mutex_t mutex = platform_mutex_create();
+    TEST_ASSERT_NOT_NULL(mutex);
+
+    /* Act - lock the mutex */
+    esp_err_t err = platform_mutex_lock(mutex, PLATFORM_WAIT_FOREVER);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Delete while locked (cleanup should be safe) */
+    platform_mutex_delete(mutex);
+
+    /* Assert - test passes if no crash on delete */
+    TEST_PASS();
+}
+
+void test_platform_mutex_multiple_lock_unlock_cycles(void) {
+    /* Arrange */
+    platform_mutex_t mutex = platform_mutex_create();
+    TEST_ASSERT_NOT_NULL(mutex);
+
+    /* Act & Assert - 5 consecutive lock/unlock cycles */
+    for (int i = 0; i < 5; i++) {
+        esp_err_t err = platform_mutex_lock(mutex, PLATFORM_WAIT_FOREVER);
+        TEST_ASSERT_EQUAL(ESP_OK, err);
+        err = platform_mutex_unlock(mutex);
+        TEST_ASSERT_EQUAL(ESP_OK, err);
+    }
+
+    /* Cleanup */
+    platform_mutex_delete(mutex);
+}
+
+void test_platform_binary_sem_create_delete(void) {
+    /* Arrange */
+    platform_binary_sem_t sem = platform_binary_sem_create();
+    TEST_ASSERT_NOT_NULL(sem);
+
+    /* Act */
+    platform_binary_sem_delete(sem);
+
+    /* Assert - delete(NULL) must be safe */
+    platform_binary_sem_delete(NULL);
+    TEST_PASS();
+}
+
+void test_platform_binary_sem_take_null_should_return_invalid_arg(void) {
+    /* Act */
+    esp_err_t err = platform_binary_sem_take(NULL, 0);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+}
+
+void test_platform_binary_sem_give_null_should_return_invalid_arg(void) {
+    /* Act */
+    esp_err_t err = platform_binary_sem_give(NULL);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+}
+
+void test_platform_binary_sem_give_then_take(void) {
+    /* Arrange */
+    platform_binary_sem_t sem = platform_binary_sem_create();
+    TEST_ASSERT_NOT_NULL(sem);
+
+    /* Act - give the semaphore first */
+    esp_err_t err = platform_binary_sem_give(sem);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Take should succeed after a give */
+    err = platform_binary_sem_take(sem, 0);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Cleanup */
+    platform_binary_sem_delete(sem);
+}
+
+/* ============================================================================
  * Test Runner
  * ========================================================================= */
 
@@ -187,6 +323,21 @@ int main(void) {
     RUN_TEST(test_platform_get_time_ms_should_increment_monotonically);
     RUN_TEST(test_platform_get_time_us_should_have_microsecond_resolution);
     RUN_TEST(test_platform_get_time_ms_and_us_should_be_consistent);
+
+    /* Platform mutex tests (RH-WR-01) */
+    RUN_TEST(test_platform_mutex_create_should_return_non_null);
+    RUN_TEST(test_platform_mutex_delete_null_should_be_safe);
+    RUN_TEST(test_platform_mutex_lock_unlock_cycle);
+    RUN_TEST(test_platform_mutex_lock_null_should_return_invalid_arg);
+    RUN_TEST(test_platform_mutex_unlock_null_should_return_invalid_arg);
+    RUN_TEST(test_platform_mutex_lock_then_delete);
+    RUN_TEST(test_platform_mutex_multiple_lock_unlock_cycles);
+
+    /* Platform binary semaphore tests */
+    RUN_TEST(test_platform_binary_sem_create_delete);
+    RUN_TEST(test_platform_binary_sem_take_null_should_return_invalid_arg);
+    RUN_TEST(test_platform_binary_sem_give_null_should_return_invalid_arg);
+    RUN_TEST(test_platform_binary_sem_give_then_take);
     
     return UNITY_END();
 }
