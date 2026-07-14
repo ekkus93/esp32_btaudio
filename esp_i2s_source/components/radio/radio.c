@@ -821,7 +821,11 @@ esp_err_t radio_stop_sync(void)
 
 bool radio_is_playing(void)
 {
-    return s_radio_state == RADIO_STATE_RUNNING;
+    if (!s_control_mtx) return false;
+    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    bool playing = (s_radio_state == RADIO_STATE_RUNNING);
+    xSemaphoreGive(s_control_mtx);
+    return playing;
 }
 
 /* True only once the PCM cushion is primed — the arbiter feeds the radio to
@@ -829,7 +833,18 @@ bool radio_is_playing(void)
  * tone) rather than a starving ring. */
 bool radio_audio_ready(void)
 {
-    return s_radio_state == RADIO_STATE_RUNNING && s_prebuffered;
+    /* RH-S3-13: coherent read of state + prebuffered flag.
+     * Nested locks: s_control_mtx -> s_pcm_mtx. */
+    if (!s_control_mtx || !s_pcm_mtx) return false;
+    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    bool ready = false;
+    if (s_radio_state == RADIO_STATE_RUNNING) {
+        xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
+        ready = s_prebuffered;
+        xSemaphoreGive(s_pcm_mtx);
+    }
+    xSemaphoreGive(s_control_mtx);
+    return ready;
 }
 
 radio_state_t radio_get_state(void)
@@ -849,11 +864,14 @@ void radio_get_status(radio_status_t *out)
     memset(out, 0, sizeof(*out));
     if (!s_control_mtx) return;
 
-    /* Take telemetry lock first, then control lock (RH-S3-13 ordering rule). */
+    /* RH-S3-13: nested lock acquisition for coherent snapshot.
+     * Lock order: s_control_mtx -> s_mtx -> s_pcm_mtx.
+     * This matches the nesting in radio_play_sync() where
+     * s_control_mtx is taken before s_mtx during session init. */
+    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+
+    /* Telemetry lock (nested under control). */
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    out->playing = (s_radio_state == RADIO_STATE_RUNNING ||
-                    s_radio_state == RADIO_STATE_STARTING);
-    out->buffering = s_radio_state == RADIO_STATE_RUNNING && !s_prebuffered;
     out->codec = s_codec;
     out->http_status = s_http_status;
     out->bitrate_kbps = s_bitrate;
@@ -870,21 +888,27 @@ void radio_get_status(radio_status_t *out)
     out->decode_errors = s_decode_errors;
     out->last_error = s_last_error;
     strlcpy(out->last_error_detail, s_last_error_detail, sizeof(out->last_error_detail));
-    xSemaphoreGive(s_mtx);
 
-    /* Generation and state from control lock. */
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-    out->generation = s_next_generation;
-    out->state = s_radio_state;
-    xSemaphoreGive(s_control_mtx);
-
-    /* PCM ring stats (separate lock). */
+    /* PCM lock (nested under telemetry). */
     if (s_pcm_mtx) {
         xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
         out->pcm_used = (uint32_t)s_pcm_count;
         out->pcm_cap = (uint32_t)s_pcm_cap;
         xSemaphoreGive(s_pcm_mtx);
     }
+
+    /* Session fields — now under s_control_mtx. */
+    radio_state_t state = s_radio_state;
+    out->generation = s_next_generation;
+    out->state = state;
+    out->playing = (state == RADIO_STATE_RUNNING ||
+                    state == RADIO_STATE_STARTING);
+    out->buffering = (state == RADIO_STATE_RUNNING && !s_prebuffered);
+
+    xSemaphoreGive(s_mtx);
+    xSemaphoreGive(s_control_mtx);
+
+    /* Prebuffer setting is a standalone query (no lock needed — read from volatile). */
     out->prebuffer_ms = radio_get_prebuffer_ms();
 }
 

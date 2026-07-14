@@ -151,8 +151,11 @@ This policy is enforced by CI check: `tools/ci_check_main_no_bt_apis.sh`
   keeps serving commands during a stream
 
 I2S and UART: practical defaults and recommendations
-- I2S recommended default format: 16-bit PCM, stereo, 48 kHz (48000 Hz). This is the professional/streaming standard and aligns with modern digital audio sources. The esp_bt_audio_source has resampling capability to adapt to different sink requirements if needed.
+- I2S recommended default format: 16-bit PCM, stereo, 44.1 kHz (48000 Hz). This is the professional/streaming standard and aligns with modern digital audio sources. The esp_bt_audio_source has resampling capability to adapt to different sink requirements if needed.
 - I2S master/slave recommendation: make the audio producer (the ESP32 doing decoding/producing samples) the I2S master and this Bluetooth ESP32 the I2S slave. That way the producer supplies BCLK/WCLK and the BT device simply consumes the samples.
+- I2S Philips format: The WROOM32 uses Philips I2S with `ws_width=32`, `slot_bit_width=32`, `bit_shift=true`, and `ws_pol=false`. Both sides must agree exactly or the audio garbles. See [`esp_i2s_source/docs/SPEC.md §3.3`](esp_i2s_source/docs/SPEC.md#33-i2s-slot-format--s3-slave-tx-must-match-the-wroom32-master-exactly) for the slot contract.
+- Per-block phase detection: Due to HW v1 vs HW v2 pairing quirks, the 16-bit payload lands at a slot phase that shifts per enable session. The WROOM32 receiver must detect the actual phase offset per block (`i2s_frame_extract.c`) to extract the payload correctly. See [`esp_i2s_source/docs/SPEC.md §3.4`](esp_i2s_source/docs/SPEC.md#34-i2s-clock-details--philips-format-and-why-mclk-is-unused) for clock details.
+- bclk_div=16 margin: The S3 slave must have an internal clock >= 8x the BCLK frequency. Default `bclk_div=8` puts the slave exactly at the minimum through a fractional divider. The code uses `bclk_div=16` for real margin (internal clock ~45 MHz vs ~2.82 MHz BCLK). This prevents sampling errors from clock drift/jitter — see [ESP-IDF #9513](https://github.com/espressif/esp-idf/issues/9513).
 - UART defaults: 115200 baud, 8 data bits, no parity, 1 stop bit ("115200 8N1"). Commands are newline-terminated (\n).
 - USB-serial adapter / TTL note: Use a 3.3V TTL USB-serial adapter (for example FTDI, CP2102, CH340 variants). Do not connect 5V-level UART adapters directly to the ESP32 pins. Cross RX/TX and always connect a common ground.
 

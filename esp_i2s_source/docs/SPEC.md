@@ -122,6 +122,33 @@ either side's slot width, ws_width, or the `<<16` payload placement will
 break sync — re-verify against a laptop A2DP capture (FFT purity) after touching
 this contract.
 
+### 3.4 I2S clock details — Philips format and why MCLK is unused
+
+Philips I2S is the standard format used.  Philips I2S defines:
+- **Frame structure:** The WS (Word Select) signal divides the frame into left and right channels
+- **Data alignment:** Data is left-justified (starts at the beginning of each WS period)
+- **WS polarity:** WS goes high during the second channel period (right channel)
+- **Clock phase:** Data is valid at the rising edge of BCLK
+- **No MCLK:** Only uses BCLK (bit clock) and WS (word select); no master clock
+
+**Why MCLK is unused:** MCLK is optional in Philips I2S.  The system only needs BCLK and WS for synchronization.  MCLK provides a reference clock for the I2S peripheral, but it's not required for basic I2S operation.  Omitting MCLK simplifies the wiring and reduces clock distribution complexity.
+
+**bclk_div margin (ESP-IDF #9513):** The slave (S3) samples the external BCLK with its internal clock, which must be >= 8x the BCLK frequency.  The default `bclk_div=8` puts the internal clock exactly at the minimum through a fractional divider, leaving no margin for jitter or clock drift.  The code uses `bclk_div=16` instead — this gives real margin (internal clock ~45 MHz vs ~2.82 MHz BCLK).  Both 8 and 16 have been verified working via laptop A2DP FFT (100% purity), but 16 is kept for robustness against clock drift and jitter.  See [ESP-IDF #9513](https://github.com/espressif/esp-idf/issues/9513).
+
+**APLL clock source rationale (WROOM32 master):** The WROOM32 master uses `I2S_CLK_SRC_APLL` (Audio PLL) to generate the BCLK/WS.  The default `PLL_160M` clock is fractionally divided — it alternates /N and /N+1 periods cycle-to-cycle, which introduces BCLK jitter.  APLL generates the exact audio clock without fractional division, producing a jitter-free BCLK.  This is critical because the S3 slave must sample the external BCLK precisely — any jitter on the clock edge can cause sampling errors, leading to audio garbling or dropout.  APLL is the robust choice for an I2S link over jumpers.
+
+**Per-block phase detection mechanism:** The WROOM32 receives 32-bit slots but only 16 bits of actual audio per slot.  Due to the HW v1 vs HW v2 pairing quirk, the 16-bit payload lands at a slot phase that shifts per enable session.  The WROOM32 receiver must detect the actual phase offset per block to extract the payload correctly.
+
+The detection algorithm (`i2s_frame_extract.c`) works by:
+1. **Energy detection:** For each 32-bit slot, it measures the energy (non-zero bytes) at the 4 possible 16-bit half-offsets
+2. **Phase latch:** It compares the energy across the 4 offsets to find the 2 energetic half-offsets (the actual payload)
+3. **Extraction:** Once the phase is detected, it extracts the payload from the correct offset
+4. **Session tracking:** The detected phase is tracked per enable session.  If the phase changes, it re-detects.
+
+If the phase detection fails (e.g., all zeros = silence), it uses the previously detected phase from the session.  If the phase is unknown (first block after enable), it returns `I2S_FRAME_PHASE_NONE` and the caller fills silence.
+
+**Note:** The phase shifts per enable session because the I2S peripheral's internal state machine resets differently each time.  The exact phase depends on the I2S enable timing relative to the BCLK clock edge.  This is why per-block detection is mandatory — you cannot assume a fixed phase.
+
 ## 4. Architecture
 
 ```

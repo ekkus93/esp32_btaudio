@@ -55,6 +55,27 @@ I2S is **16-bit data in 32-bit slots** (`ws_width=32`, `bit_shift`) — both sid
 must agree exactly or the audio garbles. The S3 is the I2S **slave**; the
 WROOM32 drives the clocks.
 
+## I2S Configuration — Philips Format
+
+The S3 and WROOM32 use **Philips I2S** (44.1 kHz, 16-bit-in-32-bit-slot, stereo).  See [`docs/SPEC.md §3.4`](docs/SPEC.md#34-i2s-clock-details--philips-format-and-why-mclk-is-unused) for the full contract, clock rationale, and phase detection mechanism.
+
+### Philips I2S Format
+Philips I2S is the standard I2S format.  It defines:
+- **Frame structure:** WS (Word Select) divides the frame into left/right channels
+- **Data alignment:** Data is left-justified (starts at the beginning of each WS period)
+- **WS polarity:** WS goes high during the second channel period (right channel)
+- **Clock phase:** Data is valid at the rising edge of BCLK
+- **No MCLK:** Only BCLK and WS are used; MCLK is optional and unused
+
+### Slot Width (ws_width)
+The slot width must be 32 bits to match the WROOM32 master.  If the S3 slave uses `ws_width=16` but the master drives `ws_width=32`, the WS signal toggles at different points — the slave won't know where one channel ends and the other begins, resulting in garbled audio.
+
+### bclk_div=16 Margin
+The S3 slave must have an internal clock >= 8x the BCLK frequency.  Default `bclk_div=8` puts the slave exactly at the minimum through a fractional divider.  The code uses `bclk_div=16` for real margin (internal clock ~45 MHz vs ~2.82 MHz BCLK).  This prevents sampling errors from clock drift/jitter — see [ESP-IDF #9513](https://github.com/espressif/esp-idf/issues/9513).
+
+### Per-Block Phase Detection
+Due to the HW v1 vs HW v2 pairing quirk, the 16-bit payload lands at a slot phase that shifts per enable session.  The WROOM32 receiver must detect the actual phase offset per block (`i2s_frame_extract.c`) to extract the payload correctly.  See [`docs/SPEC.md §3.3`](docs/SPEC.md#33-i2s-slot-format--s3-slave-tx-must-match-the-wroom32-master-exactly) for the slot contract.
+
 ## Build
 
 ESP-IDF **v5.5.1**, target `esp32s3`. WiFi credentials and other settings are

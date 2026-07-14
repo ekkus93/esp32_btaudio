@@ -98,7 +98,8 @@ bool radio_is_playing(void);
  * rebuffer windows emit silence/tone instead of a starving ring. */
 bool radio_audio_ready(void);
 
-/* Snapshot the current state. */
+/* Snapshot the current state. Returns a coherent snapshot — all fields
+ * are read under the same nested lock acquisition (RH-S3-13). */
 void radio_get_status(radio_status_t *out);
 
 /* Return the current lifecycle state. */

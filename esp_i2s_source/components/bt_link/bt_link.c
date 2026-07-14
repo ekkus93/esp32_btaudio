@@ -46,6 +46,7 @@ static bt_link_linebuf_t  s_linebuf;
 static QueueHandle_t      s_cmd_queue;   /* bt_link_request_t* */
 static SemaphoreHandle_t  s_send_mutex;
 static bt_link_request_t *s_active;
+static uint32_t           s_cmd_timeout_ms; /* configured command timeout */
 
 static void on_line(void *ctx, char *line)
 {
@@ -146,8 +147,8 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
     uart_flush_input(BT_LINK_UART);
     uart_write_bytes(BT_LINK_UART, "\r\n", 2);
 
-    bt_link_session_init(&s_session,
-                         cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS);
+    s_cmd_timeout_ms = cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS;
+    bt_link_session_init(&s_session, s_cmd_timeout_ms);
     bt_link_linebuf_init(&s_linebuf);
 
     s_cmd_queue = xQueueCreate(4, sizeof(bt_link_request_t *));
@@ -170,7 +171,7 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
 
     ESP_LOGI(TAG, "init: UART1 tx=%d rx=%d @115200, timeout=%ums",
              BT_LINK_UART_TX_GPIO, BT_LINK_UART_RX_GPIO,
-             (unsigned)(cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS));
+             (unsigned)s_cmd_timeout_ms);
     return ESP_OK;
 
 fail:
@@ -224,7 +225,7 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
 
     /* Block on this request's own semaphore.
      * Worker signals req->done_sem when the UART response arrives or times out. */
-    if (xSemaphoreTake(req->done_sem, pdMS_TO_TICKS(BT_LINK_DEFAULT_TIMEOUT_MS + 500)) != pdTRUE) {
+    if (xSemaphoreTake(req->done_sem, pdMS_TO_TICKS(s_cmd_timeout_ms + 500)) != pdTRUE) {
         /* Timed out — mark abandoned so worker cleans up our semaphore + memory. */
         req->abandoned = true;
         xSemaphoreGive(s_send_mutex);

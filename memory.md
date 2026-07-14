@@ -25847,3 +25847,33 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Removes shared s_done_sem which caused cross-signaling between callers.
 - Commit: 14e655c2
 - Build verified: esp_i2s_source compiles cleanly.
+- RH-S3-03 decoder task creation failure cleanup
+- Radio lifecycle tests cover stream/decoder task creation failure paths.
+- radio_play() properly cleans up stream task when decoder creation fails.
+- Added radio_deinit() for cleanup + double-init rejection.
+- Commit: 95870095
+- Build verified: esp_i2s_source compiles cleanly.
+## 2026-07-14T06:38:00Z - Claude Fable 5 - RH-S3-05: Preserve compressed decoder tail
+
+- Decoder now accumulates unconsumed bytes in `inbuf` with `pending` tracking.
+- New compressed data reads into `inbuf + pending`; unconsumed tail memmoved to offset 0.
+- Buffer-full + no-progress path drops one byte and increments `s_decode_errors` (resync).
+- Fixes: RH-S3-05.
+- Commit: e830e447
+- Build verified: esp_i2s_source compiles cleanly (0x1b7a00 bytes).
+## 2026-07-14T07:03:20Z - Claude Fable 5 - RH-S3-07 atomic ring fix
+
+- Replaced `volatile size_t` head/tail/peak in `pcm_ring.c` with C11 `_Atomic size_t`
+- Used `atomic_load_explicit`/`atomic_store_explicit` with acquire/release ordering
+- Peak update uses CAS loop (`atomic_compare_exchange_weak`) for atomic max
+- Comments now correctly describe atomic guarantees (volatile does not)
+- Header now includes `<stdatomic.h>` for portability
+- Commit: 6427776d
+## 2026-07-14T07:16:55Z - Claude Fable 5 - RH-S3-08: Make I2S writer stoppable
+
+- Implemented RH-S3-08: replaced portMAX_DELAY with 100ms timeout in i2s_sink(),
+  added event group signaling for writer start/exit, made i2s_out_stop() wait for
+  exit bit with 500ms timeout, added state enum, rejected duplicate start,
+  protected stats snapshot with critical section.
+- Commit: b637b21e
+- All 16 host test suites pass (133 tests). Firmware builds cleanly.
