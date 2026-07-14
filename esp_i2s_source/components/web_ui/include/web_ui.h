@@ -15,6 +15,9 @@ extern "C" {
 /* Start the HTTP server. Call after wifi_mgr_init() and bt_link_init(). */
 esp_err_t web_ui_start(void);
 
+/* Stop the HTTP server (cleanup on startup failure or shutdown). */
+esp_err_t web_ui_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

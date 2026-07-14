@@ -159,6 +159,34 @@ esp_err_t recv_body(httpd_req_t *req, char *buf, size_t buf_sz)
     return ESP_OK;
 }
 
+esp_err_t web_ui_stop(void)
+{
+    if (s_server) {
+        esp_err_t err = httpd_stop(s_server);
+        s_server = NULL;
+        return err;
+    }
+    return ESP_OK;
+}
+
+/* Register a single URI handler, logging the method/URI on failure. */
+static esp_err_t register_uri(httpd_handle_t server, const httpd_uri_t *uri)
+{
+    esp_err_t err = httpd_register_uri_handler(server, uri);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "route registration failed: %s %s: %s",
+                 http_method_str(uri->method), uri->uri,
+                 esp_err_to_name(err));
+    }
+    return err;
+}
+
+/* Register a URI handler, jumping to cleanup on failure. */
+#define REGISTER_OR_FAIL(uri_ptr) do { \
+    err = register_uri(s_server, (uri_ptr)); \
+    if (err != ESP_OK) goto fail; \
+} while(0)
+
 esp_err_t web_ui_start(void)
 {
     refresh_wroom();
@@ -218,28 +246,29 @@ esp_err_t web_ui_start(void)
         .uri = "/api/console", .method = HTTP_POST, .handler = console_post_h };
     const httpd_uri_t root_uri = {
         .uri = "/*", .method = HTTP_GET, .handler = root_get };
-    httpd_register_uri_handler(s_server, &status_uri);
-    httpd_register_uri_handler(s_server, &wifi_uri);
-    httpd_register_uri_handler(s_server, &tone_post_uri);
-    httpd_register_uri_handler(s_server, &tone_del_uri);
-    httpd_register_uri_handler(s_server, &radio_post_uri);
-    httpd_register_uri_handler(s_server, &radio_del_uri);
-    httpd_register_uri_handler(s_server, &st_get_uri);
-    httpd_register_uri_handler(s_server, &st_post_uri);
-    httpd_register_uri_handler(s_server, &st_put_uri);
-    httpd_register_uri_handler(s_server, &st_del_uri);
-    httpd_register_uri_handler(s_server, &scan_post_uri);
-    httpd_register_uri_handler(s_server, &apmode_post_uri);
-    httpd_register_uri_handler(s_server, &volume_post_uri);
-    httpd_register_uri_handler(s_server, &prebuffer_post_uri);
-    httpd_register_uri_handler(s_server, &btvol_get_uri);
-    httpd_register_uri_handler(s_server, &btvol_post_uri);
-    httpd_register_uri_handler(s_server, &ctrl_get_uri);
-    httpd_register_uri_handler(s_server, &ctrl_post_uri);
-    httpd_register_uri_handler(s_server, &bt_get_uri);
-    httpd_register_uri_handler(s_server, &bt_post_uri);
-    httpd_register_uri_handler(s_server, &console_post_uri);
-    httpd_register_uri_handler(s_server, &root_uri);  /* catch-all last */
+
+    REGISTER_OR_FAIL(&status_uri);
+    REGISTER_OR_FAIL(&wifi_uri);
+    REGISTER_OR_FAIL(&tone_post_uri);
+    REGISTER_OR_FAIL(&tone_del_uri);
+    REGISTER_OR_FAIL(&radio_post_uri);
+    REGISTER_OR_FAIL(&radio_del_uri);
+    REGISTER_OR_FAIL(&st_get_uri);
+    REGISTER_OR_FAIL(&st_post_uri);
+    REGISTER_OR_FAIL(&st_put_uri);
+    REGISTER_OR_FAIL(&st_del_uri);
+    REGISTER_OR_FAIL(&scan_post_uri);
+    REGISTER_OR_FAIL(&apmode_post_uri);
+    REGISTER_OR_FAIL(&volume_post_uri);
+    REGISTER_OR_FAIL(&prebuffer_post_uri);
+    REGISTER_OR_FAIL(&btvol_get_uri);
+    REGISTER_OR_FAIL(&btvol_post_uri);
+    REGISTER_OR_FAIL(&ctrl_get_uri);
+    REGISTER_OR_FAIL(&ctrl_post_uri);
+    REGISTER_OR_FAIL(&bt_get_uri);
+    REGISTER_OR_FAIL(&bt_post_uri);
+    REGISTER_OR_FAIL(&console_post_uri);
+    REGISTER_OR_FAIL(&root_uri);  /* catch-all last */
 
     /* Buffer WROOM32 async lines (scan/paired/prompt) into the BT state for
      * GET /api/bt, then prime the paired list. */
@@ -250,4 +279,9 @@ esp_err_t web_ui_start(void)
     printf("DIAG|WEB|READY|port=80\n");
     fflush(stdout);
     return ESP_OK;
+
+fail:
+    httpd_stop(s_server);
+    s_server = NULL;
+    return err;
 }
