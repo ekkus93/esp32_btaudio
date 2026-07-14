@@ -21,6 +21,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Timeout constant: wait forever */
+#define PLATFORM_WAIT_FOREVER UINT32_MAX
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -130,6 +133,56 @@ esp_err_t platform_binary_sem_take(platform_binary_sem_t sem, uint32_t timeout_m
  * @endcode
  */
 esp_err_t platform_binary_sem_give(platform_binary_sem_t sem);
+
+/* ============================================================================
+ * Platform Mutex (for bt_ctx protection)
+ * ============================================================================ */
+
+/**
+ * @brief Opaque handle for a mutex
+ *
+ * ESP32: Maps to SemaphoreHandle_t (FreeRTOS mutex)
+ * Host:  pthread mutex
+ */
+typedef struct platform_mutex_s *platform_mutex_t;
+
+/**
+ * @brief Create a mutex
+ *
+ * @return Mutex handle on success, NULL on failure
+ */
+platform_mutex_t platform_mutex_create(void);
+
+/**
+ * @brief Delete (destroy) a mutex
+ *
+ * @param mutex Mutex handle to delete (can be NULL - no-op)
+ */
+void platform_mutex_delete(platform_mutex_t mutex);
+
+/**
+ * @brief Lock (acquire) a mutex with timeout
+ *
+ * @param mutex Mutex handle
+ * @param timeout_ms Maximum time to wait in milliseconds
+ *                   - 0 = return immediately (no wait)
+ *                   - PLATFORM_WAIT_FOREVER = wait forever (blocking)
+ *
+ * @return ESP_OK on success (mutex acquired)
+ *         ESP_ERR_TIMEOUT if timeout expired before mutex available
+ *         ESP_ERR_INVALID_ARG if mutex is NULL
+ */
+esp_err_t platform_mutex_lock(platform_mutex_t mutex, uint32_t timeout_ms);
+
+/**
+ * @brief Unlock (release) a mutex
+ *
+ * @param mutex Mutex handle
+ *
+ * @return ESP_OK on success
+ *         ESP_ERR_INVALID_ARG if mutex is NULL
+ */
+esp_err_t platform_mutex_unlock(platform_mutex_t mutex);
 
 #ifdef __cplusplus
 }

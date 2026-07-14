@@ -93,7 +93,7 @@ esp_err_t platform_binary_sem_give(platform_binary_sem_t sem) {
 
     // Give the semaphore
     BaseType_t result = xSemaphoreGive(sem->freertos_sem);
-    
+
     if (result == pdTRUE) {
         ESP_LOG_LEVEL_LOCAL(ESP_LOG_VERBOSE, TAG, "Semaphore %p given successfully", sem);
         return ESP_OK;
@@ -102,5 +102,87 @@ esp_err_t platform_binary_sem_give(platform_binary_sem_t sem) {
         // Not necessarily an error, but worth logging
         ESP_LOGW(TAG, "Semaphore %p give failed (already available?)", sem);
         return ESP_OK;  // Return OK anyway - idempotent give
+    }
+}
+
+/* ============================================================================
+ * Mutex implementation (ESP32/FreeRTOS)
+ * ============================================================================ */
+
+struct platform_mutex_s {
+    SemaphoreHandle_t freertos_mutex;
+};
+
+platform_mutex_t platform_mutex_create(void) {
+    struct platform_mutex_s *mutex = (struct platform_mutex_s *)platform_malloc(
+        sizeof(struct platform_mutex_s), PLATFORM_MEM_CAP_DEFAULT);
+    if (mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate mutex structure");
+        return NULL;
+    }
+
+    mutex->freertos_mutex = xSemaphoreCreateMutex();
+    if (mutex->freertos_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create FreeRTOS mutex");
+        platform_free(mutex);
+        return NULL;
+    }
+
+    ESP_LOG_LEVEL_LOCAL(ESP_LOG_DEBUG, TAG, "Created mutex %p", mutex);
+    return mutex;
+}
+
+void platform_mutex_delete(platform_mutex_t mutex) {
+    if (mutex == NULL) {
+        return;
+    }
+
+    if (mutex->freertos_mutex != NULL) {
+        vSemaphoreDelete(mutex->freertos_mutex);
+        ESP_LOG_LEVEL_LOCAL(ESP_LOG_DEBUG, TAG, "Deleted mutex %p", mutex);
+    }
+
+    platform_free(mutex);
+}
+
+esp_err_t platform_mutex_lock(platform_mutex_t mutex, uint32_t timeout_ms) {
+    if (mutex == NULL || mutex->freertos_mutex == NULL) {
+        ESP_LOGE(TAG, "Invalid mutex handle (NULL)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    TickType_t timeout_ticks;
+    if (timeout_ms == PLATFORM_WAIT_FOREVER) {
+        timeout_ticks = portMAX_DELAY;
+    } else {
+        timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    }
+
+    BaseType_t result = xSemaphoreTake(mutex->freertos_mutex, timeout_ticks);
+
+    if (result == pdTRUE) {
+        ESP_LOG_LEVEL_LOCAL(ESP_LOG_VERBOSE, TAG, "Mutex %p locked successfully", mutex);
+        return ESP_OK;
+    } else {
+        ESP_LOG_LEVEL_LOCAL(ESP_LOG_VERBOSE, TAG, "Mutex %p lock timeout (%lu ms)",
+                            mutex, (unsigned long)timeout_ms);
+        return ESP_ERR_TIMEOUT;
+    }
+}
+
+esp_err_t platform_mutex_unlock(platform_mutex_t mutex) {
+    if (mutex == NULL || mutex->freertos_mutex == NULL) {
+        ESP_LOGE(TAG, "Invalid mutex handle (NULL)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    BaseType_t result = xSemaphoreGive(mutex->freertos_mutex);
+
+    if (result == pdTRUE) {
+        ESP_LOG_LEVEL_LOCAL(ESP_LOG_VERBOSE, TAG, "Mutex %p unlocked successfully", mutex);
+        return ESP_OK;
+    } else {
+        ESP_LOGW(TAG, "Mutex %p unlock failed", mutex);
+        return ESP_FAIL;
     }
 }

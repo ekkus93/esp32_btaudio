@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <pthread.h>
+#include <string.h>
 
 static const char* TAG = "PLAT_SYNC_HOST";
 
@@ -86,7 +88,86 @@ esp_err_t platform_binary_sem_give(platform_binary_sem_t sem) {
 
     // Make semaphore available for next take
     sem->available = true;
-    
+
     ESP_LOGV(TAG, "Mock semaphore %p given successfully", (void*)sem);
+    return ESP_OK;
+}
+
+/* ============================================================================
+ * Mutex implementation (host/pthread)
+ *
+ * Uses a real pthread mutex so lock/unlock semantics are correct for
+ * single-threaded host tests.  Real contention cannot occur in the
+ * single-threaded test harness, but the mutex provides correct
+ * lock/unlock accounting for tests that verify the API contract.
+ * ============================================================================ */
+
+#include <pthread.h>
+
+struct platform_mutex_s {
+    pthread_mutex_t pthread_mutex;
+};
+
+platform_mutex_t platform_mutex_create(void) {
+    struct platform_mutex_s *mutex = (struct platform_mutex_s *)calloc(
+        1, sizeof(struct platform_mutex_s));
+    if (mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate mutex structure");
+        return NULL;
+    }
+
+    if (pthread_mutex_init(&mutex->pthread_mutex, NULL) != 0) {
+        ESP_LOGE(TAG, "Failed to initialize pthread mutex");
+        free(mutex);
+        return NULL;
+    }
+
+    ESP_LOGD(TAG, "Created mutex %p", mutex);
+    return mutex;
+}
+
+void platform_mutex_delete(platform_mutex_t mutex) {
+    if (mutex == NULL) {
+        return;
+    }
+
+    pthread_mutex_destroy(&mutex->pthread_mutex);
+    ESP_LOGD(TAG, "Deleted mutex %p", mutex);
+    free(mutex);
+}
+
+esp_err_t platform_mutex_lock(platform_mutex_t mutex, uint32_t timeout_ms) {
+    if (mutex == NULL) {
+        ESP_LOGE(TAG, "Invalid mutex handle (NULL)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    (void)timeout_ms; /* timeout not supported in host (pthread needs timed
+                        * lock API which is Linux-specific). Lock/unlock is
+                        * sufficient for single-threaded host tests. */
+
+    int rc = pthread_mutex_lock(&mutex->pthread_mutex);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "pthread_mutex_lock failed: %s", strerror(rc));
+        return ESP_FAIL;
+    }
+
+    ESP_LOGV(TAG, "Mutex %p locked successfully", (void *)mutex);
+    return ESP_OK;
+}
+
+esp_err_t platform_mutex_unlock(platform_mutex_t mutex) {
+    if (mutex == NULL) {
+        ESP_LOGE(TAG, "Invalid mutex handle (NULL)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int rc = pthread_mutex_unlock(&mutex->pthread_mutex);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "pthread_mutex_unlock failed: %s", strerror(rc));
+        return ESP_FAIL;
+    }
+
+    ESP_LOGV(TAG, "Mutex %p unlocked successfully", (void *)mutex);
     return ESP_OK;
 }
