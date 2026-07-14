@@ -122,7 +122,11 @@ void setUp(void)
     s_nvs_prebuf_ms = 0;
 }
 
-void tearDown(void) {}
+void tearDown(void)
+{
+    /* Clean up ring buffers and mutexes to avoid ASan leaks between tests. */
+    radio_deinit();
+}
 
 /* ---- Tests ---- */
 

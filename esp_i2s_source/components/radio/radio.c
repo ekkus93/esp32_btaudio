@@ -446,6 +446,7 @@ static void decoder_task(void *arg)
 
 /* ---- Public API ---- */
 
+/* Codec name string */
 const char *radio_codec_str(radio_codec_t c)
 {
     switch (c) {
@@ -455,13 +456,55 @@ const char *radio_codec_str(radio_codec_t c)
     }
 }
 
+/* Teardown: release all ring buffers and mutexes.
+ * Safe to call when not initialized (no-op). */
+void radio_deinit(void)
+{
+    /* Stop any active session first. */
+    if (s_control_mtx && s_active_session) {
+        radio_stop();
+    }
+
+    if (s_control_mtx) {
+        vSemaphoreDelete(s_control_mtx);
+        s_control_mtx = NULL;
+    }
+    if (s_pcm_mtx) {
+        vSemaphoreDelete(s_pcm_mtx);
+        s_pcm_mtx = NULL;
+    }
+    if (s_mtx) {
+        vSemaphoreDelete(s_mtx);
+        s_mtx = NULL;
+    }
+
+    /* Free ring buffers. */
+    if (s_pcm) {
+        free(s_pcm);
+        s_pcm = NULL;
+        s_pcm_cap = 0;
+        s_pcm_head = s_pcm_tail = s_pcm_count = 0;
+    }
+    if (s_ring) {
+        free(s_ring);
+        s_ring = NULL;
+        s_cap = 0;
+        s_head = s_tail = s_count = 0;
+    }
+
+    s_prebuffered = false;
+    s_radio_state = RADIO_STATE_STOPPED;
+    s_active_session = NULL;
+}
+
 esp_err_t radio_init(size_t ring_bytes)
 {
+    /* Check if already initialized — reject double-init. */
+    if (s_ring || s_control_mtx) return ESP_ERR_INVALID_STATE;
+
     /* Control mutex. */
-    if (!s_control_mtx) {
-        s_control_mtx = xSemaphoreCreateMutex();
-        if (!s_control_mtx) return ESP_ERR_NO_MEM;
-    }
+    s_control_mtx = xSemaphoreCreateMutex();
+    if (!s_control_mtx) return ESP_ERR_NO_MEM;
 
     s_cap = ring_bytes;
     s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_SPIRAM);

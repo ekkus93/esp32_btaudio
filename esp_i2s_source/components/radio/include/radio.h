@@ -113,6 +113,9 @@ size_t radio_read(uint8_t *dst, size_t len);
  * stereo s16 frames from the decoded-PCM ring. Returns frames copied. */
 size_t radio_pcm_read(int16_t *dst, size_t frames);
 
+/* Release the compressed-frame ring and internal sync. Call before process exit. */
+void radio_deinit(void);
+
 const char *radio_codec_str(radio_codec_t c);
 
 #ifdef __cplusplus
