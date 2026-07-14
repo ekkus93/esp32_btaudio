@@ -140,7 +140,7 @@ void test_stream_task_creation_failure(void)
     mock_task_set_create_result(pdFAIL);
 
     /* radio_play should fail with ESP_ERR_NO_MEM when stream task creation fails. */
-    err = radio_play("http://example.com/stream.mp3");
+    err = radio_play_sync("http://example.com/stream.mp3");
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
 
     /* Verify state is STOPPED after failure. */
@@ -148,7 +148,7 @@ void test_stream_task_creation_failure(void)
     TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
 
     /* radio_stop should be safe to call after a failed play. */
-    err = radio_stop();
+    err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
@@ -176,7 +176,7 @@ void test_decoder_task_creation_failure(void)
 
     /* Both tasks fail — this exercises the stream-fail + cleanup path. */
     mock_task_set_create_result(pdFAIL);
-    err = radio_play("http://example.com/stream.mp3");
+    err = radio_play_sync("http://example.com/stream.mp3");
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
 
     radio_state_t state = radio_get_state();
@@ -191,7 +191,7 @@ void test_failed_play_retry(void)
 
     /* First play fails (task creation fails). */
     mock_task_set_create_result(pdFAIL);
-    err = radio_play("http://example.com/stream.mp3");
+    err = radio_play_sync("http://example.com/stream.mp3");
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
 
     /* Reset mock — subsequent calls should succeed. */
@@ -206,7 +206,7 @@ void test_failed_play_retry(void)
     TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
 
     /* radio_stop after no active session should return OK. */
-    err = radio_stop();
+    err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
@@ -231,7 +231,7 @@ void test_stop_without_play(void)
     esp_err_t err = radio_init(64 * 1024);
     TEST_ASSERT_EQUAL(ESP_OK, err);
 
-    err = radio_stop();
+    err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 

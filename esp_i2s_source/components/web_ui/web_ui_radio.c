@@ -21,29 +21,8 @@
 
 static const char *TAG = "web_ui_radio";
 
-/* POST /api/radio {url} — resolve + play; DELETE /api/radio — stop. The play/
- * stop paths can fetch a playlist or wait on a reconnect, so run them off the
- * httpd worker. */
-static char s_radio_url[RADIO_URL_MAX];
-
-static void radio_play_task(void *arg)
-{
-    (void)arg;
-    esp_err_t err = radio_play(s_radio_url);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "radio_play failed: %s", esp_err_to_name(err));
-    }
-    vTaskDelete(NULL);
-}
-static void radio_stop_task(void *arg)
-{
-    (void)arg;
-    esp_err_t err = radio_stop();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "radio_stop failed: %s", esp_err_to_name(err));
-    }
-    vTaskDelete(NULL);
-}
+/* POST /api/radio {url} — resolve + play; DELETE /api/radio — stop.
+ * Commands are queued to the radio module's command worker (RH-S3-09). */
 
 esp_err_t radio_post(httpd_req_t *req)
 {
@@ -61,22 +40,34 @@ esp_err_t radio_post(httpd_req_t *req)
         httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing/oversized url\"}");
         return ESP_OK;
     }
-    strlcpy(s_radio_url, url, sizeof(s_radio_url));
     /* Optional station index: record it so CTRL-1 autostart can resume it. */
     cJSON *id = cJSON_GetObjectItem(j, "id");
     if (cJSON_IsNumber(id)) ctrl_note_station(id->valueint);
     cJSON_Delete(j);
+
+    /* Queue the play command (RH-S3-09). */
+    esp_err_t err = radio_play_async(url);
     httpd_resp_set_type(req, "application/json");
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"radio queue full\"}");
+        return ESP_OK;
+    }
     httpd_resp_sendstr(req, "{\"ok\":true}");
-    xTaskCreate(radio_play_task, "radioplay", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
     return ESP_OK;
 }
 
 esp_err_t radio_delete(httpd_req_t *req)
 {
+    /* Queue the stop command (RH-S3-09). */
+    esp_err_t err = radio_stop_async();
     httpd_resp_set_type(req, "application/json");
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"radio queue full\"}");
+        return ESP_OK;
+    }
     httpd_resp_sendstr(req, "{\"ok\":true}");
-    xTaskCreate(radio_stop_task, "radiostop", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
     return ESP_OK;
 }
 

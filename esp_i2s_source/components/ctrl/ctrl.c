@@ -90,7 +90,7 @@ static ctrl_action_t do_action(ctrl_action_t act)
         int idx = s_cfg.last_station;
         if (stations_get_url(idx, url, sizeof(url))) {
             ESP_LOGI(TAG, "resume station %d", idx);
-            esp_err_t err = radio_play(url);   /* blocking; fine on this task */
+            esp_err_t err = radio_play_async(url);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "resume play failed: %s", esp_err_to_name(err));
             }
@@ -176,7 +176,7 @@ static void scan_task(void *arg)
 
     /* Suspend A2DP: stop feeding I2S, drop the sink so the radio is free. */
     if (was_playing) {
-        esp_err_t e = radio_stop();
+        esp_err_t e = radio_stop_async();
         if (e != ESP_OK) ESP_LOGW(TAG, "scan: radio_stop failed: %s", esp_err_to_name(e));
     }
     ESP_LOGI(TAG, "scan: suspending A2DP (disconnect sink)");
@@ -199,7 +199,7 @@ static void scan_task(void *arg)
     }
     if (was_playing && url[0]) {
         ESP_LOGI(TAG, "scan: resuming radio");
-        radio_play(url);
+        radio_play_async(url);
     }
     ESP_LOGI(TAG, "scan: done, A2DP restored");
     s_scan_active = false;

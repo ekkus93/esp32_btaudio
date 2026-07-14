@@ -73,17 +73,22 @@ typedef struct {
     char          last_error_detail[64];  /* content-type or error context */
 } radio_status_t;
 
-/* Allocate the PSRAM compressed-frame ring and internal sync. Call once. */
-esp_err_t radio_init(size_t ring_bytes);
+/* Command queue for async radio operations (RH-S3-09). */
 
-/* Resolve `playlist_or_url` (.pls/.m3u fetched + resolved, else used directly)
- * and start streaming into the ring. Replaces any current stream. Returns
- * ESP_OK only after both stream and decoder tasks are created and running. */
-esp_err_t radio_play(const char *playlist_or_url);
+/* Resolve `playlist_or_url` and start streaming. Queued for async execution
+ * by the command worker. Returns ESP_OK if queued, ESP_ERR_TIMEOUT if queue
+ * full. Check radio_get_status() for the actual play result. */
+esp_err_t radio_play_async(const char *playlist_or_url);
 
-/* Stop streaming and drain the ring. Returns ESP_OK if both workers exited,
- * ESP_ERR_TIMEOUT if the deadline passed (session remains FAULTED). */
-esp_err_t radio_stop(void);
+/* Stop streaming and drain the ring. Queued for async execution by the
+ * command worker. Returns ESP_OK if queued, ESP_ERR_TIMEOUT if queue full. */
+esp_err_t radio_stop_async(void);
+
+/* Internal — synchronous play/stop (called by command worker or tests).
+ * Blocks until both stream and decoder tasks are created (play), or both
+ * workers exited (stop). */
+esp_err_t radio_play_sync(const char *playlist_or_url);
+esp_err_t radio_stop_sync(void);
 
 /* True while a stream is active (UI/telemetry sense). */
 bool radio_is_playing(void);

@@ -21,6 +21,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/event_groups.h"
+#include "freertos/queue.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -138,6 +139,24 @@ size_t radio_pcm_read(int16_t *dst, size_t frames)
 #define RADIO_EVT_DECODER_EXITED BIT1
 #define RADIO_EVT_ALL_EXITED \
     (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+
+/* ---- Command queue (RH-S3-09) ---- */
+
+/* Command types sent to the worker task. */
+typedef enum {
+    RADIO_CMD_PLAY = 0,
+    RADIO_CMD_STOP,
+} radio_cmd_type_t;
+
+/* Command object — sent via queue to the worker. */
+typedef struct {
+    radio_cmd_type_t type;
+    char url[RADIO_URL_MAX];
+} radio_cmd_t;
+
+static QueueHandle_t s_radio_cmd_q;  /* command queue */
+static TaskHandle_t  s_radio_cmd_task; /* worker task handle */
+static _Atomic bool  s_cmd_shutdown; /* shutdown flag for worker */
 
 /* Session object — one per radio_play() invocation. Owns the stop flag, event
  * group, and task handles. Freed only after both workers have exited. */
@@ -510,7 +529,23 @@ void radio_deinit(void)
 {
     /* Stop any active session first. */
     if (s_control_mtx && s_active_session) {
-        radio_stop();
+        radio_stop_sync();
+    }
+
+    /* Shutdown command worker (RH-S3-09). */
+    if (s_radio_cmd_q && s_radio_cmd_task) {
+        atomic_store(&s_cmd_shutdown, true);
+        /* Send dummy command to unblock the worker. */
+        radio_cmd_t dummy = { .type = RADIO_CMD_STOP };
+        xQueueSend(s_radio_cmd_q, &dummy, 0);
+        /* Wait for worker to exit (with timeout). */
+        for (int i = 0; i < 8 && s_radio_cmd_task; i++) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
+    }
+    if (s_radio_cmd_q) {
+        vQueueDelete(s_radio_cmd_q);
+        s_radio_cmd_q = NULL;
     }
 
     if (s_control_mtx) {
@@ -543,6 +578,47 @@ void radio_deinit(void)
     s_prebuffered = false;
     s_radio_state = RADIO_STATE_STOPPED;
     s_active_session = NULL;
+}
+
+/* Command queue worker (RH-S3-09). */
+static void radio_cmd_task(void *arg)
+{
+    (void)arg;
+    radio_cmd_t cmd;
+    for (;;) {
+        if (xQueueReceive(s_radio_cmd_q, &cmd, portMAX_DELAY) != pdTRUE) continue;
+        if (atomic_load(&s_cmd_shutdown)) break;  /* shutdown signal */
+        switch (cmd.type) {
+        case RADIO_CMD_PLAY:
+            radio_play_sync(cmd.url);
+            break;
+        case RADIO_CMD_STOP:
+            radio_stop_sync();
+            break;
+        default:
+            ESP_LOGW(TAG, "unknown cmd type %d", cmd.type);
+            break;
+        }
+    }
+    s_radio_cmd_task = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t radio_play_async(const char *playlist_or_url)
+{
+    if (!s_radio_cmd_q) return ESP_ERR_INVALID_STATE;
+    radio_cmd_t cmd = { .type = RADIO_CMD_PLAY };
+    strlcpy(cmd.url, playlist_or_url, sizeof(cmd.url));
+    if (xQueueSend(s_radio_cmd_q, &cmd, 0) == pdPASS) return ESP_OK;
+    return ESP_ERR_TIMEOUT;
+}
+
+esp_err_t radio_stop_async(void)
+{
+    if (!s_radio_cmd_q) return ESP_ERR_INVALID_STATE;
+    radio_cmd_t cmd = { .type = RADIO_CMD_STOP };
+    if (xQueueSend(s_radio_cmd_q, &cmd, 0) == pdPASS) return ESP_OK;
+    return ESP_ERR_TIMEOUT;
 }
 
 esp_err_t radio_init(size_t ring_bytes)
@@ -578,19 +654,40 @@ esp_err_t radio_init(size_t ring_bytes)
         return ESP_ERR_NO_MEM;
     }
 
+    /* Command queue (RH-S3-09): serializes play/stop through a single worker. */
+    s_radio_cmd_q = xQueueCreate(4, sizeof(radio_cmd_t));
+    if (!s_radio_cmd_q) {
+        /* Cleanup queue failure: undo everything created so far. */
+        vSemaphoreDelete(s_mtx);
+        vSemaphoreDelete(s_pcm_mtx);
+        free(s_pcm); s_pcm = NULL;
+        free(s_ring); s_ring = NULL;
+        vSemaphoreDelete(s_control_mtx);
+        s_control_mtx = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+    if (xTaskCreate(radio_cmd_task, "radio_cmd", 4096, NULL,
+                     tskIDLE_PRIORITY + 2, &s_radio_cmd_task) != pdPASS) {
+        vQueueDelete(s_radio_cmd_q);
+        s_radio_cmd_q = NULL;
+        /* Partial init — caller should radio_deinit() to cleanup. */
+        ESP_LOGE(TAG, "radio_cmd_task creation failed");
+        return ESP_ERR_NO_MEM;
+    }
+
     radio_prebuffer_load();                    /* restore persisted prebuffer depth */
     esp_audio_dec_register_default();          /* low-level MP3/AAC decoders */
     esp_audio_simple_dec_register_default();   /* simple/frame-parser wrappers */
     return ESP_OK;
 }
 
-esp_err_t radio_play(const char *playlist_or_url)
+esp_err_t radio_play_sync(const char *playlist_or_url)
 {
     if (!playlist_or_url || !playlist_or_url[0]) return ESP_ERR_INVALID_ARG;
     if (!s_ring || !s_pcm || !s_control_mtx) return ESP_ERR_INVALID_STATE;
 
     /* Stop any previous session. */
-    esp_err_t err = radio_stop();
+    esp_err_t err = radio_stop_sync();
     if (err != ESP_OK) return err;
 
     /* Resolve URL. */
@@ -676,7 +773,7 @@ fail_session:
     return ESP_ERR_NO_MEM;
 }
 
-esp_err_t radio_stop(void)
+esp_err_t radio_stop_sync(void)
 {
     if (!s_control_mtx) return ESP_ERR_INVALID_STATE;
 

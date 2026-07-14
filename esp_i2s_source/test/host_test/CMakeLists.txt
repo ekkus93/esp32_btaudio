@@ -134,6 +134,7 @@ add_executable(test_radio_lifecycle test_radio_lifecycle.c
     mocks/freertos_event_group.c
     mocks/fake_task.c
     mocks/fake_semphr.c
+    mocks/fake_queue.c
     mocks/fake_esp_err.c)
 target_include_directories(test_radio_lifecycle PRIVATE
     ${RADIO_DIR}/include
