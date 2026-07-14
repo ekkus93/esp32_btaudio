@@ -31,12 +31,23 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
 
         ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
 
-        bt_ctx.connected = true;
-        bt_ctx.connecting = false;
-        safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
+        /* Lock bt_ctx, update fields, save callback, unlock, then invoke */
+        bt_connected_cb cb = NULL;
+        char mac[18] = {0};
+        char name[32] = {0};
 
-        if (bt_ctx.connected_callback != NULL) {
-            bt_ctx.connected_callback(bda_str, bt_ctx.connected_name);
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            bt_ctx.connected = true;
+            bt_ctx.connecting = false;
+            safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
+            cb = bt_ctx.connected_callback;
+            safe_copy_str(mac, sizeof(mac), bt_ctx.connected_mac);
+            safe_copy_str(name, sizeof(name), bt_ctx.connected_name);
+            bt_ctx_unlock();
+        }
+
+        if (cb) {
+            cb(mac, name);
         }
 
         esp_bd_addr_t tmp_addr = {0};
@@ -51,15 +62,25 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
             ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));  // NOLINT(bugprone-branch-clone)
         }
     } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected from device: %s", bt_ctx.connected_mac);  // NOLINT(bugprone-branch-clone)
+        /* Lock bt_ctx, save callback, update fields, unlock, then invoke */
+        bt_disconnected_cb cb = NULL;
+        char mac[18] = {0};
 
-        if (bt_ctx.disconnected_callback != NULL) {
-            bt_ctx.disconnected_callback(bt_ctx.connected_mac);
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            cb = bt_ctx.disconnected_callback;
+            safe_copy_str(mac, sizeof(mac), bt_ctx.connected_mac);
+            bt_ctx.connected = false;
+            bt_ctx.connecting = false;
+            bt_ctx.audio_playing = false;
+            bt_ctx_unlock();
         }
 
-        bt_ctx.connected = false;
-        bt_ctx.connecting = false;
-        bt_ctx.audio_playing = false;
+        ESP_LOGI(TAG, "Disconnected from device: %s", mac);  // NOLINT(bugprone-branch-clone)
+
+        if (cb) {
+            cb(mac);
+        }
+
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
         bt_connection_state_cb(param->conn_stat.state, tmp_addr);
@@ -76,19 +97,28 @@ void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
 
     if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
         ESP_LOGI(TAG, "Audio streaming started");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = true;
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            bt_ctx.audio_playing = true;
+            bt_ctx_unlock();
+        }
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
         ESP_LOGI(TAG, "Audio streaming stopped");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = false;
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            bt_ctx.audio_playing = false;
+            bt_ctx_unlock();
+        }
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
         ESP_LOGI(TAG, "Audio streaming suspended");  // NOLINT(bugprone-branch-clone)
-        bt_ctx.audio_playing = false;
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            bt_ctx.audio_playing = false;
+            bt_ctx_unlock();
+        }
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);

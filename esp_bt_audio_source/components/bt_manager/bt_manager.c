@@ -62,12 +62,40 @@ bt_manager_context_t bt_ctx = {
  * requested so the sink begins draining without manual intervention. */
 bool s_autostart_enabled = true;
 
+/* Mutex that protects bt_ctx.  Writers (callbacks running on BtAppTask)
+ * acquire the lock before modifying bt_ctx.  Readers (e.g.
+ * bt_manager_get_status) acquire the lock to obtain a consistent
+ * snapshot.  Callbacks are NOT invoked while holding the lock. */
+static platform_mutex_t s_bt_ctx_mutex;
+
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
 #define safe_copy_str util_safe_copy_str
 #define safe_memcpy util_safe_memcpy
 #define safe_memset util_safe_memset
 #define parse_mac_bytes util_parse_mac
+
+/* ============================================================================
+ * bt_ctx lock/unlock helpers
+ *
+ * These acquire/release s_bt_ctx_mutex to protect bt_ctx from concurrent
+ * reads and writes.  Must be called before accessing bt_ctx fields except
+ * during init/deinit when the manager is not yet running.
+ * ============================================================================ */
+
+esp_err_t bt_ctx_lock(uint32_t timeout_ms) {
+    if (s_bt_ctx_mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return platform_mutex_lock(s_bt_ctx_mutex, timeout_ms);
+}
+
+void bt_ctx_unlock(void) {
+    esp_err_t err = platform_mutex_unlock(s_bt_ctx_mutex);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "bt_ctx unlock failed: %s", esp_err_to_name(err));
+    }
+}
 
 #if CONFIG_BT_MOCK_TESTING
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
@@ -110,170 +138,62 @@ int s_autostart_attempts = 0;
 #endif
 
 /* ============================================================================
- * BT Manager Request/Response API & Handlers (CODE_REVIEW8 P2)
- * 
- * PUBLIC API: bt_manager_get_status() - Call from ANY task to get BT state
- * PATTERN: Request → BtAppTask queue → Response → Semaphore signal
- * 
- * PURPOSE: Thread-safe access to bt_ctx from cmd_proc task.
- * WHY: bt_ctx updated from BtAppTask (BT events), read from cmd_proc (STATUS).
- *      Without synchronization, cmd_proc can see torn/inconsistent state.
- * 
- * See: code_review/BT_STATE_ACCESS_CONTRACT.md for full design.
+ * BT Manager Status API — mutex-protected snapshot (RH-WR-01)
+ *
+ * bt_manager_get_status() now acquires s_bt_ctx_mutex, copies the status
+ * fields into a local snapshot, then releases the mutex.  This replaces
+ * the previous request/queue pattern (BtAppTask + semaphore) and is
+ * simpler, faster, and safer.
+ *
+ * Callbacks are never invoked while holding the mutex (see spec callback
+ * rule).
  * ============================================================================ */
 
 #ifdef ESP_PLATFORM
 /**
- * @brief Get BT manager status from ANY task (thread-safe via queue)
- * 
+ * @brief Get BT manager status from ANY task (thread-safe via mutex)
+ *
  * This is the PUBLIC API that command handlers and other components should call
- * to read BT manager state. It posts a request to BtAppTask and waits for the
- * response, ensuring a consistent state snapshot.
- * 
- * @param[out] status Pointer to response structure (filled by BtAppTask)
- * @return ESP_OK on success, ESP_FAIL on timeout or queue error
- * @note Blocks up to 100ms waiting for response. Safe to call from any  task.
+ * to read BT manager state.  Acquires s_bt_ctx_mutex, copies the snapshot,
+ * releases the mutex, and returns the result.
+ *
+ * @param[out] status Pointer to response structure
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if status is NULL,
+ *         ESP_ERR_TIMEOUT if mutex lock timed out
+ * @note Blocks up to 100ms waiting for mutex. Safe to call from any task.
  */
 esp_err_t bt_manager_get_status(bt_manager_status_t *status)
 {
     if (!status) {
         return ESP_ERR_INVALID_ARG;
     }
-    
-    /* Create semaphore for request/response synchronization */
-    platform_binary_sem_t done_sem = platform_binary_sem_create();
-    if (!done_sem) {
-        ESP_LOGE(TAG, "Failed to create semaphore for status request");
-        return ESP_ERR_NO_MEM;
-    }
-    
-    /* Internal response buffer (matches bt_mgr_status_response_t layout) */
-    bt_mgr_status_response_t internal_resp;
-    
-    /* Build request */
-    bt_mgr_request_t req = {
-        .type = BT_MGR_REQUEST_GET_STATUS,
-        .response_buf = &internal_resp,
-        .response_size = sizeof(internal_resp),
-        .done_sem = done_sem
-    };
-    
-    /* Post request to BtAppTask */
-    if (!bt_app_send_mgr_request(&req)) {
-        platform_binary_sem_delete(done_sem);
-        ESP_LOGE(TAG, "Failed to post status request to BtAppTask");
-        return ESP_FAIL;
-    }
-    
-    /* Wait for response (100ms timeout to prevent deadlock if BtAppTask dies) */
-    if (platform_binary_sem_take(done_sem, 100) != ESP_OK) {
-        platform_binary_sem_delete(done_sem);
-        ESP_LOGE(TAG, "Timeout waiting for status response from BtAppTask");
-        return ESP_ERR_TIMEOUT;
-    }
-    
-    platform_binary_sem_delete(done_sem);
-    
-    /* Copy internal response to public API structure */
-    status->initialized = internal_resp.initialized;
-    status->connected = internal_resp.connected;
-    status->audio_playing = internal_resp.audio_playing;
-    status->scanning = internal_resp.scanning;
-    safe_copy_str(status->connected_mac, sizeof(status->connected_mac), internal_resp.connected_mac);
-    safe_copy_str(status->connected_name, sizeof(status->connected_name), internal_resp.connected_name);
-    
-    return ESP_OK;
-}
 
-/**
- * @brief Handle GET_STATUS request - copy consistent snapshot of bt_ctx
- * 
- * CONTEXT: Called from BtAppTask (safe to read bt_ctx without lock)
- * THREAD-SAFETY: Serial execution via BtAppTask queue ensures consistency
- */
-static void bt_mgr_handle_get_status(bt_mgr_request_t *req)
-{
-    if (!req || !req->response_buf) {
-        ESP_LOGE(TAG, "Invalid GET_STATUS request (NULL pointers)");
-        if (req && req->done_sem) {
-            platform_binary_sem_give(req->done_sem);
-        }
-        return;
+    esp_err_t err = bt_ctx_lock(100);
+    if (err != ESP_OK) {
+        return err;
     }
 
-    if (req->response_size < sizeof(bt_mgr_status_response_t)) {
-        ESP_LOGE(TAG, "GET_STATUS response buffer too small (%zu < %zu)",
-                 req->response_size, sizeof(bt_mgr_status_response_t));
-        if (req->done_sem) {
-            platform_binary_sem_give(req->done_sem);
-        }
-        return;
-    }
-
-    bt_mgr_status_response_t *resp = (bt_mgr_status_response_t *)req->response_buf;
-
-    /* Safe to read bt_ctx - we're in BtAppTask context with serial execution */
-    resp->initialized = bt_ctx.initialized;
-    resp->connected = bt_ctx.connected;
-    resp->audio_playing = bt_ctx.audio_playing;
-    resp->scanning = bt_ctx.scanning;
-    
-    /* String copies - safe because we have exclusive access in BtAppTask */
-    safe_copy_str(resp->connected_mac, sizeof(resp->connected_mac), 
+    /* Copy snapshot under lock */
+    status->initialized = bt_ctx.initialized;
+    status->connected = bt_ctx.connected;
+    status->audio_playing = bt_ctx.audio_playing;
+    status->scanning = bt_ctx.scanning;
+    safe_copy_str(status->connected_mac, sizeof(status->connected_mac),
                   bt_ctx.connected_mac);
-    safe_copy_str(resp->connected_name, sizeof(resp->connected_name),
+    safe_copy_str(status->connected_name, sizeof(status->connected_name),
                   bt_ctx.connected_name);
 
-    /* Signal completion */
-    if (req->done_sem) {
-        platform_binary_sem_give(req->done_sem);
-    }
+    bt_ctx_unlock();
+    return ESP_OK;
 }
-
-/**
- * @brief Dispatcher for BT manager state requests
- * 
- * INTEGRATION: Called via bt_app_work_dispatch() with BT_APP_SIG_MGR_REQUEST
- * CONTEXT: Executes in BtAppTask (priority 10)
- */
-void bt_mgr_request_handler(uint16_t event, void *param)
-{
-    bt_mgr_request_t *req = (bt_mgr_request_t *)param;
-    
-    if (!req) {
-        ESP_LOGE(TAG, "bt_mgr_request_handler: NULL request");
-        return;
-    }
-
-    switch (req->type) {
-    case BT_MGR_REQUEST_GET_STATUS:
-        bt_mgr_handle_get_status(req);
-        break;
-
-    case BT_MGR_REQUEST_GET_STREAMING_INFO:
-        /* TODO: Implement in Phase 3 when converting streaming info reads */
-        ESP_LOGW(TAG, "GET_STREAMING_INFO not yet implemented");
-        if (req->done_sem) {
-            platform_binary_sem_give(req->done_sem);  /* Signal to prevent deadlock */
-        }
-        break;
-
-    default:
-        ESP_LOGE(TAG, "Unknown request type: %d", req->type);
-        if (req->done_sem) {
-            platform_binary_sem_give(req->done_sem);
-        }
-        break;
-    }
-}
-#endif /* ESP_PLATFORM */
+#endif
 
 // Initialize Bluetooth Manager
  bt_err_t bt_manager_init(const bt_manager_init_t* config) {
     if (config == NULL || config->device_name == NULL) {
         return ESP_FAIL;
     }
-    
+
     if (bt_ctx.initialized) {
         return ESP_OK; // Already initialized
     }
@@ -281,6 +201,15 @@ void bt_mgr_request_handler(uint16_t event, void *param)
     /* Reset runtime defaults at each init so per-session overrides (like
      * autostart disable) do not leak across init/deinit cycles. */
     s_autostart_enabled = true;
+
+    /* Create the bt_ctx mutex before any other initialization.  If this
+     * fails there's nothing to clean up since the mutex is the first
+     * acquired resource. */
+    s_bt_ctx_mutex = platform_mutex_create();
+    if (s_bt_ctx_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create bt_ctx mutex");
+        return ESP_ERR_NO_MEM;
+    }
 #if defined(UNIT_TEST)
     s_autostart_attempts = 0;
 #endif
@@ -412,6 +341,10 @@ void bt_mgr_request_handler(uint16_t event, void *param)
     bt_ctx.connected = false;
     bt_ctx.audio_playing = false;
     // Optionally reset other fields if needed
+
+    /* Clean up the bt_ctx mutex last — after all BT state is reset. */
+    platform_mutex_delete(s_bt_ctx_mutex);
+    s_bt_ctx_mutex = NULL;
 
     return ESP_OK;
 }

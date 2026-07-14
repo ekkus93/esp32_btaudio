@@ -161,3 +161,12 @@ void bt_mgr_request_handler(uint16_t event, void *param);
 #define safe_memset util_safe_memset
 #define parse_mac_bytes util_parse_mac
 
+/* ============================================================================
+ * bt_ctx lock/unlock helpers
+ *
+ * Acquire s_bt_ctx_mutex before reading/writing bt_ctx fields.
+ * Callbacks are NOT invoked while holding the lock.
+ * ============================================================================ */
+esp_err_t bt_ctx_lock(uint32_t timeout_ms);
+void bt_ctx_unlock(void);
+
