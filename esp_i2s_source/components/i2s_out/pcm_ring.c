@@ -1,10 +1,16 @@
 /*
  * pcm_ring — lock-free SPSC byte ring (SIG-1b). See pcm_ring.h.
+ *
+ * C11 atomics (_Atomic size_t with acquire/release) provide the cross-core
+ * visibility required for a valid SPSC ring. Plain volatile does not: the C
+ * standard does not guarantee atomicity, ordering, or data-race freedom for
+ * volatile accesses on shared memory across cores.
  */
 #include "pcm_ring.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
@@ -14,9 +20,9 @@ struct pcm_ring {
     uint8_t *buf;
     size_t   size;      /* internal buffer size = capacity + 1 (wasted slot) */
     size_t   capacity;  /* usable bytes */
-    volatile size_t head;  /* producer write index, [0, size) */
-    volatile size_t tail;  /* consumer read index,  [0, size) */
-    size_t   peak;      /* max used seen (producer-updated stat) */
+    _Atomic size_t head;  /* producer write index, [0, size) */
+    _Atomic size_t tail;  /* consumer read index,  [0, size) */
+    _Atomic size_t peak;  /* max used seen (producer-updated stat) */
 };
 
 static void *ring_alloc(size_t n, bool use_psram)
@@ -46,8 +52,9 @@ pcm_ring_t *pcm_ring_create(size_t capacity, bool use_psram)
         free(r);
         return NULL;
     }
-    r->head = r->tail = 0;
-    r->peak = 0;
+    atomic_init(&r->head, 0);
+    atomic_init(&r->tail, 0);
+    atomic_init(&r->peak, 0);
     return r;
 }
 
@@ -70,8 +77,8 @@ static inline size_t used_of(size_t head, size_t tail, size_t size)
 size_t pcm_ring_write(pcm_ring_t *r, const uint8_t *src, size_t len)
 {
     if (!r || !src || len == 0) return 0;
-    size_t head = r->head;
-    size_t tail = r->tail;                    /* snapshot consumer index */
+    size_t head = atomic_load_explicit(&r->head, memory_order_relaxed);
+    size_t tail = atomic_load_explicit(&r->tail, memory_order_acquire);
     size_t used = used_of(head, tail, r->size);
     size_t space = r->capacity - used;        /* usable free bytes */
     size_t n = (len < space) ? len : space;
@@ -81,18 +88,24 @@ size_t pcm_ring_write(pcm_ring_t *r, const uint8_t *src, size_t len)
     memcpy(r->buf + head, src, first);
     if (n > first) memcpy(r->buf, src + first, n - first);
 
-    r->head = (head + n) % r->size;           /* publish */
+    atomic_store_explicit(&r->head, (head + n) % r->size,
+                          memory_order_release);
 
+    /* Atomically update peak (CAS loop) */
     size_t new_used = used + n;
-    if (new_used > r->peak) r->peak = new_used;
+    size_t peak = atomic_load_explicit(&r->peak, memory_order_relaxed);
+    while (new_used > peak &&
+           !atomic_compare_exchange_weak_explicit(
+               &r->peak, &peak, new_used,
+               memory_order_relaxed, memory_order_relaxed));
     return n;
 }
 
 size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len)
 {
     if (!r || !dst || len == 0) return 0;
-    size_t head = r->head;                    /* snapshot producer index */
-    size_t tail = r->tail;
+    size_t head = atomic_load_explicit(&r->head, memory_order_acquire);
+    size_t tail = atomic_load_explicit(&r->tail, memory_order_relaxed);
     size_t used = used_of(head, tail, r->size);
     size_t n = (len < used) ? len : used;
 
@@ -101,28 +114,38 @@ size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len)
     memcpy(dst, r->buf + tail, first);
     if (n > first) memcpy(dst + first, r->buf, n - first);
 
-    r->tail = (tail + n) % r->size;           /* publish */
+    atomic_store_explicit(&r->tail, (tail + n) % r->size,
+                          memory_order_release);
     return n;
 }
 
 size_t pcm_ring_used(const pcm_ring_t *r)
 {
     if (!r) return 0;
-    return used_of(r->head, r->tail, r->size);
+    size_t head = atomic_load_explicit(&r->head, memory_order_acquire);
+    size_t tail = atomic_load_explicit(&r->tail, memory_order_acquire);
+    return used_of(head, tail, r->size);
 }
 
 size_t pcm_ring_free(const pcm_ring_t *r)
 {
     if (!r) return 0;
-    return r->capacity - used_of(r->head, r->tail, r->size);
+    return r->capacity - pcm_ring_used(r);
 }
 
 size_t pcm_ring_capacity(const pcm_ring_t *r) { return r ? r->capacity : 0; }
-size_t pcm_ring_peak_used(const pcm_ring_t *r) { return r ? r->peak : 0; }
+
+size_t pcm_ring_peak_used(const pcm_ring_t *r)
+{
+    if (!r) return 0;
+    return atomic_load_explicit(&r->peak, memory_order_relaxed);
+}
 
 void pcm_ring_reset(pcm_ring_t *r)
 {
     if (!r) return;
-    r->tail = r->head;
-    r->peak = 0;
+    /* Consumer-side reset: align tail to head, clear peak. */
+    size_t head = atomic_load_explicit(&r->head, memory_order_acquire);
+    atomic_store_explicit(&r->tail, head, memory_order_release);
+    atomic_store_explicit(&r->peak, 0, memory_order_relaxed);
 }

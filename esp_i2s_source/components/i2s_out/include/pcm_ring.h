@@ -2,10 +2,9 @@
  * pcm_ring — lock-free SPSC byte ring for PCM (SIG-1b).
  *
  * Single-producer / single-consumer only. The producer owns `head`, the
- * consumer owns `tail`; each is a single word published atomically, and a
- * wasted slot disambiguates full vs empty, so no lock is needed for the SPSC
- * case on the ESP32 (aligned size_t reads/writes are atomic). Query functions
- * are safe from either side.
+ * consumer owns `tail`; each is a _Atomic size_t with acquire/release
+ * ordering, so the cross-core visibility of the latest index is guaranteed
+ * without a lock. A wasted slot disambiguates full vs empty.
  *
  *   Producer: pcm_ring_write()      Consumer: pcm_ring_read()
  *
@@ -17,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #ifdef __cplusplus
 extern "C" {
