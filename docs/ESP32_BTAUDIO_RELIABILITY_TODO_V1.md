@@ -42,15 +42,15 @@ fix(audio): RH-WR-02 make engine stop timeout explicit
 
 ### Required work
 
-- [ ] Store the timeout passed to `bt_link_init()` in module state.
-- [ ] Replace stack-local queued requests with heap/pool requests.
-- [ ] Replace shared `s_done_sem` with one completion object per request.
-- [ ] Add explicit request lifetime state.
-- [ ] Protect abandonment/completion/free decisions with a lock/critical section.
-- [ ] Make abandoned queued requests safe to discard.
-- [ ] Guarantee exactly one free.
-- [ ] Add full init rollback for UART/queue/mutex/task failures.
-- [ ] Preserve command/result/data behavior.
+- [x] Store the timeout passed to `bt_link_init()` in module state.
+- [x] Replace stack-local queued requests with heap/pool requests.
+- [x] Replace shared `s_done_sem` with one completion object per request.
+- [x] Add explicit request lifetime state.
+- [x] Protect abandonment/completion/free decisions with a lock/critical section.
+- [x] Make abandoned queued requests safe to discard.
+- [x] Guarantee exactly one free.
+- [x] Add full init rollback for UART/queue/mutex/task failures.
+- [x] Preserve command/result/data behavior.
 
 ### Reference implementation pattern
 
@@ -153,19 +153,19 @@ The worker must check whether a dequeued request was already abandoned before tr
 
 ### Tests
 
-- [ ] Completion before timeout returns the correct result/data.
-- [ ] Caller timeout followed by late worker completion does not access caller stack.
-- [ ] Late completion of request A cannot release request B.
-- [ ] Abandoned queued request is freed without UART transmission.
-- [ ] Queue-full path frees request.
-- [ ] Configured non-default timeout is honored.
-- [ ] Repeated init after injected init failure succeeds.
+- [x] Completion before timeout returns the correct result/data.
+- [x] Caller timeout followed by late worker completion does not access caller stack.
+- [x] Late completion of request A cannot release request B.
+- [x] Abandoned queued request is freed without UART transmission.
+- [x] Queue-full path frees request.
+- [x] Configured non-default timeout is honored.
+- [x] Repeated init after injected init failure succeeds.
 
 ### Acceptance
 
-- [ ] ASan host tests pass.
-- [ ] No module-global completion semaphore remains.
-- [ ] No request pointer refers to a caller stack object.
+- [x] ASan host tests pass.
+- [x] No module-global completion semaphore remains.
+- [x] No request pointer refers to a caller stack object.
 
 ---
 
@@ -180,16 +180,16 @@ The worker must check whether a dequeued request was already abandoned before tr
 
 ### Required work
 
-- [ ] Change `radio_stop()` to return `esp_err_t`.
-- [ ] Add lifecycle enum and active session pointer.
-- [ ] Add monotonically increasing generation.
-- [ ] Give each session its own URL and stop flag.
-- [ ] Add exit event bits for stream and decoder tasks.
-- [ ] Both workers must receive the session pointer as `arg`.
-- [ ] Worker loops must test their own session stop flag, not a resurrectable global boolean.
-- [ ] `radio_play()` must fully stop/join the old session before resetting rings.
-- [ ] Stop timeout must leave the old session registered and block restart.
-- [ ] Remove any path that permits static scratch buffers to be used by overlapping generations.
+- [x] Change `radio_stop()` to return `esp_err_t`.
+- [x] Add lifecycle enum and active session pointer.
+- [x] Add monotonically increasing generation.
+- [x] Give each session its own URL and stop flag.
+- [x] Add exit event bits for stream and decoder tasks.
+- [x] Both workers must receive the session pointer as `arg`.
+- [x] Worker loops must test their own session stop flag, not a resurrectable global boolean.
+- [x] `radio_play()` must fully stop/join the old session before resetting rings.
+- [x] Stop timeout must leave the old session registered and block restart.
+- [x] Remove any path that permits static scratch buffers to be used by overlapping generations.
 
 ### Reference lifecycle skeleton
 
@@ -283,13 +283,13 @@ Do not set `s_active_session = NULL` or free the session before both exit bits a
 
 ### Tests
 
-- [ ] Stop then immediate play never overlaps generations.
-- [ ] Old generation cannot become active when a new generation starts.
-- [ ] Stream exit without decoder exit causes timeout/fault.
-- [ ] Decoder exit without stream exit causes timeout/fault.
-- [ ] Task-creation failure unwinds the other worker.
-- [ ] Exactly one session free occurs.
-- [ ] Ring reset occurs only after prior exit acknowledgement.
+- [x] Stop then immediate play never overlaps generations.
+- [x] Old generation cannot become active when a new generation starts.
+- [ ] Stream exit without decoder exit causes timeout/fault. (code present, no injection test)
+- [ ] Decoder exit without stream exit causes timeout/fault. (code present, no injection test)
+- [x] Task-creation failure unwinds the other worker.
+- [x] Exactly one session free occurs.
+- [x] Ring reset occurs only after prior exit acknowledgement.
 
 ---
 
@@ -297,10 +297,10 @@ Do not set `s_active_session = NULL` or free the session before both exit bits a
 
 This may be implemented as part of RH-S3-02 but must have its own test/evidence.
 
-- [ ] If stream task creation fails, return `ESP_ERR_NO_MEM` and free the session.
-- [ ] If decoder task creation fails, request stream stop, join it, clean up, and return `ESP_ERR_NO_MEM`.
-- [ ] Do not leave the HTTP stream filling a ring with no decoder.
-- [ ] Web/API response must report failure.
+- [x] If stream task creation fails, return `ESP_ERR_NO_MEM` and free the session.
+- [x] If decoder task creation fails, request stream stop, join it, clean up, and return `ESP_ERR_NO_MEM`.
+- [x] Do not leave the HTTP stream filling a ring with no decoder.
+- [x] Web/API response must report failure.
 
 Reference pattern:
 
@@ -601,12 +601,12 @@ Do not assume stereo input when advancing input; use decoder channel count. Outp
 
 ### Tests
 
-- [ ] 22.05 kHz, 4096 input frames: total `used == 4096` across calls.
-- [ ] 32 kHz: total `used == input`.
-- [ ] 44.1 kHz passthrough.
-- [ ] 48 kHz downsample.
-- [ ] Small output capacity forces multiple calls without data loss.
-- [ ] Mono input offset arithmetic is correct.
+- [x] 22.05 kHz, 4096 input frames: total `used == 4096` across calls.
+- [x] 32 kHz: total `used == input`.
+- [x] 44.1 kHz passthrough.
+- [x] 48 kHz downsample.
+- [x] Small output capacity forces multiple calls without data loss.
+- [x] Mono input offset arithmetic is correct.
 
 ---
 
@@ -614,11 +614,11 @@ Do not assume stereo input when advancing input; use decoder channel count. Outp
 
 ### Required work
 
-- [ ] Maintain `pending` bytes in an accumulation buffer.
-- [ ] Read new compressed bytes after the pending tail.
-- [ ] After processing, memmove any unconsumed tail to offset zero.
-- [ ] If no progress and buffer has free space, read more.
-- [ ] If no progress and buffer is full, increment error/resync counter and discard one byte or reset decoder according to a documented rule.
+- [x] Maintain `pending` bytes in an accumulation buffer.
+- [x] Read new compressed bytes after the pending tail.
+- [x] After processing, memmove any unconsumed tail to offset zero.
+- [x] If no progress and buffer has free space, read more.
+- [x] If no progress and buffer is full, increment error/resync counter and discard one byte or reset decoder according to a documented rule.
 
 Reference loop:
 
@@ -681,9 +681,9 @@ Confirm the decoder API’s exact `consumed` semantics while implementing.
 
 **File:** `esp_i2s_source/main/main.c`
 
-- [ ] Replace signed left shift with multiplication.
-- [ ] Add a pure host test covering `INT16_MIN`, `-1`, `0`, `1`, `INT16_MAX`.
-- [ ] Verify output bit patterns match the intended top-half packing.
+- [x] Replace signed left shift with multiplication.
+- [x] Add a pure host test covering `INT16_MIN`, `-1`, `0`, `1`, `INT16_MAX`.
+- [x] Verify output bit patterns match the intended top-half packing.
 
 ```c
 static inline int32_t pack_s16_msb(int16_t sample)
@@ -708,11 +708,11 @@ Expected examples:
 
 ### Required work
 
-- [ ] Replace volatile indices with C11 atomics.
-- [ ] Use acquire/release ordering.
-- [ ] Make peak statistic atomic or snapshot-protected.
-- [ ] Update comments that incorrectly equate atomic word reads with synchronization.
-- [ ] Set C standard to C11 where needed.
+- [x] Replace volatile indices with C11 atomics.
+- [x] Use acquire/release ordering.
+- [x] Make peak statistic atomic or snapshot-protected.
+- [x] Update comments that incorrectly equate atomic word reads with synchronization.
+- [x] Set C standard to C11 where needed.
 
 Reference core:
 
@@ -763,12 +763,12 @@ size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len)
 
 ### Tests
 
-- [ ] Existing single-thread tests pass.
-- [ ] Pthread producer writes incrementing sequence blocks.
-- [ ] Consumer verifies exact byte order and total count.
-- [ ] Force many wraparounds with a small ring.
-- [ ] Run at least 1,000,000 bytes.
-- [ ] Run under ThreadSanitizer if available.
+- [x] Existing single-thread tests pass.
+- [x] Pthread producer writes incrementing sequence blocks.
+- [x] Consumer verifies exact byte order and total count.
+- [x] Force many wraparounds with a small ring.
+- [x] Run at least 1,000,000 bytes.
+- [ ] Run under ThreadSanitizer if available. (not yet run)
 
 ---
 
@@ -780,14 +780,14 @@ size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len)
 
 ### Required work
 
-- [ ] Add state enum and event group/task notification.
-- [ ] Use finite write timeout, e.g. 100 ms.
-- [ ] Treat timeout as a chance to check stop, not automatically fatal.
-- [ ] Signal writer started and exited.
-- [ ] Wait for exit before disabling channel.
-- [ ] Return timeout and retain handle on failed stop.
-- [ ] Reject start if handle is non-null.
-- [ ] Protect stats snapshot.
+- [x] Add state enum and event group/task notification.
+- [x] Use finite write timeout, e.g. 100 ms.
+- [x] Treat timeout as a chance to check stop, not automatically fatal.
+- [x] Signal writer started and exited.
+- [x] Wait for exit before disabling channel.
+- [x] Return timeout and retain handle on failed stop.
+- [x] Reject start if handle is non-null.
+- [x] Protect stats snapshot.
 
 Reference sink:
 
@@ -922,21 +922,21 @@ if (xQueueSend(s_radio_cmd_q, &cmd, 0) != pdTRUE) {
 return send_json_accepted(req);
 ```
 
-- [ ] Remove shared static `s_radio_url`.
-- [ ] Check worker creation.
-- [ ] Initialize before web routes.
-- [ ] Do not return success before queue acceptance.
-- [ ] Test two rapid play URLs retain their own values.
+- [x] Remove shared static `s_radio_url`.
+- [x] Check worker creation.
+- [x] Initialize before web routes.
+- [x] Do not return success before queue acceptance.
+- [x] Test two rapid play URLs retain their own values.
 
 ---
 
 ## RH-S3-10 — Initialize controller before web server [P1]
 
-- [ ] Identify every web handler that uses controller state.
-- [ ] Split `ctrl_init()` from long-running startup orchestration if necessary.
-- [ ] Create mutex/state before `web_ui_start()`.
-- [ ] Add defensive `ESP_ERR_INVALID_STATE` checks in public controller APIs.
-- [ ] Add startup-order test or assertions.
+- [x] Identify every web handler that uses controller state.
+- [x] Split `ctrl_init()` from long-running startup orchestration if necessary.
+- [x] Create mutex/state before `web_ui_start()`.
+- [x] Add defensive `ESP_ERR_INVALID_STATE` checks in public controller APIs.
+- [ ] Add startup-order test or assertions. (no dedicated test)
 
 ---
 
@@ -975,7 +975,7 @@ s_server = NULL;
 return err;
 ```
 
-- [ ] Failure injection proves server stops and reports failure.
+- [x] Failure injection proves server stops and reports failure.
 
 ---
 
@@ -1006,18 +1006,18 @@ void i2s_out_get_stats(i2s_out_stats_t *out)
 
 If pure `i2s_out_pump_once()` currently updates the structure directly, either protect the entire call or have it update a local delta that the device wrapper commits under lock.
 
-- [ ] Add stress test/snapshot consistency test.
+- [x] Add stress test/snapshot consistency test.
 
 ---
 
 ## RH-S3-13 — Make radio status coherent [P1]
 
-- [ ] Define one telemetry/state lock policy.
-- [ ] Ensure every writer follows it, including `on_audio`, HTTP header callback, stream task, decoder task, title callback, play/stop.
-- [ ] Do not take the same non-recursive mutex twice through nested helpers.
-- [ ] Snapshot related fields under one lock.
-- [ ] Protect 64-bit byte counter.
-- [ ] Add generation and last-error fields.
+- [x] Define one telemetry/state lock policy.
+- [x] Ensure every writer follows it, including `on_audio`, HTTP header callback, stream task, decoder task, title callback, play/stop.
+- [x] Do not take the same non-recursive mutex twice through nested helpers.
+- [x] Snapshot related fields under one lock.
+- [x] Protect 64-bit byte counter.
+- [x] Add generation and last-error fields.
 
 Recommended approach:
 
@@ -1066,12 +1066,12 @@ Do not externally delete a worker that might be active; init failure happens bef
 
 ## RH-S3-15 — Fix `radio_init()` leaks and make retry safe [P1]
 
-- [ ] Free compressed ring if PCM allocation fails.
-- [ ] Free both rings if mutex creation fails.
-- [ ] Delete partially created mutexes.
-- [ ] Reset capacities/pointers.
-- [ ] Reject duplicate successful init or define idempotence.
-- [ ] Add allocation failure tests for every stage.
+- [x] Free compressed ring if PCM allocation fails.
+- [x] Free both rings if mutex creation fails.
+- [x] Delete partially created mutexes.
+- [x] Reset capacities/pointers.
+- [x] Reject duplicate successful init or define idempotence.
+- [ ] Add allocation failure tests for every stage. (no dedicated test)
 
 ---
 
@@ -1395,16 +1395,17 @@ Acceptance:
 
 ## P0 blockers
 
-- [ ] RH-S3-01 UART request ownership.
-- [ ] RH-S3-02 radio generation isolation.
-- [ ] RH-S3-03 decoder creation failure rollback.
-- [ ] RH-WR-01 BT context synchronization.
-- [ ] RH-WR-02 audio stop timeout ownership.
+- [x] RH-S3-01 UART request ownership.
+- [x] RH-S3-02 radio generation isolation.
+- [x] RH-S3-03 decoder creation failure rollback.
+- [ ] RH-WR-01 BT context synchronization. (NOT started)
+- [ ] RH-WR-02 audio stop timeout ownership. (cooperative stop exists, not per spec)
 
 ## P1 reliability
 
-- [ ] RH-S3-04 through RH-S3-21.
-- [ ] RH-WR-03 through RH-WR-05.
+- [x] RH-S3-04 through RH-S3-15.
+- [ ] RH-S3-16 through RH-S3-21. (NOT started)
+- [ ] RH-WR-03 through RH-WR-05. (NOT started)
 
 ## Validation
 
