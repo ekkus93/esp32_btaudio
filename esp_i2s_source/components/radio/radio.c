@@ -373,9 +373,13 @@ static void decoder_task(void *arg)
     radio_codec_t opened = RADIO_CODEC_UNKNOWN;
     radio_resampler_t rs;
     bool rs_ready = false;
-    static uint8_t inbuf[4096];
+    /* RH-S3-05: inbuf doubles as accumulation buffer for unconsumed decoder tail.
+     * pending tracks unconsumed bytes that must be preserved across iterations. */
+    #define DECODER_INPUT_CAP 4096
+    static uint8_t inbuf[DECODER_INPUT_CAP];
     static uint8_t pcmbuf[16384];   /* one decoded frame */
     static int16_t rsbuf[8192];     /* resampled stereo frames (4096 max) */
+    size_t pending = 0;
 
     while (session_should_run(s)) {
         radio_codec_t codec;
@@ -399,10 +403,16 @@ static void decoder_task(void *arg)
             ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
         }
 
-        size_t n = radio_read(inbuf, sizeof(inbuf));
-        if (n == 0) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
+ /* RH-S3-05: read new compressed data after the pending tail. */
+        if (pending < DECODER_INPUT_CAP) {
+            size_t got = radio_read(inbuf + pending, DECODER_INPUT_CAP - pending);
+            pending += got;
+        }
 
-        esp_audio_simple_dec_raw_t raw = { .buffer = inbuf, .len = (uint32_t)n };
+        if (pending == 0) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
+
+        esp_audio_simple_dec_raw_t raw = { .buffer = inbuf, .len = (uint32_t)pending };
+        size_t consumed_total = 0;
         while (raw.len > 0 && session_should_run(s)) {
             esp_audio_simple_dec_out_t out = { .buffer = pcmbuf, .len = sizeof(pcmbuf) };
             esp_audio_err_t err = esp_audio_simple_dec_process(dec, &raw, &out);
@@ -453,9 +463,23 @@ static void decoder_task(void *arg)
                 if (raw.consumed == 0) raw.consumed = 1;   /* force resync progress */
             }
             if (raw.consumed == 0) break;   /* needs more input */
+            consumed_total += raw.consumed;
             raw.buffer += raw.consumed;
             raw.len -= raw.consumed;
             raw.consumed = 0;
+        }
+
+        /* RH-S3-05: preserve unconsumed decoder tail in accumulation buffer. */
+        if (consumed_total > 0) {
+            pending -= consumed_total;
+            memmove(inbuf, inbuf + consumed_total, pending);
+        } else if (pending == DECODER_INPUT_CAP) {
+            /* No progress and buffer full — resync by dropping one byte. */
+            memmove(inbuf, inbuf + 1, (size_t)(pending - 1));
+            pending--;
+            xSemaphoreTake(s_mtx, portMAX_DELAY);
+            s_decode_errors++;
+            xSemaphoreGive(s_mtx);
         }
     }
 
