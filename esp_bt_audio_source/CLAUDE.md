@@ -35,6 +35,16 @@ Components: `audio_processor`, `bt_manager`, `bt_stack_stub`, `command_interface
 
 Known unresolved issue: per `code_review/BT_STATE_ACCESS_CONTRACT.md`, the global `bt_ctx` struct is written only from `BtAppTask` via a work-dispatch queue but read from `cmd_proc` without synchronization (documented, not fixed). Be aware of this when touching `bt_manager` or `command_interface` status/diagnostics code.
 
+## Python Environment
+
+The repo has a uv-managed `.venv` at the repository root. For all Python-based tooling (test runners, scripts), use:
+```bash
+. .venv/bin/activate
+python tools/run_unity.py ...
+python tools/run_all_tests.py ...
+```
+Do not create new venvs. The conda python310 env is deprecated.
+
 ## Testing — four tiers, know which one applies
 
 **"Run the tests" with no tier specified defaults to the full sweep (tier 3 below).**
@@ -49,24 +59,24 @@ Known unresolved issue: per `code_review/BT_STATE_ACCESS_CONTRACT.md`, the globa
 
 2. **On-device Unity suites** (real ESP32 required, flashes a test image — confirm before flashing) — `test/test_bluetooth` (46 tests), `test/test_app_audio` (35 tests), `test/test_manager` (18 tests). **Ignore the top-level README's references to `test_app`/`test_app2` — those are stale; `test/test_app/` on disk is an empty leftover.**
    ```bash
-   conda activate python310
+   . .venv/bin/activate
    python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
    ```
 
 3. **Full regression sweep** — host CTest + all Unity suites + log aggregation (confirm before flashing):
    ```bash
-   conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+   . .venv/bin/activate
+   python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
    ```
-   Expected: 725/725 host + 99/99 device. Flags: `--no-host`, `--no-device`, `--no-standalone`, `--coverage`, `--asan`, `--valgrind`. Authoritative result: `tmp/run_all_tests_summary.json`. Coverage HTML: `python3 tools/run_all_tests.py --no-device --coverage --no-standalone` then open `tmp/coverage_html/index.html`.
+   Expected: 725/725 host + 99/99 device. Flags: `--no-host`, `--no-device`, `--no-standalone`, `--coverage`, `--asan`, `--valgrind`. Authoritative result: `tmp/run_all_tests_summary.json`. Coverage HTML: `python tools/run_all_tests.py --no-device --coverage --no-standalone` then open `tmp/coverage_html/index.html`.
 
 4. **Laptop BT hardware integration tests** (`test/laptop_bt_tests/`, real over-the-air A2DP against the laptop's own BT adapter via BlueZ D-Bus, no mocks — confirm before running, use the `/laptop-bt-tests` skill):
    ```bash
    cd test/laptop_bt_tests
-   conda run -n python310 python -m pytest test_connection.py test_autoconnect.py test_streaming.py test_control.py test_e2e.py -v --timeout=120
+   . .venv/bin/activate
+   python -m pytest test_connection.py test_autoconnect.py test_streaming.py test_control.py test_e2e.py -v --timeout=120
    ```
    Hardcoded hardware: laptop adapter `E8:FB:1C:25:E4:C2`, ESP32 `A0:B7:65:2B:E6:5E`, port `/dev/ttyUSB0`. Never run on CI — CI only runs a software-mocked pairing harness (`pairing-harness.yml`), never real hardware.
-
-Use `conda run -n python310` / `conda activate python310` for all Python-based test tooling — don't create a new env.
 
 ## Code style and workflow
 

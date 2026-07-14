@@ -90,7 +90,10 @@ static ctrl_action_t do_action(ctrl_action_t act)
         int idx = s_cfg.last_station;
         if (stations_get_url(idx, url, sizeof(url))) {
             ESP_LOGI(TAG, "resume station %d", idx);
-            radio_play(url);   /* blocking; fine on this task */
+            esp_err_t err = radio_play(url);   /* blocking; fine on this task */
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "resume play failed: %s", esp_err_to_name(err));
+            }
         } else {
             ESP_LOGW(TAG, "resume: station %d unavailable", idx);
         }
