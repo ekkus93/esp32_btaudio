@@ -278,12 +278,18 @@ esp_err_t i2s_out_set_gain(int pct)
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     s_gain_pct = pct;
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(I2S_GAIN_NVS_NS, NVS_READWRITE, &h);
     if (err == ESP_OK) {
-        nvs_set_u8(h, I2S_GAIN_NVS_KEY, (uint8_t)pct);
-        nvs_commit(h);
-        nvs_close(h);
+        err = nvs_set_u8(h, I2S_GAIN_NVS_KEY, (uint8_t)pct);
+        if (err == ESP_OK) err = nvs_commit(h);
+    }
+    nvs_close(h);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "gain applied but persistence failed: %s",
+                 esp_err_to_name(err));
     }
     ESP_LOGI(TAG, "pre-I2S gain set to %d%%", pct);
     return err;

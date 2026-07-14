@@ -355,6 +355,22 @@ static void stream_task(void *arg)
             strlcpy(s_station, s_hdr_name, sizeof(s_station));
             xSemaphoreGive(s_mtx);
         }
+
+        /* RH-S3-21: terminate session on unsupported codec.
+         * Reconnecting to the same URL won't produce a different codec,
+         * so fault out rather than fill the compressed ring forever. */
+        if (s_codec == RADIO_CODEC_UNKNOWN) {
+            set_radio_error(RADIO_ERR_UNSUPPORTED_CONTENT, s_hdr_ct);
+            ESP_LOGW(TAG, "unsupported codec: %s", s_hdr_ct);
+            esp_http_client_close(c);
+            esp_http_client_cleanup(c);
+            atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+            xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+            s_radio_state = RADIO_STATE_FAULTED;
+            xSemaphoreGive(s_control_mtx);
+            continue;
+        }
+
         ESP_LOGI(TAG, "connected: codec=%s ct=%s metaint=%d br=%d name=%s",
                  radio_codec_str(s_codec), s_hdr_ct, s_hdr_metaint, s_bitrate, s_station);
         printf("DIAG|RADIO|CONNECTED|codec=%s,metaint=%d,br=%d\n",
@@ -929,12 +945,18 @@ esp_err_t radio_set_prebuffer_ms(int ms)
     ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
     ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
     s_prebuffer_bytes = (size_t)ms * PCM_BYTES_PER_MS;
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h);
     if (err == ESP_OK) {
-        nvs_set_i32(h, NVS_KEY_PREBUF, ms);
-        nvs_commit(h);
-        nvs_close(h);
+        err = nvs_set_i32(h, NVS_KEY_PREBUF, ms);
+        if (err == ESP_OK) err = nvs_commit(h);
+    }
+    nvs_close(h);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "prebuffer applied but persistence failed: %s",
+                 esp_err_to_name(err));
     }
     ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)s_prebuffer_bytes);
     return err;

@@ -138,6 +138,7 @@ add_executable(test_radio_lifecycle test_radio_lifecycle.c
     mocks/fake_esp_err.c)
 target_include_directories(test_radio_lifecycle PRIVATE
     ${RADIO_DIR}/include
+    ${I2S_OUT_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)

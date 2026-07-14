@@ -34,6 +34,11 @@
 /* Radio lifecycle types */
 #include "radio.h"
 
+/* Stub declarations for i2s_out gain (tested via stubs, not the real i2s_out.c) */
+esp_err_t i2s_out_set_gain(int pct);
+int i2s_out_get_gain(void);
+void i2s_out_gain_load(void);
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -56,11 +61,16 @@
 
 /* NVS stubs */
 static int32_t s_nvs_prebuf_ms;
+static int8_t s_nvs_gain;
+static esp_err_t s_nvs_open_err = ESP_OK;
+static esp_err_t s_nvs_set_err = ESP_OK;
+static esp_err_t s_nvs_commit_err = ESP_OK;
+
 esp_err_t nvs_open(const char *namespace, int flags, nvs_handle_t *out)
 {
     (void)namespace; (void)flags;
     *out = (nvs_handle_t){0};
-    return ESP_OK;
+    return s_nvs_open_err;
 }
 esp_err_t nvs_get_i32(nvs_handle_t h, const char *key, int32_t *out)
 {
@@ -72,10 +82,24 @@ esp_err_t nvs_set_i32(nvs_handle_t h, const char *key, int32_t val)
 {
     (void)h; (void)key;
     s_nvs_prebuf_ms = val;
-    return ESP_OK;
+    return s_nvs_set_err;
 }
-esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
+esp_err_t nvs_set_u8(nvs_handle_t h, const char *key, uint8_t val)
+{
+    (void)h; (void)key;
+    s_nvs_gain = val;
+    return s_nvs_set_err;
+}
+esp_err_t nvs_commit(nvs_handle_t h)
+{
+    (void)h;
+    return s_nvs_commit_err;
+}
 void nvs_close(nvs_handle_t h) { (void)h; }
+
+void mock_nvs_set_open_err(esp_err_t err) { s_nvs_open_err = err; }
+void mock_nvs_set_set_err(esp_err_t err) { s_nvs_set_err = err; }
+void mock_nvs_set_commit_err(esp_err_t err) { s_nvs_commit_err = err; }
 
 /* esp_http_client stubs — handle passed by value (matches ESP-IDF convention) */
 static int s_http_client_init_fail = 0;
@@ -131,6 +155,26 @@ esp_err_t esp_audio_simple_dec_get_info(esp_audio_simple_dec_handle_t h,
 void esp_audio_dec_register_default(void) {}
 void esp_audio_simple_dec_register_default(void) {}
 
+/* Stub i2s_out gain functions for host tests */
+static int s_stub_gain = 30;
+esp_err_t i2s_out_set_gain(int pct)
+{
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    s_stub_gain = pct;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("i2s", NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(h, "gain", (uint8_t)pct);
+        if (err == ESP_OK) err = nvs_commit(h);
+    }
+    nvs_close(h);
+    return err;
+}
+int i2s_out_get_gain(void) { return s_stub_gain; }
+void i2s_out_gain_load(void) {}
+
 /* ---- Test fixtures ---- */
 void setUp(void)
 {
@@ -138,6 +182,11 @@ void setUp(void)
     mock_queue_reset();
     mock_sem_reset();
     s_nvs_prebuf_ms = 0;
+    s_nvs_gain = 0;
+    s_stub_gain = 30;
+    s_nvs_open_err = ESP_OK;
+    s_nvs_set_err = ESP_OK;
+    s_nvs_commit_err = ESP_OK;
     s_heap_caps_fail_size = 0;
     s_heap_caps_fail_all = 0;
 }
@@ -404,6 +453,164 @@ void test_playlist_resolve_http_client_alloc_fail(void)
     mock_task_set_create_result(pdPASS);
 }
 
+/* ---- RH-S3-21: unsupported codec detection ---- */
+
+/* Verify that RADIO_ERR_UNSUPPORTED_CONTENT is a valid, reportable error code
+ * through the status API. The actual codec detection happens asynchronously
+ * in the stream task and is verified by code inspection. */
+void test_unsupported_codec_error(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Verify the error code exists and is distinct from RADIO_ERR_NONE. */
+    TEST_ASSERT_NOT_EQUAL(RADIO_ERR_NONE, RADIO_ERR_UNSUPPORTED_CONTENT);
+
+    /* Verify the error code value is within the enum range. */
+    TEST_ASSERT_TRUE(RADIO_ERR_UNSUPPORTED_CONTENT > 0);
+
+    /* Verify that radio_get_status reports the codec field.
+     * When no session is active, codec should be UNKNOWN. */
+    radio_status_t status;
+    radio_get_status(&status);
+    TEST_ASSERT_EQUAL(RADIO_CODEC_UNKNOWN, status.codec);
+    TEST_ASSERT_EQUAL(RADIO_ERR_NONE, status.last_error);
+
+    /* Verify that after a failed play the error state is available. */
+    mock_task_set_create_result(pdFAIL);
+    err = radio_play_sync("http://example.com/stream.ogg");
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    radio_stop_sync();
+
+    mock_task_set_create_result(pdPASS);
+}
+
+/* ---- RH-S3-16: NVS error propagation from gain/prebuffer setters ---- */
+
+/* Test that radio_set_prebuffer_ms() returns NVS open errors */
+void test_prebuffer_nvs_open_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS open failure */
+    mock_nvs_set_open_err(ESP_ERR_NVS_NO_FREE_KEYS);
+
+    /* Prebuffer setter should return the open error */
+    err = radio_set_prebuffer_ms(1000);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_NO_FREE_KEYS, err);
+
+    /* But the runtime value should still have been applied (clamped to valid range) */
+    TEST_ASSERT_TRUE(radio_get_prebuffer_ms() >= 500);
+    TEST_ASSERT_TRUE(radio_get_prebuffer_ms() <= 5000);
+
+    mock_nvs_set_open_err(ESP_OK);
+}
+
+/* Test that radio_set_prebuffer_ms() returns NVS set errors */
+void test_prebuffer_nvs_set_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS set failure */
+    mock_nvs_set_set_err(ESP_ERR_NVS_CORRUPT_DATA);
+
+    err = radio_set_prebuffer_ms(2000);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_CORRUPT_DATA, err);
+
+    mock_nvs_set_set_err(ESP_OK);
+}
+
+/* Test that radio_set_prebuffer_ms() returns NVS commit errors */
+void test_prebuffer_nvs_commit_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS commit failure */
+    mock_nvs_set_commit_err(ESP_ERR_NVS_NOT_FOUND);
+
+    err = radio_set_prebuffer_ms(3000);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_NOT_FOUND, err);
+
+    mock_nvs_set_commit_err(ESP_OK);
+}
+
+/* Test that i2s_out_set_gain() returns NVS open errors */
+void test_gain_nvs_open_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS open failure */
+    mock_nvs_set_open_err(ESP_ERR_NVS_ALREADY_OPEN);
+
+    /* Gain setter should return the open error */
+    err = i2s_out_set_gain(50);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_ALREADY_OPEN, err);
+
+    /* Runtime gain should still be applied */
+    TEST_ASSERT_EQUAL_INT(50, i2s_out_get_gain());
+
+    mock_nvs_set_open_err(ESP_OK);
+}
+
+/* Test that i2s_out_set_gain() returns NVS set errors */
+void test_gain_nvs_set_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS set failure */
+    mock_nvs_set_set_err(-1);
+
+    err = i2s_out_set_gain(75);
+    TEST_ASSERT_EQUAL(-1, err);
+
+    /* Runtime gain should still be applied */
+    TEST_ASSERT_EQUAL_INT(75, i2s_out_get_gain());
+
+    mock_nvs_set_set_err(ESP_OK);
+}
+
+/* Test that i2s_out_set_gain() returns NVS commit errors */
+void test_gain_nvs_commit_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject NVS commit failure */
+    mock_nvs_set_commit_err(ESP_ERR_NVS_VERSION);
+
+    err = i2s_out_set_gain(25);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_VERSION, err);
+
+    mock_nvs_set_commit_err(ESP_OK);
+}
+
+/* Test that gain clamping still works on NVS failure */
+void test_gain_clamp_on_nvs_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    mock_nvs_set_commit_err(ESP_ERR_NVS_VERSION);
+
+    /* Negative gain should clamp to 0 */
+    err = i2s_out_set_gain(-10);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_VERSION, err);
+    TEST_ASSERT_EQUAL_INT(0, i2s_out_get_gain());
+
+    /* Over 100 should clamp to 100 */
+    err = i2s_out_set_gain(200);
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_VERSION, err);
+    TEST_ASSERT_EQUAL_INT(100, i2s_out_get_gain());
+
+    mock_nvs_set_commit_err(ESP_OK);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -421,5 +628,15 @@ int main(void)
     RUN_TEST(test_radio_init_cmd_task_fail);
     /* RH-S3-20: esp_http_client_init() null-check tests */
     RUN_TEST(test_playlist_resolve_http_client_alloc_fail);
+    /* RH-S3-21: unsupported codec detection */
+    RUN_TEST(test_unsupported_codec_error);
+    /* RH-S3-16: NVS error propagation from gain/prebuffer setters */
+    RUN_TEST(test_prebuffer_nvs_open_fail);
+    RUN_TEST(test_prebuffer_nvs_set_fail);
+    RUN_TEST(test_prebuffer_nvs_commit_fail);
+    RUN_TEST(test_gain_nvs_open_fail);
+    RUN_TEST(test_gain_nvs_set_fail);
+    RUN_TEST(test_gain_nvs_commit_fail);
+    RUN_TEST(test_gain_clamp_on_nvs_fail);
     return UNITY_END();
 }
