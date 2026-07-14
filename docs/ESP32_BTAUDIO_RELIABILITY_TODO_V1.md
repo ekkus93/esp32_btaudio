@@ -1398,8 +1398,8 @@ Acceptance:
 - [x] RH-S3-01 UART request ownership.
 - [x] RH-S3-02 radio generation isolation.
 - [x] RH-S3-03 decoder creation failure rollback.
-- [ ] RH-WR-01 BT context synchronization. (NOT started)
-- [x] RH-WR-02 audio stop timeout ownership.
+- [x] RH-WR-01 BT context synchronization. (done: 25d78daa, 28a325da)
+- [x] RH-WR-02 audio stop timeout ownership. (done: d1a98027)
 
 ## P1 reliability
 
