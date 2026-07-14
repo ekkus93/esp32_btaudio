@@ -1187,20 +1187,20 @@ Choose and document one behavior:
 5. On success, replace live store.
 6. On failure, leave live store unchanged.
 
-- [ ] Add/update/remove/move use the same transaction helper.
-- [ ] Return precise persistence errors.
-- [ ] Web handler distinguishes invalid data from NVS failure.
-- [ ] Tests inject save failure and verify live list unchanged.
+- [x] Add/update/remove/move use the same transaction helper.
+- [x] Return precise persistence errors.
+- [x] Web handler distinguishes invalid data from NVS failure.
+- [x] Tests inject save failure and verify live list unchanged.
 
 ---
 
 ## RH-S3-18 — Propagate controller and Wi-Fi persistence errors [P1]
 
-- [ ] `ctrl_note_station()` returns persistence status.
-- [ ] Wi-Fi credential reset checks erase and commit.
-- [ ] HTTP responses expose failures.
-- [ ] Do not log passwords.
-- [ ] Tests cover commit failure.
+- [x] `ctrl_note_station()` returns persistence status.
+- [x] Wi-Fi credential reset checks erase and commit.
+- [x] HTTP responses expose failures.
+- [x] Do not log passwords.
+- [x] Tests cover commit failure.
 
 ---
 
@@ -1208,11 +1208,11 @@ Choose and document one behavior:
 
 Audit all web handlers, not only radio.
 
-- [ ] Search `xTaskCreate` in `components/web_ui`.
-- [ ] Search queue sends and deferred work functions.
-- [ ] Move success response after successful scheduling.
-- [ ] For network teardown operations that require replying first, reserve/allocate the work item before reply and document the sequence.
-- [ ] Return stable JSON error codes.
+- [x] Search `xTaskCreate` in `components/web_ui`.
+- [x] Search queue sends and deferred work functions.
+- [x] Move success response after successful scheduling.
+- [x] For network teardown operations that require replying first, reserve/allocate the work item before reply and document the sequence.
+- [x] Return stable JSON error codes.
 
 ---
 
@@ -1220,9 +1220,9 @@ Audit all web handlers, not only radio.
 
 ## RH-S3-20 — Check `esp_http_client_init()` everywhere [P1]
 
-- [ ] Playlist resolver.
-- [ ] Stream task.
-- [ ] Any station-validation fetch.
+- [x] Playlist resolver.
+- [x] Stream task.
+- [x] Any station-validation fetch.
 
 ```c
 esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -1232,18 +1232,18 @@ if (!client) {
 }
 ```
 
-- [ ] Add allocation-failure hook/test.
+- [x] Add allocation-failure hook/test.
 
 ---
 
 ## RH-S3-21 — Stop unsupported codec sessions explicitly [P1]
 
-- [ ] After headers, if codec is unknown, set last error.
-- [ ] Close client.
-- [ ] Decide whether to reconnect only when content type may change; otherwise terminate session.
-- [ ] Do not fill compressed ring forever.
-- [ ] Web status shows unsupported content type.
-- [ ] Test unknown `Content-Type`.
+- [x] After headers, if codec is unknown, set last error.
+- [x] Close client.
+- [x] Decide whether to reconnect only when content type may change; otherwise terminate session.
+- [x] Do not fill compressed ring forever.
+- [x] Web status shows unsupported content type.
+- [x] Test unknown `Content-Type`.
 
 ---
 
@@ -1405,7 +1405,7 @@ Acceptance:
 
 - [x] RH-S3-04 through RH-S3-15.
 - [x] RH-S3-16 (done)
-- [ ] RH-S3-17 through RH-S3-21. (NOT started)
+- [x] RH-S3-17 through RH-S3-21. (done)
 - [ ] RH-WR-03 through RH-WR-05. (NOT started)
 
 ## Validation
