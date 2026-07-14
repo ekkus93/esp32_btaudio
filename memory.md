@@ -25894,3 +25894,14 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Redacted password from log lines
 - HTTP handlers now return proper error status codes for persistence failures
 - 13 files changed, 213 insertions(+), 81 deletions(-)
+
+## 2026-07-14T21:45:14Z - Claude Fable 5 - Brief description
+
+- Completed RH-WR-01: Replace unsafe BT status request queue with synchronized snapshot
+- Removed obsolete bt_app_send_mgr_request() function and BT_APP_SIG_MGR_REQUEST enum
+- Removed bt_mgr_request_handler() and related dead code
+- Added timeout tests for platform_mutex_lock() behavior
+- Added snapshot consistency test for bt_manager_get_status()
+- Updated comments in bt_manager_internal.h to reflect mutex-based synchronization
+- Added mock bt_manager_get_status() for host test builds
+- All 70 host tests pass

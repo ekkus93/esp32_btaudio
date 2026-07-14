@@ -115,6 +115,9 @@ extern volatile bool s_audio_diag_enabled;
 #define ENGINE_RUNNING_BIT   (1 << 0)  /* Set by task when running, cleared on stop request */
 #define ENGINE_STOPPED_BIT   (1 << 1)  /* Set by task just before self-delete */
 
+/* Audio engine stop timeout (RH-WR-02) */
+#define AUDIO_STOP_TIMEOUT_MS   500
+
 /* Ring buffer watermarks (Phase 2, Task 2.4) */
 #define AUDIO_RB_LOW_WATERMARK   (8 * 1024)   /* Resume filling below 8KB used */
 #define AUDIO_RB_HIGH_WATERMARK  (24 * 1024)  /* Stop filling above 24KB used */
@@ -129,6 +132,19 @@ typedef struct {
 } i2s_probe_entry_t;
 
 /* Shared state (defined in audio_processor_state.c) */
+
+/* Audio engine lifecycle state (RH-WR-02)
+ * WHY: Track explicit state machine so stop timeout leaves state FAULTED,
+ *      preventing a restart while a task may still be alive.
+ * HOW: Transition through STOPPING -> STOPPED (or FAULTED on timeout).
+ *      RUNNING means the engine task is live and producing audio. */
+typedef enum {
+    AUDIO_STATE_STOPPED = 0,
+    AUDIO_STATE_STARTING,
+    AUDIO_STATE_RUNNING,
+    AUDIO_STATE_STOPPING,
+    AUDIO_STATE_FAULTED
+} audio_lifecycle_state_t;
 
 /* Audio source arbitration. Definition shared so the produce path
  * (audio_processor_engine.c) and the test hooks (audio_processor_test_hooks.c)
@@ -175,6 +191,8 @@ extern EventGroupHandle_t s_engine_events;
 
 extern bool s_is_initialized;
 extern bool s_is_running;
+/* Lifecycle state machine (RH-WR-02) */
+extern audio_lifecycle_state_t s_audio_state;
 extern bool s_force_synth;
 extern bool s_keepalive_armed;
 extern uint8_t s_volume_gain;

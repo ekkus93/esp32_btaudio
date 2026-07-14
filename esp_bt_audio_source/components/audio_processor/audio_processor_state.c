@@ -68,6 +68,8 @@ bool s_audio_engine_paused = false;
 volatile bool s_audio_diag_enabled = false;
 bool s_is_initialized = false;
 bool s_is_running = false;
+/* Audio engine lifecycle state (RH-WR-02) */
+audio_lifecycle_state_t s_audio_state = AUDIO_STATE_STOPPED;
 bool s_force_synth = false;
 bool s_keepalive_armed = false;
 uint8_t s_volume_gain = 100;

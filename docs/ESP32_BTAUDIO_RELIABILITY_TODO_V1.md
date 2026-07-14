@@ -1399,7 +1399,7 @@ Acceptance:
 - [x] RH-S3-02 radio generation isolation.
 - [x] RH-S3-03 decoder creation failure rollback.
 - [ ] RH-WR-01 BT context synchronization. (NOT started)
-- [ ] RH-WR-02 audio stop timeout ownership. (cooperative stop exists, not per spec)
+- [x] RH-WR-02 audio stop timeout ownership.
 
 ## P1 reliability
 

@@ -233,6 +233,22 @@ esp_err_t audio_processor_start(void)
         return ESP_OK;
     }
 
+    /* (RH-WR-02) Transition to STARTING */
+    s_audio_state = AUDIO_STATE_STARTING;
+
+#ifndef UNIT_TEST
+    /* (RH-WR-02) Reject restart while STOPPING or FAULTED with live handle.
+     * This prevents overlapping engine generations and silent resource leaks. */
+    if (s_audio_state == AUDIO_STATE_STOPPING || s_audio_state == AUDIO_STATE_FAULTED) {
+        if (s_audio_engine_task_handle != NULL) {
+            ESP_LOGE(TAG, "audio_processor_start: rejected while %s (task still owned)",
+                     s_audio_state == AUDIO_STATE_STOPPING ? "STOPPING" : "FAULTED");
+            s_audio_state = AUDIO_STATE_FAULTED;
+            return ESP_ERR_INVALID_STATE;
+        }
+    }
+#endif
+
     /* I2S capture has highest priority. Stop any ongoing BEEP playback
      * so capture owns the pipeline. */
     audio_processor_beep_reset();
@@ -240,7 +256,7 @@ esp_err_t audio_processor_start(void)
     /* F1.6.2: I2S/SYNTH mutual exclusion - don't start I2S if SYNTH mode active
      * WHY: I2S and SYNTH must never run simultaneously (F1: BEEP Priority Mode).
      * HOW: Check s_force_synth before starting I2S. If SYNTH active, skip I2S start.
-     * 
+     *
      * UPDATED from CODE_REVIEW7 Task 1.2: Previous policy was "always start I2S" for
      * auto-reconnect and fast switching. Now enforcing strict mutual exclusion per F1.6.
      * Trade-off: SYNTH mode users must explicitly disable SYNTH before I2S audio.
@@ -258,6 +274,7 @@ esp_err_t audio_processor_start(void)
                  (int)ret, (int)i2s_manager_is_running());
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "audio_processor_start: i2s_manager_start failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
+            s_audio_state = AUDIO_STATE_FAULTED;
             return ret;
         }
     }
@@ -268,12 +285,12 @@ esp_err_t audio_processor_start(void)
     if (s_audio_engine_task_handle == NULL) {
         /* Clear stop request flag before creating task */
         s_engine_stop_requested = false;
-        
+
         /* Clear event bits from any previous run */
         if (s_engine_events != NULL) {
             xEventGroupClearBits(s_engine_events, ENGINE_RUNNING_BIT | ENGINE_STOPPED_BIT);
         }
-        
+
         BaseType_t task_ret = xTaskCreate(
             audio_engine_task,
             "audio_engine",
@@ -282,13 +299,14 @@ esp_err_t audio_processor_start(void)
             AUDIO_ENGINE_TASK_PRIORITY,
             &s_audio_engine_task_handle
         );
-        
+
         if (task_ret != pdPASS) {
             ESP_LOGE(TAG, "audio_processor_start: failed to create audio engine task");
             i2s_manager_stop();
+            s_audio_state = AUDIO_STATE_FAULTED;
             return ESP_FAIL;
         }
-        
+
         /* Wait for task to signal it's running (robustness check, P0.1.2)
          * Timeout: 100ms should be more than enough for task to start */
         if (s_engine_events != NULL) {
@@ -299,18 +317,20 @@ esp_err_t audio_processor_start(void)
                 pdFALSE,  /* wait for any bit */
                 pdMS_TO_TICKS(100)
             );
-            
+
             if ((bits & ENGINE_RUNNING_BIT) == 0) {
                 ESP_LOGW(TAG, "audio_processor_start: task did not signal RUNNING within timeout (non-fatal)");
                 /* Continue anyway - task may still be initializing */
             }
         }
-        
-        ESP_LOGI(TAG, "audio_processor_start: audio engine task created (priority=%d)", 
+
+        ESP_LOGI(TAG, "audio_processor_start: audio engine task created (priority=%d)",
                  AUDIO_ENGINE_TASK_PRIORITY);
     }
 #endif
 
+    /* (RH-WR-02) Transition to RUNNING */
+    s_audio_state = AUDIO_STATE_RUNNING;
     s_is_running = true;
     return ESP_OK;
 }
@@ -325,55 +345,66 @@ esp_err_t audio_processor_stop(void)
         return ESP_ERR_INVALID_STATE;  /* Already stopped - caller should track state */
     }
 
+    /* (RH-WR-02) Explicit lifecycle transition: RUNNING -> STOPPING */
+    s_audio_state = AUDIO_STATE_STOPPING;
+
 #ifndef UNIT_TEST
     /* Cooperative shutdown (CODE_REVIEW 2602101453, P0.1.3)
-     * 
+     *
      * WHY: vTaskDelete(handle) from external context is UNSAFE - can deadlock if task
      *      holds spinlock, leaks resources (chunk_buf malloc), corrupts state mid-update.
-     * 
+     *
      * HOW: Signal task to stop via flag, wake it with notification, wait for clean exit.
      *      Task checks flag, releases resources, sets STOPPED bit, then self-deletes.
-     * 
+     *
      * SAFETY: Prevents deadlock (task completes critical sections), prevents leaks
      *         (task frees its own allocations), prevents corruption (task controls exit timing).
      */
     if (s_audio_engine_task_handle != NULL) {
         /* Signal task to stop */
         s_engine_stop_requested = true;
-        
+
         /* Wake task immediately (in case it's blocked on delay/notification) */
         xTaskNotifyGive(s_audio_engine_task_handle);
-        
+
         /* Wait for task to signal it has stopped (cooperative handshake)
-         * Timeout: 500ms - generous but bounded. Task should exit within one tick cycle (2ms)
-         * plus time to complete current iteration. 500ms allows for worst-case BT stack delays. */
+         * Timeout: AUDIO_STOP_TIMEOUT_MS - generous but bounded. Task should exit within
+         * one tick cycle (2ms) plus time to complete current iteration. */
         if (s_engine_events != NULL) {
             EventBits_t bits = xEventGroupWaitBits(
                 s_engine_events,
                 ENGINE_STOPPED_BIT,
                 pdTRUE,   /* clear bit on exit (cleanup for next start) */
                 pdFALSE,  /* wait for this bit only */
-                pdMS_TO_TICKS(500)
+                pdMS_TO_TICKS(AUDIO_STOP_TIMEOUT_MS)
             );
-            
+
             if ((bits & ENGINE_STOPPED_BIT) == 0) {
-                /* Task didn't stop in time - serious error but don't hang forever */
-                ESP_LOGE(TAG, "audio_processor_stop: task did not stop within 500ms timeout!");
-                ESP_LOGE(TAG, "  This may indicate task is deadlocked or system is overloaded.");
-                ESP_LOGE(TAG, "  Continuing anyway to avoid blocking caller indefinitely.");
-                /* Handle will be leaked but system can continue - better than hard hang */
-            } else {
-                ESP_LOGI(TAG, "audio_processor_stop: audio engine task stopped cleanly");
+                /* (RH-WR-02) Stop timeout: task didn't stop in time.
+                 * Leave state FAULTED, retain handle, do NOT stop I2S
+                 * underneath the live engine. */
+                s_audio_state = AUDIO_STATE_FAULTED;
+                ESP_LOGE(TAG, "audio engine stop timed out; state=FAULTED, task remains owned");
+                return ESP_ERR_TIMEOUT;
             }
+
+            ESP_LOGI(TAG, "audio_processor_stop: audio engine task stopped cleanly");
+
+            /* Task has self-deleted; clear our handle reference */
+            s_audio_engine_task_handle = NULL;
         }
-        
-        /* Task has self-deleted (or timed out), clear our handle reference */
-        s_audio_engine_task_handle = NULL;
+
         s_audio_engine_paused = false;  /* Reset pause state for next start */
     }
 #endif
 
-    i2s_manager_stop();
+    esp_err_t err = i2s_manager_stop();
+    if (err != ESP_OK) {
+        s_audio_state = AUDIO_STATE_FAULTED;
+        return err;
+    }
+
+    s_audio_state = AUDIO_STATE_STOPPED;
     s_is_running = false;
     s_keepalive_armed = false;
     s_force_synth = false;
@@ -505,6 +536,8 @@ esp_err_t audio_processor_deinit(void)
     safe_memset(&s_audio_config, sizeof(s_audio_config), 0, sizeof(s_audio_config));
     safe_memset(&s_audio_stats, sizeof(s_audio_stats), 0, sizeof(s_audio_stats));
 
+    /* (RH-WR-02) Reset lifecycle state on deinit */
+    s_audio_state = AUDIO_STATE_STOPPED;
     s_is_initialized = false;
     return ESP_OK;
 }
