@@ -285,8 +285,8 @@ Do not set `s_active_session = NULL` or free the session before both exit bits a
 
 - [x] Stop then immediate play never overlaps generations.
 - [x] Old generation cannot become active when a new generation starts.
-- [ ] Stream exit without decoder exit causes timeout/fault. (code present, no injection test)
-- [ ] Decoder exit without stream exit causes timeout/fault. (code present, no injection test)
+- [x] Stream exit without decoder exit causes timeout/fault. (injection test added)
+- [x] Decoder exit without stream exit causes timeout/fault. (injection test added)
 - [x] Task-creation failure unwinds the other worker.
 - [x] Exactly one session free occurs.
 - [x] Ring reset occurs only after prior exit acknowledgement.

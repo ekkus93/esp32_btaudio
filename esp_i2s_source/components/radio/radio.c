@@ -182,6 +182,27 @@ static radio_session_t *s_active_session;
 static radio_state_t s_radio_state;
 static uint32_t s_next_generation;
 
+/* ---- Test injection hooks (RH-S3-02) ---- */
+/* Expose event bits for failure injection tests. */
+#define RADIO_EVT_STREAM_EXITED  BIT0
+#define RADIO_EVT_DECODER_EXITED BIT1
+#define RADIO_EVT_ALL_EXITED \
+    (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+
+/* Set exit bits on the active session's event group for test injection. */
+void radio_test_inject_exit_bits(EventBits_t bits)
+{
+    if (s_active_session && s_active_session->events) {
+        xEventGroupSetBits(s_active_session->events, bits);
+    }
+}
+
+/* Return the current active session pointer for test inspection. */
+void *radio_test_get_active_session(void)
+{
+    return s_active_session;
+}
+
 /* ---- Telemetry (protected by s_mtx) ---- */
 static char           s_url[RADIO_URL_MAX];
 static char           s_station[RADIO_NAME_MAX];
@@ -709,6 +730,13 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     if (!playlist_or_url || !playlist_or_url[0]) return ESP_ERR_INVALID_ARG;
     if (!s_ring || !s_pcm || !s_control_mtx) return ESP_ERR_INVALID_STATE;
 
+    /* Block restart while FAULTED — the faulted session must be stopped
+     * explicitly before a new play can proceed. */
+    if (radio_get_state() == RADIO_STATE_FAULTED) {
+        ESP_LOGE(TAG, "cannot play while FAULTED; call radio_stop_sync() first");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     /* Stop any previous session. */
     esp_err_t err = radio_stop_sync();
     if (err != ESP_OK) return err;
@@ -805,6 +833,15 @@ esp_err_t radio_stop_sync(void)
     if (!s) {
         s_radio_state = RADIO_STATE_STOPPED;
         xSemaphoreGive(s_control_mtx);
+        return ESP_OK;
+    }
+    /* If already FAULTED, the session is stopped — clean up and return OK. */
+    if (s_radio_state == RADIO_STATE_FAULTED) {
+        s_radio_state = RADIO_STATE_STOPPED;
+        s_active_session = NULL;
+        xSemaphoreGive(s_control_mtx);
+        vEventGroupDelete(s->events);
+        free(s);
         return ESP_OK;
     }
     s_radio_state = RADIO_STATE_STOPPING;

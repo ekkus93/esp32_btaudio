@@ -102,6 +102,17 @@ bool radio_audio_ready(void);
  * are read under the same nested lock acquisition (RH-S3-13). */
 void radio_get_status(radio_status_t *out);
 
+/* ---- Test injection hooks (RH-S3-02) ---- */
+/* Failure injection: set exit bits on the active session's event group. */
+void radio_test_inject_exit_bits(uint32_t bits);
+/* Return current active session for test inspection. */
+void *radio_test_get_active_session(void);
+
+/* Event bits for test injection (match RADIO_EVT_ constants in radio.c). */
+#define RADIO_EVT_STREAM_EXITED  BIT0
+#define RADIO_EVT_DECODER_EXITED BIT1
+#define RADIO_EVT_ALL_EXITED     (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+
 /* Return the current lifecycle state. */
 radio_state_t radio_get_state(void);
 

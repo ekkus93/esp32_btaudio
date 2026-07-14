@@ -611,6 +611,132 @@ void test_gain_clamp_on_nvs_fail(void)
     mock_nvs_set_commit_err(ESP_OK);
 }
 
+/* ---- RH-S3-02: partial worker exit timeout/fault tests ---- */
+
+/* Forward declarations for injection hooks. */
+void radio_test_inject_exit_bits(uint32_t bits);
+void *radio_test_get_active_session(void);
+
+/* Event bits for failure injection (match RADIO_EVT_ constants in radio.c). */
+#define TEST_EVT_STREAM_EXITED  BIT0
+#define TEST_EVT_DECODER_EXITED BIT1
+#define TEST_EVT_ALL_EXITED     (TEST_EVT_STREAM_EXITED | TEST_EVT_DECODER_EXITED)
+
+/* Stream exited, decoder did not → stop must time out and fault. */
+void test_stop_timeout_stream_only_exit(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Start a session (tasks are mocked, but session + event group created). */
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Simulate only the stream task exiting (decoder still running). */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
+
+    /* radio_stop_sync should timeout because decoder hasn't exited. */
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* State must be FAULTED, blocking restart. */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+}
+
+/* Decoder exited, stream did not → stop must time out and fault. */
+void test_stop_timeout_decoder_only_exit(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Simulate only the decoder task exiting. */
+    radio_test_inject_exit_bits(TEST_EVT_DECODER_EXITED);
+
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+}
+
+/* Neither worker exited → stop must time out and fault. */
+void test_stop_timeout_no_exit(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Don't set any exit bits — simulate neither task exiting. */
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+}
+
+/* Both workers exited → stop must succeed. */
+void test_stop_success_both_exit(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Simulate both tasks exiting. */
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+}
+
+/* Fault must block restart — play while FAULTED must fail. */
+void test_fault_blocks_restart(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Simulate partial exit → fault. */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* Attempting to play while FAULTED should fail. */
+    err = radio_play_sync("http://example.com/other.mp3");
+    TEST_ASSERT_TRUE(err != ESP_OK);
+}
+
+/* After fault, second stop should return OK (no active session after fault). */
+void test_stop_after_fault_returns_ok(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Fault out. */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* Second stop should return OK (already stopped). */
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -638,5 +764,12 @@ int main(void)
     RUN_TEST(test_gain_nvs_set_fail);
     RUN_TEST(test_gain_nvs_commit_fail);
     RUN_TEST(test_gain_clamp_on_nvs_fail);
+    /* RH-S3-02: partial worker exit timeout/fault tests */
+    RUN_TEST(test_stop_timeout_stream_only_exit);
+    RUN_TEST(test_stop_timeout_decoder_only_exit);
+    RUN_TEST(test_stop_timeout_no_exit);
+    RUN_TEST(test_stop_success_both_exit);
+    RUN_TEST(test_fault_blocks_restart);
+    RUN_TEST(test_stop_after_fault_returns_ok);
     return UNITY_END();
 }
