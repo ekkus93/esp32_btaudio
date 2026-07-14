@@ -25905,3 +25905,15 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Updated comments in bt_manager_internal.h to reflect mutex-based synchronization
 - Added mock bt_manager_get_status() for host test builds
 - All 70 host tests pass
+
+## 2026-07-14T22:34:38Z - Claude Fable 5 - RH-WR-02 audio stop timeout ownership
+
+- Completed RH-WR-02: Make audio engine stop timeout safe
+- Added explicit audio lifecycle state machine (STOPPED -> STARTING -> RUNNING -> STOPPING -> FAULTED)
+- audio_processor_stop() transitions to STOPPING, waits for cooperative shutdown
+- On timeout, returns ESP_ERR_TIMEOUT with state FAULTED, retains handle, does not stop I2S
+- Restart rejected while FAULTED/STOPPING with live task handle
+- Deinit resets state to STOPPED
+- Added 20 lifecycle tests covering state transitions and guards
+- All 71 host tests pass
+- Commit: d1a98027
