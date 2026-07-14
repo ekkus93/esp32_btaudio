@@ -125,3 +125,21 @@ add_executable(test_ctrl_sm test_ctrl_sm.c ${CTRL_DIR}/ctrl_sm.c)
 target_include_directories(test_ctrl_sm PRIVATE ${CTRL_DIR}/include)
 target_link_libraries(test_ctrl_sm unity)
 add_test(NAME test_ctrl_sm COMMAND test_ctrl_sm)
+
+# RH-S3-03: radio lifecycle — task creation failure paths
+add_executable(test_radio_lifecycle test_radio_lifecycle.c
+    ${RADIO_DIR}/radio.c
+    ${RADIO_DIR}/radio_parse.c
+    ${RADIO_DIR}/radio_resampler.c
+    mocks/freertos_event_group.c
+    mocks/fake_task.c
+    mocks/fake_semphr.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_radio_lifecycle PRIVATE
+    ${RADIO_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_radio_lifecycle PRIVATE UNIT_TEST)
+target_link_libraries(test_radio_lifecycle unity)
+add_test(NAME test_radio_lifecycle COMMAND test_radio_lifecycle)
