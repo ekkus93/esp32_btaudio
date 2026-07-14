@@ -25830,3 +25830,20 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
   - ESP32-S3: esp_i2s_source (target esp32s3) -> /dev/ttyACM0. Build OK, flash OK,
     hash verified, hard reset. Image ~1.8 MB.
 - User explicitly authorized the flash of both boards.
+
+## 2026-07-14T02:02:10Z - Claude Fable 5 - RH-S3-02 verification + cleanup
+
+- Verified RH-S3-02 implementation (session-based radio lifecycle) against spec acceptance criteria.
+- All required work items are implemented: lifecycle enum, generation counter, session pointers,
+  exit event bits, worker stop flags, event-group join, fault handling, and timeout blocking.
+- Cleaned up duplicate `#include <inttypes.h>` in radio.c.
+- Host tests: 13/13 pass. Firmware builds cleanly.
+- Commit: b5958249 (duplicate include fix).
+## 2026-07-14T04:16:14Z - Claude Fable 5 - RH-S3-01 fix bt_link_send() request lifetime
+
+- **RH-S3-01**: Fixed stack-pointer-in-queue anti-pattern in bt_link_send().
+- bt_link_request_t now heap-allocated with per-request completion semaphore.
+- Abandoned flag handles caller timeout — worker cleans up memory/semaphore.
+- Removes shared s_done_sem which caused cross-signaling between callers.
+- Commit: 14e655c2
+- Build verified: esp_i2s_source compiles cleanly.
