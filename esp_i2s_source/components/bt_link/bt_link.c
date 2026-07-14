@@ -119,6 +119,9 @@ static void bt_link_task(void *arg)
 
 esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
 {
+    esp_err_t err;
+    bool uart_installed = false;
+
     const uart_config_t cfg = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -127,13 +130,15 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    esp_err_t err = uart_driver_install(BT_LINK_UART, BT_LINK_RX_BUF, 0, 0, NULL, 0);
+    err = uart_driver_install(BT_LINK_UART, BT_LINK_RX_BUF, 0, 0, NULL, 0);
     if (err != ESP_OK) return err;
+    uart_installed = true;
+
     err = uart_param_config(BT_LINK_UART, &cfg);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) goto fail;
     err = uart_set_pin(BT_LINK_UART, BT_LINK_UART_TX_GPIO, BT_LINK_UART_RX_GPIO,
                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) goto fail;
     /* The uart_set_pin transition can glitch the TX line, leaving a partial
      * garbage line in the peer's RX assembler that would swallow the first
      * real command (observed at LINK-1c: first VERSION timed out, rest OK).
@@ -146,17 +151,33 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
     bt_link_linebuf_init(&s_linebuf);
 
     s_cmd_queue = xQueueCreate(4, sizeof(bt_link_request_t *));
+    if (!s_cmd_queue) {
+        err = ESP_ERR_NO_MEM;
+        goto fail;
+    }
+
     s_send_mutex = xSemaphoreCreateMutex();
-    if (!s_cmd_queue || !s_send_mutex) return ESP_ERR_NO_MEM;
+    if (!s_send_mutex) {
+        err = ESP_ERR_NO_MEM;
+        goto fail;
+    }
 
     if (xTaskCreate(bt_link_task, "bt_link", BT_LINK_TASK_STACK, NULL,
                     BT_LINK_TASK_PRIO, NULL) != pdPASS) {
-        return ESP_ERR_NO_MEM;
+        err = ESP_ERR_NO_MEM;
+        goto fail;
     }
+
     ESP_LOGI(TAG, "init: UART1 tx=%d rx=%d @115200, timeout=%ums",
              BT_LINK_UART_TX_GPIO, BT_LINK_UART_RX_GPIO,
              (unsigned)(cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS));
     return ESP_OK;
+
+fail:
+    if (s_send_mutex) { vSemaphoreDelete(s_send_mutex); s_send_mutex = NULL; }
+    if (s_cmd_queue) { vQueueDelete(s_cmd_queue); s_cmd_queue = NULL; }
+    if (uart_installed) uart_driver_delete(BT_LINK_UART);
+    return err;
 }
 
 /* Subscribers are registered before the command stream gets busy; n_subs only
@@ -192,8 +213,14 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
         return ESP_ERR_NO_MEM;
     }
 
-    /* Queue to worker task. */
-    xQueueSend(s_cmd_queue, &req, portMAX_DELAY);
+    /* Queue to worker task. Use finite timeout so queue-full doesn't block forever. */
+    if (xQueueSend(s_cmd_queue, &req, pdMS_TO_TICKS(250)) != pdTRUE) {
+        /* Queue full — free request resources and return. */
+        vSemaphoreDelete(req->done_sem);
+        free(req);
+        xSemaphoreGive(s_send_mutex);
+        return ESP_ERR_TIMEOUT;
+    }
 
     /* Block on this request's own semaphore.
      * Worker signals req->done_sem when the UART response arrives or times out. */

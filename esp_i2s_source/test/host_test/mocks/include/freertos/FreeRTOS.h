@@ -23,6 +23,7 @@ typedef unsigned int UBaseType_t;
 
 /* Task priority */
 #define tskIDLE_PRIORITY 0
+#define configMAX_PRIORITIES 10
 
 /* Helper to convert milliseconds to ticks for host tests */
 #ifndef configTICK_RATE_HZ

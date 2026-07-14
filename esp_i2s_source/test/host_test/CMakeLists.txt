@@ -143,3 +143,23 @@ target_include_directories(test_radio_lifecycle PRIVATE
 target_compile_definitions(test_radio_lifecycle PRIVATE UNIT_TEST)
 target_link_libraries(test_radio_lifecycle unity)
 add_test(NAME test_radio_lifecycle COMMAND test_radio_lifecycle)
+
+# RH-S3-01: bt_link request lifecycle — ownership safety
+add_executable(test_bt_link_lifecycle test_bt_link_lifecycle.c
+    ${BT_LINK_DIR}/bt_link.c
+    ${BT_LINK_DIR}/bt_link_session.c
+    ${BT_LINK_DIR}/bt_link_parser.c
+    mocks/freertos_event_group.c
+    mocks/fake_task.c
+    mocks/fake_semphr.c
+    mocks/fake_esp_err.c
+    mocks/fake_uart.c
+    mocks/fake_queue.c)
+target_include_directories(test_bt_link_lifecycle PRIVATE
+    ${BT_LINK_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_bt_link_lifecycle PRIVATE UNIT_TEST ESP_PLATFORM)
+target_link_libraries(test_bt_link_lifecycle unity)
+add_test(NAME test_bt_link_lifecycle COMMAND test_bt_link_lifecycle)
