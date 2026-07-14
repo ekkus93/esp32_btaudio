@@ -57,7 +57,7 @@ bt_err_t bt_start_scan(void)
     bt_ctx_unlock();
 
 #ifdef ESP_PLATFORM
-    err = esp_bt_gap_start_discovery(ESP_BT_DEVICE_DISCOVERY_ALL_MODE,
+    err = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY,
                                      0, 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Start device discovery failed: %s", esp_err_to_name(err));  // NOLINT(bugprone-branch-clone)
@@ -141,6 +141,9 @@ bt_err_t bt_stop_scan(void)
     return ESP_OK;
 }
 
+/* BT_MAX_DISCOVERED_DEVICES = 20 (size of bt_device_list_t.devices array) */
+#define BT_MAX_DISCOVERED_DEVICES 20
+
 #ifdef ESP_PLATFORM
 /* Tracks how many remote name requests are still pending.  When it reaches
  * zero, bt_scan_emit_results() fires and sends all discovered devices over
@@ -213,8 +216,6 @@ void bt_scan_handle_discovery_result(const esp_bd_addr_t bda,
     
     ESP_LOGI(TAG, "Device found: %s, name: %s, RSSI: %d", bda_str, name, rssi);  // NOLINT(bugprone-branch-clone)
 
-    /* BT_MAX_DISCOVERED_DEVICES = 20 (size of bt_device_list_t.devices array) */
-#define BT_MAX_DISCOVERED_DEVICES 20
     if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) {
         return;
     }

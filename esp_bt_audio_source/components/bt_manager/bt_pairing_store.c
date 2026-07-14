@@ -264,11 +264,11 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
         return ESP_ERR_INVALID_STATE;
     }
 
-    esp_err_t err = esp_bt_gap_ssp_confirm_reply(target, accept);
-    if (err == ESP_OK) {
+    esp_err_t reply_err = esp_bt_gap_ssp_confirm_reply(target, accept);
+    if (reply_err == ESP_OK) {
         bt_pairing_clear_pending_flags(false, true);
     }
-    return err;
+    return reply_err;
 #else
     return ESP_ERR_NOT_SUPPORTED;
 #endif
@@ -341,11 +341,11 @@ bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
     }
     safe_memcpy(pin_code, pin_len, pin, pin_len);
 
-    esp_err_t err = esp_bt_gap_pin_reply(target, true, (uint8_t)pin_len, pin_code);
-    if (err == ESP_OK) {
+    esp_err_t reply_err = esp_bt_gap_pin_reply(target, true, (uint8_t)pin_len, pin_code);
+    if (reply_err == ESP_OK) {
         bt_pairing_clear_pending_flags(true, false);
     }
-    return err;
+    return reply_err;
 #endif
 #else
     (void)mac;

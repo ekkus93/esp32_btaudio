@@ -1,0 +1,2821 @@
+{
+  "generated_at": "2025-12-27T18:44:08.844882Z",
+  "total": {
+    "tests": 361,
+    "failures": 0,
+    "ignored": 0
+  },
+  "by_file": {
+    "esp_bt_audio_source/test/host_test/Testing/Temporary/LastTest.log": {
+      "entries": [],
+      "count": 0
+    },
+    "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log": {
+      "entries": [
+        {
+          "tests": 53,
+          "failures": 0,
+          "ignored": 0,
+          "line": "53 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 27,
+          "failures": 0,
+          "ignored": 0,
+          "line": "27 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 12,
+          "failures": 0,
+          "ignored": 0,
+          "line": "12 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 6,
+          "failures": 0,
+          "ignored": 0,
+          "line": "6 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 3,
+          "failures": 0,
+          "ignored": 0,
+          "line": "3 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 15,
+          "failures": 0,
+          "ignored": 0,
+          "line": "15 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 8,
+          "failures": 0,
+          "ignored": 0,
+          "line": "8 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 10,
+          "failures": 0,
+          "ignored": 0,
+          "line": "10 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 2,
+          "failures": 0,
+          "ignored": 0,
+          "line": "2 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 2,
+          "failures": 0,
+          "ignored": 0,
+          "line": "2 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 26,
+          "failures": 0,
+          "ignored": 0,
+          "line": "26 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 14,
+          "failures": 0,
+          "ignored": 0,
+          "line": "14 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 3,
+          "failures": 0,
+          "ignored": 0,
+          "line": "3 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 4,
+          "failures": 0,
+          "ignored": 0,
+          "line": "4 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 4,
+          "failures": 0,
+          "ignored": 0,
+          "line": "4 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 4,
+          "failures": 0,
+          "ignored": 0,
+          "line": "4 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 3,
+          "failures": 0,
+          "ignored": 0,
+          "line": "3 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 12,
+          "failures": 0,
+          "ignored": 0,
+          "line": "12 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 12,
+          "failures": 0,
+          "ignored": 0,
+          "line": "12 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 1,
+          "failures": 0,
+          "ignored": 0,
+          "line": "1 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 3,
+          "failures": 0,
+          "ignored": 0,
+          "line": "3 Tests 0 Failures 0 Ignored"
+        }
+      ],
+      "count": 27
+    },
+    "esp_bt_audio_source/test/test_app/build/one_run_unity.log": {
+      "entries": [
+        {
+          "tests": 60,
+          "failures": 0,
+          "ignored": 0,
+          "line": "60 Tests 0 Failures 0 Ignored"
+        }
+      ],
+      "count": 1
+    },
+    "esp_bt_audio_source/test/test_app2/build/one_run_unity.log": {
+      "entries": [
+        {
+          "tests": 45,
+          "failures": 0,
+          "ignored": 0,
+          "line": "derived from per-test PASS/FAIL lines"
+        }
+      ],
+      "count": 1
+    },
+    "esp_bt_audio_source/test/test_app3/build/one_run_unity.log": {
+      "entries": [
+        {
+          "tests": 14,
+          "failures": 0,
+          "ignored": 0,
+          "line": "14 Tests 0 Failures 0 Ignored"
+        }
+      ],
+      "count": 1
+    },
+    "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log": {
+      "entries": [
+        {
+          "tests": 56,
+          "failures": 0,
+          "ignored": 0,
+          "line": "56 Tests 0 Failures 0 Ignored"
+        },
+        {
+          "tests": 56,
+          "failures": 0,
+          "ignored": 0,
+          "line": "56 Tests 0 Failures 0 Ignored"
+        }
+      ],
+      "count": 2
+    },
+    "/home/phil/work/esp32_btaudio/esp_bt_audio_source/test/test_app/build/one_run_unity.log": {
+      "tests": 60,
+      "failures": 0,
+      "ignored": 0
+    },
+    "/home/phil/work/esp32_btaudio/esp_bt_audio_source/test/test_app2/build/one_run_unity.log": {
+      "tests": 45,
+      "failures": 0,
+      "ignored": 0
+    },
+    "/home/phil/work/esp32_btaudio/esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log": {
+      "tests": 56,
+      "failures": 0,
+      "ignored": 0
+    },
+    "/home/phil/work/esp32_btaudio/esp_bt_audio_source/test/test_app3/build/one_run_unity.log": {
+      "tests": 14,
+      "failures": 0,
+      "ignored": 0
+    }
+  },
+  "per_test": [
+    {
+      "name": "format_mac_produces_upper_hex",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "parse_mac_accepts_colon_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "parse_mac_rejects_bad_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_copy_str_dst_size_one",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_copy_str_handles_null",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_copy_str_truncates_and_terminates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memcpy_exact_fit",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memcpy_overlong_preserves_tail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memcpy_truncates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memcpy_zero_dst_size_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memcpy_zero_len_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memset_basic_fill",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_memset_zero_len_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_vsnprintf_truncates_with_null_term",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "safe_vsnprintf_zero_size_guard",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_a2dp_paired_devices",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_a2dp_streaming",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_add_and_get_paired_device",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_alloc_work_buffers_psram_and_fallback",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_buffer_management",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_format_conversion",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_config",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_init_twice_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_read_null_dest_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_read_timeout_should_not_advance_bytes",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_read_without_start_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_reinit_after_deinit_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_start_stop_idempotent",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_start_without_init_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_stop_without_start_should_be_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_i2s_zero_length_read_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_mute",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_pipeline_initialization",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_pipeline_invalid_args",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_pipeline_process_volume_and_eq",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_alloc_with_psram",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_alloc_without_psram",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_autostart_cooldown",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_beep_bypasses_mute",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_beep_no_tag_miss",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_beep_prefill_releases_after_delay",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_beep_should_activate_fallback_when_buffers_full",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_idle_failures_should_not_enable_synth_with_beep",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_idle_i2s_should_not_reenable_below_threshold",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_init",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log",
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_inject_audio_should_tag_and_reset",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_inject_pushes_and_consumes_tag",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_partial_read_should_preserve_tags",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_play_wav_api",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_read_buffer_fill",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_set_volume",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_volume_application",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_wav_abort_clears_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_wav_begin_tracks_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_wav_complete_if_idle_requires_zero_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_wav_consume_requires_completion_signal",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_processor_wav_state_transitions_should_disable_synth_and_clear_beep",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_audio_read",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_sample_rate",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_sample_rate_and_size_helpers",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_start_stop",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_stats",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_streaming_start_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_streaming_stop_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_volume_control",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_audio_volume_controls",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auth_complete_clears_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_auth_success_emits_success_and_clears_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect_disabled_should_skip_attempts",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect_failures_clear_streaming_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect_should_apply_configured_delay",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect_should_stop_after_failed_attempts",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_auto_reconnect_should_stop_after_first_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_beep_command_connected",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_beep_command_not_connected",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_beep_fallback_should_align_and_drain",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_beep_fallback_should_not_double_activate_when_tags_drained",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_beep_should_not_report_tag_miss",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bit_depth_conversions",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_connection",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_device_details",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_discovered_devices",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_filter_by_type",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_start",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_stop_early",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scan_timeout",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_scanning_basic",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bluetooth_stack_init",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_audio_state_forwarding",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_connection_autostart_and_forwarding",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_connection_respects_autostart_disable",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_disconnect_and_stop_clear_playing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_remote_suspend_clears_playing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_a2dp_remote_suspend_then_resume",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_audio_operations",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_audio_state_resets_on_disconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_audio_state_transitions_and_notifies",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_auto_reconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_autostart_guard_when_playing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_autostart_resets_between_sessions",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connect_by_address",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_connect_by_name",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_connect_disconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connect_failure",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_connect_timeout",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_info",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_attempts_reconnect_on_disconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_disconnect_first_should_not_reconnect",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_init_registers_callbacks",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_limits_reconnect_attempts",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_reconnect_resets_between_disconnects",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_manager_skips_reconnect_when_disabled",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_connection_state_updates_and_notifies",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_disconnect_failure_then_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_gap_auth_failure_allows_retry",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_gap_events_emit_command_events",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_gap_failure_paths_emit_events_and_clear_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_gap_success_emits_success_and_clears_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_init_deinit",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_init_skips_corrupt_paired_device_entries",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_init_survives_nvs_failures",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_pairing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_pairing_pending_out_of_order",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_reconnect_failures_clear_streaming_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_reconnect_failures_report_failed_state_and_retry_count",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_reconnect_success_resets_retry_count",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_scan_hook_counts",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_scan_ignores_when_not_scanning",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_scan_requires_init",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_scanning",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_start_stop_failure_recovery",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_bt_stop_failure_then_recovery_on_state_event",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_buffer_pool_invalid_inputs",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_buffer_pool_lifecycle",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_buffer_read_write",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_channel_conversion",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_channel_conversions",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_clear_paired_devices",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_cmd_parse_and_execute_debug_mock_add",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_cmd_process_accumulates_partial_line_across_calls",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_cmd_process_handles_multiple_commands_in_one_read",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_cmd_process_recovers_after_overflow_reset",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_command_processing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_config_helpers_update_channel_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_configure_standard_mode_sets_defaults",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_confirm_pin_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_confirm_pin_invalid_mac_returns_invalid",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_confirm_pin_no_pending_returns_no_mock",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_confirm_pin_without_pending_request_returns_error_event",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log",
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_connect_by_name",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_connect_name_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_connect_to_a2dp_sink",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_connection_failure_handling",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_connection_status_info",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_connection_timeout",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_data_callback_returns_silence_when_paused",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_data_callback_updates_stats_when_streaming",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_data_callback_zero_fills_on_underrun",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_debug_log_sets_level_and_response",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_debug_mock_add_missing_param_errors",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_deinit_clears_install_flag",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_disconnect_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_disconnect_during_streaming_should_reconnect_and_stop_stream",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_disconnect_failure_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_dispatch_with_param_without_copy_cb",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_double_init_should_report_invalid_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_double_stop_should_be_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_driver_init_sets_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_drop_and_reset",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_duplicate_add_is_ignored",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_endian_swaps",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_enter_pin_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_enter_pin_invalid_mac_returns_invalid",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_enter_pin_no_pending_returns_no_mock",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_enter_pin_reply_records_pin",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_enter_pin_uses_default_when_missing",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log",
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_event_stress_burst",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_fallback_drain_then_restart_should_not_accumulate_tags",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_fallback_drain_then_wav_restart_should_stay_aligned",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_fallback_drain_while_active_should_zero_debt_and_tags",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_fallback_repeats_should_clear_debt_after_drain",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_fallback_then_wav_should_keep_tags_aligned",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_fallback_volume_and_wav_resume_alignment",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_file_command_found",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_file_command_not_file",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_file_command_not_found",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_files_command_lists_entries",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_fill_to_capacity_and_overflow",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_format_mac_produces_upper_hex",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_gap_auth_failure_allows_retry",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_heap_caps_psram_allocation_failure_and_fallback",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_heap_caps_psram_allocation_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_help_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_i2s_convert_argument_checks",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_convert_mono_to_stereo_odd_count",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_convert_stereo_to_mono_rounding",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_driver_init",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_standard_mode",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_std_config",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_i2s_write_argument_checks",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_idle_i2s_failures_should_not_toggle_synth_when_beep_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_idle_i2s_failures_should_reenable_synth_when_idle",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_init_failure_on_channel_create_recovers",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_init_failure_on_std_mode_recovers",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_invalid_mac_is_rejected",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_list_delete_preserves_ownership",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_list_remove_frees_payload",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_media_ctrl_failure_on_start_reports_error_and_callback",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_mock_connection_helpers_without_init",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_mono_buffer_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_mono_to_stereo_conversion",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_mono_to_stereo_duplicates_samples",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_mute_unmute_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_new_event_replaces_previous_target",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_osi_mem_dbg_basic_record_and_clean",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_osi_mem_dbg_ignore_null_and_unknown_clean",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_osi_mem_dbg_sections_track_max_size",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_paired_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pairing_commands_happy_path",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log",
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pairing_event_sequence_hardening",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_command_with_whitespace",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_connect_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_connect_name_preserves_spaces",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_empty_command_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_file_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_file_truncates_overlong_name",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_i2s_config_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_invalid_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_limits_param_count_and_truncates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_mac_accepts_colon_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_mac_rejects_bad_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_malformed_tokens",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_parse_scan_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pause_failure_reverts_state_and_invokes_callbacks",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pcm_16bit_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pcm_24bit_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pcm_bit_depth_conversion",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pcm_convert_endianness",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pcm_sample_scaling",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pin_pairing_failure",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pin_pairing_initiation",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pin_pairing_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pin_pairing_timeout",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_pin_reply_null_bdaddr_clears_mac",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pin_reply_too_long_truncates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pin_reply_zero_length_records_empty",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pin_request_emits_event_and_sets_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_pin_request_sets_pending_flags",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_play_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_play_command_missing_file_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_play_command_missing_param_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_play_command_path_too_long_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_play_command_requires_a2dp_connection",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_play_wav_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_process_channels_null_buffer_invalid",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_producer_consumer_tag_alignment_beep",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_push_event",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_read_before_start_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_error_propagates_and_reports_bytes",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_ok_zero_bytes_returns_timeout",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_partial_updates_bytes",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_success_reports_bytes",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_timeout_propagates_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_with_null_bytes_ptr_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_with_null_dest_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_read_zero_length_sets_zero_and_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_reinit_after_deinit_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_reinit_changes_config",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_remote_suspend_and_resume_should_toggle_stream_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_remove_paired_device",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_reset_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_resume_after_underrun_updates_duration",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_copy_str_dst_size_one",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_copy_str_handles_null",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_copy_str_truncates_and_terminates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memcpy_exact_fit",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memcpy_overlong_preserves_tail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memcpy_truncates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memcpy_zero_dst_size_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memcpy_zero_len_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memset_basic_fill",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_memset_zero_len_no_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_vsnprintf_truncates_with_null_term",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_safe_vsnprintf_zero_size_guard",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_sample_rate_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_scan_invokes_manager",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_send_response",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_set_default_pin",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirm_emits_event_and_auth_failure_clears_pending",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirm_reject_records_zero",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirm_reply_sets_last_confirm",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirmation_accepted",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirmation_rejected",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_ssp_confirmation_request",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_ssp_fallback_to_pin",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_ssp_request_records_passkey",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_before_init_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_error_propagates_and_stop_remains_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_failure_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_failure_then_recover_start_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_failures_twice_then_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_stop_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_stop_start_again_should_succeed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_start_when_already_running_should_be_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_status_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stereo_buffer_format",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_stereo_mono_round_trip",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_stereo_to_mono_averages_channels",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stereo_to_mono_conversion",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_stop_after_start_then_read_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stop_before_init_should_fail",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stop_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stop_error_propagates",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stop_failure_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stop_when_not_running_should_be_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_callback_invoked_on_start_state_change",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_pause_requires_streaming_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_resume_requires_paused_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_start_fails_when_not_connected",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_start_invokes_media_ctrl_and_sets_starting_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_stream_stop_transitions_and_calls_media_ctrl",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_streaming_pause_resume",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_streaming_requires_connection",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_streaming_state_reporting",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_synth_off_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_synth_on_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_tag_counter_increments_and_wrap",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_tag_item_size",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app3/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_tag_miss_recovery_should_drop_stale_beep",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_tag_recover_should_drop_untracked_audio_and_reset_counters",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_tag_recover_should_throttle_and_rearm_after_window",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_uart_command_interface_setup",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_unpair_all_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_unpair_all_command_failure",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_unpair_all_devices",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_unpair_command_failure",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_unpair_command_not_found",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_unpair_command_success",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_unpair_specific_device",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app/build/one_run_unity.log",
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_utils_reset_state",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app2/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_version_command",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_volume_invalid_param_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_volume_missing_param_should_error",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_wav_abort_during_drain_should_not_raise_tag_miss",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_abort_overlapping_drain_should_zero_debt_and_tags",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_and_beep_fallback_should_keep_tags_aligned",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_and_fallback_partial_reads_should_keep_tags_aligned",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_wav_enqueue_should_align_to_full_frames",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_wav_enqueue_should_skip_when_max_item_smaller_than_frame",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_wav_fallback_soak_with_volume_and_mute_toggles",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_fallback_with_live_volume_changes_should_resume_cleanly",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_injection_mid_fallback_should_resume_without_tag_loss",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/test_app_audio/build/one_run_unity.log"
+      ]
+    },
+    {
+      "name": "test_wav_residual_flush_should_wait_for_full_frame",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_mono_samples_in_stereo_mode_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_mono_samples_rejects_null",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_samples_rejects_null_buffer",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_samples_requires_install",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_samples_sets_bytes_when_installed",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    },
+    {
+      "name": "test_write_stereo_samples_in_mono_mode_ok",
+      "result": "PASS",
+      "files": [
+        "esp_bt_audio_source/test/host_test/build_host_tests/Testing/Temporary/LastTest.log"
+      ]
+    }
+  ]
+}
