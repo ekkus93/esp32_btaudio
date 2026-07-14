@@ -80,11 +80,24 @@ void bt_manager_test_record_unpair_all_temp_alloc(int delta);
 
 // Stop audio streaming
 bt_err_t bt_stop_audio(void) {
-    if (!bt_ctx.initialized) {
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    bool initialized = bt_ctx.initialized;
+    bool was_playing = bt_ctx.audio_playing;
+
+    if (initialized && was_playing) {
+        bt_ctx.audio_playing = false;
+    }
+    bt_ctx_unlock();
+
+    if (!initialized) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (!bt_ctx.audio_playing) {
+    if (!was_playing) {
         return ESP_OK; // Not playing
     }
 
@@ -96,9 +109,6 @@ bt_err_t bt_stop_audio(void) {
     }
 
     ESP_LOGI(TAG, "Suspended audio streaming");  // NOLINT(bugprone-branch-clone)
-#else
-    // For testing without ESP-IDF
-    bt_ctx.audio_playing = false;
 #endif
 
     return ESP_OK;
@@ -106,15 +116,34 @@ bt_err_t bt_stop_audio(void) {
 
 // Start audio streaming
  bt_err_t bt_start_audio(void) {
-    if (!bt_ctx.initialized) {
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    bool initialized = bt_ctx.initialized;
+    bool connected = bt_ctx.connected;
+    bool audio_playing = bt_ctx.audio_playing;
+
+    if (initialized && !connected) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (!bt_ctx.connected) {
+    if (initialized && !audio_playing && connected) {
+        bt_ctx.audio_playing = true;
+    }
+    bt_ctx_unlock();
+
+    if (!initialized) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (bt_ctx.audio_playing) {
+    if (!connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (audio_playing) {
         return ESP_OK; // Already playing
     }
 
@@ -157,15 +186,22 @@ bt_err_t bt_stop_audio(void) {
 
 // Set volume level
  bt_err_t bt_set_volume(int volume) {
-    if (!bt_ctx.initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     if (volume < 0 || volume > 100) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
+
     bt_ctx.volume = volume;
+    bt_ctx_unlock();
 
 #ifdef ESP_PLATFORM
     // Volume control would be implemented here if supported
@@ -178,13 +214,21 @@ bt_err_t bt_stop_audio(void) {
 
 // Pair with a device
  bt_err_t bt_pair(const char* mac) {
-    if (!bt_ctx.initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     if (mac == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bt_ctx_unlock();
 
 #ifdef ESP_PLATFORM
     // Convert MAC string to address
@@ -218,12 +262,17 @@ bt_err_t bt_stop_audio(void) {
     return mock_err;
 #endif
 
-    // Stop an active discovery session; some controllers reject bonding requests
-    // while inquiry is running.
-    if (bt_ctx.scanning) {
-        if (esp_bt_gap_cancel_discovery() == ESP_OK) {
+    bool was_scanning = false;
+    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+        if (bt_ctx.scanning) {
+            was_scanning = true;
             bt_ctx.scanning = false;
         }
+        bt_ctx_unlock();
+    }
+
+    if (was_scanning && esp_bt_gap_cancel_discovery() != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to stop discovery before pairing");  // NOLINT(bugprone-branch-clone)
     }
 
     // Short-circuit if the controller already holds a bond for this device.
@@ -271,9 +320,21 @@ bt_err_t bt_stop_audio(void) {
 
 // Unpair a device
  bt_err_t bt_unpair(const char* mac) {
+    if (mac == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return ESP_FAIL;
+    }
+
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+
+    bt_ctx_unlock();
 
     if (mac == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -322,9 +383,17 @@ exit:
 
 // Unpair all devices
  bt_err_t bt_unpair_all(void) {
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return ESP_FAIL;
+    }
+
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+
+    bt_ctx_unlock();
 
     esp_err_t controller_status = ESP_OK;
     int removed_count = 0;
@@ -393,7 +462,11 @@ exit:
 #endif
     }
 
-    safe_memset(&bt_ctx.paired_devices, sizeof(bt_ctx.paired_devices), 0, sizeof(bt_ctx.paired_devices));
+    /* Clear paired devices under lock. */
+    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+        safe_memset(&bt_ctx.paired_devices, sizeof(bt_ctx.paired_devices), 0, sizeof(bt_ctx.paired_devices));
+        bt_ctx_unlock();
+    }
 
 #ifdef UNIT_TEST
     bt_manager_test_record_unpair_all_call(cleared_before, removed_count);
@@ -404,13 +477,21 @@ exit:
 
 // Set PIN code for pairing
  bt_err_t bt_set_pin(const char* pin) {
-    if (!bt_ctx.initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     if (pin == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bt_ctx_unlock();
 
 #ifdef ESP_PLATFORM
     // Set PIN code

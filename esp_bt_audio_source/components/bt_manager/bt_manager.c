@@ -396,10 +396,18 @@ esp_err_t bt_get_device_list_snapshot(bt_device_list_t *out)
     if (out == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
+
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+
     safe_memcpy(out, sizeof(*out), &bt_ctx.discovered_devices, sizeof(bt_device_list_t));
+    bt_ctx_unlock();
     return ESP_OK;
 }
 
@@ -409,10 +417,18 @@ esp_err_t bt_get_paired_devices_snapshot(bt_device_list_t *out)
     if (out == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
+
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+
     safe_memcpy(out, sizeof(*out), &bt_ctx.paired_devices, sizeof(bt_device_list_t));
+    bt_ctx_unlock();
     return ESP_OK;
 }
 
@@ -432,10 +448,19 @@ bool bt_manager_is_autostart_enabled(void) {
 // used by other components after we update their forward declarations.
 int bt_manager_set_name(const char* name) {
 #ifdef ESP_PLATFORM
-    if (!bt_ctx.initialized) {
-    	return -1;
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return -1;
     }
-    esp_err_t err = esp_bt_gap_set_device_name(name);
+
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return -1;
+    }
+
+    bt_ctx_unlock();
+
+    err = esp_bt_gap_set_device_name(name);
     return (err == ESP_OK) ? 0 : -1;
 #else
     (void)name;
@@ -625,4 +650,32 @@ esp_err_t bt_manager_test_init_profiles(void)
 /* ESP-IDF build */
 #else
 /* Host build */
+#endif
+
+/* Test hooks for host-mode unit tests --------------------------------------
+ *
+ * The host tests manipulate bt_ctx directly without calling bt_manager_init().
+ * These helpers create/destroy the s_bt_ctx_mutex so that bt_ctx_lock()/bt_ctx_unlock()
+ * succeed during unit testing.
+ */
+#ifdef UNIT_TEST
+esp_err_t bt_manager_test_init_mutex(void)
+{
+    if (s_bt_ctx_mutex) {
+        platform_mutex_delete(s_bt_ctx_mutex);
+    }
+    s_bt_ctx_mutex = platform_mutex_create();
+    if (s_bt_ctx_mutex == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+void bt_manager_test_deinit_mutex(void)
+{
+    if (s_bt_ctx_mutex) {
+        platform_mutex_delete(s_bt_ctx_mutex);
+        s_bt_ctx_mutex = NULL;
+    }
+}
 #endif

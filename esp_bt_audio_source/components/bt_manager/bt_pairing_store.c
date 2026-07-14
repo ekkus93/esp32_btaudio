@@ -196,11 +196,14 @@ void bt_pairing_handle_auth_complete(const esp_bd_addr_t bda, esp_bt_status_t st
         bt_pairing_send_event("SUCCESS", bda_str);
 #if defined(ESP_PLATFORM)
         char dev_name[32] = {0};
-        for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
-            if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
-                safe_copy_str(dev_name, sizeof(dev_name), bt_ctx.discovered_devices.devices[i].name);
-                break;
+        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+            for (int i = 0; i < bt_ctx.discovered_devices.count; i++) {
+                if (strcmp(bt_ctx.discovered_devices.devices[i].mac, bda_str) == 0) {
+                    safe_copy_str(dev_name, sizeof(dev_name), bt_ctx.discovered_devices.devices[i].name);
+                    break;
+                }
             }
+            bt_ctx_unlock();
         }
         nvs_storage_add_paired_device(bda_str, dev_name[0] ? dev_name : NULL);
 #endif
@@ -239,9 +242,15 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
     (void)mac;
     (void)accept;
 #ifdef ESP_PLATFORM
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+    bt_ctx_unlock();
 
     esp_bd_addr_t target = {0};
 
@@ -268,9 +277,15 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
 bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
 {
 #ifdef ESP_PLATFORM
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
+    }
     if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+    bt_ctx_unlock();
     if (pin == NULL || pin[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }

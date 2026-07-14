@@ -32,15 +32,17 @@ void setUp(void)
 {
     // Reset mocks and bt_ctx state before each test
     mock_gap_reset();
+    bt_manager_test_reset_forces();
+    bt_manager_test_init_mutex();
     memset(&bt_ctx, 0, sizeof(bt_ctx));
     bt_ctx.initialized = false;
     bt_ctx.scanning = false;
-    bt_manager_test_reset_forces();
 }
 
 void tearDown(void)
 {
     // Clean up after each test
+    bt_manager_test_deinit_mutex();
 }
 
 /**

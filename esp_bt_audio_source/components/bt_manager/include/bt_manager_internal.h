@@ -170,3 +170,13 @@ void bt_mgr_request_handler(uint16_t event, void *param);
 esp_err_t bt_ctx_lock(uint32_t timeout_ms);
 void bt_ctx_unlock(void);
 
+/* Test hooks for host-mode unit tests --------------------------------------
+ *
+ * Create/destroy the s_bt_ctx_mutex so that bt_ctx_lock()/bt_ctx_unlock()
+ * succeed during unit tests that manipulate bt_ctx directly.
+ */
+#ifdef UNIT_TEST
+esp_err_t bt_manager_test_init_mutex(void);
+void bt_manager_test_deinit_mutex(void);
+#endif
+

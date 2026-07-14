@@ -44,18 +44,20 @@ void setUp(void)
     mock_gap_reset();
     nvs_storage_mock_reset();
     bt_manager_test_reset_forces();
-    
+    bt_manager_test_init_mutex();
+
     // Reset bt_ctx to known state
+    memset(&bt_ctx, 0, sizeof(bt_ctx));
     bt_ctx.initialized = false;
     bt_ctx.connected = false;
     bt_ctx.audio_playing = false;
     bt_ctx.scanning = false;
-    memset(bt_ctx.connected_mac, 0, sizeof(bt_ctx.connected_mac));
 }
 
 void tearDown(void)
 {
     // Clean up after each test
+    bt_manager_test_deinit_mutex();
 }
 
 /* =============================================================================
