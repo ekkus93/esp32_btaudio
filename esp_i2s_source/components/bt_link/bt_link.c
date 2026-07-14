@@ -1,7 +1,7 @@
-/*
- * bt_link (device glue) — UART1 command task (LINK-1b). One task owns the
- * UART and the session; bt_link_send() hands it a command and blocks on a
- * completion semaphore. Verified on hardware at LINK-1c. See bt_link.h.
+/* bt_link (device glue) — UART1 command task (LINK-1b). One task owns the
+ * UART and the session; bt_link_send() hands it a heap-allocated request and
+ * blocks on the request's own completion semaphore. Per-request lifetimes
+ * prevent stack-pointer-in-queue and cross-signaling (RH-S3-01).
  */
 #include "bt_link.h"
 
@@ -12,6 +12,7 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -22,17 +23,27 @@ static const char *TAG = "bt_link";
 #define BT_LINK_TASK_STACK  4096
 #define BT_LINK_TASK_PRIO   (configMAX_PRIORITIES - 4)
 
+/* One heap-allocated instance per bt_link_send() call. Carries its own
+ * completion semaphore so the worker signals the right waiter.
+ *
+ * Lifetime:
+ *   - Caller allocates, queues to worker, waits on req->done_sem
+ *   - Worker signals req->done_sem when UART response arrives
+ *   - Caller reads req fields, deletes semaphore, frees memory
+ *   - If caller times out (abandoned), worker deletes semaphore + frees
+ */
 typedef struct {
-    char cmd[BT_LINK_LINE_MAX];
-    bt_link_cmd_state_t state;
-    char result[BT_LINK_FIELD_MAX];
-    char data[BT_LINK_FIELD_MAX];
+    char                    cmd[BT_LINK_LINE_MAX];
+    bt_link_cmd_state_t     state;
+    char                    result[BT_LINK_FIELD_MAX];
+    char                    data[BT_LINK_FIELD_MAX];
+    SemaphoreHandle_t       done_sem;  /* per-request completion semaphore */
+    bool                    abandoned; /* caller timed out — worker cleans up */
 } bt_link_request_t;
 
 static bt_link_session_t  s_session;
 static bt_link_linebuf_t  s_linebuf;
 static QueueHandle_t      s_cmd_queue;   /* bt_link_request_t* */
-static SemaphoreHandle_t  s_done_sem;
 static SemaphoreHandle_t  s_send_mutex;
 static bt_link_request_t *s_active;
 
@@ -78,15 +89,29 @@ static void bt_link_task(void *arg)
             bt_link_cmd_state_t st = bt_link_session_state(&s_session);
             if (st == BT_LINK_CMD_DONE_OK || st == BT_LINK_CMD_DONE_ERR ||
                 st == BT_LINK_CMD_TIMEOUT) {
-                s_active->state = st;
-                strncpy(s_active->result, s_session.last_result,
-                        sizeof(s_active->result) - 1);
-                s_active->result[sizeof(s_active->result) - 1] = '\0';
-                strncpy(s_active->data, s_session.last_data,
-                        sizeof(s_active->data) - 1);
-                s_active->data[sizeof(s_active->data) - 1] = '\0';
+                bt_link_request_t *req = s_active;
                 s_active = NULL;
-                xSemaphoreGive(s_done_sem);
+
+                /* Capture state before caller may read (synced by semaphore). */
+                if (!req->abandoned) {
+                    req->state = st;
+                    strncpy(req->result, s_session.last_result,
+                            sizeof(req->result) - 1);
+                    req->result[sizeof(req->result) - 1] = '\0';
+                    strncpy(req->data, s_session.last_data,
+                            sizeof(req->data) - 1);
+                    req->data[sizeof(req->data) - 1] = '\0';
+                }
+
+                /* Signal the caller — semaphore ops provide memory barrier. */
+                xSemaphoreGive(req->done_sem);
+
+                /* Clean up if caller already gave up. */
+                if (req->abandoned) {
+                    vSemaphoreDelete(req->done_sem);
+                    free(req);
+                }
+                /* else: caller owns req until it reads + frees. */
             }
         }
     }
@@ -121,9 +146,8 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
     bt_link_linebuf_init(&s_linebuf);
 
     s_cmd_queue = xQueueCreate(4, sizeof(bt_link_request_t *));
-    s_done_sem = xSemaphoreCreateBinary();
     s_send_mutex = xSemaphoreCreateMutex();
-    if (!s_cmd_queue || !s_done_sem || !s_send_mutex) return ESP_ERR_NO_MEM;
+    if (!s_cmd_queue || !s_send_mutex) return ESP_ERR_NO_MEM;
 
     if (xTaskCreate(bt_link_task, "bt_link", BT_LINK_TASK_STACK, NULL,
                     BT_LINK_TASK_PRIO, NULL) != pdPASS) {
@@ -150,33 +174,56 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
 
     xSemaphoreTake(s_send_mutex, portMAX_DELAY);
 
-    bt_link_request_t req;
-    memset(&req, 0, sizeof(req));
-    strncpy(req.cmd, cmd, sizeof(req.cmd) - 1);
-    bt_link_request_t *reqp = &req;
+    /* Heap-allocate per-request state with its own completion semaphore. */
+    bt_link_request_t *req = (bt_link_request_t *)malloc(sizeof(bt_link_request_t));
+    if (!req) {
+        xSemaphoreGive(s_send_mutex);
+        return ESP_ERR_NO_MEM;
+    }
+    memset(req, 0, sizeof(bt_link_request_t));
+    strncpy(req->cmd, cmd, BT_LINK_LINE_MAX - 1);
 
+    /* Create per-request semaphore (initially empty — worker signals it). */
+    req->done_sem = xSemaphoreCreateBinary();
+    req->abandoned = false;
+    if (!req->done_sem) {
+        free(req);
+        xSemaphoreGive(s_send_mutex);
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Queue to worker task. */
+    xQueueSend(s_cmd_queue, &req, portMAX_DELAY);
+
+    /* Block on this request's own semaphore.
+     * Worker signals req->done_sem when the UART response arrives or times out. */
+    if (xSemaphoreTake(req->done_sem, pdMS_TO_TICKS(BT_LINK_DEFAULT_TIMEOUT_MS + 500)) != pdTRUE) {
+        /* Timed out — mark abandoned so worker cleans up our semaphore + memory. */
+        req->abandoned = true;
+        xSemaphoreGive(s_send_mutex);
+        return ESP_ERR_TIMEOUT;
+    }
+
+    /* Worker has written req->state/result/data (synced by semaphore barrier). */
+    bt_link_cmd_state_t final_state = req->state;
     esp_err_t ret = ESP_OK;
-    xQueueSend(s_cmd_queue, &reqp, portMAX_DELAY);
-
-    /* Wait a little past the command timeout for the task to complete it. */
-    if (xSemaphoreTake(s_done_sem, pdMS_TO_TICKS(BT_LINK_DEFAULT_TIMEOUT_MS + 500))
-            != pdTRUE) {
-        req.state = BT_LINK_CMD_TIMEOUT;
-        ret = ESP_ERR_TIMEOUT;
-    } else if (req.state == BT_LINK_CMD_TIMEOUT) {
+    if (final_state == BT_LINK_CMD_TIMEOUT) {
         ret = ESP_ERR_TIMEOUT;
     }
 
-    if (out_state) *out_state = req.state;
+    if (out_state) *out_state = req->state;
     if (result && result_sz) {
-        strncpy(result, req.result, result_sz - 1);
+        strncpy(result, req->result, result_sz - 1);
         result[result_sz - 1] = '\0';
     }
     if (data && data_sz) {
-        strncpy(data, req.data, data_sz - 1);
+        strncpy(data, req->data, data_sz - 1);
         data[data_sz - 1] = '\0';
     }
 
+    /* Clean up heap-allocated request. */
+    vSemaphoreDelete(req->done_sem);
+    free(req);
     xSemaphoreGive(s_send_mutex);
     return ret;
 }
