@@ -17,6 +17,7 @@
 #include "mocks/include/freertos/task.h"
 #include "mocks/include/freertos/semphr.h"
 #include "mocks/include/freertos/event_groups.h"
+#include "mocks/include/freertos/queue.h"
 
 /* ESP-IDF stubs — must come before radio.h */
 #include "esp_err.h"
@@ -77,7 +78,12 @@ esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
 void nvs_close(nvs_handle_t h) { (void)h; }
 
 /* esp_http_client stubs — handle passed by value (matches ESP-IDF convention) */
-esp_http_client_handle_t esp_http_client_init(void *cfg) { return NULL; }
+static int s_http_client_init_fail = 0;
+esp_http_client_handle_t esp_http_client_init(void *cfg)
+{
+    if (s_http_client_init_fail) return NULL;
+    return (esp_http_client_handle_t)0x1;  /* non-NULL dummy handle */
+}
 esp_err_t esp_http_client_open(esp_http_client_handle_t h, int code) { return ESP_OK; }
 esp_err_t esp_http_client_fetch_headers(esp_http_client_handle_t h) { return ESP_OK; }
 int esp_http_client_read(esp_http_client_handle_t h, char *buf, int len) { return 0; }
@@ -85,13 +91,23 @@ esp_err_t esp_http_client_close(esp_http_client_handle_t h) { return ESP_OK; }
 void esp_http_client_cleanup(esp_http_client_handle_t h) {}
 esp_err_t esp_http_client_set_header(esp_http_client_handle_t h, const char *key, const char *val) { return ESP_OK; }
 int esp_http_client_get_status_code(esp_http_client_handle_t h) { return 200; }
+void mock_http_client_set_init_fail(int val) { s_http_client_init_fail = val; }
 
 /* esp_crt_bundle stub */
 void *esp_crt_bundle_attach(void *cfg) { return NULL; }
 
-/* esp_heap_caps stubs */
-void *esp_heap_caps_malloc(size_t size, int caps) { return malloc(size); }
+/* esp_heap_caps stubs — with NULL injection for allocation failure tests */
+static size_t s_heap_caps_fail_size = 0; /* fail if size matches */
+static int s_heap_caps_fail_all = 0;     /* fail ALL allocations */
+void *esp_heap_caps_malloc(size_t size, int caps)
+{
+    if (s_heap_caps_fail_all) return NULL;
+    if (size == s_heap_caps_fail_size) return NULL;
+    return malloc(size);
+}
 void esp_heap_caps_free(void *ptr) { free(ptr); }
+void mock_heap_caps_set_fail_size(size_t size) { s_heap_caps_fail_size = size; }
+void mock_heap_caps_set_fail_all(int val) { s_heap_caps_fail_all = val; }
 
 /* esp_audio_simple_dec stubs */
 esp_err_t esp_audio_simple_dec_open(esp_audio_simple_dec_cfg_t *cfg,
@@ -119,7 +135,11 @@ void esp_audio_simple_dec_register_default(void) {}
 void setUp(void)
 {
     mock_task_reset();
+    mock_queue_reset();
+    mock_sem_reset();
     s_nvs_prebuf_ms = 0;
+    s_heap_caps_fail_size = 0;
+    s_heap_caps_fail_all = 0;
 }
 
 void tearDown(void)
@@ -235,6 +255,155 @@ void test_stop_without_play(void)
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
+/* ---- RH-S3-15: radio_init() allocation failure tests ---- */
+
+/* Stage 1: control mutex creation fails */
+void test_radio_init_control_mutex_fail(void)
+{
+    /* Inject: xSemaphoreCreateMutex() returns NULL. */
+    mock_sem_set_mutex_null(1);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_deinit must be safe to call after failed init. */
+    radio_deinit();
+
+    /* Verify retry: reset mock and init should succeed. */
+    mock_sem_set_mutex_null(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* Stage 2: compressed ring allocation fails (both SPIRAM and DEFAULT) */
+void test_radio_init_ring_alloc_fail(void)
+{
+    /* Fail allocations for the ring size (64KB). Both SPIRAM and DEFAULT
+     * fallback allocate the same size, so the size-based mock catches both. */
+    mock_heap_caps_set_fail_size(64 * 1024);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_deinit must clean up partial init (control mutex). */
+    radio_deinit();
+
+    /* Verify retry. */
+    mock_heap_caps_set_fail_size(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* Stage 3: PCM ring allocation fails (both SPIRAM and DEFAULT) */
+void test_radio_init_pcm_alloc_fail(void)
+{
+    /* Fail allocations for PCM ring size (1MB). Ring init uses 64KB, so
+     * this only targets the PCM allocation. */
+    mock_heap_caps_set_fail_size(1024 * 1024);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_deinit must clean up partial init (control mutex + ring). */
+    radio_deinit();
+
+    /* Verify retry. */
+    mock_heap_caps_set_fail_size(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* Stage 4: mutex creation fails (s_mtx or s_pcm_mtx) */
+void test_radio_init_mutex_create_fail(void)
+{
+    /* radio_init creates s_mtx and s_pcm_mtx after the rings.
+     * Inject NULL for first mutex creation (s_mtx). */
+    mock_sem_set_mutex_null(1);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_init handles internal cleanup for mutex failure.
+     * radio_deinit must still be safe. */
+    radio_deinit();
+
+    /* Verify retry. */
+    mock_sem_set_mutex_null(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* Stage 5: queue creation fails */
+void test_radio_init_queue_create_fail(void)
+{
+    /* Inject: xQueueCreate() returns NULL. */
+    mock_queue_set_create_null(1);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_init handles internal cleanup for queue failure.
+     * radio_deinit must still be safe. */
+    radio_deinit();
+
+    /* Verify retry. */
+    mock_queue_set_create_null(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* Stage 6: command task creation fails */
+void test_radio_init_cmd_task_fail(void)
+{
+    /* Inject: xTaskCreate returns pdFAIL. */
+    mock_task_set_create_result(pdFAIL);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* radio_init returns error with partial init.
+     * radio_deinit must clean up everything. */
+    radio_deinit();
+
+    /* Verify retry. */
+    mock_task_set_create_result(pdPASS);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* ---- RH-S3-20: esp_http_client_init() null-check tests ---- */
+
+/* Verify resolve_url handles esp_http_client_init() returning NULL
+ * without crashing — the URL passes through as-is (best-effort fallback). */
+void test_playlist_resolve_http_client_alloc_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject: esp_http_client_init() returns NULL. */
+    mock_http_client_set_init_fail(1);
+
+    /* Playlist URL triggers resolve_url() which calls esp_http_client_init().
+     * The resolve must not crash on NULL — it falls back to the URL as-is.
+     *
+     * Tasks will fail too (mocked), but the resolve step completes first
+     * and is the exercise point. */
+    mock_task_set_create_result(pdFAIL);
+
+    /* Must not crash — returns ESP_ERR_NO_MEM due to task creation failure,
+     * but the resolve_url step completed without segfault. */
+    err = radio_play_sync("http://example.com/stream.pls");
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* Verify state is STOPPED (failed cleanly, no partial session left). */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+
+    /* Cleanup. */
+    mock_http_client_set_init_fail(0);
+    mock_task_set_create_result(pdPASS);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -243,5 +412,14 @@ int main(void)
     RUN_TEST(test_failed_play_retry);
     RUN_TEST(test_radio_init_no_double_alloc);
     RUN_TEST(test_stop_without_play);
+    /* RH-S3-15: allocation failure tests for radio_init() */
+    RUN_TEST(test_radio_init_control_mutex_fail);
+    RUN_TEST(test_radio_init_ring_alloc_fail);
+    RUN_TEST(test_radio_init_pcm_alloc_fail);
+    RUN_TEST(test_radio_init_mutex_create_fail);
+    RUN_TEST(test_radio_init_queue_create_fail);
+    RUN_TEST(test_radio_init_cmd_task_fail);
+    /* RH-S3-20: esp_http_client_init() null-check tests */
+    RUN_TEST(test_playlist_resolve_http_client_alloc_fail);
     return UNITY_END();
 }

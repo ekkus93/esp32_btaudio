@@ -275,6 +275,11 @@ static void resolve_url(const char *in, char *out, size_t out_sz)
         .user_agent = "esp-i2s-source/1",
     };
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
+    if (!c) {
+        set_radio_error(RADIO_ERR_HTTP_CLIENT_ALLOC, "playlist client alloc failed");
+        strlcpy(out, in, out_sz);
+        return;
+    }
     if (esp_http_client_open(c, 0) == ESP_OK) {
         esp_http_client_fetch_headers(c);
         int r;
@@ -659,7 +664,9 @@ esp_err_t radio_init(size_t ring_bytes)
     if (!s_radio_cmd_q) {
         /* Cleanup queue failure: undo everything created so far. */
         vSemaphoreDelete(s_mtx);
+        s_mtx = NULL;
         vSemaphoreDelete(s_pcm_mtx);
+        s_pcm_mtx = NULL;
         free(s_pcm); s_pcm = NULL;
         free(s_ring); s_ring = NULL;
         vSemaphoreDelete(s_control_mtx);
@@ -917,18 +924,20 @@ int radio_get_prebuffer_ms(void)
     return (int)(s_prebuffer_bytes / PCM_BYTES_PER_MS);
 }
 
-void radio_set_prebuffer_ms(int ms)
+esp_err_t radio_set_prebuffer_ms(int ms)
 {
     ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
     ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
     s_prebuffer_bytes = (size_t)ms * PCM_BYTES_PER_MS;
     nvs_handle_t h;
-    if (nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h) == ESP_OK) {
+    esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
         nvs_set_i32(h, NVS_KEY_PREBUF, ms);
         nvs_commit(h);
         nvs_close(h);
     }
     ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)s_prebuffer_bytes);
+    return err;
 }
 
 static void radio_prebuffer_load(void)
