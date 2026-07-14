@@ -35,7 +35,8 @@ esp_bt_audio_source/tools/ci_check_main_layering.sh esp_bt_audio_source/main/mai
 ## Step 3 — Lint Python (flake8, same scope as CI)
 
 ```bash
-conda run -n python310 python -m flake8 tools esp_bt_audio_source/tools --max-line-length=120
+. .venv/bin/activate
+python -m flake8 tools esp_bt_audio_source/tools --max-line-length=120
 ```
 
 CI treats flake8 as advisory (`|| true`); report findings but count them separately from hard failures.
@@ -47,11 +48,13 @@ The full sweep flashes test images to the ESP32 on /dev/ttyUSB0. **Ask the user 
 - Full sweep (needs confirmation, device on /dev/ttyUSB0) — note:
   run_all_tests.py lives at the REPO ROOT tools/, not esp_bt_audio_source/tools/:
   ```bash
-  conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+  . .venv/bin/activate
+  python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
   ```
 - Host-only (no hardware, no confirmation needed) — use this automatically if the user declines or /dev/ttyUSB0 is absent:
   ```bash
-  conda run -n python310 python tools/run_all_tests.py --no-device --no-standalone
+  . .venv/bin/activate
+  python tools/run_all_tests.py --no-device --no-standalone
   ```
 
 Authoritative result: `esp_bt_audio_source/tmp/run_all_tests_summary.json`.
