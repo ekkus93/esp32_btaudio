@@ -144,6 +144,11 @@ target_compile_definitions(test_radio_lifecycle PRIVATE UNIT_TEST)
 target_link_libraries(test_radio_lifecycle unity)
 add_test(NAME test_radio_lifecycle COMMAND test_radio_lifecycle)
 
+# RH-S3-06: pack_s16_msb — signed sample packing without UB
+add_executable(test_pack_s16_msb test_pack_s16_msb.c)
+target_link_libraries(test_pack_s16_msb unity)
+add_test(NAME test_pack_s16_msb COMMAND test_pack_s16_msb)
+
 # RH-S3-01: bt_link request lifecycle — ownership safety
 add_executable(test_bt_link_lifecycle test_bt_link_lifecycle.c
     ${BT_LINK_DIR}/bt_link.c
