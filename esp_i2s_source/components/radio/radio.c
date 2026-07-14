@@ -131,7 +131,6 @@ size_t radio_pcm_read(int16_t *dst, size_t frames)
 }
 
 /* ---- Session-based lifecycle (RH-S3-02) ---- */
-#include <inttypes.h>
 
 /* Event bits for worker exit acknowledgement. */
 #define RADIO_EVT_STREAM_EXITED  BIT0
