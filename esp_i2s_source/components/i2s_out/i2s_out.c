@@ -15,15 +15,23 @@
  *   ws_width 32, so both sides must pad 16-bit samples into 32-bit slots or
  *   the audio garbles. As a slave, the S3 follows the WROOM32's BCLK/WS; the
  *   sample rate below only sets the internal clock divider.
+ *
+ * RH-S3-08: finite-timeout sink + event-group signalling.
+ *   i2s_channel_write() uses a 100 ms timeout so the writer loop can check
+ *   a stop flag on each timeout — the stop path no longer polls blindly.
+ *   Writer start/exit are signalled via event-group bits so stop() waits
+ *   for the task to actually exit before disabling the channel.
  */
 #include "i2s_out.h"
 
 #include "driver/i2s_std.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_log.h"
 #include "nvs.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 static const char *TAG = "i2s_out";
@@ -32,32 +40,64 @@ static const char *TAG = "i2s_out";
 #define I2S_OUT_BLOCK_BYTES 512
 #define I2S_OUT_TASK_STACK  4096
 #define I2S_OUT_TASK_PRIO   (configMAX_PRIORITIES - 2)
+#define I2S_WRITE_TIMEOUT_MS 100
+#define I2S_STOP_TIMEOUT_MS  500
+
+/* Event-group bits */
+#define I2S_EVT_WRITER_STARTED BIT(0)
+#define I2S_EVT_WRITER_EXITED  BIT(1)
+
+/* Lifecycle state */
+typedef enum {
+    I2S_STATE_IDLE = 0,
+    I2S_STATE_STARTING,
+    I2S_STATE_RUNNING,
+    I2S_STATE_STOPPING,
+    I2S_STATE_FAULTED,
+} i2s_state_t;
 
 static i2s_chan_handle_t s_tx_chan;
-static pcm_ring_t       *s_ring;
-static TaskHandle_t      s_writer_task;
-static volatile bool     s_running;
-static i2s_out_stats_t   s_stats;
+static pcm_ring_t        *s_ring;
+static TaskHandle_t       s_writer_task;
+static _Atomic bool       s_stop_requested;
+static i2s_state_t        s_state;
+static EventGroupHandle_t s_events;
+static volatile bool      s_running; /* legacy compat — writer loop gate */
+static i2s_out_stats_t    s_stats;
 
-/* Sink adapter: hand a full block to the I2S DMA (blocks until space, which
- * paces the writer at the I2S clock rate). */
+/* Sink adapter: hand a full block to the I2S DMA with a finite timeout.
+ * Returns 0 on success, 1 on timeout (caller may retry or check stop),
+ * <0 on error. */
 static int i2s_sink(void *ctx, const uint8_t *data, size_t len)
 {
     i2s_chan_handle_t ch = (i2s_chan_handle_t)ctx;
     size_t written = 0;
-    esp_err_t err = i2s_channel_write(ch, data, len, &written, portMAX_DELAY);
-    return (err == ESP_OK && written == len) ? 0 : -1;
+    esp_err_t err = i2s_channel_write(ch, data, len, &written,
+                                       pdMS_TO_TICKS(I2S_WRITE_TIMEOUT_MS));
+
+    if (err == ESP_ERR_TIMEOUT) return 1;  /* timeout — check stop flag */
+    if (err != ESP_OK || written != len) return -1;
+    return 0;
 }
 
 static void writer_task(void *arg)
 {
     (void)arg;
     uint8_t scratch[I2S_OUT_BLOCK_BYTES];
+
+    /* Signal that the writer has started. */
+    xEventGroupSetBits(s_events, I2S_EVT_WRITER_STARTED);
+
     while (s_running) {
         i2s_out_pump_once(s_ring, scratch, sizeof(scratch),
                           i2s_sink, s_tx_chan, &s_stats);
+
+        /* On stop request, break out to let the task exit. */
+        if (atomic_load(&s_stop_requested)) break;
     }
+
     s_writer_task = NULL;
+    xEventGroupSetBits(s_events, I2S_EVT_WRITER_EXITED);
     vTaskDelete(NULL);
 }
 
@@ -67,6 +107,14 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
 
     s_ring = pcm_ring_create(ring_capacity_bytes, /*use_psram=*/true);
     if (!s_ring) return ESP_ERR_NO_MEM;
+
+    s_events = xEventGroupCreate();
+    if (!s_events) {
+        pcm_ring_destroy(s_ring);
+        s_ring = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
     memset(&s_stats, 0, sizeof(s_stats));
     i2s_out_gain_load();   /* restore persisted pre-I2S volume (default 30%) */
 
@@ -75,6 +123,8 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
         I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_SLAVE);
     esp_err_t err = i2s_new_channel(&chan_cfg, &s_tx_chan, NULL);  /* TX only */
     if (err != ESP_OK) {
+        vEventGroupDelete(s_events);
+        s_events = NULL;
         pcm_ring_destroy(s_ring);
         s_ring = NULL;
         return err;
@@ -120,6 +170,8 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
     if (err != ESP_OK) {
         i2s_del_channel(s_tx_chan);
         s_tx_chan = NULL;
+        vEventGroupDelete(s_events);
+        s_events = NULL;
         pcm_ring_destroy(s_ring);
         s_ring = NULL;
         return err;
@@ -133,30 +185,63 @@ esp_err_t i2s_out_init(size_t ring_capacity_bytes)
 
 esp_err_t i2s_out_start(void)
 {
-    if (!s_tx_chan || s_running) return ESP_ERR_INVALID_STATE;
+    if (!s_tx_chan) return ESP_ERR_INVALID_STATE;
+    /* Reject start if a writer is already running. */
+    if (s_writer_task != NULL) return ESP_ERR_INVALID_STATE;
+
+    atomic_store(&s_stop_requested, false);
+    s_state = I2S_STATE_STARTING;
+
     esp_err_t err = i2s_channel_enable(s_tx_chan);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) {
+        s_state = I2S_STATE_IDLE;
+        return err;
+    }
 
     s_running = true;
     if (xTaskCreate(writer_task, "i2s_out_wr", I2S_OUT_TASK_STACK, NULL,
                     I2S_OUT_TASK_PRIO, &s_writer_task) != pdPASS) {
         s_running = false;
+        s_state = I2S_STATE_IDLE;
         i2s_channel_disable(s_tx_chan);
         return ESP_ERR_NO_MEM;
     }
+
+    s_state = I2S_STATE_RUNNING;
     return ESP_OK;
 }
 
 esp_err_t i2s_out_stop(void)
 {
     if (!s_running) return ESP_ERR_INVALID_STATE;
+    s_state = I2S_STATE_STOPPING;
+
+    /* Signal the writer to stop. */
     s_running = false;
-    /* Let the writer task observe the flag and self-delete (block writes use
-     * portMAX_DELAY, so give the current block time to drain). */
-    for (int i = 0; i < 50 && s_writer_task != NULL; i++) {
-        vTaskDelay(pdMS_TO_TICKS(10));
+    atomic_store(&s_stop_requested, true);
+
+    /* Wait for the writer task to actually exit (signalled via event group). */
+    if (s_events) {
+        EventBits_t bits = xEventGroupWaitBits(s_events, I2S_EVT_WRITER_EXITED,
+                                               pdTRUE, pdFALSE,
+                                               pdMS_TO_TICKS(I2S_STOP_TIMEOUT_MS));
+        if (!(bits & I2S_EVT_WRITER_EXITED)) {
+            /* Timeout: the writer didn't exit in time. Retain handle. */
+            ESP_LOGW(TAG, "writer stop timed out after %d ms", I2S_STOP_TIMEOUT_MS);
+            s_state = I2S_STATE_FAULTED;
+            return ESP_ERR_TIMEOUT;
+        }
     }
-    return i2s_channel_disable(s_tx_chan);
+
+    /* Clear the start bit for the next lifecycle. */
+    if (s_events) {
+        xEventGroupClearBits(s_events, I2S_EVT_WRITER_STARTED);
+    }
+
+    esp_err_t err = i2s_channel_disable(s_tx_chan);
+    s_state = I2S_STATE_IDLE;
+    s_running = false;
+    return err;
 }
 
 size_t i2s_out_write(const uint8_t *data, size_t len)
@@ -208,5 +293,9 @@ int i2s_out_get_gain(void)
 
 void i2s_out_get_stats(i2s_out_stats_t *out)
 {
-    if (out) *out = s_stats;
+    if (out) {
+        portENTER_CRITICAL(NULL);
+        *out = s_stats;
+        portEXIT_CRITICAL(NULL);
+    }
 }
