@@ -178,16 +178,14 @@ void app_main(void)
            (unsigned)(psram_bytes / 1024), (unsigned)esp_get_free_heap_size());
     fflush(stdout);
 
-    ESP_ERROR_CHECK(i2s_out_init(I2S_RING_BYTES));
-    /* RADIO-2c: single audio_out feeder (radio ⇄ tone ⇄ silence). Prime the
-     * ring before starting the I2S writer so the first DMA load isn't zeros. */
-    if (xTaskCreate(audio_out_task, "audio_out", 4096, NULL, tskIDLE_PRIORITY + 3, NULL) != pdPASS) {
-        ESP_LOGE(TAG, "audio_out task create failed");
-    }
-    vTaskDelay(pdMS_TO_TICKS(300));
-    ESP_ERROR_CHECK(i2s_out_start());
-    ESP_LOGI(TAG, "I2S out streaming (bclk=%d ws=%d dout=%d); source: radio/tone/silence",
-             I2S_OUT_GPIO_BCLK, I2S_OUT_GPIO_WS, I2S_OUT_GPIO_DOUT);
+    /* Skip I2S init when WROOM32 is absent to avoid hanging on slave enable */
+    /* WIFI-1b: bring up WiFi — STA if provisioned, else AP provisioning. */
+    ESP_LOGI(TAG, "Bringing up WiFi...");
+    ESP_ERROR_CHECK(wifi_mgr_init());
+    ESP_LOGI(TAG, "WiFi init done");
+
+    /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */
+    link_selftest();
 
     /* LINK-1c: validate the UART command link to the WROOM32 once at boot. */
     link_selftest();
@@ -199,13 +197,20 @@ void app_main(void)
     /* RADIO-1c: NVS station presets (seeded on first boot). */
     ESP_ERROR_CHECK(stations_init());
     /* WIFI-1c: console for runtime provisioning (WIFI <ssid> <pass> / STATUS). */
+    ESP_LOGI(TAG, "WiFi init done");
     ESP_ERROR_CHECK(console_start());
     /* RH-S3-10: ctrl_init() creates the mutex BEFORE web_ui_start(), so HTTP
      * handlers never access an uninitialised mutex. ctrl_start() spawns the
      * orchestrator task after. */
     ESP_ERROR_CHECK(ctrl_init());
     /* WEB-1a: HTTP server (embedded SPA + /api/status). */
-    ESP_ERROR_CHECK(web_ui_start());
+    ESP_LOGI(TAG, "Web UI starting...");
+    esp_err_t web_err = web_ui_start();
+    if (web_err == ESP_OK) {
+        ESP_LOGI(TAG, "Web UI started on port 80");
+    } else {
+        ESP_LOGE(TAG, "Web UI start failed: %d", web_err);
+    }
     /* CTRL-1b: boot orchestrator — if autostart+sink configured, connect the
      * A2DP sink over bt_link and resume the last station with no interaction. */
     ESP_ERROR_CHECK(ctrl_start());

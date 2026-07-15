@@ -14,4 +14,6 @@ idf_component_register(
         test_utils
         nvs_flash
         driver
+        esp_wifi
+        esp_netif
 )

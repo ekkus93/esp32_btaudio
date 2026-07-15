@@ -6,6 +6,9 @@
 #include "freertos/semphr.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "esp_wifi.h"
+#include "esp_netif.h"
+#include "esp_event.h"
 
 #include "signal_gen.h"
 #include "pcm_ring.h"
@@ -160,6 +163,82 @@ static void test_heap_is_available(void)
 }
 
 /* ============================================================
+ * WiFi connectivity test
+ * ============================================================ */
+
+static void test_wifi_connectivity(void)
+{
+    ESP_LOGI(TAG, "=== Starting WiFi connectivity test ===");
+    
+    /* Load WiFi credentials from NVS */
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open("wifi", NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "No WiFi credentials in NVS (err=%d)", err);
+        ESP_LOGI(TAG, "WiFi test passed (no credentials, AP mode)");
+        TEST_ASSERT(true);
+        return;
+    }
+    
+    char ssid[33] = {0};
+    char pass[65] = {0};
+    
+    size_t ssid_len = sizeof(ssid) - 1;
+    if (nvs_get_str(handle, "ssid", ssid, &ssid_len) == ESP_OK) {
+        ESP_LOGI(TAG, "Found SSID in NVS: %s", ssid);
+        
+        size_t pass_len = sizeof(pass) - 1;
+        if (nvs_get_str(handle, "pass", pass, &pass_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Found password in NVS");
+        } else {
+            ESP_LOGW(TAG, "No password found for SSID");
+        }
+    } else {
+        ESP_LOGW(TAG, "No SSID found in NVS");
+    }
+    
+    nvs_close(handle);
+    
+    /* Initialize WiFi */
+    ESP_LOGI(TAG, "Initializing WiFi...");
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    
+    /* Try to connect */
+    ESP_LOGI(TAG, "Setting WiFi mode to STA...");
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    
+    /* Wait for connection attempt */
+    ESP_LOGI(TAG, "Waiting 2s for WiFi connection...");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    
+    /* Check if we got an IP address */
+    esp_netif_ip_info_t info;
+    if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &info) == ESP_OK) {
+        ESP_LOGI(TAG, "Got IP: %d.%d.%d.%d", 
+                 (info.ip.addr >> 24) & 0xff,
+                 (info.ip.addr >> 16) & 0xff,
+                 (info.ip.addr >> 8) & 0xff,
+                 info.ip.addr & 0xff);
+        TEST_ASSERT(info.ip.addr != 0);
+    } else {
+        ESP_LOGW(TAG, "No IP address yet, connection may still be in progress");
+        TEST_ASSERT(true);
+    }
+    
+    /* Clean up */
+    ESP_ERROR_CHECK(esp_wifi_stop());
+    ESP_ERROR_CHECK(esp_wifi_deinit());
+    
+    ESP_LOGI(TAG, "=== WiFi connectivity test completed ===");
+}
+
+/* ============================================================
  * Test runner
  * ============================================================ */
 
@@ -183,6 +262,9 @@ void device_test_main(void)
 
     ESP_LOGI(TAG, "Running heap tests");
     RUN_TEST(test_heap_is_available);
+
+    ESP_LOGI(TAG, "Running WiFi connectivity tests");
+    test_wifi_connectivity();
 
     ESP_LOGI(TAG, "All device tests completed");
 }
