@@ -134,11 +134,13 @@ size_t radio_pcm_read(int16_t *dst, size_t frames)
 
 /* ---- Session-based lifecycle (RH-S3-02) ---- */
 
-/* Event bits for worker exit acknowledgement. */
-#define RADIO_EVT_STREAM_EXITED  BIT0
-#define RADIO_EVT_DECODER_EXITED BIT1
-#define RADIO_EVT_ALL_EXITED \
-    (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+/* Event bits for worker start/exit acknowledgement. */
+#define RADIO_EVT_STREAM_STARTED  ((EventBits_t)1)
+#define RADIO_EVT_DECODER_STARTED ((EventBits_t)2)
+#define RADIO_EVT_STREAM_EXITED   ((EventBits_t)4)
+#define RADIO_EVT_DECODER_EXITED  ((EventBits_t)8)
+#define RADIO_EVT_ALL_STARTED     (RADIO_EVT_STREAM_STARTED | RADIO_EVT_DECODER_STARTED)
+#define RADIO_EVT_ALL_EXITED      (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
 
 /* ---- Command queue (RH-S3-09) ---- */
 
@@ -183,11 +185,7 @@ static radio_state_t s_radio_state;
 static uint32_t s_next_generation;
 
 /* ---- Test injection hooks (RH-S3-02) ---- */
-/* Expose event bits for failure injection tests. */
-#define RADIO_EVT_STREAM_EXITED  BIT0
-#define RADIO_EVT_DECODER_EXITED BIT1
-#define RADIO_EVT_ALL_EXITED \
-    (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+/* Expose event bits for failure injection tests (match above). */
 
 /* Set exit bits on the active session's event group for test injection. */
 void radio_test_inject_exit_bits(EventBits_t bits)
@@ -355,7 +353,10 @@ static void stream_task(void *arg)
         esp_http_client_handle_t c = esp_http_client_init(&cfg);
         if (!c) {
             set_radio_error(RADIO_ERR_HTTP_CLIENT_ALLOC, "client alloc failed");
-            vTaskDelay(pdMS_TO_TICKS(500));
+            /* 7.5: interruptible wait on client alloc failure */
+            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
+                                 pdFALSE, pdFALSE,
+                                 pdMS_TO_TICKS(500 / portTICK_PERIOD_MS));
             continue;
         }
         esp_http_client_set_header(c, "Icy-MetaData", "1");
@@ -377,6 +378,20 @@ static void stream_task(void *arg)
             xSemaphoreGive(s_mtx);
         }
 
+        /* 7.6: validate HTTP status — fault on non-2xx */
+        if (status < 200 || status >= 300) {
+            set_radio_error(RADIO_ERR_HTTP_STATUS, "bad HTTP status");
+            ESP_LOGW(TAG, "HTTP status %d, faulting", status);
+            esp_http_client_close(c);
+            esp_http_client_cleanup(c);
+            atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+            xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+            s_radio_state = RADIO_STATE_FAULTED;
+            xSemaphoreGive(s_control_mtx);
+            /* 7.3: break to single exit — not continue */
+            break;
+        }
+
         /* RH-S3-21: terminate session on unsupported codec.
          * Reconnecting to the same URL won't produce a different codec,
          * so fault out rather than fill the compressed ring forever. */
@@ -389,7 +404,8 @@ static void stream_task(void *arg)
             xSemaphoreTake(s_control_mtx, portMAX_DELAY);
             s_radio_state = RADIO_STATE_FAULTED;
             xSemaphoreGive(s_control_mtx);
-            continue;
+            /* 7.3: break to single exit — not continue */
+            break;
         }
 
         ESP_LOGI(TAG, "connected: codec=%s ct=%s metaint=%d br=%d name=%s",
@@ -399,10 +415,23 @@ static void stream_task(void *arg)
         fflush(stdout);
         backoff = 500;
 
+        /* 7.2: signal startup — stream has connected successfully */
+        xEventGroupSetBits(s->events, RADIO_EVT_STREAM_STARTED);
+
         radio_icy_demux_t demux;
         radio_icy_demux_init(&demux, s_hdr_metaint);
         static uint8_t buf[2048];
         while (session_should_run(s)) {
+            /* 7.7: backpressure — check ring free space before reading */
+            size_t free_space;
+            xSemaphoreTake(s_mtx, portMAX_DELAY);
+            free_space = s_cap - s_count;
+            xSemaphoreGive(s_mtx);
+            if (free_space < (sizeof(buf))) {
+                /* Ring full — drain wait (interruptible by stop) */
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            }
             int r = esp_http_client_read(c, (char *)buf, sizeof(buf));
             if (r <= 0) break;
             radio_icy_demux_feed(&demux, buf, (size_t)r, on_audio, on_title, NULL);
@@ -415,12 +444,15 @@ static void stream_task(void *arg)
             xSemaphoreTake(s_mtx, portMAX_DELAY);
             s_reconnects++;
             xSemaphoreGive(s_mtx);
-            vTaskDelay(pdMS_TO_TICKS(backoff));
+            /* 7.5: interruptible backoff wait via event group */
+            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
+                                 pdFALSE, pdFALSE,
+                                 pdMS_TO_TICKS(backoff / portTICK_PERIOD_MS));
             backoff = (backoff < 8000) ? backoff * 2 : 8000;
         }
     }
 
-    /* Signal exit. */
+    /* 7.3: single exit label — signal exit and cleanup */
     xEventGroupSetBits(s->events, RADIO_EVT_STREAM_EXITED);
     s->stream_task = NULL;
     vTaskDelete(NULL);

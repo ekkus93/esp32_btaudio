@@ -27,6 +27,7 @@ typedef enum {
     RADIO_STATE_RUNNING,
     RADIO_STATE_STOPPING,
     RADIO_STATE_FAULTED,
+    RADIO_STATE_FAULTED_JOIN_PENDING,  /* faulted; workers not yet joined (7.4) */
 } radio_state_t;
 
 #define RADIO_URL_MAX      256
@@ -43,6 +44,8 @@ typedef enum {
     RADIO_ERR_DECODER_STALLED,
     RADIO_ERR_STOP_TIMEOUT,
     RADIO_ERR_RESAMPLER_STALLED,
+    RADIO_ERR_HTTP_STATUS,       /* non-2xx response from stream (7.6) */
+    RADIO_ERR_DECODER_CONTRACT,  /* decoder consumed beyond input (7.8) */
 } radio_err_t;
 
 typedef struct {
@@ -86,7 +89,9 @@ esp_err_t radio_stop_async(void);
 
 /* Internal — synchronous play/stop (called by command worker or tests).
  * Blocks until both stream and decoder tasks are created (play), or both
- * workers exited (stop). */
+ * workers exited (stop).
+ * These are NOT thread-safe to call from outside the command worker —
+ * use radio_play_async() / radio_stop_async() instead. (7.1) */
 esp_err_t radio_play_sync(const char *playlist_or_url);
 esp_err_t radio_stop_sync(void);
 
@@ -109,9 +114,12 @@ void radio_test_inject_exit_bits(uint32_t bits);
 void *radio_test_get_active_session(void);
 
 /* Event bits for test injection (match RADIO_EVT_ constants in radio.c). */
-#define RADIO_EVT_STREAM_EXITED  BIT0
-#define RADIO_EVT_DECODER_EXITED BIT1
-#define RADIO_EVT_ALL_EXITED     (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+#define RADIO_EVT_STREAM_STARTED  ((EventBits_t)1)
+#define RADIO_EVT_DECODER_STARTED ((EventBits_t)2)
+#define RADIO_EVT_STREAM_EXITED   ((EventBits_t)4)
+#define RADIO_EVT_DECODER_EXITED  ((EventBits_t)8)
+#define RADIO_EVT_ALL_STARTED     (RADIO_EVT_STREAM_STARTED | RADIO_EVT_DECODER_STARTED)
+#define RADIO_EVT_ALL_EXITED      (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
 
 /* Return the current lifecycle state. */
 radio_state_t radio_get_state(void);
