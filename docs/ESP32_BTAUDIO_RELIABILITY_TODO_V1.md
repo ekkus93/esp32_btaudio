@@ -1408,7 +1408,7 @@ Acceptance:
 - [x] RH-S3-17 through RH-S3-21. (done)
 - [x] RH-WR-03 (done: 502a9b4c)
 - [x] RH-WR-04 (done: 2c82c73a)
-- [ ] RH-WR-05.
+- [x] RH-WR-05 (done: 7be9a562)
 
 ## Validation
 
