@@ -1,65 +1,90 @@
 /* radio_resampler — streaming linear-interp resampler. See header. */
 #include "radio_resampler.h"
 
+#include <math.h>
 #include <string.h>
 
-void radio_resampler_init(radio_resampler_t *r, int src_rate, int channels)
+static int16_t clamp_i16(long value)
 {
-    r->src_rate = src_rate > 0 ? src_rate : RESAMPLE_OUT_RATE;
-    r->channels = (channels == 1) ? 1 : 2;
-    r->step = (double)r->src_rate / (double)RESAMPLE_OUT_RATE;
-    r->frac = 0.0;
-    r->prev_l = r->prev_r = 0;
-    r->primed = false;
+    if (value > INT16_MAX) return INT16_MAX;
+    if (value < INT16_MIN) return INT16_MIN;
+    return (int16_t)value;
 }
 
-static inline void get_frame(const int16_t *in, int channels, size_t i, int16_t *l, int16_t *r)
+static inline void read_frame(const int16_t *in, size_t index, int channels,
+                              int16_t *left, int16_t *right)
 {
     if (channels == 1) {
-        *l = *r = in[i];
+        *left = in[index];
+        *right = in[index];
     } else {
-        *l = in[2 * i];
-        *r = in[2 * i + 1];
+        *left = in[index * 2];
+        *right = in[index * 2 + 1];
     }
+}
+
+bool radio_resampler_init(radio_resampler_t *r, int src_rate, int channels)
+{
+    if (!r) return false;
+    if (src_rate <= 0 || (channels != 1 && channels != 2)) {
+        if (r) memset(r, 0, sizeof(*r));
+        return false;
+    }
+
+    memset(r, 0, sizeof(*r));
+    r->src_rate = src_rate;
+    r->channels = channels;
+    r->step = (double)src_rate / (double)RESAMPLE_OUT_RATE;
+    return isfinite(r->step) && r->step > 0.0;
 }
 
 size_t radio_resampler_run(radio_resampler_t *r, const int16_t *in, size_t in_frames,
                            int16_t *out, size_t out_cap, size_t *in_used)
 {
     if (in_used) *in_used = 0;
-    if (!in || in_frames == 0 || !out || out_cap == 0) return 0;
-
-    /* Fast path: already the target format. */
-    if (r->src_rate == RESAMPLE_OUT_RATE && r->channels == 2) {
-        size_t n = in_frames < out_cap ? in_frames : out_cap;
-        memcpy(out, in, n * 2 * sizeof(int16_t));
-        if (in_used) *in_used = n;
-        return n;
+    if (!r || !in || !out || !in_used || out_cap == 0 ||
+        r->src_rate <= 0 || (r->channels != 1 && r->channels != 2)) {
+        return 0;
     }
 
-    if (!r->primed) {
-        get_frame(in, r->channels, 0, &r->prev_l, &r->prev_r);
-        r->primed = true;
-    }
+    size_t input_index = 0;
+    size_t output_frames = 0;
 
-    size_t i = 0;      /* index of the "right" input frame */
-    size_t o = 0;      /* output frames written */
-    while (o < out_cap && i < in_frames) {
-        int16_t rl, rr;
-        get_frame(in, r->channels, i, &rl, &rr);
-        double f = r->frac;
-        out[2 * o]     = (int16_t)(r->prev_l + f * (rl - r->prev_l));
-        out[2 * o + 1] = (int16_t)(r->prev_r + f * (rr - r->prev_r));
-        o++;
-
-        r->frac += r->step;
-        while (r->frac >= 1.0 && i < in_frames) {
-            r->frac -= 1.0;
-            get_frame(in, r->channels, i, &r->prev_l, &r->prev_r);
-            i++;
+    while (output_frames < out_cap) {
+        if (!r->primed) {
+            if (input_index >= in_frames) break;
+            read_frame(in, input_index, r->channels, &r->left_l, &r->left_r);
+            input_index++;
+            r->phase = 0.0;
+            r->primed = true;
         }
+
+        while (r->phase >= 1.0) {
+            if (input_index >= in_frames) {
+                *in_used = input_index;
+                return output_frames;
+            }
+            read_frame(in, input_index, r->channels, &r->left_l, &r->left_r);
+            input_index++;
+            r->phase -= 1.0;
+        }
+
+        int16_t right_l = r->left_l;
+        int16_t right_r = r->left_r;
+        if (r->phase > 0.0) {
+            if (input_index >= in_frames) break;   /* need the next frame to interpolate */
+            read_frame(in, input_index, r->channels, &right_l, &right_r);
+        }
+
+        double l = (double)r->left_l + ((double)right_l - (double)r->left_l) * r->phase;
+        double rr = (double)r->left_r + ((double)right_r - (double)r->left_r) * r->phase;
+
+        out[output_frames * 2] = clamp_i16(lround(l));
+        out[output_frames * 2 + 1] = clamp_i16(lround(rr));
+        output_frames++;
+        r->phase += r->step;
     }
 
-    if (in_used) *in_used = i;
-    return o;
+    *in_used = input_index;
+    return output_frames;
 }

@@ -145,7 +145,7 @@ add_test(NAME test_station_store COMMAND test_station_store)
 # RADIO-2b: resampler math
 add_executable(test_radio_resampler test_radio_resampler.c ${RADIO_DIR}/radio_resampler.c)
 target_include_directories(test_radio_resampler PRIVATE ${RADIO_DIR}/include)
-target_link_libraries(test_radio_resampler unity)
+target_link_libraries(test_radio_resampler unity m)
 add_test(NAME test_radio_resampler COMMAND test_radio_resampler)
 
 # CTRL-1a: ctrl_cfg MAC validator (NVS glue is ESP_PLATFORM-guarded out on host)
@@ -179,7 +179,7 @@ target_include_directories(test_radio_lifecycle PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
 target_compile_definitions(test_radio_lifecycle PRIVATE UNIT_TEST)
-target_link_libraries(test_radio_lifecycle unity)
+target_link_libraries(test_radio_lifecycle unity m)
 add_test(NAME test_radio_lifecycle COMMAND test_radio_lifecycle)
 
 # RH-S3-06: pack_s16_msb — signed sample packing without UB
