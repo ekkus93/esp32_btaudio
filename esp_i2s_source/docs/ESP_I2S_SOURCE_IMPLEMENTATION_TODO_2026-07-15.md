@@ -1003,6 +1003,8 @@ Add tests injecting `nvs_open`, `nvs_set`, and `nvs_commit` failure. Assert no c
 
 # Phase 4 — Fix `bt_link` request ownership and event dispatch
 
+**Status: DONE** — commit `74a4fa57`. Retain-before-enqueue refcounting matches RESPONSES answer #3 exactly. Hardware-verified. Gap: no deterministic interleaving test for 4.6 yet (follow-up).
+
 ## 4.1 Add explicit module lifecycle
 
 **Files:**
