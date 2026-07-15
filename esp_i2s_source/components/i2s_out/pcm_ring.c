@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <stdint.h>
 
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
@@ -25,29 +26,31 @@ struct pcm_ring {
     _Atomic size_t peak;  /* max used seen (producer-updated stat) */
 };
 
-static void *ring_alloc(size_t n, bool use_psram)
+static void *ring_alloc(size_t n, pcm_ring_memory_t memory)
 {
 #ifdef ESP_PLATFORM
-    if (use_psram) {
+    if (memory == PCM_RING_PSRAM_REQUIRED || memory == PCM_RING_PSRAM_PREFERRED) {
         void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (p) return p;
-        /* fall back to internal RAM if PSRAM is unavailable */
+        if (p != NULL || memory == PCM_RING_PSRAM_REQUIRED) {
+            return p;   /* REQUIRED: NULL on PSRAM failure, never fall back */
+        }
+        /* PREFERRED: fall back to internal RAM if PSRAM is unavailable */
     }
     return heap_caps_malloc(n, MALLOC_CAP_8BIT);
 #else
-    (void)use_psram;
+    (void)memory;
     return malloc(n);
 #endif
 }
 
-pcm_ring_t *pcm_ring_create(size_t capacity, bool use_psram)
+pcm_ring_t *pcm_ring_create(size_t capacity, pcm_ring_memory_t memory)
 {
-    if (capacity == 0) return NULL;
+    if (capacity == 0 || capacity == SIZE_MAX) return NULL;
     pcm_ring_t *r = calloc(1, sizeof(*r));
     if (!r) return NULL;
     r->size = capacity + 1;      /* one wasted slot for full/empty */
     r->capacity = capacity;
-    r->buf = ring_alloc(r->size, use_psram);
+    r->buf = ring_alloc(r->size, memory);
     if (!r->buf) {
         free(r);
         return NULL;
@@ -113,6 +116,34 @@ size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len)
     if (first > n) first = n;
     memcpy(dst, r->buf + tail, first);
     if (n > first) memcpy(dst + first, r->buf, n - first);
+
+    atomic_store_explicit(&r->tail, (tail + n) % r->size,
+                          memory_order_release);
+    return n;
+}
+
+size_t pcm_ring_peek(const pcm_ring_t *r, uint8_t *dst, size_t len)
+{
+    if (!r || !dst || len == 0) return 0;
+    size_t head = atomic_load_explicit(&r->head, memory_order_acquire);
+    size_t tail = atomic_load_explicit(&r->tail, memory_order_relaxed);
+    size_t used = used_of(head, tail, r->size);
+    size_t n = (len < used) ? len : used;
+
+    size_t first = r->size - tail;
+    if (first > n) first = n;
+    memcpy(dst, r->buf + tail, first);
+    if (n > first) memcpy(dst + first, r->buf, n - first);
+    return n;
+}
+
+size_t pcm_ring_consume(pcm_ring_t *r, size_t len)
+{
+    if (!r || len == 0) return 0;
+    size_t head = atomic_load_explicit(&r->head, memory_order_acquire);
+    size_t tail = atomic_load_explicit(&r->tail, memory_order_relaxed);
+    size_t used = used_of(head, tail, r->size);
+    size_t n = (len < used) ? len : used;
 
     atomic_store_explicit(&r->tail, (tail + n) % r->size,
                           memory_order_release);

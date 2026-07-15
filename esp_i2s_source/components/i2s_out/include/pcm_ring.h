@@ -24,9 +24,22 @@ extern "C" {
 
 typedef struct pcm_ring pcm_ring_t;
 
-/* Create a ring with `capacity` usable bytes (returns NULL on alloc failure).
- * use_psram requests PSRAM backing on device; ignored on host. */
-pcm_ring_t *pcm_ring_create(size_t capacity, bool use_psram);
+/* Backing-memory policy (SPEC §6.7 / TODO 3.2). REQUIRED must never silently
+ * fall back to internal RAM — a large ring landing in internal heap can
+ * starve unrelated allocations. PREFERRED may fall back; INTERNAL_ONLY never
+ * requests PSRAM (used on host, where PSRAM is meaningless). */
+typedef enum {
+    PCM_RING_INTERNAL_ONLY = 0,
+    PCM_RING_PSRAM_REQUIRED,
+    PCM_RING_PSRAM_PREFERRED,
+} pcm_ring_memory_t;
+
+/* Create a ring with `capacity` usable bytes. Returns NULL on allocation
+ * failure, on capacity == 0, or on capacity == SIZE_MAX (would overflow the
+ * internal size = capacity + 1 wasted-slot accounting). PCM_RING_PSRAM_REQUIRED
+ * returns NULL rather than falling back to internal RAM if PSRAM allocation
+ * fails. `memory` is ignored on host (plain malloc). */
+pcm_ring_t *pcm_ring_create(size_t capacity, pcm_ring_memory_t memory);
 void pcm_ring_destroy(pcm_ring_t *r);
 
 /* Producer side: copy up to `len` bytes in; returns bytes actually written
@@ -36,6 +49,18 @@ size_t pcm_ring_write(pcm_ring_t *r, const uint8_t *src, size_t len);
 /* Consumer side: copy up to `len` bytes out; returns bytes actually read
  * (< len when the ring drains). */
 size_t pcm_ring_read(pcm_ring_t *r, uint8_t *dst, size_t len);
+
+/* Consumer side: copy up to `len` bytes out WITHOUT advancing tail (unlike
+ * pcm_ring_read()). Returns bytes actually copied (< len when the ring has
+ * less than `len` bytes available). Pair with pcm_ring_consume() once the
+ * caller knows how many of the peeked bytes were actually accepted
+ * downstream (TODO 3.3 — fixes I2S-002: don't drop ring bytes before
+ * knowing whether the sink took them). Single consumer only. */
+size_t pcm_ring_peek(const pcm_ring_t *r, uint8_t *dst, size_t len);
+
+/* Consumer side: advance tail by up to `len` bytes (bounded by bytes
+ * actually used). Returns bytes actually consumed. Single consumer only. */
+size_t pcm_ring_consume(pcm_ring_t *r, size_t len);
 
 size_t pcm_ring_used(const pcm_ring_t *r);
 size_t pcm_ring_free(const pcm_ring_t *r);

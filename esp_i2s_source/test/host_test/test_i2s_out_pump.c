@@ -1,211 +1,138 @@
 /*
- * test_i2s_out_pump — pure pump logic (SIG-1b): drain, zero-fill on underrun,
- * stats accounting, data integrity — verified with a mock sink.
+ * test_i2s_out_pump — pure pending-block arithmetic (TODO 3.4/3.5):
+ * i2s_pending_advance() computes how many REAL (non-zero-fill) bytes of a
+ * partially/fully accepted write should be consumed from the ring, and
+ * shifts the remaining pending buffer to the front.
  */
 #include "unity.h"
 #include "i2s_out.h"
-#include "pcm_ring.h"
 
 #include <string.h>
 
 void setUp(void) {}
 void tearDown(void) {}
 
-/* Mock sink: captures the most recent block and counts calls/failures. */
-typedef struct {
-    uint8_t last[256];
-    size_t  last_len;
-    int     calls;
-    int     fail_next;   /* if nonzero, next call returns -1 */
-} mock_sink_t;
-
-static int mock_sink(void *ctx, const uint8_t *data, size_t len)
+static void fill_pending(uint8_t *buf, size_t real, size_t total, uint8_t real_base)
 {
-    mock_sink_t *m = (mock_sink_t *)ctx;
-    m->calls++;
-    if (m->fail_next) { m->fail_next = 0; return -1; }
-    TEST_ASSERT_TRUE(len <= sizeof(m->last));
-    memcpy(m->last, data, len);
-    m->last_len = len;
-    return 0;
+    for (size_t i = 0; i < real; i++) buf[i] = (uint8_t)(real_base + i);
+    if (total > real) memset(buf + real, 0, total - real);
 }
 
-static void test_full_block_no_underrun(void)
+static void test_full_accept_no_zero_fill(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[64];
-    for (int i = 0; i < 64; i++) in[i] = (uint8_t)(i + 1);
-    pcm_ring_write(r, in, 64);
+    uint8_t pending[64];
+    fill_pending(pending, 64, 64, 1);
+    size_t len = 64, real = 64;
 
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    size_t got = i2s_out_pump_once(r, (uint8_t[64]){0}, 64, mock_sink, &m, &st);
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 64);
 
-    TEST_ASSERT_EQUAL_UINT(64, got);
-    TEST_ASSERT_EQUAL_UINT(64, m.last_len);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(in, m.last, 64);
-    TEST_ASSERT_EQUAL_UINT64(64, st.bytes_written);
-    TEST_ASSERT_EQUAL_UINT64(0, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_UINT32(0, st.underrun_events);
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(64, real_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, len);
+    TEST_ASSERT_EQUAL_UINT(0, real);
 }
 
-static void test_empty_ring_full_underrun(void)
+static void test_full_accept_with_zero_fill_tail(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[64];
-    memset(scratch, 0xAB, sizeof(scratch));  /* poison to prove zero-fill */
+    uint8_t pending[64];
+    fill_pending(pending, 20, 64, 0x40);
+    size_t len = 64, real = 20;
 
-    size_t got = i2s_out_pump_once(r, scratch, 64, mock_sink, &m, &st);
+    /* Driver accepted the whole 64-byte block (20 real + 44 zero-fill). */
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 64);
 
-    TEST_ASSERT_EQUAL_UINT(0, got);
-    TEST_ASSERT_EQUAL_UINT(64, m.last_len);
-    for (int i = 0; i < 64; i++) TEST_ASSERT_EQUAL_UINT8(0, m.last[i]);
-    TEST_ASSERT_EQUAL_UINT64(64, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_UINT32(1, st.underrun_events);
-    TEST_ASSERT_EQUAL_UINT64(64, st.bytes_written);  /* still delivers a block */
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(20, real_accepted);  /* only the real bytes count */
+    TEST_ASSERT_EQUAL_UINT(0, len);
+    TEST_ASSERT_EQUAL_UINT(0, real);
 }
 
-static void test_partial_zero_fill(void)
+static void test_zero_write_leaves_pending_untouched(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[20];
-    for (int i = 0; i < 20; i++) in[i] = (uint8_t)(0x40 + i);
-    pcm_ring_write(r, in, 20);
+    uint8_t pending[16];
+    fill_pending(pending, 16, 16, 0x10);
+    uint8_t before[16];
+    memcpy(before, pending, 16);
+    size_t len = 16, real = 16;
 
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[64];
-    memset(scratch, 0xCD, sizeof(scratch));
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 0);
 
-    size_t got = i2s_out_pump_once(r, scratch, 64, mock_sink, &m, &st);
-
-    TEST_ASSERT_EQUAL_UINT(20, got);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(in, m.last, 20);          /* real data first */
-    for (int i = 20; i < 64; i++) TEST_ASSERT_EQUAL_UINT8(0, m.last[i]);  /* filled */
-    TEST_ASSERT_EQUAL_UINT64(44, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_UINT32(1, st.underrun_events);
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(0, real_accepted);
+    TEST_ASSERT_EQUAL_UINT(16, len);
+    TEST_ASSERT_EQUAL_UINT(16, real);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(before, pending, 16);
 }
 
-static void test_stats_accumulate_over_pumps(void)
+static void test_partial_write_within_real_data(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[32] = {0};
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[32];
+    uint8_t pending[64];
+    fill_pending(pending, 64, 64, 1);   /* all real, values 1..64 */
+    size_t len = 64, real = 64;
 
-    pcm_ring_write(r, in, 32);
-    i2s_out_pump_once(r, scratch, 32, mock_sink, &m, &st);  /* full */
-    i2s_out_pump_once(r, scratch, 32, mock_sink, &m, &st);  /* underrun */
-    i2s_out_pump_once(r, scratch, 32, mock_sink, &m, &st);  /* underrun */
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 10);
 
-    TEST_ASSERT_EQUAL_UINT64(96, st.bytes_written);
-    TEST_ASSERT_EQUAL_UINT64(64, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_UINT32(2, st.underrun_events);
-    TEST_ASSERT_EQUAL_INT(3, m.calls);
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(10, real_accepted);
+    TEST_ASSERT_EQUAL_UINT(54, len);
+    TEST_ASSERT_EQUAL_UINT(54, real);
+    /* Remaining buffer is the old [10..63] shifted to the front. */
+    TEST_ASSERT_EQUAL_UINT8(11, pending[0]);
+    TEST_ASSERT_EQUAL_UINT8(64, pending[53]);
 }
 
-static void test_sink_failure_not_counted_as_written(void)
+static void test_partial_write_only_touches_zero_fill_tail(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[16] = {0};
-    pcm_ring_write(r, in, 16);
-    mock_sink_t m = {0};
-    m.fail_next = 1;
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[16];
+    uint8_t pending[64];
+    fill_pending(pending, 20, 64, 0x40);
+    size_t len = 64, real = 20;
 
-    i2s_out_pump_once(r, scratch, 16, mock_sink, &m, &st);
-    TEST_ASSERT_EQUAL_UINT64(0, st.bytes_written);  /* sink failed */
-    pcm_ring_destroy(r);
+    /* Driver accepted 30 bytes: all 20 real bytes + 10 of the zero-fill tail. */
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 30);
+
+    TEST_ASSERT_EQUAL_UINT(20, real_accepted);  /* every real byte, no more */
+    TEST_ASSERT_EQUAL_UINT(34, len);            /* 64 - 30 zero-fill bytes remain */
+    TEST_ASSERT_EQUAL_UINT(0, real);            /* no real bytes left pending */
 }
 
-static void test_pump_zero_block_len(void)
+static void test_written_clamped_to_pending_len(void)
 {
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[64];
-    for (int i = 0; i < 64; i++) in[i] = (uint8_t)i;
-    pcm_ring_write(r, in, 64);
+    uint8_t pending[8];
+    fill_pending(pending, 8, 8, 1);
+    size_t len = 8, real = 8;
 
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[1];
-    /* block_len=0 → no-op, no data drained, no call to sink. */
-    size_t got = i2s_out_pump_once(r, scratch, 0, mock_sink, &m, &st);
+    /* Driver claims to have written more than was ever requested — must be
+     * clamped, not trusted, to avoid corrupting the state machine. */
+    size_t real_accepted = i2s_pending_advance(pending, &len, &real, 999);
 
-    TEST_ASSERT_EQUAL_UINT(0, got);
-    TEST_ASSERT_EQUAL_UINT64(0, st.bytes_written);
-    TEST_ASSERT_EQUAL_UINT64(0, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_INT(0, m.calls);  /* sink not called */
-    TEST_ASSERT_EQUAL_UINT(64, pcm_ring_used(r));  /* data still in ring */
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(8, real_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, len);
+    TEST_ASSERT_EQUAL_UINT(0, real);
 }
 
-static void test_pump_block_larger_than_ring(void)
+static void test_sequence_of_partial_writes_drains_correctly(void)
 {
-    pcm_ring_t *r = pcm_ring_create(16, false);  /* tiny ring */
-    uint8_t in[16];
-    for (int i = 0; i < 16; i++) in[i] = (uint8_t)(0xA0 + i);
-    pcm_ring_write(r, in, 16);
+    uint8_t pending[32];
+    fill_pending(pending, 32, 32, 1);
+    size_t len = 32, real = 32;
+    size_t total_real_accepted = 0;
 
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[256];  /* block larger than ring */
+    /* Simulate a driver that only ever accepts 5 bytes per call. */
+    while (len > 0) {
+        size_t accepted = i2s_pending_advance(pending, &len, &real, 5);
+        total_real_accepted += accepted;
+    }
 
-    size_t got = i2s_out_pump_once(r, scratch, 256, mock_sink, &m, &st);
-
-    TEST_ASSERT_EQUAL_UINT(16, got);  /* drained all 16 bytes */
-    TEST_ASSERT_EQUAL_UINT(256, m.last_len);  /* full block delivered */
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(in, m.last, 16);  /* real data */
-    for (int i = 16; i < 256; i++)
-        TEST_ASSERT_EQUAL_UINT8(0, m.last[i]);  /* zero-filled */
-    TEST_ASSERT_EQUAL_UINT64(240, st.underrun_bytes);
-    TEST_ASSERT_EQUAL_UINT32(1, st.underrun_events);
-    pcm_ring_destroy(r);
-}
-
-static void test_pump_accumulates_peak_used(void)
-{
-    pcm_ring_t *r = pcm_ring_create(256, false);
-    uint8_t in[128];
-    for (int i = 0; i < 128; i++) in[i] = (uint8_t)i;
-    pcm_ring_write(r, in, 128);
-
-    mock_sink_t m = {0};
-    i2s_out_stats_t st = {0};
-    uint8_t scratch[128];
-
-    /* First pump: full block, peak=128. */
-    i2s_out_pump_once(r, scratch, 128, mock_sink, &m, &st);
-    TEST_ASSERT_EQUAL_UINT(128, pcm_ring_peak_used(r));
-
-    /* Write more data to test peak tracking. */
-    uint8_t more[100];
-    for (int i = 0; i < 100; i++) more[i] = (uint8_t)(i + 1);
-    pcm_ring_write(r, more, 100);
-
-    uint8_t scratch2[200];
-    i2s_out_pump_once(r, scratch2, 128, mock_sink, &m, &st);
-    TEST_ASSERT_TRUE(pcm_ring_peak_used(r) >= 128);  /* peak preserved */
-    pcm_ring_destroy(r);
+    TEST_ASSERT_EQUAL_UINT(32, total_real_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, len);
+    TEST_ASSERT_EQUAL_UINT(0, real);
 }
 
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_full_block_no_underrun);
-    RUN_TEST(test_empty_ring_full_underrun);
-    RUN_TEST(test_partial_zero_fill);
-    RUN_TEST(test_stats_accumulate_over_pumps);
-    RUN_TEST(test_sink_failure_not_counted_as_written);
-    RUN_TEST(test_pump_zero_block_len);
-    RUN_TEST(test_pump_block_larger_than_ring);
-    RUN_TEST(test_pump_accumulates_peak_used);
+    RUN_TEST(test_full_accept_no_zero_fill);
+    RUN_TEST(test_full_accept_with_zero_fill_tail);
+    RUN_TEST(test_zero_write_leaves_pending_untouched);
+    RUN_TEST(test_partial_write_within_real_data);
+    RUN_TEST(test_partial_write_only_touches_zero_fill_tail);
+    RUN_TEST(test_written_clamped_to_pending_len);
+    RUN_TEST(test_sequence_of_partial_writes_drains_correctly);
     return UNITY_END();
 }

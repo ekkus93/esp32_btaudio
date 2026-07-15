@@ -130,10 +130,15 @@ static void audio_out_task(void *arg)
             size_t w = i2s_out_write(p + off, total - off);
             off += w;
             if (w == 0) {
-                /* Ring full / I2S not draining yet. Phase 3 adds a state
-                 * field to i2s_out_stats_t for a state-aware backoff; a
-                 * fixed 1-tick yield is the safe default until then. */
-                vTaskDelay(1);
+                /* Ring full / I2S not draining. Back off harder while
+                 * faulted so a stuck writer doesn't spin this task at full
+                 * rate; otherwise yield one tick so IDLE still runs (at
+                 * CONFIG_FREERTOS_HZ=100, pdMS_TO_TICKS(1) rounds to 0 —
+                 * a real regression that starved the task watchdog on
+                 * hardware; a bare 1-tick delay is always >= one tick). */
+                i2s_out_stats_t stats;
+                i2s_out_get_stats(&stats);
+                vTaskDelay(stats.state == I2S_STATE_FAULTED ? pdMS_TO_TICKS(100) : 1);
             }
         }
     }
@@ -280,10 +285,17 @@ void app_main(void)
     for (;;) {
         i2s_out_stats_t st;
         i2s_out_get_stats(&st);
-        printf("DIAG|I2S|bytes=%llu,und=%llu,undev=%u,ringpeak=%u\n",
+        printf("DIAG|I2S|state=%d,bytes=%llu,und=%llu,undev=%llu,timeouts=%llu,"
+               "errs=%llu,partial=%llu,ringused=%u,ringcap=%u,ringpeak=%u\n",
+               (int)st.state,
                (unsigned long long)st.bytes_written,
                (unsigned long long)st.underrun_bytes,
-               (unsigned)st.underrun_events, (unsigned)st.ring_peak);
+               (unsigned long long)st.underrun_events,
+               (unsigned long long)st.write_timeouts,
+               (unsigned long long)st.write_errors,
+               (unsigned long long)st.partial_writes,
+               (unsigned)st.ring_used, (unsigned)st.ring_capacity,
+               (unsigned)st.ring_peak);
         fflush(stdout);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
