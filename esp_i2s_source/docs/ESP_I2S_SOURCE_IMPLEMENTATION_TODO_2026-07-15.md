@@ -1597,6 +1597,14 @@ For 480,000 input frames at 48 kHz, expected output is approximately 441,000 fra
 
 # Phase 7 — Make radio lifecycle single-owner and join-safe
 
+**Status: DONE** — commits `b8af38cb`, `76d743cc`. All of 7.1-7.10 implemented. Gap: 7.11 failure-injection tests (follow-up, requires ASan host test for session lifetime).
+
+## 7.1 Remove direct lifecycle mutation from public APIs
+
+**Status: DONE** — commit `b8af38cb`. `radio_play_sync()` / `radio_stop_sync()` documented as internal-only, callable only from cmd worker. `radio_play_async()` / `radio_stop_async()` are the public entry points.
+
+---
+
 ## 7.1 Remove direct lifecycle mutation from public APIs
 
 **File:** `components/radio/radio.c`
