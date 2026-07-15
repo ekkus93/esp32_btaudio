@@ -222,3 +222,30 @@ target_include_directories(test_ctrl_init PRIVATE
 target_compile_definitions(test_ctrl_init PRIVATE UNIT_TEST)
 target_link_libraries(test_ctrl_init unity)
 add_test(NAME test_ctrl_init COMMAND test_ctrl_init)
+
+# 2.8: boot-sequence — every singleton initializer/start called exactly
+# once, read-only WROOM probe. Compiles the real main/main.c; ESP_PLATFORM
+# is defined so it sees the real bt_link.h/i2s_out.h device-API
+# declarations. Real component include dirs come before mocks/stubs so
+# main.c's radio.h/wifi_mgr.h/stations.h/bt_link.h resolve to the real
+# headers, not the older simplified stubs those files use for ctrl tests.
+set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../main)
+add_executable(test_main_boot test_main_boot.c
+    ${MAIN_DIR}/main.c
+    mocks/fake_task.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_main_boot PRIVATE
+    ${MAIN_DIR}
+    ${RADIO_DIR}/include
+    ${WIFI_MGR_DIR}/include
+    ${BT_LINK_DIR}/include
+    ${I2S_OUT_DIR}/include
+    ${CTRL_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/cmd_console/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/web_ui/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_main_boot PRIVATE UNIT_TEST ESP_PLATFORM CONFIG_SPIRAM=0)
+target_link_libraries(test_main_boot unity)
+add_test(NAME test_main_boot COMMAND test_main_boot)

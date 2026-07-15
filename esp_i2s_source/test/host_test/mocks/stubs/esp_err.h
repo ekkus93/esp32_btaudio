@@ -19,4 +19,7 @@ typedef int32_t esp_err_t;
 #define ESP_ERR_NVS_CORRUPT_DATA    (-107)
 #define ESP_ERR_NVS_ALREADY_OPEN    (-108)
 const char *esp_err_to_name(esp_err_t err);
+/* Host stand-in: real ESP-IDF aborts the process on failure. Host stub
+ * functions here are set up to always succeed, so just discard the result. */
+#define ESP_ERROR_CHECK(x) do { (void)(x); } while (0)
 #endif
