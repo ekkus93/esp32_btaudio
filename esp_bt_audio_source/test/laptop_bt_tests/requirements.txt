@@ -1,4 +1,4 @@
-pydbus>=0.6.0
-pulsectl>=22.0.0
-pytest-timeout>=2.1.0
-# pyserial already present in python310 conda env
+pydbus
+pulsectl
+pyserial
+PyGObject

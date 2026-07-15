@@ -30,6 +30,20 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 Requires an ESP32 WROOM32.
 
+## Hardware
+
+### GPIO Pin Assignments
+
+| Pin | Function | Notes |
+|-----|----------|-------|
+| GPIO18 | I2S BCLK | Bit clock (output) |
+| GPIO19 | I2S WS | Word select / LRCLK (output) |
+| GPIO22 | I2S DIN | Digital audio input |
+| GPIO16 | UART2 RX | Secondary command port (115200 baud) |
+| GPIO17 | UART2 TX | Secondary command port (115200 baud) |
+
+All I2S pins are configurable via NVS or the `I2S_CONFIG` command. The secondary UART2 on GPIO16/17 serves commands while UARTAUDIO streaming owns the USB console port.
+
 ## Architecture
 
 **Components:**
@@ -59,10 +73,6 @@ ctest --output-on-failure
 . .venv/bin/activate
 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
 ```
-
-## Hardware
-
-ESP32 WROOM32. I2S pins (BCLK=GPIO18, WS=GPIO19, DIN=GPIO22) configurable via NVS or `I2S_CONFIG` command. Secondary UART2 on GPIO16/17 for commands during UARTAUDIO streaming.
 
 ## Project Status
 

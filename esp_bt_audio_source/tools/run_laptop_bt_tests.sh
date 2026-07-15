@@ -1,10 +1,4 @@
-#!/usr/bin/env bash
-# Run all laptop-BT integration tests.
-# Usage: tools/run_laptop_bt_tests.sh [pytest extra args]
-set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-conda run -n python310 python -m pytest \
-    "$ROOT/test/laptop_bt_tests/" \
-    -m laptop_bt \
-    -v \
-    "$@"
+#!/bin/bash
+cd test/laptop_bt_tests
+. .venv/bin/activate
+python -m pytest test_connection.py test_autoconnect.py test_streaming.py test_control.py test_e2e.py -v --timeout=120
