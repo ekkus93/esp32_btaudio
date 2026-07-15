@@ -134,6 +134,8 @@ Phase 12 (Docs) ← final polish after 10–11                     │
 
 ## Phase 8 — Make Wi-Fi safe, exact, and transactional
 
+**Status: DONE** — All subtasks (8.1-8.9) implemented. Device build verified. Host tests pass.
+
 **Goal:** Fix credential handling, prevent stale events, make init idempotent, remove password leakage.
 
 **Commits:**

@@ -1,8 +1,7 @@
 /*
  * wifi_mgr — device glue (WIFI-1b): esp_wifi / esp_netif / NVS creds / mDNS,
  * driving the pure wifi_sm (WIFI-1a). Boots into STA if credentials are stored,
- * else SoftAP provisioning ("ESP32-S3-Audio", WPA2, MAC-derived password
- * printed on the console). mDNS "esp-i2s-source.local" once on the LAN.
+ * else SoftAP provisioning ("ESP32-S3-Audio", WPA2, password printed on console).
  *
  * Console/web provisioning (WIFI-1c / WEB-1b) call set_creds()/reset().
  */
@@ -22,11 +21,13 @@ extern "C" {
 #define WIFI_MGR_PASS_MAX  64
 
 /* Bring up netif/event/wifi, load stored creds, and start STA or AP per the
- * state machine. Call once after NVS init. */
+ * state machine. Call once after NVS init. Idempotent — returns ESP_OK if
+ * already RUNNING. */
 esp_err_t wifi_mgr_init(void);
 
 /* Provision STA credentials (from console/web): persist to NVS and (re)start
- * STA association. ssid 1..32 chars; pass "" (open) or 8..64 chars. */
+ * STA association. ssid 1..32 chars; pass "" (open) or 8..63 chars,
+ * or 64 hex chars (raw PSK, gateable via CONFIG_ESP_I2S_SOURCE_STA_HEX_PSK). */
 esp_err_t wifi_mgr_set_creds(const char *ssid, const char *pass);
 
 /* Clear stored credentials and drop back to AP provisioning mode (WIFI RESET). */
@@ -45,10 +46,10 @@ typedef struct {
     char ip[16];
     int  rssi;       /* STA only; 0 otherwise */
     /* SoftAP (concurrent AP+STA): the control AP is kept up alongside STA when
-     * enabled, so the UI is always reachable via 192.168.4.1. */
+     * enabled, so the UI is always reachable at 192.168.4.1. */
     bool ap_on;      /* is the SoftAP currently broadcasting */
     char ap_ssid[WIFI_MGR_SSID_MAX + 1];
-    char ap_pass[WIFI_MGR_PASS_MAX + 1];
+    bool ap_secured; /* true if the AP has a password set */
     char ap_ip[16];
     int  ap_clients; /* stations currently associated to the SoftAP */
 } wifi_mgr_info_t;
@@ -62,7 +63,7 @@ esp_err_t wifi_mgr_set_ap_enabled(bool enabled);
 bool      wifi_mgr_ap_enabled(void);
 
 /* Change the control-AP name/password (persisted to NVS, re-applied live).
- * ssid 1..32 chars; pass "" (open AP) or 8..64 chars (WPA2). Changing these
+ * ssid 1..32 chars; pass "" (open AP) or 8..63 chars (WPA2). Changing these
  * bounces any stations currently on the AP — they must rejoin. */
 esp_err_t wifi_mgr_set_ap_config(const char *ssid, const char *pass);
 

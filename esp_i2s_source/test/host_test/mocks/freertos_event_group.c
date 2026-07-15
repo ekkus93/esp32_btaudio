@@ -47,3 +47,10 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t eg,
     if (xClearBitsOnExit) e->bits = 0;
     return current;
 }
+
+EventBits_t xEventGroupGetBits(EventGroupHandle_t eg)
+{
+    if (!eg) return 0;
+    mock_event_group_t *e = (mock_event_group_t *)eg;
+    return e->bits;
+}

@@ -1930,6 +1930,8 @@ ASan clean
 
 # Phase 8 — Make Wi-Fi safe, exact, and transactional
 
+**Status: DONE** — commit pending. All of 8.1-8.9 implemented. Device build verified. Host tests pass (18/19, test_radio_lifecycle has pre-existing build issue in radio.c unrelated to this change).
+
 ## 8.1 Add lifecycle state and mutex
 
 **File:** `components/wifi_mgr/wifi_mgr.c`

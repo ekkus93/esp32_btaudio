@@ -27,5 +27,6 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t eg,
                                 BaseType_t xClearBitsOnExit,
                                 BaseType_t xWaitForAllBits,
                                 TickType_t xTicksToWait);
+EventBits_t xEventGroupGetBits(EventGroupHandle_t eg);
 
 #endif
