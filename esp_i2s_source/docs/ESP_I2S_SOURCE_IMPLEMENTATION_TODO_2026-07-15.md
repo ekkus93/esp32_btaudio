@@ -2210,6 +2210,7 @@ Required:
 ---
 
 # Phase 9 — Fix stations and control orchestration
+**DONE** — 56ce4086. All 9.1-9.9 sub-tasks complete. Device build + 19/19 host tests green.
 
 ## 9.1 Add stable station IDs
 
