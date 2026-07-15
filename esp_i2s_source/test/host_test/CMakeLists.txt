@@ -26,6 +26,9 @@ include_directories(
 )
 
 # Unity test framework
+# Prefer a local Unity install (e.g. install to /usr/local/share/cmake/unity/
+# or set CMAKE_PREFIX_PATH). Falls back to FetchContent from GitHub only if
+# find_package(unity) fails, so offline builds work without requiring internet.
 find_package(unity QUIET)
 if(NOT unity_FOUND)
     include(FetchContent)

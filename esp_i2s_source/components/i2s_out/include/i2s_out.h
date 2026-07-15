@@ -1,7 +1,7 @@
 /*
  * i2s_out — I2S master transmitter to the WROOM32 slave-RX (SPEC §3.3):
  * Philips, 16-bit data in 32-bit slots, stereo, 44.1 kHz, MCLK unused.
- * BCLK=GPIO5, WS=GPIO6, DOUT=GPIO7.
+ * BCLK=GPIO15, WS=GPIO16, DOUT=GPIO7.
  *
  * Split for testability (SIG-1b):
  *   - i2s_out_pump_once() is a PURE function (drain ring, zero-fill shortfall,

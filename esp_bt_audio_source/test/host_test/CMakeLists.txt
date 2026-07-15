@@ -66,7 +66,10 @@ add_library(command_interface_host OBJECT
     ../../components/command_interface/cmd_handlers_debug.c
     ../../components/command_interface/uart_audio.c)
 
-# Find the unity package for unit testing
+# Unity test framework
+# Prefer a local Unity install (e.g. install to /usr/local/share/cmake/unity/
+# or set CMAKE_PREFIX_PATH). Falls back to FetchContent from GitHub only if
+# find_package(unity) fails, so offline builds work without requiring internet.
 find_package(unity QUIET)
 if(NOT unity_FOUND)
     include(FetchContent)

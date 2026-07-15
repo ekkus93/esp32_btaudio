@@ -85,7 +85,6 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddBoolToObject(ap, "on", wi.ap_on);
     cJSON_AddBoolToObject(ap, "enabled", wifi_mgr_ap_enabled());
     cJSON_AddStringToObject(ap, "ssid", wi.ap_ssid);
-    cJSON_AddStringToObject(ap, "pass", wi.ap_pass);
     if (wi.ap_on) {
         cJSON_AddStringToObject(ap, "ip", wi.ap_ip);
         cJSON_AddNumberToObject(ap, "clients", wi.ap_clients);

@@ -25939,3 +25939,15 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Commit: 2c82c73a
 
 NEXT: RH-WR-05 (Bluetooth initialization rollback)
+## 2026-07-15T00:21:34Z - Claude Fable 5 - RH-WR-05 bluetooth initialization rollback
+
+- Completed RH-WR-05: Add Bluetooth initialization rollback
+- Added stage tracking for controller init/enable, bluedroid init/enable
+- On init failure, rollback in reverse order with goto-fail pattern
+- bt_ctx mutex deleted on failure path
+- Returns original failure error code
+- All 71 host tests pass
+- Commit: 7be9a562
+
+PHASE 3 COMPLETE: All audio processor reliability tasks (RH-WR-03, RH-WR-04, RH-WR-05)
+Next: Phase 4 (Serialization) or Phase 5 (Synchronization)

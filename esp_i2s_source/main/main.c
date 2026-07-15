@@ -2,11 +2,10 @@
  * esp_i2s_source — ESP32-S3 internet-radio / tone source that streams audio
  * over I2S to the ESP32-WROOM32 A2DP bridge. See docs/SPEC.md.
  *
- * Current phase (SIG-1c): boot, then continuously push a 440 Hz test tone
- * through signal_gen -> i2s_out (I2S master TX). app_main prints an I2S stats
- * beacon each second so the TX can be verified clocking (bytes growing,
- * underruns flat) even before the WROOM32 sink is wired. Source arbitration,
- * the command link, WiFi/web and radio replace this from LINK-1 onward.
+ * RADIO-2c: single audio_out feeder task arbitrates between radio decoded
+ * PCM (when a stream is playing), tone generation, and silence. Packs PCM
+ * 16-in-32 top-half for the WROOM32 slave RX, then pushes to i2s_out.
+ * app_main prints an I2S stats beacon each second for TX clocking health.
  */
 #include <stdio.h>
 #include <string.h>
