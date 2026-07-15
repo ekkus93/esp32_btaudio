@@ -36,6 +36,41 @@ void audio_processor_set_dram_only(bool enable)
 /**
  * @brief Initialize the audio processor
  */
+/**
+ * @brief (RH-WR-04) Cleanup partially-initialized state on init failure
+ *
+ * This is called from the single failure label in audio_processor_init().
+ * It reverses all successful allocation/init steps in reverse order.
+ */
+static void audio_processor_cleanup_partial_init(void)
+{
+#ifndef UNIT_TEST
+    if (s_engine_events) {
+        vEventGroupDelete(s_engine_events);
+        s_engine_events = NULL;
+    }
+
+    if (s_volume_commit_timer) {
+        esp_timer_stop(s_volume_commit_timer);
+        esp_timer_delete(s_volume_commit_timer);
+        s_volume_commit_timer = NULL;
+    }
+#endif
+
+    span_log_deinit();
+    audio_rb_deinit(s_audio_ring);
+    s_audio_ring = NULL;
+    beep_manager_deinit();
+    i2s_manager_deinit();
+
+    platform_free(s_proc_buffer2); s_proc_buffer2 = NULL;
+    platform_free(s_proc_buffer);  s_proc_buffer = NULL;
+    platform_free(s_capture_buffer); s_capture_buffer = NULL;
+    s_runtime_work_bytes = 0;
+
+    s_is_initialized = false;
+}
+
 esp_err_t audio_processor_init(const audio_config_t* config)
 {
     AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
@@ -124,14 +159,13 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     ret = i2s_manager_init(&s_audio_config, &i2s_bufs);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: i2s_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        return ret;
+        goto fail;
     }
 
     ret = beep_manager_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: beep_manager_init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        i2s_manager_deinit();
-        return ret;
+        goto fail;
     }
 
     /* Create volume commit debounce timer (CODE_REVIEW8 Task D)
@@ -144,9 +178,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     ret = esp_timer_create(&volume_timer_args, &s_volume_commit_timer);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: failed to create volume commit timer (%d)", (int)ret);
-        i2s_manager_deinit();
-        beep_manager_deinit();
-        return ret;
+        goto fail;
     }
 #endif
 
@@ -170,9 +202,8 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     if (AUDIO_RB_HIGH_WATERMARK >= rb_capacity) {
         ESP_LOGE(TAG, "Invalid watermarks: HIGH=%u >= capacity=%zu. Check sdkconfig.",
                  AUDIO_RB_HIGH_WATERMARK, rb_capacity);
-        beep_manager_deinit();
-        i2s_manager_deinit();
-        return ESP_ERR_INVALID_ARG;
+        ret = ESP_ERR_INVALID_ARG;
+        goto fail;
     }
 #ifdef CONFIG_AUDIO_RB_USE_PSRAM
     bool use_psram = true;
@@ -182,9 +213,7 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     ret = audio_rb_init(&s_audio_ring, rb_capacity, use_psram);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "audio_processor_init: ring buffer init failed (%d)", (int)ret);  // NOLINT(bugprone-branch-clone)
-        beep_manager_deinit();
-        i2s_manager_deinit();
-        return ret;
+        goto fail;
     }
 
     /* Initialize span log for debugging visibility (CODE_REVIEW7 Priority 2, Task 2.1)
@@ -204,12 +233,8 @@ esp_err_t audio_processor_init(const audio_config_t* config)
         s_engine_events = xEventGroupCreate();
         if (s_engine_events == NULL) {
             ESP_LOGE(TAG, "audio_processor_init: failed to create engine event group");
-            span_log_deinit();
-            audio_rb_deinit(s_audio_ring);
-            s_audio_ring = NULL;
-            beep_manager_deinit();
-            i2s_manager_deinit();
-            return ESP_ERR_NO_MEM;
+            ret = ESP_ERR_NO_MEM;
+            goto fail;
         }
         ESP_LOGI(TAG, "audio_processor_init: engine event group created");
     }
@@ -218,6 +243,10 @@ esp_err_t audio_processor_init(const audio_config_t* config)
     s_is_initialized = true;
     ESP_LOGI(TAG, "audio_processor_init: work_bytes=%zu psram=%s ring_buf=%zu", s_runtime_work_bytes, runtime_psram_ready ? "yes" : "no", rb_capacity);  // NOLINT(bugprone-branch-clone)
     return ESP_OK;
+
+fail:
+    audio_processor_cleanup_partial_init();
+    return ret;
 }
 
 esp_err_t audio_processor_start(void)

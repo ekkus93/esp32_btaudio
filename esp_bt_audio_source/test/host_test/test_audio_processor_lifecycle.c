@@ -355,6 +355,66 @@ void test_deinit_resets_start_error(void)
     s_engine_start_error = ESP_OK; /* Reset for subsequent tests */
 }
 
+/* ── RH-WR-04: Partial-init cleanup ─────────────────────────────────────── */
+
+void test_partial_init_cleanup_resets_buffers(void)
+{
+    /* After successful init, deinit must free all buffers */
+    audio_processor_init(&s_audio_config);
+    TEST_ASSERT_TRUE(s_is_initialized);
+    TEST_ASSERT(s_runtime_work_bytes > 0);
+
+    audio_processor_deinit();
+
+    TEST_ASSERT_FALSE(s_is_initialized);
+    TEST_ASSERT_EQUAL(0, s_runtime_work_bytes);
+}
+
+void test_retry_after_failure(void)
+{
+    /* First init succeeds */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&s_audio_config));
+    TEST_ASSERT_TRUE(s_is_initialized);
+
+    /* Deinit */
+    audio_processor_deinit();
+    TEST_ASSERT_FALSE(s_is_initialized);
+
+    /* Second init should succeed (retry safety) */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&s_audio_config));
+    TEST_ASSERT_TRUE(s_is_initialized);
+
+    /* Clean up */
+    audio_processor_deinit();
+}
+
+void test_double_deinit_safe(void)
+{
+    audio_processor_init(&s_audio_config);
+    audio_processor_deinit();
+
+    /* Second deinit must be safe (no crash, no double-free) */
+    audio_processor_deinit();
+}
+
+void test_init_without_config_rejected(void)
+{
+    /* Null config must be rejected */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, audio_processor_init(NULL));
+}
+
+void test_double_init_rejected(void)
+{
+    /* First init succeeds */
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_init(&s_audio_config));
+
+    /* Second init while initialized must be rejected */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, audio_processor_init(&s_audio_config));
+
+    /* Clean up */
+    audio_processor_deinit();
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -403,6 +463,13 @@ int main(void)
     RUN_TEST(test_start_timeout_ms_defined, 1);
     RUN_TEST(test_start_error_leaves_state_faulted, 1);
     RUN_TEST(test_deinit_resets_start_error, 1);
+
+    /* RH-WR-04: Partial-init cleanup */
+    RUN_TEST(test_partial_init_cleanup_resets_buffers, 1);
+    RUN_TEST(test_retry_after_failure, 1);
+    RUN_TEST(test_double_deinit_safe, 1);
+    RUN_TEST(test_init_without_config_rejected, 1);
+    RUN_TEST(test_double_init_rejected, 1);
 
     return UNITY_END();
 }
