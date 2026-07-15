@@ -1409,6 +1409,10 @@ Acceptance:
 - [x] RH-WR-03 (done: 502a9b4c)
 - [x] RH-WR-04 (done: 2c82c73a)
 - [x] RH-WR-05 (done: 7be9a562)
+- [x] RH-DOC-01 (done: 1dc6e881)
+- [x] RH-DOC-02 (done: 1dc6e881)
+- [x] RH-SEC-01 (done: 1dc6e881)
+- [x] RH-TEST-01 (done: 1dc6e881)
 
 ## Validation
 
