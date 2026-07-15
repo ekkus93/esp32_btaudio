@@ -23,11 +23,32 @@ extern "C" {
 #define BT_LINK_UART_RX_GPIO   18
 #define BT_LINK_DEFAULT_TIMEOUT_MS 2000
 
-/* Install UART1, init the session, and spawn the bt_link task. */
+/* Install UART1, init the session, and spawn the bt_link task. Idempotent:
+ * a repeat call with the same cmd_timeout_ms returns ESP_OK without
+ * reinstalling UART; a repeat call with a different timeout returns
+ * ESP_ERR_INVALID_STATE. */
 esp_err_t bt_link_init(uint32_t cmd_timeout_ms);
 
-/* Register an EVENT subscriber (call before heavy traffic; see note in .c). */
+/* Signal both the UART task and the event dispatch task to exit, and wait
+ * (bounded) for them to acknowledge. Resources are retained if the wait
+ * times out (ESP_ERR_TIMEOUT). Call before bt_link_deinit(). */
+esp_err_t bt_link_stop(void);
+
+/* Release UART/queue/mutex resources. Requires both tasks to have already
+ * exited (call bt_link_stop() first) — returns ESP_ERR_INVALID_STATE
+ * otherwise. Idempotent. */
+esp_err_t bt_link_deinit(void);
+
+bool bt_link_is_initialized(void);
+
+/* Register an EVENT subscriber. Callbacks run on a dedicated dispatch task
+ * (never the UART owner task), so a callback may safely call bt_link_send()
+ * itself without deadlocking. */
 int bt_link_subscribe(bt_link_event_cb cb, void *ctx);
+
+/* Remove a previously registered subscriber. Returns the freed slot index,
+ * or -1 if not found. */
+int bt_link_unsubscribe(bt_link_event_cb cb, void *ctx);
 
 /* Send `cmd` and block until its terminal response or timeout. On return,
  * *out_state is DONE_OK / DONE_ERR / TIMEOUT and `result` holds the response

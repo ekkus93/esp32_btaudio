@@ -123,6 +123,46 @@ static void test_send_normal_completion(void)
     TEST_ASSERT_EQUAL_INT(ESP_OK, err);
 }
 
+/* TODO 4.3: commands are validated and rejected outright, never truncated. */
+static void test_send_rejects_null_and_empty(void)
+{
+    if (!s_init_done) bt_link_init(2000);
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG, bt_link_send(NULL, NULL, NULL, 0, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG, bt_link_send("", NULL, NULL, 0, NULL, 0));
+}
+
+static void test_send_rejects_embedded_crlf(void)
+{
+    if (!s_init_done) bt_link_init(2000);
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG,
+                          bt_link_send("VERSION\r\nCONNECT AA:BB", NULL, NULL, 0, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG,
+                          bt_link_send("STATUS\n", NULL, NULL, 0, NULL, 0));
+}
+
+static void test_send_rejects_overlong_command(void)
+{
+    if (!s_init_done) bt_link_init(2000);
+    char cmd[BT_LINK_LINE_MAX + 10];
+    memset(cmd, 'A', sizeof(cmd) - 1);
+    cmd[sizeof(cmd) - 1] = '\0';
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG, bt_link_send(cmd, NULL, NULL, 0, NULL, 0));
+}
+
+/* TODO 4.1: idempotent init — same timeout succeeds silently, different
+ * timeout is a conflicting-configuration error. */
+static void test_init_idempotent_same_timeout(void)
+{
+    esp_err_t err = bt_link_init(2000);  /* whatever s_init_done left it at */
+    TEST_ASSERT_EQUAL_INT(ESP_OK, err);
+}
+
+static void test_init_conflicting_timeout_rejected(void)
+{
+    esp_err_t err = bt_link_init(9999);
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_STATE, err);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -132,5 +172,10 @@ int main(void)
     RUN_TEST(test_send_timeout_abandons_request);
     RUN_TEST(test_send_queue_full);
     RUN_TEST(test_send_sem_alloc_fail);
+    RUN_TEST(test_send_rejects_null_and_empty);
+    RUN_TEST(test_send_rejects_embedded_crlf);
+    RUN_TEST(test_send_rejects_overlong_command);
+    RUN_TEST(test_init_idempotent_same_timeout);
+    RUN_TEST(test_init_conflicting_timeout_rejected);
     return UNITY_END();
 }
