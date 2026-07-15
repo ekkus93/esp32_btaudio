@@ -2,16 +2,25 @@
 
 ESP32 firmware that streams I2S audio to Bluetooth speakers/headphones via A2DP. Part of a dual-ESP32 audio system: the WiFi controller sends audio via I2S, this device receives it and streams over Bluetooth Classic.
 
+## Prerequisites
+
+- ESP-IDF v5.5.1 installed
+- uv-managed `.venv` at repository root for Python tooling (test runners, scripts)
+
+```bash
+. $HOME/esp/v5.1/esp-idf/export.sh
+. .venv/bin/activate
+```
+
 ## Quick Start
 
 ```bash
 cd esp_bt_audio_source
-. $HOME/esp/v5.1/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-Requires ESP-IDF v5.5.1 and an ESP32 WROOM32.
+Requires an ESP32 WROOM32.
 
 ## Architecture
 
