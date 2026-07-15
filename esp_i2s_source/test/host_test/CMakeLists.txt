@@ -82,10 +82,13 @@ add_test(NAME test_signal_gen COMMAND test_signal_gen)
 # WEB-1d: tone controllable test-tone source
 add_executable(test_tone test_tone.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/tone.c
-    ${SIGNAL_GEN_DIR}/signal_gen.c)
+    ${SIGNAL_GEN_DIR}/signal_gen.c
+    mocks/fake_semphr.c
+    mocks/fake_task.c)
 target_include_directories(test_tone PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/include
-    ${SIGNAL_GEN_DIR}/include)
+    ${SIGNAL_GEN_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
 target_link_libraries(test_tone unity m)
 add_test(NAME test_tone COMMAND test_tone)
 

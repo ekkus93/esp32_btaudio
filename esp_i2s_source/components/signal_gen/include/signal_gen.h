@@ -41,7 +41,7 @@ void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
  * Retrigger the envelope on each note with sg_piano_note_on(). */
 typedef struct {
     double   phase;     /* fundamental phase, [0, 2*PI) */
-    uint32_t elapsed;   /* samples since note-on (envelope clock) */
+    uint64_t elapsed;   /* samples since note-on (envelope clock); saturating */
 } sg_piano_state_t;
 
 /* Retrigger: restart the envelope (and phase) for a fresh note. */

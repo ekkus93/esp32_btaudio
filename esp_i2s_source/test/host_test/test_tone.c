@@ -12,12 +12,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void tone_test_snap_gain(void);
+
 void setUp(void)
 {
     /* Reset tone state before each test: off, default freq, default amplitude. */
     tone_off();
     tone_set_voice(TONE_VOICE_SINE);
     tone_set_amplitude(30);  /* TONE_AMP_DEFAULT from tone.c */
+    /* TODO 5.4 introduced a click-suppression ramp on the on/off/amplitude
+     * gain; snap it to the (now off) target so each test starts from a
+     * settled state instead of wherever the previous test's ramp left it. */
+    tone_test_snap_gain();
 }
 
 void tearDown(void)
@@ -94,10 +100,13 @@ void test_tone_amplitude_clamp(void)
 
     /* Over 100 → clamps to 100. */
     tone_set_amplitude(200);
+    tone_test_snap_gain();  /* isolate from the ramp's own timing (tested separately) */
     /* Can't directly inspect amplitude, but we verify no crash and non-zero output. */
     tone_fill(buf, 32);
     /* At 100% amplitude and 440 Hz, there should be signal. */
-    TEST_ASSERT_TRUE(buf[0] != 0 || buf[2] != 0);
+    int non_zero = 0;
+    for (int i = 0; i < 64; i++) if (buf[i] != 0) non_zero++;
+    TEST_ASSERT_MESSAGE(non_zero > 0, "100% amplitude should produce signal");
 }
 
 void test_tone_amplitude_zero_mutes(void)
@@ -190,9 +199,11 @@ void test_tone_reinit_after_off(void)
 {
     int16_t buf[64];
 
-    /* Enable, produce signal. */
+    /* Enable, produce signal. Snap past the ramp-up first (ramp timing has
+     * its own dedicated test) so this test is purely about on/off state. */
     tone_set(440);
     tone_set_amplitude(100);
+    tone_test_snap_gain();
     tone_fill(buf, 32);
 
     /* Verify non-zero signal. */
@@ -200,18 +211,61 @@ void test_tone_reinit_after_off(void)
     for (int i = 0; i < 64; i++) if (buf[i] != 0) signal++;
     TEST_ASSERT_MESSAGE(signal > 0, "tone should produce signal when on");
 
-    /* Off → silence. */
+    /* Off → silence (once the ramp has settled). */
     tone_off();
+    tone_test_snap_gain();
     tone_fill(buf, 32);
     for (int i = 0; i < 64; i++) TEST_ASSERT_EQUAL_INT16(0, buf[i]);
 
     /* Re-enable → signal again. */
     tone_set(440);
     tone_set_amplitude(100);
+    tone_test_snap_gain();
     tone_fill(buf, 32);
     signal = 0;
     for (int i = 0; i < 64; i++) if (buf[i] != 0) signal++;
     TEST_ASSERT_MESSAGE(signal > 0, "tone should produce signal after re-enable");
+}
+
+/* --- TODO 5.4: click-suppression ramp --- */
+
+static void test_tone_ramp_up_is_gradual_not_instant(void)
+{
+    /* Coming from off (ramp_gain=0 after setUp), the very first block after
+     * turning on must NOT already be at full scale — the whole point of the
+     * ramp is that amplitude rises gradually over TONE_RAMP_SAMPLES. */
+    tone_set(1000);
+    tone_set_amplitude(100);
+
+    int16_t first_block[64];
+    tone_fill(first_block, 32);  /* well within the ~441-sample ramp window */
+
+    int16_t settled[64];
+    for (int i = 0; i < 50; i++) tone_fill(settled, 32);  /* run well past the ramp */
+
+    int16_t peak_first = 0, peak_settled = 0;
+    for (int i = 0; i < 64; i++) {
+        int16_t v = first_block[i] < 0 ? (int16_t)-first_block[i] : first_block[i];
+        if (v > peak_first) peak_first = v;
+        v = settled[i] < 0 ? (int16_t)-settled[i] : settled[i];
+        if (v > peak_settled) peak_settled = v;
+    }
+    TEST_ASSERT_MESSAGE(peak_settled > peak_first,
+                        "settled-state amplitude should exceed the ramping-up first block");
+}
+
+static void test_tone_off_eventually_reaches_silence(void)
+{
+    /* Ramp down fully converges to silence given enough blocks, even though
+     * the block immediately after tone_off() is not yet silent. */
+    tone_set(1000);
+    tone_set_amplitude(100);
+    tone_test_snap_gain();  /* start from settled "on" */
+
+    tone_off();
+    int16_t buf[64];
+    for (int i = 0; i < 50; i++) tone_fill(buf, 32);  /* run well past the ramp-down */
+    for (int i = 0; i < 64; i++) TEST_ASSERT_EQUAL_INT16(0, buf[i]);
 }
 
 int main(void)
@@ -229,5 +283,7 @@ int main(void)
     RUN_TEST(test_tone_get_reports_state);
     RUN_TEST(test_tone_piano_voice_fills);
     RUN_TEST(test_tone_reinit_after_off);
+    RUN_TEST(test_tone_ramp_up_is_gradual_not_instant);
+    RUN_TEST(test_tone_off_eventually_reaches_silence);
     return UNITY_END();
 }

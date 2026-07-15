@@ -6,6 +6,8 @@
 
 #include <math.h>
 #include <string.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -13,6 +15,7 @@
 
 #define TWO_PI (2.0 * M_PI)
 #define S16_MAX 32767.0
+#define SIGNAL_GEN_HZ_MAX 20000.0
 
 static inline int16_t sample_from_phase(double phase, double amplitude)
 {
@@ -25,27 +28,48 @@ static inline int16_t sample_from_phase(double phase, double amplitude)
     return (int16_t)s;
 }
 
+/* Bounded O(1) wrap (SIG-002): the previous subtract-in-a-loop form could
+ * iterate an unbounded number of times for a large phase increment,
+ * effectively hanging the audio task. Non-finite input resets to 0 rather
+ * than propagating NaN/Inf indefinitely. */
 static inline double wrap_phase(double phase)
 {
-    /* Keep phase bounded so it never loses precision over long runs. */
-    while (phase >= TWO_PI) phase -= TWO_PI;
-    while (phase < 0.0) phase += TWO_PI;
-    return phase;
+    if (!isfinite(phase)) return 0.0;
+    if (phase >= 0.0 && phase < TWO_PI) return phase;
+    double wrapped = phase - floor(phase / TWO_PI) * TWO_PI;
+    if (wrapped < 0.0) wrapped += TWO_PI;
+    if (wrapped >= TWO_PI) wrapped -= TWO_PI;
+    return wrapped;
+}
+
+/* SIG-003: reject negative/non-finite/above-Nyquist-ish frequencies instead
+ * of silently aliasing. 20 kHz matches the tone component's documented
+ * range (TONE_HZ_MAX). */
+static inline bool valid_frequency(double hz)
+{
+    return isfinite(hz) && hz >= 0.0 && hz <= SIGNAL_GEN_HZ_MAX;
 }
 
 void sg_silence_fill(int16_t *out, size_t frames)
 {
+    if (!out || frames == 0) return;
     memset(out, 0, frames * SIGNAL_GEN_CHANNELS * sizeof(int16_t));
 }
 
 void sg_sine_reset(sg_sine_state_t *st)
 {
+    if (!st) return;
     st->phase = 0.0;
 }
 
 void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
                   double freq_hz, double amplitude)
 {
+    if (!st || !out || frames == 0) return;
+    if (!valid_frequency(freq_hz) || !isfinite(amplitude)) {
+        memset(out, 0, frames * SIGNAL_GEN_CHANNELS * sizeof(int16_t));
+        return;
+    }
     const double dphi = TWO_PI * freq_hz / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
     double phase = st->phase;
     for (size_t f = 0; f < frames; f++) {
@@ -68,6 +92,7 @@ void sg_sine_fill(sg_sine_state_t *st, int16_t *out, size_t frames,
 
 void sg_piano_note_on(sg_piano_state_t *st)
 {
+    if (!st) return;
     st->phase = 0.0;   /* normalized phase [0, 1) for the sawtooth */
     st->elapsed = 0;
 }
@@ -83,12 +108,20 @@ static inline double poly_blep(double t, double dt)
 void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
                    double freq_hz, double amplitude)
 {
+    if (!st || !out || frames == 0) return;
+    if (!valid_frequency(freq_hz) || !isfinite(amplitude)) {
+        memset(out, 0, frames * SIGNAL_GEN_CHANNELS * sizeof(int16_t));
+        return;
+    }
     if (amplitude < 0.0) amplitude = 0.0;
     if (amplitude > 1.0) amplitude = 1.0;
+    /* freq_hz <= SIGNAL_GEN_HZ_MAX (20 kHz) < sample rate, so dt < 1.0 and
+     * the single `if (phase >= 1.0) phase -= 1.0` below always fully wraps
+     * (SIG-004 — a larger dt would need floor()-based wrapping instead). */
     const double dt = freq_hz / (double)SIGNAL_GEN_SAMPLE_RATE_HZ; /* phase step */
 
     double phase = st->phase;
-    uint32_t elapsed = st->elapsed;
+    uint64_t elapsed = st->elapsed;
     size_t f = 0;
     while (f < frames) {
         /* Envelope for this sub-block: fast attack, then exponential decay. */
@@ -108,7 +141,13 @@ void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
             phase += dt;
             if (phase >= 1.0) phase -= 1.0;
         }
-        elapsed += (uint32_t)blk;
+        /* Saturating add (SIG-005): a 32-bit counter wrapped after ~27 hours
+         * at 44.1 kHz, silently restarting the decay envelope mid-note. */
+        if (UINT64_MAX - elapsed < (uint64_t)blk) {
+            elapsed = UINT64_MAX;
+        } else {
+            elapsed += (uint64_t)blk;
+        }
         f += blk;
     }
     st->phase = phase;
@@ -117,6 +156,7 @@ void sg_piano_fill(sg_piano_state_t *st, int16_t *out, size_t frames,
 
 void sg_sweep_reset(sg_sweep_state_t *st)
 {
+    if (!st) return;
     st->phase = 0.0;
     st->t = 0.0;
 }
@@ -125,6 +165,12 @@ void sg_sweep_fill(sg_sweep_state_t *st, int16_t *out, size_t frames,
                    double f0_hz, double f1_hz, double duration_s,
                    double amplitude)
 {
+    if (!st || !out || frames == 0) return;
+    if (!valid_frequency(f0_hz) || !valid_frequency(f1_hz) ||
+        !isfinite(duration_s) || !isfinite(amplitude)) {
+        memset(out, 0, frames * SIGNAL_GEN_CHANNELS * sizeof(int16_t));
+        return;
+    }
     const double dt = 1.0 / (double)SIGNAL_GEN_SAMPLE_RATE_HZ;
     const double rate = (duration_s > 0.0) ? (f1_hz - f0_hz) / duration_s : 0.0;
     double phase = st->phase;
