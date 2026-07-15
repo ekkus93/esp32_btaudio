@@ -1309,9 +1309,9 @@ ctest --test-dir build --output-on-failure
 
 Record:
 
-- [ ] total tests.
-- [ ] pass/fail count.
-- [ ] ASan result.
+- [x] total tests: 17.
+- [x] pass/fail count: 17/17 pass.
+- [x] ASan result: Clean after cbb4700c fix (heap-use-after-free in radio_stop_sync).
 - [ ] any skipped concurrency tests and reason.
 
 ---
