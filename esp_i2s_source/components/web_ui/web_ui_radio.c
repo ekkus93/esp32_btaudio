@@ -26,56 +26,56 @@ static const char *TAG = "web_ui_radio";
 
 esp_err_t radio_post(httpd_req_t *req)
 {
-    char body[RADIO_URL_MAX + 64];
-    if (recv_body(req, body, sizeof(body)) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
-        return ESP_OK;
+    web_json_body_t jbody;
+    if (web_read_json(req, RADIO_URL_MAX + 128, &jbody) != ESP_OK) {
+        return web_send_error(req, "400 Bad Request", "BAD_BODY", "invalid JSON body", false);
     }
-    cJSON *j = cJSON_Parse(body);
-    const char *url = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "url")) : NULL;
-    if (!url || !url[0] || strlen(url) >= RADIO_URL_MAX) {
-        cJSON_Delete(j);
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing/oversized url\"}");
-        return ESP_OK;
+
+   /* 10.1 — Copy URL into a fixed buffer BEFORE cJSON_Delete.
+     * The cJSON string pointer dangles after web_json_free(). */
+    char url_copy[RADIO_URL_MAX];
+    url_copy[0] = '\0';
+    const char *url = cJSON_GetStringValue(cJSON_GetObjectItem(jbody.root, "url"));
+    if (url && url[0]) {
+        size_t len = strnlen(url, sizeof(url_copy));
+        if (len == 0 || len >= sizeof(url_copy)) {
+            web_json_free(&jbody);
+            return web_send_error(req, "400 Bad Request", "INVALID_URL", "url empty or too long", false);
+        }
+        memcpy(url_copy, url, len + 1);
     }
-    /* Optional station index: record it so CTRL-1 autostart can resume it. */
-    cJSON *id = cJSON_GetObjectItem(j, "id");
+
+    /* Optional station ID: record it so CTRL-1 autostart can resume it. */
+    cJSON *id = cJSON_GetObjectItem(jbody.root, "id");
     esp_err_t note_err = ESP_OK;
     if (cJSON_IsNumber(id)) note_err = ctrl_note_station(id->valueint);
-    cJSON_Delete(j);
+
+    web_json_free(&jbody);
+
+    if (!url_copy[0]) {
+        return web_send_error(req, "400 Bad Request", "INVALID_URL", "missing url", false);
+    }
 
     /* Queue the play command (RH-S3-09). */
-    esp_err_t err = radio_play_async(url);
-    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = radio_play_async(url_copy);
     if (note_err != ESP_OK) {
         ESP_LOGW(TAG, "failed to persist station note: %s", esp_err_to_name(note_err));
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"failed to persist station\"}");
-        return ESP_OK;
+        return web_send_error(req, "500 Internal Server Error", "PERSIST_ERR", "failed to persist station", false);
     }
     if (err != ESP_OK) {
-        httpd_resp_set_status(req, "503 Service Unavailable");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"radio queue full\"}");
-        return ESP_OK;
+        return web_send_error(req, "503 Service Unavailable", "QUEUE_FULL", "radio queue full", true);
     }
-    httpd_resp_sendstr(req, "{\"ok\":true}");
-    return ESP_OK;
+    return web_send_ok(req, NULL);
 }
 
 esp_err_t radio_delete(httpd_req_t *req)
 {
     /* Queue the stop command (RH-S3-09). */
     esp_err_t err = radio_stop_async();
-    httpd_resp_set_type(req, "application/json");
     if (err != ESP_OK) {
-        httpd_resp_set_status(req, "503 Service Unavailable");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"radio queue full\"}");
-        return ESP_OK;
+        return web_send_error(req, "503 Service Unavailable", "QUEUE_FULL", "radio queue full", true);
     }
-    httpd_resp_sendstr(req, "{\"ok\":true}");
-    return ESP_OK;
+    return web_send_ok(req, NULL);
 }
 
 /* ---- /api/stations CRUD (RADIO-1c) ---- */
@@ -113,19 +113,21 @@ esp_err_t stations_get_h(httpd_req_t *req)
     return e;
 }
 
-/* Parse {name,url} from the body into caller buffers; returns url ptr or NULL. */
+/* Parse {name,url} from the body into caller buffers; returns true on success. */
 static bool station_body(httpd_req_t *req, char *name, size_t nsz, char *url, size_t usz)
 {
-    char b[STATION_URL_MAX + STATION_NAME_MAX + 64];
-    if (recv_body(req, b, sizeof(b)) != ESP_OK) return false;
-    cJSON *j = cJSON_Parse(b);
-    const char *jn = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "name")) : NULL;
-    const char *ju = j ? cJSON_GetStringValue(cJSON_GetObjectItem(j, "url")) : NULL;
+    web_json_body_t jbody;
+    if (web_read_json(req, STATION_URL_MAX + STATION_NAME_MAX + 64, &jbody) != ESP_OK) {
+        return false;
+    }
+
+    const char *jn = cJSON_GetStringValue(cJSON_GetObjectItem(jbody.root, "name"));
+    const char *ju = cJSON_GetStringValue(cJSON_GetObjectItem(jbody.root, "url"));
     name[0] = url[0] = '\0';
     if (jn) strlcpy(name, jn, nsz);
     if (ju) strlcpy(url, ju, usz);
     bool ok = ju && ju[0];
-    cJSON_Delete(j);
+    web_json_free(&jbody);
     return ok;
 }
 

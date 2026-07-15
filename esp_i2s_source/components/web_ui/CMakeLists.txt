@@ -7,6 +7,7 @@ idf_component_register(
          "web_ui_audio.c"
          "web_ui_radio.c"
          "web_ui_bt.c"
+         "web_ui_json.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi_mgr bt_link tone radio i2s_out ctrl
     PRIV_REQUIRES json esp_app_format esp_timer)

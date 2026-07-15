@@ -6,9 +6,29 @@
 #pragma once
 
 #include "esp_http_server.h"
+#include "cJSON.h"
 
-/* Read the full request body into buf (NUL-terminated). Defined in web_ui.c. */
+/* Read the full request body into buf (NUL-terminated). Defined in web_ui.c.
+ * Deprecated — use web_read_json() instead. */
 esp_err_t recv_body(httpd_req_t *req, char *buf, size_t buf_sz);
+
+/* Strict JSON-body helper (10.2). Parses the HTTP body into a cJSON tree.
+ * max_bytes is the upper bound on the body length. Caller must free via
+ * web_json_free(). */
+typedef struct {
+    char *body;
+    cJSON *root;
+} web_json_body_t;
+
+esp_err_t web_read_json(httpd_req_t *req, size_t max_bytes, web_json_body_t *out);
+void      web_json_free(web_json_body_t *body);
+
+/* Centralised JSON error/success responses (10.3).
+ * http_status is a string such as "400 Bad Request" or "500 Internal Server Error". */
+esp_err_t web_send_error(httpd_req_t *req, const char *http_status,
+                         const char *code, const char *message,
+                         bool retryable);
+esp_err_t web_send_ok(httpd_req_t *req, const char *extra_json);
 
 /* ---- Feature handlers, registered by web_ui_start() ---- */
 
