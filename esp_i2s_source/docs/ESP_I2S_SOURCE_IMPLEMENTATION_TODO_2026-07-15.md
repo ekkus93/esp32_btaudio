@@ -4,6 +4,14 @@
 **Audience:** Qwen3.6 / Claude Code / human implementer  
 **Rule:** Complete phases in order. Do not combine unrelated phases into one large patch.
 
+**Errata:** `ESP_I2S_SOURCE_FIX_RESPONSES_V2_2026-07-15.md` is normative and overrides this file where they conflict. Not yet reconciled into this doc's task bodies (apply when reaching that phase):
+
+- **Phase 2 (boot order):** this file's `boot_status_t` field order (§2.3) and `test_main_boot.c`'s assertion order (§2.8) disagree with each other; use the errata's answer #1 order (i2s_out before bt_link/radio/stations/wifi) as normative for both, and make sure `web_ok` is asserted too.
+- **Phase 9.4 (station URL parsing):** add the errata's answer #2 SSRF blocking (reject loopback/link-local/private/multicast/unspecified/broadcast destinations for literal IPs, DNS results, redirects, and reconnects; `CONFIG_ESP_I2S_SOURCE_ALLOW_LOCAL_STREAMS`, default `n`) — not in this file's task body at all.
+- **Phase 8.4 (Wi-Fi hex PSK):** gate 64-char hex STA PSK behind `CONFIG_ESP_I2S_SOURCE_STA_HEX_PSK` per errata answer #4; this file currently accepts it unconditionally.
+- **Phase 9.1 (station migration):** use the errata's answer #6 detailed migration algorithm (legacy `STA1` blob detection by size+magic, sequential ID assignment, `stations_v2` key, retain legacy key, `last_station` → `last_station_id` conversion) — this file's "add migration ... when old blob validates" is a one-line placeholder.
+- **Phase 10.6 (auth bootstrap):** use the errata's answer #7 concrete flow (token generated + printed once to USB serial as `AUTH|BOOTSTRAP_TOKEN|<token>`, physical-button rotation) — this file defers the whole flow to an unwritten README section.
+
 ---
 
 # 0. Instructions for the coding model
@@ -47,7 +55,11 @@ test(device): require end-to-end audio evidence
 
 # Phase 1 — Repair and strengthen the test infrastructure
 
+**Status: DONE** — commits `acbb348b`, `b1843231`, `0fe3e89e`, `168eb8de`, `65898f1f`, `4c00085c`.
+
 ## 1.1 Remove implicit network fetches from host tests
+
+**Status: DONE** — commit `acbb348b`. Unity 2.6.0 vendored under `test/third_party/unity/`; `find_package`/`FetchContent` removed.
 
 **Files:**
 
@@ -106,6 +118,8 @@ FetchContent_MakeAvailable(unity)
 ---
 
 ## 1.2 Add strict, ASan, and UBSan options
+
+**Status: DONE** — commits `b1843231`, `65898f1f`. Full flag set (`-Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wformat=2 -Wundef -Wcast-qual -Wstrict-prototypes`) implemented, `ENABLE_STRICT` defaults ON, `--no-strict` opts out. All three of `--strict`, `--strict --asan`, `--strict --ubsan` pass 18/18.
 
 **File:** `test/host_test/CMakeLists.txt`
 
@@ -178,6 +192,8 @@ BUILD_DIR="$HERE/test/host_test/build-$MODE"
 
 ## 1.3 Fix the UART mock signature
 
+**Status: DONE** — commit `b1843231`.
+
 **Files:**
 
 - `test/host_test/mocks/include/driver/uart.h`
@@ -222,6 +238,8 @@ Use the exact typedefs from the mock headers. Do not replace pointer parameters 
 
 ## 1.4 Make the host `ctrl_cfg_save()` declaration visible
 
+**Status: DONE** — commit `0fe3e89e`.
+
 **File:** `components/ctrl/include/ctrl_cfg.h`
 
 The public declaration must be available to host stubs. Use a platform-neutral error typedef header or include the host stub `esp_err.h` through the include path.
@@ -240,6 +258,8 @@ Remove the `#ifdef ESP_PLATFORM` around the declaration. The implementation rema
 ---
 
 ## 1.5 Replace the tautological control test
+
+**Status: DONE** — commit `168eb8de`. (Static mock state reset between tests was already handled by the existing `setUp()`/`reset_ctrl_state()`; not revisited.)
 
 **File:** `test/host_test/test_ctrl_init.c`
 
@@ -263,6 +283,8 @@ Reset all static mock/global state between tests.
 ---
 
 ## 1.6 Add a top-level verification script
+
+**Status: DONE** — commit `4c00085c`. `npm test` uses `--if-present` since the frontend test script doesn't exist until Phase 10.
 
 **New file:** `tools/verify_host.sh`
 
