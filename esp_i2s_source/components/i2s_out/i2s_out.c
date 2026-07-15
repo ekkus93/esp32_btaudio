@@ -65,6 +65,8 @@ static EventGroupHandle_t s_events;
 static volatile bool      s_running; /* legacy compat — writer loop gate */
 static i2s_out_stats_t    s_stats;
 static portMUX_TYPE       s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
+
+/* i2s_sink — sink callback for i2s_out_pump_once.
  * Returns 0 on success, 1 on timeout (caller may retry or check stop),
  * <0 on error. */
 static int i2s_sink(void *ctx, const uint8_t *data, size_t len)

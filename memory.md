@@ -25958,3 +25958,16 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - Completed RH-TEST-01: Documented local Unity install preference
 - Commit: 1dc6e881
 
+## 2026-07-15T00:47:35Z - Claude Fable 5 - ASan validation results
+
+- RH-TEST-02 (S3 host ASan): 17/17 pass. Fixed heap-use-after-free in radio_stop_sync (cbb4700c)
+- RH-TEST-03 (WROOM host ASan): 71/71 pass. Clean run, no issues.
+- Commits: cbb4700c (radio fix), 5685f89f (TODO RH-TEST-02), 3f7d15e4 (TODO RH-TEST-03)
+- Next: RH-TEST-04 (firmware build), RH-TEST-05 (hardware regression), RH-TEST-06 (soak test)
+
+## 2026-07-15T00:56:36Z - Claude Fable 5 - RH-TEST-04 firmware build fixes
+
+- Fixed i2s_out.c: malformed comment missing `/*` at line 67-68 (crashed compiler)
+- Fixed web_ui_bt.c: missing `#include "esp_log.h"` and `static const char *TAG`
+- Both esp32s3 (esp_i2s_source) and esp32 (esp_bt_audio_source) build successfully
+- Next: commit the fixes, then RH-TEST-05 (hardware regression)
