@@ -286,9 +286,10 @@ void uart_audio_test_reset(void)
 
 static bool baud_is_supported(long baud)
 {
-    /* 22050 Hz stereo s16 needs 88.2 KB/s payload; anything under
-     * 230400 baud can't carry it even before framing overhead. */
-    return (baud == 230400L) || (baud == 460800L) || (baud == 921600L);
+    /* 22050 Hz stereo s16le needs 88.2 KB/s payload.
+     * Only 921600 baud provides sufficient throughput (~115 KB/s).
+     * 230400 (~28.8 KB/s) and 460800 (~57.6 KB/s) cannot carry it. */
+    return (baud == 921600L);
 }
 
 static const char *state_name(uart_source_state_t state)
@@ -315,7 +316,7 @@ static cmd_status_t handle_start(const cmd_context_t *ctx)
         baud = strtol(ctx->params[1], &endp, 10);
         if (endp == NULL || *endp != '\0' || !baud_is_supported(baud)) {
             cmd_send_response("ERR", "UARTAUDIO", "BAD_BAUD",
-                              "supported: 230400, 460800, 921600");
+                              "supported: 921600 (only)");
             return CMD_SUCCESS;
         }
     }

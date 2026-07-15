@@ -79,9 +79,9 @@ void test_start_default_baud_sets_streaming(void)
 
 void test_start_explicit_baud_echoed(void)
 {
-    run_command("UARTAUDIO START 460800");
+    run_command("UARTAUDIO START 921600");
 
-    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data(), "baud=460800"));
+    TEST_ASSERT_NOT_NULL(strstr(mock_uart_get_tx_data(), "baud=921600"));
     TEST_ASSERT_TRUE(uart_audio_is_streaming());
 }
 

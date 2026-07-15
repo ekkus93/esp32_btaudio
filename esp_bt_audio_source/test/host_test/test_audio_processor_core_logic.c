@@ -442,7 +442,7 @@ int main(void)
     RUN_TEST(test_priority_chain_beep_overrides_everything);
     RUN_TEST(test_priority_chain_uart_beats_synth_and_i2s);
     RUN_TEST(test_priority_chain_synth_beats_i2s);
-    RUN_TEST(test_priority_chain_i2s_beats_silence);
+    RUN_TEST(test_priority_chain_i2s_beats_synth_and_silence);
     RUN_TEST(test_priority_chain_complete_order);
     return UNITY_END();
 }

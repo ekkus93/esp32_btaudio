@@ -104,7 +104,7 @@ The `UARTAUDIO` command provides high-speed audio streaming over the USB console
 
 **How It Works:**
 1. **Text Mode** (115200 baud): Normal command interface operates over the USB console UART.
-2. **`UARTAUDIO START [baud]`**: Initiates streaming mode. The ESP32 switches the UART baud rate to the specified baud (default 921600, supports 230400/460800/921600). The device sends `OK|UARTAUDIO|STARTING` at 115200 baud before switching.
+2. **`UARTAUDIO START [baud]`**: Initiates streaming mode. The ESP32 switches the UART baud rate to the specified baud (921600 only). The device sends `OK|UARTAUDIO|STARTING` at 115200 baud before switching.
 3. **Handshake**: The ESP32 sends `UA|READY` beacons at the new baud rate until the host sends the first data frame.
 4. **Streaming**: The host sends framed binary audio data at the streaming baud. The ESP32 receives frames, validates CRC, and feeds audio samples to the A2DP ring buffer. Periodic `UA|FILL` feedback lines report fill levels.
 5. **Stop**: The host sends an in-band `STOP` frame. The ESP32 responds with `UA|BYE`, restores 115200 baud, and emits `EVENT|UARTAUDIO|STOPPED` with counters (frames, bytes, CRC errors).
@@ -113,9 +113,16 @@ The `UARTAUDIO` command provides high-speed audio streaming over the USB console
 **Commands:**
 | Subcommand | Syntax | Description | Sample Output |
 |------------|--------|-------------|---------------|
-| `UARTAUDIO START` | `UARTAUDIO START [baud]` | Start streaming (baud: 230400, 460800, 921600) | `OK\|UARTAUDIO\|STARTING\|baud=921600,frame=N,ring=N,a2dp=1` |
+| `UARTAUDIO START` | `UARTAUDIO START [baud]` | Start streaming (baud: 921600 only) | `OK\|UARTAUDIO\|STARTING\|baud=921600,frame=N,ring=N,a2dp=1` |
 | `UARTAUDIO STATUS` | `UARTAUDIO STATUS` | Query streaming status | `OK\|UARTAUDIO\|STATUS\|streaming=0,state=INACTIVE,used=0,cap=4096` |
 | `UARTAUDIO STOP` | `UARTAUDIO STOP` | Stop (only valid during streaming via in-band frame) | `ERR\|UARTAUDIO\|NOT_STREAMING\|stop is the in-band STOP frame during streaming` |
+
+**Audio Format:**
+- Sample rate: 22050 Hz (fixed)
+- Channels: 2 (stereo interleaved)
+- Sample format: s16le (signed 16-bit little-endian PCM)
+- Upsampling: 2x linear interpolation to 44100 Hz before A2DP output
+- Payload rate: 88.2 KB/s (requires 921600 baud to carry)
 
 **Python Test Tool:** `tools/stream_audio_uart.py` provides frame building and CRC utilities. The laptop BT test suite (`test/laptop_bt_tests/test_uart_streaming.py`) imports these and runs end-to-end tests that stream synthetic tones from a PC to the ESP32 over UART, which then plays over A2DP to the laptop's own Bluetooth adapter.
 
@@ -147,7 +154,7 @@ All I2S pins are configurable via NVS or the `I2S_CONFIG` command. The secondary
 2. UARTAUDIO (development: PC → USB serial → A2DP)
 3. SYNTH (connection-hold: keeps A2DP link alive when no I2S signal)
 4. I2S (primary audio input)
-5. Silence (fallback)
+5. Silence (default idle: active when no BEEP, UARTAUDIO, or I2S signal and SYNTH is not forced ON)
 
 **Serial commands:** Send text commands over UART (USB console or GPIO16/17). See `components/command_interface/` for command reference. Key commands: `SCAN`, `CONNECT`, `START`, `STOP`, `VOLUME`, `STATUS`, `VERSION`.
 
