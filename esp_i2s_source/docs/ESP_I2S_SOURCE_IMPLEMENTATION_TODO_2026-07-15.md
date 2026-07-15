@@ -311,7 +311,11 @@ Do not make `npm ci` optional in CI. The local helper may skip only with a clear
 
 # Phase 2 — Fix boot and start the actual audio pipeline
 
+**Status: DONE** (host-verifiable parts) — commits `071d5ef9`, `be60d9d3`, `3ccdeb7a`. Boot order reconciled per errata answer #1 (not the file's own conflicting §2.3/§2.8 orderings — see the top-of-file errata note). **Hardware checkpoint 1 (RESPONSES answer #12) still needed**: flash the S3 and confirm no duplicate-netif assertion, every initializer runs once, `BOOT_COMPLETE` appears, and I2S reports a real state without hanging, with the WROOM32 both absent and present.
+
 ## 2.1 Delete duplicate startup calls
+
+**Status: DONE** — commit `071d5ef9`.
 
 **File:** `main/main.c`
 
@@ -320,6 +324,8 @@ Delete the second `link_selftest()` and second `wifi_mgr_init()` block. Do not m
 ---
 
 ## 2.2 Separate BT initialization from the health probe
+
+**Status: DONE** — commit `071d5ef9`. Probe runs async in its own low-priority task after BOOT_COMPLETE.
 
 Change:
 
@@ -371,6 +377,8 @@ Prefer running this probe in a low-priority task after boot complete so it canno
 
 ## 2.3 Add a safe helper for boot steps
 
+**Status: DONE** — commit `071d5ef9`.
+
 **File:** `main/main.c`
 
 ```c
@@ -401,6 +409,8 @@ Do not call `ESP_ERROR_CHECK()` for optional components. Use explicit required/d
 
 ## 2.4 Initialize and start I2S
 
+**Status: DONE** — commit `071d5ef9`.
+
 **File:** `main/main.c`
 
 Add exactly once:
@@ -420,6 +430,8 @@ The implementation from Phase 3 must ensure missing external clocks do not hang 
 ---
 
 ## 2.5 Create the audio producer task
+
+**Status: DONE** — commit `071d5ef9`. State-aware backoff (I2S_STATE_FAULTED) deferred to Phase 3 as noted in this file.
 
 Add a static handle and exit controls near the task:
 
@@ -478,6 +490,8 @@ Adapt the state type after Phase 3.
 
 ## 2.6 Use a clear source arbitration function
 
+**Status: DONE** — commit `071d5ef9`. `tone_is_on()` added as a local static wrapper around the existing `tone_get()` snapshot accessor rather than a new tone.h API.
+
 Create a pure function/testable decision:
 
 ```c
@@ -527,6 +541,8 @@ Add a `tone_is_on()` getter that reads a coherent tone snapshot.
 
 ## 2.7 Reduce diagnostic overhead
 
+**Status: DONE** — commit `071d5ef9`. Extracted into main/clock_diag.c/.h (commit `be60d9d3`) so the boot sequence stays free of PCNT dependencies.
+
 Create PCNT units once or move clock measurement to a dedicated low-priority diagnostic task.
 
 Minimum immediate change:
@@ -541,6 +557,8 @@ Check every PCNT call. If any call fails, emit one error and return `-1.0f`. Do 
 ---
 
 ## 2.8 Add a boot-sequence host test
+
+**Status: DONE** — commit `3ccdeb7a`, `test/host_test/test_main_boot.c`.
 
 Create `test/host_test/test_main_boot.c` using stubs that count every initializer/start call.
 
