@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,11 +39,11 @@ bool ctrl_cfg_mac_valid(const char *mac);
  * NONE) on first boot / invalid blob. Never fails; always yields a usable cfg. */
 void ctrl_cfg_load(ctrl_cfg_t *out);
 
-/* Persist *cfg to NVS. Returns ESP_OK on success. */
-#ifdef ESP_PLATFORM
-#include "esp_err.h"
+/* Persist *cfg to NVS. Returns ESP_OK on success.
+ * Definition is ESP_PLATFORM-only (see ctrl_cfg.c); host tests link a stub
+ * (mocks/stubs/ctrl_cfg_host.c). The declaration stays unconditional so
+ * host-side callers get a real prototype instead of an implicit one. */
 esp_err_t ctrl_cfg_save(const ctrl_cfg_t *cfg);
-#endif
 
 #ifdef __cplusplus
 }

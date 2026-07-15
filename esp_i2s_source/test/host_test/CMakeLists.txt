@@ -135,7 +135,9 @@ add_test(NAME test_radio_resampler COMMAND test_radio_resampler)
 
 # CTRL-1a: ctrl_cfg MAC validator (NVS glue is ESP_PLATFORM-guarded out on host)
 add_executable(test_ctrl_cfg test_ctrl_cfg.c ${CTRL_DIR}/ctrl_cfg.c)
-target_include_directories(test_ctrl_cfg PRIVATE ${CTRL_DIR}/include)
+target_include_directories(test_ctrl_cfg PRIVATE
+    ${CTRL_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs)
 target_link_libraries(test_ctrl_cfg unity)
 add_test(NAME test_ctrl_cfg COMMAND test_ctrl_cfg)
 
