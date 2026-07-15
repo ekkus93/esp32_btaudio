@@ -25990,3 +25990,37 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - User granted explicit permission to flash the physical ESP32-S3 (connected via USB, /dev/ttyACM0, WROOM32 not attached) and ran tools/s3_flash_run.sh. Found a real hardware regression Phase 2 exposed: i2s_out_start() now actually runs, and writer_task() in i2s_out.c held taskENTER_CRITICAL (a spinlock disabling interrupts) across a blocking i2s_channel_write() call — with no WROOM32 clock present, every write blocks its full 100ms timeout with interrupts disabled, panicking "Interrupt wdt timeout on CPU0" and reboot-looping. This is I2S-001 from the code review, now hardware-confirmed. Fixed by running the pump (and its blocking write) fully unlocked and merging stats back under a short critical section (struct copy only). Commit 8594583e. Reflashed and verified: boots cleanly to DIAG|BOOT|COMPLETE and stays alive through the diagnostics loop with WROOM32 absent — matches hardware checkpoint 1's requirements (RESPONSES answer #12).
 - Note for next session: tools/s3_flash_run.sh has a pre-existing minor arg-parsing bug — `--seconds N` (two args) doesn't work due to `shift` inside a `for a in "$@"` loop; use `--seconds=N` instead. Not fixed (out of scope, not part of the TODO).
 - Now starting the rest of Phase 3 (I2S-002 pending/consume write semantics, PSRAM-required no-fallback ring policy, richer i2s_out_stats_t with lifecycle state, idempotent init/start/stop/deinit, gain NVS handle bug). Task tracking via TaskCreate/TaskUpdate (12 phase-level tasks, #1-#2 done, #3 in progress).
+
+## 2026-07-15T22:59:52Z - Claude Fable 5 - Phase 9 complete: station IDs, persistence, SSRF blocking, control orchestration
+
+- Implemented Phase 9 of esp_i2s_source (9.1-9.9): stable station IDs, versioned persistence, SSRF URL blocking, control sync, monotonic timestamps, scan state machine
+- station_store: stable uint32_t IDs (sequential, survive reordering), station_result_t error enum, SSRF URL validation
+- stations: STN2 versioned persistence with CRC-32, legacy STA1 migration, idempotent init with atomic flag
+- ctrl: monotonic timestamps via esp_timer_get_time(), scan polls for state transitions with deadlines
+- ctrl_cfg: last_station -> last_station_id field
+- Fixed host test assertions for station_result_t return values
+- Fixed esp_timer mock C++ digit separator syntax
+- Fixed unused parameter warnings in ctrl.c scan functions
+- Fixed missing esp_timer PRIV_REQUIRES in ctrl CMakeLists.txt
+- Fixed web_ui_bt.c last_station -> last_station_id JSON field
+- Device build: esp_i2s_source.bin generated successfully (0x1ba8d0 bytes)
+- Host tests: all 19 suites pass (100%)
+- Commit: 56ce4086
+- TODO document: Phase 9 marked complete with "DONE" notes per sub-task
+
+## 2026-07-15T22:59:52Z - Phase 9 complete: station IDs, persistence, SSRF blocking, control orchestration
+
+- Implemented Phase 9 of esp_i2s_source (9.1-9.9): stable station IDs, versioned persistence, SSRF URL blocking, control sync, monotonic timestamps, scan state machine
+- station_store: stable uint32_t IDs (sequential, survive reordering), station_result_t error enum, SSRF URL validation
+- stations: STN2 versioned persistence with CRC-32, legacy STA1 migration, idempotent init with atomic flag
+- ctrl: monotonic timestamps via esp_timer_get_time(), scan polls for state transitions with deadlines
+- ctrl_cfg: last_station -> last_station_id field
+- Fixed host test assertions for station_result_t return values
+- Fixed esp_timer mock C++ digit separator syntax
+- Fixed unused parameter warnings in ctrl.c scan functions
+- Fixed missing esp_timer PRIV_REQUIRES in ctrl CMakeLists.txt
+- Fixed web_ui_bt.c last_station -> last_station_id JSON field
+- Device build: esp_i2s_source.bin generated successfully (0x1ba8d0 bytes)
+- Host tests: all 19 suites pass (100%)
+- Commits: 56ce4086 (implementation), 575ecd3c (TODO doc update)
+- TODO document: Phase 9 marked complete with "DONE" note
