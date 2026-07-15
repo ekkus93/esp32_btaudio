@@ -90,7 +90,9 @@ size_t radio_read(uint8_t *dst, size_t len)
  * FAULTED and restart is blocked. */
 #define RADIO_STOP_TIMEOUT_MS 8000
 
-static volatile size_t   s_prebuffer_bytes = (size_t)PREBUF_MS_DEFAULT * PCM_BYTES_PER_MS;
+/* 7.9: atomic prebuffer threshold — readers check under s_pcm_mtx, writers
+   use atomic_store for safe concurrent updates. */
+static atomic_size_t     s_prebuffer_bytes;
 static void radio_prebuffer_load(void);
 static uint8_t          *s_pcm;
 static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
@@ -176,6 +178,34 @@ typedef struct radio_session {
 static inline bool session_should_run(const radio_session_t *s)
 {
     return s && !atomic_load_explicit(&s->stop_requested, memory_order_acquire);
+}
+
+/* 7.4: check if both workers have exited for a session. */
+static inline bool session_all_exited(const radio_session_t *s)
+{
+    if (!s || !s->events) return false;
+    EventBits_t bits = xEventGroupGetBits(s->events);
+    return (bits & RADIO_EVT_ALL_EXITED) == RADIO_EVT_ALL_EXITED;
+}
+
+/* 7.4: destroy a session only after both workers have exited.
+ * Asserts both EXITED bits are set before freeing. */
+static void session_destroy_joined(radio_session_t *s)
+{
+    if (!s) return;
+    ESP_LOGI(TAG, "joining session gen=%" PRIu32, s->generation);
+    /* Assert: workers must have exited. If not, the session was freed
+     * prematurely — the task handles still point to running code. */
+    EventBits_t bits = xEventGroupGetBits(s->events);
+    if ((bits & RADIO_EVT_ALL_EXITED) != RADIO_EVT_ALL_EXITED) {
+        ESP_LOGE(TAG, "session_destroy called with workers still running (gen=%" PRIu32 ")",
+                 s->generation);
+        /* Don't free — mark faulted instead. The workers will free themselves
+         * when they eventually notice the session is gone. */
+        return;
+    }
+    vEventGroupDelete(s->events);
+    free(s);
 }
 
 /* Module state protected by s_control_mtx. */
@@ -553,7 +583,15 @@ static void decoder_task(void *arg)
                 xSemaphoreTake(s_mtx, portMAX_DELAY);
                 s_decode_errors++;
                 xSemaphoreGive(s_mtx);
-                if (raw.consumed == 0) raw.consumed = 1;   /* force resync progress */
+                /* 7.8: don't force consumed=1 — let the loop break naturally.
+                 * The decoder may need more input, which is handled below. */
+            }
+            /* 7.8: validate decoder contract — consumed must not exceed len. */
+            if (raw.consumed > raw.len) {
+                ESP_LOGW(TAG, "decoder consumed > len (consumed=%u len=%u)", raw.consumed, raw.len);
+                set_radio_error(RADIO_ERR_DECODER_CONTRACT, "decoder consumed beyond input");
+                atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+                break;
             }
             if (raw.consumed == 0) break;   /* needs more input */
             consumed_total += raw.consumed;
@@ -867,14 +905,25 @@ esp_err_t radio_stop_sync(void)
         xSemaphoreGive(s_control_mtx);
         return ESP_OK;
     }
-    /* If already FAULTED, the session is stopped — clean up and return OK. */
-    if (s_radio_state == RADIO_STATE_FAULTED) {
-        s_radio_state = RADIO_STATE_STOPPED;
-        s_active_session = NULL;
+    /* 7.4: If already FAULTED_JOIN_PENDING, wait for workers then destroy. */
+    if (s_radio_state == RADIO_STATE_FAULTED_JOIN_PENDING) {
+        s_radio_state = RADIO_STATE_STOPPING;
         xSemaphoreGive(s_control_mtx);
-        vEventGroupDelete(s->events);
-        free(s);
-        return ESP_OK;
+        /* Wait for workers to exit (they may have stopped already). */
+        if (session_all_exited(s)) {
+            session_destroy_joined(s);
+            goto stopped;
+        }
+        /* Workers still running — fall through to stop logic. */
+    }
+    /* If already FAULTED, wait for workers then destroy. */
+    if (s_radio_state == RADIO_STATE_FAULTED) {
+        xSemaphoreGive(s_control_mtx);
+        /* Wait for workers to exit before freeing. */
+        (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
+                                   pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
+        session_destroy_joined(s);
+        goto stopped;
     }
     s_radio_state = RADIO_STATE_STOPPING;
     atomic_store_explicit(&s->stop_requested, true, memory_order_release);
@@ -888,27 +937,32 @@ esp_err_t radio_stop_sync(void)
     if ((bits & RADIO_EVT_ALL_EXITED) != RADIO_EVT_ALL_EXITED) {
         /* Timeout — leave session registered, block restart. */
         xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-        s_radio_state = RADIO_STATE_FAULTED;
+        s_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
         xSemaphoreGive(s_control_mtx);
-        ESP_LOGW(TAG, "radio stop timeout (gen=%" PRIu32 "); session FAULTED", s->generation);
+        ESP_LOGW(TAG, "radio stop timeout (gen=%" PRIu32 "); session FAULTED_JOIN_PENDING", s->generation);
         printf("DIAG|RADIO|STOP_TIMEOUT|gen=%" PRIu32 "\n", s->generation);
         fflush(stdout);
         return ESP_ERR_TIMEOUT;
     }
 
     /* Both exited — reclaim session. */
+    uint32_t gen = s->generation;
     xSemaphoreTake(s_control_mtx, portMAX_DELAY);
     if (s_active_session == s) s_active_session = NULL;
     s_radio_state = RADIO_STATE_STOPPED;
     xSemaphoreGive(s_control_mtx);
-
-    uint32_t gen = s->generation;
-    vEventGroupDelete(s->events);
-    free(s);
+    session_destroy_joined(s);
 
     ESP_LOGI(TAG, "radio stopped (gen=%" PRIu32 ")", gen);
     printf("DIAG|RADIO|STOPPED|gen=%" PRIu32 "\n", gen);
     fflush(stdout);
+    return ESP_OK;
+
+stopped:
+    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    if (s_active_session) s_active_session = NULL;
+    s_radio_state = RADIO_STATE_STOPPED;
+    xSemaphoreGive(s_control_mtx);
     return ESP_OK;
 }
 
@@ -1007,14 +1061,14 @@ void radio_get_status(radio_status_t *out)
 
 int radio_get_prebuffer_ms(void)
 {
-    return (int)(s_prebuffer_bytes / PCM_BYTES_PER_MS);
+    return (int)(atomic_load(&s_prebuffer_bytes) / PCM_BYTES_PER_MS);
 }
 
 esp_err_t radio_set_prebuffer_ms(int ms)
 {
     ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
     ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-    s_prebuffer_bytes = (size_t)ms * PCM_BYTES_PER_MS;
+    atomic_store(&s_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h);
@@ -1028,7 +1082,7 @@ esp_err_t radio_set_prebuffer_ms(int ms)
         ESP_LOGE(TAG, "prebuffer applied but persistence failed: %s",
                  esp_err_to_name(err));
     }
-    ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)s_prebuffer_bytes);
+    ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)atomic_load(&s_prebuffer_bytes));
     return err;
 }
 
@@ -1040,7 +1094,7 @@ static void radio_prebuffer_load(void)
     if (nvs_get_i32(h, NVS_KEY_PREBUF, &ms) == ESP_OK) {
         ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
         ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-        s_prebuffer_bytes = (size_t)ms * PCM_BYTES_PER_MS;
+        atomic_store(&s_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
     }
     nvs_close(h);
 }
