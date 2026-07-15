@@ -1235,6 +1235,8 @@ Run under ASan and TSan where available.
 
 # Phase 5 — Harden tone and signal generation
 
+**Status: DONE** — commit `92cea091`. Public tone.h API kept stable (setters unchanged) rather than switching to the TODO's combined `tone_set(hz,amp,voice)` signature, to avoid rippling into web_ui/console callers under time pressure — coherence achieved internally via a mutex-guarded snapshot instead. Hardware-verified.
+
 ## 5.1 Validate oscillator inputs
 
 **Files:**
