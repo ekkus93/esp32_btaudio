@@ -34,20 +34,68 @@ Requires an ESP32 WROOM32.
 
 Commands are sent over UART (USB console or GPIO16/17 secondary port). Each command ends with `\n`.
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `SCAN` | Scan for Bluetooth devices | `SCAN` |
-| `CONNECT <MAC>` | Connect to device by MAC | `CONNECT AA:BB:CC:DD:EE:FF` |
-| `DISCONNECT` | Disconnect current connection | `DISCONNECT` |
-| `START` | Start audio streaming | `START` |
-| `STOP` | Stop audio streaming | `STOP` |
-| `VOLUME <0-100>` | Set volume level | `VOLUME 75` |
-| `STATUS` | Get current device status | `STATUS` |
-| `VERSION` | Get firmware version | `VERSION` |
-| `SYNTH ON/OFF` | Force synth audio mode | `SYNTH ON` |
-| `I2S_CONFIG <pins>` | Configure I2S pins | `I2S_CONFIG 18,19,22` |
-| `AUDIO_AUTOSTART on/off` | Enable/disable audio autostart | `AUDIO_AUTOSTART off` |
-| `SCAN <MAC>` | Start scanning for devices | `SCAN` |
+| Command | Syntax | Description | Sample Output |
+|---------|--------|-------------|---------------|
+| `HELP` | `HELP` | Show list of all commands | `OK\|HELP\|DONE` |
+| `STATUS` | `STATUS` | Get system status | `OK\|STATUS\|CURRENT\|MUTE=0,SAMPLE_RATE=44100,PAIRED_COUNT=2` |
+| `VERSION` | `VERSION` | Get firmware version | `OK\|VERSION\|1.0.0` |
+| `SCAN` | `SCAN` | Start Bluetooth scan | `OK\|SCAN\|STARTED` |
+| `CONNECT` | `CONNECT <MAC>` | Connect by MAC address | `OK\|CONNECT\|INITIATED` |
+| `CONNECT_NAME` | `CONNECT_NAME <NAME>` | Connect by device name | `OK\|CONNECT_NAME\|INITIATED` |
+| `DISCONNECT` | `DISCONNECT` | Disconnect current connection | `OK\|DISCONNECT\|DONE` |
+| `PAIR` | `PAIR <MAC\|NAME>` | Initiate pairing | `OK\|PAIR\|INITIATED` |
+| `CONFIRM_PIN` | `CONFIRM_PIN [MAC] <ACCEPT\|REJECT>` | Respond to SSP confirm | `OK\|CONFIRM_PIN\|ACCEPTED\|MAC` |
+| `ENTER_PIN` | `ENTER_PIN [MAC] <PIN>` | Submit legacy PIN code | `OK\|ENTER_PIN\|SENT\|MAC` |
+| `SET_DEFAULT_PIN` | `SET_DEFAULT_PIN <PIN>` | Persist default PIN | `OK\|SET_DEFAULT_PIN\|SUCCESS\|PIN` |
+| `PAIRED` | `PAIRED` | List paired devices | `INFO\|PAIRED\|ITEM\|MAC,Name` then `OK\|PAIRED\|COUNT\|N` |
+| `UNPAIR` | `UNPAIR <MAC>` | Remove paired device | `OK\|UNPAIR\|REMOVED\|MAC` |
+| `UNPAIR_ALL` | `UNPAIR_ALL` | Erase all paired devices | `OK\|UNPAIR_ALL\|SUCCESS` |
+| `PARTS` | `PARTS` | List partitions | `INFO\|PARTS\|ITEM\|name,type=N,sub=N,off=0xNNNNNN,size=0xNNNNNN` |
+| `SET_NAME` | `SET_NAME <NAME>` | Set Bluetooth device name | `OK\|SET_NAME\|SUCCESS\|NAME` |
+| `START` | `START` | Start A2DP audio streaming | `OK\|START\|STARTED` |
+| `STOP` | `STOP` | Stop A2DP audio streaming | `OK\|STOP\|STOPPED` |
+| `VOLUME` | `VOLUME <0-100>` | Set playback volume | `OK\|VOLUME\|SET\|LEVEL` |
+| `MUTE` | `MUTE` | Mute audio output | `OK\|MUTE\|SET` |
+| `UNMUTE` | `UNMUTE` | Unmute audio output | `OK\|UNMUTE\|CLEARED` |
+| `SAMPLE_RATE` | `SAMPLE_RATE <Hz>` | Apply I2S sample rate | `OK\|SAMPLE_RATE\|APPLIED\|RATE` |
+| `SYNTH` | `SYNTH ON\|OFF` | Force synthetic audio | `OK\|SYNTH\|ENABLED` |
+| `BEEP` | `BEEP` | Play 10s middle-C tone | `OK\|BEEP\|SENT` |
+| `DIAG` | `DIAG` | Report connection/state | `OK\|DIAG\|STATE\|CONN=1,STREAM=1,MGR=1,I2S=1,BEEP=0` |
+| `AUDIO_STATUS` | `AUDIO_STATUS` | Report audio engine stats | `OK\|AUDIO_STATUS\|CURRENT\|RING_CAP=N,RING_USED=N,SOURCE=I2S,BEEP=no,...` |
+| `LAST_MAC` | `LAST_MAC get\|clear` | Get/clear last connected MAC | `OK\|LAST_MAC\|MAC` or `OK\|LAST_MAC\|CLEARED` |
+| `SPANLOG` | `SPANLOG [N]` | Dump span log entries | `INFO\|SPANLOG\|ENTRY\|seq,ts,bytes,ring_used_kb,source,flags` |
+| `MEM` | `MEM` | Show free memory | `OK\|MEM\|STATS\|DRAM=N,INTERNAL=N,8BIT=N,PSRAM=N` |
+| `RESET` | `RESET` | Reboot device | `OK\|RESET\|REBOOTING` |
+| `AUDIO_AUTOSTART` | `AUDIO_AUTOSTART on\|off\|get` | Enable/disable audio autostart | `OK\|AUDIO_AUTOSTART\|ENABLED` or `OK\|AUDIO_AUTOSTART\|DISABLED` |
+| `I2S_CONFIG` | `I2S_CONFIG BCLK,WS,DIN,DOUT [RATE] [BIT] [CH]` | Configure I2S pins | `OK\|I2S_CONFIG\|APPLIED\|PINS=18,19,22,...` |
+| `I2S_PROBE` | `I2S_PROBE [BCLK] [WS]` | Count clock edges (diag) | `EVENT\|I2SPROBE\|RESULT\|bclk_highs=N,ws_highs=N` |
+| `I2S_RXTEST` | `I2S_RXTEST [TIMEOUT_MS]` | One blocking I2S read | `EVENT\|I2SRXTEST\|RESULT\|ret=0,read_bytes=N` |
+| `I2S_CLKGEN` | `I2S_CLKGEN [MS]` | Bit-bang clock square wave | `EVENT\|I2SCLKGEN\|DONE\|bclk=18,ws=19,ms=4000` |
+
+**DEBUG Subcommands:**
+| Command | Syntax | Description | Sample Output |
+|---------|--------|-------------|---------------|
+| `DEBUG MOCK_ON` | `DEBUG MOCK_ON` | Enable mock mode | `OK\|DEBUG\|MOCK_ON` |
+| `DEBUG MOCK_ADD` | `DEBUG MOCK_ADD <MAC>` | Add mock pairing | `OK\|DEBUG\|MOCK_ADD\|MAC` |
+| `DEBUG MOCK_PAIR` | `DEBUG MOCK_PAIR <MAC>` | Start mock pairing | `OK\|DEBUG\|MOCK_PAIR_STARTED\|MAC` |
+| `DEBUG BEEP_DIAG` | `DEBUG BEEP_DIAG` | Arm beep diagnostic | `OK\|DEBUG\|BEEP_DIAG_ARMED` |
+| `DEBUG WORKER_DIAG` | `DEBUG WORKER_DIAG` | Emit worker diagnostic | `OK\|DEBUG\|WORKER_DIAG_EMITTED` |
+| `DEBUG AUDIO_DIAG` | `DEBUG AUDIO_DIAG ON\|OFF` | Enable/disable audio diag | `OK\|DEBUG\|AUDIO_DIAG_ON` |
+| `DEBUG AUDIO_DIAG_SUMMARY` | `DEBUG AUDIO_DIAG_SUMMARY` | Emit audio diag summary | `OK\|DEBUG\|AUDIO_DIAG_SUMMARY` |
+| `DEBUG AUDIO_DIAG_PROBE` | `DEBUG AUDIO_DIAG_PROBE ARM\|DUMP` | Audio diag probe | `OK\|DEBUG\|AUDIO_DIAG_PROBE_ARMED` |
+| `DEBUG LOG` | `DEBUG LOG <TAG> <LEVEL>` | Set log level | `OK\|DEBUG\|LOG_SET\|TAG:LEVEL` |
+| `DEBUG FORCE_BEEP` | `DEBUG FORCE_BEEP` | Force beep diagnostic | `OK\|DEBUG\|FORCE_BEEP_SENT` |
+| `DEBUG DRAIN_QUEUE` | `DEBUG DRAIN_QUEUE` | Drain ring buffer | `OK\|DEBUG\|DRAIN_QUEUE_DONE` |
+| `DEBUG DRAM` | `DEBUG DRAM ON\|OFF` | Force DRAM allocation | `OK\|DEBUG\|DRAM_ON` |
+
+**Output Format:** All responses use pipe-delimited format: `STATUS\|COMMAND\|RESULT\|DATA`
+
+| Status | Meaning |
+|--------|---------|
+| `OK` | Command succeeded |
+| `ERR` | Command failed or invalid |
+| `INFO` | Informational data (multi-line responses) |
+| `EVENT` | Async event notification |
 
 ## Hardware
 
