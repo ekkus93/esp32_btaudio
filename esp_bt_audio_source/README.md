@@ -16,7 +16,7 @@ uv pip install -r requirements.txt   # or uv pip install -e .
 Then source both environments:
 
 ```bash
-. $HOME/esp/v5.1/esp-idf/export.sh   # ESP-IDF toolchain and idf.py
+. $HOME/esp/v5.5.1/esp-idf/export.sh   # ESP-IDF toolchain and idf.py
 . .venv/bin/activate                  # Python tooling for tests
 ```
 

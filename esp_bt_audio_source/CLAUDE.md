@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Standard ESP-IDF CMake + `idf.py`, no PlatformIO. Target ESP-IDF v5.5.1.
 
 ```bash
-. $HOME/esp/v5.1/esp-idf/export.sh
+. $HOME/esp/v5.5.1/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
