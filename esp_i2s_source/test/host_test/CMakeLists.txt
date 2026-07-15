@@ -25,20 +25,13 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# Unity test framework
-# Prefer a local Unity install (e.g. install to /usr/local/share/cmake/unity/
-# or set CMAKE_PREFIX_PATH). Falls back to FetchContent from GitHub only if
-# find_package(unity) fails, so offline builds work without requiring internet.
-find_package(unity QUIET)
-if(NOT unity_FOUND)
-    include(FetchContent)
-    FetchContent_Declare(
-        unity
-        GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
-        GIT_TAG v2.5.2
-    )
-    FetchContent_MakeAvailable(unity)
-endif()
+# Unity test framework (vendored — no network fetch, ever).
+# Source is a verbatim copy of ThrowTheSwitch/Unity v2.6.0 under
+# test/third_party/unity/. Do not reintroduce FetchContent/find_package here:
+# a clean offline machine must be able to build and run these tests.
+set(UNITY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/unity)
+add_library(unity STATIC ${UNITY_DIR}/src/unity.c)
+target_include_directories(unity PUBLIC ${UNITY_DIR}/src)
 
 enable_testing()
 
