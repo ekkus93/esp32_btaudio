@@ -1,2 +1,16 @@
+# ESP32-S3-WROOM-1 N16R8 hardware identity.
+CONFIG_IDF_TARGET="esp32s3"
+
+# Match the physical module flash size.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# Native USB Serial/JTAG console.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-CONFIG_SPIRAM=y
+
+# Deliberately do not enable external PSRAM.
+
+# Reuse the production partition layout so the diagnostic application is
+# flashed at 0x20000 and does not overwrite the production NVS region.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../../partitions.csv"

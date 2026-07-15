@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.16)
-
 idf_component_register(
     SRCS "simple_wifi_test.c"
-    PRIV_REQUIRES nvs_flash esp_wifi esp_netif
+    PRIV_REQUIRES
+        esp_event
+        esp_netif
+        esp_wifi
+        nvs_flash
     INCLUDE_DIRS "."
 )

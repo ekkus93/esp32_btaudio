@@ -1,85 +1,152 @@
-# ESP32-S3 WiFi Issues
+# ESP32-S3 Wi-Fi Smoke-Test Incident
 
-## Current Status
-Simple WiFi STA test on ESP32-S3 enters a reboot loop. The device shows bootloader output but the application crashes before any console output is visible.
+## Status
 
-## Symptoms
-- Boot ROM: `ESP-ROM:esp32s3-20210327` visible
-- After bootloader: silent reboot, no console output from app
-- `idf.py build` and `idf.py flash` complete without errors
+Replaced with blocking access-point scan diagnostic. Production Wi-Fi code
+unchanged. Awaiting hardware validation.
 
-## Partition Table
+## User-visible symptoms
+
+The original `test/wifi_simple/` application flashed successfully but entered
+a reboot loop. Boot ROM banner repeated, but no application console output
+was visible via USB Serial/JTAG.
+
+## Confirmed defects in the old diagnostic
+
+### 1. No station connection was configured
+
+The old code called:
+```c
+esp_wifi_set_mode(WIFI_MODE_STA);
+esp_wifi_start();
+```
+
+But never:
+- Created a default station netif (`esp_netif_create_default_wifi_sta()`)
+- Configured SSID/password (`esp_wifi_set_config()`)
+- Initiated connection (`esp_wifi_connect()`)
+
+Therefore waiting for `IP_EVENT_STA_GOT_IP` was not a valid test outcome.
+Even on healthy hardware, the test would wait indefinitely.
+
+### 2. NVS handling was incorrect
+
+The old code checked for `ESP_ERR_NVS_NOT_FOUND` (not the standard
+`ESP_ERR_NVS_NEW_VERSION_FOUND`) and called `nvs_flash_init_partition("nvs")`.
+The standard recovery pattern uses `nvs_flash_erase()` on error, which could
+destroy production Wi-Fi credentials and station presets.
+
+### 3. Initialization errors were ignored
+
+The old code ignored return values from:
+- `esp_netif_init()`
+- `esp_event_loop_create_default()`
+- `esp_event_handler_register()`
+
+### 4. Partition analysis was incorrect
+
+The old local `partitions.csv` had:
 ```csv
 nvs,      data, nvs,     ,        0x6000,
 phy_init, data, phy,     ,        0x1000,
 factory,  app,  factory, ,        0x400000,
 ```
-- NVS at 0x6000-0x10000 (36KB)
-- PHY init at 0x1000-0xF000 (60KB)
-- Factory app at 0x10000 onwards
 
-## Console Configuration
-- `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` set in sdkconfig.defaults
-- USB-Serial-JTAG peripheral available (SOC_USB_SERIAL_JTAG_SUPPORTED=y)
-- Bootloader output works, but app output does not appear
+The blank fields are offsets (auto-assigned by ESP-IDF), and the hexadecimal
+values are sizes:
+- `0x6000` is 24 KiB NVS, not 36 KiB
+- `0x1000` is 4 KiB PHY, not 60 KiB
 
-## Code
-```c
-void app_main(void)
-{
-    ESP_LOGI(TAG, "Simple WiFi test");
+With auto-assigned offsets, ESP-IDF places:
+- NVS at 0x9000
+- PHY at 0xF000
+- Factory app at 0x10000
 
-    // Initialize NVS (required for WiFi)
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_init_partition("nvs"));
-    }
+The old test did not enable `CONFIG_PARTITION_TABLE_CUSTOM`, so the CSV was
+probably ignored and ESP-IDF's built-in single-app layout was used instead.
 
-    ESP_LOGI(TAG, "Initializing WiFi...");
-    esp_netif_init();
-    esp_event_loop_create_default();
-    esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL);
+### 5. Flash offset was wrong
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+The old documentation listed `0x01000` as the app flash offset. The correct
+offsets are:
+- ESP-IDF built-in single-app layout: `0x10000`
+- This repository's production layout: `0x20000`
 
-    ESP_LOGI(TAG, "Starting WiFi in STA mode...");
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
+Using `0x10000` overlaps the production NVS region (`0x9000`-`0x18FFF`) and
+can destroy saved Wi-Fi credentials.
 
-    ESP_LOGI(TAG, "Waiting for connection...");
-    while (!s_got_ip) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        ESP_LOGI(TAG, "Still waiting...");
-    }
-    ESP_LOGI(TAG, "WiFi connected successfully!");
-}
+### 6. Event-loop deprecation statement was nonsensical
+
+The old document stated:
+> `esp_event_loop_create_default()` is deprecated in favor of `esp_event_loop_create_default()`
+
+Both sides are the same API. Removed.
+
+### 7. PSRAM configuration hazard
+
+The old test enabled `CONFIG_SPIRAM=y` without specifying the ESP32-S3-WROOM-1
+N16R8 module's octal PSRAM mode (`CONFIG_SPIRAM_MODE_OCT=y`). PSRAM startup
+occurs before `app_main()`. A PSRAM mismatch can cause a reset before
+application logs appear.
+
+## Probable pre-app_main cause
+
+The PSRAM configuration in `sdkconfig.defaults` is a strong hypothesis for
+the pre-`app_main()` reboot. External RAM initialization happens before the
+application task starts. If PSRAM fails to initialize, the system may reset
+silently.
+
+The corrected test removes PSRAM entirely, as it is irrelevant to scanning
+for access points.
+
+## What was not wrong
+
+- USB Serial/JTAG console configuration was correct
+- `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` routes system console to USB
+- Explicit USB driver initialization is not required for logging
+- ESP32-S3 hardware supports Wi-Fi scan operations
+
+## Replacement diagnostic
+
+The replacement test (`test/wifi_simple/`):
+- Performs a single blocking 2.4 GHz access-point scan
+- Requires no SSID/password, DHCP, or internet access
+- Does not enable PSRAM
+- Reuses production partition table (app at `0x20000`)
+- Preserves NVS non-destructively
+- Emits machine-readable diagnostic markers at each initialization step
+
+See `../test/wifi_simple/README.md` for build and interpretation instructions.
+
+## Clean build procedure
+
+```bash
+cd esp_i2s_source/test/wifi_simple
+rm -rf build sdkconfig sdkconfig.old
+idf.py set-target esp32s3
+idf.py build
+./verify_build.py
 ```
 
-## Potential Issues
-1. **USB-Serial-JTAG initialization**: App may crash before USB peripheral is ready
-2. **NVS initialization**: `nvs_flash_init()` may fail silently
-3. **WiFi initialization**: `esp_wifi_init()` may crash if PHY calibration data is missing
-4. **Event loop**: `esp_event_loop_create_default()` is deprecated in favor of `esp_event_loop_create_default()`
-5. **Missing WiFi credentials**: No SSID/password configured, so even if it boots it will just loop waiting for IP
+## Static build verification
 
-## Build Configuration
-- ESP-IDF v5.5.1
-- Target: ESP32-S3
-- Flash: 2MB
-- Console: USB-Serial-JTAG
-- SPIRAM enabled
+`verify_build.py` checks:
+- Target is ESP32-S3
+- Flash size is 16 MB
+- USB Serial/JTAG console is selected
+- PSRAM is not enabled
+- Production partition table is selected (`../../partitions.csv`)
+- Bootloader at `0x0000`
+- Partition table at `0x8000`
+- Application at `0x20000`
 
-## Flash Layout
-```
-0x00000   - bootloader.bin
-0x01000   - wifi_simple_test.bin (factory app)
-0x08000   - partition-table.bin
-```
+## Hardware results
 
-## Next Steps
-1. Add explicit USB-Serial-JTAG initialization
-2. Add error checking around NVS/WiFi init
-3. Add explicit partition table verification
-4. Check PHY calibration data
-5. Add WiFi credentials or use AP mode for testing
+Pending hardware validation.
+
+## Remaining investigation
+
+- Flash the corrected diagnostic and verify scan completion
+- If `APP_MAIN_ENTERED` does not appear: investigate boot configuration, not
+  Wi-Fi connection logic
+- If scan completes with zero APs: repeat near a known active 2.4 GHz AP

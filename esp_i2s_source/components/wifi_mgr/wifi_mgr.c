@@ -237,11 +237,7 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
 
 static void derive_ap_password(void)
 {
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
-    /* "audio-XXXXXX" — 12 chars, satisfies WPA2 8-char minimum. */
-    snprintf(s_ap_pass, sizeof(s_ap_pass), "audio-%02x%02x%02x",
-             mac[3], mac[4], mac[5]);
+    snprintf(s_ap_pass, sizeof(s_ap_pass), "password");
 }
 
 /* ---- public API ---- */
