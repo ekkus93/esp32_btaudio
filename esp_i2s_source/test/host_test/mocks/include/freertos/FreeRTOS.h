@@ -30,7 +30,7 @@ typedef unsigned int UBaseType_t;
 #define configTICK_RATE_HZ 1000U
 #endif
 #define portTICK_PERIOD_MS (1000U / configTICK_RATE_HZ)
-#define pdMS_TO_TICKS(ms) ((TickType_t)((ms) / portTICK_PERIOD_MS))
+#define pdMS_TO_TICKS(ms) ((TickType_t)((uint32_t)(ms) / portTICK_PERIOD_MS))
 
 /* Simple port spinlock type used by the code (no-op in host tests) */
 typedef int portMUX_TYPE;

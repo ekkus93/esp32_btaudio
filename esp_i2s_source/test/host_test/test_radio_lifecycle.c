@@ -87,7 +87,7 @@ esp_err_t nvs_set_i32(nvs_handle_t h, const char *key, int32_t val)
 esp_err_t nvs_set_u8(nvs_handle_t h, const char *key, uint8_t val)
 {
     (void)h; (void)key;
-    s_nvs_gain = val;
+    s_nvs_gain = (int8_t)val;
     return s_nvs_set_err;
 }
 esp_err_t nvs_commit(nvs_handle_t h)
@@ -119,7 +119,7 @@ int esp_http_client_get_status_code(esp_http_client_handle_t h) { (void)h; retur
 void mock_http_client_set_init_fail(int val) { s_http_client_init_fail = val; }
 
 /* esp_crt_bundle stub */
-void *esp_crt_bundle_attach(void *cfg) { (void)cfg; return NULL; }
+esp_err_t esp_crt_bundle_attach(void *cfg) { (void)cfg; return ESP_OK; }
 
 /* esp_heap_caps stubs — with NULL injection for allocation failure tests */
 static size_t s_heap_caps_fail_size = 0; /* fail if size matches */

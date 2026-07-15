@@ -28,9 +28,21 @@ if(ENABLE_UBSAN)
 endif()
 
 # Strict warnings-as-errors (release gate requirement, spec SPEC §18/§17.1)
-option(ENABLE_STRICT "Treat warnings as errors (-Wall -Wextra -Werror)" OFF)
+option(ENABLE_STRICT "Enable strict compiler warnings" ON)
 if(ENABLE_STRICT)
-    add_compile_options(-Wall -Wextra -Werror)
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+        -Wshadow
+        -Wconversion
+        -Wsign-conversion
+        -Wformat=2
+        -Wundef
+        -Wcast-qual
+        -Wstrict-prototypes
+    )
 endif()
 
 include_directories(

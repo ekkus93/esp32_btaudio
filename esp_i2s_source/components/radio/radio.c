@@ -305,7 +305,7 @@ static void resolve_url(const char *in, char *out, size_t out_sz)
         esp_http_client_fetch_headers(c);
         int r;
         while (blen < (int)sizeof(body) - 1 &&
-               (r = esp_http_client_read(c, body + blen, sizeof(body) - 1 - blen)) > 0) {
+               (r = esp_http_client_read(c, body + blen, (int)(sizeof(body) - 1 - (size_t)blen))) > 0) {
             blen += r;
         }
         body[blen] = '\0';
@@ -489,7 +489,7 @@ static void decoder_task(void *arg)
                     xSemaphoreGive(s_mtx);
                 }
                 /* RH-S3-04: loop resampler until all input frames consumed. */
-                size_t in_frames = out.decoded_size / (2 * (info.channel ? info.channel : 1));
+                size_t in_frames = out.decoded_size / (size_t)(2 * (info.channel ? info.channel : 1));
                 size_t channels = (info.channel == 1) ? 1 : 2;
                 size_t offset = 0;
                 while (offset < in_frames && session_should_run(s)) {

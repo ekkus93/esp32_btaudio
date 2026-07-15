@@ -72,7 +72,7 @@ static void bt_link_task(void *arg)
                 bt_link_session_begin(&s_session, req->cmd);
                 char out[BT_LINK_LINE_MAX + 2];
                 int n = snprintf(out, sizeof(out), "%s\r\n", req->cmd);
-                uart_write_bytes(BT_LINK_UART, out, n);
+                uart_write_bytes(BT_LINK_UART, out, (size_t)n);
             }
         }
 

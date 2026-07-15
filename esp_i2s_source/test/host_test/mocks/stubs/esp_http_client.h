@@ -21,7 +21,7 @@ typedef struct {
     const char *url;
     int timeout_ms;
     esp_err_t (*event_handler)(esp_http_client_event_t *);
-    void *crt_bundle_attach;
+    esp_err_t (*crt_bundle_attach)(void *conf);
     const char *user_agent;
     int buffer_size;
 } esp_http_client_config_t;

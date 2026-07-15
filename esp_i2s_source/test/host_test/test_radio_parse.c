@@ -148,14 +148,14 @@ static int build_icy(unsigned char *s, const char *a1, const char *meta, const c
 {
     int p = 0;
     int al1 = (int)strlen(a1);
-    memcpy(s + p, a1, al1); p += al1;
+    memcpy(s + p, a1, (size_t)al1); p += al1;
     if (meta) {
         int mlen = (int)strlen(meta);
         int units = (mlen + 15) / 16;
         s[p++] = (unsigned char)units;
-        memcpy(s + p, meta, mlen); p += mlen;
+        memcpy(s + p, meta, (size_t)mlen); p += mlen;
         int pad = units * 16 - mlen;
-        memset(s + p, 0, pad); p += pad;
+        memset(s + p, 0, (size_t)pad); p += pad;
     } else {
         s[p++] = 0;  /* empty metadata block */
     }
