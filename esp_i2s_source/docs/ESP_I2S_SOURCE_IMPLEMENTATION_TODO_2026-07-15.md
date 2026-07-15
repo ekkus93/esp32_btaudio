@@ -589,6 +589,8 @@ TEST_ASSERT_EQUAL_INT(0, count_command("START"));
 
 # Phase 3 — Make I2S lifecycle and data commit safe
 
+**Status: DONE** — commit `b230fade`. All of 3.1-3.8 implemented and hardware-verified (WROOM32 absent): boots to BOOT_COMPLETE, i2s state correctly reports WAITING_FOR_CLOCK, no crash/watchdog trip. Gap: no host test yet for 3.8's NVS-failure-injection requirement (would need a new host test target compiling i2s_out.c under ESP_PLATFORM with NVS mocks, matching test_main_boot.c's pattern) — follow-up item, not blocking.
+
 ## 3.1 Correct the header contract
 
 **File:** `components/i2s_out/include/i2s_out.h`
