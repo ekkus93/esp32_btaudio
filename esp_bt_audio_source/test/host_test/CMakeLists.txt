@@ -1374,3 +1374,66 @@ add_custom_target(run_tests
     COMMAND test_nvs_storage
     DEPENDS test_commands test_bluetooth test_nvs_storage_errors test_nvs_storage
 )
+
+# RH-WR-01: bt_ctx_lock/unlock wrapper tests
+add_executable(test_bt_ctx_lock test_bt_ctx_lock.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_manager_ops.c
+    ../../components/bt_manager/bt_manager_mocks.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/mock_gap.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_esp_err.c)
+target_link_libraries(test_bt_ctx_lock unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_ctx_lock PRIVATE UNIT_TEST)
+add_test(NAME test_bt_ctx_lock COMMAND $<TARGET_FILE:test_bt_ctx_lock>)
+
+# RH-WR-01: Callback re-entry deadlock tests
+add_executable(test_bt_lock_cb_reentry test_bt_lock_cb_reentry.c
+    ../../components/bt_manager/bt_manager.c
+    ../../components/bt_manager/bt_manager_ops.c
+    ../../components/bt_manager/bt_manager_mocks.c
+    ../../components/bt_manager/bt_pairing_store.c
+    ../../components/bt_manager/bt_scan.c
+    ../../components/bt_manager/bt_connection.c
+    ../../components/bt_manager/bt_events_gap.c
+    ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_avrc.c
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/mock_gap.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_esp_err.c)
+target_link_libraries(test_bt_lock_cb_reentry unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_lock_cb_reentry PRIVATE UNIT_TEST)
+add_test(NAME test_bt_lock_cb_reentry COMMAND $<TARGET_FILE:test_bt_lock_cb_reentry>)
+
+# RH-WR-02: Audio fault/recovery path tests
+add_executable(test_audio_fault_recovery test_audio_fault_recovery.c
+    ../../components/audio_processor/audio_processor.c
+    ../../components/audio_processor/audio_processor_engine.c
+    ../../components/audio_processor/audio_processor_config.c
+    ../../components/audio_processor/audio_processor_test_hooks.c
+    ../../components/audio_processor/audio_processor_state.c
+    mocks/audio_processor_core_logic_stubs.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/fake_semphr.c)
+target_include_directories(test_audio_fault_recovery PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
+target_compile_definitions(test_audio_fault_recovery PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_fault_recovery unity util_safe_host platform_shim_host)
+add_test(NAME test_audio_fault_recovery COMMAND $<TARGET_FILE:test_audio_fault_recovery>)
