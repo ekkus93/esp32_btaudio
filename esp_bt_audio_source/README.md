@@ -145,7 +145,7 @@ All I2S pins are configurable via NVS or the `I2S_CONFIG` command. The secondary
 **Audio sources (priority order):**
 1. Beep overlay (mixes over active source)
 2. UARTAUDIO (development: PC → USB serial → A2DP)
-3. Synth (test tones)
+3. SYNTH (connection-hold: keeps A2DP link alive when no I2S signal)
 4. I2S (primary audio input)
 5. Silence (fallback)
 
