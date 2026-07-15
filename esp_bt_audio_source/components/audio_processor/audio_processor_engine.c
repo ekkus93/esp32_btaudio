@@ -84,14 +84,14 @@ audio_source_t get_active_source(void)
         return AUDIO_SOURCE_UART;
     }
 
-    /* Priority 2: Forced SYNTH mode (user explicitly requested via SYNTH ON) */
-    if (s_force_synth) {
-        return AUDIO_SOURCE_SYNTH;
-    }
-
-    /* Priority 3: I2S capture (if I2S manager is running) */
+    /* Priority 2: I2S capture (primary audio input) */
     if (i2s_manager_is_running()) {
         return AUDIO_SOURCE_I2S;
+    }
+
+    /* Priority 3: Forced SYNTH mode (connection-hold fallback when no I2S) */
+    if (s_force_synth) {
+        return AUDIO_SOURCE_SYNTH;
     }
 
     /* Priority 4: Silence as final fallback */
@@ -403,12 +403,13 @@ audio_source_t get_active_source(void)
         return AUDIO_SOURCE_UART;
     }
 
-    if (s_force_synth) {
-        return AUDIO_SOURCE_SYNTH;
-    }
-
+    /* I2S has priority over SYNTH (SYNTH is connection-hold fallback only) */
     if (i2s_manager_is_running()) {
         return AUDIO_SOURCE_I2S;
+    }
+
+    if (s_force_synth) {
+        return AUDIO_SOURCE_SYNTH;
     }
 
     return AUDIO_SOURCE_SILENCE;

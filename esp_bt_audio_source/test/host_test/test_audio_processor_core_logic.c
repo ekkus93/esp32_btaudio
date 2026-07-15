@@ -42,7 +42,7 @@ void test_get_active_source_should_prioritize_beep_over_synth_and_i2s(void)
     TEST_ASSERT_EQUAL_INT(3, source);
 }
 
-void test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep(void)
+void test_get_active_source_i2s_beats_synth_when_no_beep(void)
 {
     s_force_synth = true;
     s_beep_remaining_bytes = 0;
@@ -51,7 +51,8 @@ void test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep(void)
 
     int source = audio_processor_test_get_active_source_id();
 
-    TEST_ASSERT_EQUAL_INT(1, source);
+    /* I2S has priority over SYNTH (SYNTH is connection-hold fallback only) */
+    TEST_ASSERT_EQUAL_INT(0, source); /* I2S */
 }
 
 void test_produce_audio_chunk_should_track_source_switch_count_and_bytes_by_source(void)
@@ -360,16 +361,20 @@ void test_priority_chain_synth_beats_i2s(void)
     TEST_ASSERT_EQUAL_INT(1, audio_processor_test_get_active_source_id()); /* SYNTH */
 }
 
-/* Test I2S priority: beats SILENCE fallback */
-void test_priority_chain_i2s_beats_silence(void)
+/* Test I2S priority: beats SYNTH and SILENCE */
+void test_priority_chain_i2s_beats_synth_and_silence(void)
 {
     s_beep_remaining_bytes = 0;
     audio_processor_core_stub_set_beep_active(false);
-    s_force_synth = false;
     audio_processor_core_stub_set_uart_active(false);
 
-    /* I2S alone → I2S */
+    /* I2S + SYNTH → I2S wins (SYNTH is fallback only) */
+    s_force_synth = true;
     audio_processor_core_stub_set_i2s_running(true);
+    TEST_ASSERT_EQUAL_INT(0, audio_processor_test_get_active_source_id()); /* I2S */
+
+    /* I2S alone → I2S */
+    s_force_synth = false;
     TEST_ASSERT_EQUAL_INT(0, audio_processor_test_get_active_source_id()); /* I2S */
 
     /* No sources → SILENCE fallback */
@@ -416,7 +421,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_get_active_source_should_prioritize_beep_over_synth_and_i2s);
-    RUN_TEST(test_get_active_source_should_prioritize_synth_over_i2s_when_no_beep);
+    RUN_TEST(test_get_active_source_i2s_beats_synth_when_no_beep);
     RUN_TEST(test_produce_audio_chunk_should_track_source_switch_count_and_bytes_by_source);
     RUN_TEST(test_watermark_hysteresis_should_pause_at_high_and_resume_at_low);
     RUN_TEST(test_ring_edge_conditions_should_gate_chunk_production);
