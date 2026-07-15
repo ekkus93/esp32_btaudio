@@ -25951,3 +25951,10 @@ NEXT: RH-WR-05 (Bluetooth initialization rollback)
 
 PHASE 3 COMPLETE: All audio processor reliability tasks (RH-WR-03, RH-WR-04, RH-WR-05)
 Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
+## 2026-07-15T00:23:15Z - Claude Fable 5 - RH-DOC-01, RH-DOC-02, RH-SEC-01, RH-TEST-01
+- Completed RH-DOC-01: Corrected stale I2S comments (main.c, i2s_out.h)
+- Completed RH-DOC-02: Deleted BT_STATE_ACCESS_CONTRACT.md (superseded)
+- Completed RH-SEC-01: Removed AP password from /api/status
+- Completed RH-TEST-01: Documented local Unity install preference
+- Commit: 1dc6e881
+

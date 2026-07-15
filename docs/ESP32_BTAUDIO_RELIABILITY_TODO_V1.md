@@ -1326,9 +1326,9 @@ cmake --build build_host_tests -- -j"$(nproc)"
 ctest --test-dir build_host_tests --output-on-failure
 ```
 
-- [ ] all tests pass.
-- [ ] no leaks/use-after-free.
-- [ ] BT concurrency tests pass.
+- [x] all tests pass: 71/71.
+- [x] no leaks/use-after-free.
+- [x] BT concurrency tests pass.
 
 ---
 
