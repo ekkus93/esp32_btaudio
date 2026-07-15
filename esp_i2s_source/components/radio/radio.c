@@ -477,7 +477,7 @@ static void stream_task(void *arg)
             /* 7.5: interruptible backoff wait via event group */
             xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
                                  pdFALSE, pdFALSE,
-                                 pdMS_TO_TICKS(backoff / portTICK_PERIOD_MS));
+                                 pdMS_TO_TICKS((uint32_t)backoff / portTICK_PERIOD_MS));
             backoff = (backoff < 8000) ? backoff * 2 : 8000;
         }
     }
@@ -802,7 +802,8 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
 
     /* Block restart while FAULTED — the faulted session must be stopped
      * explicitly before a new play can proceed. */
-    if (radio_get_state() == RADIO_STATE_FAULTED) {
+    radio_state_t state = radio_get_state();
+    if (state == RADIO_STATE_FAULTED || state == RADIO_STATE_FAULTED_JOIN_PENDING) {
         ESP_LOGE(TAG, "cannot play while FAULTED; call radio_stop_sync() first");
         return ESP_ERR_INVALID_STATE;
     }
@@ -910,11 +911,12 @@ esp_err_t radio_stop_sync(void)
         s_radio_state = RADIO_STATE_STOPPING;
         xSemaphoreGive(s_control_mtx);
         /* Wait for workers to exit (they may have stopped already). */
-        if (session_all_exited(s)) {
-            session_destroy_joined(s);
-            goto stopped;
+        if (!session_all_exited(s)) {
+            (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
+                                       pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
         }
-        /* Workers still running — fall through to stop logic. */
+        session_destroy_joined(s);
+        goto stopped;
     }
     /* If already FAULTED, wait for workers then destroy. */
     if (s_radio_state == RADIO_STATE_FAULTED) {

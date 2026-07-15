@@ -623,8 +623,12 @@ void radio_test_inject_exit_bits(uint32_t bits);
 void *radio_test_get_active_session(void);
 
 /* Event bits for failure injection (match RADIO_EVT_ constants in radio.c). */
-#define TEST_EVT_STREAM_EXITED  BIT0
-#define TEST_EVT_DECODER_EXITED BIT1
+/* Must match radio.c's RADIO_EVT_* values exactly:
+ *   RADIO_EVT_STREAM_EXITED   = 4
+ *   RADIO_EVT_DECODER_EXITED  = 8
+ * BIT0/1 are used for STARTED bits in radio.c. */
+#define TEST_EVT_STREAM_EXITED  ((uint32_t)4)
+#define TEST_EVT_DECODER_EXITED ((uint32_t)8)
 #define TEST_EVT_ALL_EXITED     (TEST_EVT_STREAM_EXITED | TEST_EVT_DECODER_EXITED)
 
 /* Stream exited, decoder did not → stop must time out and fault. */
@@ -644,9 +648,9 @@ void test_stop_timeout_stream_only_exit(void)
     err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
 
-    /* State must be FAULTED, blocking restart. */
+    /* State must be FAULTED_JOIN_PENDING, blocking restart. */
     radio_state_t state = radio_get_state();
-    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
 }
 
 /* Decoder exited, stream did not → stop must time out and fault. */
@@ -665,7 +669,7 @@ void test_stop_timeout_decoder_only_exit(void)
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
 
     radio_state_t state = radio_get_state();
-    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
 }
 
 /* Neither worker exited → stop must time out and fault. */
@@ -682,7 +686,7 @@ void test_stop_timeout_no_exit(void)
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
 
     radio_state_t state = radio_get_state();
-    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, state);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
 }
 
 /* Both workers exited → stop must succeed. */
