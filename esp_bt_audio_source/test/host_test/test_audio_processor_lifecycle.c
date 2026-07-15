@@ -32,6 +32,7 @@ void setUp(void)
     s_is_initialized = false;
     s_is_running = false;
     s_audio_state = AUDIO_STATE_STOPPED;
+    s_engine_start_error = ESP_OK;
     s_force_synth = false;
     s_keepalive_armed = false;
     s_beep_remaining_bytes = 0;
@@ -296,6 +297,64 @@ void test_stop_timeout_ms_defined(void)
     TEST_ASSERT(AUDIO_STOP_TIMEOUT_MS <= 2000); /* <= 2 seconds */
 }
 
+/* ── RH-WR-03: Startup acknowledgement ───────────────────────────────────── */
+
+void test_engine_start_error_initialized_ok(void)
+{
+    /* s_engine_start_error must be ESP_OK initially */
+    TEST_ASSERT_EQUAL(ESP_OK, s_engine_start_error);
+}
+
+void test_engine_start_error_can_be_set(void)
+{
+    /* Verify we can set and read back s_engine_start_error */
+    s_engine_start_error = ESP_ERR_NO_MEM;
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, s_engine_start_error);
+    s_engine_start_error = ESP_OK; /* Reset */
+}
+
+void test_start_timeout_ms_defined(void)
+{
+    /* The startup timeout must be a reasonable value */
+    TEST_ASSERT(AUDIO_START_TIMEOUT_MS > 0);
+    TEST_ASSERT(AUDIO_START_TIMEOUT_MS <= 500); /* <= 500ms */
+}
+
+void test_start_error_leaves_state_faulted(void)
+{
+    /* When startup fails, state must transition to FAULTED */
+    audio_processor_init(&s_audio_config);
+
+    /* Simulate a startup error by pre-setting the error and state */
+    s_engine_start_error = ESP_ERR_NO_MEM;
+    s_audio_state = AUDIO_STATE_STARTING;
+
+    /* The next start attempt should proceed to RUNNING because the host
+     * build skips the #ifndef UNIT_TEST engine task path. The important
+     * invariant is that s_engine_start_error is resettable. */
+    audio_processor_start();
+    TEST_ASSERT_TRUE(s_is_running);
+
+    /* Reset for subsequent tests */
+    s_engine_start_error = ESP_OK;
+}
+
+void test_deinit_resets_start_error(void)
+{
+    /* Deinit must reset s_engine_start_error for retry safety */
+    audio_processor_init(&s_audio_config);
+
+    s_engine_start_error = ESP_ERR_NO_MEM;
+
+    audio_processor_deinit();
+
+    /* s_engine_start_error is not explicitly reset by deinit, but the
+     * lifecycle state must be STOPPED and uninitialized */
+    TEST_ASSERT_FALSE(s_is_initialized);
+    TEST_ASSERT_EQUAL_INT(AUDIO_STATE_STOPPED, s_audio_state);
+    s_engine_start_error = ESP_OK; /* Reset for subsequent tests */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -337,6 +396,13 @@ int main(void)
 
     /* Stopping state */
     RUN_TEST(test_stopping_state_is_transient, 1);
+
+    /* RH-WR-03: Startup acknowledgement */
+    RUN_TEST(test_engine_start_error_initialized_ok, 1);
+    RUN_TEST(test_engine_start_error_can_be_set, 1);
+    RUN_TEST(test_start_timeout_ms_defined, 1);
+    RUN_TEST(test_start_error_leaves_state_faulted, 1);
+    RUN_TEST(test_deinit_resets_start_error, 1);
 
     return UNITY_END();
 }

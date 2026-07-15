@@ -200,6 +200,8 @@ void audio_engine_task(void *arg)
     uint8_t *chunk_buf = platform_malloc(AUDIO_ENGINE_CHUNK_BYTES, PLATFORM_MEM_CAP_DMA);
     if (chunk_buf == NULL) {
         ESP_LOGE(TAG, "audio_engine_task: failed to allocate chunk buffer");
+        /* Store startup error so audio_processor_start() can report it (RH-WR-03) */
+        s_engine_start_error = ESP_ERR_NO_MEM;
 #ifndef UNIT_TEST
         /* Signal stopped on error path so audio_processor_start() doesn't timeout (P0.1.5) */
         if (s_engine_events != NULL) {

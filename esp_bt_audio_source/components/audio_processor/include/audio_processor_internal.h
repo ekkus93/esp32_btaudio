@@ -118,6 +118,9 @@ extern volatile bool s_audio_diag_enabled;
 /* Audio engine stop timeout (RH-WR-02) */
 #define AUDIO_STOP_TIMEOUT_MS   500
 
+/* Audio engine startup acknowledgement timeout (RH-WR-03) */
+#define AUDIO_START_TIMEOUT_MS  100
+
 /* Ring buffer watermarks (Phase 2, Task 2.4) */
 #define AUDIO_RB_LOW_WATERMARK   (8 * 1024)   /* Resume filling below 8KB used */
 #define AUDIO_RB_HIGH_WATERMARK  (24 * 1024)  /* Stop filling above 24KB used */
@@ -193,6 +196,8 @@ extern bool s_is_initialized;
 extern bool s_is_running;
 /* Lifecycle state machine (RH-WR-02) */
 extern audio_lifecycle_state_t s_audio_state;
+/* Engine startup error storage (RH-WR-03) */
+extern esp_err_t s_engine_start_error;
 extern bool s_force_synth;
 extern bool s_keepalive_armed;
 extern uint8_t s_volume_gain;

@@ -70,6 +70,11 @@ bool s_is_initialized = false;
 bool s_is_running = false;
 /* Audio engine lifecycle state (RH-WR-02) */
 audio_lifecycle_state_t s_audio_state = AUDIO_STATE_STOPPED;
+/* Engine startup error storage (RH-WR-03)
+ * Captures the error the engine task encounters during startup so that
+ * audio_processor_start() can report it truthfully when ENGINE_STOPPED_BIT
+ * arrives before ENGINE_RUNNING_BIT. */
+esp_err_t s_engine_start_error = ESP_OK;
 bool s_force_synth = false;
 bool s_keepalive_armed = false;
 uint8_t s_volume_gain = 100;

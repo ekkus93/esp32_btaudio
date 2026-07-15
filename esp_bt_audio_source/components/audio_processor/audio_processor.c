@@ -307,20 +307,34 @@ esp_err_t audio_processor_start(void)
             return ESP_FAIL;
         }
 
-        /* Wait for task to signal it's running (robustness check, P0.1.2)
+        /* Wait for task to signal RUNNING or STOPPED (RH-WR-03)
+         * If ENGINE_STOPPED_BIT arrives, the engine failed during startup.
+         * Return the stored error rather than pretending success.
          * Timeout: 100ms should be more than enough for task to start */
         if (s_engine_events != NULL) {
             EventBits_t bits = xEventGroupWaitBits(
                 s_engine_events,
-                ENGINE_RUNNING_BIT,
+                ENGINE_RUNNING_BIT | ENGINE_STOPPED_BIT,
                 pdFALSE,  /* don't clear on exit */
                 pdFALSE,  /* wait for any bit */
                 pdMS_TO_TICKS(100)
             );
 
-            if ((bits & ENGINE_RUNNING_BIT) == 0) {
-                ESP_LOGW(TAG, "audio_processor_start: task did not signal RUNNING within timeout (non-fatal)");
-                /* Continue anyway - task may still be initializing */
+            if (bits & ENGINE_RUNNING_BIT) {
+                /* Engine signaled RUNNING — startup succeeded */
+            } else if (bits & ENGINE_STOPPED_BIT) {
+                /* Engine exited before RUNNING — report stored error */
+                ESP_LOGE(TAG, "audio_processor_start: engine exited during startup (error=%d)",
+                         (int)s_engine_start_error);
+                i2s_manager_stop();
+                s_audio_state = AUDIO_STATE_FAULTED;
+                return s_engine_start_error != ESP_OK ? s_engine_start_error : ESP_FAIL;
+            } else {
+                /* Timeout: neither bit arrived */
+                ESP_LOGE(TAG, "audio_processor_start: engine startup timed out");
+                i2s_manager_stop();
+                s_audio_state = AUDIO_STATE_FAULTED;
+                return ESP_ERR_TIMEOUT;
             }
         }
 
@@ -538,6 +552,8 @@ esp_err_t audio_processor_deinit(void)
 
     /* (RH-WR-02) Reset lifecycle state on deinit */
     s_audio_state = AUDIO_STATE_STOPPED;
+    /* (RH-WR-03) Reset startup error for retry safety */
+    s_engine_start_error = ESP_OK;
     s_is_initialized = false;
     return ESP_OK;
 }
