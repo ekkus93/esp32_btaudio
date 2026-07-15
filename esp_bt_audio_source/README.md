@@ -30,6 +30,25 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 Requires an ESP32 WROOM32.
 
+## Serial Command Interface
+
+Commands are sent over UART (USB console or GPIO16/17 secondary port). Each command ends with `\n`.
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `SCAN` | Scan for Bluetooth devices | `SCAN` |
+| `CONNECT <MAC>` | Connect to device by MAC | `CONNECT AA:BB:CC:DD:EE:FF` |
+| `DISCONNECT` | Disconnect current connection | `DISCONNECT` |
+| `START` | Start audio streaming | `START` |
+| `STOP` | Stop audio streaming | `STOP` |
+| `VOLUME <0-100>` | Set volume level | `VOLUME 75` |
+| `STATUS` | Get current device status | `STATUS` |
+| `VERSION` | Get firmware version | `VERSION` |
+| `SYNTH ON/OFF` | Force synth audio mode | `SYNTH ON` |
+| `I2S_CONFIG <pins>` | Configure I2S pins | `I2S_CONFIG 18,19,22` |
+| `AUDIO_AUTOSTART on/off` | Enable/disable audio autostart | `AUDIO_AUTOSTART off` |
+| `SCAN <MAC>` | Start scanning for devices | `SCAN` |
+
 ## Hardware
 
 ### GPIO Pin Assignments
