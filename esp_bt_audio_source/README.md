@@ -97,6 +97,27 @@ Commands are sent over UART (USB console or GPIO16/17 secondary port). Each comm
 | `INFO` | Informational data (multi-line responses) |
 | `EVENT` | Async event notification |
 
+### UARTAUDIO: High-speed Serial Audio Streaming
+
+The `UARTAUDIO` command provides high-speed audio streaming over the USB console UART. A host PC sends stereo 22050 Hz s16le PCM audio data, which the ESP32 feeds into the A2DP audio engine for Bluetooth playback.
+
+**How It Works:**
+1. **Text Mode** (115200 baud): Normal command interface operates over the USB console UART.
+2. **`UARTAUDIO START [baud]`**: Initiates streaming mode. The ESP32 switches the UART baud rate to the specified baud (default 921600, supports 230400/460800/921600). The device sends `OK|UARTAUDIO|STARTING` at 115200 baud before switching.
+3. **Handshake**: The ESP32 sends `UA|READY` beacons at the new baud rate until the host sends the first data frame.
+4. **Streaming**: The host sends framed binary audio data at the streaming baud. The ESP32 receives frames, validates CRC, and feeds audio samples to the A2DP ring buffer. Periodic `UA|FILL` feedback lines report fill levels.
+5. **Stop**: The host sends an in-band `STOP` frame. The ESP32 responds with `UA|BYE`, restores 115200 baud, and emits `EVENT|UARTAUDIO|STOPPED` with counters (frames, bytes, CRC errors).
+6. **Recovery**: If the host disconnects or fails to send data, the ESP32 auto-recovers to text mode after ~2s inactivity. If the host sends `UARTAUDIO START` but never sends data, the ESP32 aborts after ~5s and restores text mode.
+
+**Commands:**
+| Subcommand | Syntax | Description | Sample Output |
+|------------|--------|-------------|---------------|
+| `UARTAUDIO START` | `UARTAUDIO START [baud]` | Start streaming (baud: 230400, 460800, 921600) | `OK\|UARTAUDIO\|STARTING\|baud=921600,frame=N,ring=N,a2dp=1` |
+| `UARTAUDIO STATUS` | `UARTAUDIO STATUS` | Query streaming status | `OK\|UARTAUDIO\|STATUS\|streaming=0,state=INACTIVE,used=0,cap=4096` |
+| `UARTAUDIO STOP` | `UARTAUDIO STOP` | Stop (only valid during streaming via in-band frame) | `ERR\|UARTAUDIO\|NOT_STREAMING\|stop is the in-band STOP frame during streaming` |
+
+**Python Test Tool:** `tools/stream_audio_uart.py` provides frame building and CRC utilities. The laptop BT test suite (`test/laptop_bt_tests/test_uart_streaming.py`) imports these and runs end-to-end tests that stream synthetic tones from a PC to the ESP32 over UART, which then plays over A2DP to the laptop's own Bluetooth adapter.
+
 ## Hardware
 
 ### GPIO Pin Assignments
