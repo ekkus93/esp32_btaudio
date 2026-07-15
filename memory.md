@@ -25917,3 +25917,25 @@ CLEANUP DEBT (next session): strip ALL DBG-I2SCAP + diag commands or promote; de
 - Added 20 lifecycle tests covering state transitions and guards
 - All 71 host tests pass
 - Commit: d1a98027
+## 2026-07-15T00:21:34Z - Claude Fable 5 - RH-WR-03 startup acknowledgement
+
+- Completed RH-WR-03: Make audio engine startup acknowledgement truthful
+- Added s_engine_start_error to capture engine startup failures
+- audio_processor_start() waits for ENGINE_RUNNING_BIT or ENGINE_STOPPED_BIT
+- If engine exits before RUNNING, returns stored error and transitions to FAULTED
+- Timeout returns ESP_ERR_TIMEOUT without marking running
+- Added 6 unit tests covering startup acknowledgement and error handling
+- All 71 host tests pass (30 lifecycle tests)
+- Commit: 502a9b4c
+
+## 2026-07-15T00:21:34Z - Claude Fable 5 - RH-WR-04 partial-init cleanup
+
+- Completed RH-WR-04: Add audio processor partial-init cleanup
+- Added audio_processor_cleanup_partial_init() helper function
+- Refactored audio_processor_init() to use single goto-fail label
+- All failure paths properly free buffers, reset state, and clean up resources
+- Added 5 tests: cleanup, retry safety, double-deinit, null config, double init
+- All 71 host tests pass (30 lifecycle tests)
+- Commit: 2c82c73a
+
+NEXT: RH-WR-05 (Bluetooth initialization rollback)

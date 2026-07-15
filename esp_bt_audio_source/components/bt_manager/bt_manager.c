@@ -227,6 +227,12 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     // NVS is initialized by main.c before calling bt_manager_init.
     // bt_manager assumes NVS is ready and uses nvs_storage_* functions.
 
+    // Track which stages completed for rollback safety (RH-WR-05)
+    bool controller_init_done = false;
+    bool controller_enabled = false;
+    bool bluedroid_init_done = false;
+    bool bluedroid_enabled = false;
+
     // Initialize Bluetooth controller
     esp_err_t ret;
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
@@ -234,29 +240,33 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Initialize controller failed: %s (%d)", esp_err_to_name(ret), (int)ret);  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        goto fail;
     }
+    controller_init_done = true;
     ESP_LOGI(TAG, "Controller initialized via bt_manager: mode=%d target_mode=0x%x", bt_cfg.mode, ESP_BT_MODE_CLASSIC_BT);  // NOLINT(bugprone-branch-clone)
 
     ret = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Enable controller failed: %s (%d)", esp_err_to_name(ret), (int)ret);  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        goto fail;
     }
+    controller_enabled = true;
     ESP_LOGI(TAG, "Controller enabled via bt_manager: mode=CLASSIC_BT");  // NOLINT(bugprone-branch-clone)
 
     // Initialize Bluedroid
     ret = esp_bluedroid_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Initialize bluedroid failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-    return ESP_FAIL;
+        goto fail;
     }
+    bluedroid_init_done = true;
 
     ret = esp_bluedroid_enable();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Enable bluedroid failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        goto fail;
     }
+    bluedroid_enabled = true;
 
     // Configure device name
     // Use GAP API (not deprecated) to set the device name. esp_bt_dev_set_device_name is deprecated.
@@ -270,7 +280,7 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
 
     ret = bt_manager_init_profiles();
     if (ret != ESP_OK) {
-        return ret;
+        goto fail;
     }
 
     // Set device discoverable and connectable
@@ -302,10 +312,34 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
         }
         ESP_LOGI(TAG, "Loaded %d persisted paired devices", bt_ctx.paired_devices.count);  // NOLINT(bugprone-branch-clone)
     }
-#endif
-    
+
     bt_ctx.initialized = true;
     return ESP_OK;
+
+fail:
+    /* (RH-WR-05) Rollback in reverse order of initialization */
+    if (bluedroid_enabled) {
+        esp_bluedroid_disable();
+    }
+    if (bluedroid_init_done) {
+        esp_bluedroid_deinit();
+    }
+    if (controller_enabled) {
+        esp_bt_controller_disable();
+    }
+    if (controller_init_done) {
+        esp_bt_controller_deinit();
+    }
+
+    /* Clean up the bt_ctx mutex */
+    platform_mutex_delete(s_bt_ctx_mutex);
+    s_bt_ctx_mutex = NULL;
+
+    return ret;
+#else
+    bt_ctx.initialized = true;
+    return ESP_OK;
+#endif
 }
 
 // Deinitialize Bluetooth Manager
