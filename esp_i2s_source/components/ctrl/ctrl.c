@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdatomic.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,6 +15,7 @@
 #include "wifi_mgr.h"
 #include "radio.h"
 #include "stations.h"
+#include "esp_timer.h"
 
 static const char *TAG = "ctrl";
 
@@ -24,7 +26,7 @@ static ctrl_sm_t         s_sm;
 static TaskHandle_t      s_task;
 static SemaphoreHandle_t s_mtx;
 static TaskHandle_t      s_scan_task;
-static volatile bool     s_scan_active;   /* pause the orchestrator during a scan */
+static _Atomic bool      s_scan_active;   /* pause the orchestrator during a scan */
 
 static bool wifi_connected(void)
 {
@@ -84,18 +86,34 @@ static ctrl_action_t do_action(ctrl_action_t act)
         bt_link_cmd_state_t vst = BT_LINK_CMD_TIMEOUT;
         bt_link_send(cmd, &vst, NULL, 0, NULL, 0);
         ESP_LOGI(TAG, "set volume %u -> %s", s_cfg.volume,
+                 vst == BT_LINK_CMD_TIMEOUT ? "timeout" :
                  vst == BT_LINK_CMD_DONE_OK ? "ok" : "fail");
 
-        char url[RADIO_URL_MAX];
-        int idx = s_cfg.last_station;
-        if (stations_get_url(idx, url, sizeof(url))) {
-            ESP_LOGI(TAG, "resume station %d", idx);
-            esp_err_t err = radio_play_async(url);
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "resume play failed: %s", esp_err_to_name(err));
+        /* Resume the last station by stable ID. */
+        if (s_cfg.last_station_id != CTRL_LAST_STATION_NONE) {
+            /* Find the station by ID in the store. We iterate through all
+             * stations to find one matching the ID. */
+            char url[RADIO_URL_MAX];
+            bool found = false;
+            for (int i = 0; i < stations_count(); i++) {
+                uint32_t sid;
+                if (stations_get(i, NULL, 0, url, sizeof(url), &sid) &&
+                    sid == s_cfg.last_station_id) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                ESP_LOGI(TAG, "resume station id=%u", s_cfg.last_station_id);
+                esp_err_t err = radio_play_async(url);
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "resume play failed: %s", esp_err_to_name(err));
+                }
+            } else {
+                ESP_LOGW(TAG, "resume: station id=%u not found", s_cfg.last_station_id);
             }
         } else {
-            ESP_LOGW(TAG, "resume: station %d unavailable", idx);
+            ESP_LOGW(TAG, "resume: no station id set");
         }
         in.ev = CTRL_EV_RESUME_DONE;
         break;
@@ -111,7 +129,8 @@ static void orchestrator_task(void *arg)
     (void)arg;
     bool mac_ok = ctrl_cfg_mac_valid(s_cfg.sink_mac);
     bool autostart = s_cfg.autostart && mac_ok;
-    ctrl_sm_init(&s_sm, autostart, s_cfg.last_station >= 0);
+    bool have_station = (s_cfg.last_station_id != CTRL_LAST_STATION_NONE);
+    ctrl_sm_init(&s_sm, autostart, have_station);
 
     if (!autostart) {
         ESP_LOGI(TAG, "autostart off (flag=%u mac=%s) -> manual mode",
@@ -120,9 +139,10 @@ static void orchestrator_task(void *arg)
         vTaskDelete(NULL);
         return;
     }
-    ESP_LOGI(TAG, "orchestrating: sink=%s resume_station=%d",
-             s_cfg.sink_mac, s_cfg.last_station);
+    ESP_LOGI(TAG, "orchestrating: sink=%s last_station_id=%u",
+             s_cfg.sink_mac, s_cfg.last_station_id);
 
+    int64_t last_us = 0;
     for (;;) {
         /* A scan intentionally drops A2DP for the inquiry — don't fight it by
          * health-poll-reconnecting. scan_task restores the link when done. */
@@ -130,12 +150,19 @@ static void orchestrator_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(CTRL_LOOP_MS));
             continue;
         }
+
+        /* Monotonic timestamp for dt_ms */
+        int64_t now_us = esp_timer_get_time();
+        uint32_t dt_ms = (last_us == 0) ? CTRL_LOOP_MS :
+                         (uint32_t)((now_us - last_us) / 1000);
+        last_us = now_us;
+
         ctrl_input_t in = {0};
         if (s_sm.state == CTRL_ST_WAIT_WIFI && wifi_connected()) {
             in.ev = CTRL_EV_WIFI_UP;
         } else {
             in.ev = CTRL_EV_TICK;
-            in.dt_ms = CTRL_LOOP_MS;
+            in.dt_ms = dt_ms;
         }
         ctrl_action_t act = ctrl_sm_step(&s_sm, &in);
         while (act != CTRL_ACT_WAIT && act != CTRL_ACT_IDLE) {
@@ -158,10 +185,55 @@ static void orchestrator_task(void *arg)
  * window. */
 #define SCAN_INQUIRY_MS  15000
 #define SCAN_SETTLE_MS    4000
+#define SCAN_RADIO_TIMEOUT_MS 5000  /* timeout for radio stop/start polling */
+
+/* Scan state machine phases */
+typedef enum {
+    SCAN_SUSPENDING,   /* stop radio, wait for stopped */
+    SCAN_DISCONNECT,   /* disconnect sink */
+    SCAN_INQUIRY,      /* run SCAN inquiry */
+    SCAN_RESTORE,      /* reconnect sink */
+    SCAN_VOLUME,       /* re-apply volume */
+    SCAN_RESUME,       /* resume radio, wait for starting/running */
+    SCAN_DONE          /* terminal — cleanup and exit */
+} scan_phase_t;
+
+/* Poll until the radio reports `target_state`, or until `deadline_us` expires.
+ * Returns true if the deadline expired without reaching the target state. */
+static bool scan_wait_for_state(radio_state_t target_state, int64_t deadline_us,
+                                const char *_phase)
+{
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        radio_state_t state = radio_get_state();
+        if (state == target_state) return false;  /* reached target */
+        if (esp_timer_get_time() >= deadline_us) break;
+    }
+    ESP_LOGW(TAG, "scan: %s timed out", _phase);
+    (void)_phase;
+    return true;
+}
+
+/* Poll until the radio is in any STARTING/RUNNING state, or until deadline.
+ * Returns true if the deadline expired. */
+static bool scan_wait_for_radio_start(int64_t deadline_us, const char *_phase)
+{
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        radio_state_t state = radio_get_state();
+        if (state == RADIO_STATE_STARTING || state == RADIO_STATE_RUNNING)
+            return false;  /* started */
+        if (esp_timer_get_time() >= deadline_us) break;
+    }
+    ESP_LOGW(TAG, "scan: %s timed out", _phase);
+    (void)_phase;
+    return true;
+}
 
 static void scan_task(void *arg)
 {
     (void)arg;
+
     /* Snapshot what to restore afterward. */
     radio_status_t rs;
     radio_get_status(&rs);
@@ -173,36 +245,99 @@ static void scan_task(void *arg)
     bool have_sink = ctrl_cfg_mac_valid(cfg.sink_mac);
 
     s_scan_active = true;
+
+    scan_phase_t phase = SCAN_SUSPENDING;
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
 
-    /* Suspend A2DP: stop feeding I2S, drop the sink so the radio is free. */
-    if (was_playing) {
-        esp_err_t e = radio_stop_async();
-        if (e != ESP_OK) ESP_LOGW(TAG, "scan: radio_stop failed: %s", esp_err_to_name(e));
-    }
-    ESP_LOGI(TAG, "scan: suspending A2DP (disconnect sink)");
-    bt_link_send("DISCONNECT", &st, NULL, 0, NULL, 0);
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    while (phase != SCAN_DONE) {
+        switch (phase) {
 
-    /* Inquiry — web_ui's bt_link subscription fans INFO|SCAN|RESULT to clients. */
-    ESP_LOGI(TAG, "scan: starting inquiry");
-    bt_link_send("SCAN", &st, NULL, 0, NULL, 0);
-    vTaskDelay(pdMS_TO_TICKS(SCAN_INQUIRY_MS));
+        case SCAN_SUSPENDING:
+            /* Stop the radio and poll until it reports STOPPED. */
+            if (was_playing) {
+                esp_err_t e = radio_stop_async();
+                if (e != ESP_OK) {
+                    ESP_LOGW(TAG, "scan: radio_stop_async failed: %s", esp_err_to_name(e));
+                }
+            }
 
-    /* Restore: reconnect the sink, re-apply volume, resume the station. */
-    if (have_sink) {
-        char cmd[16 + CTRL_MAC_LEN];
-        snprintf(cmd, sizeof(cmd), "CONNECT %s", cfg.sink_mac);
-        bt_link_send(cmd, &st, NULL, 0, NULL, 0);
-        vTaskDelay(pdMS_TO_TICKS(SCAN_SETTLE_MS));
-        snprintf(cmd, sizeof(cmd), "VOLUME %u", cfg.volume);
-        bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+            if (was_playing) {
+                int64_t deadline = esp_timer_get_time() +
+                    (int64_t)SCAN_RADIO_TIMEOUT_MS * 1000;
+                bool timed_out = scan_wait_for_state(RADIO_STATE_STOPPED, deadline,
+                                                     "suspend");
+                if (timed_out) {
+                    ESP_LOGW(TAG, "scan: radio still not stopped after timeout");
+                }
+            }
+            phase = SCAN_DISCONNECT;
+            break;
+
+        case SCAN_DISCONNECT:
+            /* Drop the sink so the classic BT radio is free for inquiry. */
+            ESP_LOGI(TAG, "scan: suspending A2DP (disconnect sink)");
+            bt_link_send("DISCONNECT", &st, NULL, 0, NULL, 0);
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            phase = SCAN_INQUIRY;
+            break;
+
+        case SCAN_INQUIRY:
+            /* Inquiry — web_ui's bt_link subscription fans INFO|SCAN|RESULT
+             * to connected clients during the inquiry window. */
+            ESP_LOGI(TAG, "scan: starting inquiry");
+            bt_link_send("SCAN", &st, NULL, 0, NULL, 0);
+            vTaskDelay(pdMS_TO_TICKS(SCAN_INQUIRY_MS));
+            phase = SCAN_RESTORE;
+            break;
+
+        case SCAN_RESTORE:
+            /* Reconnect the sink. */
+            if (have_sink) {
+                char cmd[16 + CTRL_MAC_LEN];
+                snprintf(cmd, sizeof(cmd), "CONNECT %s", cfg.sink_mac);
+                bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+                vTaskDelay(pdMS_TO_TICKS(SCAN_SETTLE_MS));
+            }
+            phase = SCAN_VOLUME;
+            break;
+
+        case SCAN_VOLUME:
+            /* Re-apply volume — the WROOM32 resets VOL to 40 on a fresh
+             * A2DP link, so re-assert the user's configured level. */
+            if (have_sink) {
+                char cmd[16];
+                snprintf(cmd, sizeof(cmd), "VOLUME %u", cfg.volume);
+                bt_link_send(cmd, &st, NULL, 0, NULL, 0);
+            }
+            phase = SCAN_RESUME;
+            break;
+
+        case SCAN_RESUME:
+            /* Resume the radio if it was playing before the scan. */
+            if (was_playing && url[0]) {
+                ESP_LOGI(TAG, "scan: resuming radio");
+                esp_err_t e = radio_play_async(url);
+                if (e != ESP_OK) {
+                    ESP_LOGW(TAG, "scan: radio_play_async failed: %s", esp_err_to_name(e));
+                } else {
+                    /* Wait for radio to actually start streaming. */
+                    int64_t deadline = esp_timer_get_time() +
+                        (int64_t)SCAN_RADIO_TIMEOUT_MS * 1000;
+                    bool timed_out = scan_wait_for_radio_start(deadline, "resume");
+                    if (timed_out) {
+                        ESP_LOGW(TAG, "scan: radio did not start after timeout");
+                    }
+                }
+            }
+            phase = SCAN_DONE;
+            break;
+
+        case SCAN_DONE:
+            ESP_LOGI(TAG, "scan: done, A2DP restored");
+            break;
+        }
     }
-    if (was_playing && url[0]) {
-        ESP_LOGI(TAG, "scan: resuming radio");
-        radio_play_async(url);
-    }
-    ESP_LOGI(TAG, "scan: done, A2DP restored");
+
     s_scan_active = false;
     s_scan_task = NULL;
     vTaskDelete(NULL);
@@ -221,7 +356,7 @@ esp_err_t ctrl_scan(void)
 
 bool ctrl_scan_active(void)
 {
-    return s_scan_active;
+    return atomic_load(&s_scan_active);
 }
 
 /* RH-S3-10: split initialisation from start so mutex exists before web UI. */
@@ -240,6 +375,17 @@ esp_err_t ctrl_start(void)
 {
     /* RH-S3-10: require ctrl_init() to have been called first. */
     if (!s_mtx) return ESP_ERR_INVALID_STATE;
+
+    /* Pass a copied initial config to the task — the task reads s_cfg
+     * synchronously under the mutex, or stores its own copy. */
+    ctrl_cfg_t initial_cfg;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    initial_cfg = s_cfg;
+    xSemaphoreGive(s_mtx);
+
+    /* Store the initial config in a task-local variable */
+    s_cfg = initial_cfg;
+
     if (xTaskCreate(orchestrator_task, "ctrl", 4096, NULL,
                     tskIDLE_PRIORITY + 3, &s_task) != pdPASS) {
         return ESP_ERR_NO_MEM;
@@ -260,26 +406,32 @@ esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume)
 {
     if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive check */
     if (mac && mac[0] && !ctrl_cfg_mac_valid(mac)) return ESP_ERR_INVALID_ARG;
+
+    /* Candidate pattern: build under lock, save, publish. */
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    if (mac) strlcpy(s_cfg.sink_mac, mac, sizeof(s_cfg.sink_mac));
-    s_cfg.autostart = autostart ? 1 : 0;
+    ctrl_cfg_t candidate = s_cfg;
+    if (mac) strlcpy(candidate.sink_mac, mac, sizeof(candidate.sink_mac));
+    candidate.autostart = autostart ? 1 : 0;
     if (volume >= 0) {
-        s_cfg.volume = (volume > 100) ? 100 : (uint8_t)volume;
+        candidate.volume = (volume > 100) ? 100 : (uint8_t)volume;
     }
+    s_cfg = candidate;
     esp_err_t e = ctrl_cfg_save(&s_cfg);
     xSemaphoreGive(s_mtx);
+
+    /* Log from candidate — s_cfg may have changed since the mutex was released. */
     ESP_LOGI(TAG, "config set: sink=%s autostart=%u volume=%u (%s)",
-             s_cfg.sink_mac, s_cfg.autostart, s_cfg.volume, esp_err_to_name(e));
+             candidate.sink_mac, candidate.autostart, candidate.volume, esp_err_to_name(e));
     return e;
 }
 
-esp_err_t ctrl_note_station(int idx)
+esp_err_t ctrl_note_station(uint32_t station_id)
 {
-    if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive — not initialised */
+    if (!s_mtx) return ESP_ERR_INVALID_STATE;  /* RH-S3-10: defensive check */
     esp_err_t err = ESP_OK;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    if (idx != s_cfg.last_station) {
-        s_cfg.last_station = (int16_t)idx;
+    if (station_id != s_cfg.last_station_id) {
+        s_cfg.last_station_id = station_id;
         err = ctrl_cfg_save(&s_cfg);
     }
     xSemaphoreGive(s_mtx);

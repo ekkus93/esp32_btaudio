@@ -9,7 +9,7 @@ void ctrl_cfg_load(ctrl_cfg_t *out)
 {
     if (!out) return;
     memset(out, 0, sizeof(*out));
-    out->last_station = CTRL_STATION_NONE;
+    out->last_station_id = CTRL_LAST_STATION_NONE;
     out->volume = CTRL_VOLUME_DEFAULT;
 }
 

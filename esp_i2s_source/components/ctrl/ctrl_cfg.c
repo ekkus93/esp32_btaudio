@@ -31,9 +31,11 @@ static const char *TAG = "ctrl_cfg";
 #define NVS_NS      "ctrl"
 #define NVS_KEY     "cfg"
 #define BLOB_MAGIC  0x43315631u   /* "C1V1" */
+#define BLOB_VERSION 1u
 
 typedef struct {
     uint32_t  magic;
+    uint8_t   version;
     ctrl_cfg_t cfg;
 } ctrl_cfg_blob_t;
 
@@ -41,22 +43,54 @@ void ctrl_cfg_load(ctrl_cfg_t *out)
 {
     if (!out) return;
     memset(out, 0, sizeof(*out));
-    out->last_station = CTRL_STATION_NONE;
+    out->last_station_id = CTRL_LAST_STATION_NONE;
     out->volume = CTRL_VOLUME_DEFAULT;
 
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
+
     ctrl_cfg_blob_t blob;
     size_t sz = sizeof(blob);
     if (nvs_get_blob(h, NVS_KEY, &blob, &sz) == ESP_OK &&
-        sz == sizeof(blob) && blob.magic == BLOB_MAGIC) {
+        sz == sizeof(blob) && blob.magic == BLOB_MAGIC && blob.version == BLOB_VERSION) {
         /* Guard against a stray unterminated MAC / out-of-range volume. */
         blob.cfg.sink_mac[CTRL_MAC_LEN - 1] = '\0';
         if (blob.cfg.volume > 100) blob.cfg.volume = 100;
         *out = blob.cfg;
-        ESP_LOGI(TAG, "loaded: mac=%s autostart=%u last_station=%d volume=%u",
+        ESP_LOGI(TAG, "loaded: mac=%s autostart=%u last_station_id=%u volume=%u",
                  out->sink_mac[0] ? out->sink_mac : "(none)",
-                 out->autostart, out->last_station, out->volume);
+                 out->autostart, out->last_station_id, out->volume);
+    } else {
+        /* Try old format (V0 — no version field) */
+        typedef struct {
+            uint32_t  magic;
+            char    sink_mac[CTRL_MAC_LEN];
+            uint8_t autostart;
+            int16_t last_station;
+            uint8_t volume;
+        } ctrl_cfg_v0_blob_t;
+
+        sz = sizeof(ctrl_cfg_v0_blob_t);
+        ctrl_cfg_v0_blob_t v0_blob;
+        if (nvs_get_blob(h, NVS_KEY, &v0_blob, &sz) == ESP_OK &&
+            sz == sizeof(v0_blob) && v0_blob.magic == BLOB_MAGIC) {
+            /* Migrate V0 to current format */
+            memcpy(out->sink_mac, v0_blob.sink_mac, CTRL_MAC_LEN - 1);
+            out->sink_mac[CTRL_MAC_LEN - 1] = '\0';
+            out->autostart = v0_blob.autostart;
+            /* Convert index-based last_station to ID-based last_station_id */
+            if (v0_blob.last_station >= 0) {
+                out->last_station_id = (uint32_t)v0_blob.last_station;
+                ESP_LOGW(TAG, "migrated last_station=%d -> last_station_id=%u (may be stale)",
+                         v0_blob.last_station, out->last_station_id);
+            } else {
+                out->last_station_id = CTRL_LAST_STATION_NONE;
+            }
+            out->volume = (v0_blob.volume > 100) ? 100 : v0_blob.volume;
+            ESP_LOGI(TAG, "loaded V0 blob (migrated): mac=%s autostart=%u volume=%u",
+                     out->sink_mac[0] ? out->sink_mac : "(none)",
+                     out->autostart, out->volume);
+        }
     }
     nvs_close(h);
 }
@@ -67,8 +101,14 @@ esp_err_t ctrl_cfg_save(const ctrl_cfg_t *cfg)
     nvs_handle_t h;
     esp_err_t e = nvs_open(NVS_NS, NVS_READWRITE, &h);
     if (e != ESP_OK) return e;
-    ctrl_cfg_blob_t blob = { .magic = BLOB_MAGIC, .cfg = *cfg };
+
+    ctrl_cfg_blob_t blob;
+    memset(&blob, 0, sizeof(blob));
+    blob.magic = BLOB_MAGIC;
+    blob.version = BLOB_VERSION;
+    blob.cfg = *cfg;
     blob.cfg.sink_mac[CTRL_MAC_LEN - 1] = '\0';
+
     e = nvs_set_blob(h, NVS_KEY, &blob, sizeof(blob));
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);

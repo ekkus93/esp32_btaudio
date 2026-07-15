@@ -149,7 +149,7 @@ esp_err_t ctrl_get_h(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "sink_mac", c.sink_mac);
     cJSON_AddBoolToObject(root, "autostart", c.autostart);
-    cJSON_AddNumberToObject(root, "last_station", c.last_station);
+    cJSON_AddNumberToObject(root, "last_station", c.last_station_id);
     cJSON_AddNumberToObject(root, "volume", c.volume);
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);

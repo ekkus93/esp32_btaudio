@@ -96,9 +96,10 @@ esp_err_t stations_get_h(httpd_req_t *req)
     int n = stations_count();
     for (int i = 0; i < n; i++) {
         char name[STATION_NAME_MAX], url[STATION_URL_MAX];
-        if (!stations_get(i, name, sizeof(name), url, sizeof(url))) continue;
+        uint32_t sid;
+        if (!stations_get(i, name, sizeof(name), url, sizeof(url), &sid)) continue;
         cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", i);
+        cJSON_AddNumberToObject(o, "id", (int)sid);
         cJSON_AddStringToObject(o, "name", name);
         cJSON_AddStringToObject(o, "url", url);
         cJSON_AddItemToArray(arr, o);

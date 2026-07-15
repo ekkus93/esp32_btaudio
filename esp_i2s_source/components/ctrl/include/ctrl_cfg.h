@@ -3,7 +3,7 @@
  *
  * Persists what the boot orchestrator (CTRL-1b) needs to bring the system to
  * music with no human interaction: the target A2DP sink MAC, an autostart
- * flag, and the last station index to resume. Mirrors the magic-guarded blob
+ * flag, and the last station ID to resume. Mirrors the magic-guarded blob
  * pattern in radio/stations.c (namespace "ctrl"). NVS load/save are device
  * only; ctrl_cfg_mac_valid() is pure and host-tested.
  */
@@ -18,14 +18,17 @@ extern "C" {
 #endif
 
 #define CTRL_MAC_LEN      18   /* "AA:BB:CC:DD:EE:FF" + NUL */
-#define CTRL_STATION_NONE (-1) /* last_station: idle (no radio resume) */
+#define CTRL_LAST_STATION_NONE  0u /* last_station_id: idle (no radio resume) */
+
+/* Deprecated alias — kept for migration from old index-based format. */
+#define CTRL_STATION_NONE (-1)
 
 #define CTRL_VOLUME_DEFAULT 10         /* conservative earbud level (0..100) */
 
 typedef struct {
     char    sink_mac[CTRL_MAC_LEN]; /* target A2DP sink; "" = none set */
     uint8_t autostart;              /* 0/1: connect + resume on boot */
-    int16_t last_station;           /* station index to resume, or CTRL_STATION_NONE */
+    uint32_t last_station_id;       /* station stable ID to resume, or CTRL_LAST_STATION_NONE */
     uint8_t volume;                 /* WROOM32 VOLUME (0..100) to apply on connect
                                      * — the WROOM32 resets VOL to 40 on a fresh
                                      * A2DP link, so autostart re-asserts this */
@@ -35,8 +38,8 @@ typedef struct {
  * colon-separated (case-insensitive). Pure — no NVS. */
 bool ctrl_cfg_mac_valid(const char *mac);
 
-/* Fill *out from NVS, or with defaults (mac "", autostart 0, last_station
- * NONE) on first boot / invalid blob. Never fails; always yields a usable cfg. */
+/* Fill *out from NVS, or with defaults (mac "", autostart 0, last_station_id
+ * 0) on first boot / invalid blob. Never fails; always yields a usable cfg. */
 void ctrl_cfg_load(ctrl_cfg_t *out);
 
 /* Persist *cfg to NVS. Returns ESP_OK on success.

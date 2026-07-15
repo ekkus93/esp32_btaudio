@@ -4,4 +4,4 @@ idf_component_register(
     SRCS "ctrl_cfg.c" "ctrl_sm.c" "ctrl.c"
     INCLUDE_DIRS "include"
     REQUIRES bt_link wifi_mgr radio
-    PRIV_REQUIRES nvs_flash)
+    PRIV_REQUIRES nvs_flash esp_timer)

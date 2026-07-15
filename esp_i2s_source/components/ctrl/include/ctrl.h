@@ -8,8 +8,8 @@
  * to record the last played station.
  *
  * RH-S3-10: ctrl_init() creates the mutex and zeroes state BEFORE the web UI
- * starts (so HTTP handlers never see a NULL mutex). ctrl_start() then spawns
- * the orchestrator task.
+ * starts (so HTTP handlers never access an uninitialised mutex). ctrl_start()
+ * then spawns the orchestrator task.
  */
 #pragma once
 
@@ -40,10 +40,11 @@ void ctrl_get_cfg(ctrl_cfg_t *out);
  * volume < 0 to leave the stored volume unchanged; otherwise clamped to [0,100]. */
 esp_err_t ctrl_set_sink(const char *mac, bool autostart, int volume);
 
-/* Record the last played station index (persisted) so autostart can resume it.
+/* Record the last played station ID (persisted) so autostart can resume it.
  * Called from the radio play path; cheap no-op if unchanged. Returns ESP_OK on
- * success or an NVS error if persistence failed. */
-esp_err_t ctrl_note_station(int idx);
+ * success or an NVS error if persistence failed. Takes a station stable ID
+ * (0 means none). */
+esp_err_t ctrl_note_station(uint32_t station_id);
 
 /* Run a Bluetooth device scan with A2DP suspended for a clean inquiry: stops
  * the stream + disconnects the sink, runs SCAN (results arrive over the /ws as

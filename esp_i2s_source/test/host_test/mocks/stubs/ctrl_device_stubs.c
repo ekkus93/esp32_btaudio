@@ -15,6 +15,7 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out)
 {
     if (!out) return;
     memset(out, 0, sizeof(*out));
+    strlcpy(out->state, "IDLE", sizeof(out->state));
 }
 bool wifi_mgr_ap_enabled(void) { return false; }
 
@@ -35,14 +36,21 @@ void radio_get_status(radio_status_t *out)
 }
 esp_err_t radio_play_async(const char *url) { (void)url; return ESP_OK; }
 esp_err_t radio_stop_async(void) { return ESP_OK; }
+radio_state_t radio_get_state(void) { return RADIO_STATE_STOPPED; }
 bool radio_audio_ready(void) { return false; }
 size_t radio_pcm_read(int16_t *buf, size_t frames) { (void)buf; (void)frames; return 0; }
 const char *radio_codec_str(radio_codec_t codec) { (void)codec; return ""; }
 
 /* stations stubs */
 esp_err_t stations_init(void) { return ESP_OK; }
-bool stations_get_url(int idx, char *url, size_t url_sz)
+int stations_count(void) { return 0; }
+bool stations_get(int idx, char *name, size_t nsz,
+                  char *url, size_t usz, uint32_t *out_id)
 {
-    (void)idx; (void)url; (void)url_sz;
+    (void)idx; (void)name; (void)nsz; (void)url; (void)usz; (void)out_id;
     return false;
+}
+bool stations_get_url(int idx, char *url, size_t usz)
+{
+    return stations_get(idx, NULL, 0, url, usz, NULL);
 }

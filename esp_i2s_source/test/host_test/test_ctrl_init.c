@@ -94,7 +94,7 @@ static void test_ctrl_get_cfg_after_init(void)
      * no station to resume, conservative default volume. */
     TEST_ASSERT_EQUAL_STRING("", cfg.sink_mac);
     TEST_ASSERT_EQUAL(0, cfg.autostart);
-    TEST_ASSERT_EQUAL(CTRL_STATION_NONE, cfg.last_station);
+    TEST_ASSERT_EQUAL_UINT32(0, cfg.last_station_id);
     TEST_ASSERT_EQUAL(CTRL_VOLUME_DEFAULT, cfg.volume);
 }
 
