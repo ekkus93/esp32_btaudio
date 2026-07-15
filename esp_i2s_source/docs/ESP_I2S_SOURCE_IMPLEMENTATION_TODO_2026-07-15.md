@@ -1383,6 +1383,8 @@ Apply the same gain to left/right for each frame.
 
 # Phase 6 — Replace the resampler with a correct streaming algorithm
 
+**Status: DONE** — commit `81a62bdc`. All of 6.1-6.3 implemented per the TODO's reference algorithm almost verbatim. Full audible correctness needs hardware checkpoint 3 (WROOM32 + live stream) — not verifiable from this session alone.
+
 ## 6.1 Replace the state
 
 **File:** `components/radio/include/radio_resampler.h`
