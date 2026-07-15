@@ -870,11 +870,12 @@ esp_err_t radio_stop_sync(void)
     s_radio_state = RADIO_STATE_STOPPED;
     xSemaphoreGive(s_control_mtx);
 
+    uint32_t gen = s->generation;
     vEventGroupDelete(s->events);
     free(s);
 
-    ESP_LOGI(TAG, "radio stopped (gen=%" PRIu32 ")", s->generation);
-    printf("DIAG|RADIO|STOPPED|gen=%" PRIu32 "\n", s->generation);
+    ESP_LOGI(TAG, "radio stopped (gen=%" PRIu32 ")", gen);
+    printf("DIAG|RADIO|STOPPED|gen=%" PRIu32 "\n", gen);
     fflush(stdout);
     return ESP_OK;
 }
