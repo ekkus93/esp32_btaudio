@@ -90,9 +90,25 @@ static void writer_task(void *arg)
     xEventGroupSetBits(s_events, I2S_EVT_WRITER_STARTED);
 
     while (s_running) {
+        /* I2S-001: i2s_sink() -> i2s_channel_write() blocks up to
+         * I2S_WRITE_TIMEOUT_MS. With no external BCLK/WS (WROOM32 absent or
+         * not yet clocking), it blocks for the full timeout every call. That
+         * must never happen with interrupts disabled: a critical section
+         * held across it starves the interrupt watchdog and panics the
+         * core. Snapshot stats out, run the pump (and its blocking write)
+         * fully unlocked, then merge the (possibly stale-based) delta back
+         * under a short critical section — only a struct copy, never a
+         * driver call. */
+        i2s_out_stats_t local;
         taskENTER_CRITICAL(&s_stats_mux);
+        local = s_stats;
+        taskEXIT_CRITICAL(&s_stats_mux);
+
         i2s_out_pump_once(s_ring, scratch, sizeof(scratch),
-                          i2s_sink, s_tx_chan, &s_stats);
+                          i2s_sink, s_tx_chan, &local);
+
+        taskENTER_CRITICAL(&s_stats_mux);
+        s_stats = local;
         taskEXIT_CRITICAL(&s_stats_mux);
 
         /* On stop request, break out to let the task exit. */
