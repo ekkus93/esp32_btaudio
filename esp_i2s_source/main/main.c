@@ -12,6 +12,10 @@
  * (SPEC §5.2) — every other component failure is logged and the boot
  * continues in a degraded-but-controllable state.
  *
+ * run_boot_sequence() (boot_status.h) covers steps 1-15 and is host-tested
+ * (test/host_test/test_main_boot.c); app_main() just calls it and then runs
+ * the diagnostics loop, keeping that infinite loop out of the testable unit.
+ *
  * RADIO-2c: single audio_out feeder task arbitrates between radio decoded
  * PCM (when a stream is playing), tone generation, and silence. Packs PCM
  * 16-in-32 top-half for the WROOM32 slave RX, then pushes to i2s_out.
@@ -36,8 +40,8 @@
 #include "esp_psram.h"
 #endif
 
-#include "driver/gpio.h"
-
+#include "boot_status.h"
+#include "clock_diag.h"
 #include "i2s_out.h"
 #include "tone.h"
 #include "bt_link.h"
@@ -54,21 +58,6 @@ static const char *TAG = "main";
 #define I2S_RING_BYTES   (256 * 1024)
 #define RADIO_RING_BYTES (256 * 1024)
 #define AUDIO_OUT_FRAMES 256   /* 256 stereo frames = 1024 B per block */
-
-/* ---- boot step logging (SPEC §5.2: track components, don't abort blindly) ---- */
-
-typedef struct {
-    bool i2s_ok;
-    bool bt_link_ok;
-    bool radio_ok;
-    bool stations_ok;
-    bool ctrl_ok;
-    bool audio_task_ok;
-    bool wifi_ok;
-    bool console_ok;
-    bool web_ok;
-    bool ctrl_start_ok;
-} boot_status_t;
 
 static bool log_boot_step(const char *name, esp_err_t err)
 {
@@ -197,76 +186,7 @@ static void link_health_probe_task(void *arg)
     vTaskDelete(NULL);
 }
 
-/* ---- Clock diagnostics (MAIN-007/008/009): every PCNT call checked, no
- * bogus frequency printed on failure, measured only once per
- * CLOCK_DIAG_PERIOD_MS instead of every 1 s loop iteration. ---- */
-
-#include "driver/pulse_cnt.h"
-#include "esp_timer.h"
-
-#define CLOCK_DIAG_PERIOD_MS 10000
-#define CLOCK_MEASURE_MS       100
-
-static bool s3_measure_hz(int gpio, int ms, float *out_hz)
-{
-    pcnt_unit_config_t ucfg = {
-        .high_limit = 32000,
-        .low_limit = -1,
-        .flags = { .accum_count = true },
-    };
-    pcnt_unit_handle_t unit;
-    if (pcnt_new_unit(&ucfg, &unit) != ESP_OK) return false;
-
-    pcnt_chan_config_t ccfg = { .edge_gpio_num = gpio, .level_gpio_num = -1 };
-    pcnt_channel_handle_t ch;
-    if (pcnt_new_channel(unit, &ccfg, &ch) != ESP_OK) {
-        pcnt_del_unit(unit);
-        return false;
-    }
-
-    bool ok = true;
-    ok = ok && (pcnt_channel_set_edge_action(ch, PCNT_CHANNEL_EDGE_ACTION_INCREASE,
-                                             PCNT_CHANNEL_EDGE_ACTION_HOLD) == ESP_OK);
-    ok = ok && (pcnt_unit_add_watch_point(unit, 32000) == ESP_OK); /* required for accum_count */
-    ok = ok && (pcnt_unit_enable(unit) == ESP_OK);
-    ok = ok && (pcnt_unit_clear_count(unit) == ESP_OK);
-    ok = ok && (pcnt_unit_start(unit) == ESP_OK);
-
-    int64_t t0 = esp_timer_get_time();
-    if (ok) vTaskDelay(pdMS_TO_TICKS(ms));
-    int64_t dt = esp_timer_get_time() - t0;
-
-    int count = 0;
-    if (ok) ok = (pcnt_unit_get_count(unit, &count) == ESP_OK);
-    ok = (pcnt_unit_stop(unit) == ESP_OK) && ok;
-    ok = (pcnt_unit_disable(unit) == ESP_OK) && ok;
-    pcnt_del_channel(ch);
-    pcnt_del_unit(unit);
-
-    if (!ok || dt <= 0) return false;
-    *out_hz = (float)count * 1e6f / (float)dt;
-    return true;
-}
-
-static void clock_diag_task(void *arg)
-{
-    (void)arg;
-    for (;;) {
-        float bclk_hz, ws_hz;
-        bool bclk_ok = s3_measure_hz(I2S_OUT_GPIO_BCLK, CLOCK_MEASURE_MS, &bclk_hz);
-        bool ws_ok   = s3_measure_hz(I2S_OUT_GPIO_WS, CLOCK_MEASURE_MS, &ws_hz);
-        if (bclk_ok && ws_ok) {
-            printf("DIAG|I2SFREQ|bclk_hz=%.0f,ws_hz=%.0f,ratio=%.2f\n",
-                   bclk_hz, ws_hz, (ws_hz > 0) ? bclk_hz / ws_hz : -1.0f);
-        } else {
-            printf("DIAG|I2SFREQ|ERROR|bclk_ok=%d,ws_ok=%d\n", bclk_ok, ws_ok);
-        }
-        fflush(stdout);
-        vTaskDelay(pdMS_TO_TICKS(CLOCK_DIAG_PERIOD_MS));
-    }
-}
-
-void app_main(void)
+boot_status_t run_boot_sequence(void)
 {
     /* 1. NVS */
     init_nvs();
@@ -346,9 +266,16 @@ void app_main(void)
                     tskIDLE_PRIORITY + 1, &probe_task);
     }
 
+    return boot;
+}
+
+void app_main(void)
+{
+    boot_status_t boot = run_boot_sequence();
+    (void)boot;
+
     /* 16. Low-rate diagnostics — outside the critical boot path. */
-    TaskHandle_t clock_diag = NULL;
-    xTaskCreate(clock_diag_task, "clock_diag", 3072, NULL, tskIDLE_PRIORITY + 1, &clock_diag);
+    clock_diag_start();
 
     for (;;) {
         i2s_out_stats_t st;
