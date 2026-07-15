@@ -71,6 +71,7 @@ Commands are sent over UART (USB console or GPIO16/17 secondary port). Each comm
 | `I2S_PROBE` | `I2S_PROBE [BCLK] [WS]` | Count clock edges (diag) | `EVENT\|I2SPROBE\|RESULT\|bclk_highs=N,ws_highs=N` |
 | `I2S_RXTEST` | `I2S_RXTEST [TIMEOUT_MS]` | One blocking I2S read | `EVENT\|I2SRXTEST\|RESULT\|ret=0,read_bytes=N` |
 | `I2S_CLKGEN` | `I2S_CLKGEN [MS]` | Bit-bang clock square wave | `EVENT\|I2SCLKGEN\|DONE\|bclk=18,ws=19,ms=4000` |
+| `UARTAUDIO` | `UARTAUDIO START\|STATUS\|STOP` | High-speed serial audio streaming | `OK\|UARTAUDIO\|STARTING\|baud=921600` |
 
 **DEBUG Subcommands:**
 | Command | Syntax | Description | Sample Output |
