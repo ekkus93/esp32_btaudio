@@ -90,8 +90,12 @@ static void test_ctrl_get_cfg_after_init(void)
 
     ctrl_cfg_t cfg;
     ctrl_get_cfg(&cfg);
-    /* Config should be zeroed/defaults from ctrl_cfg_load. */
-    TEST_ASSERT(strlen(cfg.sink_mac) >= 0);  /* valid string */
+    /* Defaults from the host ctrl_cfg_load() stub: no sink, autostart off,
+     * no station to resume, conservative default volume. */
+    TEST_ASSERT_EQUAL_STRING("", cfg.sink_mac);
+    TEST_ASSERT_EQUAL(0, cfg.autostart);
+    TEST_ASSERT_EQUAL(CTRL_STATION_NONE, cfg.last_station);
+    TEST_ASSERT_EQUAL(CTRL_VOLUME_DEFAULT, cfg.volume);
 }
 
 static void test_ctrl_set_sink_after_init(void)
