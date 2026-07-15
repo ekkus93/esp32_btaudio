@@ -20,6 +20,19 @@ if(ENABLE_ASAN)
     add_link_options(-fsanitize=address)
 endif()
 
+# UndefinedBehaviorSanitizer
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+if(ENABLE_UBSAN)
+    add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=undefined)
+endif()
+
+# Strict warnings-as-errors (release gate requirement, spec SPEC §18/§17.1)
+option(ENABLE_STRICT "Treat warnings as errors (-Wall -Wextra -Werror)" OFF)
+if(ENABLE_STRICT)
+    add_compile_options(-Wall -Wextra -Werror)
+endif()
+
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include

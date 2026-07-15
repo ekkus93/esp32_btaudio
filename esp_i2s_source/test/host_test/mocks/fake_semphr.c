@@ -43,6 +43,7 @@ SemaphoreHandle_t xSemaphoreCreateBinary(void)
 
 int xSemaphoreTake(SemaphoreHandle_t xSemaphore, unsigned xTicksToWait)
 {
+    (void)xTicksToWait; /* immediate — host mock never blocks */
     mock_sem_t *s = (mock_sem_t *)xSemaphore;
     if (!s) return pdFALSE;
 

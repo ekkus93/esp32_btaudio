@@ -40,6 +40,7 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t eg,
 {
     (void)xTicksToWait; /* immediate — host test controls when bits are set */
     (void)xWaitForAllBits;
+    (void)xBitsToWaitFor; /* mock returns current bits regardless of mask */
     if (!eg) return 0;
     mock_event_group_t *e = (mock_event_group_t *)eg;
     EventBits_t current = e->bits;

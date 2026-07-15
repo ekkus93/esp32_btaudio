@@ -19,7 +19,7 @@ void wifi_mgr_get_info(wifi_mgr_info_t *out)
 bool wifi_mgr_ap_enabled(void) { return false; }
 
 /* bt_link stubs */
-esp_err_t bt_link_init(uint32_t timeout_ms) { return ESP_OK; }
+esp_err_t bt_link_init(uint32_t timeout_ms) { (void)timeout_ms; return ESP_OK; }
 void bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t result_sz, char *data, size_t data_sz)
 {
     (void)cmd; (void)result; (void)result_sz; (void)data; (void)data_sz;
@@ -27,7 +27,7 @@ void bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t
 }
 
 /* radio stubs */
-esp_err_t radio_init(size_t ring_bytes) { return ESP_OK; }
+esp_err_t radio_init(size_t ring_bytes) { (void)ring_bytes; return ESP_OK; }
 void radio_get_status(radio_status_t *out)
 {
     if (!out) return;

@@ -105,26 +105,28 @@ void mock_nvs_set_commit_err(esp_err_t err) { s_nvs_commit_err = err; }
 static int s_http_client_init_fail = 0;
 esp_http_client_handle_t esp_http_client_init(void *cfg)
 {
+    (void)cfg;
     if (s_http_client_init_fail) return NULL;
     return (esp_http_client_handle_t)0x1;  /* non-NULL dummy handle */
 }
-esp_err_t esp_http_client_open(esp_http_client_handle_t h, int code) { return ESP_OK; }
-esp_err_t esp_http_client_fetch_headers(esp_http_client_handle_t h) { return ESP_OK; }
-int esp_http_client_read(esp_http_client_handle_t h, char *buf, int len) { return 0; }
-esp_err_t esp_http_client_close(esp_http_client_handle_t h) { return ESP_OK; }
-void esp_http_client_cleanup(esp_http_client_handle_t h) {}
-esp_err_t esp_http_client_set_header(esp_http_client_handle_t h, const char *key, const char *val) { return ESP_OK; }
-int esp_http_client_get_status_code(esp_http_client_handle_t h) { return 200; }
+esp_err_t esp_http_client_open(esp_http_client_handle_t h, int code) { (void)h; (void)code; return ESP_OK; }
+esp_err_t esp_http_client_fetch_headers(esp_http_client_handle_t h) { (void)h; return ESP_OK; }
+int esp_http_client_read(esp_http_client_handle_t h, char *buf, int len) { (void)h; (void)buf; (void)len; return 0; }
+esp_err_t esp_http_client_close(esp_http_client_handle_t h) { (void)h; return ESP_OK; }
+void esp_http_client_cleanup(esp_http_client_handle_t h) { (void)h; }
+esp_err_t esp_http_client_set_header(esp_http_client_handle_t h, const char *key, const char *val) { (void)h; (void)key; (void)val; return ESP_OK; }
+int esp_http_client_get_status_code(esp_http_client_handle_t h) { (void)h; return 200; }
 void mock_http_client_set_init_fail(int val) { s_http_client_init_fail = val; }
 
 /* esp_crt_bundle stub */
-void *esp_crt_bundle_attach(void *cfg) { return NULL; }
+void *esp_crt_bundle_attach(void *cfg) { (void)cfg; return NULL; }
 
 /* esp_heap_caps stubs — with NULL injection for allocation failure tests */
 static size_t s_heap_caps_fail_size = 0; /* fail if size matches */
 static int s_heap_caps_fail_all = 0;     /* fail ALL allocations */
 void *esp_heap_caps_malloc(size_t size, int caps)
 {
+    (void)caps;
     if (s_heap_caps_fail_all) return NULL;
     if (size == s_heap_caps_fail_size) return NULL;
     return malloc(size);
@@ -137,19 +139,22 @@ void mock_heap_caps_set_fail_all(int val) { s_heap_caps_fail_all = val; }
 esp_err_t esp_audio_simple_dec_open(esp_audio_simple_dec_cfg_t *cfg,
                                      esp_audio_simple_dec_handle_t *out)
 {
+    (void)cfg;
     *out = NULL;
     return ESP_OK;
 }
-void esp_audio_simple_dec_close(esp_audio_simple_dec_handle_t h) {}
+void esp_audio_simple_dec_close(esp_audio_simple_dec_handle_t h) { (void)h; }
 esp_audio_err_t esp_audio_simple_dec_process(esp_audio_simple_dec_handle_t h,
                                               esp_audio_simple_dec_raw_t *raw,
                                               esp_audio_simple_dec_out_t *out)
 {
+    (void)h; (void)raw; (void)out;
     return ESP_AUDIO_ERR_OK;
 }
 esp_err_t esp_audio_simple_dec_get_info(esp_audio_simple_dec_handle_t h,
                                          esp_audio_simple_dec_info_t *info)
 {
+    (void)h; (void)info;
     return ESP_OK;
 }
 void esp_audio_dec_register_default(void) {}

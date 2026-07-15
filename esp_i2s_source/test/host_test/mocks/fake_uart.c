@@ -10,9 +10,12 @@
 static uint8_t s_uart_tx_buf[4][512];
 static size_t  s_uart_tx_len[4];
 
-esp_err_t uart_driver_install(uint8_t uart_num, int rx_buf_size, int tx_buf_size, int rx_circ_buf, int tx_circ_buf, int queue_size)
+esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size, int queue_size, QueueHandle_t *uart_queue, int intr_alloc_flags)
 {
-    (void)rx_buf_size; (void)tx_buf_size; (void)rx_circ_buf; (void)tx_circ_buf; (void)queue_size;
+    (void)uart_num; (void)rx_buffer_size; (void)tx_buffer_size; (void)queue_size; (void)intr_alloc_flags;
+    if (uart_queue != NULL) {
+        *uart_queue = NULL;
+    }
     return 0; /* ESP_OK */
 }
 

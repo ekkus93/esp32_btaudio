@@ -6,6 +6,9 @@
 #include <stddef.h>
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+typedef int uart_port_t;
 
 /* UART port numbers */
 #define UART_NUM_0  0
@@ -32,7 +35,7 @@ typedef struct {
 #define UART_PIN_NO_CHANGE  0xFF
 
 /* Functions */
-esp_err_t uart_driver_install(uint8_t uart_num, int rx_buf_size, int tx_buf_size, int rx_circ_buf, int tx_circ_buf, int queue_size);
+esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size, int queue_size, QueueHandle_t *uart_queue, int intr_alloc_flags);
 esp_err_t uart_driver_delete(uint8_t uart_num);
 esp_err_t uart_param_config(uint8_t uart_num, const uart_config_t *cfg);
 esp_err_t uart_set_pin(uint8_t uart_num, uint8_t tx_pin, uint8_t rx_pin, uint8_t rts_pin, uint8_t cts_pin);
