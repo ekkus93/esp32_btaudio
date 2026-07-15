@@ -69,6 +69,44 @@ static void test_null_and_zero_count_safe(void)
     TEST_ASSERT_EQUAL_INT16(7, s[0]);           /* untouched */
 }
 
+static void test_gain_one_percent(void)
+{
+    int16_t s[2] = { 10000, -10000 };
+    i2s_out_apply_gain(s, 2, 1);
+    TEST_ASSERT_EQUAL_INT16(100, s[0]);         /* 10000 * 1/100 = 100 */
+    TEST_ASSERT_EQUAL_INT16(-100, s[1]);
+}
+
+static void test_gain_ninety_nine_percent(void)
+{
+    int16_t s[2] = { 10000, -10000 };
+    i2s_out_apply_gain(s, 2, 99);
+    TEST_ASSERT_EQUAL_INT16(9900, s[0]);        /* 10000 * 99/100 = 9900 */
+    TEST_ASSERT_EQUAL_INT16(-9900, s[1]);
+}
+
+static void test_gain_intermediate_values(void)
+{
+    int16_t s[6] = { 1000, 1000, 1000, 1000, 1000, 1000 };
+
+    /* 25% */
+    i2s_out_apply_gain(s, 2, 25);
+    TEST_ASSERT_EQUAL_INT16(250, s[0]);         /* 1000 * 25/100 = 250 */
+    TEST_ASSERT_EQUAL_INT16(250, s[1]);
+
+    /* 33% */
+    s[2] = 1000; s[3] = 1000;
+    i2s_out_apply_gain(s + 2, 2, 33);
+    TEST_ASSERT_EQUAL_INT16(330, s[2]);         /* 1000 * 33/100 = 330 */
+    TEST_ASSERT_EQUAL_INT16(330, s[3]);
+
+    /* 75% */
+    s[4] = 1000; s[5] = 1000;
+    i2s_out_apply_gain(s + 4, 2, 75);
+    TEST_ASSERT_EQUAL_INT16(750, s[4]);         /* 1000 * 75/100 = 750 */
+    TEST_ASSERT_EQUAL_INT16(750, s[5]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -79,5 +117,8 @@ int main(void)
     RUN_TEST(test_zero_and_negative_mute);
     RUN_TEST(test_no_clipping_or_overflow);
     RUN_TEST(test_null_and_zero_count_safe);
+    RUN_TEST(test_gain_one_percent);
+    RUN_TEST(test_gain_ninety_nine_percent);
+    RUN_TEST(test_gain_intermediate_values);
     return UNITY_END();
 }

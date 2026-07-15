@@ -175,6 +175,43 @@ static void test_late_response_after_timeout_ignored(void)
     TEST_ASSERT_EQUAL_INT(BT_LINK_CMD_TIMEOUT, bt_link_session_state(&s));
 }
 
+static void test_all_four_subscribers_receive_event(void)
+{
+    bt_link_session_t s; bt_link_session_init(&s, 1000);
+    ev_t subs[4] = {{0},{0},{0},{0}};
+
+    /* Subscribe all 4 slots. */
+    for (int i = 0; i < 4; i++)
+        TEST_ASSERT_EQUAL_INT(0, bt_link_session_subscribe(&s, ev_cb, &subs[i]));
+
+    feed(&s, "EVENT|SCAN|RESULT|A0:B7:65:2B:E6:5E");
+
+    /* All 4 should have received the event. */
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT(1, subs[i].count);
+        TEST_ASSERT_EQUAL_STRING("SCAN", subs[i].last_cmd);
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, s.events_dispatched);
+}
+
+static void test_subscriber_count_tracking(void)
+{
+    bt_link_session_t s; bt_link_session_init(&s, 1000);
+    ev_t e = {0};
+    TEST_ASSERT_EQUAL_INT(0, s.n_subs);
+
+    TEST_ASSERT_EQUAL_INT(0, bt_link_session_subscribe(&s, ev_cb, &e));
+    TEST_ASSERT_EQUAL_INT(1, s.n_subs);
+
+    TEST_ASSERT_EQUAL_INT(0, bt_link_session_subscribe(&s, ev_cb, &e));
+    TEST_ASSERT_EQUAL_INT(2, s.n_subs);
+
+    /* Fill remaining slots. */
+    for (int i = 0; i < BT_LINK_MAX_SUBSCRIBERS - 2; i++)
+        TEST_ASSERT_EQUAL_INT(0, bt_link_session_subscribe(&s, ev_cb, &e));
+    TEST_ASSERT_EQUAL_INT(BT_LINK_MAX_SUBSCRIBERS, s.n_subs);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -190,5 +227,7 @@ int main(void)
     RUN_TEST(test_timeout_fires_once);
     RUN_TEST(test_session_reusable_after_completion);
     RUN_TEST(test_late_response_after_timeout_ignored);
+    RUN_TEST(test_all_four_subscribers_receive_event);
+    RUN_TEST(test_subscriber_count_tracking);
     return UNITY_END();
 }

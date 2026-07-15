@@ -1,0 +1,8 @@
+# ESP32-S3-WROOM-1 N16R8 (16 MB flash). Custom table (RADIO-1b): the default
+# single-app ~1 MB partition is too small once esp_http_client + esp-tls + the
+# mbedtls certificate bundle (and the RADIO-2 decoders) are linked. Generous
+# 6 MB app + a larger NVS for WiFi creds and the ≥32 station presets (RADIO-1c).
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      ,         0x10000
+phy_init,   data, phy,      ,         0x1000
+factory,    app,  factory,  ,         0x600000

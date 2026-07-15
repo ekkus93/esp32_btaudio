@@ -61,6 +61,16 @@ target_include_directories(test_signal_gen PRIVATE ${SIGNAL_GEN_DIR}/include)
 target_link_libraries(test_signal_gen unity m)
 add_test(NAME test_signal_gen COMMAND test_signal_gen)
 
+# WEB-1d: tone controllable test-tone source
+add_executable(test_tone test_tone.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/tone.c
+    ${SIGNAL_GEN_DIR}/signal_gen.c)
+target_include_directories(test_tone PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/include
+    ${SIGNAL_GEN_DIR}/include)
+target_link_libraries(test_tone unity m)
+add_test(NAME test_tone COMMAND test_tone)
+
 # SIG-1b: pcm_ring SPSC ring
 add_executable(test_pcm_ring test_pcm_ring.c ${I2S_OUT_DIR}/pcm_ring.c)
 target_include_directories(test_pcm_ring PRIVATE ${I2S_OUT_DIR}/include)

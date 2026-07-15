@@ -25971,3 +25971,13 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - Fixed web_ui_bt.c: missing `#include "esp_log.h"` and `static const char *TAG`
 - Both esp32s3 (esp_i2s_source) and esp32 (esp_bt_audio_source) build successfully
 - Next: commit the fixes, then RH-TEST-05 (hardware regression)
+
+## 2026-07-15T04:22:52Z - Qwen3.6 27B - Add missing host tests (RH-WR-01/02)
+
+- Added 19 new host tests covering TODO items from ESP32_BTAUDIO_RELIABILITY_TODO_V1.md
+- test_bt_ctx_lock.c (7 tests): bt_ctx_lock/unlock wrapper API for RH-WR-01
+- test_audio_fault_recovery.c (8 tests): audio FAULTED state recovery for RH-WR-02
+- test_bt_lock_cb_reentry.c (4 tests): callback re-entry deadlock prevention for RH-WR-01
+- Updated CMakeLists.txt to include new test executables
+- All 74 host test suites pass
+- Note: Host platform_mutex doesn't support timeout (pthread limitation) - timeout tests skipped
