@@ -293,6 +293,125 @@ void test_tag_miss_count_reset(void)
     TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_tag_miss_count());
 }
 
+/* ── Full priority chain verification ──────────────────────────────────── */
+
+/* Test all 4 source combinations with beep active.
+ * BEEP should always return SILENCE (3), regardless of what other sources
+ * are active. The beep tone is mixed in-place by beep_overlay_fill(). */
+void test_priority_chain_beep_overrides_everything(void)
+{
+    /* BEEP + I2S */
+    s_force_synth = false;
+    s_beep_remaining_bytes = 128;
+    audio_processor_core_stub_set_beep_active(true);
+    audio_processor_core_stub_set_i2s_running(true);
+    audio_processor_core_stub_set_uart_active(false);
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id()); /* SILENCE (beep overlay) */
+
+    /* BEEP + SYNTH */
+    s_force_synth = true;
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id()); /* SILENCE (beep overlay) */
+
+    /* BEEP + UARTAUDIO */
+    audio_processor_core_stub_set_uart_active(true);
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id()); /* SILENCE (beep overlay) */
+
+    /* BEEP + all */
+    s_force_synth = false;
+    audio_processor_core_stub_set_i2s_running(true);
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id()); /* SILENCE (beep overlay) */
+}
+
+/* Test UARTAUDIO priority: beats SYNTH and I2S */
+void test_priority_chain_uart_beats_synth_and_i2s(void)
+{
+    s_beep_remaining_bytes = 0;
+    audio_processor_core_stub_set_beep_active(false);
+
+    /* UART + I2S → UART wins */
+    s_force_synth = false;
+    audio_processor_core_stub_set_i2s_running(true);
+    audio_processor_core_stub_set_uart_active(true);
+    TEST_ASSERT_EQUAL_INT(2, audio_processor_test_get_active_source_id()); /* UART */
+
+    /* UART + SYNTH → UART wins */
+    s_force_synth = true;
+    TEST_ASSERT_EQUAL_INT(2, audio_processor_test_get_active_source_id()); /* UART */
+
+    /* UART alone → UART */
+    audio_processor_core_stub_set_i2s_running(false);
+    TEST_ASSERT_EQUAL_INT(2, audio_processor_test_get_active_source_id()); /* UART */
+}
+
+/* Test SYNTH priority: beats I2S */
+void test_priority_chain_synth_beats_i2s(void)
+{
+    s_beep_remaining_bytes = 0;
+    audio_processor_core_stub_set_beep_active(false);
+    audio_processor_core_stub_set_uart_active(false);
+
+    /* SYNTH + I2S → SYNTH wins (connection-hold mechanism) */
+    s_force_synth = true;
+    audio_processor_core_stub_set_i2s_running(true);
+    TEST_ASSERT_EQUAL_INT(1, audio_processor_test_get_active_source_id()); /* SYNTH */
+
+    /* SYNTH alone → SYNTH */
+    audio_processor_core_stub_set_i2s_running(false);
+    TEST_ASSERT_EQUAL_INT(1, audio_processor_test_get_active_source_id()); /* SYNTH */
+}
+
+/* Test I2S priority: beats SILENCE fallback */
+void test_priority_chain_i2s_beats_silence(void)
+{
+    s_beep_remaining_bytes = 0;
+    audio_processor_core_stub_set_beep_active(false);
+    s_force_synth = false;
+    audio_processor_core_stub_set_uart_active(false);
+
+    /* I2S alone → I2S */
+    audio_processor_core_stub_set_i2s_running(true);
+    TEST_ASSERT_EQUAL_INT(0, audio_processor_test_get_active_source_id()); /* I2S */
+
+    /* No sources → SILENCE fallback */
+    audio_processor_core_stub_set_i2s_running(false);
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id()); /* SILENCE */
+}
+
+/* Verify the complete priority chain in order:
+ * 1. BEEP (returns SILENCE + overlay)
+ * 2. UARTAUDIO
+ * 3. SYNTH (connection-hold)
+ * 4. I2S
+ * 5. SILENCE (fallback) */
+void test_priority_chain_complete_order(void)
+{
+    s_beep_remaining_bytes = 0;
+    audio_processor_core_stub_set_beep_active(false);
+    s_force_synth = false;
+    audio_processor_core_stub_set_i2s_running(false);
+    audio_processor_core_stub_set_uart_active(false);
+
+    /* Baseline: all off → SILENCE */
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id());
+
+    /* Enable I2S → I2S */
+    audio_processor_core_stub_set_i2s_running(true);
+    TEST_ASSERT_EQUAL_INT(0, audio_processor_test_get_active_source_id());
+
+    /* Enable SYNTH → SYNTH beats I2S */
+    s_force_synth = true;
+    TEST_ASSERT_EQUAL_INT(1, audio_processor_test_get_active_source_id());
+
+    /* Enable UARTAUDIO → UART beats SYNTH */
+    audio_processor_core_stub_set_uart_active(true);
+    TEST_ASSERT_EQUAL_INT(2, audio_processor_test_get_active_source_id());
+
+    /* Enable BEEP → SILENCE (beep overlay mixes) */
+    s_beep_remaining_bytes = 128;
+    audio_processor_core_stub_set_beep_active(true);
+    TEST_ASSERT_EQUAL_INT(3, audio_processor_test_get_active_source_id());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -315,5 +434,10 @@ int main(void)
     RUN_TEST(test_compute_engine_paused_transition_and_midrange);
     RUN_TEST(test_should_produce_chunk_boundary);
     RUN_TEST(test_tag_miss_count_reset);
+    RUN_TEST(test_priority_chain_beep_overrides_everything);
+    RUN_TEST(test_priority_chain_uart_beats_synth_and_i2s);
+    RUN_TEST(test_priority_chain_synth_beats_i2s);
+    RUN_TEST(test_priority_chain_i2s_beats_silence);
+    RUN_TEST(test_priority_chain_complete_order);
     return UNITY_END();
 }
