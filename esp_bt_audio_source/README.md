@@ -5,11 +5,19 @@ ESP32 firmware that streams I2S audio to Bluetooth speakers/headphones via A2DP.
 ## Prerequisites
 
 - ESP-IDF v5.5.1 installed
-- uv-managed `.venv` at repository root for Python tooling (test runners, scripts)
+- Python tooling: the repo root has a uv-managed `.venv` for all Python tooling (test runners, scripts). To set it up:
 
 ```bash
-. $HOME/esp/v5.1/esp-idf/export.sh
-. .venv/bin/activate
+# From the repository root, create the virtual environment and install deps
+uv venv
+uv pip install -r requirements.txt   # or uv pip install -e .
+```
+
+Then source both environments:
+
+```bash
+. $HOME/esp/v5.1/esp-idf/export.sh   # ESP-IDF toolchain and idf.py
+. .venv/bin/activate                  # Python tooling for tests
 ```
 
 ## Quick Start
