@@ -70,3 +70,24 @@ esp_err_t web_ui_auth_init(void);
 esp_err_t web_ui_auth_generate_token(void);
 bool      web_ui_auth_check(httpd_req_t *req);
 const char *web_ui_auth_get_token(void);
+
+/* Operation types (10.5 — async operation queue) */
+typedef struct {
+    char id[16];
+} web_op_id_t;
+
+typedef struct {
+    char id[16];
+    char description[64];
+    int state;  /* PENDING=0, RUNNING, DONE, FAILED */
+    esp_err_t result;
+    char error_msg[128];
+    int64_t created_us;
+    int64_t completed_us;
+} web_op_status_t;
+
+/* web_ui_ops.c — async operation queue (10.5) */
+void    web_ui_ops_init(void);
+esp_err_t web_ui_ops_enqueue(const char *description, web_op_id_t *out_id);
+esp_err_t web_ui_ops_complete(const char *op_id, esp_err_t result, const char *error_msg);
+esp_err_t web_ui_ops_status(const char *op_id, web_op_status_t *out);

@@ -233,6 +233,8 @@ esp_err_t web_ui_start(void)
     if (web_ui_auth_init() != ESP_OK) {
         ESP_LOGE(TAG, "auth init failed");
     }
+    /* Initialise async operation queue (10.5). */
+    web_ui_ops_init();
 
     /* Initialise the WROOM32 cache mutex. */
     s_wroom_cache.mtx = xSemaphoreCreateMutex();
