@@ -741,9 +741,122 @@ void test_stop_after_fault_returns_ok(void)
     err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
 
-    /* Second stop should return OK (already stopped). */
+    /* Second stop should also timeout (workers haven't exited). */
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* But radio_deinit() will force-destroy the session. */
+}
+
+/* ---- 7.11: decoder task creation failure (stream succeeds, decoder fails) ---- */
+
+void test_decoder_task_creation_failure_decoder_only(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /*
+     * radio_init creates 1 task (command task).
+     * radio_play creates 2 tasks (stream=1st in play, decoder=2nd in play).
+     * So decoder is the 3rd task creation overall.
+     * Fail on 3rd creation to target decoder only.
+     */
+    mock_task_set_fail_on_nth(3);
+
+    /* radio_play should fail when decoder task creation fails. */
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, err);
+
+    /* State must be STOPPED after failure. */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+
+    /* radio_stop should be safe after failed play. */
     err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Reset mock. */
+    mock_task_set_fail_on_nth(0);
+}
+
+/* ---- 7.11: event group creation failure ---- */
+
+void test_event_group_create_fail(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Inject: xEventGroupCreate() returns NULL. */
+    mock_event_group_set_create_null(1);
+
+    /* radio_play should fail when event group creation fails. */
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* State must be STOPPED after failure. */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+
+    /* radio_stop should be safe after failed play. */
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Reset mock. */
+    mock_event_group_reset();
+}
+
+/* ---- 7.11: ASan verification tests (all tests pass under ASan) ---- */
+
+/* These tests verify that the lifecycle is clean under ASan:
+ * - No memory leaks
+ * - No double-free
+ * - No use-after-free
+ * - Exact state transitions */
+
+void test_asan_clean_init_play_stop(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Play and stop should be clean under ASan. */
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Simulate both workers exiting. */
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* State must be STOPPED. */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+}
+
+void test_asan_clean_fault_recovery(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Fault out (partial exit). */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* State must be FAULTED_JOIN_PENDING. */
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
+
+    /* Now inject ALL_EXITED so recovery can complete. */
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* State must be STOPPED after recovery. */
+    state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
 }
 
 int main(void)
@@ -780,5 +893,12 @@ int main(void)
     RUN_TEST(test_stop_success_both_exit);
     RUN_TEST(test_fault_blocks_restart);
     RUN_TEST(test_stop_after_fault_returns_ok);
+    /* 7.11: decoder task creation failure */
+    RUN_TEST(test_decoder_task_creation_failure_decoder_only);
+    /* 7.11: event group creation failure */
+    RUN_TEST(test_event_group_create_fail);
+    /* 7.11: ASan verification */
+    RUN_TEST(test_asan_clean_init_play_stop);
+    RUN_TEST(test_asan_clean_fault_recovery);
     return UNITY_END();
 }

@@ -223,6 +223,14 @@ static void session_destroy_joined(radio_session_t *s)
     free(s);
 }
 
+/* Force-destroy session (used by radio_deinit() for teardown). */
+static void session_destroy_force(radio_session_t *s)
+{
+    if (!s) return;
+    vEventGroupDelete(s->events);
+    free(s);
+}
+
 /* Module state protected by s_control_mtx. */
 static SemaphoreHandle_t s_control_mtx;
 static radio_session_t *s_active_session;
@@ -655,11 +663,25 @@ const char *radio_codec_str(radio_codec_t c)
 void radio_deinit(void)
 {
     /* Stop any active session first. */
-    if (s_control_mtx && s_active_session) {
+    if (s_control_mtx) {
+        radio_session_t *s = s_active_session;
         radio_stop_sync();
+        /* Force-destroy session if it wasn't freed by session_destroy_joined().
+         * session_destroy_joined() returns early (without freeing) when workers
+         * haven't exited. In that case, s_active_session was cleared by
+         * radio_stop_sync(), but the session memory wasn't freed. We use the
+         * saved pointer to force-destroy. */
+        if (s) {
+            /* Check if workers exited — if they did, session was freed.
+             * If they didn't, force-destroy. */
+            if (!session_all_exited(s)) {
+                session_destroy_force(s);
+            }
+        }
     }
 
-    /* Shutdown command worker (RH-S3-09). */
+    /*
+    Shutdown command worker (RH-S3-09). */
     if (s_radio_cmd_q && s_radio_cmd_task) {
         atomic_store(&s_cmd_shutdown, true);
         /* Send dummy command to unblock the worker. */
@@ -939,8 +961,14 @@ esp_err_t radio_stop_sync(void)
             (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
                                        pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
         }
-        session_destroy_joined(s);
-        goto stopped;
+        if (session_all_exited(s)) {
+            /* Workers exited — safe to free. */
+            session_destroy_joined(s);
+            goto stopped;
+        }
+        /* Workers still running — leave s_active_session set so
+         * radio_deinit() can force-destroy. Return error to caller. */
+        return ESP_ERR_TIMEOUT;
     }
     /* If already FAULTED, wait for workers then destroy. */
     if (s_radio_state == RADIO_STATE_FAULTED) {
@@ -948,8 +976,14 @@ esp_err_t radio_stop_sync(void)
         /* Wait for workers to exit before freeing. */
         (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
                                    pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
-        session_destroy_joined(s);
-        goto stopped;
+        if (session_all_exited(s)) {
+            /* Workers exited — safe to free. */
+            session_destroy_joined(s);
+            goto stopped;
+        }
+        /* Workers still running — leave s_active_session set so
+         * radio_deinit() can force-destroy. Return error to caller. */
+        return ESP_ERR_TIMEOUT;
     }
     s_radio_state = RADIO_STATE_STOPPING;
     atomic_store_explicit(&s->stop_requested, true, memory_order_release);

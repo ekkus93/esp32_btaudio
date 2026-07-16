@@ -15,6 +15,8 @@ typedef struct {
 } mock_task_state_t;
 
 static mock_task_state_t s_state = {.create_result = pdPASS};
+/* Fail on Nth task creation (1-based). 0 means no fail-on-n. */
+static unsigned s_fail_on_nth_create = 0;
 static uint32_t s_mock_tick = 0;
 
 static TaskHandle_t make_handle(unsigned ordinal)
@@ -31,7 +33,13 @@ BaseType_t xTaskCreate(void (*task)(void *), const char *name, unsigned stackDep
     s_state.last_stack_depth = stackDepth;
     s_state.last_priority = uxPriority;
 
-    if (s_state.create_result == pdPASS && outHandle) {
+    /* Check fail-on-Nth hook first, then global result. */
+    BaseType_t result = s_state.create_result;
+    if (s_fail_on_nth_create && s_state.create_count == s_fail_on_nth_create) {
+        result = pdFAIL;
+    }
+
+    if (result == pdPASS && outHandle) {
         s_state.last_handle = make_handle(s_state.create_count);
         *outHandle = s_state.last_handle;
     } else {
@@ -41,7 +49,7 @@ BaseType_t xTaskCreate(void (*task)(void *), const char *name, unsigned stackDep
         }
     }
 
-    return s_state.create_result;
+    return result;
 }
 
 void vTaskDelete(TaskHandle_t task)
@@ -80,6 +88,7 @@ void mock_task_reset(void)
     s_state.last_param = NULL;
     s_state.last_stack_depth = 0;
     s_state.last_priority = 0;
+    s_fail_on_nth_create = 0;
     s_mock_tick = 0;
 }
 
@@ -111,6 +120,12 @@ BaseType_t mock_task_last_result(void)
 void mock_task_set_create_result(BaseType_t result)
 {
     s_state.create_result = result;
+}
+
+/* Fail on Nth task creation (1-based). 0 disables. */
+void mock_task_set_fail_on_nth(unsigned n)
+{
+    s_fail_on_nth_create = n;
 }
 
 // Host build stub for critical section helpers used by audio_processor

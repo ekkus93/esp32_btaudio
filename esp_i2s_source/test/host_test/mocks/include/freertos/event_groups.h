@@ -29,4 +29,8 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t eg,
                                 TickType_t xTicksToWait);
 EventBits_t xEventGroupGetBits(EventGroupHandle_t eg);
 
+/* Test injection hooks */
+void mock_event_group_set_create_null(int n); /* return NULL for next N creations */
+void mock_event_group_reset(void);
+
 #endif

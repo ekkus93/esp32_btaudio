@@ -11,8 +11,14 @@ typedef struct {
     EventBits_t bits;
 } mock_event_group_t;
 
+static int s_event_group_create_null = 0;
+
 EventGroupHandle_t xEventGroupCreate(void)
 {
+    if (s_event_group_create_null > 0) {
+        s_event_group_create_null--;
+        return NULL;
+    }
     mock_event_group_t *eg = (mock_event_group_t *)malloc(sizeof(*eg));
     if (eg) memset(eg, 0, sizeof(*eg));
     return (EventGroupHandle_t)eg;
@@ -53,4 +59,14 @@ EventBits_t xEventGroupGetBits(EventGroupHandle_t eg)
     if (!eg) return 0;
     mock_event_group_t *e = (mock_event_group_t *)eg;
     return e->bits;
+}
+
+void mock_event_group_set_create_null(int n)
+{
+    s_event_group_create_null = n;
+}
+
+void mock_event_group_reset(void)
+{
+    s_event_group_create_null = 0;
 }

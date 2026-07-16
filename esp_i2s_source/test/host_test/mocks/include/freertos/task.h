@@ -20,6 +20,7 @@ TaskHandle_t mock_task_last_handle(void);
 const char* mock_task_last_name(void);
 BaseType_t mock_task_last_result(void);
 void mock_task_set_create_result(BaseType_t result);
+void mock_task_set_fail_on_nth(unsigned n); /* fail on Nth creation (1-based), 0 disables */
 void vTaskSuspendAll(void);
 BaseType_t xTaskResumeAll(void);
 
