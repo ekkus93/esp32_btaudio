@@ -229,6 +229,11 @@ static esp_err_t register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 
 esp_err_t web_ui_start(void)
 {
+    /* Initialise authentication (10.6). */
+    if (web_ui_auth_init() != ESP_OK) {
+        ESP_LOGE(TAG, "auth init failed");
+    }
+
     /* Initialise the WROOM32 cache mutex. */
     s_wroom_cache.mtx = xSemaphoreCreateMutex();
     if (!s_wroom_cache.mtx) {

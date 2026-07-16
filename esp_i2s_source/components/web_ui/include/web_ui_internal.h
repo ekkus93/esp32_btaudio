@@ -64,3 +64,9 @@ esp_err_t console_post_h(httpd_req_t *req);
  * async-line handler, and prime the paired list. Call once from web_ui_start()
  * after httpd is up. Defined in web_ui_bt.c. */
 void web_ui_bt_init(void);
+
+/* web_ui_auth.c — bearer-token authentication */
+esp_err_t web_ui_auth_init(void);
+esp_err_t web_ui_auth_generate_token(void);
+bool      web_ui_auth_check(httpd_req_t *req);
+const char *web_ui_auth_get_token(void);
