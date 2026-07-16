@@ -88,7 +88,7 @@ def evaluate(text, require_i2s=False, require_link=False):
         results.append(("wifi_sta", WARN, "not associated (needs a known AP)"))
 
     # --- conditional: I2S throughput + clock ---
-    byte_counts = [int(m) for m in re.findall(r"DIAG\|I2S\|bytes=(\d+)", text)]
+    byte_counts = [int(m) for m in re.findall(r"DIAG\|I2S\|[^|]*bytes=(\d+)", text)]
     ratios = [float(m) for m in re.findall(r"DIAG\|I2SFREQ\|[^\n]*ratio=(-?\d+\.\d+)", text)]
     climbing = len(byte_counts) >= 2 and byte_counts[-1] > byte_counts[0]
     good_ratio = next((r for r in ratios if I2S_RATIO_MIN <= r <= I2S_RATIO_MAX), None)
