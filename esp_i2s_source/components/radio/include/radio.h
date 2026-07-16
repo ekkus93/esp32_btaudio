@@ -87,13 +87,14 @@ esp_err_t radio_play_async(const char *playlist_or_url);
  * command worker. Returns ESP_OK if queued, ESP_ERR_TIMEOUT if queue full. */
 esp_err_t radio_stop_async(void);
 
-/* Internal — synchronous play/stop (called by command worker or tests).
- * Blocks until both stream and decoder tasks are created (play), or both
- * workers exited (stop).
- * These are NOT thread-safe to call from outside the command worker —
- * use radio_play_async() / radio_stop_async() instead. (7.1) */
+/* ---- Internal sync API (only for cmd worker / host tests) ----
+   radio_play_sync() / radio_stop_sync() are NOT thread-safe.
+   The command worker is the sole production caller.
+   Exported only when UNIT_TEST is defined (host test builds). */
+#ifdef UNIT_TEST
 esp_err_t radio_play_sync(const char *playlist_or_url);
 esp_err_t radio_stop_sync(void);
+#endif /* UNIT_TEST */
 
 /* True while a stream is active (UI/telemetry sense). */
 bool radio_is_playing(void);
@@ -103,8 +104,9 @@ bool radio_is_playing(void);
  * rebuffer windows emit silence/tone instead of a starving ring. */
 bool radio_audio_ready(void);
 
-/* Snapshot the current state. Returns a coherent snapshot — all fields
- * are read under the same nested lock acquisition (RH-S3-13). */
+/* Snapshot the current state. Acquires s_control_mtx and copies all fields.
+ * Telemetry/PCM fields are point-in-time snapshots (see bt_manager_get_status
+ * pattern). Safe to call from any task. */
 void radio_get_status(radio_status_t *out);
 
 /* ---- Test injection hooks (RH-S3-02) ---- */

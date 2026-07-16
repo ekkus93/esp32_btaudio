@@ -44,6 +44,24 @@ static inline void vTaskDelay(const TickType_t ticks)
     /* Host-mode delay is a no-op to keep unit tests fast. */
 }
 
+/* Phase 7.5: Task notification stubs for host tests.
+ * ulTaskNotifyTake clears and returns the task's notification value.
+ * For host tests this returns 0 (no notification pending). */
+static inline unsigned long ulTaskNotifyTake(BaseType_t xClearToZero, TickType_t xTimeout)
+{
+    (void)xClearToZero;
+    (void)xTimeout;
+    return 0UL;
+}
+
+/* xTaskNotifyGive sends a notification to a task.
+ * For host tests this is a no-op. */
+static inline BaseType_t xTaskNotifyGive(TaskHandle_t xTaskToNotify)
+{
+    (void)xTaskToNotify;
+    return pdPASS;
+}
+
 #ifdef __cplusplus
 }
 #endif

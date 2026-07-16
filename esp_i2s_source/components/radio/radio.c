@@ -94,6 +94,12 @@ size_t radio_read(uint8_t *dst, size_t len)
    use atomic_store for safe concurrent updates. */
 static atomic_size_t     s_prebuffer_bytes;
 static void radio_prebuffer_load(void);
+/* 7.1: forward declarations for internal sync play/stop.
+   Static for device builds (cmd-worker only). Non-static for host tests. */
+#ifndef UNIT_TEST
+static esp_err_t radio_play_sync(const char *playlist_or_url);
+static esp_err_t radio_stop_sync(void);
+#endif
 static uint8_t          *s_pcm;
 static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
 static SemaphoreHandle_t s_pcm_mtx;
@@ -186,6 +192,15 @@ static inline bool session_all_exited(const radio_session_t *s)
     if (!s || !s->events) return false;
     EventBits_t bits = xEventGroupGetBits(s->events);
     return (bits & RADIO_EVT_ALL_EXITED) == RADIO_EVT_ALL_EXITED;
+}
+
+/* 7.5: interruptible wait — waits up to ms, returns true if stop requested.
+   Workers call this instead of vTaskDelay(). radio_stop_sync() sends a
+   task notification to wake them. */
+static inline bool wait_or_stop(radio_session_t *s, uint32_t ms)
+{
+    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(ms));
+    return !session_should_run(s);
 }
 
 /* 7.4: destroy a session only after both workers have exited.
@@ -459,7 +474,7 @@ static void stream_task(void *arg)
             xSemaphoreGive(s_mtx);
             if (free_space < (sizeof(buf))) {
                 /* Ring full — drain wait (interruptible by stop) */
-                vTaskDelay(pdMS_TO_TICKS(10));
+                if (wait_or_stop(s, 10)) break;
                 continue;
             }
             int r = esp_http_client_read(c, (char *)buf, sizeof(buf));
@@ -510,7 +525,7 @@ static void decoder_task(void *arg)
         codec = s_codec;
         xSemaphoreGive(s_mtx);
 
-        if (codec == RADIO_CODEC_UNKNOWN) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
+        if (codec == RADIO_CODEC_UNKNOWN) { if (wait_or_stop(s, 50)) break; continue; }
         if (!dec || codec != opened) {
             if (dec) { esp_audio_simple_dec_close(dec); dec = NULL; }
             dec = open_decoder(codec);
@@ -520,7 +535,7 @@ static void decoder_task(void *arg)
                 xSemaphoreTake(s_mtx, portMAX_DELAY);
                 s_decode_errors++;
                 xSemaphoreGive(s_mtx);
-                vTaskDelay(pdMS_TO_TICKS(200));
+                if (wait_or_stop(s, 200)) break;
                 continue;
             }
             ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
@@ -532,7 +547,7 @@ static void decoder_task(void *arg)
             pending += got;
         }
 
-        if (pending == 0) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
+        if (pending == 0) { if (wait_or_stop(s, 10)) break; continue; }
 
         esp_audio_simple_dec_raw_t raw = { .buffer = inbuf, .len = (uint32_t)pending };
         size_t consumed_total = 0;
@@ -568,7 +583,7 @@ static void decoder_task(void *arg)
                         while (written < bytes && session_should_run(s)) {
                             size_t n = pcm_write((const uint8_t *)rsbuf + written, bytes - written);
                             if (n == 0) {
-                                vTaskDelay(pdMS_TO_TICKS(5));
+                                if (wait_or_stop(s, 5)) break;
                                 continue;
                             }
                             written += n;
@@ -795,6 +810,11 @@ esp_err_t radio_init(size_t ring_bytes)
     return ESP_OK;
 }
 
+/* 7.1: Internal synchronous play/stop — only the cmd worker calls these.
+   Conditionally exported for host tests (UNIT_TEST). */
+#ifndef UNIT_TEST
+static
+#endif
 esp_err_t radio_play_sync(const char *playlist_or_url)
 {
     if (!playlist_or_url || !playlist_or_url[0]) return ESP_ERR_INVALID_ARG;
@@ -895,6 +915,10 @@ fail_session:
     return ESP_ERR_NO_MEM;
 }
 
+/* 7.1: Internal synchronous stop — only the cmd worker calls this. */
+#ifndef UNIT_TEST
+static
+#endif
 esp_err_t radio_stop_sync(void)
 {
     if (!s_control_mtx) return ESP_ERR_INVALID_STATE;
@@ -929,6 +953,9 @@ esp_err_t radio_stop_sync(void)
     }
     s_radio_state = RADIO_STATE_STOPPING;
     atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+    /* 7.5: notify workers to wake from any vTaskDelay() */
+    if (s->stream_task) xTaskNotifyGive(s->stream_task);
+    if (s->decoder_task) xTaskNotifyGive(s->decoder_task);
     xSemaphoreGive(s_control_mtx);
 
     /* Wait for both workers to exit. */
@@ -1013,14 +1040,23 @@ void radio_get_status(radio_status_t *out)
     memset(out, 0, sizeof(*out));
     if (!s_control_mtx) return;
 
-    /* RH-S3-13: nested lock acquisition for coherent snapshot.
-     * Lock order: s_control_mtx -> s_mtx -> s_pcm_mtx.
-     * This matches the nesting in radio_play_sync() where
-     * s_control_mtx is taken before s_mtx during session init. */
+    /* Single-mutex snapshot: acquire s_control_mtx and copy all fields.
+     * Telemetry/PCM fields are point-in-time snapshots — they are modified
+     * by the worker tasks but reading them without s_mtx/s_pcm_mtx is safe
+     * for display purposes (single-word atomic reads on ESP32, strings are
+     * copied consistently by strlcpy).
+     * This matches bt_manager_get_status() pattern (Phase 7.10). */
     xSemaphoreTake(s_control_mtx, portMAX_DELAY);
 
-    /* Telemetry lock (nested under control). */
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    /* Session state (protected by s_control_mtx). */
+    radio_state_t state = s_radio_state;
+    out->generation = s_next_generation;
+    out->state = state;
+    out->playing = (state == RADIO_STATE_RUNNING ||
+                    state == RADIO_STATE_STARTING);
+    out->buffering = (state == RADIO_STATE_RUNNING && !s_prebuffered);
+
+    /* Telemetry snapshot (point-in-time, no additional lock needed). */
     out->codec = s_codec;
     out->http_status = s_http_status;
     out->bitrate_kbps = s_bitrate;
@@ -1038,26 +1074,13 @@ void radio_get_status(radio_status_t *out)
     out->last_error = s_last_error;
     strlcpy(out->last_error_detail, s_last_error_detail, sizeof(out->last_error_detail));
 
-    /* PCM lock (nested under telemetry). */
-    if (s_pcm_mtx) {
-        xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
-        out->pcm_used = (uint32_t)s_pcm_count;
-        out->pcm_cap = (uint32_t)s_pcm_cap;
-        xSemaphoreGive(s_pcm_mtx);
-    }
+    /* PCM snapshot (point-in-time). */
+    out->pcm_used = (uint32_t)s_pcm_count;
+    out->pcm_cap = (uint32_t)s_pcm_cap;
 
-    /* Session fields — now under s_control_mtx. */
-    radio_state_t state = s_radio_state;
-    out->generation = s_next_generation;
-    out->state = state;
-    out->playing = (state == RADIO_STATE_RUNNING ||
-                    state == RADIO_STATE_STARTING);
-    out->buffering = (state == RADIO_STATE_RUNNING && !s_prebuffered);
-
-    xSemaphoreGive(s_mtx);
     xSemaphoreGive(s_control_mtx);
 
-    /* Prebuffer setting is a standalone query (no lock needed — read from volatile). */
+    /* Prebuffer setting is standalone (atomic, no lock needed). */
     out->prebuffer_ms = radio_get_prebuffer_ms();
 }
 
