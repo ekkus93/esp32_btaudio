@@ -65,6 +65,41 @@ def test_panic_fails():
     assert checks["no_crash"] is FAIL
 
 
+def test_abort_fails():
+    text = HEALTHY + "\nabort() was called\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_assert_fails():
+    text = HEALTHY + "\nassert failed\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_watchdog_fails():
+    text = HEALTHY + "\nTask watchdog got triggered\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_heap_corruption_fails():
+    text = HEALTHY + "\nCORRUPT HEAP: malloc caps\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_stack_overflow_fails():
+    text = HEALTHY + "\nstack overflow\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
 def test_incomplete_boot_fails():
     # web server never came up (init aborted before web_ui_start)
     text = IDLE_BOOT.replace("DIAG|WEB|READY|port=80", "")
@@ -112,3 +147,24 @@ def test_i2s_flat_bytes_not_healthy():
     ok, checks = _verdict(text)
     assert checks["i2s_active"] is WARN     # warn by default
     assert ok is True
+
+
+def test_brownout_fails():
+    text = HEALTHY + "\nBrownout detector was triggered\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_int_wdt_fails():
+    text = HEALTHY + "\nInterrupt wdt timeout on GPIO0\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL
+
+
+def test_sw_reset_fails():
+    text = HEALTHY + "\nrst:0x3 (SW_RESET)\n"
+    ok, checks = _verdict(text)
+    assert ok is False
+    assert checks["no_crash"] is FAIL

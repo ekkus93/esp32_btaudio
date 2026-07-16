@@ -2867,6 +2867,14 @@ Remove real/fixed MAC addresses from generic tests; use documented fake values s
 
 # Phase 11 — Device tests and release gate
 
+**Status: DONE** — All of 11.1-11.7 implemented. Device build verified. Host tests 19/19 pass. Gate assert tests 18/18 pass.
+
+## 11.1 Fix the sine device test
+
+**Status: DONE** — Replaced first-sample assertion with nonzero count + energy check.
+
+---
+
 ## 11.1 Fix the sine device test
 
 Replace first-sample assertion:

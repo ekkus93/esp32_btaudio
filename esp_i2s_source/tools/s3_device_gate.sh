@@ -11,16 +11,28 @@
 # What it gates on (see s3_gate_assert.py): a clean boot — no panic, and both
 # CONSOLE|READY + WEB|READY reached (app_main ran through every init). BOOT|READY/
 # PSRAM, WiFi, I2S throughput and the BTLINK self-test are reported but only warn
-# by default, since they depend on capture timing / a known AP / audio actually
-# playing / the WROOM32 being wired. Promote the last two to hard failures with
-# --require-i2s / --require-link when that context is guaranteed.
+# by default. --require-i2s / --require-link promote to hard failures. --degraded
+# relaxes companion/network requirements.
 #
 # Usage:
 #   tools/s3_device_gate.sh                    # build + flash + boot + assert
 #   tools/s3_device_gate.sh --no-flash         # just boot + assert (already flashed)
 #   tools/s3_device_gate.sh --require-link      # also fail if BTLINK self-test != 3/3
 #   tools/s3_device_gate.sh --require-i2s       # also fail if I2S output is idle/stalled
+#   tools/s3_device_gate.sh --degraded           # relax companion/network requirements
 #   tools/s3_device_gate.sh --seconds 25
+#
+# Hardware validation gates (documented in Phase 11.7):
+#   Gate A — Boot without WROOM32: S3 boots, no watchdog/assert,
+#           Wi-Fi/web/console reachable, I2S WAITING_FOR_CLOCK, heap stable.
+#   Gate B — UART link only: VERSION/STATUS succeed, no boot VOLUME command,
+#           100 timeout/recovery cycles without reset/leak.
+#   Gate C — I2S clocks: WS=44100, BCLK=2822400, ratio=64, bytes increasing.
+#   Gate D — Tone end-to-end: 1kHz audible, L/R present, no clipping, FFT=1kHz.
+#   Gate E — Radio: MP3+AAC play, 48k→44.1 resample, rebuffer→silence, stop<3s.
+#   Gate F — Soak: 2h MP3, 2h AAC, 500 play/stop, WiFi reconnect, WROOM cycle,
+#           no monotonic heap loss or task growth.
+#
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,17 +43,23 @@ DO_FLASH=1
 # markers, which only print after WiFi association (a few seconds).
 SECONDS_CAP=20
 GATE_ARGS=()
+DEGRADED=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-flash)      DO_FLASH=0 ;;
         --require-i2s)   GATE_ARGS+=("--require-i2s") ;;
         --require-link)  GATE_ARGS+=("--require-link") ;;
+        --degraded)      DEGRADED=1 ;;
         --seconds)       SECONDS_CAP="${2:-20}"; shift ;;
         --seconds=*)     SECONDS_CAP="${1#*=}" ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+if [ "$DEGRADED" = 1 ]; then
+    GATE_ARGS+=("--degraded")
+fi
 
 first_port() { ls /dev/ttyACM* 2>/dev/null | head -1; }
 

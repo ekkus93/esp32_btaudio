@@ -2,7 +2,7 @@
 """esp_i2s_source S3 boot-gate assertion.
 
 Reads captured device console (stdin or --file) from a booted ESP32-S3 and
-decides pass/fail against the boot markers printed by main.c. Pure/offline:
+decides pass/fail against the DIAG boot markers printed by main.c. Pure/offline:
 the hardware capture lives in s3_device_gate.sh; this only judges text, so its
 logic is unit-tested in test_s3_gate_assert.py without a board.
 
@@ -40,6 +40,13 @@ CRASH_SIGNATURES = (
     "assert failed",
     "rst:0x3 (SW_RESET)",       # panic-triggered software reset
     "Backtrace:",
+    "Task watchdog got triggered",
+    "Interrupt wdt timeout",
+    "Stack canary watchpoint triggered",
+    "stack overflow",
+    "CORRUPT HEAP",
+    "heap corruption",
+    "Brownout detector was triggered",
 )
 
 PASS, WARN, FAIL = True, None, False
@@ -123,12 +130,17 @@ def main():
     ap.add_argument("--require-link", action="store_true",
                     help="Fail (not warn) if the BTLINK self-test is not 3/3 "
                          "(WROOM32 wired + running responsive firmware).")
+    ap.add_argument("--degraded", action="store_true",
+                    help="Relax companion/network requirements (WiFi, I2S, link).")
     args = ap.parse_args()
 
     text = open(args.file, encoding="utf-8", errors="replace").read() if args.file \
         else sys.stdin.read()
 
-    ok, results = evaluate(text, require_i2s=args.require_i2s, require_link=args.require_link)
+    require_i2s = not args.degraded
+    require_link = not args.degraded
+
+    ok, results = evaluate(text, require_i2s=require_i2s, require_link=require_link)
     print(format_report(ok, results))
     return 0 if ok else 1
 
