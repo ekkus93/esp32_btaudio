@@ -364,9 +364,24 @@ the sink-available path (see CTRL-1c caveat).
       bt_link_session, wifi_sm, radio_parse, station_store, radio_resampler,
       ctrl_cfg, ctrl_sm — 13/13 passing.
 - [x] **DOC-1c** SPEC.md §9 "Hardware changelog" added — records the on-bench
-      contract deviations (I2S pins 15/16/7, 16-in-32 slots, WiFi PS_NONE, ~5.9 s
+      contract deviations (I2S pins 15/16/7, 6-in-32 slots, WiFi PS_NONE, ~5.9 s
       PCM buffer, audio/aacp detection, WROOM32 volume dead-code + s16 fix,
       laptop-sink cold-connect limitation, orchestrator RUN=1 wait, VOL-reset).
+
+## PHASE-12 — Final cleanup and documentation
+
+**Status:** `[x]` DONE.
+
+### Tasks
+- [x] **PHASE-12a** Archive superseded docs. Move code review, fix spec, responses,
+      implementation plans, summaries, and phase plans to `docs/archive/`. These
+      were normative during implementation but are now superseded by the built
+      firmware.
+- [x] **PHASE-12b** Authoritative SPEC.md. Updated with radio lifecycle changes
+      (Phase 7), Wi-Fi manager improvements (Phase 8), station IDs (Phase 9),
+      control orchestration (Phase 9), auth model, and verification strategy.
+- [x] **PHASE-12c** One-command verification. README now documents `./tools/verify_host.sh`
+      for host-side verification and `./tools/s3_device_gate.sh` for device gates.
 
 ---
 

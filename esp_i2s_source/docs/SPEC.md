@@ -318,6 +318,46 @@ Task breakdown: see `REDO1_TODO.md`. (A PC→WiFi raw-PCM streaming mode,
 formerly NET-2, is parked as optional future work — radio covers the
 primary use case.)
 
+## 7.1 Auth model
+
+Bearer token authentication (gated behind `CONFIG_ESP_I2S_SOURCE_HTTP_AUTH`):
+
+- Token generated on first boot from ESP RNG, stored in NVS.
+- Printed once to USB serial as `AUTH|BOOTSTRAP_TOKEN|<token>`.
+- Required for all POST/PUT/DELETE endpoints via `Authorization: Bearer <token>`.
+- Constant-time token comparison prevents timing side-channel leakage.
+- Physical-button rotation documented in README for credential rotation.
+
+## 8. Verification strategy
+
+### Host tests (no hardware)
+
+```bash
+./tools/verify_host.sh
+```
+
+Runs strict + ASan + UBSan compile, all host tests, gate assert tests, and
+web build (if npm is available).
+
+### Device gate
+
+```bash
+./tools/s3_device_gate.sh --port /dev/ttyACM0
+```
+
+Requires WROOM32 connected, S3 flashed. Gates A-F validate:
+
+- **Gate A:** Boot without WROOM32 — no watchdog, I2S reports WAITING_FOR_CLOCK
+- **Gate B:** UART link only — VERSION/STATUS succeed, 100 timeout/recovery cycles
+- **Gate C:** I2S clocks — WS = 44,100 Hz, BCLK = 2,822,400 Hz, bytes increasing
+- **Gate D:** Tone end-to-end — 1 kHz audible through A2DP, both channels present
+- **Gate E:** Radio — MP3 + AAC play, 48 kHz resamples to 44.1 kHz, stop < 3s
+- **Gate F:** Soak — 2h MP3, 2h AAC, 500 play/stop cycles, WiFi disconnect/reconnect
+
+### Hardware validation
+
+Run gates in order A→F. Each gate depends on the previous passing.
+
 ## 9. Hardware changelog — contract deviations found on the bench (DOC-1c)
 
 Things that differ from the spec-as-written above, or that were only learned by
@@ -363,3 +403,39 @@ running on real hardware. Newest first.
   music comes up at the user's level (verified: cold-start ends at VOL=12, not
   40). Note: `link_selftest` still sends a boot-time `VOLUME 40`, harmlessly
   overridden by the orchestrator before audio resumes.
+- **Radio lifecycle (Phase 7):** `radio_play_async()` and `radio_stop_async()`
+  are the public API. The internal cmd worker runs `play_owned()`/`stop_owned()`
+  with event-group synchronization: both stream and decoder tasks must set
+  STARTED bits before the state transitions to RUNNING; stop waits for both
+  EXITED bits before freeing the session. Faulted sessions are never freed
+  prematurely — `RADIO_STATE_FAULTED_JOIN_PENDING` retains the session until
+  both workers have exited. Backpressure on the compressed ring prevents silent
+  byte dropping when the ring is full. Prebuffer bytes are protected by mutex,
+  not `volatile`. `radio_get_status()` reads a single-mutex snapshot rather
+  than acquiring nested locks.
+- **Wi-Fi manager (Phase 8):** Lifecycle state machine (UNINITIALIZED →
+  INITIALIZING → RUNNING/FAULTED) with mutex-serialized init. Credential
+  updates are transactional: validate → build candidate → persist to NVS →
+  apply live. 32-byte binary SSIDs handled via `memcpy(len)` rather than
+  `strlcpy`. Exact 32-byte SSID handling. Password validation rejects
+  64-char non-hex strings; 64-char hex PSK is gated behind
+  `CONFIG_ESP_I2S_SOURCE_HEX_PSK`. Stale Wi-Fi events rejected when the state
+  doesn't expect them (e.g. GOT_IP after AP fallback). Provisioning jobs
+  serialized through a command queue; concurrent requests return HTTP 409.
+  AP password removed from public status — only `secured: boolean` exposed.
+- **Station IDs (Phase 9):** Stable `uint32_t id` assigned sequentially on add;
+  reordering changes array position only. `ctrl_cfg.last_station_id` tracks the
+  last played station by ID (0 = none). Versioned/checksummed persistence with
+  `STN2` magic, version 2, CRC-32 over payload. Corrupt blob loads safe defaults
+  with `persistence_corrupt` flag — doesn't auto-save corrupted data. Precise
+  error codes (`station_result_t`) instead of returning `ESP_ERR_NO_MEM` for
+  full/duplicate/invalid. URL/name truncation rejected outright. URL parsing
+  validates scheme/host/port; loopback/link-local/private IPs rejected unless
+  `CONFIG_ESP_I2S_SOURCE_ALLOW_LOCAL_STREAMS` is enabled.
+- **Control orchestration (Phase 9):** `ctrl_start()` passes a copied initial
+  config to the task — the task never reads shared state without holding the
+  mutex. Config setter uses the candidate pattern: build under lock, save,
+  publish. Monotonic timestamps from `esp_timer_get_time()` replace fixed
+  `dt_ms` accounting. Scan is a serialized state machine with distinct states
+  (SCAN_IDLE → SCAN_STARTING → SCANNING → SCANNING_RESTORE) rather than blind
+  sleeps.

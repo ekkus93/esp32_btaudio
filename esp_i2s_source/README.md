@@ -70,28 +70,49 @@ regenerated). `managed_components/` is gitignored (restored by the build).
 ```bash
 . $HOME/esp/v5.5.1/esp-idf/export.sh
 idf.py build
-idf.py -p /dev/ttyACM0 flash && idf.py monitor    # S3 is on /dev/ttyACM0 (USB-JTAG)
 ```
 
 The WROOM32 is on `/dev/ttyUSB0` — a **different** device; never flash it from
 here (see the repo-root CLAUDE.md).
+
+## Flash and monitor
+
+```bash
+idf.py -p /dev/ttyACM0 flash monitor    # S3 is on /dev/ttyACM0 (USB-JTAG)
+```
+
+## One-command verification
+
+Run all host-side checks (strict + ASan + UBSan compile, gate assert tests,
+web build) without hardware:
+
+```bash
+./tools/verify_host.sh
+```
+
+Device gate (requires WROOM32 connected, S3 flashed):
+
+```bash
+./tools/s3_device_gate.sh --port /dev/ttyACM0
+```
 
 ## Host tests (no hardware)
 
 Pure logic is host-tested off-device with CTest + Unity:
 
 ```bash
-tools/run_host_tests.sh            # build + run all host tests
-tools/run_host_tests.sh --coverage # optional gcov/lcov
-tools/run_host_tests.sh --asan     # optional AddressSanitizer
+./tools/run_host_tests.sh            # build + run all host tests
+./tools/run_host_tests.sh --coverage # optional gcov/lcov
+./tools/run_host_tests.sh --asan     # optional AddressSanitizer
 ```
 
-Current inventory: **13 suites** — `test_sanity`, `test_signal_gen`,
+Current inventory: **19 suites** — `test_sanity`, `test_signal_gen`,
 `test_pcm_ring`, `test_i2s_out_pump`, `test_i2s_out_gain`, `test_bt_link_parser`,
 `test_bt_link_session`, `test_wifi_sm`, `test_radio_parse`, `test_station_store`,
-`test_radio_resampler`, `test_ctrl_cfg`, `test_ctrl_sm`. Device/E2E behaviour
-(A2DP output, endurance, cold-start) is validated on hardware — see
-`docs/SPEC.md` §7 and the changelog in §9.
+`test_radio_resampler`, `test_ctrl_cfg`, `test_ctrl_sm`, `test_radio_lifecycle`,
+`test_pack_s16_msb`, `test_bt_link_lifecycle`, `test_ctrl_init`, `test_main_boot`.
+Device/E2E behaviour (A2DP output, endurance, cold-start) is validated on
+hardware — see `docs/SPEC.md` §7 and the changelog in §9.
 
 ## Web API
 

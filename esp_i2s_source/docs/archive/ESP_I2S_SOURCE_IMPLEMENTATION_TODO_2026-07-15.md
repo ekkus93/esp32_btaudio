@@ -3088,16 +3088,20 @@ Document and run in this exact order:
 
 # Phase 12 — Final cleanup and documentation
 
+**Status: DONE** — All of 12.1-12.3 implemented. Superseded docs archived to `docs/archive/`. SPEC.md updated with radio lifecycle, Wi-Fi manager, station IDs, auth model, and verification strategy. README updated with one-command verification.
+
 ## 12.1 Remove stale/contradictory comments
 
 Search:
 
 ```bash
-rg -n "master transmitter|MAC-derived|skip I2S|glitch-free|benign in practice|best-effort|fall back|fallback" \
+rg -n “master transmitter|MAC-derived|skip I2S|glitch-free|benign in practice|best-effort|fall back|fallback” \
   main components docs README.md
 ```
 
 Update comments to match implemented behavior. Do not leave historical experiment comments as the normative contract; move useful history to a troubleshooting document.
+
+**Status: DONE** — Comments reviewed. “glitch-free” in signal_gen/radio_resampler/tone is accurate (phase continuity). “fallback” in wifi_mgr describes actual STA/AP behavior. Archived superseded docs to `docs/archive/`.
 
 ---
 
@@ -3119,6 +3123,8 @@ Update or replace `docs/SPEC.md` with the final implemented contract. Include:
 
 Archive old conflicting specs under `docs/archive/` with a “superseded” header, or delete them if they are only stale generated plans.
 
+**Status: DONE** — SPEC.md updated with radio lifecycle (Phase 7), Wi-Fi manager (Phase 8), station IDs (Phase 9), control orchestration (Phase 9), auth model, and verification strategy (gates A-F).
+
 ---
 
 ## 12.3 Add exact one-command verification
@@ -3134,6 +3140,8 @@ idf.py -p /dev/ttyACM0 flash monitor
 ```
 
 Use the actual final script arguments.
+
+**Status: DONE** — README updated with `./tools/verify_host.sh` for host verification and `./tools/s3_device_gate.sh` for device gates.
 
 ---
 
