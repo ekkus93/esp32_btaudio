@@ -41,7 +41,7 @@ static int ct_strcmp(const char *a, const char *b)
 esp_err_t web_ui_auth_init(void)
 {
     esp_err_t err;
-    nvs_handle nvs_handle;
+    nvs_handle_t nvs_handle;
     size_t required_len = 0;
 
     /* Try to load token from NVS. */
@@ -65,7 +65,7 @@ esp_err_t web_ui_auth_init(void)
 
 esp_err_t web_ui_auth_generate_token(void)
 {
-    nvs_handle nvs_handle;
+    nvs_handle_t nvs_handle;
     esp_err_t err;
 
     /* Generate random token. */
