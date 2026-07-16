@@ -26024,3 +26024,9 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - Host tests: all 19 suites pass (100%)
 - Commits: 56ce4086 (implementation), 575ecd3c (TODO doc update)
 - TODO document: Phase 9 marked complete with "DONE" note
+## 2026-07-16T13:05:11Z - Claude Fable 5 - Phase 7 lifecycle safety complete (7.1/7.5/7.10)
+
+- **7.1**: radio_play_sync()/radio_stop_sync() made static/internal with conditional export for host tests via `#ifdef UNIT_TEST`. Command worker is sole production caller.
+- **7.5**: Added wait_or_stop() using ulTaskNotifyTake() instead of vTaskDelay(). radio_stop_sync() sends xTaskNotifyGive() to wake workers from any delay. Added FreeRTOS notification stubs for host tests (ulTaskNotifyTake/xTaskNotifyGive in task.h mock).
+- **7.10**: Replace nested locks in radio_get_status() with single-mutex snapshot pattern. Acquires only s_control_mtx, reads telemetry/PCM as point-in-time snapshots without additional s_mtx/s_pcm_mtx locks. Matches bt_manager_get_status() pattern.
+- Commit 243ad403. Device build verified (esp32s3), 19/19 host tests pass. WROOM32 74/74 host tests pass.
