@@ -16,29 +16,66 @@ const ARPS: { name: string; notes: number[] }[] = [
 const STEP_MS = 220; // per-note length
 const AMP = 30;      // amplitude %
 
+/** Delay that is abortable via an AbortSignal. */
+async function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const id = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => clearTimeout(id), { once: true });
+  });
+}
+
+/** Play a sequence of MIDI notes serially, aborting on cleanup. */
+async function playSequence(
+  notes: number[],
+  amp: number,
+  signal: AbortSignal,
+) {
+  for (const midi of notes) {
+    if (signal.aborted) return;
+    await setTone(Math.round(midiToFreq(midi)), amp, "piano");
+    await delay(STEP_MS, signal);
+  }
+  await toneOff();
+}
+
 export function Arpeggios() {
   const [playing, setPlaying] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const stop = () => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    toneOff().catch(() => {});
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
     setPlaying(null);
+    toneOff().catch(() => {});
   };
 
   const play = (arp: { name: string; notes: number[] }) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    // Cancel any in-flight sequence.
+    stop();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setPlaying(arp.name);
+
     // Ascending then back down (without repeating the top), for a fuller run.
     const seq = [...arp.notes, ...arp.notes.slice(0, -1).reverse()];
-    let i = 0;
-    const tick = () => {
-      if (i >= seq.length) { stop(); return; }
-      setTone(Math.round(midiToFreq(seq[i])), AMP, "piano").catch(() => {});
-      i++;
-      timerRef.current = setTimeout(tick, STEP_MS);
+
+    const run = async () => {
+      try {
+        await playSequence(seq, AMP, controller.signal);
+      } catch {
+        // AbortError during delay — expected on stop/cleanup.
+        if (!controller.signal.aborted) {
+          console.error("arpeggio playback failed");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setPlaying(null);
+        }
+      }
     };
-    tick();
+
+    void run();
   };
 
   return (

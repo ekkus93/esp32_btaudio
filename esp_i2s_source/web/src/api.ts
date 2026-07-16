@@ -1,10 +1,10 @@
 // Thin fetch layer over the device REST API (SPEC §5.2).
 
 export interface ApStatus {
-  on: boolean;       // AP currently broadcasting
-  enabled: boolean;  // user setting (keep AP up alongside STA)
+  on: boolean;          // AP currently broadcasting
+  enabled: boolean;     // user setting (keep AP up alongside STA)
   ssid: string;
-  pass: string;
+  secured: boolean;     // true when the AP has a password set
   ip?: string;
   clients?: number;
 }
@@ -44,23 +44,87 @@ export interface RadioStatus {
   prebuffer_ms?: number;
 }
 
-// Radio jitter-cushion prebuffer depth (ms), NVS-persisted; clamped device-side.
-export async function setPrebuffer(ms: number): Promise<{ ok: boolean; ms?: number }> {
-  const r = await fetch("/api/prebuffer", {
+/** Structured API error thrown by apiRequest(). */
+export class ApiError extends Error {
+  public readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    retryable = false,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.retryable = retryable;
+  }
+}
+
+type ApiEnvelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: string; message: string; retryable?: boolean } };
+
+/** Centralised fetch wrapper — handles timeout, abort, structured envelope. */
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = 10_000,
+): Promise<T> {
+  const controller = new AbortController();
+  const timerId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(path, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+    });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new ApiError(
+        `${path} returned non-JSON content`,
+        response.status,
+        "NON_JSON_RESPONSE",
+        response.status >= 500,
+      );
+    }
+
+    const payload = (await response.json()) as ApiEnvelope<T>;
+    if (!response.ok || !payload.ok) {
+      const error = !payload.ok
+        ? payload.error
+        : { code: "HTTP_ERROR", message: `HTTP ${response.status}`, retryable: true };
+      throw new ApiError(
+        error.message,
+        response.status,
+        error.code,
+        error.retryable ?? false,
+      );
+    }
+    return payload.data;
+  } finally {
+    window.clearTimeout(timerId);
+  }
+}
+
+// -----------------------------------------------------------------------
+// API helpers — all wrapped through apiRequest()
+
+/** Radio jitter-cushion prebuffer depth (ms), NVS-persisted; clamped device-side. */
+export async function setPrebuffer(ms: number): Promise<{ ms?: number }> {
+  return apiRequest<{ ms?: number }>("/api/prebuffer", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ms }),
   });
-  return r.json();
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const r = await fetch(path, { headers: { Accept: "application/json" } });
-  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
-  return r.json() as Promise<T>;
-}
-
-export const getStatus = () => getJSON<DeviceStatus>("/api/status");
+export const getStatus = () =>
+  apiRequest<DeviceStatus>("/api/status", { method: "GET" });
 
 export interface ProvisionResult {
   ok: boolean;
@@ -71,8 +135,10 @@ export interface ProvisionResult {
 // Start a Bluetooth scan: the device suspends A2DP for a clean inquiry, then
 // restores. Discovered devices appear in getBt().discovered.
 export async function triggerScan(): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch("/api/scan", { method: "POST" });
-  return r.json();
+  return apiRequest<{ ok: boolean; error?: string }>(
+    "/api/scan",
+    { method: "POST" },
+  );
 }
 
 export interface BtDev {
@@ -87,58 +153,59 @@ export interface BtState {
   paired: BtDev[];
   discovered: BtDev[];
 }
-export const getBt = () => getJSON<BtState>("/api/bt");
+export const getBt = () => apiRequest<BtState>("/api/bt", { method: "GET" });
 
 // Bluetooth actions: connect | disconnect | pair | unpair | pin_accept |
 // pin_reject | refresh.
-export async function btAction(action: string, mac?: string): Promise<{ ok: boolean; result?: string }> {
-  const r = await fetch("/api/bt", {
+export async function btAction(
+  action: string,
+  mac?: string,
+): Promise<{ ok: boolean; result?: string }> {
+  return apiRequest<{ ok: boolean; result?: string }>("/api/bt", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, mac }),
   });
-  return r.json();
 }
 
 // Run a raw WROOM32 command and get its response (replaces the WS terminal).
 export async function consoleCmd(
-  cmd: string
+  cmd: string,
 ): Promise<{ status: string; result: string; data: string; lines?: string[] }> {
-  const r = await fetch("/api/console", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cmd }),
-  });
-  return r.json();
+  return apiRequest<{ status: string; result: string; data: string; lines?: string[] }>(
+    "/api/console",
+    { method: "POST", body: JSON.stringify({ cmd }) },
+  );
 }
 
 // Toggle the concurrent control AP (keep it up alongside STA, or STA-only).
-export async function setApEnabled(enabled: boolean): Promise<{ ok: boolean; enabled?: boolean }> {
-  const r = await fetch("/api/apmode", {
+export async function setApEnabled(
+  enabled: boolean,
+): Promise<{ enabled?: boolean }> {
+  return apiRequest<{ enabled?: boolean }>("/api/apmode", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
   });
-  return r.json();
 }
 
 // Change the control-AP name/password. pass "" = open AP; else 8-64 chars.
-export async function setApConfig(ssid: string, pass: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch("/api/apmode", {
+export async function setApConfig(
+  ssid: string,
+  pass: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return apiRequest<{ ok: boolean; error?: string }>("/api/apmode", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ssid, pass }),
   });
-  return r.json();
 }
 
-export async function setWifi(ssid: string, pass: string): Promise<ProvisionResult> {
-  const r = await fetch("/api/wifi", {
+export async function setWifi(
+  ssid: string,
+  pass: string,
+): Promise<ProvisionResult> {
+  return apiRequest<ProvisionResult>("/api/wifi", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ssid, pass }),
   });
-  return r.json() as Promise<ProvisionResult>;
 }
 
 export interface ToneState {
@@ -151,60 +218,56 @@ export interface ToneState {
 export async function setTone(
   hz: number,
   amp?: number,
-  voice?: "sine" | "piano"
+  voice?: "sine" | "piano",
 ): Promise<ToneState> {
   const body: Record<string, unknown> = { hz };
   if (amp != null) body.amp = amp;
   if (voice) body.voice = voice;
-  const r = await fetch("/api/tone", {
+  return apiRequest<ToneState>("/api/tone", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return r.json() as Promise<ToneState>;
 }
 
 export async function toneOff(): Promise<ToneState> {
-  const r = await fetch("/api/tone", { method: "DELETE" });
-  return r.json() as Promise<ToneState>;
+  return apiRequest<ToneState>("/api/tone", { method: "DELETE" });
 }
 
 // Pre-I2S (ESP32-S3) software gain, 0..100 %.
-export async function setS3Volume(pct: number): Promise<{ ok: boolean; pct?: number }> {
-  const r = await fetch("/api/volume", {
+export async function setS3Volume(
+  pct: number,
+): Promise<{ pct?: number }> {
+  return apiRequest<{ pct?: number }>("/api/volume", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pct }),
   });
-  return r.json();
 }
 
 // Post-mix (ESP32-WROOM32) A2DP volume, 0..100. -1 = unknown.
 export async function getBtVolume(): Promise<{ vol: number }> {
-  return getJSON<{ vol: number }>("/api/btvolume");
+  return apiRequest<{ vol: number }>("/api/btvolume", { method: "GET" });
 }
 
-export async function setBtVolume(vol: number): Promise<{ ok: boolean; vol?: number }> {
-  const r = await fetch("/api/btvolume", {
+export async function setBtVolume(
+  vol: number,
+): Promise<{ ok: boolean; vol?: number }> {
+  return apiRequest<{ ok: boolean; vol?: number }>("/api/btvolume", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vol }),
   });
-  return r.json();
 }
 
-export async function playRadio(url: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch("/api/radio", {
+export async function playRadio(
+  url: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return apiRequest<{ ok: boolean; error?: string }>("/api/radio", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
   });
-  return r.json();
 }
 
 export async function stopRadio(): Promise<{ ok: boolean }> {
-  const r = await fetch("/api/radio", { method: "DELETE" });
-  return r.json();
+  return apiRequest<{ ok: boolean }>("/api/radio", { method: "DELETE" });
 }
 
 export interface Station {
@@ -213,33 +276,42 @@ export interface Station {
   url: string;
 }
 
-export const getStations = () => getJSON<Station[]>("/api/stations");
+export const getStations = () =>
+  apiRequest<Station[]>("/api/stations", { method: "GET" });
 
-export async function addStation(name: string, url: string): Promise<{ ok: boolean; id?: number; error?: string }> {
-  const r = await fetch("/api/stations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, url }),
-  });
-  return r.json();
+export async function addStation(
+  name: string,
+  url: string,
+): Promise<{ ok: boolean; id?: number; error?: string }> {
+  return apiRequest<{ ok: boolean; id?: number; error?: string }>(
+    "/api/stations",
+    { method: "POST", body: JSON.stringify({ name, url }) },
+  );
 }
 
-export async function updateStation(id: number, name: string, url: string): Promise<{ ok: boolean }> {
-  const r = await fetch(`/api/stations?id=${id}`, {
+export async function updateStation(
+  id: number,
+  name: string,
+  url: string,
+): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/stations?id=${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, url }),
   });
-  return r.json();
 }
 
 export async function deleteStation(id: number): Promise<{ ok: boolean }> {
-  const r = await fetch(`/api/stations?id=${id}`, { method: "DELETE" });
-  return r.json();
+  return apiRequest<{ ok: boolean }>(`/api/stations?id=${id}`, {
+    method: "DELETE",
+  });
 }
 
 // Reorder a station by swapping it with its neighbour (up = earlier, down = later).
-export async function moveStation(id: number, dir: "up" | "down"): Promise<{ ok: boolean }> {
-  const r = await fetch(`/api/stations?id=${id}&move=${dir}`, { method: "PUT" });
-  return r.json();
+export async function moveStation(
+  id: number,
+  dir: "up" | "down",
+): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/stations?id=${id}&move=${dir}`, {
+    method: "PUT",
+  });
 }

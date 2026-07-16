@@ -215,15 +215,14 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
   const [pass, setPass] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Pre-fill the editable fields from the device's current AP config, once.
+  // Pre-fill the SSID from the device's current AP config, once.
   const didFill = useRef(false);
   useEffect(() => {
     if (!didFill.current && ap?.ssid) {
       setSsid(ap.ssid);
-      setPass(ap.pass ?? "");
       didFill.current = true;
     }
-  }, [ap?.ssid, ap?.pass]);
+  }, [ap?.ssid]);
 
   if (!ap) return null;
 
@@ -281,11 +280,11 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
           <input value={ssid} onChange={(e) => setSsid(e.target.value)} disabled={busy} />
         </label>
         <label>
-          Password
+          New password
           <PasswordField
             value={pass}
             onChange={setPass}
-            placeholder="(blank = open network)"
+            placeholder={ap.secured ? "(blank = open network)" : "(leave blank for no password)"}
             disabled={busy}
           />
         </label>
@@ -296,6 +295,7 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
       {msg && <div className={`banner ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
       <Field k="Address" v={ap.on ? `http://${ap.ip ?? "192.168.4.1"}` : "—"} />
       {ap.on && typeof ap.clients === "number" && <Field k="Clients" v={ap.clients} />}
+      <Field k="Secured" v={ap.secured ? "Yes" : "No"} />
       <label className="ap-toggle">
         <input type="checkbox" checked={ap.enabled} onChange={toggle} disabled={busy} />
         Keep AP on alongside WiFi
@@ -303,6 +303,7 @@ function ApControl({ ap, onChange }: { ap?: ApStatus; onChange: () => void }) {
     </section>
   );
 }
+
 
 function VolumeControl({ s3gain, onChange }: { s3gain?: number; onChange: () => void }) {
   const [pre, setPre] = useState(30); // ESP32-S3 pre-I2S gain % (device default)

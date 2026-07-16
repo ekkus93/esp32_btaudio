@@ -1,22 +1,47 @@
 import { useEffect, useRef } from "react";
 
-// Poll `fn` every `ms`, but pause while the browser tab is hidden (no wasted
-// requests in the background) and refresh once immediately when it becomes
-// visible again. `ms` may change over time (e.g. faster during a scan) — the
-// interval is re-armed when it does. Fires once on mount.
-export function usePolling(fn: () => void, ms: number) {
-  const fnRef = useRef(fn);
-  fnRef.current = fn;
+/**
+ * Generation-based polling — schedules the next poll only after the current
+ * one completes, so overlapping polls never occur.  Uses a generation counter
+ * so stale callbacks don't overwrite fresher state.
+ *
+ * @param fn - async function to run on each poll (receives an AbortSignal)
+ * @param ms - minimum delay between successive polls
+ */
+export function usePolling(
+  fn: (signal: AbortSignal) => Promise<void>,
+  ms: number,
+) {
+  const latest = useRef(fn);
+  latest.current = fn;
+
   useEffect(() => {
-    const tick = () => {
-      if (!document.hidden) fnRef.current();
+    let stopped = false;
+    let timer: number | undefined;
+    let generation = 0;
+    let controller: AbortController | undefined;
+
+    const run = async () => {
+      const mine = ++generation;
+      controller = new AbortController();
+      try {
+        await latest.current(controller.signal);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("poll failed", error);
+        }
+      } finally {
+        if (!stopped && mine === generation) {
+          timer = window.setTimeout(run, ms);
+        }
+      }
     };
-    tick(); // initial fetch
-    const id = setInterval(tick, ms);
-    document.addEventListener("visibilitychange", tick);
+
+    void run();
     return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", tick);
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      controller?.abort();
     };
   }, [ms]);
 }
