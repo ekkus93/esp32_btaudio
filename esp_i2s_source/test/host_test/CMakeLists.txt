@@ -164,7 +164,11 @@ add_test(NAME test_ctrl_sm COMMAND test_ctrl_sm)
 
 # RH-S3-03: radio lifecycle — task creation failure paths
 add_executable(test_radio_lifecycle test_radio_lifecycle.c
+    test_radio_lifecycle_faults.c
     ${RADIO_DIR}/radio.c
+    ${RADIO_DIR}/radio_ring.c
+    ${RADIO_DIR}/radio_stream.c
+    ${RADIO_DIR}/radio_decode.c
     ${RADIO_DIR}/radio_parse.c
     ${RADIO_DIR}/radio_resampler.c
     mocks/freertos_event_group.c

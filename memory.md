@@ -26038,3 +26038,48 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - Added ASan verification tests
 - Fixed memory leak in radio_deinit() for faulted sessions
 - All 19/19 tests pass under ASan
+
+## 2026-07-17T15:34:54Z - Claude Opus 4.8 (1M context) - SPLIT_AND_REFRACT: esp_i2s_source radio.c
+
+- Split `esp_i2s_source/components/radio/radio.c` (1158 lines) by domain, following the same
+  method as esp_bt_audio_source's bt_source_mock.c/bt_source_stubs.c splits: de-static
+  file-scope state touched from more than one domain, `extern` it in a shared private
+  header, keep each symbol's single definition in whichever TU owns that domain, move
+  whole function bodies verbatim.
+- 4 files + a shared internal header, core at 655 lines: `radio_ring.c` (96, compressed +
+  PCM ring buffers), `radio_stream.c` (251, HTTP/ICY fetch + stream_task), `radio_decode.c`
+  (175, esp_audio_simple_dec decode + resample, decoder_task), `radio_internal.h` (105,
+  radio_session_t + session_should_run/session_all_exited/wait_or_stop as static inline +
+  extern decls). No file >700 (target was <800).
+- Collision check caught a real bug before it shipped: promoting `s_head`/`s_cap`/`s_mtx`/
+  etc. from static to extern-linkage globals collided at device link time with ESP-IDF's
+  own `s_head` in esp_netif_objects.c and pm_locks.c ("multiple definition"). Renamed every
+  de-static'd radio global to a collision-safe `g_radio_*` prefix (ring/pcm state, control
+  mutex+state, telemetry) across all 5 files; grepped the full esp-idf tree + managed_components
+  for the shared function names (ring_write, pcm_write, set_radio_error, resolve_url,
+  stream_task, decoder_task) — no collisions there.
+- Verified: all 19 host suites pass under --strict, --asan, and --ubsan (test_radio_lifecycle
+  included). Device `idf.py build` succeeds; binary size 0x1bad50 vs 0x1bad10 pre-split
+  (+64 B, expected — less cross-TU inlining without LTO). clang-tidy can't run in this
+  environment at all (host clang lacks xtensa-esp32s3 target support) — pre-existing,
+  unrelated to this change.
+- Not committed yet.
+
+## 2026-07-17T15:46:14Z - Claude Opus 4.8 (1M context) - SPLIT_AND_REFRACT: test_radio_lifecycle.c
+
+- Split `esp_i2s_source/test/host_test/test_radio_lifecycle.c` (904 lines) into two files,
+  same executable/CTest target: `test_radio_lifecycle.c` (560, kept mocks + setUp/tearDown +
+  main()/RUN_TEST list + RH-S3-03/15/20/21 tests) and `test_radio_lifecycle_faults.c` (402,
+  new — RH-S3-16 NVS-error-propagation, RH-S3-02 partial-worker-exit fault tests, 7.11
+  decoder-only/event-group/ASan tests). Forward-declared the moved tests in the main file
+  so RUN_TEST() still resolves them; the mock control hooks (mock_nvs_set_*, i2s_out_get_gain)
+  the new file calls are already non-static in the main file, just forward-declared there too.
+  Added test_radio_lifecycle_faults.c to the add_executable() SRCS in CMakeLists.txt.
+- Hit one strict-warnings snag: a doc comment literally containing `mocks/*.c` triggered
+  `-Werror=comment` ("/* within comment") because `/*` appears mid-string; reworded to avoid
+  the accidental nested-comment-open sequence.
+- Verified: Unity's own summary line unchanged at 30 Tests 0 Failures 0 Ignored (ran the
+  binary directly, not just CTest's binary-level pass/fail). All 19 host suites green under
+  --strict, --asan, --ubsan. Host-test-only change (no #ifdef ESP_PLATFORM code touched), so
+  no device rebuild needed this time.
+- Not committed yet.

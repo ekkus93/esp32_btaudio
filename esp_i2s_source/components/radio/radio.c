@@ -1,17 +1,18 @@
 /*
- * radio device glue (RADIO-1b): fetch an HTTP(S) stream (playlist-resolved),
- * deinterleave ICY metadata, and fill a PSRAM ring the decoder drains.
- * Reconnect with backoff; telemetry. See radio.h.
+ * radio — lifecycle/control core (RADIO-1b/RADIO-2): owns session creation
+ * and teardown, the async command queue, and status/telemetry snapshots.
+ * The network fetch and decode workers this starts live alongside it:
+ * radio_ring.c (compressed + PCM ring buffers), radio_stream.c (HTTP/ICY
+ * fetch, stream_task), radio_decode.c (decoder_task). See radio.h and
+ * radio_internal.h.
  *
  * RH-S3-02: session-based lifecycle with monotonically increasing generation,
  * _Atomic stop_requested flag, event-group exit acknowledgement, and control
  * mutex for lifecycle transitions.
  */
-#include "radio.h"
-#include "radio_parse.h"
+#include "radio_internal.h"
 
 #include <string.h>
-#include <strings.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdatomic.h>
@@ -22,60 +23,22 @@
 #include "freertos/semphr.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
-#include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "nvs.h"
 
-#include "radio_resampler.h"
-#include "esp_audio_simple_dec.h"
 #include "esp_audio_simple_dec_default.h"
 #include "esp_audio_dec_default.h"
-#include "esp_aac_dec.h"
 
 static const char *TAG = "radio";
 
-/* ---- PSRAM byte ring (SPSC, mutex-guarded) ---- */
-static uint8_t          *s_ring;
-static size_t            s_cap, s_head, s_tail, s_count;
-static SemaphoreHandle_t s_mtx;
-
-static size_t ring_write(const uint8_t *d, size_t n)
-{
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    size_t w = (n < s_cap - s_count) ? n : s_cap - s_count;
-    size_t first = s_cap - s_head;
-    if (first > w) first = w;
-    memcpy(s_ring + s_head, d, first);
-    if (w > first) memcpy(s_ring, d + first, w - first);
-    s_head = (s_head + w) % s_cap;
-    s_count += w;
-    xSemaphoreGive(s_mtx);
-    return w;
-}
-
-size_t radio_read(uint8_t *dst, size_t len)
-{
-    if (!s_ring || !dst) return 0;
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    size_t r = (len < s_count) ? len : s_count;
-    size_t first = s_cap - s_tail;
-    if (first > r) first = r;
-    memcpy(dst, s_ring + s_tail, first);
-    if (r > first) memcpy(dst + first, s_ring, r - first);
-    s_tail = (s_tail + r) % s_cap;
-    s_count -= r;
-    xSemaphoreGive(s_mtx);
-    return r;
-}
-
-/* ---- decoded-PCM ring (44.1 kHz stereo s16), producer=decoder, consumer=I2S ----
- * 4 bytes/frame @ 44100 Hz: 1 MiB ~= 5.9 s of decoded audio — a deep jitter
- * buffer so a multi-second TCP/WiFi stall drains the cushion instead of the
- * output. Playback is gated (s_prebuffered) until the ring first fills to
- * PCM_PREBUFFER_BYTES (~3 s), and re-gated if it ever fully drains, so recovery
- * re-buffers cleanly rather than restarting choppy. */
+/* Decoded-PCM ring sizing (radio_ring.c owns the storage; radio_init() here
+ * decides how big it is). 4 bytes/frame @ 44100 Hz: 1 MiB ~= 5.9 s of
+ * decoded audio — a deep jitter buffer so a multi-second TCP/WiFi stall
+ * drains the cushion instead of the output. Playback is gated (g_radio_prebuffered)
+ * until the ring first fills to the prebuffer threshold (~3 s by default),
+ * and re-gated if it ever fully drains, so recovery re-buffers cleanly
+ * rather than restarting choppy. */
 #define PCM_RING_BYTES      (1024 * 1024)
 /* Prebuffer (jitter cushion) is runtime-adjustable via the web UI, persisted in
  * NVS. Bounded below the PCM ring so the cushion always fits. */
@@ -86,69 +49,14 @@ size_t radio_read(uint8_t *dst, size_t len)
 #define NVS_NS_RADIO        "radio"
 #define NVS_KEY_PREBUF      "prebuf_ms"
 
-/* Timeout for radio_stop() — the workers must exit by this or the session is
- * FAULTED and restart is blocked. */
-#define RADIO_STOP_TIMEOUT_MS 8000
-
-/* 7.9: atomic prebuffer threshold — readers check under s_pcm_mtx, writers
-   use atomic_store for safe concurrent updates. */
-static atomic_size_t     s_prebuffer_bytes;
 static void radio_prebuffer_load(void);
+
 /* 7.1: forward declarations for internal sync play/stop.
    Static for device builds (cmd-worker only). Non-static for host tests. */
 #ifndef UNIT_TEST
 static esp_err_t radio_play_sync(const char *playlist_or_url);
 static esp_err_t radio_stop_sync(void);
 #endif
-static uint8_t          *s_pcm;
-static size_t            s_pcm_cap, s_pcm_head, s_pcm_tail, s_pcm_count;
-static SemaphoreHandle_t s_pcm_mtx;
-static volatile bool     s_prebuffered;    /* PCM cushion reached -> ok to feed I2S */
-
-static size_t pcm_write(const uint8_t *d, size_t n)
-{
-    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
-    size_t w = (n < s_pcm_cap - s_pcm_count) ? n : s_pcm_cap - s_pcm_count;
-    size_t first = s_pcm_cap - s_pcm_head;
-    if (first > w) first = w;
-    memcpy(s_pcm + s_pcm_head, d, first);
-    if (w > first) memcpy(s_pcm, d + first, w - first);
-    s_pcm_head = (s_pcm_head + w) % s_pcm_cap;
-    s_pcm_count += w;
-    if (!s_prebuffered && s_pcm_count >= s_prebuffer_bytes) s_prebuffered = true;
-    xSemaphoreGive(s_pcm_mtx);
-    return w;
-}
-
-size_t radio_pcm_read(int16_t *dst, size_t frames)
-{
-    if (!s_pcm || !dst) return 0;
-    size_t want = frames * 4;   /* stereo s16 = 4 bytes/frame */
-    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
-    size_t r = (want < s_pcm_count) ? want : s_pcm_count;
-    r &= ~(size_t)3;            /* whole frames only */
-    size_t first = s_pcm_cap - s_pcm_tail;
-    if (first > r) first = r;
-    memcpy(dst, s_pcm + s_pcm_tail, first);
-    if (r > first) memcpy((uint8_t *)dst + first, s_pcm, r - first);
-    s_pcm_tail = (s_pcm_tail + r) % s_pcm_cap;
-    s_pcm_count -= r;
-    /* Fully drained -> re-arm the prebuffer gate so the arbiter falls back to
-     * silence until the cushion rebuilds, instead of feeding a starving ring. */
-    if (s_prebuffered && s_pcm_count == 0) s_prebuffered = false;
-    xSemaphoreGive(s_pcm_mtx);
-    return r / 4;
-}
-
-/* ---- Session-based lifecycle (RH-S3-02) ---- */
-
-/* Event bits for worker start/exit acknowledgement. */
-#define RADIO_EVT_STREAM_STARTED  ((EventBits_t)1)
-#define RADIO_EVT_DECODER_STARTED ((EventBits_t)2)
-#define RADIO_EVT_STREAM_EXITED   ((EventBits_t)4)
-#define RADIO_EVT_DECODER_EXITED  ((EventBits_t)8)
-#define RADIO_EVT_ALL_STARTED     (RADIO_EVT_STREAM_STARTED | RADIO_EVT_DECODER_STARTED)
-#define RADIO_EVT_ALL_EXITED      (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
 
 /* ---- Command queue (RH-S3-09) ---- */
 
@@ -167,41 +75,6 @@ typedef struct {
 static QueueHandle_t s_radio_cmd_q;  /* command queue */
 static TaskHandle_t  s_radio_cmd_task; /* worker task handle */
 static _Atomic bool  s_cmd_shutdown; /* shutdown flag for worker */
-
-/* Session object — one per radio_play() invocation. Owns the stop flag, event
- * group, and task handles. Freed only after both workers have exited. */
-typedef struct radio_session {
-    uint32_t generation;
-    char url[RADIO_URL_MAX];
-    TaskHandle_t stream_task;
-    TaskHandle_t decoder_task;
-    EventGroupHandle_t events;
-    _Atomic bool stop_requested;
-} radio_session_t;
-
-/* Helper: check if the session should continue running.
- * Returns true if the session exists and stop has not been requested. */
-static inline bool session_should_run(const radio_session_t *s)
-{
-    return s && !atomic_load_explicit(&s->stop_requested, memory_order_acquire);
-}
-
-/* 7.4: check if both workers have exited for a session. */
-static inline bool session_all_exited(const radio_session_t *s)
-{
-    if (!s || !s->events) return false;
-    EventBits_t bits = xEventGroupGetBits(s->events);
-    return (bits & RADIO_EVT_ALL_EXITED) == RADIO_EVT_ALL_EXITED;
-}
-
-/* 7.5: interruptible wait — waits up to ms, returns true if stop requested.
-   Workers call this instead of vTaskDelay(). radio_stop_sync() sends a
-   task notification to wake them. */
-static inline bool wait_or_stop(radio_session_t *s, uint32_t ms)
-{
-    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(ms));
-    return !session_should_run(s);
-}
 
 /* 7.4: destroy a session only after both workers have exited.
  * Asserts both EXITED bits are set before freeing. */
@@ -231,10 +104,10 @@ static void session_destroy_force(radio_session_t *s)
     free(s);
 }
 
-/* Module state protected by s_control_mtx. */
-static SemaphoreHandle_t s_control_mtx;
+/* Module state protected by g_radio_control_mtx. */
+SemaphoreHandle_t g_radio_control_mtx;
 static radio_session_t *s_active_session;
-static radio_state_t s_radio_state;
+radio_state_t g_radio_state;
 static uint32_t s_next_generation;
 
 /* ---- Test injection hooks (RH-S3-02) ---- */
@@ -254,397 +127,22 @@ void *radio_test_get_active_session(void)
     return s_active_session;
 }
 
-/* ---- Telemetry (protected by s_mtx) ---- */
-static char           s_url[RADIO_URL_MAX];
-static char           s_station[RADIO_NAME_MAX];
-static char           s_title[RADIO_TITLE_MAX];
-static radio_codec_t  s_codec;
-static int            s_bitrate, s_http_status;
-static uint64_t       s_bytes_in;
-static uint32_t       s_reconnects, s_overflow;
+/* ---- Telemetry (protected by g_radio_ring_mtx, defined in radio_ring.c) ---- */
+char           g_radio_url[RADIO_URL_MAX];
+char           g_radio_station[RADIO_NAME_MAX];
+char           g_radio_title[RADIO_TITLE_MAX];
+radio_codec_t  g_radio_codec;
+int            g_radio_bitrate, g_radio_http_status;
+uint64_t       g_radio_bytes_in;
+uint32_t       g_radio_reconnects, g_radio_overflow;
 
 /* decoder telemetry */
-static int            s_dec_rate, s_dec_ch;
-static uint32_t       s_decode_errors;
+int            g_radio_dec_rate, g_radio_dec_ch;
+uint32_t       g_radio_decode_errors;
 
 /* Last error tracking */
-static radio_err_t    s_last_error;
-static char           s_last_error_detail[64];
-
-/* Set the last error for the current session status. */
-static void set_radio_error(radio_err_t err, const char *detail)
-{
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    s_last_error = err;
-    s_last_error_detail[0] = '\0';
-    if (detail) strlcpy(s_last_error_detail, detail, sizeof(s_last_error_detail));
-    xSemaphoreGive(s_mtx);
-}
-
-/* ---- ICY demux callbacks ---- */
-static void on_audio(void *ctx, const unsigned char *d, size_t n)
-{
-    (void)ctx;
-    size_t w = ring_write(d, n);
-    s_bytes_in += n;
-    if (w < n) s_overflow += (uint32_t)(n - w);
-}
-
-static void on_title(void *ctx, const char *t)
-{
-    (void)ctx;
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    strlcpy(s_title, t, sizeof(s_title));
-    xSemaphoreGive(s_mtx);
-    ESP_LOGI(TAG, "now playing: %s", t);
-    printf("DIAG|RADIO|TITLE|%s\n", t);
-    fflush(stdout);
-}
-
-/* ---- HTTP header capture ---- */
-
-/* Backward-compat globals used by the event handler. */
-static int s_hdr_metaint;
-static int s_hdr_br;
-static char s_hdr_ct[80];
-static char s_hdr_name[RADIO_NAME_MAX];
-
-static esp_err_t http_evt(esp_http_client_event_t *e)
-{
-    if (e->event_id == HTTP_EVENT_ON_HEADER) {
-        if (strcasecmp(e->header_key, "icy-metaint") == 0) s_hdr_metaint = atoi(e->header_value);
-        else if (strcasecmp(e->header_key, "content-type") == 0) strlcpy(s_hdr_ct, e->header_value, sizeof(s_hdr_ct));
-        else if (strcasecmp(e->header_key, "icy-br") == 0) s_hdr_br = atoi(e->header_value);
-        else if (strcasecmp(e->header_key, "icy-name") == 0) strlcpy(s_hdr_name, e->header_value, sizeof(s_hdr_name));
-    }
-    return ESP_OK;
-}
-
-static bool ci_contains(const char *hay, const char *needle)
-{
-    return hay && needle && strcasestr(hay, needle) != NULL;
-}
-
-static radio_codec_t codec_from_ct(const char *ct)
-{
-    if (ci_contains(ct, "mpeg") || ci_contains(ct, "mp3")) return RADIO_CODEC_MP3;
-    if (ci_contains(ct, "aac") || ci_contains(ct, "mp4")) return RADIO_CODEC_AAC;
-    return RADIO_CODEC_UNKNOWN;
-}
-
-/* Fetch a (small) playlist body and resolve to a stream URL; pass through a
- * direct stream URL unchanged. Best-effort: on resolve failure, use as-is. */
-static void resolve_url(const char *in, char *out, size_t out_sz)
-{
-    if (!ci_contains(in, ".pls") && !ci_contains(in, ".m3u") && !ci_contains(in, "playlist")) {
-        strlcpy(out, in, out_sz);
-        return;
-    }
-    static char body[2048];
-    int blen = 0;
-    esp_http_client_config_t cfg = {
-        .url = in, .timeout_ms = 8000, .crt_bundle_attach = esp_crt_bundle_attach,
-        .user_agent = "esp-i2s-source/1",
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    if (!c) {
-        set_radio_error(RADIO_ERR_HTTP_CLIENT_ALLOC, "playlist client alloc failed");
-        strlcpy(out, in, out_sz);
-        return;
-    }
-    if (esp_http_client_open(c, 0) == ESP_OK) {
-        esp_http_client_fetch_headers(c);
-        int r;
-        while (blen < (int)sizeof(body) - 1 &&
-               (r = esp_http_client_read(c, body + blen, (int)(sizeof(body) - 1 - (size_t)blen))) > 0) {
-            blen += r;
-        }
-        body[blen] = '\0';
-    }
-    esp_http_client_close(c);
-    esp_http_client_cleanup(c);
-    if (blen > 0 && radio_playlist_first_url(body, out, out_sz)) {
-        ESP_LOGI(TAG, "resolved playlist -> %s", out);
-    } else {
-        strlcpy(out, in, out_sz);
-    }
-}
-
-/* ---- Decoder helpers ---- */
-
-static esp_audio_simple_dec_handle_t open_decoder(radio_codec_t codec)
-{
-    esp_audio_simple_dec_cfg_t cfg = {0};
-    esp_aac_dec_cfg_t aac = { .aac_plus_enable = true };
-    if (codec == RADIO_CODEC_AAC) {
-        cfg.dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_AAC;
-        cfg.dec_cfg = &aac;
-        cfg.cfg_size = sizeof(aac);
-    } else {
-        cfg.dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_MP3;
-    }
-    esp_audio_simple_dec_handle_t h = NULL;
-    if (esp_audio_simple_dec_open(&cfg, &h) != ESP_AUDIO_ERR_OK) return NULL;
-    return h;
-}
-
-/* ---- Stream task (network -> compressed ring) ---- */
-static void stream_task(void *arg)
-{
-    radio_session_t *s = arg;
-    int backoff = 500;
-    while (session_should_run(s)) {
-        s_hdr_metaint = 0; s_hdr_br = 0; s_hdr_ct[0] = '\0'; s_hdr_name[0] = '\0';
-        esp_http_client_config_t cfg = {
-            .url = s->url,
-            .timeout_ms = 6000,
-            .event_handler = http_evt,
-            .crt_bundle_attach = esp_crt_bundle_attach,
-            .buffer_size = 2048,
-            .user_agent = "esp-i2s-source/1",
-        };
-        esp_http_client_handle_t c = esp_http_client_init(&cfg);
-        if (!c) {
-            set_radio_error(RADIO_ERR_HTTP_CLIENT_ALLOC, "client alloc failed");
-            /* 7.5: interruptible wait on client alloc failure */
-            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
-                                 pdFALSE, pdFALSE,
-                                 pdMS_TO_TICKS(500 / portTICK_PERIOD_MS));
-            continue;
-        }
-        esp_http_client_set_header(c, "Icy-MetaData", "1");
-
-        if (esp_http_client_open(c, 0) != ESP_OK) {
-            esp_http_client_cleanup(c);
-            goto reconnect;
-        }
-        esp_http_client_fetch_headers(c);
-        int status = esp_http_client_get_status_code(c);
-        xSemaphoreTake(s_mtx, portMAX_DELAY);
-        s_http_status = status;
-        s_codec = codec_from_ct(s_hdr_ct);
-        s_bitrate = s_hdr_br;
-        xSemaphoreGive(s_mtx);
-        if (s_hdr_name[0]) {
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            strlcpy(s_station, s_hdr_name, sizeof(s_station));
-            xSemaphoreGive(s_mtx);
-        }
-
-        /* 7.6: validate HTTP status — fault on non-2xx */
-        if (status < 200 || status >= 300) {
-            set_radio_error(RADIO_ERR_HTTP_STATUS, "bad HTTP status");
-            ESP_LOGW(TAG, "HTTP status %d, faulting", status);
-            esp_http_client_close(c);
-            esp_http_client_cleanup(c);
-            atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-            xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-            s_radio_state = RADIO_STATE_FAULTED;
-            xSemaphoreGive(s_control_mtx);
-            /* 7.3: break to single exit — not continue */
-            break;
-        }
-
-        /* RH-S3-21: terminate session on unsupported codec.
-         * Reconnecting to the same URL won't produce a different codec,
-         * so fault out rather than fill the compressed ring forever. */
-        if (s_codec == RADIO_CODEC_UNKNOWN) {
-            set_radio_error(RADIO_ERR_UNSUPPORTED_CONTENT, s_hdr_ct);
-            ESP_LOGW(TAG, "unsupported codec: %s", s_hdr_ct);
-            esp_http_client_close(c);
-            esp_http_client_cleanup(c);
-            atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-            xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-            s_radio_state = RADIO_STATE_FAULTED;
-            xSemaphoreGive(s_control_mtx);
-            /* 7.3: break to single exit — not continue */
-            break;
-        }
-
-        ESP_LOGI(TAG, "connected: codec=%s ct=%s metaint=%d br=%d name=%s",
-                 radio_codec_str(s_codec), s_hdr_ct, s_hdr_metaint, s_bitrate, s_station);
-        printf("DIAG|RADIO|CONNECTED|codec=%s,metaint=%d,br=%d\n",
-               radio_codec_str(s_codec), s_hdr_metaint, s_bitrate);
-        fflush(stdout);
-        backoff = 500;
-
-        /* 7.2: signal startup — stream has connected successfully */
-        xEventGroupSetBits(s->events, RADIO_EVT_STREAM_STARTED);
-
-        radio_icy_demux_t demux;
-        radio_icy_demux_init(&demux, s_hdr_metaint);
-        static uint8_t buf[2048];
-        while (session_should_run(s)) {
-            /* 7.7: backpressure — check ring free space before reading */
-            size_t free_space;
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            free_space = s_cap - s_count;
-            xSemaphoreGive(s_mtx);
-            if (free_space < (sizeof(buf))) {
-                /* Ring full — drain wait (interruptible by stop) */
-                if (wait_or_stop(s, 10)) break;
-                continue;
-            }
-            int r = esp_http_client_read(c, (char *)buf, sizeof(buf));
-            if (r <= 0) break;
-            radio_icy_demux_feed(&demux, buf, (size_t)r, on_audio, on_title, NULL);
-        }
-        esp_http_client_close(c);
-        esp_http_client_cleanup(c);
-
-    reconnect:
-        if (session_should_run(s)) {
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            s_reconnects++;
-            xSemaphoreGive(s_mtx);
-            /* 7.5: interruptible backoff wait via event group */
-            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
-                                 pdFALSE, pdFALSE,
-                                 pdMS_TO_TICKS((uint32_t)backoff / portTICK_PERIOD_MS));
-            backoff = (backoff < 8000) ? backoff * 2 : 8000;
-        }
-    }
-
-    /* 7.3: single exit label — signal exit and cleanup */
-    xEventGroupSetBits(s->events, RADIO_EVT_STREAM_EXITED);
-    s->stream_task = NULL;
-    vTaskDelete(NULL);
-}
-
-/* ---- Decoder task (compressed ring -> decode -> resample -> PCM ring) ---- */
-static void decoder_task(void *arg)
-{
-    radio_session_t *s = arg;
-    esp_audio_simple_dec_handle_t dec = NULL;
-    radio_codec_t opened = RADIO_CODEC_UNKNOWN;
-    radio_resampler_t rs;
-    bool rs_ready = false;
-    /* RH-S3-05: inbuf doubles as accumulation buffer for unconsumed decoder tail.
-     * pending tracks unconsumed bytes that must be preserved across iterations. */
-    #define DECODER_INPUT_CAP 4096
-    static uint8_t inbuf[DECODER_INPUT_CAP];
-    static uint8_t pcmbuf[16384];   /* one decoded frame */
-    static int16_t rsbuf[8192];     /* resampled stereo frames (4096 max) */
-    size_t pending = 0;
-
-    while (session_should_run(s)) {
-        radio_codec_t codec;
-        xSemaphoreTake(s_mtx, portMAX_DELAY);
-        codec = s_codec;
-        xSemaphoreGive(s_mtx);
-
-        if (codec == RADIO_CODEC_UNKNOWN) { if (wait_or_stop(s, 50)) break; continue; }
-        if (!dec || codec != opened) {
-            if (dec) { esp_audio_simple_dec_close(dec); dec = NULL; }
-            dec = open_decoder(codec);
-            opened = codec;
-            rs_ready = false;
-            if (!dec) {
-                xSemaphoreTake(s_mtx, portMAX_DELAY);
-                s_decode_errors++;
-                xSemaphoreGive(s_mtx);
-                if (wait_or_stop(s, 200)) break;
-                continue;
-            }
-            ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
-        }
-
- /* RH-S3-05: read new compressed data after the pending tail. */
-        if (pending < DECODER_INPUT_CAP) {
-            size_t got = radio_read(inbuf + pending, DECODER_INPUT_CAP - pending);
-            pending += got;
-        }
-
-        if (pending == 0) { if (wait_or_stop(s, 10)) break; continue; }
-
-        esp_audio_simple_dec_raw_t raw = { .buffer = inbuf, .len = (uint32_t)pending };
-        size_t consumed_total = 0;
-        while (raw.len > 0 && session_should_run(s)) {
-            esp_audio_simple_dec_out_t out = { .buffer = pcmbuf, .len = sizeof(pcmbuf) };
-            esp_audio_err_t err = esp_audio_simple_dec_process(dec, &raw, &out);
-            if (err == ESP_AUDIO_ERR_OK && out.decoded_size > 0) {
-                esp_audio_simple_dec_info_t info;
-                esp_audio_simple_dec_get_info(dec, &info);
-                if (!rs_ready || (int)info.sample_rate != rs.src_rate || info.channel != rs.channels) {
-                    radio_resampler_init(&rs, info.sample_rate, info.channel);
-                    rs_ready = true;
-                    xSemaphoreTake(s_mtx, portMAX_DELAY);
-                    s_dec_rate = info.sample_rate;
-                    s_dec_ch = info.channel;
-                    xSemaphoreGive(s_mtx);
-                }
-                /* RH-S3-04: loop resampler until all input frames consumed. */
-                size_t in_frames = out.decoded_size / (size_t)(2 * (info.channel ? info.channel : 1));
-                size_t channels = (info.channel == 1) ? 1 : 2;
-                size_t offset = 0;
-                while (offset < in_frames && session_should_run(s)) {
-                    size_t used = 0;
-                    size_t of = radio_resampler_run(&rs,
-                                                    (const int16_t *)pcmbuf + channels * offset,
-                                                    in_frames - offset,
-                                                    rsbuf,
-                                                    sizeof(rsbuf) / (2 * sizeof(int16_t)),
-                                                    &used);
-                    if (of) {
-                        size_t bytes = of * 4;
-                        size_t written = 0;
-                        while (written < bytes && session_should_run(s)) {
-                            size_t n = pcm_write((const uint8_t *)rsbuf + written, bytes - written);
-                            if (n == 0) {
-                                if (wait_or_stop(s, 5)) break;
-                                continue;
-                            }
-                            written += n;
-                        }
-                        if (written != bytes) break;  /* PCM ring full */
-                    } else if (used == 0) {
-                        break;  /* resampler stalled */
-                    }
-                    offset += used;
-                }
-            } else if (err != ESP_AUDIO_ERR_OK) {
-                xSemaphoreTake(s_mtx, portMAX_DELAY);
-                s_decode_errors++;
-                xSemaphoreGive(s_mtx);
-                /* 7.8: don't force consumed=1 — let the loop break naturally.
-                 * The decoder may need more input, which is handled below. */
-            }
-            /* 7.8: validate decoder contract — consumed must not exceed len. */
-            if (raw.consumed > raw.len) {
-                ESP_LOGW(TAG, "decoder consumed > len (consumed=%u len=%u)", raw.consumed, raw.len);
-                set_radio_error(RADIO_ERR_DECODER_CONTRACT, "decoder consumed beyond input");
-                atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-                break;
-            }
-            if (raw.consumed == 0) break;   /* needs more input */
-            consumed_total += raw.consumed;
-            raw.buffer += raw.consumed;
-            raw.len -= raw.consumed;
-            raw.consumed = 0;
-        }
-
-        /* RH-S3-05: preserve unconsumed decoder tail in accumulation buffer. */
-        if (consumed_total > 0) {
-            pending -= consumed_total;
-            memmove(inbuf, inbuf + consumed_total, pending);
-        } else if (pending == DECODER_INPUT_CAP) {
-            /* No progress and buffer full — resync by dropping one byte. */
-            memmove(inbuf, inbuf + 1, (size_t)(pending - 1));
-            pending--;
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            s_decode_errors++;
-            xSemaphoreGive(s_mtx);
-        }
-    }
-
-    if (dec) esp_audio_simple_dec_close(dec);
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    s_dec_rate = 0;
-    xSemaphoreGive(s_mtx);
-    s->decoder_task = NULL;
-    xEventGroupSetBits(s->events, RADIO_EVT_DECODER_EXITED);
-    vTaskDelete(NULL);
-}
+radio_err_t    g_radio_last_error;
+char           g_radio_last_error_detail[64];
 
 /* ---- Public API ---- */
 
@@ -663,7 +161,7 @@ const char *radio_codec_str(radio_codec_t c)
 void radio_deinit(void)
 {
     /* Stop any active session first. */
-    if (s_control_mtx) {
+    if (g_radio_control_mtx) {
         radio_session_t *s = s_active_session;
         radio_stop_sync();
         /* Force-destroy session if it wasn't freed by session_destroy_joined().
@@ -697,35 +195,35 @@ void radio_deinit(void)
         s_radio_cmd_q = NULL;
     }
 
-    if (s_control_mtx) {
-        vSemaphoreDelete(s_control_mtx);
-        s_control_mtx = NULL;
+    if (g_radio_control_mtx) {
+        vSemaphoreDelete(g_radio_control_mtx);
+        g_radio_control_mtx = NULL;
     }
-    if (s_pcm_mtx) {
-        vSemaphoreDelete(s_pcm_mtx);
-        s_pcm_mtx = NULL;
+    if (g_radio_pcm_mtx) {
+        vSemaphoreDelete(g_radio_pcm_mtx);
+        g_radio_pcm_mtx = NULL;
     }
-    if (s_mtx) {
-        vSemaphoreDelete(s_mtx);
-        s_mtx = NULL;
+    if (g_radio_ring_mtx) {
+        vSemaphoreDelete(g_radio_ring_mtx);
+        g_radio_ring_mtx = NULL;
     }
 
     /* Free ring buffers. */
-    if (s_pcm) {
-        free(s_pcm);
-        s_pcm = NULL;
-        s_pcm_cap = 0;
-        s_pcm_head = s_pcm_tail = s_pcm_count = 0;
+    if (g_radio_pcm) {
+        free(g_radio_pcm);
+        g_radio_pcm = NULL;
+        g_radio_pcm_cap = 0;
+        g_radio_pcm_head = g_radio_pcm_tail = g_radio_pcm_count = 0;
     }
-    if (s_ring) {
-        free(s_ring);
-        s_ring = NULL;
-        s_cap = 0;
-        s_head = s_tail = s_count = 0;
+    if (g_radio_ring) {
+        free(g_radio_ring);
+        g_radio_ring = NULL;
+        g_radio_ring_cap = 0;
+        g_radio_ring_head = g_radio_ring_tail = g_radio_ring_count = 0;
     }
 
-    s_prebuffered = false;
-    s_radio_state = RADIO_STATE_STOPPED;
+    g_radio_prebuffered = false;
+    g_radio_state = RADIO_STATE_STOPPED;
     s_active_session = NULL;
 }
 
@@ -773,33 +271,33 @@ esp_err_t radio_stop_async(void)
 esp_err_t radio_init(size_t ring_bytes)
 {
     /* Check if already initialized — reject double-init. */
-    if (s_ring || s_control_mtx) return ESP_ERR_INVALID_STATE;
+    if (g_radio_ring || g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
 
     /* Control mutex. */
-    s_control_mtx = xSemaphoreCreateMutex();
-    if (!s_control_mtx) return ESP_ERR_NO_MEM;
+    g_radio_control_mtx = xSemaphoreCreateMutex();
+    if (!g_radio_control_mtx) return ESP_ERR_NO_MEM;
 
-    s_cap = ring_bytes;
-    s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_SPIRAM);
-    if (!s_ring) s_ring = heap_caps_malloc(s_cap, MALLOC_CAP_DEFAULT);
-    if (!s_ring) return ESP_ERR_NO_MEM;
+    g_radio_ring_cap = ring_bytes;
+    g_radio_ring = heap_caps_malloc(g_radio_ring_cap, MALLOC_CAP_SPIRAM);
+    if (!g_radio_ring) g_radio_ring = heap_caps_malloc(g_radio_ring_cap, MALLOC_CAP_DEFAULT);
+    if (!g_radio_ring) return ESP_ERR_NO_MEM;
 
-    /* Decoded-PCM ring: deep jitter buffer (~5.9 s), gated by s_prebuffered. */
-    s_pcm_cap = PCM_RING_BYTES;
-    s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_SPIRAM);
-    if (!s_pcm) s_pcm = heap_caps_malloc(s_pcm_cap, MALLOC_CAP_DEFAULT);
-    if (!s_pcm) return ESP_ERR_NO_MEM;
+    /* Decoded-PCM ring: deep jitter buffer (~5.9 s), gated by g_radio_prebuffered. */
+    g_radio_pcm_cap = PCM_RING_BYTES;
+    g_radio_pcm = heap_caps_malloc(g_radio_pcm_cap, MALLOC_CAP_SPIRAM);
+    if (!g_radio_pcm) g_radio_pcm = heap_caps_malloc(g_radio_pcm_cap, MALLOC_CAP_DEFAULT);
+    if (!g_radio_pcm) return ESP_ERR_NO_MEM;
 
-    s_mtx = xSemaphoreCreateMutex();
-    s_pcm_mtx = xSemaphoreCreateMutex();
-    if (!s_mtx || !s_pcm_mtx) {
+    g_radio_ring_mtx = xSemaphoreCreateMutex();
+    g_radio_pcm_mtx = xSemaphoreCreateMutex();
+    if (!g_radio_ring_mtx || !g_radio_pcm_mtx) {
         /* Cleanup: free what we created. */
-        if (s_pcm_mtx) vSemaphoreDelete(s_pcm_mtx);
-        if (s_mtx) vSemaphoreDelete(s_mtx);
-        s_pcm_mtx = NULL;
-        s_mtx = NULL;
-        free(s_pcm); s_pcm = NULL;
-        free(s_ring); s_ring = NULL;
+        if (g_radio_pcm_mtx) vSemaphoreDelete(g_radio_pcm_mtx);
+        if (g_radio_ring_mtx) vSemaphoreDelete(g_radio_ring_mtx);
+        g_radio_pcm_mtx = NULL;
+        g_radio_ring_mtx = NULL;
+        free(g_radio_pcm); g_radio_pcm = NULL;
+        free(g_radio_ring); g_radio_ring = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -807,14 +305,14 @@ esp_err_t radio_init(size_t ring_bytes)
     s_radio_cmd_q = xQueueCreate(4, sizeof(radio_cmd_t));
     if (!s_radio_cmd_q) {
         /* Cleanup queue failure: undo everything created so far. */
-        vSemaphoreDelete(s_mtx);
-        s_mtx = NULL;
-        vSemaphoreDelete(s_pcm_mtx);
-        s_pcm_mtx = NULL;
-        free(s_pcm); s_pcm = NULL;
-        free(s_ring); s_ring = NULL;
-        vSemaphoreDelete(s_control_mtx);
-        s_control_mtx = NULL;
+        vSemaphoreDelete(g_radio_ring_mtx);
+        g_radio_ring_mtx = NULL;
+        vSemaphoreDelete(g_radio_pcm_mtx);
+        g_radio_pcm_mtx = NULL;
+        free(g_radio_pcm); g_radio_pcm = NULL;
+        free(g_radio_ring); g_radio_ring = NULL;
+        vSemaphoreDelete(g_radio_control_mtx);
+        g_radio_control_mtx = NULL;
         return ESP_ERR_NO_MEM;
     }
     if (xTaskCreate(radio_cmd_task, "radio_cmd", 4096, NULL,
@@ -840,7 +338,7 @@ static
 esp_err_t radio_play_sync(const char *playlist_or_url)
 {
     if (!playlist_or_url || !playlist_or_url[0]) return ESP_ERR_INVALID_ARG;
-    if (!s_ring || !s_pcm || !s_control_mtx) return ESP_ERR_INVALID_STATE;
+    if (!g_radio_ring || !g_radio_pcm || !g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
 
     /* Block restart while FAULTED — the faulted session must be stopped
      * explicitly before a new play can proceed. */
@@ -869,29 +367,29 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     }
 
     /* Lock control to assign generation and URL. */
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     s_next_generation++;
     s->generation = s_next_generation;
     strlcpy(s->url, resolved, sizeof(s->url));
-    s_radio_state = RADIO_STATE_STARTING;
+    g_radio_state = RADIO_STATE_STARTING;
     atomic_store_explicit(&s->stop_requested, false, memory_order_relaxed);
-    xSemaphoreGive(s_control_mtx);
+    xSemaphoreGive(g_radio_control_mtx);
 
     /* Reset shared rings — safe because old session is gone (radio_stop() joined). */
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    s_head = s_tail = s_count = 0;
-    strlcpy(s_url, resolved, sizeof(s_url));
-    s_title[0] = s_station[0] = '\0';
-    s_bytes_in = 0; s_overflow = 0; s_reconnects = 0;
-    s_codec = RADIO_CODEC_UNKNOWN; s_bitrate = 0; s_http_status = 0;
-    s_decode_errors = 0; s_dec_rate = 0; s_dec_ch = 0;
-    s_last_error = RADIO_ERR_NONE;
-    s_last_error_detail[0] = '\0';
-    xSemaphoreGive(s_mtx);
-    xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
-    s_pcm_head = s_pcm_tail = s_pcm_count = 0;
-    s_prebuffered = false;
-    xSemaphoreGive(s_pcm_mtx);
+    xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
+    g_radio_ring_head = g_radio_ring_tail = g_radio_ring_count = 0;
+    strlcpy(g_radio_url, resolved, sizeof(g_radio_url));
+    g_radio_title[0] = g_radio_station[0] = '\0';
+    g_radio_bytes_in = 0; g_radio_overflow = 0; g_radio_reconnects = 0;
+    g_radio_codec = RADIO_CODEC_UNKNOWN; g_radio_bitrate = 0; g_radio_http_status = 0;
+    g_radio_decode_errors = 0; g_radio_dec_rate = 0; g_radio_dec_ch = 0;
+    g_radio_last_error = RADIO_ERR_NONE;
+    g_radio_last_error_detail[0] = '\0';
+    xSemaphoreGive(g_radio_ring_mtx);
+    xSemaphoreTake(g_radio_pcm_mtx, portMAX_DELAY);
+    g_radio_pcm_head = g_radio_pcm_tail = g_radio_pcm_count = 0;
+    g_radio_prebuffered = false;
+    xSemaphoreGive(g_radio_pcm_mtx);
 
     /* Create stream task. */
     if (xTaskCreate(stream_task, "radio", 6144, s, tskIDLE_PRIORITY + 4,
@@ -912,10 +410,10 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     }
 
     /* Both tasks created — publish as running. */
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     s_active_session = s;
-    s_radio_state = RADIO_STATE_RUNNING;
-    xSemaphoreGive(s_control_mtx);
+    g_radio_state = RADIO_STATE_RUNNING;
+    xSemaphoreGive(g_radio_control_mtx);
 
     ESP_LOGI(TAG, "play gen=%" PRIu32 ": %s", s->generation, resolved);
     printf("DIAG|RADIO|START|gen=%" PRIu32 ",url=%s\n", s->generation, resolved);
@@ -931,9 +429,9 @@ fail_session:
     }
     vEventGroupDelete(s->events);
     free(s);
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-    s_radio_state = RADIO_STATE_STOPPED;
-    xSemaphoreGive(s_control_mtx);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    g_radio_state = RADIO_STATE_STOPPED;
+    xSemaphoreGive(g_radio_control_mtx);
     return ESP_ERR_NO_MEM;
 }
 
@@ -943,19 +441,19 @@ static
 #endif
 esp_err_t radio_stop_sync(void)
 {
-    if (!s_control_mtx) return ESP_ERR_INVALID_STATE;
+    if (!g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
 
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     radio_session_t *s = s_active_session;
     if (!s) {
-        s_radio_state = RADIO_STATE_STOPPED;
-        xSemaphoreGive(s_control_mtx);
+        g_radio_state = RADIO_STATE_STOPPED;
+        xSemaphoreGive(g_radio_control_mtx);
         return ESP_OK;
     }
     /* 7.4: If already FAULTED_JOIN_PENDING, wait for workers then destroy. */
-    if (s_radio_state == RADIO_STATE_FAULTED_JOIN_PENDING) {
-        s_radio_state = RADIO_STATE_STOPPING;
-        xSemaphoreGive(s_control_mtx);
+    if (g_radio_state == RADIO_STATE_FAULTED_JOIN_PENDING) {
+        g_radio_state = RADIO_STATE_STOPPING;
+        xSemaphoreGive(g_radio_control_mtx);
         /* Wait for workers to exit (they may have stopped already). */
         if (!session_all_exited(s)) {
             (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
@@ -971,8 +469,8 @@ esp_err_t radio_stop_sync(void)
         return ESP_ERR_TIMEOUT;
     }
     /* If already FAULTED, wait for workers then destroy. */
-    if (s_radio_state == RADIO_STATE_FAULTED) {
-        xSemaphoreGive(s_control_mtx);
+    if (g_radio_state == RADIO_STATE_FAULTED) {
+        xSemaphoreGive(g_radio_control_mtx);
         /* Wait for workers to exit before freeing. */
         (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
                                    pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
@@ -985,12 +483,12 @@ esp_err_t radio_stop_sync(void)
          * radio_deinit() can force-destroy. Return error to caller. */
         return ESP_ERR_TIMEOUT;
     }
-    s_radio_state = RADIO_STATE_STOPPING;
+    g_radio_state = RADIO_STATE_STOPPING;
     atomic_store_explicit(&s->stop_requested, true, memory_order_release);
     /* 7.5: notify workers to wake from any vTaskDelay() */
     if (s->stream_task) xTaskNotifyGive(s->stream_task);
     if (s->decoder_task) xTaskNotifyGive(s->decoder_task);
-    xSemaphoreGive(s_control_mtx);
+    xSemaphoreGive(g_radio_control_mtx);
 
     /* Wait for both workers to exit. */
     EventBits_t bits = xEventGroupWaitBits(
@@ -999,9 +497,9 @@ esp_err_t radio_stop_sync(void)
 
     if ((bits & RADIO_EVT_ALL_EXITED) != RADIO_EVT_ALL_EXITED) {
         /* Timeout — leave session registered, block restart. */
-        xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-        s_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
-        xSemaphoreGive(s_control_mtx);
+        xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+        g_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
+        xSemaphoreGive(g_radio_control_mtx);
         ESP_LOGW(TAG, "radio stop timeout (gen=%" PRIu32 "); session FAULTED_JOIN_PENDING", s->generation);
         printf("DIAG|RADIO|STOP_TIMEOUT|gen=%" PRIu32 "\n", s->generation);
         fflush(stdout);
@@ -1010,10 +508,10 @@ esp_err_t radio_stop_sync(void)
 
     /* Both exited — reclaim session. */
     uint32_t gen = s->generation;
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     if (s_active_session == s) s_active_session = NULL;
-    s_radio_state = RADIO_STATE_STOPPED;
-    xSemaphoreGive(s_control_mtx);
+    g_radio_state = RADIO_STATE_STOPPED;
+    xSemaphoreGive(g_radio_control_mtx);
     session_destroy_joined(s);
 
     ESP_LOGI(TAG, "radio stopped (gen=%" PRIu32 ")", gen);
@@ -1022,19 +520,19 @@ esp_err_t radio_stop_sync(void)
     return ESP_OK;
 
 stopped:
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     if (s_active_session) s_active_session = NULL;
-    s_radio_state = RADIO_STATE_STOPPED;
-    xSemaphoreGive(s_control_mtx);
+    g_radio_state = RADIO_STATE_STOPPED;
+    xSemaphoreGive(g_radio_control_mtx);
     return ESP_OK;
 }
 
 bool radio_is_playing(void)
 {
-    if (!s_control_mtx) return false;
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-    bool playing = (s_radio_state == RADIO_STATE_RUNNING);
-    xSemaphoreGive(s_control_mtx);
+    if (!g_radio_control_mtx) return false;
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    bool playing = (g_radio_state == RADIO_STATE_RUNNING);
+    xSemaphoreGive(g_radio_control_mtx);
     return playing;
 }
 
@@ -1044,75 +542,73 @@ bool radio_is_playing(void)
 bool radio_audio_ready(void)
 {
     /* RH-S3-13: coherent read of state + prebuffered flag.
-     * Nested locks: s_control_mtx -> s_pcm_mtx. */
-    if (!s_control_mtx || !s_pcm_mtx) return false;
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+     * Nested locks: g_radio_control_mtx -> g_radio_pcm_mtx. */
+    if (!g_radio_control_mtx || !g_radio_pcm_mtx) return false;
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     bool ready = false;
-    if (s_radio_state == RADIO_STATE_RUNNING) {
-        xSemaphoreTake(s_pcm_mtx, portMAX_DELAY);
-        ready = s_prebuffered;
-        xSemaphoreGive(s_pcm_mtx);
+    if (g_radio_state == RADIO_STATE_RUNNING) {
+        xSemaphoreTake(g_radio_pcm_mtx, portMAX_DELAY);
+        ready = g_radio_prebuffered;
+        xSemaphoreGive(g_radio_pcm_mtx);
     }
-    xSemaphoreGive(s_control_mtx);
+    xSemaphoreGive(g_radio_control_mtx);
     return ready;
 }
 
 radio_state_t radio_get_state(void)
 {
-    if (!s_control_mtx) return RADIO_STATE_STOPPED;
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
-    radio_state_t st = s_radio_state;
-    xSemaphoreGive(s_control_mtx);
+    if (!g_radio_control_mtx) return RADIO_STATE_STOPPED;
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    radio_state_t st = g_radio_state;
+    xSemaphoreGive(g_radio_control_mtx);
     return st;
 }
-
-static void radio_prebuffer_load(void);
 
 void radio_get_status(radio_status_t *out)
 {
     if (!out) return;
     memset(out, 0, sizeof(*out));
-    if (!s_control_mtx) return;
+    if (!g_radio_control_mtx) return;
 
-    /* Single-mutex snapshot: acquire s_control_mtx and copy all fields.
+    /* Single-mutex snapshot: acquire g_radio_control_mtx and copy all fields.
      * Telemetry/PCM fields are point-in-time snapshots — they are modified
-     * by the worker tasks but reading them without s_mtx/s_pcm_mtx is safe
+     * by the worker tasks but reading them without g_radio_ring_mtx/g_radio_pcm_mtx is safe
      * for display purposes (single-word atomic reads on ESP32, strings are
      * copied consistently by strlcpy).
      * This matches bt_manager_get_status() pattern (Phase 7.10). */
-    xSemaphoreTake(s_control_mtx, portMAX_DELAY);
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
 
-    /* Session state (protected by s_control_mtx). */
-    radio_state_t state = s_radio_state;
+    /* Session state (protected by g_radio_control_mtx). */
+    radio_state_t state = g_radio_state;
     out->generation = s_next_generation;
     out->state = state;
     out->playing = (state == RADIO_STATE_RUNNING ||
                     state == RADIO_STATE_STARTING);
-    out->buffering = (state == RADIO_STATE_RUNNING && !s_prebuffered);
+    out->buffering = (state == RADIO_STATE_RUNNING && !g_radio_prebuffered);
 
     /* Telemetry snapshot (point-in-time, no additional lock needed). */
-    out->codec = s_codec;
-    out->http_status = s_http_status;
-    out->bitrate_kbps = s_bitrate;
-    strlcpy(out->url, s_url, sizeof(out->url));
-    strlcpy(out->station, s_station, sizeof(out->station));
-    strlcpy(out->title, s_title, sizeof(out->title));
-    out->bytes_in = s_bytes_in;
-    out->ring_used = (uint32_t)s_count;
-    out->ring_cap = (uint32_t)s_cap;
-    out->reconnects = s_reconnects;
-    out->overflow_drops = s_overflow;
-    out->dec_rate = s_dec_rate;
-    out->dec_channels = s_dec_ch;
-    out->decode_errors = s_decode_errors;
-    out->last_error = s_last_error;
-    strlcpy(out->last_error_detail, s_last_error_detail, sizeof(out->last_error_detail));
+    out->codec = g_radio_codec;
+    out->http_status = g_radio_http_status;
+    out->bitrate_kbps = g_radio_bitrate;
+    strlcpy(out->url, g_radio_url, sizeof(out->url));
+    strlcpy(out->station, g_radio_station, sizeof(out->station));
+    strlcpy(out->title, g_radio_title, sizeof(out->title));
+    out->bytes_in = g_radio_bytes_in;
+    out->ring_used = (uint32_t)g_radio_ring_count;
+    out->ring_cap = (uint32_t)g_radio_ring_cap;
+    out->reconnects = g_radio_reconnects;
+    out->overflow_drops = g_radio_overflow;
+    out->dec_rate = g_radio_dec_rate;
+    out->dec_channels = g_radio_dec_ch;
+    out->decode_errors = g_radio_decode_errors;
+    out->last_error = g_radio_last_error;
+    strlcpy(out->last_error_detail, g_radio_last_error_detail, sizeof(out->last_error_detail));
 
     /* PCM snapshot (point-in-time). */
-    out->pcm_used = (uint32_t)s_pcm_count;
-    out->pcm_cap = (uint32_t)s_pcm_cap;
+    out->pcm_used = (uint32_t)g_radio_pcm_count;
+    out->pcm_cap = (uint32_t)g_radio_pcm_cap;
 
-    xSemaphoreGive(s_control_mtx);
+    xSemaphoreGive(g_radio_control_mtx);
 
     /* Prebuffer setting is standalone (atomic, no lock needed). */
     out->prebuffer_ms = radio_get_prebuffer_ms();
@@ -1120,14 +616,14 @@ void radio_get_status(radio_status_t *out)
 
 int radio_get_prebuffer_ms(void)
 {
-    return (int)(atomic_load(&s_prebuffer_bytes) / PCM_BYTES_PER_MS);
+    return (int)(atomic_load(&g_radio_prebuffer_bytes) / PCM_BYTES_PER_MS);
 }
 
 esp_err_t radio_set_prebuffer_ms(int ms)
 {
     ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
     ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-    atomic_store(&s_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
+    atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h);
@@ -1141,7 +637,7 @@ esp_err_t radio_set_prebuffer_ms(int ms)
         ESP_LOGE(TAG, "prebuffer applied but persistence failed: %s",
                  esp_err_to_name(err));
     }
-    ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)atomic_load(&s_prebuffer_bytes));
+    ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)atomic_load(&g_radio_prebuffer_bytes));
     return err;
 }
 
@@ -1153,7 +649,7 @@ static void radio_prebuffer_load(void)
     if (nvs_get_i32(h, NVS_KEY_PREBUF, &ms) == ESP_OK) {
         ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
         ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-        atomic_store(&s_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
+        atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
     }
     nvs_close(h);
 }
