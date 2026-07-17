@@ -20,7 +20,7 @@ for f in $FILES; do
 done
 ```
 
-Requires `build/compile_commands.json` (from a prior `idf.py build`). If it is missing, say so and skip this step — do NOT run a device build just for lint. Note: unlike `esp_bt_audio_source`, this project has no `.clang-tidy` config, so clang-tidy runs with its built-in default checks — mention that in the report so findings aren't mistaken for a curated check list.
+Requires `build/compile_commands.json` (from a prior `idf.py build`). If it is missing, say so and skip this step — do NOT run a device build just for lint. This project has its own `.clang-tidy` config (copied from `esp_bt_audio_source/.clang-tidy`: disables `readability-function-cognitive-complexity` and `readability-suspicious-call-argument`, both ESP-IDF logging-macro false positives).
 
 ## Step 2 — Lint Python (flake8)
 
@@ -61,7 +61,7 @@ By default the gate only warns on WiFi/I2S/BTLINK companion checks (S3-only boot
 ## Report
 
 End with a compact summary:
-- clang-tidy: N findings (list file:line + check name; "clean" if none; note default-checks caveat)
+- clang-tidy: N findings (list file:line + check name; "clean" if none)
 - flake8: N findings (advisory)
 - host tests: pass/fail counts, naming any failing suites
 - device gate: PASS/FAIL/skipped, with the gate's verdict output

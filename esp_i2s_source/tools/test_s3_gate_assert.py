@@ -168,3 +168,26 @@ def test_sw_reset_fails():
     ok, checks = _verdict(text)
     assert ok is False
     assert checks["no_crash"] is FAIL
+
+
+def test_boot_ready_parses_boot_id_prefixed_format():
+    # main.c prints boot_id before psram_kb/heap; the regex must skip over it.
+    text = HEALTHY.replace(
+        "DIAG|BOOT|READY|psram_kb=8192,heap=300000",
+        "DIAG|BOOT|READY|boot_id=dfcec130,psram_kb=8192,heap=300000",
+    )
+    ok, checks = _verdict(text)
+    assert checks["boot_ready"] is PASS
+
+
+def test_resolve_strictness_default_is_lenient():
+    assert g.resolve_strictness(False, False, False) == (False, False)
+
+
+def test_resolve_strictness_require_flags_promote():
+    assert g.resolve_strictness(True, False, False) == (True, False)
+    assert g.resolve_strictness(False, True, False) == (False, True)
+
+
+def test_resolve_strictness_degraded_overrides_require_flags():
+    assert g.resolve_strictness(True, True, True) == (False, False)

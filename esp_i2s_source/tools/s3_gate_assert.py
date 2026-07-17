@@ -52,6 +52,14 @@ CRASH_SIGNATURES = (
 PASS, WARN, FAIL = True, None, False
 
 
+def resolve_strictness(require_i2s_flag, require_link_flag, degraded):
+    """CLI flags -> evaluate() strictness. Default is lenient (warn-only);
+    --require-i2s/--require-link each promote their check to a hard FAIL;
+    --degraded always relaxes back to warn, even over an explicit --require-*.
+    """
+    return require_i2s_flag and not degraded, require_link_flag and not degraded
+
+
 def evaluate(text, require_i2s=False, require_link=False):
     """Return (ok: bool, results: list[(name, status, detail)]).
 
@@ -73,7 +81,7 @@ def evaluate(text, require_i2s=False, require_link=False):
                     "console+web up" if boot_complete else f"missing {', '.join(missing)}"))
 
     # --- conditional: BOOT|READY + psram ---
-    boot = re.search(r"DIAG\|BOOT\|READY\|psram_kb=(\d+),heap=(\d+)", text)
+    boot = re.search(r"DIAG\|BOOT\|READY\|[^\n]*?psram_kb=(\d+),heap=(\d+)", text)
     if boot is None:
         results.append(("boot_ready", WARN, "BOOT|READY not captured (one-shot; may be raced)"))
     else:
@@ -137,8 +145,7 @@ def main():
     text = open(args.file, encoding="utf-8", errors="replace").read() if args.file \
         else sys.stdin.read()
 
-    require_i2s = not args.degraded
-    require_link = not args.degraded
+    require_i2s, require_link = resolve_strictness(args.require_i2s, args.require_link, args.degraded)
 
     ok, results = evaluate(text, require_i2s=require_i2s, require_link=require_link)
     print(format_report(ok, results))
