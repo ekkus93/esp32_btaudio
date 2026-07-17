@@ -1,0 +1,12 @@
+# clang-tidy configuration for ESP32 I2S Source
+# Copied from esp_bt_audio_source/.clang-tidy — excludes warnings from
+# ESP-IDF framework macro expansions and API design.
+
+# Disable checks that trigger on ESP-IDF framework code patterns:
+# - readability-function-cognitive-complexity: ESP_LOGI/ESP_LOGW macros create high complexity
+# - readability-suspicious-call-argument: ESP-IDF API parameter naming triggers false positives
+
+Checks: '-readability-function-cognitive-complexity,-readability-suspicious-call-argument'
+
+# Keep other useful checks enabled
+# (Add more disabled checks here if needed in the future)
