@@ -1,0 +1,1 @@
+/usr/bin/cc -g -fsanitize=address CMakeFiles/test_sanity.dir/test_sanity.c.o -o test_sanity  libunity.a 

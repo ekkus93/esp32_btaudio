@@ -10,5 +10,5 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS=65536
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
 
-claude --permission-mode auto --model qwen36-27b-mtp-iq2 
+claude --permission-mode auto --model qwen36-27b-mtp-iq2 --resume 24999e55-3bbe-4fac-ab9e-c5b39decf807
 

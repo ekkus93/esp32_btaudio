@@ -26030,3 +26030,11 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
 - **7.5**: Added wait_or_stop() using ulTaskNotifyTake() instead of vTaskDelay(). radio_stop_sync() sends xTaskNotifyGive() to wake workers from any delay. Added FreeRTOS notification stubs for host tests (ulTaskNotifyTake/xTaskNotifyGive in task.h mock).
 - **7.10**: Replace nested locks in radio_get_status() with single-mutex snapshot pattern. Acquires only s_control_mtx, reads telemetry/PCM as point-in-time snapshots without additional s_mtx/s_pcm_mtx locks. Matches bt_manager_get_status() pattern.
 - Commit 243ad403. Device build verified (esp32s3), 19/19 host tests pass. WROOM32 74/74 host tests pass.
+## 2026-07-16T14:00:38Z - Claude Sonnet 4.6 - Brief description
+
+- Implemented 7.11 failure-injection tests for radio lifecycle
+- Added decoder-specific task creation failure test
+- Added event group creation failure test
+- Added ASan verification tests
+- Fixed memory leak in radio_deinit() for faulted sessions
+- All 19/19 tests pass under ASan

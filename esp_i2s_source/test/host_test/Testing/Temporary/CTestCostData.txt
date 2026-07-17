@@ -1,1 +1,20 @@
+test_sanity 3 0.0039506
+test_signal_gen 3 0.00568754
+test_tone 3 0.00420278
+test_pcm_ring 3 0.00418508
+test_i2s_out_pump 3 0.00386059
+test_i2s_out_gain 3 0.00386436
+test_bt_link_parser 3 0.00387929
+test_bt_link_session 3 0.00384256
+test_wifi_sm 3 0.00369613
+test_radio_parse 3 0.00390693
+test_station_store 3 0.00384593
+test_radio_resampler 3 0.0192209
+test_ctrl_cfg 3 0.00394533
+test_ctrl_sm 3 0.00384407
+test_radio_lifecycle 1 0.0210253
+test_pack_s16_msb 3 0.00427823
+test_bt_link_lifecycle 3 0.0041355
+test_ctrl_init 3 0.00393178
+test_main_boot 3 0.00386982
 ---

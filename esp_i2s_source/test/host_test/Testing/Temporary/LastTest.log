@@ -1,3 +1,601 @@
-Start testing: Jul 14 06:48 PDT
+Start testing: Jul 16 06:37 PDT
 ----------------------------------------------------------
-End testing: Jul 14 06:48 PDT
+1/19 Testing: test_sanity
+1/19 Test: test_sanity
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_sanity"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_sanity" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_sanity.c:19:test_harness_alive:PASS
+
+-----------------------
+1 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_sanity" end time: Jul 16 06:37 PDT
+"test_sanity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/19 Testing: test_signal_gen
+2/19 Test: test_signal_gen
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_signal_gen" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:189:test_silence_is_all_zero:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:190:test_sine_quarter_rate_exact:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:191:test_sine_stereo_channels_equal:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:192:test_sine_amplitude_scaling:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:193:test_sine_phase_continuity:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:194:test_sine_no_clipping_overflow:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:195:test_sweep_progresses:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:196:test_piano_note_on_resets:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:197:test_piano_stereo_equal:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:198:test_piano_envelope_decays:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:199:test_piano_silent_at_zero_amplitude:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_signal_gen.c:200:test_piano_is_sawtooth_ramp:PASS
+
+-----------------------
+12 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"test_signal_gen" end time: Jul 16 06:37 PDT
+"test_signal_gen" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/19 Testing: test_tone
+3/19 Test: test_tone
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_tone" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:274:test_tone_default_off_silence:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:275:test_tone_set_enables:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:276:test_tone_set_clamp_min:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:277:test_tone_set_clamp_max:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:278:test_tone_off_produces_silence:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:279:test_tone_amplitude_clamp:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:280:test_tone_amplitude_zero_mutes:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:281:test_tone_sine_exact_quarter_rate:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:282:test_tone_stereo_channels_equal:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:283:test_tone_get_reports_state:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:284:test_tone_piano_voice_fills:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:285:test_tone_reinit_after_off:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:286:test_tone_ramp_up_is_gradual_not_instant:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_tone.c:287:test_tone_off_eventually_reaches_silence:PASS
+
+-----------------------
+14 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_tone" end time: Jul 16 06:37 PDT
+"test_tone" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/19 Testing: test_pcm_ring
+4/19 Test: test_pcm_ring
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_pcm_ring" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:222:test_create_empty_state:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:223:test_write_then_read_fifo:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:224:test_write_caps_at_capacity:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:225:test_read_caps_at_used:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:226:test_wraparound_integrity:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:227:test_partial_interleaved:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:228:test_peak_used_tracks_max:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:229:test_reset_empties:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:230:test_create_rejects_zero_capacity:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:231:test_create_rejects_size_max_capacity:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:232:test_peek_does_not_change_used_count:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:233:test_consume_changes_used_count:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:234:test_producer_cannot_overwrite_peeked_bytes:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pcm_ring.c:235:test_wraparound_peek_and_partial_consume:PASS
+
+-----------------------
+14 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_pcm_ring" end time: Jul 16 06:37 PDT
+"test_pcm_ring" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/19 Testing: test_i2s_out_pump
+5/19 Test: test_i2s_out_pump
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_i2s_out_pump" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:130:test_full_accept_no_zero_fill:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:131:test_full_accept_with_zero_fill_tail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:132:test_zero_write_leaves_pending_untouched:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:133:test_partial_write_within_real_data:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:134:test_partial_write_only_touches_zero_fill_tail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:135:test_written_clamped_to_pending_len:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_pump.c:136:test_sequence_of_partial_writes_drains_correctly:PASS
+
+-----------------------
+7 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_i2s_out_pump" end time: Jul 16 06:37 PDT
+"test_i2s_out_pump" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/19 Testing: test_i2s_out_gain
+6/19 Test: test_i2s_out_gain
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_i2s_out_gain" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:113:test_unity_is_passthrough:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:114:test_over_100_is_noop:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:115:test_half:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:116:test_tenth:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:117:test_zero_and_negative_mute:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:118:test_no_clipping_or_overflow:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:119:test_null_and_zero_count_safe:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:120:test_gain_one_percent:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:121:test_gain_ninety_nine_percent:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_i2s_out_gain.c:122:test_gain_intermediate_values:PASS
+
+-----------------------
+10 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_i2s_out_gain" end time: Jul 16 06:37 PDT
+"test_i2s_out_gain" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/19 Testing: test_bt_link_parser
+7/19 Test: test_bt_link_parser
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_bt_link_parser" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:176:test_parse_ok_full:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:177:test_parse_data_present:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:178:test_parse_err_and_event_and_info:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:179:test_parse_data_keeps_embedded_pipes:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:180:test_parse_missing_trailing_fields:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:181:test_parse_status_only_and_unknown:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:182:test_parse_empty_line_rejected:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:183:test_is_terminal:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:184:test_linebuf_single_crlf:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:185:test_linebuf_partial_reads:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:186:test_linebuf_multiple_and_interleaved:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:187:test_linebuf_skips_empty_lines:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_parser.c:188:test_linebuf_overflow_recovery:PASS
+
+-----------------------
+13 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_bt_link_parser" end time: Jul 16 06:37 PDT
+"test_bt_link_parser" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/19 Testing: test_bt_link_session
+8/19 Test: test_bt_link_session
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_bt_link_session" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:218:test_begin_pending_and_reject_second:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:219:test_terminal_ok_completes:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:220:test_terminal_err_completes:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:221:test_mismatched_terminal_ignored:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:222:test_info_does_not_complete:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:223:test_event_fanout_to_subscribers:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:224:test_info_fanout_to_subscribers:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:225:test_event_interleaved_with_pending:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:226:test_subscribe_table_full:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:227:test_timeout_fires_once:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:228:test_session_reusable_after_completion:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:229:test_late_response_after_timeout_ignored:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:230:test_all_four_subscribers_receive_event:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_session.c:231:test_subscriber_count_tracking:PASS
+
+-----------------------
+14 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_bt_link_session" end time: Jul 16 06:37 PDT
+"test_bt_link_session" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/19 Testing: test_wifi_sm
+9/19 Test: test_wifi_sm
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_wifi_sm" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:156:test_start_with_creds_goes_sta:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:157:test_start_without_creds_goes_ap:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:158:test_connect_success:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:159:test_retries_then_ap_fallback:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:160:test_success_resets_retry_counter:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:161:test_drop_from_connected_retries:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:162:test_set_creds_from_ap_restarts_sta:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:163:test_clear_creds_returns_to_ap:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:164:test_max_retries_clamped:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:165:test_max_retries_one_goes_ap_on_first_failure:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:166:test_disconnect_ignored_in_ap_mode:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_wifi_sm.c:167:test_disconnect_ignored_before_start:PASS
+
+-----------------------
+12 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_wifi_sm" end time: Jul 16 06:37 PDT
+"test_wifi_sm" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/19 Testing: test_radio_parse
+10/19 Test: test_radio_parse
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_radio_parse" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:220:test_pls_basic:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:221:test_pls_https_and_first_of_many:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:222:test_pls_case_insensitive_key:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:223:test_m3u_extended_skips_comments:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:224:test_bare_url:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:225:test_no_url_returns_false:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:226:test_url_too_long_returns_false:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:227:test_icy_stream_title:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:228:test_icy_title_only:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:229:test_icy_empty_title:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:230:test_icy_no_title_field:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:231:test_icy_null_padded_block:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:232:test_icy_title_truncated_to_buffer:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:233:test_demux_metaint_zero_is_all_audio:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:234:test_demux_splits_audio_and_title:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:235:test_demux_byte_at_a_time_same_result:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_parse.c:236:test_demux_empty_metadata_block:PASS
+
+-----------------------
+17 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_radio_parse" end time: Jul 16 06:37 PDT
+"test_radio_parse" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/19 Testing: test_station_store
+11/19 Test: test_station_store
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_station_store" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:245:test_add_and_get:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:246:test_stable_ids_increment:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:247:test_blank_name_defaults_to_host:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:248:test_reject_invalid_url:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:249:test_dedupe_exact_url:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:250:test_full_store_rejects:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:251:test_update:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:252:test_remove_shifts:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:253:test_move_swaps_neighbours:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:254:test_move_edges_and_bad_args_rejected:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:255:test_find_by_id:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:256:test_name_too_long:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:257:test_url_too_long:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_station_store.c:258:test_validate_url_control_chars:PASS
+
+-----------------------
+14 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_station_store" end time: Jul 16 06:37 PDT
+"test_station_store" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/19 Testing: test_radio_resampler
+12/19 Test: test_radio_resampler
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_radio_resampler" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:412:test_passthrough_44100_stereo:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:413:test_dc_in_dc_out_upsample:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:414:test_mono_upmixed_to_stereo:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:415:test_downsample_produces_fewer_frames:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:416:test_streaming_continuity_dc:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:417:test_output_bounded_by_cap:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:418:test_resampler_consumes_all_22050:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:419:test_resampler_consumes_all_32k:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:420:test_resampler_consumes_all_48k:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:421:test_resampler_small_output_no_data_loss:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:422:test_resampler_mono_all_consumed:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:423:test_48k_ramp_matches_reference:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:424:test_chunk_boundary_equivalence:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:425:test_sine_frequency_preserved:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_resampler.c:426:test_long_run_frame_count:PASS
+
+-----------------------
+15 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"test_radio_resampler" end time: Jul 16 06:37 PDT
+"test_radio_resampler" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/19 Testing: test_ctrl_cfg
+13/19 Test: test_ctrl_cfg
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_ctrl_cfg" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg.c:47:test_valid_macs:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg.c:48:test_null_and_empty:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg.c:49:test_wrong_length:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg.c:50:test_bad_separators:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_cfg.c:51:test_non_hex:PASS
+
+-----------------------
+5 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_ctrl_cfg" end time: Jul 16 06:37 PDT
+"test_ctrl_cfg" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/19 Testing: test_ctrl_sm
+14/19 Test: test_ctrl_sm
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_ctrl_sm" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:226:test_autostart_off_is_idle:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:227:test_happy_path_connect_start_resume:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:228:test_slow_sink_start_fails_but_connects:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:229:test_already_connected_skips_connect:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:230:test_no_station_goes_running_without_resume:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:231:test_connect_timeout_backs_off_and_retries:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:232:test_connect_rejected_backs_off:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:233:test_running_detects_drop_and_reconnects:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:234:test_running_healthy_poll_resets_retries:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_sm.c:235:test_gives_up_after_max_retries:PASS
+
+-----------------------
+10 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_ctrl_sm" end time: Jul 16 06:37 PDT
+"test_ctrl_sm" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/19 Testing: test_radio_lifecycle
+15/19 Test: test_radio_lifecycle
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_radio_lifecycle" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:752:test_stream_task_creation_failure:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:753:test_decoder_task_creation_failure:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:754:test_failed_play_retry:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:755:test_radio_init_no_double_alloc:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:756:test_stop_without_play:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:758:test_radio_init_control_mutex_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:759:test_radio_init_ring_alloc_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:760:test_radio_init_pcm_alloc_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:761:test_radio_init_mutex_create_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:762:test_radio_init_queue_create_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:763:test_radio_init_cmd_task_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:765:test_playlist_resolve_http_client_alloc_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:767:test_unsupported_codec_error:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:769:test_prebuffer_nvs_open_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:770:test_prebuffer_nvs_set_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:771:test_prebuffer_nvs_commit_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:772:test_gain_nvs_open_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:773:test_gain_nvs_set_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:774:test_gain_nvs_commit_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:775:test_gain_clamp_on_nvs_fail:PASS
+DIAG|RADIO|START|gen=6,url=http://example.com/stream.mp3
+DIAG|RADIO|STOP_TIMEOUT|gen=6
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:777:test_stop_timeout_stream_only_exit:PASS
+DIAG|RADIO|START|gen=7,url=http://example.com/stream.mp3
+DIAG|RADIO|STOP_TIMEOUT|gen=7
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:778:test_stop_timeout_decoder_only_exit:PASS
+DIAG|RADIO|START|gen=8,url=http://example.com/stream.mp3
+DIAG|RADIO|STOP_TIMEOUT|gen=8
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:779:test_stop_timeout_no_exit:PASS
+DIAG|RADIO|START|gen=9,url=http://example.com/stream.mp3
+DIAG|RADIO|STOPPED|gen=9
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:780:test_stop_success_both_exit:PASS
+DIAG|RADIO|START|gen=10,url=http://example.com/stream.mp3
+DIAG|RADIO|STOP_TIMEOUT|gen=10
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:781:test_fault_blocks_restart:PASS
+DIAG|RADIO|START|gen=11,url=http://example.com/stream.mp3
+DIAG|RADIO|STOP_TIMEOUT|gen=11
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_radio_lifecycle.c:782:test_stop_after_fault_returns_ok:PASS
+
+-----------------------
+26 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"test_radio_lifecycle" end time: Jul 16 06:37 PDT
+"test_radio_lifecycle" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/19 Testing: test_pack_s16_msb
+16/19 Test: test_pack_s16_msb
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_pack_s16_msb" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:61:test_pack_s16_msb_zero:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:62:test_pack_s16_msb_one:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:63:test_pack_s16_msb_minus_one:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:64:test_pack_s16_msb_int16_max:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:65:test_pack_s16_msb_int16_min:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_pack_s16_msb.c:66:test_pack_s16_msb_roundtrip:PASS
+
+-----------------------
+6 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_pack_s16_msb" end time: Jul 16 06:37 PDT
+"test_pack_s16_msb" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/19 Testing: test_bt_link_lifecycle
+17/19 Test: test_bt_link_lifecycle
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_bt_link_lifecycle" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:169:test_send_invalid_state:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:170:test_init_succeeds:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:171:test_send_normal_completion:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:172:test_send_timeout_abandons_request:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:173:test_send_queue_full:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:174:test_send_sem_alloc_fail:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:175:test_send_rejects_null_and_empty:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:176:test_send_rejects_embedded_crlf:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:177:test_send_rejects_overlong_command:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:178:test_init_idempotent_same_timeout:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_bt_link_lifecycle.c:179:test_init_conflicting_timeout_rejected:PASS
+
+-----------------------
+11 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_bt_link_lifecycle" end time: Jul 16 06:37 PDT
+"test_bt_link_lifecycle" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/19 Testing: test_ctrl_init
+18/19 Test: test_ctrl_init
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_ctrl_init" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:132:test_ctrl_set_sink_before_init_fails:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:133:test_ctrl_scan_before_init_fails:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:134:test_ctrl_get_cfg_before_init_noop:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:135:test_ctrl_note_station_before_init_noop:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:136:test_ctrl_scan_active_before_init:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:138:test_ctrl_init_creates_mutex:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:139:test_ctrl_get_cfg_after_init:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:140:test_ctrl_set_sink_after_init:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_ctrl_init.c:141:test_ctrl_note_station_after_init:PASS
+
+-----------------------
+9 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_ctrl_init" end time: Jul 16 06:37 PDT
+"test_ctrl_init" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/19 Testing: test_main_boot
+19/19 Test: test_main_boot
+Command: "/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_main_boot"
+Directory: /home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test
+"test_main_boot" start time: Jul 16 06:37 PDT
+Output:
+----------------------------------------------------------
+DIAG|BOOT|READY|boot_id=12345678,psram_kb=0,heap=123456
+DIAG|BOOT|STEP|name=i2s_init,result=ESP_OK
+DIAG|BOOT|STEP|name=i2s_start,result=ESP_OK
+DIAG|BOOT|STEP|name=bt_link_init,result=ESP_OK
+DIAG|BOOT|STEP|name=radio_init,result=ESP_OK
+DIAG|BOOT|STEP|name=stations_init,result=ESP_OK
+DIAG|BOOT|STEP|name=ctrl_init,result=ESP_OK
+DIAG|BOOT|STEP|name=audio_out_start,result=ESP_OK
+DIAG|BOOT|STEP|name=wifi_mgr_init,result=ESP_OK
+DIAG|BOOT|STEP|name=console_start,result=ESP_OK
+DIAG|BOOT|STEP|name=web_ui_start,result=ESP_OK
+DIAG|BOOT|STEP|name=ctrl_start,result=ESP_OK
+DIAG|BOOT|COMPLETE|required_ok=1,degraded=0,boot_id=12345678
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_main_boot.c:176:test_every_initializer_called_exactly_once:PASS
+/home/phil/work/esp32_btaudio/esp_i2s_source/test/host_test/test_main_boot.c:177:test_boot_probe_issues_no_mutating_command:PASS
+
+-----------------------
+2 Tests 0 Failures 0 Ignored 
+OK
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_main_boot" end time: Jul 16 06:37 PDT
+"test_main_boot" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jul 16 06:37 PDT
