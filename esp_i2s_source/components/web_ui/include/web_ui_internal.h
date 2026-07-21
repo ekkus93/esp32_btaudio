@@ -60,10 +60,19 @@ esp_err_t bt_get_h(httpd_req_t *req);
 esp_err_t bt_post_h(httpd_req_t *req);
 esp_err_t console_post_h(httpd_req_t *req);
 
-/* Initialise the BT state module: create the mutex, subscribe the bt_link
- * async-line handler, and prime the paired list. Call once from web_ui_start()
- * after httpd is up. Defined in web_ui_bt.c. */
-void web_ui_bt_init(void);
+/* BT state module lifecycle (FIX3 §5.6). Defined in web_ui_bt.c.
+ * web_ui_bt_init(): create the mutex, subscribe the bt_link async-line
+ * handler if bt_link is initialized, and prime the paired list. Call once
+ * from web_ui_start() BEFORE route registration — if it returns non-OK
+ * that's a genuine resource failure (not "BT unavailable", which is a
+ * normal ESP_OK return with web_ui_bt_available()==false). Idempotent.
+ * web_ui_bt_available(): true iff BT-dependent handlers should proceed
+ * rather than return 503.
+ * web_ui_bt_deinit(): stop/join helper tasks, unsubscribe, release
+ * resources. Call from every web_ui_start() failure path and web_ui_stop(). */
+esp_err_t web_ui_bt_init(void);
+bool      web_ui_bt_available(void);
+void      web_ui_bt_deinit(void);
 
 /* web_ui_auth.c — bearer-token authentication (FIX3 §5) */
 esp_err_t web_ui_auth_init(void);

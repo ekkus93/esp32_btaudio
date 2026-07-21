@@ -188,6 +188,9 @@ esp_err_t recv_body(httpd_req_t *req, char *buf, size_t buf_sz)
 
 esp_err_t web_ui_stop(void)
 {
+    /* Tear down the BT web submodule first (FIX3 §5.6) — before any other
+     * shared resource goes away. */
+    web_ui_bt_deinit();
     /* Terminate the background probe task. */
     if (s_wroom_probe_task) {
         vTaskDelete(s_wroom_probe_task);
@@ -273,6 +276,17 @@ esp_err_t web_ui_start(void)
         fflush(stdout);
         return auth_err;
     }
+    /* Initialise the BT web submodule (FIX3 WEB-001/§5.6) — before route
+     * registration, so require_bt() guards are meaningful the instant
+     * handlers become reachable. A non-OK return here is a genuine
+     * resource failure (mutex/event-group creation), not "BT unavailable"
+     * — that degraded case returns ESP_OK with web_ui_bt_available()==false. */
+    esp_err_t bt_err = web_ui_bt_init();
+    if (bt_err != ESP_OK) {
+        ESP_LOGE(TAG, "BT web submodule init failed: %s", esp_err_to_name(bt_err));
+        return bt_err;
+    }
+
     /* Initialise async operation queue (10.5). */
     web_ui_ops_init();
 
@@ -280,6 +294,7 @@ esp_err_t web_ui_start(void)
     s_wroom_cache.mtx = xSemaphoreCreateMutex();
     if (!s_wroom_cache.mtx) {
         ESP_LOGE(TAG, "failed to create wroom cache mutex");
+        web_ui_bt_deinit();
         return ESP_ERR_NO_MEM;
     }
     /* Do the initial WROOM32 probe synchronously. */
@@ -293,6 +308,9 @@ esp_err_t web_ui_start(void)
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed: %s", esp_err_to_name(err));
+        vSemaphoreDelete(s_wroom_cache.mtx);
+        s_wroom_cache.mtx = NULL;
+        web_ui_bt_deinit();
         return err;
     }
 
@@ -393,6 +411,7 @@ esp_err_t web_ui_start(void)
     return ESP_OK;
 
 fail:
+    web_ui_bt_deinit();
     httpd_stop(s_server);
     s_server = NULL;
     return err;

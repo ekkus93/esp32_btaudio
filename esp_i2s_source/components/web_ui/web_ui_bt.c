@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -23,6 +24,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/event_groups.h"
 
 static const char *TAG = "web_ui_bt";
 
@@ -41,6 +43,11 @@ static char              s_bt_prompt[80];
 static bool              s_bt_prompt_on;
 static SemaphoreHandle_t s_bt_mtx;
 
+/* True only after bt_link_subscribe() succeeded against an initialized
+ * bt_link (FIX3 WEB-001). When false, every BT-dependent handler returns
+ * 503 instead of touching s_bt_mtx or calling bt_link_send(). */
+static bool s_bt_available;
+
 /* Console INFO capture: multi-line commands (HELP, PAIRED, ...) stream their
  * output as INFO| lines before the terminal OK|. While a console command runs
  * we buffer those so /api/console can return them to the Terminal. */
@@ -50,10 +57,27 @@ static char              s_console_lines[CONSOLE_MAX_LINES][CONSOLE_LINE_MAX];
 static int               s_console_n;
 static bool              s_console_capturing;
 
+/* Common guard for every handler that touches bt_link/s_bt_mtx (FIX3
+ * WEB-001/§5.6, §12.3). Must run before taking s_bt_mtx or sending a
+ * command — a degraded boot (WROOM32 absent, subscribe failed) must
+ * return 503, never dereference a null mutex or block on a dead link. */
+static esp_err_t require_bt(httpd_req_t *req)
+{
+    if (s_bt_mtx && s_bt_available) {
+        return ESP_OK;
+    }
+    return web_send_error(req, "503 Service Unavailable", "BT_LINK_UNAVAILABLE",
+                          "Bluetooth control link is unavailable", true);
+}
+
 /* ---- /api/scan: suspend A2DP, run a BT inquiry, restore (CTRL) ---- */
 
 esp_err_t scan_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     if (s_bt_mtx) {
         xSemaphoreTake(s_bt_mtx, portMAX_DELAY);
         s_bt_disc_n = 0;                 /* fresh discovery list */
@@ -91,6 +115,10 @@ static int parse_wroom_vol(const char *data) { return parse_wroom_kv(data, "VOL=
 
 esp_err_t btvolume_get_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char data[BT_LINK_FIELD_MAX] = {0};
     bt_link_send("STATUS", &st, NULL, 0, data, sizeof(data));
@@ -103,6 +131,10 @@ esp_err_t btvolume_get_h(httpd_req_t *req)
 
 esp_err_t btvolume_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     char body[64];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -296,6 +328,10 @@ static void bt_dev_array(cJSON *arr, const bt_dev_t *list, int n)
  * prompt, paired + discovered device lists. */
 esp_err_t bt_get_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
     char sdata[BT_LINK_FIELD_MAX] = {0};
     bt_link_send("STATUS", &st, NULL, 0, sdata, sizeof(sdata));
@@ -331,15 +367,19 @@ esp_err_t bt_get_h(httpd_req_t *req)
  * that fresh link. Poll STATUS until RUN=1, then re-assert the persisted
  * post-mix volume so a hand-initiated connect lands at the user's saved level
  * (mirrors the orchestrator's autostart path). One at a time. */
-static TaskHandle_t s_conn_vol_task;
+static TaskHandle_t      s_conn_vol_task;
+static EventGroupHandle_t s_conn_vol_events;
+static _Atomic bool      s_conn_vol_stop_requested;
+#define CONN_VOL_EVT_EXITED BIT(0)
 
 static void connect_volume_task(void *arg)
 {
     (void)arg;
     ctrl_cfg_t c;
     ctrl_get_cfg(&c);
-    for (int i = 0; i < 30; i++) {          /* ~15 s at 500 ms */
-        vTaskDelay(pdMS_TO_TICKS(500));
+    for (int i = 0; i < 30 && !atomic_load(&s_conn_vol_stop_requested); i++) {
+        vTaskDelay(pdMS_TO_TICKS(500));     /* ~15 s at 500 ms */
+        if (atomic_load(&s_conn_vol_stop_requested)) break;
         bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
         char data[BT_LINK_FIELD_MAX] = {0};
         bt_link_send("STATUS", &st, NULL, 0, data, sizeof(data));
@@ -351,11 +391,18 @@ static void connect_volume_task(void *arg)
         }
     }
     s_conn_vol_task = NULL;
+    if (s_conn_vol_events) {
+        xEventGroupSetBits(s_conn_vol_events, CONN_VOL_EVT_EXITED);
+    }
     vTaskDelete(NULL);
 }
 
 esp_err_t bt_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     char body[128];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -397,6 +444,10 @@ esp_err_t bt_post_h(httpd_req_t *req)
     /* Connect accepted (INITIATED): re-assert the saved post-mix volume once the
      * A2DP link is actually up, so it isn't left at the WROOM32's fresh-link 40. */
     if (is_connect && st == BT_LINK_CMD_DONE_OK && s_conn_vol_task == NULL) {
+        atomic_store(&s_conn_vol_stop_requested, false);
+        if (s_conn_vol_events) {
+            xEventGroupClearBits(s_conn_vol_events, CONN_VOL_EVT_EXITED);
+        }
         if (xTaskCreate(connect_volume_task, "connvol", 4096, NULL,
                         tskIDLE_PRIORITY + 3, &s_conn_vol_task) != pdPASS) {
             ESP_LOGW(TAG, "failed to create connect-volume task");
@@ -415,6 +466,10 @@ esp_err_t bt_post_h(httpd_req_t *req)
 /* POST /api/console {cmd} — run a raw WROOM32 command, return its response. */
 esp_err_t console_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_bt(req);
+    if (guard != ESP_OK) {
+        return guard;
+    }
     char body[BT_LINK_FIELD_MAX + 32];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -467,12 +522,101 @@ esp_err_t console_post_h(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* Create the BT-state mutex, subscribe the bt_link async-line handler, and
- * prime the paired list. Called once by web_ui_start() after httpd is up. */
-void web_ui_bt_init(void)
+/* Whether bt_link was actually initialized when we subscribed — tells
+ * web_ui_bt_deinit() whether an unsubscribe call is meaningful. */
+static bool s_subscribed;
+
+bool web_ui_bt_available(void)
 {
+    return s_bt_available;
+}
+
+/* Create the BT-state mutex, subscribe the bt_link async-line handler, and
+ * prime the paired list. Called once by web_ui_start() before route
+ * registration (FIX3 §5.6). Idempotent. If bt_link is not initialized
+ * (WROOM32 absent/not yet brought up), the web server still starts —
+ * BT-dependent endpoints degrade to 503 via require_bt() rather than
+ * dereferencing s_bt_mtx while it's NULL. */
+esp_err_t web_ui_bt_init(void)
+{
+    if (s_bt_mtx) {
+        return ESP_OK;
+    }
+
     s_bt_mtx = xSemaphoreCreateMutex();
-    bt_link_subscribe(on_bt_event, NULL);
+    if (!s_bt_mtx) {
+        return ESP_ERR_NO_MEM;
+    }
+    s_conn_vol_events = xEventGroupCreate();
+    if (!s_conn_vol_events) {
+        vSemaphoreDelete(s_bt_mtx);
+        s_bt_mtx = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (!bt_link_is_initialized()) {
+        s_bt_available = false;
+        ESP_LOGW(TAG, "bt_link not initialized — BT endpoints will return 503");
+        return ESP_OK;
+    }
+
+    int sub = bt_link_subscribe(on_bt_event, NULL);
+    if (sub < 0) {
+        vEventGroupDelete(s_conn_vol_events);
+        s_conn_vol_events = NULL;
+        vSemaphoreDelete(s_bt_mtx);
+        s_bt_mtx = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+    s_subscribed = true;
+    s_bt_available = true;
+
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
-    bt_link_send("PAIRED", &st, NULL, 0, NULL, 0);   /* items arrive via on_bt_event */
+    esp_err_t err = bt_link_send("PAIRED", &st, NULL, 0, NULL, 0);
+    if (err != ESP_OK || st != BT_LINK_CMD_DONE_OK) {
+        /* Initial paired-list priming failed — a visible degraded warning,
+         * not a reason to mark the whole submodule unavailable. Items
+         * still arrive via on_bt_event on any later successful PAIRED. */
+        ESP_LOGW(TAG, "initial paired-list request failed (state=%d)", (int)st);
+    }
+    return ESP_OK;
+}
+
+/* Mark unavailable, stop/join the connect-volume helper task, unsubscribe
+ * while bt_link is still up, then release resources. Call from every
+ * web_ui_start() failure path and from web_ui_stop() (FIX3 §5.6). */
+void web_ui_bt_deinit(void)
+{
+    s_bt_available = false;
+
+    if (s_conn_vol_task) {
+        atomic_store(&s_conn_vol_stop_requested, true);
+        if (s_conn_vol_events) {
+            xEventGroupWaitBits(s_conn_vol_events, CONN_VOL_EVT_EXITED,
+                               pdFALSE, pdTRUE, pdMS_TO_TICKS(2000));
+        }
+        /* Not force-deleted: the task itself clears s_conn_vol_task and
+         * self-deletes on exit. A wait timeout here just means we stop
+         * tracking it — it still exits on its own shortly after. */
+    }
+
+    if (s_subscribed) {
+        bt_link_unsubscribe(on_bt_event, NULL);
+        s_subscribed = false;
+    }
+
+    if (s_conn_vol_events) {
+        vEventGroupDelete(s_conn_vol_events);
+        s_conn_vol_events = NULL;
+    }
+    if (s_bt_mtx) {
+        vSemaphoreDelete(s_bt_mtx);
+        s_bt_mtx = NULL;
+    }
+
+    s_bt_paired_n = 0;
+    s_bt_disc_n = 0;
+    s_bt_prompt_on = false;
+    s_console_n = 0;
+    s_console_capturing = false;
 }
