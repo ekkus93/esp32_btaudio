@@ -10,6 +10,7 @@ cd "$ROOT"
 ./tools/run_host_tests.sh --strict --asan
 ./tools/run_host_tests.sh --strict --ubsan
 python3 -m pytest -q tools/test_s3_gate_assert.py
+python3 -m pytest -q tools/test_web_ui_route_auth.py
 
 if command -v npm >/dev/null 2>&1; then
     # --if-present: frontend unit tests land in a later phase (TODO Phase

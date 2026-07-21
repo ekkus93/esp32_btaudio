@@ -1,6 +1,7 @@
 /* console — USB-Serial-JTAG line reader + command dispatch (WIFI-1c). */
 #include "console.h"
 #include "wifi_mgr.h"
+#include "web_ui.h"
 
 #include <string.h>
 #include <strings.h>
@@ -54,6 +55,24 @@ static void handle_wifi(char *args)
     }
 }
 
+/* AUTH ROTATE — the only supported subcommand (FIX3 §5.5). Local
+ * physical-presence path only: never forwarded to the WROOM32, never
+ * reachable over HTTP. */
+static void handle_auth(char *args)
+{
+    while (*args == ' ') args++;
+    if (strcasecmp(args, "ROTATE") != 0) {
+        printf("ERR|AUTH|UNKNOWN_SUBCOMMAND|usage: AUTH ROTATE\n");
+        return;
+    }
+    esp_err_t e = web_ui_auth_rotate();
+    if (e != ESP_OK) {
+        printf("ERR|AUTH|ROTATE_FAILED|%s\n", esp_err_to_name(e));
+    }
+    /* On success, web_ui_auth_rotate() itself prints AUTH|BOOTSTRAP_TOKEN|
+     * and AUTH|TOKEN_ROTATED — no further output here. */
+}
+
 static void dispatch(char *line)
 {
     while (*line == ' ') line++;
@@ -64,6 +83,8 @@ static void dispatch(char *line)
 
     if (strcasecmp(line, "WIFI") == 0) {
         handle_wifi(args);
+    } else if (strcasecmp(line, "AUTH") == 0) {
+        handle_auth(args);
     } else if (strcasecmp(line, "STATUS") == 0) {
         char buf[160];
         wifi_mgr_get_status(buf, sizeof(buf));
@@ -80,7 +101,7 @@ static void console_task(void *arg)
     uint8_t rx[64];
     char line[CONSOLE_LINE_MAX];
     size_t len = 0;
-    printf("DIAG|CONSOLE|READY|cmds=WIFI <ssid> [pass],WIFI STATUS,WIFI RESET,STATUS\n");
+    printf("DIAG|CONSOLE|READY|cmds=WIFI <ssid> [pass],WIFI STATUS,WIFI RESET,AUTH ROTATE,STATUS\n");
     fflush(stdout);
     for (;;) {
         int n = usb_serial_jtag_read_bytes(rx, sizeof(rx), pdMS_TO_TICKS(100));

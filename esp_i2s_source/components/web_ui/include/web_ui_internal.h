@@ -65,11 +65,25 @@ esp_err_t console_post_h(httpd_req_t *req);
  * after httpd is up. Defined in web_ui_bt.c. */
 void web_ui_bt_init(void);
 
-/* web_ui_auth.c — bearer-token authentication */
+/* web_ui_auth.c — bearer-token authentication (FIX3 §5) */
 esp_err_t web_ui_auth_init(void);
 esp_err_t web_ui_auth_generate_token(void);
+esp_err_t web_ui_auth_rotate(void);
 bool      web_ui_auth_check(httpd_req_t *req);
-const char *web_ui_auth_get_token(void);
+
+/* Route dispatch (FIX3 §5.4): every mutating route registers through
+ * route_dispatch() with a static-lifetime web_route_ctx_t as user_ctx, so
+ * authorization is enforced in exactly one place rather than per-handler.
+ * Defined in web_ui.c. */
+typedef esp_err_t (*web_handler_fn_t)(httpd_req_t *req);
+
+typedef struct {
+    web_handler_fn_t handler;
+    bool             auth_required;
+    const char      *capability;
+} web_route_ctx_t;
+
+esp_err_t route_dispatch(httpd_req_t *req);
 
 /* Operation types (10.5 — async operation queue) */
 typedef struct {

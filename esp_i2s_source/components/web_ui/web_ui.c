@@ -226,12 +226,52 @@ static esp_err_t register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 
 /* Background WROOM32 probe task handle for cleanup. */
 
+/* Centralized authorization dispatcher (FIX3 §5.4): every mutating route
+ * registers with .handler = route_dispatch and .user_ctx pointing at a
+ * static-lifetime web_route_ctx_t, so no feature handler can be reached
+ * without going through this check first. */
+esp_err_t route_dispatch(httpd_req_t *req)
+{
+    const web_route_ctx_t *ctx = (const web_route_ctx_t *)req->user_ctx;
+    if (!ctx || !ctx->handler) {
+        return ESP_FAIL;
+    }
+    if (ctx->auth_required && !web_ui_auth_check(req)) {
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Bearer");
+        return web_send_error(req, "401 Unauthorized", "AUTH_REQUIRED",
+                              "A valid bearer token is required", false);
+    }
+    return ctx->handler(req);
+}
+
+static const web_route_ctx_t S_WIFI_POST       = { .handler = wifi_post,         .auth_required = true, .capability = "wifi" };
+static const web_route_ctx_t S_APMODE_POST     = { .handler = apmode_post_h,     .auth_required = true, .capability = "wifi" };
+static const web_route_ctx_t S_TONE_POST       = { .handler = tone_post,         .auth_required = true, .capability = "i2s" };
+static const web_route_ctx_t S_TONE_DELETE     = { .handler = tone_delete,       .auth_required = true, .capability = "i2s" };
+static const web_route_ctx_t S_RADIO_POST      = { .handler = radio_post,        .auth_required = true, .capability = "radio" };
+static const web_route_ctx_t S_RADIO_DELETE    = { .handler = radio_delete,      .auth_required = true, .capability = "radio" };
+static const web_route_ctx_t S_STATIONS_POST   = { .handler = stations_post_h,   .auth_required = true, .capability = "stations" };
+static const web_route_ctx_t S_STATIONS_PUT    = { .handler = stations_put_h,    .auth_required = true, .capability = "stations" };
+static const web_route_ctx_t S_STATIONS_DELETE = { .handler = stations_delete_h, .auth_required = true, .capability = "stations" };
+static const web_route_ctx_t S_SCAN_POST       = { .handler = scan_post_h,       .auth_required = true, .capability = "ctrl" };
+static const web_route_ctx_t S_VOLUME_POST     = { .handler = volume_post_h,     .auth_required = true, .capability = "i2s" };
+static const web_route_ctx_t S_PREBUFFER_POST  = { .handler = prebuffer_post_h,  .auth_required = true, .capability = "radio" };
+static const web_route_ctx_t S_BTVOLUME_POST   = { .handler = btvolume_post_h,   .auth_required = true, .capability = "bt_link" };
+static const web_route_ctx_t S_CTRL_POST       = { .handler = ctrl_post_h,       .auth_required = true, .capability = "ctrl" };
+static const web_route_ctx_t S_BT_POST         = { .handler = bt_post_h,         .auth_required = true, .capability = "bt_link" };
+static const web_route_ctx_t S_CONSOLE_POST    = { .handler = console_post_h,    .auth_required = true, .capability = "bt_link" };
 
 esp_err_t web_ui_start(void)
 {
-    /* Initialise authentication (10.6). */
-    if (web_ui_auth_init() != ESP_OK) {
-        ESP_LOGE(TAG, "auth init failed");
+    /* Initialise authentication (FIX3 §5.2) — must succeed before the HTTP
+     * server (or any other resource) starts. A failure here is never
+     * silently downgraded to "server started, unauthenticated." */
+    esp_err_t auth_err = web_ui_auth_init();
+    if (auth_err != ESP_OK) {
+        ESP_LOGE(TAG, "auth init failed: %s", esp_err_to_name(auth_err));
+        printf("DIAG|AUTH|ERROR|stage=init,err=%s\n", esp_err_to_name(auth_err));
+        fflush(stdout);
+        return auth_err;
     }
     /* Initialise async operation queue (10.5). */
     web_ui_ops_init();
@@ -259,45 +299,61 @@ esp_err_t web_ui_start(void)
     const httpd_uri_t status_uri = {
         .uri = "/api/status", .method = HTTP_GET, .handler = status_get };
     const httpd_uri_t wifi_uri = {
-        .uri = "/api/wifi", .method = HTTP_POST, .handler = wifi_post };
+        .uri = "/api/wifi", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_WIFI_POST };
     const httpd_uri_t tone_post_uri = {
-        .uri = "/api/tone", .method = HTTP_POST, .handler = tone_post };
+        .uri = "/api/tone", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_TONE_POST };
     const httpd_uri_t tone_del_uri = {
-        .uri = "/api/tone", .method = HTTP_DELETE, .handler = tone_delete };
+        .uri = "/api/tone", .method = HTTP_DELETE, .handler = route_dispatch,
+        .user_ctx = (void *)&S_TONE_DELETE };
     const httpd_uri_t radio_post_uri = {
-        .uri = "/api/radio", .method = HTTP_POST, .handler = radio_post };
+        .uri = "/api/radio", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_RADIO_POST };
     const httpd_uri_t radio_del_uri = {
-        .uri = "/api/radio", .method = HTTP_DELETE, .handler = radio_delete };
+        .uri = "/api/radio", .method = HTTP_DELETE, .handler = route_dispatch,
+        .user_ctx = (void *)&S_RADIO_DELETE };
     const httpd_uri_t st_get_uri = {
         .uri = "/api/stations", .method = HTTP_GET, .handler = stations_get_h };
     const httpd_uri_t st_post_uri = {
-        .uri = "/api/stations", .method = HTTP_POST, .handler = stations_post_h };
+        .uri = "/api/stations", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_STATIONS_POST };
     const httpd_uri_t st_put_uri = {
-        .uri = "/api/stations", .method = HTTP_PUT, .handler = stations_put_h };
+        .uri = "/api/stations", .method = HTTP_PUT, .handler = route_dispatch,
+        .user_ctx = (void *)&S_STATIONS_PUT };
     const httpd_uri_t st_del_uri = {
-        .uri = "/api/stations", .method = HTTP_DELETE, .handler = stations_delete_h };
+        .uri = "/api/stations", .method = HTTP_DELETE, .handler = route_dispatch,
+        .user_ctx = (void *)&S_STATIONS_DELETE };
     const httpd_uri_t scan_post_uri = {
-        .uri = "/api/scan", .method = HTTP_POST, .handler = scan_post_h };
+        .uri = "/api/scan", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_SCAN_POST };
     const httpd_uri_t apmode_post_uri = {
-        .uri = "/api/apmode", .method = HTTP_POST, .handler = apmode_post_h };
+        .uri = "/api/apmode", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_APMODE_POST };
     const httpd_uri_t volume_post_uri = {
-        .uri = "/api/volume", .method = HTTP_POST, .handler = volume_post_h };
+        .uri = "/api/volume", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_VOLUME_POST };
     const httpd_uri_t prebuffer_post_uri = {
-        .uri = "/api/prebuffer", .method = HTTP_POST, .handler = prebuffer_post_h };
+        .uri = "/api/prebuffer", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_PREBUFFER_POST };
     const httpd_uri_t btvol_get_uri = {
         .uri = "/api/btvolume", .method = HTTP_GET, .handler = btvolume_get_h };
     const httpd_uri_t btvol_post_uri = {
-        .uri = "/api/btvolume", .method = HTTP_POST, .handler = btvolume_post_h };
+        .uri = "/api/btvolume", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_BTVOLUME_POST };
     const httpd_uri_t ctrl_get_uri = {
         .uri = "/api/ctrl", .method = HTTP_GET, .handler = ctrl_get_h };
     const httpd_uri_t ctrl_post_uri = {
-        .uri = "/api/ctrl", .method = HTTP_POST, .handler = ctrl_post_h };
+        .uri = "/api/ctrl", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_CTRL_POST };
     const httpd_uri_t bt_get_uri = {
         .uri = "/api/bt", .method = HTTP_GET, .handler = bt_get_h };
     const httpd_uri_t bt_post_uri = {
-        .uri = "/api/bt", .method = HTTP_POST, .handler = bt_post_h };
+        .uri = "/api/bt", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_BT_POST };
     const httpd_uri_t console_post_uri = {
-        .uri = "/api/console", .method = HTTP_POST, .handler = console_post_h };
+        .uri = "/api/console", .method = HTTP_POST, .handler = route_dispatch,
+        .user_ctx = (void *)&S_CONSOLE_POST };
     const httpd_uri_t root_uri = {
         .uri = "/*", .method = HTTP_GET, .handler = root_get };
 

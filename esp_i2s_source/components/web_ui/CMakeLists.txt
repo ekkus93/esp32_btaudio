@@ -9,6 +9,7 @@ idf_component_register(
          "web_ui_bt.c"
          "web_ui_json.c"
          "web_ui_auth.c"
+         "web_ui_auth_core.c"
          "web_ui_ops.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi_mgr bt_link tone radio i2s_out ctrl nvs_flash
