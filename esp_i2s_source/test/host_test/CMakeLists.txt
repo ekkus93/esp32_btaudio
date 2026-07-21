@@ -6,6 +6,10 @@ project(esp_i2s_source_tests C)
 # esp_bt_audio_source host_test harness pattern.
 add_compile_definitions(UNIT_TEST)
 
+# Production code uses strcasestr(), a glibc extension gated behind
+# _GNU_SOURCE. On-device this is newlib, which does not need the macro.
+add_compile_definitions(_GNU_SOURCE)
+
 # Code coverage (gcov/lcov) — used by DOC-1b's run_all_tests-style entry.
 option(ENABLE_COVERAGE "Enable code coverage reporting with gcov/lcov" OFF)
 if(ENABLE_COVERAGE)
@@ -175,7 +179,8 @@ add_executable(test_radio_lifecycle test_radio_lifecycle.c
     mocks/fake_task.c
     mocks/fake_semphr.c
     mocks/fake_queue.c
-    mocks/fake_esp_err.c)
+    mocks/fake_esp_err.c
+    mocks/compat_strlcpy.c)
 target_include_directories(test_radio_lifecycle PRIVATE
     ${RADIO_DIR}/include
     ${I2S_OUT_DIR}/include
@@ -183,6 +188,8 @@ target_include_directories(test_radio_lifecycle PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
 target_compile_definitions(test_radio_lifecycle PRIVATE UNIT_TEST)
+target_compile_options(test_radio_lifecycle PRIVATE
+    -include ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include/compat_string.h)
 target_link_libraries(test_radio_lifecycle unity m)
 add_test(NAME test_radio_lifecycle COMMAND test_radio_lifecycle)
 
@@ -220,13 +227,16 @@ add_executable(test_ctrl_init test_ctrl_init.c
     mocks/fake_task.c
     mocks/fake_esp_err.c
     mocks/stubs/ctrl_cfg_host.c
-    mocks/stubs/ctrl_device_stubs.c)
+    mocks/stubs/ctrl_device_stubs.c
+    mocks/compat_strlcpy.c)
 target_include_directories(test_ctrl_init PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs  # stubs take precedence
     ${CTRL_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
 target_compile_definitions(test_ctrl_init PRIVATE UNIT_TEST)
+target_compile_options(test_ctrl_init PRIVATE
+    -include ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include/compat_string.h)
 target_link_libraries(test_ctrl_init unity)
 add_test(NAME test_ctrl_init COMMAND test_ctrl_init)
 

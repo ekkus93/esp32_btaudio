@@ -1,0 +1,18 @@
+menu "ESP I2S Source"
+
+config ESP_I2S_SOURCE_ALLOW_LOCAL_STREAMS
+    bool "Allow radio streams to local/private network addresses"
+    default n
+    help
+        Development-only override. When disabled, radio URLs, DNS results,
+        redirects, and reconnects reject loopback, link-local, private,
+        multicast, unspecified, and broadcast destinations.
+
+config ESP_I2S_SOURCE_STA_HEX_PSK
+    bool "Allow 64-character hexadecimal STA PSKs"
+    default n
+    help
+        Permit an exact 64-hex-character raw WPA PSK. Non-hex 64-character
+        values remain invalid and are never truncated.
+
+endmenu
