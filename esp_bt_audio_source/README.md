@@ -5,19 +5,12 @@ ESP32 firmware that streams I2S audio to Bluetooth speakers/headphones via A2DP.
 ## Prerequisites
 
 - ESP-IDF v5.5.1 installed
-- Python tooling: the repo root has a uv-managed `.venv` for all Python tooling (test runners, scripts). To set it up:
-
-```bash
-# From the repository root, create the virtual environment and install deps
-uv venv
-uv pip install -r requirements.txt   # or uv pip install -e .
-```
-
-Then source both environments:
+- Python tooling: test runners and scripts run under the conda env `python310`
+  (never create a new env for this — reuse `python310`):
 
 ```bash
 . $HOME/esp/v5.5.1/esp-idf/export.sh   # ESP-IDF toolchain and idf.py
-. .venv/bin/activate                  # Python tooling for tests
+conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0
 ```
 
 ## Quick Start
@@ -166,10 +159,9 @@ cd test/host_test/build_host_tests
 ctest --output-on-failure
 
 # All tests (host + device, requires ESP32)
-. .venv/bin/activate
-python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
 ```
 
 ## Project Status
 
-Stable. 725/725 host tests + 99/99 device tests passing. UARTAUDIO validated bit-faithful. See memory.md for recent changes.
+Stable. 883/883 host test cases + 99/99 device tests passing. UARTAUDIO validated bit-faithful, including with the laptop's own Bluetooth acting as the A2DP sink. See `../memory.md` (and `../memory_archive.md` for older history) for recent changes.
