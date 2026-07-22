@@ -39,8 +39,19 @@ typedef struct {
 bool ctrl_cfg_mac_valid(const char *mac);
 
 /* Fill *out from NVS, or with defaults (mac "", autostart 0, last_station_id
- * 0) on first boot / invalid blob. Never fails; always yields a usable cfg. */
-void ctrl_cfg_load(ctrl_cfg_t *out);
+ * 0) on first boot / invalid blob. Never fails; always yields a usable cfg.
+ *
+ * FIX3 9.4 (coordinator design): if the persisted blob is the old V0
+ * (index-based) format, this does NOT guess a stable station ID by casting
+ * the index. Instead *out->last_station_id is left at CTRL_LAST_STATION_NONE,
+ * *out_needs_legacy_resolve is set true, and *out_legacy_index carries the
+ * raw V0 index (CTRL_STATION_NONE if the old blob itself had none). The
+ * caller — ctrl_init(), which runs after stations_init() in the boot
+ * sequence — is the coordinator: it must resolve the index via
+ * stations_resolve_legacy_index() and persist the result before anything
+ * else reads last_station_id. out_needs_legacy_resolve/out_legacy_index
+ * must both be non-NULL. */
+void ctrl_cfg_load(ctrl_cfg_t *out, bool *out_needs_legacy_resolve, int16_t *out_legacy_index);
 
 /* Persist *cfg to NVS. Returns ESP_OK on success.
  * Definition is ESP_PLATFORM-only (see ctrl_cfg.c); host tests link a stub

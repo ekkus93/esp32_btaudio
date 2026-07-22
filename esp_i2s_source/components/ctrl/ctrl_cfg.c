@@ -39,12 +39,14 @@ typedef struct {
     ctrl_cfg_t cfg;
 } ctrl_cfg_blob_t;
 
-void ctrl_cfg_load(ctrl_cfg_t *out)
+void ctrl_cfg_load(ctrl_cfg_t *out, bool *out_needs_legacy_resolve, int16_t *out_legacy_index)
 {
-    if (!out) return;
+    if (!out || !out_needs_legacy_resolve || !out_legacy_index) return;
     memset(out, 0, sizeof(*out));
     out->last_station_id = CTRL_LAST_STATION_NONE;
     out->volume = CTRL_VOLUME_DEFAULT;
+    *out_needs_legacy_resolve = false;
+    *out_legacy_index = CTRL_STATION_NONE;
 
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
@@ -74,22 +76,23 @@ void ctrl_cfg_load(ctrl_cfg_t *out)
         ctrl_cfg_v0_blob_t v0_blob;
         if (nvs_get_blob(h, NVS_KEY, &v0_blob, &sz) == ESP_OK &&
             sz == sizeof(v0_blob) && v0_blob.magic == BLOB_MAGIC) {
-            /* Migrate V0 to current format */
+            /* Migrate V0 to current format. FIX3 9.4 (coordinator design):
+             * the raw legacy index is NEVER cast directly to a stable ID
+             * here — stations.c may not even be initialized yet at this
+             * point in boot. Leave last_station_id at NONE and hand the
+             * raw index back for the caller (ctrl_init(), after
+             * stations_init()) to resolve via
+             * stations_resolve_legacy_index(). */
             memcpy(out->sink_mac, v0_blob.sink_mac, CTRL_MAC_LEN - 1);
             out->sink_mac[CTRL_MAC_LEN - 1] = '\0';
             out->autostart = v0_blob.autostart;
-            /* Convert index-based last_station to ID-based last_station_id */
-            if (v0_blob.last_station >= 0) {
-                out->last_station_id = (uint32_t)v0_blob.last_station;
-                ESP_LOGW(TAG, "migrated last_station=%d -> last_station_id=%u (may be stale)",
-                         v0_blob.last_station, out->last_station_id);
-            } else {
-                out->last_station_id = CTRL_LAST_STATION_NONE;
-            }
+            out->last_station_id = CTRL_LAST_STATION_NONE;
+            *out_needs_legacy_resolve = (v0_blob.last_station >= 0);
+            *out_legacy_index = v0_blob.last_station;
             out->volume = (v0_blob.volume > 100) ? 100 : v0_blob.volume;
-            ESP_LOGI(TAG, "loaded V0 blob (migrated): mac=%s autostart=%u volume=%u",
+            ESP_LOGI(TAG, "loaded V0 blob: mac=%s autostart=%u volume=%u legacy_station=%d",
                      out->sink_mac[0] ? out->sink_mac : "(none)",
-                     out->autostart, out->volume);
+                     out->autostart, out->volume, v0_blob.last_station);
         }
     }
     nvs_close(h);

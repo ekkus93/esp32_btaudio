@@ -2298,7 +2298,7 @@ Required tests:
 
 # Phase 9 — Synchronize control configuration and make resume/scan truthful
 
-## 9.1 Pass immutable config snapshots to actions
+## 9.1 Pass immutable config snapshots to actions — DONE (Phase 9, commit pending)
 
 **File:** `components/ctrl/ctrl.c`
 
@@ -2333,7 +2333,7 @@ s_cfg = initial_cfg;
 
 ---
 
-## 9.2 Prevent duplicate orchestrator tasks
+## 9.2 Prevent duplicate orchestrator tasks — DONE (Phase 9, commit pending)
 
 Under `s_mtx`:
 
@@ -2350,7 +2350,7 @@ Add a stop API if restart is required. Do not overwrite a live task handle.
 
 ---
 
-## 9.3 Persist control candidates before publish
+## 9.3 Persist control candidates before publish — DONE (Phase 9, commit pending)
 
 `ctrl_set_sink()`:
 
@@ -2383,7 +2383,7 @@ Do not assign `s_cfg` before `ctrl_cfg_save()`.
 
 ---
 
-## 9.4 Repair old control migration
+## 9.4 Repair old control migration — DONE (Phase 9, commit pending)
 
 Current V0 conversion casts station index directly to stable ID. Replace with the station migration mapping. Index 0 must map to ID 1.
 
@@ -2398,7 +2398,7 @@ Add CRC/version validation to control persistence if not already covered by a la
 
 ---
 
-## 9.5 Make resume success conditional
+## 9.5 Make resume success conditional — DONE (Phase 9, commit pending)
 
 Refactor resume into a result function:
 
@@ -2427,7 +2427,7 @@ Do not treat “no station configured” as resume success when the state machin
 
 ---
 
-## 9.6 Make scan phases return results and rollback explicitly
+## 9.6 Make scan phases return results and rollback explicitly — DONE (Phase 9, commit pending)
 
 Add:
 
@@ -2481,7 +2481,7 @@ Log “A2DP restored” only when `restored=true`.
 
 ---
 
-## 9.7 Update scan start-state recognition
+## 9.7 Update scan start-state recognition — DONE (Phase 9, commit pending)
 
 With new radio state, a resumed radio is accepted when it reaches BUFFERING or RUNNING. STARTING alone is not enough evidence of operational startup.
 
@@ -2489,7 +2489,7 @@ Fault/JOIN_PENDING should terminate the wait immediately with failure rather tha
 
 ---
 
-## 9.8 Tests
+## 9.8 Tests — DONE (Phase 9, commit pending)
 
 Required tests:
 

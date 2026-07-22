@@ -1693,3 +1693,61 @@ phase below was hardware-smoke-tested without re-asking.
 - Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 9
   (ctrl config synchronization, truthful scan/resume, dedicated update-mutex, station/ctrl migration
   coordinator).
+
+## 2026-07-22T04:33:00Z - Claude Sonnet 5 - FIX3 Phase 9 (ctrl config sync, truthful scan/resume) done, hardware-verified
+
+- **Phase 9** (commit pending): all 7 sub-areas in `ctrl.c`/`ctrl_cfg.c`/`ctrl_sm.c`.
+  - **9.1 immutable snapshots**: `do_action()` now takes `const ctrl_cfg_t *cfg` instead of reading
+    the mutable file-scope `s_cfg` directly — `orchestrator_task()` takes a fresh `ctrl_get_cfg()`
+    snapshot once per tick and threads it through that tick's whole action chain, so a concurrent
+    `ctrl_set_sink()`/`ctrl_note_station()` can only ever take effect starting the *next* tick, never
+    mid-attempt. Deleted the redundant/racy `s_cfg = initial_cfg;` line in the old `ctrl_start()`.
+  - **9.2 no duplicate orchestrator**: `ctrl_start()` now checks `s_task != NULL` under `s_mtx` and
+    rejects a second call outright — previously it would silently overwrite the handle with a second
+    task, leaking the first. `orchestrator_task()` clears `s_task` under the same mutex at both its
+    exit points (autostart-off early return, and normal completion) — previously it cleared the handle
+    with no lock at all, racing the very check `ctrl_start()` now performs.
+  - **9.3 persist-before-publish + dedicated update mutex**: found a real bug —
+    `ctrl_set_sink()`/`ctrl_note_station()` assigned `s_cfg = candidate` *before* calling
+    `ctrl_cfg_save()`, so a save failure left RAM state diverged from what NVS actually had (e.g. the
+    web UI would show an updated sink MAC that silently reverted on the next reboot). Fixed to persist
+    first, publish only on `ESP_OK`. Per the RESPONSES-doc decision, added a dedicated `s_update_mtx`
+    (not a generation counter) held across the whole snapshot→persist→publish transaction for both
+    setters, distinct from `s_mtx`'s job of guarding short in-memory reads — so two concurrent setters
+    serialize cleanly instead of racing.
+  - **9.4 coordinator-design migration** (RESPONSES decision 7): the old V0 migration cast the raw
+    playlist index directly to a "stable station ID" — `stations_resolve_legacy_index()` already
+    existed station-side since Phase 5A but was never wired in. `ctrl_cfg_load()`'s signature changed
+    to hand back `*out_needs_legacy_resolve`/`*out_legacy_index` instead of guessing; `ctrl_init()` —
+    which runs after `stations_init()` in the boot sequence — is now the coordinator that calls
+    `stations_resolve_legacy_index()` and persists the resolved ID (or clears it if not found) before
+    anything else can read `last_station_id`.
+  - **9.5 truthful resume**: new `ctrl_resume_result_t` in `CTRL_ACT_RESUME_RADIO` — volume-set
+    failure, no-station, station-not-found, and play-enqueue failure were all previously silently
+    treated identically to success (`CTRL_EV_RESUME_DONE` emitted unconditionally on dispatch). Added
+    `CTRL_EV_RESUME_FAILED` to `ctrl_sm.h`/`ctrl_sm.c` (`CTRL_ST_RESUMING` still advances to
+    `CTRL_ST_RUNNING` on either event — the BT link itself is up regardless of whether the last
+    station resumed — but the outcome is now distinct and diagnosed via
+    `DIAG|CTRL|RESUME_FAILED|reason=...`).
+  - **9.6/9.7 scan phases**: `scan_task()` rewritten with an explicit `ctrl_scan_result_t` and
+    per-step rollback booleans (`radio_stopped`/`sink_disconnected`/`sink_reconnected`/
+    `volume_restored`/`radio_resumed`), checking both transport `esp_err_t` and command-state
+    `BT_LINK_CMD_DONE_OK` for every WROOM command. A radio-stop timeout now aborts before
+    disconnect/inquiry (previously it disconnected anyway); a failed `SCAN` command now skips straight
+    to restore instead of sleeping the full 15 s inquiry window pretending it was active. The final
+    `DIAG|CTRL|SCAN_DONE|restored=...` marker is now truthful (computed from what actually
+    succeeded) instead of an unconditional "A2DP restored" log line. `scan_wait_for_radio_start()`
+    now accepts BUFFERING (not just the old STARTING) as evidence of real startup, and both wait
+    helpers exit immediately on FAULTED/FAULTED_JOIN_PENDING instead of polling to the timeout.
+  - Host tests: extended `test_ctrl_sm.c` (RESUME_FAILED still advances to RUNNING),
+    `test_ctrl_init.c` (+5: legacy-migration coordinator failure path, persistence-failure-leaves-cfg-
+    unchanged, duplicate-`ctrl_start()`-rejected). Needed to fix a latent type mismatch the new code
+    exposed: the host `bt_link_send()` stub declared `void` while the real header (and my new
+    transport-checking call sites) use `esp_err_t` — updated both `mocks/stubs/bt_link.h` and
+    `ctrl_device_stubs.c` to match the real signature.
+- Verified live: boot completed cleanly with the rewritten `ctrl_init()` coordinator and
+  `ctrl_start()` duplicate-guard in place; triggered a real `POST /api/scan` — `scanning` correctly
+  went `true` then back to `false` after the ~20s inquiry+settle sequence, device uptime kept
+  climbing continuously throughout (no crash/reboot).
+- Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 10
+  (degraded-boot capability boundaries, centralized 503 guards, runtime capability struct).

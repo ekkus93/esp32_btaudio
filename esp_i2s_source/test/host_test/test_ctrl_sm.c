@@ -36,6 +36,11 @@ static ctrl_action_t resume_done(ctrl_sm_t *sm)
     ctrl_input_t in = { .ev = CTRL_EV_RESUME_DONE };
     return ctrl_sm_step(sm, &in);
 }
+static ctrl_action_t resume_failed(ctrl_sm_t *sm)
+{
+    ctrl_input_t in = { .ev = CTRL_EV_RESUME_FAILED };
+    return ctrl_sm_step(sm, &in);
+}
 
 /* advance TICKs in `step` increments until at least `total` ms elapsed,
  * returning the first non-WAIT action seen (or WAIT). */
@@ -129,6 +134,24 @@ static void test_no_station_goes_running_without_resume(void)
     run_ticks(&sm, 2500, 500);         /* poll */
     TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, status(&sm, true));   /* RUN=1, no station */
     TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);          /* -> RUNNING, no RESUME */
+}
+
+/* FIX3 9.5: a truthful resume failure (volume/station/enqueue) must not be
+ * silently indistinguishable from success — but the BT link itself is still
+ * up, so the machine still advances to RUNNING rather than getting stuck. */
+static void test_resume_failed_still_advances_to_running(void)
+{
+    ctrl_sm_t sm;
+    ctrl_sm_init(&sm, true, true);
+    wifi_up(&sm);
+    status(&sm, true);
+    start_ack(&sm, true);
+    run_ticks(&sm, 2500, 500);
+    TEST_ASSERT_EQUAL(CTRL_ACT_RESUME_RADIO, status(&sm, true));
+    TEST_ASSERT_EQUAL(CTRL_ST_RESUMING, sm.state);
+
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, resume_failed(&sm));
+    TEST_ASSERT_EQUAL(CTRL_ST_RUNNING, sm.state);
 }
 
 static void test_connect_timeout_backs_off_and_retries(void)
@@ -228,6 +251,7 @@ int main(void)
     RUN_TEST(test_slow_sink_start_fails_but_connects);
     RUN_TEST(test_already_connected_skips_connect);
     RUN_TEST(test_no_station_goes_running_without_resume);
+    RUN_TEST(test_resume_failed_still_advances_to_running);
     RUN_TEST(test_connect_timeout_backs_off_and_retries);
     RUN_TEST(test_connect_rejected_backs_off);
     RUN_TEST(test_running_detects_drop_and_reconnects);

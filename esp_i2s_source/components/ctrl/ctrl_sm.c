@@ -98,7 +98,11 @@ ctrl_action_t ctrl_sm_step(ctrl_sm_t *sm, const ctrl_input_t *in)
         return CTRL_ACT_WAIT;
 
     case CTRL_ST_RESUMING:
-        if (in->ev == CTRL_EV_RESUME_DONE) {
+        /* 9.5: RESUME_FAILED still advances to RUNNING (the BT link is up
+         * regardless of whether the last station resumed) but is a
+         * distinct, truthful outcome the caller can log/diagnose — RESUME_DONE
+         * is no longer emitted unconditionally on dispatch. */
+        if (in->ev == CTRL_EV_RESUME_DONE || in->ev == CTRL_EV_RESUME_FAILED) {
             enter(sm, CTRL_ST_RUNNING);
         }
         return CTRL_ACT_WAIT;

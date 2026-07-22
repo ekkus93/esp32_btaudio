@@ -14,5 +14,6 @@ int stations_count(void);
 bool stations_get(int idx, char *name, size_t nsz,
                   char *url, size_t usz, uint32_t *out_id);
 bool stations_get_url(int idx, char *url, size_t url_sz);
+esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_station_id);
 
 #endif

@@ -21,10 +21,11 @@ bool wifi_mgr_ap_enabled(void) { return false; }
 
 /* bt_link stubs */
 esp_err_t bt_link_init(uint32_t timeout_ms) { (void)timeout_ms; return ESP_OK; }
-void bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t result_sz, char *data, size_t data_sz)
+esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t result_sz, char *data, size_t data_sz)
 {
     (void)cmd; (void)result; (void)result_sz; (void)data; (void)data_sz;
     if (st) *st = BT_LINK_CMD_TIMEOUT;
+    return ESP_OK;
 }
 
 /* radio stubs */
@@ -53,4 +54,20 @@ bool stations_get(int idx, char *name, size_t nsz,
 bool stations_get_url(int idx, char *url, size_t usz)
 {
     return stations_get(idx, NULL, 0, url, usz, NULL);
+}
+static esp_err_t s_resolve_err = ESP_ERR_NOT_FOUND;  /* result for a non-negative legacy_index */
+static uint32_t  s_resolve_id = 0;
+
+esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_station_id)
+{
+    if (!out_station_id) return ESP_ERR_INVALID_ARG;
+    if (legacy_index < 0) { *out_station_id = 0; return ESP_OK; }
+    if (s_resolve_err == ESP_OK) *out_station_id = s_resolve_id;
+    return s_resolve_err;
+}
+
+void mock_stations_set_resolve_legacy_result(esp_err_t err, uint32_t station_id)
+{
+    s_resolve_err = err;
+    s_resolve_id = station_id;
 }

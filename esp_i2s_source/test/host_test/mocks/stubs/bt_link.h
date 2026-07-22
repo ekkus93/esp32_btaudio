@@ -4,6 +4,7 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 #define BT_LINK_DEFAULT_TIMEOUT_MS 2000
 #define BT_LINK_FIELD_MAX 64
@@ -16,6 +17,6 @@ typedef enum {
 
 /* Stub — not used in ctrl_init() host tests */
 esp_err_t bt_link_init(uint32_t timeout_ms);
-void bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t result_sz, char *data, size_t data_sz);
+esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *st, char *result, size_t result_sz, char *data, size_t data_sz);
 
 #endif

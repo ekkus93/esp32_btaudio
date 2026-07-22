@@ -41,7 +41,12 @@ typedef enum {
     CTRL_EV_STATUS,        /* STATUS reply: in.connected */
     CTRL_EV_CONNECT_ACK,   /* CONNECT reply: in.ok = INITIATED accepted */
     CTRL_EV_START_ACK,     /* START reply: in.ok = STARTED */
-    CTRL_EV_RESUME_DONE,   /* radio resume was dispatched */
+    CTRL_EV_RESUME_DONE,   /* radio resume completed successfully (FIX3 9.5:
+                            * volume set, station found, play enqueued) */
+    CTRL_EV_RESUME_FAILED, /* radio resume did not fully succeed (FIX3 9.5) —
+                            * the BT link itself is still up, so this still
+                            * advances to RUNNING, but is a distinct,
+                            * truthful outcome from RESUME_DONE */
 } ctrl_event_t;
 
 typedef enum {
