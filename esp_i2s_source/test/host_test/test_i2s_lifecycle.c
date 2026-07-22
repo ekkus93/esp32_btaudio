@@ -227,12 +227,47 @@ esp_err_t i2s_channel_disable(i2s_chan_handle_t handle)
     return s_disable_result;
 }
 
-esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size,
-                           size_t *bytes_written, TickType_t ticks)
+/* Scripted write results for driving writer_step() directly (the task loop
+ * itself never runs under the mocked scheduler). Each queued entry supplies
+ * (err, written); once drained, writes succeed in full. The mock also
+ * captures the timeout argument VERBATIM — i2s_channel_write() takes
+ * MILLISECONDS, and this target compiles with configTICK_RATE_HZ=100 so a
+ * reintroduced pdMS_TO_TICKS() double-conversion shows up as 10 instead of
+ * 100 (the exact 2026-07-22 DMA-starvation bug). */
+#define WRITE_SCRIPT_MAX 8
+static struct { esp_err_t err; size_t written; } s_write_script[WRITE_SCRIPT_MAX];
+static int s_write_script_len;
+static int s_write_script_pos;
+static uint32_t s_write_last_timeout_arg;
+
+static void mock_write_reset(void)
 {
-    (void)handle; (void)src; (void)ticks;
+    s_write_script_len = s_write_script_pos = 0;
+    s_write_last_timeout_arg = 0;
+}
+
+static void mock_write_queue(esp_err_t err, size_t written)
+{
+    TEST_ASSERT_LESS_THAN(WRITE_SCRIPT_MAX, s_write_script_len);
+    s_write_script[s_write_script_len].err = err;
+    s_write_script[s_write_script_len].written = written;
+    s_write_script_len++;
+}
+
+esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size,
+                           size_t *bytes_written, TickType_t timeout)
+{
+    (void)handle; (void)src;
+    s_write_last_timeout_arg = (uint32_t)timeout;
+    if (s_write_script_pos < s_write_script_len) {
+        int idx = s_write_script_pos++;
+        size_t w = s_write_script[idx].written;
+        if (w > size) w = size;
+        if (bytes_written) *bytes_written = w;
+        return s_write_script[idx].err;
+    }
     if (bytes_written) *bytes_written = size;
-    return ESP_OK; /* writer_task() never actually runs in these tests */
+    return ESP_OK;
 }
 
 esp_err_t i2s_del_channel(i2s_chan_handle_t handle)
@@ -294,6 +329,7 @@ void setUp(void)
     mock_evt_queue_reset();
     reset_task_mock();
     reset_i2s_driver_mock();
+    mock_write_reset();
 }
 
 void tearDown(void)
@@ -506,6 +542,81 @@ void test_missing_clock_timeout_does_not_overwrite_last_error(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, after.last_error);
 }
 
+/* ---- 2026-07-22 DMA-starvation regression proofs ----
+ * The bug: i2s_channel_write() was handed pdMS_TO_TICKS(100) though the API
+ * takes milliseconds (double conversion -> 1-tick timeout -> constant
+ * spurious timeouts), and every timeout was treated as "no clock" with a
+ * 100 ms nap — starving the DMA to ~1/3 of the wire rate while the hardware
+ * replayed stale buffers as audible static. These tests drive the real
+ * writer-loop body directly via i2s_test_writer_step(). */
+
+/* Bring the module to RUNNING with a live (mocked) writer so writer_step()
+ * has a ring/channel/event-group to operate on. */
+static void init_running(void)
+{
+    init_idle();
+    s_sim_writer = SIM_RUNNING;
+    TEST_ASSERT_EQUAL(ESP_OK, i2s_out_start());
+    TEST_ASSERT_EQUAL(I2S_STATE_RUNNING, i2s_out_get_state());
+}
+
+void test_write_timeout_is_milliseconds(void)
+{
+    /* This target compiles with configTICK_RATE_HZ=100, so
+     * pdMS_TO_TICKS(100) == 10 != 100. If anyone reintroduces the
+     * double conversion, the captured argument becomes 10 and this fails. */
+    TEST_ASSERT_EQUAL_UINT32(10, pdMS_TO_TICKS(100)); /* sanity: mock tick rate */
+
+    init_running();
+    TEST_ASSERT_TRUE(i2s_test_writer_step());
+    TEST_ASSERT_EQUAL_UINT32(100, s_write_last_timeout_arg);
+}
+
+void test_timeout_with_progress_keeps_running_and_never_naps(void)
+{
+    init_running();
+
+    /* DMA accepted half the block within the window: the clock is provably
+     * present. The writer must stay RUNNING and must NOT take the 100 ms
+     * "no clock" nap (each nap = ~3 full stale-buffer replays on the wire). */
+    mock_write_queue(ESP_ERR_TIMEOUT, 1024);
+    TEST_ASSERT_TRUE(i2s_test_writer_step());
+    TEST_ASSERT_EQUAL(I2S_STATE_RUNNING, i2s_out_get_state());
+    TEST_ASSERT_EQUAL_UINT(0, i2s_test_backoff_naps());
+
+    /* Follow-up full write drains the retained remainder. */
+    TEST_ASSERT_TRUE(i2s_test_writer_step());
+    TEST_ASSERT_EQUAL(I2S_STATE_RUNNING, i2s_out_get_state());
+    TEST_ASSERT_EQUAL_UINT(0, i2s_test_backoff_naps());
+}
+
+void test_timeout_with_zero_written_backs_off_once(void)
+{
+    init_running();
+
+    /* Zero bytes accepted for the whole window: genuinely no clock. The
+     * writer must publish WAITING_FOR_CLOCK and take exactly one backoff
+     * nap per step (never a tight retry loop — SPEC 6.4's 10 Hz cap). */
+    mock_write_queue(ESP_ERR_TIMEOUT, 0);
+    TEST_ASSERT_TRUE(i2s_test_writer_step());
+    TEST_ASSERT_EQUAL(I2S_STATE_WAITING_FOR_CLOCK, i2s_out_get_state());
+    TEST_ASSERT_EQUAL_UINT(1, i2s_test_backoff_naps());
+
+    /* Clock returns: the very next successful write goes back to RUNNING. */
+    TEST_ASSERT_TRUE(i2s_test_writer_step());
+    TEST_ASSERT_EQUAL(I2S_STATE_RUNNING, i2s_out_get_state());
+    TEST_ASSERT_EQUAL_UINT(1, i2s_test_backoff_naps());
+}
+
+void test_write_fault_stops_writer_loop(void)
+{
+    init_running();
+
+    mock_write_queue(ESP_FAIL, 0);
+    TEST_ASSERT_FALSE(i2s_test_writer_step());   /* loop must exit */
+    TEST_ASSERT_EQUAL(I2S_STATE_FAULTED, i2s_out_get_state());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -519,5 +630,10 @@ int main(void)
     RUN_TEST(test_deinit_rejects_every_non_idle_state);
     RUN_TEST(test_peak_ring_statistic_is_populated);
     RUN_TEST(test_missing_clock_timeout_does_not_overwrite_last_error);
+    /* 2026-07-22 DMA-starvation regression proofs */
+    RUN_TEST(test_write_timeout_is_milliseconds);
+    RUN_TEST(test_timeout_with_progress_keeps_running_and_never_naps);
+    RUN_TEST(test_timeout_with_zero_written_backs_off_once);
+    RUN_TEST(test_write_fault_stops_writer_loop);
     return UNITY_END();
 }

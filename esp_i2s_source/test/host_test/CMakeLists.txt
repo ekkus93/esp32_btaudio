@@ -341,6 +341,6 @@ target_include_directories(test_i2s_lifecycle PRIVATE
     ${I2S_OUT_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
-target_compile_definitions(test_i2s_lifecycle PRIVATE UNIT_TEST ESP_PLATFORM)
+target_compile_definitions(test_i2s_lifecycle PRIVATE UNIT_TEST ESP_PLATFORM configTICK_RATE_HZ=100U)
 target_link_libraries(test_i2s_lifecycle unity)
 add_test(NAME test_i2s_lifecycle COMMAND test_i2s_lifecycle)

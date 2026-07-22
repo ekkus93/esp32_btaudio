@@ -125,6 +125,15 @@ void i2s_test_inject_writer_bits(uint32_t bits);
  * exists for teardown() between independent test cases, not to exercise
  * any real lifecycle path. */
 void i2s_test_reset_module_state(void);
+
+/* Run exactly one writer-loop iteration (peek -> i2s_channel_write ->
+ * advance -> publish state). Returns false on a terminal fault. Regression
+ * coverage for the 2026-07-22 DMA-starvation bug: the writer loop body never
+ * executes under the mocked task scheduler, so these hooks are the only way
+ * host tests can exercise its timeout/backoff policy. */
+bool i2s_test_writer_step(void);
+/* Number of 100 ms "no clock" backoff naps taken by writer steps so far. */
+unsigned i2s_test_backoff_naps(void);
 #endif
 #endif /* ESP_PLATFORM */
 

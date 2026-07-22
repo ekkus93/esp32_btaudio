@@ -1939,3 +1939,32 @@ phase below was hardware-smoke-tested without re-asking.
   commit; exact time in git).
 - Pushed to origin/master per user's /commit-push: afad0d75..d2dc7f67 (all 16 FIX3 + i2s-DMA-fix
   commits), then this frontend fix as a follow-up commit (also pushed).
+
+## 2026-07-22T08:05:00Z (approx; exact in git) - Claude Fable 5 - Regression tests for the I2S DMA-starvation bug
+
+- User asked for unit tests so the choppy-audio bug can't silently return. The structural problem:
+  writer_task()'s loop body never executes in host tests (task bodies are mocked), which is exactly
+  why the bug survived every FIX3 gate. Refactor: extracted the loop body into `writer_step()`
+  (pending state moved from task-stack locals to a file-static `writer_pending_t s_wr`, reset by
+  i2s_out_start()/i2s_test_reset_module_state()); writer_task() is now a thin ENTERED/loop/EXITED
+  shell. UNIT_TEST hooks: `i2s_test_writer_step()` drives one real iteration; `i2s_test_backoff_naps()`
+  counts 100ms "no clock" naps. DIAG|I2SWR instrumentation moved into `writer_diag_record()` and
+  gated `ESP_PLATFORM && !UNIT_TEST` (host runs stay quiet).
+- The unit-conversion trap is testable because the mock FreeRTOS.h's configTICK_RATE_HZ is
+  overridable: test_i2s_lifecycle now compiles with configTICK_RATE_HZ=100, so pdMS_TO_TICKS(100)=10
+  and the upgraded i2s_channel_write mock (captures its timeout arg verbatim + scripted err/written
+  results) can tell ms from double-converted ticks.
+- 4 new tests in test_i2s_lifecycle.c (14 total there, 26 suites all green):
+  - test_write_timeout_is_milliseconds — asserts the driver receives 100, not 10. **Verified it
+    catches the real bug**: temporarily reintroducing pdMS_TO_TICKS() made it fail with
+    "Expected 100 Was 10", then reverted.
+  - test_timeout_with_progress_keeps_running_and_never_naps — a partial-progress timeout must stay
+    RUNNING with zero backoff naps (each nap = ~3 stale-buffer replays on the wire).
+  - test_timeout_with_zero_written_backs_off_once — genuine no-clock: WAITING_FOR_CLOCK + exactly
+    one nap, recovery to RUNNING on the next good write.
+  - test_write_fault_stops_writer_loop — non-timeout error faults and exits the loop.
+- Full verify_host.sh (strict+ASan+UBSan+npm) exit 0; refactored firmware reflashed and confirmed
+  byte-identical behavior on hardware (DIAG|I2SWR rate=352,552-352,961B/s, to_zero=0, to_part=0,
+  busy=98%). Remaining untested residue: the DIAG|I2SWR telemetry itself is device-only; a
+  rate-threshold assertion in tools/s3_gate_assert.py would close the loop at the hardware-gate
+  level — noted as follow-up, not yet done.
