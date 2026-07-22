@@ -20,6 +20,17 @@ typedef unsigned int UBaseType_t;
 /* BIT macros for event groups */
 #define BIT0 ((uint32_t)1)
 #define BIT1 ((uint32_t)2)
+#define BIT(x) ((uint32_t)1 << (x))
+
+/* Critical sections are no-ops on host: single-threaded test execution,
+ * no real interrupts to disable. */
+typedef int portMUX_TYPE;
+#define portMUX_INITIALIZER_UNLOCKED 0
+#define taskENTER_CRITICAL(mux) ((void)(mux))
+#define taskEXIT_CRITICAL(mux) ((void)(mux))
+
+#include <assert.h>
+#define configASSERT(x) assert(x)
 
 /* Task priority */
 #define tskIDLE_PRIORITY 0
@@ -31,9 +42,6 @@ typedef unsigned int UBaseType_t;
 #endif
 #define portTICK_PERIOD_MS (1000U / configTICK_RATE_HZ)
 #define pdMS_TO_TICKS(ms) ((TickType_t)((uint32_t)(ms) / portTICK_PERIOD_MS))
-
-/* Simple port spinlock type used by the code (no-op in host tests) */
-typedef int portMUX_TYPE;
 
 /* Forward declarations for event group types (used by radio.c).
  * These are normally in freertos/event_groups.h but radio.c relies on

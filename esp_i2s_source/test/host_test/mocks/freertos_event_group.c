@@ -61,6 +61,15 @@ EventBits_t xEventGroupGetBits(EventGroupHandle_t eg)
     return e->bits;
 }
 
+EventBits_t xEventGroupClearBits(EventGroupHandle_t eg, EventBits_t uxBitsToClear)
+{
+    if (!eg) return 0;
+    mock_event_group_t *e = (mock_event_group_t *)eg;
+    EventBits_t prev = e->bits;
+    e->bits &= ~uxBitsToClear;
+    return prev;
+}
+
 void mock_event_group_set_create_null(int n)
 {
     s_event_group_create_null = n;

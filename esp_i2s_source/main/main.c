@@ -138,7 +138,10 @@ static void audio_out_task(void *arg)
                  * hardware; a bare 1-tick delay is always >= one tick). */
                 i2s_out_stats_t stats;
                 i2s_out_get_stats(&stats);
-                vTaskDelay(stats.state == I2S_STATE_FAULTED ? pdMS_TO_TICKS(100) : 1);
+                bool cannot_drain = stats.state == I2S_STATE_FAULTED ||
+                                    stats.state == I2S_STATE_FAULTED_JOIN_PENDING ||
+                                    stats.state == I2S_STATE_STOPPING;
+                vTaskDelay(cannot_drain ? pdMS_TO_TICKS(100) : 1);
             }
         }
     }

@@ -9,6 +9,7 @@ typedef int nvs_handle_t;
 esp_err_t nvs_open(const char *namespace, int flags, nvs_handle_t *out);
 esp_err_t nvs_get_i32(nvs_handle_t h, const char *key, int32_t *out);
 esp_err_t nvs_set_i32(nvs_handle_t h, const char *key, int32_t val);
+esp_err_t nvs_get_u8(nvs_handle_t h, const char *key, uint8_t *out);
 esp_err_t nvs_set_u8(nvs_handle_t h, const char *key, uint8_t val);
 esp_err_t nvs_commit(nvs_handle_t h);
 void nvs_close(nvs_handle_t h);

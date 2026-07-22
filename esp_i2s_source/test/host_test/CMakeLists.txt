@@ -276,3 +276,23 @@ add_executable(test_web_auth test_web_auth.c ${WEB_UI_DIR}/web_ui_auth_core.c)
 target_include_directories(test_web_auth PRIVATE ${WEB_UI_DIR}/include)
 target_link_libraries(test_web_auth unity)
 add_test(NAME test_web_auth COMMAND test_web_auth)
+
+# FIX3 Phase 3: i2s_out.c lifecycle — join-safety, truthful state
+# publication, channel-enabled tracking. Local mocks for the I2S driver,
+# xTaskCreate, and the event group (queue-based wait results) — see
+# test_i2s_lifecycle.c header comment for why. ESP_PLATFORM is defined so
+# i2s_out.h exposes the device API and pcm_ring.c takes its heap_caps
+# branch (mocked, not real PSRAM) against a real driver/i2s_std.h stub.
+add_executable(test_i2s_lifecycle test_i2s_lifecycle.c
+    ${I2S_OUT_DIR}/i2s_out.c
+    ${I2S_OUT_DIR}/i2s_out_pump.c
+    ${I2S_OUT_DIR}/pcm_ring.c
+    mocks/fake_semphr.c
+    mocks/fake_esp_err.c)
+target_include_directories(test_i2s_lifecycle PRIVATE
+    ${I2S_OUT_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_i2s_lifecycle PRIVATE UNIT_TEST ESP_PLATFORM)
+target_link_libraries(test_i2s_lifecycle unity)
+add_test(NAME test_i2s_lifecycle COMMAND test_i2s_lifecycle)

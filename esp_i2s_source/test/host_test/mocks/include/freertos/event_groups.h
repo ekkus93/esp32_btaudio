@@ -28,6 +28,7 @@ EventBits_t xEventGroupWaitBits(EventGroupHandle_t eg,
                                 BaseType_t xWaitForAllBits,
                                 TickType_t xTicksToWait);
 EventBits_t xEventGroupGetBits(EventGroupHandle_t eg);
+EventBits_t xEventGroupClearBits(EventGroupHandle_t eg, EventBits_t uxBitsToClear);
 
 /* Test injection hooks */
 void mock_event_group_set_create_null(int n); /* return NULL for next N creations */

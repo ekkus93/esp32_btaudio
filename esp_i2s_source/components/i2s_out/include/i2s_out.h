@@ -35,7 +35,10 @@ extern "C" {
 #define I2S_OUT_GPIO_WS          16
 #define I2S_OUT_GPIO_DOUT        7
 
-/* Lifecycle state (TODO 3.1/3.7). */
+/* Lifecycle state (TODO 3.1/3.7). FAULTED_JOIN_PENDING means the writer
+ * task may still be running and may still access s_ring/s_tx_chan/s_events
+ * — deinit is forbidden in this state; only a retried stop()/start() may
+ * attempt the join again. */
 typedef enum {
     I2S_STATE_UNINITIALIZED = 0,
     I2S_STATE_IDLE,
@@ -44,6 +47,7 @@ typedef enum {
     I2S_STATE_WAITING_FOR_CLOCK,
     I2S_STATE_STOPPING,
     I2S_STATE_FAULTED,
+    I2S_STATE_FAULTED_JOIN_PENDING,
 } i2s_out_state_t;
 
 typedef struct {
@@ -101,6 +105,27 @@ i2s_out_state_t i2s_out_get_state(void);
 void       i2s_out_gain_load(void);   /* restore persisted gain; called by init */
 esp_err_t  i2s_out_set_gain(int pct);
 int        i2s_out_get_gain(void);
+
+/* ---- Test injection hooks (TODO 3.7) ----
+ * Since a mocked xTaskCreate() does not actually run the writer, host tests
+ * simulate what the writer would publish via these. uint32_t (not
+ * EventBits_t) to keep FreeRTOS event-group types out of this header. Bit
+ * values match I2S_EVT_WRITER_* in i2s_out.c. */
+void i2s_test_inject_writer_state(i2s_out_state_t state, esp_err_t err);
+void i2s_test_inject_writer_bits(uint32_t bits);
+#define I2S_TEST_EVT_WRITER_ENTERED ((uint32_t)1)
+#define I2S_TEST_EVT_WRITER_READY   ((uint32_t)2)
+#define I2S_TEST_EVT_WRITER_EXITED  ((uint32_t)4)
+
+#ifdef UNIT_TEST
+/* Test-isolation only (never compiled into production): force every
+ * module static back to its pre-init state regardless of the current
+ * lifecycle state, so each test starts clean. Unlike the injection hooks
+ * above, this deliberately bypasses the safety gates under test — it
+ * exists for teardown() between independent test cases, not to exercise
+ * any real lifecycle path. */
+void i2s_test_reset_module_state(void);
+#endif
 #endif /* ESP_PLATFORM */
 
 #ifdef __cplusplus

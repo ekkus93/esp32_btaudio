@@ -52,9 +52,14 @@ static const char *TAG = "i2s_out";
 #define I2S_WRITE_TIMEOUT_MS 100
 #define I2S_STOP_TIMEOUT_MS  500
 
-/* Event-group bits */
-#define I2S_EVT_WRITER_STARTED BIT(0)
-#define I2S_EVT_WRITER_EXITED  BIT(1)
+/* Event-group bits (TODO 3.2): ENTERED (task alive) is distinct from READY
+ * (writer has published its first operational state: RUNNING after a
+ * successful write, WAITING_FOR_CLOCK after a timeout, or FAULTED after a
+ * non-timeout error) — i2s_out_start() must wait for READY, not merely
+ * ENTERED, before it can trust the published state. */
+#define I2S_EVT_WRITER_ENTERED BIT(0)
+#define I2S_EVT_WRITER_READY   BIT(1)
+#define I2S_EVT_WRITER_EXITED  BIT(2)
 
 static i2s_chan_handle_t     s_tx_chan;
 static pcm_ring_t            *s_ring;
@@ -65,15 +70,29 @@ static EventGroupHandle_t    s_events;
 static SemaphoreHandle_t     s_lifecycle_mtx;
 static i2s_out_stats_t       s_stats;
 static portMUX_TYPE          s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
+/* Protected by s_lifecycle_mtx. True only after i2s_channel_enable()
+ * returned ESP_OK; becomes false only after i2s_channel_disable() returns
+ * ESP_OK. Tracked independently of s_state so deinit's "channel disabled"
+ * check never has to infer it from a lifecycle state name. */
+static bool                  s_channel_enabled;
 
-static void i2s_set_state(i2s_out_state_t state, esp_err_t err)
+/* Publish a non-terminal state (RUNNING/WAITING_FOR_CLOCK/STARTING/
+ * STOPPING/IDLE) without touching last_error. */
+static void i2s_set_state(i2s_out_state_t state)
 {
     atomic_store(&s_state, state);
-    if (err != ESP_OK) {
-        taskENTER_CRITICAL(&s_stats_mux);
-        s_stats.last_error = (int)err;
-        taskEXIT_CRITICAL(&s_stats_mux);
-    }
+}
+
+/* Publish a terminal-fault state and record the error that caused it. A
+ * missing-clock timeout is NOT terminal — it goes through i2s_set_state(),
+ * not this, so last_error keeps reporting the most recent *real* driver/
+ * lifecycle failure (TODO 3.6 / spec §6.6). */
+static void i2s_set_faulted(esp_err_t err)
+{
+    atomic_store(&s_state, I2S_STATE_FAULTED);
+    taskENTER_CRITICAL(&s_stats_mux);
+    s_stats.last_error = (int)err;
+    taskEXIT_CRITICAL(&s_stats_mux);
 }
 
 /* Short critical section: struct-field updates only, never a driver call
@@ -105,8 +124,9 @@ static void writer_task(void *arg)
     uint8_t pending[I2S_OUT_BLOCK_BYTES];
     size_t pending_len = 0;
     size_t pending_real = 0;
+    bool first_result = true;
 
-    xEventGroupSetBits(s_events, I2S_EVT_WRITER_STARTED);
+    xEventGroupSetBits(s_events, I2S_EVT_WRITER_ENTERED);
 
     while (!atomic_load(&s_stop_requested)) {
         if (pending_len == 0) {
@@ -140,22 +160,106 @@ static void writer_task(void *arg)
 
         if (err == ESP_ERR_TIMEOUT) {
             /* No external clock (yet). Retain pending, back off, retry —
-             * never faster than 10 Hz (SPEC §6.4). */
-            i2s_set_state(I2S_STATE_WAITING_FOR_CLOCK, err);
+             * never faster than 10 Hz (SPEC §6.4). Not a terminal error:
+             * last_error is untouched (I2S-006 / spec §6.6). */
+            i2s_set_state(I2S_STATE_WAITING_FOR_CLOCK);
+            if (first_result) {
+                xEventGroupSetBits(s_events, I2S_EVT_WRITER_READY);
+                first_result = false;
+            }
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
         if (err != ESP_OK) {
-            i2s_set_state(I2S_STATE_FAULTED, err);
+            i2s_set_faulted(err);
+            if (first_result) {
+                xEventGroupSetBits(s_events, I2S_EVT_WRITER_READY);
+                first_result = false;
+            }
             break;
         }
-        i2s_set_state(I2S_STATE_RUNNING, ESP_OK);
+        i2s_set_state(I2S_STATE_RUNNING);
+        if (first_result) {
+            xEventGroupSetBits(s_events, I2S_EVT_WRITER_READY);
+            first_result = false;
+        }
     }
 
-    s_writer_task = NULL;
+    /* Lifecycle code (join_writer_locked()) clears s_writer_task after
+     * observing EXITED — the worker is not the source of truth for safe
+     * reclamation (TODO 3.2). Resources (s_ring/s_tx_chan/s_events) are
+     * never freed here. */
     xEventGroupSetBits(s_events, I2S_EVT_WRITER_EXITED);
     vTaskDelete(NULL);
 }
+
+/* Wait up to `timeout` for the writer to signal EXITED. Must be called with
+ * s_lifecycle_mtx held. On success, clears s_writer_task (lifecycle code
+ * owns this handle, not the worker — TODO 3.2/3.3) and returns ESP_OK. On
+ * timeout, publishes FAULTED_JOIN_PENDING and returns ESP_ERR_TIMEOUT
+ * WITHOUT touching s_writer_task/s_ring/s_tx_chan/s_events — a timeout
+ * means ownership is unresolved, never permission to force-free (spec
+ * §4.1). Safe to call with no writer task (returns ESP_OK immediately). */
+static esp_err_t join_writer_locked(TickType_t timeout)
+{
+    if (!s_writer_task) {
+        return ESP_OK;
+    }
+
+    EventBits_t bits = xEventGroupWaitBits(s_events, I2S_EVT_WRITER_EXITED,
+                                           pdFALSE, pdTRUE, timeout);
+    if ((bits & I2S_EVT_WRITER_EXITED) == 0) {
+        atomic_store(&s_state, I2S_STATE_FAULTED_JOIN_PENDING);
+        return ESP_ERR_TIMEOUT;
+    }
+
+    s_writer_task = NULL;
+    return ESP_OK;
+}
+
+/* ---- Test injection hooks (TODO 3.7) — see i2s_out.h. ---- */
+void i2s_test_inject_writer_state(i2s_out_state_t state, esp_err_t err)
+{
+    if (err == ESP_OK) {
+        i2s_set_state(state);
+    } else {
+        i2s_set_faulted(err);
+    }
+}
+
+void i2s_test_inject_writer_bits(uint32_t bits)
+{
+    if (s_events) {
+        xEventGroupSetBits(s_events, (EventBits_t)bits);
+    }
+}
+
+#ifdef UNIT_TEST
+void i2s_test_reset_module_state(void)
+{
+    if (s_tx_chan) {
+        i2s_del_channel(s_tx_chan);
+        s_tx_chan = NULL;
+    }
+    if (s_events) {
+        vEventGroupDelete(s_events);
+        s_events = NULL;
+    }
+    if (s_ring) {
+        pcm_ring_destroy(s_ring);
+        s_ring = NULL;
+    }
+    if (s_lifecycle_mtx) {
+        vSemaphoreDelete(s_lifecycle_mtx);
+        s_lifecycle_mtx = NULL;
+    }
+    s_writer_task = NULL;
+    s_channel_enabled = false;
+    atomic_store(&s_stop_requested, false);
+    atomic_store(&s_state, I2S_STATE_UNINITIALIZED);
+    memset(&s_stats, 0, sizeof(s_stats));
+}
+#endif
 
 esp_err_t i2s_out_init(size_t ring_capacity_bytes)
 {
@@ -269,39 +373,86 @@ esp_err_t i2s_out_start(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    atomic_store(&s_state, I2S_STATE_STARTING);
-    xEventGroupClearBits(s_events, I2S_EVT_WRITER_STARTED | I2S_EVT_WRITER_EXITED);
+    xEventGroupClearBits(s_events,
+                         I2S_EVT_WRITER_ENTERED | I2S_EVT_WRITER_READY | I2S_EVT_WRITER_EXITED);
+    taskENTER_CRITICAL(&s_stats_mux);
+    s_stats.last_error = 0;   /* clear for this attempt (TODO 3.4) */
+    taskEXIT_CRITICAL(&s_stats_mux);
+    i2s_set_state(I2S_STATE_STARTING);
 
     esp_err_t err = i2s_channel_enable(s_tx_chan);
     if (err != ESP_OK) {
-        atomic_store(&s_state, I2S_STATE_IDLE);
+        i2s_set_state(I2S_STATE_IDLE);
         xSemaphoreGive(s_lifecycle_mtx);
         return err;
     }
+    s_channel_enabled = true;
 
     atomic_store(&s_stop_requested, false);
     if (xTaskCreate(writer_task, "i2s_out_wr", I2S_OUT_TASK_STACK, NULL,
                     I2S_OUT_TASK_PRIO, &s_writer_task) != pdPASS) {
-        atomic_store(&s_state, I2S_STATE_IDLE);
-        i2s_channel_disable(s_tx_chan);
+        esp_err_t disable_err = i2s_channel_disable(s_tx_chan);
+        if (disable_err == ESP_OK) {
+            s_channel_enabled = false;
+            i2s_set_state(I2S_STATE_IDLE);
+            xSemaphoreGive(s_lifecycle_mtx);
+            return ESP_ERR_NO_MEM;
+        }
+        i2s_set_faulted(disable_err);
         xSemaphoreGive(s_lifecycle_mtx);
-        return ESP_ERR_NO_MEM;
+        return disable_err;
     }
 
-    /* Wait for the writer to actually start before reporting success
-     * (I2S-004): i2s_out_start() must not return RUNNING before the writer
-     * has acknowledged it's alive. */
-    EventBits_t bits = xEventGroupWaitBits(s_events, I2S_EVT_WRITER_STARTED,
-                                           pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
-    if ((bits & I2S_EVT_WRITER_STARTED) == 0) {
+    /* Wait for the writer's first operational-state publication, not
+     * merely task entry (TODO 3.2/3.4) — i2s_out_start() must never
+     * unconditionally store RUNNING. */
+    EventBits_t bits = xEventGroupWaitBits(
+        s_events, I2S_EVT_WRITER_READY | I2S_EVT_WRITER_EXITED,
+        pdFALSE, pdFALSE, pdMS_TO_TICKS(1000));
+
+    if ((bits & (I2S_EVT_WRITER_READY | I2S_EVT_WRITER_EXITED)) == 0) {
+        /* Writer hasn't published anything yet. Cancel the attempt: request
+         * stop, join, and disable — never leave STARTING indefinitely. */
         atomic_store(&s_stop_requested, true);
+        esp_err_t join_err = join_writer_locked(pdMS_TO_TICKS(I2S_STOP_TIMEOUT_MS));
+        if (join_err != ESP_OK) {
+            /* join_writer_locked() already published FAULTED_JOIN_PENDING
+             * and retained everything. */
+            xSemaphoreGive(s_lifecycle_mtx);
+            return ESP_ERR_TIMEOUT;
+        }
+        esp_err_t disable_err = ESP_OK;
+        if (s_channel_enabled) {
+            disable_err = i2s_channel_disable(s_tx_chan);
+            if (disable_err == ESP_OK) {
+                s_channel_enabled = false;
+            }
+        }
+        if (disable_err == ESP_OK) {
+            i2s_set_state(I2S_STATE_IDLE);
+        } else {
+            i2s_set_faulted(disable_err);
+        }
         xSemaphoreGive(s_lifecycle_mtx);
         return ESP_ERR_TIMEOUT;
     }
 
-    atomic_store(&s_state, I2S_STATE_RUNNING);
+    /* The writer published a state before we timed out — read it rather
+     * than assuming success (TODO 3.4). */
+    i2s_out_state_t observed = atomic_load(&s_state);
+    esp_err_t result;
+    if (observed == I2S_STATE_RUNNING || observed == I2S_STATE_WAITING_FOR_CLOCK) {
+        result = ESP_OK;
+    } else {
+        taskENTER_CRITICAL(&s_stats_mux);
+        result = (esp_err_t)s_stats.last_error;
+        taskEXIT_CRITICAL(&s_stats_mux);
+        if (result == ESP_OK) {
+            result = ESP_FAIL;   /* defensive: FAULTED must have a recorded cause */
+        }
+    }
     xSemaphoreGive(s_lifecycle_mtx);
-    return ESP_OK;
+    return result;
 }
 
 esp_err_t i2s_out_stop(void)
@@ -314,34 +465,45 @@ esp_err_t i2s_out_stop(void)
         xSemaphoreGive(s_lifecycle_mtx);
         return ESP_OK;  /* idempotent while already stopped */
     }
-    if (state != I2S_STATE_RUNNING && state != I2S_STATE_WAITING_FOR_CLOCK &&
-        state != I2S_STATE_FAULTED) {
+    /* STARTING and FAULTED_JOIN_PENDING are legal here too: STARTING lets a
+     * caller cancel an in-progress start, and JOIN_PENDING lets a caller
+     * retry a previously timed-out join (TODO 3.5). */
+    if (state != I2S_STATE_STARTING && state != I2S_STATE_RUNNING &&
+        state != I2S_STATE_WAITING_FOR_CLOCK && state != I2S_STATE_FAULTED &&
+        state != I2S_STATE_FAULTED_JOIN_PENDING) {
         xSemaphoreGive(s_lifecycle_mtx);
         return ESP_ERR_INVALID_STATE;
     }
 
-    atomic_store(&s_state, I2S_STATE_STOPPING);
+    i2s_set_state(I2S_STATE_STOPPING);
     atomic_store(&s_stop_requested, true);
 
-    /* Wait for the writer task to actually exit (signalled via event group).
-     * If it already exited on its own (the FAULTED path), the bit is
-     * already set and this returns immediately. */
-    EventBits_t bits = xEventGroupWaitBits(s_events, I2S_EVT_WRITER_EXITED,
-                                           pdTRUE, pdFALSE,
-                                           pdMS_TO_TICKS(I2S_STOP_TIMEOUT_MS));
-    if (!(bits & I2S_EVT_WRITER_EXITED)) {
-        /* Timeout: the writer didn't exit in time. Retain handle/resources —
-         * FAULTED does not imply safe reclamation (SPEC §4.2). */
+    /* join_writer_locked() clears s_writer_task on success and publishes
+     * FAULTED_JOIN_PENDING (retaining every resource) on timeout — including
+     * when this is a retry of an already-JOIN_PENDING state. */
+    esp_err_t join_err = join_writer_locked(pdMS_TO_TICKS(I2S_STOP_TIMEOUT_MS));
+    if (join_err != ESP_OK) {
         ESP_LOGW(TAG, "writer stop timed out after %d ms", I2S_STOP_TIMEOUT_MS);
-        atomic_store(&s_state, I2S_STATE_FAULTED);
         xSemaphoreGive(s_lifecycle_mtx);
-        return ESP_ERR_TIMEOUT;
+        return join_err;
     }
 
-    xEventGroupClearBits(s_events, I2S_EVT_WRITER_STARTED);
+    xEventGroupClearBits(s_events, I2S_EVT_WRITER_ENTERED | I2S_EVT_WRITER_READY);
 
-    esp_err_t err = i2s_channel_disable(s_tx_chan);
-    atomic_store(&s_state, I2S_STATE_IDLE);
+    esp_err_t err = ESP_OK;
+    if (s_channel_enabled) {
+        err = i2s_channel_disable(s_tx_chan);
+        if (err == ESP_OK) {
+            s_channel_enabled = false;
+        }
+    }
+    if (err == ESP_OK) {
+        i2s_set_state(I2S_STATE_IDLE);
+    } else {
+        /* Channel-enabled stays true — a later stop()/recovery retry can
+         * attempt disable() again (TODO 3.5/6.4). */
+        i2s_set_faulted(err);
+    }
     xSemaphoreGive(s_lifecycle_mtx);
     return err;
 }
@@ -356,14 +518,24 @@ esp_err_t i2s_out_deinit(void)
         xSemaphoreGive(s_lifecycle_mtx);
         return ESP_OK;
     }
-    if (state == I2S_STATE_STARTING || state == I2S_STATE_RUNNING ||
-        state == I2S_STATE_WAITING_FOR_CLOCK) {
+    /* Legal only once the writer's exit is acknowledged, the lifecycle
+     * owner has cleared its task handle, and the channel is confirmed
+     * disabled (TODO 3.5 / spec §6.5) — never while a worker might still
+     * touch s_ring/s_tx_chan/s_events. */
+    if (state != I2S_STATE_IDLE || s_writer_task || s_channel_enabled) {
         xSemaphoreGive(s_lifecycle_mtx);
-        return ESP_ERR_INVALID_STATE;  /* stop() first — writer may still be alive */
+        return ESP_ERR_INVALID_STATE;
     }
 
     if (s_tx_chan) {
-        i2s_del_channel(s_tx_chan);
+        esp_err_t err = i2s_del_channel(s_tx_chan);
+        if (err != ESP_OK) {
+            /* Propagate the failure; do not touch s_events/s_ring — the
+             * channel handle itself is still whatever i2s_del_channel()
+             * left it as (TODO 3.5). */
+            xSemaphoreGive(s_lifecycle_mtx);
+            return err;
+        }
         s_tx_chan = NULL;
     }
     if (s_events) {
@@ -456,4 +628,5 @@ void i2s_out_get_stats(i2s_out_stats_t *out)
     out->state = atomic_load(&s_state);
     out->ring_used = s_ring ? pcm_ring_used(s_ring) : 0;
     out->ring_capacity = s_ring ? pcm_ring_capacity(s_ring) : 0;
+    out->ring_peak = s_ring ? pcm_ring_peak_used(s_ring) : 0;
 }

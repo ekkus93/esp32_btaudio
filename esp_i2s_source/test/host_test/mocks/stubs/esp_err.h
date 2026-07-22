@@ -4,6 +4,7 @@
 #include <stdint.h>
 typedef int32_t esp_err_t;
 #define ESP_OK            (0)
+#define ESP_FAIL          (-6)
 #define ESP_ERR_NO_MEM    (-1)
 #define ESP_ERR_TIMEOUT   (-2)
 #define ESP_ERR_INVALID_STATE (-3)
