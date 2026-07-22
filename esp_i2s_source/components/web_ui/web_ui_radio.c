@@ -56,6 +56,14 @@ esp_err_t radio_post(httpd_req_t *req)
         return web_send_error(req, "400 Bad Request", "INVALID_URL", "missing url", false);
     }
 
+    /* FIX3 §8.6/URL-001: direct play must pass the same syntax + literal-IP
+     * SSRF policy as stored stations — this was previously bypassed
+     * entirely (radio_play_async() was called with no validation at all). */
+    if (station_validate_url(url_copy) != STATION_OK) {
+        return web_send_error(req, "400 Bad Request", "INVALID_URL",
+                              "url rejected by destination policy", false);
+    }
+
     /* Queue the play command (RH-S3-09). */
     esp_err_t err = radio_play_async(url_copy);
     if (note_err != ESP_OK) {

@@ -1,5 +1,6 @@
 /* station_store — pure preset CRUD. See station_store.h. */
 #include "station_store.h"
+#include "url_policy.h"
 
 #include <string.h>
 #include <ctype.h>
@@ -10,7 +11,9 @@ void station_store_init(station_store_t *s)
     s->count = 0;
 }
 
-/* Check whether a URL is valid for station use. Returns STATION_OK if valid. */
+/* Check whether a URL is valid for station use. Returns STATION_OK if valid.
+ * Includes the literal-IP destination policy (FIX3 §8.6/URL-001) — a
+ * hostname passes here and is checked again at DNS time, device-side. */
 station_result_t station_validate_url(const char *url)
 {
     if (!url) return STATION_ERR_INVALID_ARG;
@@ -25,10 +28,14 @@ station_result_t station_validate_url(const char *url)
     }
 
     /* Require http:// or https:// scheme. */
-    if (strncasecmp(url, "http://", 7) == 0 || strncasecmp(url, "https://", 8) == 0) {
-        return STATION_OK;
+    if (strncasecmp(url, "http://", 7) != 0 && strncasecmp(url, "https://", 8) != 0) {
+        return STATION_ERR_INVALID_URL;
     }
-    return STATION_ERR_INVALID_URL;
+
+    if (!url_policy_check_literal(url)) {
+        return STATION_ERR_INVALID_URL;
+    }
+    return STATION_OK;
 }
 
 bool station_url_valid(const char *url)

@@ -1323,7 +1323,7 @@ A 12 KiB candidate on stack may be unsafe. Allocate large candidates from approp
 
 ---
 
-## 5.8 Implement pure IP address policy
+## 5.8 Implement pure IP address policy — DONE (Phase 5B, commit pending; redirect/reconnect-specific interception deferred to Phase 8, which owns the HTTP client internals)
 
 **Add:**
 
@@ -1362,7 +1362,7 @@ Tests must include boundary addresses immediately inside and outside every range
 
 ---
 
-## 5.9 Apply policy to syntax, DNS, redirects, and reconnects
+## 5.9 Apply policy to syntax, DNS, redirects, and reconnects — DONE (Phase 5B, commit pending; redirect/reconnect-specific interception deferred to Phase 8, which owns the HTTP client internals)
 
 `station_validate_url()` remains pure for:
 
