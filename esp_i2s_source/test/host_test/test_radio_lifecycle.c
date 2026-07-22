@@ -623,6 +623,11 @@ void test_stale_generation_cannot_update_state(void);
 void test_cmd_worker_exit_timeout_retains_resources(void);
 void test_fresh_missing_prebuffer_key_yields_default(void);
 void test_ring_alloc_failure_no_malloc_fallback(void);
+/* FIX3 Phase 8 */
+void test_resolve_direct_url_public_ip_passes(void);
+void test_resolve_direct_url_private_ip_blocked(void);
+void test_resolve_query_string_containing_playlist_word_is_direct(void);
+void test_resolve_pls_extension_case_insensitive_before_query(void);
 
 int main(void)
 {
@@ -672,5 +677,10 @@ int main(void)
     RUN_TEST(test_cmd_worker_exit_timeout_retains_resources);
     RUN_TEST(test_fresh_missing_prebuffer_key_yields_default);
     RUN_TEST(test_ring_alloc_failure_no_malloc_fallback);
+    /* FIX3 Phase 8 */
+    RUN_TEST(test_resolve_direct_url_public_ip_passes);
+    RUN_TEST(test_resolve_direct_url_private_ip_blocked);
+    RUN_TEST(test_resolve_query_string_containing_playlist_word_is_direct);
+    RUN_TEST(test_resolve_pls_extension_case_insensitive_before_query);
     return UNITY_END();
 }

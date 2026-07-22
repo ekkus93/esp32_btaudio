@@ -40,6 +40,7 @@ void mock_task_set_cmd_auto_exit(bool auto_exit);
 unsigned mock_task_create_count(void);
 unsigned mock_heap_caps_call_count(void);
 void mock_heap_caps_set_fail_size(size_t size);
+void mock_http_client_set_init_fail(int val);
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -560,4 +561,47 @@ void test_ring_alloc_failure_no_malloc_fallback(void)
     mock_heap_caps_set_fail_size(0);
     err = radio_init(64 * 1024);
     TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* ---- FIX3 8.2: typed, fail-closed input resolution ---- */
+
+void test_resolve_direct_url_public_ip_passes(void)
+{
+    radio_resolution_t out;
+    esp_err_t err = radio_resolve_input("http://example.com/stream.mp3", &out);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(RADIO_INPUT_DIRECT, out.kind);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/stream.mp3", out.resolved_url);
+}
+
+void test_resolve_direct_url_private_ip_blocked(void)
+{
+    radio_resolution_t out;
+    esp_err_t err = radio_resolve_input("http://192.168.1.1/stream.mp3", &out);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, err);
+}
+
+void test_resolve_query_string_containing_playlist_word_is_direct(void)
+{
+    /* "playlist" appearing only in the query string must not trigger
+     * playlist-fetch classification (8.2: detect the extension on the path,
+     * before query/fragment). */
+    radio_resolution_t out;
+    esp_err_t err = radio_resolve_input("http://example.com/stream?ref=playlist", &out);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(RADIO_INPUT_DIRECT, out.kind);
+}
+
+void test_resolve_pls_extension_case_insensitive_before_query(void)
+{
+    /* A .PLS (any case) path extension, even with a trailing query string,
+     * must classify as a playlist -- fetched via the mocked HTTP client
+     * (which is configured to fail alloc here, so we only assert on the
+     * classification/failure path, not full playlist parsing). */
+    mock_http_client_set_init_fail(1);
+    radio_resolution_t out;
+    esp_err_t err = radio_resolve_input("http://example.com/station.PLS?x=1", &out);
+    TEST_ASSERT_EQUAL(RADIO_INPUT_PLAYLIST, out.kind);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+    mock_http_client_set_init_fail(0);
 }

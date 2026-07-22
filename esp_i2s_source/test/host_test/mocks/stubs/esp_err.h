@@ -10,6 +10,7 @@ typedef int32_t esp_err_t;
 #define ESP_ERR_INVALID_STATE (-3)
 #define ESP_ERR_INVALID_ARG (-4)
 #define ESP_ERR_INVALID_SIZE (-5)
+#define ESP_ERR_NOT_FOUND     (0x105)
 #define ESP_ERR_INVALID_CRC  (0x109)
 /* NVS-specific errors (matching ESP-IDF error codes) */
 #define ESP_ERR_NVS_NO_FREE_KEYS    (-101)

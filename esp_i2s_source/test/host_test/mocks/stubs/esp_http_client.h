@@ -2,6 +2,7 @@
 #ifndef STUB_ESP_HTTP_CLIENT_H
 #define STUB_ESP_HTTP_CLIENT_H
 #include "esp_err.h"
+#include <stdbool.h>
 
 /* Handle type — matches ESP-IDF convention (void *) */
 typedef void *esp_http_client_handle_t;
@@ -24,6 +25,7 @@ typedef struct {
     esp_err_t (*crt_bundle_attach)(void *conf);
     const char *user_agent;
     int buffer_size;
+    bool disable_auto_redirect;
 } esp_http_client_config_t;
 
 esp_http_client_handle_t esp_http_client_init(void *cfg);

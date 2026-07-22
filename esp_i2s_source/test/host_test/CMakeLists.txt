@@ -195,6 +195,7 @@ add_executable(test_radio_lifecycle test_radio_lifecycle.c
     ${RADIO_DIR}/radio_decode.c
     ${RADIO_DIR}/radio_parse.c
     ${RADIO_DIR}/radio_resampler.c
+    ${RADIO_DIR}/url_policy.c
     mocks/freertos_event_group.c
     mocks/fake_semphr.c
     mocks/fake_queue.c

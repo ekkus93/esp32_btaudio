@@ -131,10 +131,28 @@ void radio_set_state_for_generation(uint32_t generation, radio_state_t state);
  * after each sets its own READY bit). */
 void radio_try_publish_running(radio_session_t *s);
 
-/* Fetch a (small) playlist body and resolve to a stream URL; pass through a
- * direct stream URL unchanged. Best-effort: on resolve failure, use as-is.
- * (radio_stream.c; called by radio_play_sync() in radio.c core.) */
-void resolve_url(const char *in, char *out, size_t out_sz);
+/* 8.9: generation-safe worker fault publication. Requests stop and, only if
+ * this session is still the current one, records the error/detail and sets
+ * FAULTED — a stale worker from an already-replaced/stopped session can't
+ * fault a newer generation. Callers still `break` their own loop; this
+ * does not join anything (radio.c core). */
+void radio_session_fault(radio_session_t *s, radio_err_t err, const char *detail);
+
+/* 8.2: typed, fail-closed input resolution — replaces the old best-effort
+ * resolve_url() (which silently fell back to the original playlist URL on
+ * any parse failure). radio_stream.c; called by radio_play_sync() in
+ * radio.c core. Returns the failure directly rather than falling back. */
+typedef enum {
+    RADIO_INPUT_DIRECT = 0,
+    RADIO_INPUT_PLAYLIST,
+} radio_input_kind_t;
+
+typedef struct {
+    radio_input_kind_t kind;
+    char resolved_url[RADIO_URL_MAX];
+} radio_resolution_t;
+
+esp_err_t radio_resolve_input(const char *input, radio_resolution_t *out);
 
 /* Worker task entry points, started via xTaskCreate() from radio_play_sync()
  * in radio.c core. */

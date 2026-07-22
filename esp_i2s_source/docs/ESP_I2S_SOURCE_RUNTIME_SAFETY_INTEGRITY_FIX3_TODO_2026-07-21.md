@@ -2029,7 +2029,7 @@ Required tests:
 
 # Phase 8 — Repair radio reconnect, playlist, HTTP, decoder, and resampler recovery
 
-## 8.1 Replace event-bit backoff with a stop-aware delay
+## 8.1 Replace event-bit backoff with a stop-aware delay — DONE (Phase 8, commit pending)
 
 **File:** `components/radio/radio_stream.c`
 
@@ -2069,7 +2069,7 @@ Reset attempts only after a documented stable-success threshold, not merely task
 
 ---
 
-## 8.2 Make playlist resolution typed and fail closed
+## 8.2 Make playlist resolution typed and fail closed — DONE (Phase 8, commit pending)
 
 Replace a best-effort `resolve_url()` with:
 
@@ -2103,7 +2103,7 @@ Add error details such as `playlist_fetch`, `playlist_parse`, `playlist_empty`, 
 
 ---
 
-## 8.3 Validate redirects explicitly
+## 8.3 Validate redirects explicitly — DONE (Phase 8, commit pending)
 
 Configure HTTP client so redirects are surfaced to code. For each 3xx:
 
@@ -2118,7 +2118,7 @@ Reject redirects to local/private destinations even when initial URL was public.
 
 ---
 
-## 8.4 Classify permanent versus transient stream failures
+## 8.4 Classify permanent versus transient stream failures — DONE (Phase 8, commit pending)
 
 Permanent failures should fault without endless reconnect:
 
@@ -2141,7 +2141,7 @@ Store HTTP status and exact error detail.
 
 ---
 
-## 8.5 Bound decoder-open failures
+## 8.5 Bound decoder-open failures — DONE (Phase 8, commit pending)
 
 **File:** `components/radio/radio_decode.c`
 
@@ -2170,7 +2170,7 @@ Reset counter only after a successful decoder open.
 
 ---
 
-## 8.6 Check decoder info and consumption contracts
+## 8.6 Check decoder info and consumption contracts — DONE (Phase 8, commit pending)
 
 Every decoder call must check return status. Example:
 
@@ -2199,7 +2199,7 @@ No unsigned underflow or buffer advance may occur.
 
 ---
 
-## 8.7 Bound no-progress byte resynchronization
+## 8.7 Bound no-progress byte resynchronization — DONE (Phase 8, commit pending)
 
 Current silent one-byte drops must become explicit and bounded:
 
@@ -2227,7 +2227,7 @@ Expose resync drop count in status if practical.
 
 ---
 
-## 8.8 Check resampler initialization and progress
+## 8.8 Check resampler initialization and progress — DONE (Phase 8, commit pending)
 
 ```c
 esp_err_t err = radio_resampler_init(&rs, in_rate, in_channels,
@@ -2246,7 +2246,7 @@ Never set `rs_ready=true` after failed init.
 
 ---
 
-## 8.9 Make worker fault publication generation-safe
+## 8.9 Make worker fault publication generation-safe — DONE (Phase 8, commit pending)
 
 Add one helper in radio core:
 
@@ -2272,7 +2272,7 @@ If peer worker has not exited, lifecycle may ultimately expose JOIN_PENDING rath
 
 ---
 
-## 8.10 Tests
+## 8.10 Tests — DONE (Phase 8, commit pending)
 
 Required tests:
 

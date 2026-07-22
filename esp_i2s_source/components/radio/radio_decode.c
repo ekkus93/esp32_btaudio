@@ -21,6 +21,12 @@
 
 static const char *TAG = "radio";
 
+/* 8.5/8.7/8.8: bounded failure thresholds — none of these may retry forever. */
+#define DECODER_MAX_OPEN_FAILURES      3u
+#define DECODER_MAX_NO_PROGRESS        64u
+#define DECODER_MAX_RESYNC_DROP_BYTES  4096u
+#define RESAMPLER_MAX_NO_PROGRESS      8u
+
 /* ---- Decoder helpers ---- */
 
 static esp_audio_simple_dec_handle_t open_decoder(radio_codec_t codec)
@@ -55,6 +61,12 @@ void decoder_task(void *arg)
     static int16_t rsbuf[8192];     /* resampled stereo frames (4096 max) */
     size_t pending = 0;
 
+    /* 8.5/8.7: bounded-failure counters, reset on real progress. */
+    unsigned open_failures = 0;
+    unsigned no_progress_count = 0;
+    unsigned resync_drop_bytes = 0;
+    unsigned resampler_no_progress = 0;
+
     /* 7.3: ENTERED fires immediately — before any operational check. */
     xEventGroupSetBits(s->events, RADIO_EVT_DECODER_ENTERED);
 
@@ -74,9 +86,16 @@ void decoder_task(void *arg)
                 xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
                 g_radio_decode_errors++;
                 xSemaphoreGive(g_radio_ring_mtx);
+                /* 8.5: bounded — do not retry decoder-open forever. */
+                open_failures++;
+                if (open_failures >= DECODER_MAX_OPEN_FAILURES) {
+                    radio_session_fault(s, RADIO_ERR_DECODER_OPEN_FAILED, "decoder open threshold");
+                    break;
+                }
                 if (wait_or_stop(s, 200)) break;
                 continue;
             }
+            open_failures = 0;   /* 8.5: reset only after a successful open */
             ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
             /* 7.3/7.8: READY — decoder has opened successfully. Try to
              * promote BUFFERING -> RUNNING (the stream worker may already
@@ -100,10 +119,23 @@ void decoder_task(void *arg)
             esp_audio_err_t err = esp_audio_simple_dec_process(dec, &raw, &out);
             if (err == ESP_AUDIO_ERR_OK && out.decoded_size > 0) {
                 esp_audio_simple_dec_info_t info;
-                esp_audio_simple_dec_get_info(dec, &info);
+                /* 8.6: check the info call itself and the values it reports —
+                 * a decoder returning a bogus sample rate/channel count must
+                 * fault, not silently propagate into the resampler. */
+                esp_err_t info_err = esp_audio_simple_dec_get_info(dec, &info);
+                if (info_err != ESP_OK || info.sample_rate <= 0 ||
+                    (info.channel != 1 && info.channel != 2)) {
+                    radio_session_fault(s, RADIO_ERR_DECODER_CONTRACT, "invalid decoder info");
+                    break;
+                }
                 if (!rs_ready || (int)info.sample_rate != rs.src_rate || info.channel != rs.channels) {
-                    radio_resampler_init(&rs, info.sample_rate, info.channel);
-                    rs_ready = true;
+                    /* 8.8: never set rs_ready=true after a failed init. */
+                    rs_ready = radio_resampler_init(&rs, info.sample_rate, info.channel);
+                    if (!rs_ready) {
+                        radio_session_fault(s, RADIO_ERR_RESAMPLER_STALLED, "resampler init failed");
+                        break;
+                    }
+                    resampler_no_progress = 0;
                     xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
                     g_radio_dec_rate = info.sample_rate;
                     g_radio_dec_ch = info.channel;
@@ -113,6 +145,7 @@ void decoder_task(void *arg)
                 size_t in_frames = out.decoded_size / (size_t)(2 * (info.channel ? info.channel : 1));
                 size_t channels = (info.channel == 1) ? 1 : 2;
                 size_t offset = 0;
+                bool resampler_faulted = false;
                 while (offset < in_frames && session_should_run(s)) {
                     size_t used = 0;
                     size_t of = radio_resampler_run(&rs,
@@ -133,11 +166,22 @@ void decoder_task(void *arg)
                             written += n;
                         }
                         if (written != bytes) break;  /* PCM ring full */
+                        resampler_no_progress = 0;
                     } else if (used == 0) {
-                        break;  /* resampler stalled */
+                        /* 8.8: bounded — a persistently stalled resampler
+                         * must eventually fault, not spin forever. */
+                        resampler_no_progress++;
+                        if (resampler_no_progress >= RESAMPLER_MAX_NO_PROGRESS) {
+                            radio_session_fault(s, RADIO_ERR_RESAMPLER_STALLED, "resampler no progress");
+                            resampler_faulted = true;
+                        }
+                        break;  /* resampler stalled this call */
+                    } else {
+                        resampler_no_progress = 0;
                     }
                     offset += used;
                 }
+                if (resampler_faulted) break;
             } else if (err != ESP_AUDIO_ERR_OK) {
                 xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
                 g_radio_decode_errors++;
@@ -145,11 +189,10 @@ void decoder_task(void *arg)
                 /* 7.8: don't force consumed=1 — let the loop break naturally.
                  * The decoder may need more input, which is handled below. */
             }
-            /* 7.8: validate decoder contract — consumed must not exceed len. */
+            /* 8.9: validate decoder contract — consumed must not exceed len. */
             if (raw.consumed > raw.len) {
                 ESP_LOGW(TAG, "decoder consumed > len (consumed=%u len=%u)", raw.consumed, raw.len);
-                set_radio_error(RADIO_ERR_DECODER_CONTRACT, "decoder consumed beyond input");
-                atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+                radio_session_fault(s, RADIO_ERR_DECODER_CONTRACT, "decoder consumed beyond input");
                 break;
             }
             if (raw.consumed == 0) break;   /* needs more input */
@@ -161,12 +204,25 @@ void decoder_task(void *arg)
 
         /* RH-S3-05: preserve unconsumed decoder tail in accumulation buffer. */
         if (consumed_total > 0) {
+            no_progress_count = 0;
             pending -= consumed_total;
             memmove(inbuf, inbuf + consumed_total, pending);
         } else if (pending == DECODER_INPUT_CAP) {
-            /* No progress and buffer full — resync by dropping one byte. */
+            /* 8.7: no progress and buffer full — resync by dropping one
+             * byte, but only up to a bounded count/total, else fault
+             * rather than dropping input forever. */
+            no_progress_count++;
+            if (no_progress_count >= DECODER_MAX_NO_PROGRESS ||
+                resync_drop_bytes >= DECODER_MAX_RESYNC_DROP_BYTES) {
+                radio_session_fault(s, RADIO_ERR_DECODER_STALLED, "decoder no progress");
+                break;
+            }
             memmove(inbuf, inbuf + 1, (size_t)(pending - 1));
             pending--;
+            resync_drop_bytes++;
+            if ((resync_drop_bytes % 256u) == 1u) {
+                ESP_LOGW(TAG, "decoder resync dropped %u bytes", resync_drop_bytes);
+            }
             xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
             g_radio_decode_errors++;
             xSemaphoreGive(g_radio_ring_mtx);

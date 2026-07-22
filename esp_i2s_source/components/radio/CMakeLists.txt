@@ -10,4 +10,4 @@ idf_component_register(
          "url_policy.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_client esp-tls
-    PRIV_REQUIRES mbedtls nvs_flash espressif__esp_audio_codec lwip)
+    PRIV_REQUIRES mbedtls nvs_flash espressif__esp_audio_codec lwip esp_timer)

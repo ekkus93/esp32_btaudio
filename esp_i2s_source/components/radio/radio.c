@@ -123,6 +123,26 @@ void radio_try_publish_running(radio_session_t *s)
     xSemaphoreGive(g_radio_control_mtx);
 }
 
+/* 8.9: generation-safe fault publication — a stale worker from a session
+ * that's already been replaced/stopped can't fault a newer generation. */
+void radio_session_fault(radio_session_t *s, radio_err_t err, const char *detail)
+{
+    if (!s) return;
+    atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+
+    bool is_current;
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    is_current = (s_active_session == s && s_active_session->generation == s->generation);
+    if (is_current) {
+        g_radio_state = RADIO_STATE_FAULTED;
+    }
+    xSemaphoreGive(g_radio_control_mtx);
+
+    if (is_current) {
+        set_radio_error(err, detail);
+    }
+}
+
 /* ---- Test injection hooks (RH-S3-02) ---- */
 /* Expose event bits for failure injection tests (match above). */
 
@@ -261,6 +281,8 @@ esp_err_t radio_deinit(void)
     g_radio_state = RADIO_STATE_STOPPED;
     s_active_session = NULL;
     s_cmd_shutdown = false;
+    g_radio_last_error = RADIO_ERR_NONE;
+    g_radio_last_error_detail[0] = '\0';
     return ESP_OK;
 }
 
@@ -438,9 +460,13 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     esp_err_t err = radio_stop_sync();
     if (err != ESP_OK) return err;
 
-    /* Resolve URL. */
+    /* 8.2: typed, fail-closed resolution — return the failure directly
+     * rather than silently falling back to the raw input on parse error. */
+    radio_resolution_t resolution;
+    esp_err_t resolve_err = radio_resolve_input(playlist_or_url, &resolution);
+    if (resolve_err != ESP_OK) return resolve_err;
     char resolved[RADIO_URL_MAX];
-    resolve_url(playlist_or_url, resolved, sizeof(resolved));
+    strlcpy(resolved, resolution.resolved_url, sizeof(resolved));
 
     /* Allocate session. */
     radio_session_t *s = calloc(1, sizeof(*s));
