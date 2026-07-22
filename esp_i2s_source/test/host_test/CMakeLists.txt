@@ -276,6 +276,16 @@ target_include_directories(test_web_auth PRIVATE ${WEB_UI_DIR}/include)
 target_link_libraries(test_web_auth unity)
 add_test(NAME test_web_auth COMMAND test_web_auth)
 
+# FIX3 Phase 5A: stations_persist_core pure CRC/blob-validation/migration
+# logic. NVS I/O and the mutex are device glue (stations.c) and are not
+# host-tested, same split as elsewhere in this codebase.
+add_executable(test_stations_persistence test_stations_persistence.c
+    ${RADIO_DIR}/stations_persist_core.c
+    ${RADIO_DIR}/station_store.c)
+target_include_directories(test_stations_persistence PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(test_stations_persistence unity)
+add_test(NAME test_stations_persistence COMMAND test_stations_persistence)
+
 # FIX3 Phase 3: i2s_out.c lifecycle — join-safety, truthful state
 # publication, channel-enabled tracking. Local mocks for the I2S driver,
 # xTaskCreate, and the event group (queue-based wait results) — see

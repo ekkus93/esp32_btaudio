@@ -6,7 +6,7 @@
 # radio_internal.h for the shared state contract between them.
 idf_component_register(
     SRCS "radio_parse.c" "radio.c" "radio_ring.c" "radio_stream.c" "radio_decode.c"
-         "station_store.c" "stations.c" "radio_resampler.c"
+         "station_store.c" "stations.c" "stations_persist_core.c" "radio_resampler.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_client esp-tls
     PRIV_REQUIRES mbedtls nvs_flash espressif__esp_audio_codec)

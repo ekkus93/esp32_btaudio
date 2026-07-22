@@ -1,6 +1,13 @@
-/* stations — NVS-backed station store (RADIO-1c). See stations.h. */
+/*
+ * stations — NVS-backed station store (RADIO-1c, FIX3 Phase 5A). See
+ * stations.h. Pure blob/CRC/validation/migration logic lives in
+ * stations_persist_core.c (host-tested); this file owns NVS I/O, the
+ * mutex, and the load-classification/persist-before-publish state
+ * machine required by FIX3 §8.
+ */
 #include "stations.h"
 #include "station_store.h"
+#include "stations_persist_core.h"
 
 #include <string.h>
 #include <stdatomic.h>
@@ -12,87 +19,125 @@
 
 static const char *TAG = "stations";
 
-/* V2 blob: STN2 magic + version + CRC-32 */
-#define STATIONS_V2_MAGIC       0x53544e32u  /* "STN2" */
-#define STATIONS_V2_VERSION     2u
-
-/* V1 blob: legacy STA1 format (no version, no CRC, no IDs) */
-#define STATIONS_V1_MAGIC       0x53544131u  /* "STA1" */
-
-#define NVS_NS   "radio"
-#define NVS_KEY  "stations_v2"
-#define NVS_KEY_LEGACY "stations"  /* retained for migration, not overwritten */
-
-/* V1 blob (legacy format) */
-typedef struct __attribute__((packed)) {
-    uint32_t  magic;
-    int       count;
-    char      items[STATION_MAX][STATION_NAME_MAX + STATION_URL_MAX];
-} stations_blob_v1_t;
-
-/* V2 blob (current format) */
-typedef struct {
-    uint32_t  magic;
-    uint16_t  version;
-    uint16_t  header_size;    /* sizeof(header) */
-    uint32_t  payload_size;   /* sizeof(station_store_t) */
-    uint32_t  next_id;
-    uint32_t  crc32;          /* CRC-32 over the store payload */
-    station_store_t store;
-} stations_blob_v2_t;
+#define NVS_NS         "radio"
+#define NVS_KEY        "stations_v2"
+#define NVS_KEY_LEGACY "stations"  /* retained for migration, never overwritten */
 
 static station_store_t    s_store;
 static SemaphoreHandle_t  s_mtx;
 static _Atomic bool       s_initialized;
+/* True only for the boot cycle that seeded fresh defaults (no V2, no
+ * legacy) — stations_resolve_legacy_index() must never resolve a legacy
+ * ctrl index against stations nobody actually configured (FIX3 §9.4/
+ * responses doc answer 7: "do not pretend those defaults are the legacy
+ * list"). */
+static bool                s_seeded_this_boot;
 
-/* CRC-32 (IEEE 802.3) */
-static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t len)
+typedef enum {
+    LOAD_OK = 0,
+    LOAD_NOT_FOUND,
+    LOAD_CORRUPT,
+    LOAD_NVS_ERROR,
+} load_result_t;
+
+/* Read the exact stored size of `key` first, so a short/long/absent blob
+ * is classified before any field is examined (FIX3 §8.3). */
+static load_result_t read_and_validate_v2(nvs_handle_t h, station_store_t *out)
 {
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int bit = 8; bit != 0; bit--) {
-            crc >>= 1;
-            if (crc & 0x80000000u) {
-                crc ^= 0xEDB88320u;
-            }
-        }
+    size_t size = 0;
+    esp_err_t err = nvs_get_blob(h, NVS_KEY, NULL, &size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return LOAD_NOT_FOUND;
+    if (err != ESP_OK) return LOAD_NVS_ERROR;
+
+    stations_blob_v2_t *blob = malloc(sizeof(*blob));
+    if (!blob) return LOAD_NVS_ERROR;
+
+    size_t read_size = size;
+    err = nvs_get_blob(h, NVS_KEY, blob, &read_size);
+    if (err != ESP_OK) {
+        free(blob);
+        return LOAD_NVS_ERROR;
     }
-    return crc;
+
+    stations_blob_result_t vr = stations_blob_validate(blob, read_size);
+    if (vr != STATIONS_BLOB_OK) {
+        ESP_LOGE(TAG, "V2 blob failed validation: reason=%d size=%u", (int)vr, (unsigned)read_size);
+        free(blob);
+        return LOAD_CORRUPT;
+    }
+
+    *out = blob->store;
+    free(blob);
+    return LOAD_OK;
 }
 
-static uint32_t compute_crc(const station_store_t *store)
+static load_result_t read_and_migrate_legacy(nvs_handle_t h, station_store_t *out)
 {
-    return crc32_update(0, (const uint8_t *)store, sizeof(*store));
+    size_t size = 0;
+    esp_err_t err = nvs_get_blob(h, NVS_KEY_LEGACY, NULL, &size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return LOAD_NOT_FOUND;
+    if (err != ESP_OK) return LOAD_NVS_ERROR;
+
+    stations_blob_v1_t *blob = malloc(sizeof(*blob));
+    if (!blob) return LOAD_NVS_ERROR;
+
+    size_t read_size = size;
+    err = nvs_get_blob(h, NVS_KEY_LEGACY, blob, &read_size);
+    if (err != ESP_OK) {
+        free(blob);
+        return LOAD_NVS_ERROR;
+    }
+
+    bool ok = stations_migrate_v1(blob, read_size, out);
+    free(blob);
+    if (!ok) {
+        ESP_LOGE(TAG, "legacy V1 blob failed migration validation (size=%u)", (unsigned)read_size);
+        return LOAD_CORRUPT;
+    }
+    return LOAD_OK;
 }
 
-/* Build the V2 blob from current store state. Output must be heap-allocated
- * (blob is ~12KB — too large for stack). */
-static esp_err_t build_blob(stations_blob_v2_t *out)
+/* One persistence path for every mutation: open, write, commit, close,
+ * then read back and re-validate the exact bytes now on flash (FIX3
+ * §8.5) — never trust the in-memory candidate alone. */
+static esp_err_t persist_blob_verified(const station_store_t *store)
 {
-    if (!out) return ESP_ERR_INVALID_ARG;
-    memset(out, 0, sizeof(*out));
-    out->magic = STATIONS_V2_MAGIC;
-    out->version = STATIONS_V2_VERSION;
-    out->header_size = (uint16_t)offsetof(stations_blob_v2_t, store);
-    out->payload_size = sizeof(station_store_t);
-    out->next_id = s_store.next_id;
-    memcpy(&out->store, &s_store, sizeof(station_store_t));
-    out->crc32 = compute_crc(&out->store);
-    return ESP_OK;
-}
+    stations_blob_v2_t *blob = malloc(sizeof(*blob));
+    if (!blob) return ESP_ERR_NO_MEM;
+    stations_build_blob(store, blob);
 
-static esp_err_t persist_blob(const stations_blob_v2_t *blob)
-{
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) {
+        free(blob);
+        return err;
+    }
 
     err = nvs_set_blob(h, NVS_KEY, blob, sizeof(*blob));
-    if (err == ESP_OK) {
-        err = nvs_commit(h);
-    }
+    if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    return err;
+    if (err != ESP_OK) {
+        free(blob);
+        return err;
+    }
+
+    /* Read back and validate before trusting the write actually landed
+     * (power loss / flash wear could otherwise go unnoticed). Reuse the
+     * already-heap-allocated blob's `store` field as scratch space rather
+     * than allocating another ~12 KiB station_store_t. */
+    err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        free(blob);
+        return err;
+    }
+    load_result_t lr = read_and_validate_v2(h, &blob->store);
+    nvs_close(h);
+    free(blob);
+    if (lr != LOAD_OK) {
+        ESP_LOGE(TAG, "post-write read-back validation failed (result=%d)", (int)lr);
+        return ESP_ERR_INVALID_CRC;
+    }
+    return ESP_OK;
 }
 
 /* Default seed stations (web-editable, so users can replace them). */
@@ -104,88 +149,12 @@ static const struct { const char *name; const char *url; } SEED[] = {
     { "Beat Blender",    "http://somafm.com/beatblender.pls" },
 };
 
-static void seed(void)
+static void build_seed(station_store_t *out)
 {
-    station_store_init(&s_store);
+    station_store_init(out);
     for (size_t i = 0; i < sizeof(SEED) / sizeof(SEED[0]); i++) {
-        station_store_add(&s_store, SEED[i].name, SEED[i].url, NULL);
+        station_store_add(out, SEED[i].name, SEED[i].url, NULL);
     }
-    ESP_LOGI(TAG, "seeded %d default stations", s_store.count);
-}
-
-static bool load_v2(nvs_handle_t h)
-{
-    stations_blob_v2_t *blob = malloc(sizeof(*blob));
-    if (!blob) return false;
-    size_t sz = sizeof(*blob);
-    bool loaded = false;
-
-    if (nvs_get_blob(h, NVS_KEY, blob, &sz) == ESP_OK &&
-        sz == sizeof(*blob) && blob->magic == STATIONS_V2_MAGIC &&
-        blob->version == STATIONS_V2_VERSION &&
-        blob->payload_size == sizeof(station_store_t)) {
-
-        /* Validate CRC */
-        uint32_t expected = compute_crc(&blob->store);
-        if (expected == blob->crc32 &&
-            blob->store.count >= 0 && blob->store.count <= STATION_MAX) {
-            s_store = blob->store;
-            ESP_LOGI(TAG, "loaded v2 blob: %d stations, next_id=%u",
-                     s_store.count, s_store.next_id);
-            loaded = true;
-        }
-    }
-    free(blob);
-    return loaded;
-}
-
-static bool migrate_v1(nvs_handle_t h)
-{
-    /* V1 blob: STA1 magic followed by station_store_t (old format without next_id).
-     * We detect it by size and magic. */
-    typedef struct {
-        uint32_t magic;
-        station_store_t store;
-    } v1_blob_t;
-
-    v1_blob_t *blob = malloc(sizeof(*blob));
-    if (!blob) return false;
-    size_t sz = sizeof(*blob);
-    bool migrated = false;
-
-    if (nvs_get_blob(h, NVS_KEY_LEGACY, blob, &sz) == ESP_OK &&
-        sz == sizeof(*blob) && blob->magic == STATIONS_V1_MAGIC) {
-
-        /* Validate count */
-        if (blob->store.count >= 0 && blob->store.count <= STATION_MAX) {
-            /* Migrate: assign sequential IDs to old entries */
-            station_store_init(&s_store);
-            bool fail = false;
-            for (int i = 0; i < blob->store.count; i++) {
-                int new_idx = -1;
-                station_result_t result = station_store_add(&s_store,
-                                                             blob->store.items[i].name,
-                                                             blob->store.items[i].url,
-                                                             &new_idx);
-                if (result != STATION_OK) {
-                    ESP_LOGW(TAG, "migration failed at station %d: err=%d", i, result);
-                    fail = true;
-                    break;
-                }
-                if (new_idx != i) {
-                    ESP_LOGW(TAG, "migration index mismatch at %d", i);
-                    fail = true;
-                    break;
-                }
-            }
-            if (!fail) {
-                ESP_LOGI(TAG, "migrated V1 blob: %d stations -> V2 with IDs", s_store.count);
-                migrated = true;
-            }
-        }
-    }
-    free(blob);
-    return migrated;
 }
 
 esp_err_t stations_init(void)
@@ -193,41 +162,104 @@ esp_err_t stations_init(void)
     if (atomic_load(&s_initialized)) return ESP_OK;
 
     s_mtx = xSemaphoreCreateMutex();
-    if (!s_mtx) {
-        atomic_store(&s_initialized, false);
+    if (!s_mtx) return ESP_ERR_NO_MEM;
+
+    /* station_store_t is ~12 KiB — heap-allocate, never stack (TODO 5.7). */
+    station_store_t *candidate = malloc(sizeof(*candidate));
+    if (!candidate) {
+        vSemaphoreDelete(s_mtx);
+        s_mtx = NULL;
         return ESP_ERR_NO_MEM;
     }
 
-    bool loaded = false;
-
-    /* Try V2 blob first */
     nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        loaded = load_v2(h);
-        if (!loaded) {
-            /* Try V1 migration */
-            loaded = migrate_v1(h);
-        }
+    esp_err_t open_err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (open_err != ESP_OK && open_err != ESP_ERR_NVS_NOT_FOUND) {
+        free(candidate);
+        vSemaphoreDelete(s_mtx);
+        s_mtx = NULL;
+        return open_err;
+    }
+
+    load_result_t v2_result = LOAD_NOT_FOUND;
+    if (open_err == ESP_OK) {
+        v2_result = read_and_validate_v2(h, candidate);
+    }
+
+    if (v2_result == LOAD_OK) {
         nvs_close(h);
+        s_store = *candidate;
+        free(candidate);
+        ESP_LOGI(TAG, "loaded v2 blob: %d stations, next_id=%u", s_store.count, s_store.next_id);
+        atomic_store(&s_initialized, true);
+        return ESP_OK;
     }
 
-    if (!loaded) {
-        seed();
-        xSemaphoreTake(s_mtx, portMAX_DELAY);
-        stations_blob_v2_t *blob = malloc(sizeof(*blob));
-        if (blob) {
-            build_blob(blob);
-            esp_err_t err = persist_blob(blob);
-            if (err != ESP_OK) {
-                ESP_LOGW(TAG, "initial save failed: %s", esp_err_to_name(err));
-            }
-            free(blob);
-        } else {
-            ESP_LOGE(TAG, "failed to allocate blob");
+    if (v2_result == LOAD_CORRUPT) {
+        /* Never auto-replace corrupt current data, and never fall back to
+         * legacy migration as though V2 were merely absent (FIX3 §8.3). */
+        nvs_close(h);
+        free(candidate);
+        printf("DIAG|STATIONS|CORRUPT|key=" NVS_KEY ",reason=validation\n");
+        fflush(stdout);
+        return ESP_ERR_INVALID_CRC;
+    }
+
+    if (v2_result == LOAD_NVS_ERROR) {
+        nvs_close(h);
+        free(candidate);
+        return ESP_FAIL;
+    }
+
+    /* v2_result == LOAD_NOT_FOUND: only now may legacy be considered. */
+    load_result_t legacy_result = (open_err == ESP_OK) ? read_and_migrate_legacy(h, candidate)
+                                                       : LOAD_NOT_FOUND;
+    if (open_err == ESP_OK) nvs_close(h);
+
+    if (legacy_result == LOAD_OK) {
+        esp_err_t err = persist_blob_verified(candidate);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "legacy migration persist/verify failed: %s", esp_err_to_name(err));
+            printf("DIAG|STATIONS|MIGRATION_PENDING|reason=%s\n", esp_err_to_name(err));
+            fflush(stdout);
+            free(candidate);
+            return err;   /* legacy key untouched; do not mark initialized */
         }
-        xSemaphoreGive(s_mtx);
+        s_store = *candidate;
+        free(candidate);
+        ESP_LOGI(TAG, "migrated V1 blob: %d stations -> V2 with IDs", s_store.count);
+        atomic_store(&s_initialized, true);
+        return ESP_OK;
     }
 
+    if (legacy_result == LOAD_CORRUPT) {
+        /* Preserve the corrupt legacy blob; do not seed over it. */
+        free(candidate);
+        printf("DIAG|STATIONS|CORRUPT|key=" NVS_KEY_LEGACY ",reason=migration\n");
+        fflush(stdout);
+        return ESP_ERR_INVALID_CRC;
+    }
+
+    if (legacy_result == LOAD_NVS_ERROR) {
+        free(candidate);
+        return ESP_FAIL;
+    }
+
+    /* Both V2 and legacy genuinely absent: seed defaults. */
+    build_seed(candidate);
+    esp_err_t err = persist_blob_verified(candidate);
+    if (err != ESP_OK) {
+        /* Do not mark initialized after a failed initial persist (FIX3
+         * §8.3) — a caller retrying stations_init() gets a fresh attempt
+         * rather than silently running on unpersisted defaults. */
+        ESP_LOGE(TAG, "initial seed persist/verify failed: %s", esp_err_to_name(err));
+        free(candidate);
+        return err;
+    }
+    s_store = *candidate;
+    free(candidate);
+    s_seeded_this_boot = true;
+    ESP_LOGI(TAG, "seeded %d default stations", s_store.count);
     atomic_store(&s_initialized, true);
     return ESP_OK;
 }
@@ -271,6 +303,33 @@ bool stations_get_url(int idx, char *url, size_t usz)
     return stations_get(idx, NULL, 0, url, usz, NULL);
 }
 
+/* Resolve a legacy ctrl "last station index" to its stable ID (FIX3 §9.4,
+ * responses doc answer 7). Index 0 maps to the ID assigned to the first
+ * migrated/loaded station; a negative index maps to none. Deliberately
+ * refuses to resolve against freshly-seeded defaults — those were never
+ * anyone's "legacy list." */
+esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_station_id)
+{
+    if (!out_station_id) return ESP_ERR_INVALID_ARG;
+    if (legacy_index < 0) {
+        *out_station_id = STATION_ID_NONE;
+        return ESP_OK;
+    }
+    if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
+
+    esp_err_t result = ESP_OK;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    if (s_seeded_this_boot) {
+        result = ESP_ERR_NOT_FOUND;
+    } else if (legacy_index >= s_store.count) {
+        result = ESP_ERR_INVALID_ARG;
+    } else {
+        *out_station_id = s_store.items[legacy_index].id;
+    }
+    xSemaphoreGive(s_mtx);
+    return result;
+}
+
 /* Helper: map station_result_t to esp_err_t */
 static esp_err_t station_result_to_err(station_result_t result)
 {
@@ -287,60 +346,33 @@ static esp_err_t station_result_to_err(station_result_t result)
     }
 }
 
+/* station_store_t is ~12 KiB — too large for a task stack (TODO 5.7).
+ * Every mutation heap-allocates its candidate. */
 esp_err_t stations_add(const char *name, const char *url, int *out_idx)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
+    if (out_idx) *out_idx = -1;
 
-    station_result_t result = station_validate_url(url);
-    if (result != STATION_OK) {
-        if (out_idx) *out_idx = -1;
-        return station_result_to_err(result);
-    }
+    station_store_t *candidate = malloc(sizeof(*candidate));
+    if (!candidate) return ESP_ERR_NO_MEM;
 
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-
-    /* Build a candidate blob with the mutation applied. Heap-allocated to avoid stack overflow. */
-    stations_blob_v2_t *blob = malloc(sizeof(*blob));
-    if (!blob) {
-        xSemaphoreGive(s_mtx);
-        return ESP_ERR_NO_MEM;
-    }
-
-    memcpy(&blob->store, &s_store, sizeof(station_store_t));
-    blob->magic = STATIONS_V2_MAGIC;
-    blob->version = STATIONS_V2_VERSION;
-    blob->header_size = (uint16_t)offsetof(stations_blob_v2_t, store);
-    blob->payload_size = sizeof(station_store_t);
-    blob->next_id = s_store.next_id;
-
+    *candidate = s_store;
     int idx = -1;
-    station_result_t r = station_store_add(&blob->store, name, url, &idx);
+    station_result_t r = station_store_add(candidate, name, url, &idx);
     if (r != STATION_OK) {
-        free(blob);
         xSemaphoreGive(s_mtx);
-        if (out_idx) *out_idx = -1;
+        free(candidate);
         return station_result_to_err(r);
     }
 
-    /* Persist to NVS */
-    blob->crc32 = compute_crc(&blob->store);
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    esp_err_t err = persist_blob_verified(candidate);
     if (err == ESP_OK) {
-        err = nvs_set_blob(h, NVS_KEY, blob, sizeof(*blob));
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
-        }
+        s_store = *candidate;
+        if (out_idx) *out_idx = idx;
     }
-    nvs_close(h);
-
-    if (err == ESP_OK) {
-        s_store = blob->store;  /* swap on success */
-    }
-    free(blob);
     xSemaphoreGive(s_mtx);
-
-    if (err == ESP_OK && out_idx) *out_idx = idx;
+    free(candidate);
     return err;
 }
 
@@ -348,51 +380,24 @@ esp_err_t stations_update(int idx, const char *name, const char *url)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
-    station_result_t result = station_validate_url(url);
-    if (result != STATION_OK) {
-        return station_result_to_err(result);
-    }
+    station_store_t *candidate = malloc(sizeof(*candidate));
+    if (!candidate) return ESP_ERR_NO_MEM;
 
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-
-    stations_blob_v2_t *blob = malloc(sizeof(*blob));
-    if (!blob) {
-        xSemaphoreGive(s_mtx);
-        return ESP_ERR_NO_MEM;
-    }
-
-    memcpy(&blob->store, &s_store, sizeof(station_store_t));
-    blob->magic = STATIONS_V2_MAGIC;
-    blob->version = STATIONS_V2_VERSION;
-    blob->header_size = (uint16_t)offsetof(stations_blob_v2_t, store);
-    blob->payload_size = sizeof(station_store_t);
-    blob->next_id = s_store.next_id;
-
-    station_result_t r = station_store_update(&blob->store, idx, name, url);
+    *candidate = s_store;
+    station_result_t r = station_store_update(candidate, idx, name, url);
     if (r != STATION_OK) {
-        free(blob);
         xSemaphoreGive(s_mtx);
+        free(candidate);
         return station_result_to_err(r);
     }
 
-    /* Persist to NVS */
-    blob->crc32 = compute_crc(&blob->store);
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    esp_err_t err = persist_blob_verified(candidate);
     if (err == ESP_OK) {
-        err = nvs_set_blob(h, NVS_KEY, blob, sizeof(*blob));
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
-        }
+        s_store = *candidate;
     }
-    nvs_close(h);
-
-    if (err == ESP_OK) {
-        s_store = blob->store;
-    }
-    free(blob);
     xSemaphoreGive(s_mtx);
-
+    free(candidate);
     return err;
 }
 
@@ -400,45 +405,24 @@ esp_err_t stations_remove(int idx)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
+    station_store_t *candidate = malloc(sizeof(*candidate));
+    if (!candidate) return ESP_ERR_NO_MEM;
+
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-
-    stations_blob_v2_t *blob = malloc(sizeof(*blob));
-    if (!blob) {
-        xSemaphoreGive(s_mtx);
-        return ESP_ERR_NO_MEM;
-    }
-
-    memcpy(&blob->store, &s_store, sizeof(station_store_t));
-    blob->magic = STATIONS_V2_MAGIC;
-    blob->version = STATIONS_V2_VERSION;
-    blob->header_size = (uint16_t)offsetof(stations_blob_v2_t, store);
-    blob->payload_size = sizeof(station_store_t);
-    blob->next_id = s_store.next_id;
-
-    station_result_t r = station_store_remove(&blob->store, idx);
+    *candidate = s_store;
+    station_result_t r = station_store_remove(candidate, idx);
     if (r != STATION_OK) {
-        free(blob);
         xSemaphoreGive(s_mtx);
+        free(candidate);
         return station_result_to_err(r);
     }
 
-    blob->crc32 = compute_crc(&blob->store);
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    esp_err_t err = persist_blob_verified(candidate);
     if (err == ESP_OK) {
-        err = nvs_set_blob(h, NVS_KEY, blob, sizeof(*blob));
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
-        }
+        s_store = *candidate;
     }
-    nvs_close(h);
-
-    if (err == ESP_OK) {
-        s_store = blob->store;
-    }
-    free(blob);
     xSemaphoreGive(s_mtx);
-
+    free(candidate);
     return err;
 }
 
@@ -446,44 +430,23 @@ esp_err_t stations_move(int idx, int delta)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
+    station_store_t *candidate = malloc(sizeof(*candidate));
+    if (!candidate) return ESP_ERR_NO_MEM;
+
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-
-    stations_blob_v2_t *blob = malloc(sizeof(*blob));
-    if (!blob) {
-        xSemaphoreGive(s_mtx);
-        return ESP_ERR_NO_MEM;
-    }
-
-    memcpy(&blob->store, &s_store, sizeof(station_store_t));
-    blob->magic = STATIONS_V2_MAGIC;
-    blob->version = STATIONS_V2_VERSION;
-    blob->header_size = (uint16_t)offsetof(stations_blob_v2_t, store);
-    blob->payload_size = sizeof(station_store_t);
-    blob->next_id = s_store.next_id;
-
-    station_result_t r = station_store_move(&blob->store, idx, delta);
+    *candidate = s_store;
+    station_result_t r = station_store_move(candidate, idx, delta);
     if (r != STATION_OK) {
-        free(blob);
         xSemaphoreGive(s_mtx);
+        free(candidate);
         return station_result_to_err(r);
     }
 
-    blob->crc32 = compute_crc(&blob->store);
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    esp_err_t err = persist_blob_verified(candidate);
     if (err == ESP_OK) {
-        err = nvs_set_blob(h, NVS_KEY, blob, sizeof(*blob));
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
-        }
+        s_store = *candidate;
     }
-    nvs_close(h);
-
-    if (err == ESP_OK) {
-        s_store = blob->store;
-    }
-    free(blob);
     xSemaphoreGive(s_mtx);
-
+    free(candidate);
     return err;
 }

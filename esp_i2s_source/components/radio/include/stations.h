@@ -38,6 +38,14 @@ esp_err_t stations_remove(int idx);
 /* Reorder: swap entry idx with its neighbour (delta -1 up, +1 down). */
 esp_err_t stations_move(int idx, int delta);
 
+/* Resolve a legacy ctrl "last station index" (from the pre-ID V0 control
+ * blob) to its current stable ID (FIX3 §9.4). legacy_index < 0 always
+ * resolves to *out_station_id = STATION_ID_NONE, ESP_OK. Returns
+ * ESP_ERR_NOT_FOUND if stations were freshly seeded this boot (no real
+ * legacy list exists to resolve against) and ESP_ERR_INVALID_ARG if
+ * legacy_index is out of range. Call only after stations_init() succeeds. */
+esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_station_id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1045,7 +1045,7 @@ Failure-injection tests must cover:
 
 # Phase 5 — Repair station persistence and enforce URL destination policy
 
-## 5.1 Move CRC and blob validation into host-testable helpers
+## 5.1 Move CRC and blob validation into host-testable helpers — DONE (Phase 5A, commit pending)
 
 **Files:**
 
@@ -1085,7 +1085,7 @@ Also prove changing every byte position changes CRC for representative blobs.
 
 ---
 
-## 5.2 Centralize V2 blob construction
+## 5.2 Centralize V2 blob construction — DONE (Phase 5A, commit pending)
 
 Avoid repeating header setup in every mutation.
 
@@ -1108,7 +1108,7 @@ Prefer removing redundant `next_id` in a future version, but FIX3 can require eq
 
 ---
 
-## 5.3 Implement full blob validation
+## 5.3 Implement full blob validation — DONE (Phase 5A, commit pending)
 
 Add a result enum with precise reasons, for example:
 
@@ -1187,7 +1187,7 @@ If URL policy DNS checks are device-only, blob validation should at least perfor
 
 ---
 
-## 5.4 Distinguish absent, corrupt, legacy, and NVS-error cases
+## 5.4 Distinguish absent, corrupt, legacy, and NVS-error cases — DONE (Phase 5A, commit pending)
 
 Do not use a single `bool loaded`.
 
@@ -1225,7 +1225,7 @@ Emit reason-specific diagnostics.
 
 ---
 
-## 5.5 Fix legacy schema and migration
+## 5.5 Fix legacy schema and migration — DONE (Phase 5A, commit pending)
 
 Replace the incorrect `v1_blob_t` that embeds current `station_store_t`.
 
@@ -1275,7 +1275,7 @@ If cross-component atomic migration is too invasive, implement an explicit migra
 
 ---
 
-## 5.6 Centralize persist/commit/close/read-back
+## 5.6 Centralize persist/commit/close/read-back — DONE (Phase 5A, commit pending)
 
 One helper:
 
@@ -1301,7 +1301,7 @@ All add/update/remove/move paths call this helper. Delete repeated open/set/comm
 
 ---
 
-## 5.7 Make station mutations candidate-based
+## 5.7 Make station mutations candidate-based — DONE (Phase 5A, commit pending)
 
 Pattern:
 
