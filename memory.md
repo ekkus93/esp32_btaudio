@@ -1855,3 +1855,63 @@ phase below was hardware-smoke-tested without re-asking.
 - Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 12
   — the final phase (clean re-verification, all hardware gates, 2-hour endurance test, documentation
   reconciliation).
+
+## 2026-07-22T07:37:54Z - Claude Fable 5 - Found and fixed the real cause of choppy/static audio: pdMS_TO_TICKS double-conversion starving the I2S DMA (user-ear-driven debugging session mid-Phase-12)
+
+- During the Phase 12 endurance test the user reported static/choppy audio over the laptop-as-BT-
+  headset path. A long elimination chase followed, worth recording because every *log-based* signal
+  said the system was healthy:
+  - Internet stream layer: ruled out (Radio Paradise showed 0 reconnects yet audio still chopped;
+    the earlier SomaFM reconnect churn ~1/50s was real but a red herring — later shown to be
+    kensington2 WiFi flakiness, since the device silently re-DHCPed .107→.104 mid-session).
+  - BT data delivery: ruled out by *recording the laptop's bluez A2DP capture source with parec* —
+    20s of music had literally zero ≥2ms silence gaps. Same for the speaker-sink monitor. (Key
+    lesson: silence-gap analysis can't see phase-discontinuity glitches in music.)
+  - 2.4GHz congestion: ruled out by moving both S3 and laptop to the user's phone hotspot (ch11,
+    RSSI -33, everything previously piled on ch4) — still choppy.
+  - Laptop loopback buffering: a real-but-secondary issue (see below), not the main cause.
+- **The decisive instrument: the S3's own 440Hz tone** (pure on-chip synthesis, no network/decoder/
+  resampler) captured off the BT source and analyzed for waveform continuity. Result: 730 zero-
+  crossing-period anomalies in 18s (9.1% of all cycles), amplitude perfectly constant, net slip
+  -781 samples/sec, glitch events at a metronomic 32.7ms — **exactly the period of the default
+  6x240=1440-frame I2S DMA buffer**. Constant amplitude + phase jumps + DMA-period cadence = the
+  DMA was replaying stale buffers (a replayed 1440-sample buffer of 440Hz = 14.37 cycles = ~37-
+  sample phase jump per wrap, matching the observed 137/37-sample anomalous periods).
+- Serial telemetry then showed the S3's writer pushing only ~120KB/s into a wire draining 352.8KB/s
+  (44.1kHz x 8B frames) — the DMA replayed stale audio ~2/3 of the time. Temporary in-writer
+  instrumentation (now permanent as DIAG|I2SWR) nailed it: **maxw=10ms** — the "100ms"
+  i2s_channel_write timeout was actually firing at ~10ms. Root cause:
+  `i2s_channel_write(..., pdMS_TO_TICKS(I2S_WRITE_TIMEOUT_MS))` — **the driver takes MILLISECONDS
+  and converts internally; passing ticks double-converts** (at CONFIG_FREERTOS_HZ=100: 100ms ->
+  10 ticks -> reinterpreted as 10ms -> 1 tick). Constant spurious timeouts + Phase 3's
+  treat-timeout-as-no-clock 100ms nap = writer asleep ~64% of the time (busy=36% measured).
+  Compounding irony: the pre-fix logs' steady `state=4` was I2S_STATE_WAITING_FOR_CLOCK — the
+  device had been *telling us* "no clock" all along and every smoke test misread 4 as RUNNING
+  (RUNNING=3). Nothing in the FIX3 gates checks the writer's byte *rate*.
+- Fixes in `i2s_out.c` (commit below):
+  1. Pass `I2S_WRITE_TIMEOUT_MS` (milliseconds) directly — the actual bug.
+  2. Timeout with `written > 0` no longer treated as clock-loss (DMA drained data => clock provably
+     present): retry immediately, no nap. Only a zero-byte full-window timeout means WAITING_FOR_CLOCK.
+  3. Block 512B -> 2048B (one audio_out block; was ~690 driver calls/sec of pure overhead).
+  4. Writer stack 4096 -> 8192 (2048B pending buffer + diag printf; the first instrumented build
+     panicked LoadProhibited from stack overflow — floats in printf on a 4KB stack).
+  5. Permanent `DIAG|I2SWR|rate=...,to_zero=,to_part=,busy=,maxw=` line every 5s — a byte-rate
+     check catches this whole failure class; state/underrun counters alone did not (underruns
+     never fired because the *software* never saw the ring empty — the starvation was between
+     writer and DMA, invisible to every existing counter).
+- Verified after fix: DIAG|I2SWR rate=352,552-352,961 B/s (wire-exact), to_zero=0, to_part=0,
+  busy=98%; tone re-capture **0 anomalies in 7,910 cycles, net slip -1 sample over 18s**
+  (vs 730/-781/sec before). User confirms music sounds clean.
+- Secondary laptop-side finding: PulseAudio's module-bluetooth-policy auto-creates a small-buffer
+  loopback for the bluez A2DP source on every (re)connect. At one point TWO loopbacks ran
+  simultaneously (auto + my explicit latency_msec=500 one) causing periodic cutouts; killed the
+  auto one. If BT audio testing recurs: after any BT reconnect, check `pactl list modules short |
+  grep loopback` and keep exactly one, with latency_msec=500.
+- Session logistics: user's WiFi moved kensington2 -> phone hotspot (Slingblade) -> back to
+  kensington2 (new password provisioned via serial console `WIFI kensington2 <pass>`); device now
+  at 192.168.88.104. WROOM32 STATUS counters (BYTES_REQ/CALLBACKS/PKTS) read all-zero even while
+  actively streaming — unreliable, don't trust them for stream-health checks (separate WROOM32
+  firmware issue, not investigated).
+- The Phase 12 endurance run was invalidated by the mid-run reflashes; restarting it fresh on the
+  fixed firmware. This bug shipped with Phase 3 and passed every FIX3 gate since — none of the
+  hardware smoke tests *listened to the audio*. The user's ears were the only detector that fired.

@@ -39,15 +39,22 @@
 #include "freertos/event_groups.h"
 #include "esp_log.h"
 #include "nvs.h"
+#ifdef ESP_PLATFORM
+#include "esp_timer.h"
+#include <stdio.h>
+#include <inttypes.h>
+#endif
 
 #include <stdatomic.h>
 #include <string.h>
 
 static const char *TAG = "i2s_out";
 
-/* 512 bytes = 128 stereo s16 frames ≈ 2.9 ms at 44.1 kHz. */
-#define I2S_OUT_BLOCK_BYTES 512
-#define I2S_OUT_TASK_STACK  4096
+/* 2048 bytes = 256 stereo 32-bit-slot frames ≈ 5.8 ms at 44.1 kHz — one
+ * audio_out_task block. (Was 512 B = 64 frames = 1.45 ms; ~690 driver
+ * calls/sec of overhead for no benefit.) */
+#define I2S_OUT_BLOCK_BYTES 2048
+#define I2S_OUT_TASK_STACK  8192
 #define I2S_OUT_TASK_PRIO   (configMAX_PRIORITIES - 2)
 #define I2S_WRITE_TIMEOUT_MS 100
 #define I2S_STOP_TIMEOUT_MS  500
@@ -126,6 +133,19 @@ static void writer_task(void *arg)
     size_t pending_real = 0;
     bool first_result = true;
 
+#ifdef ESP_PLATFORM
+    /* DIAG|I2SWR writer-throughput telemetry (every 5 s). A healthy slave-TX
+     * writer shows rate ≈ the wire rate (352,800 B/s at 44.1 kHz 32-bit
+     * stereo), to_zero=to_part=0, busy >90%. This line is what caught the
+     * 2026-07-22 double-tick-conversion bug (writer at 54% of wire rate,
+     * DMA replaying stale buffers as audible static) — a byte-rate check
+     * catches that whole failure class; state/underrun counters alone
+     * did not. */
+    int64_t diag_last_us = 0;
+    uint32_t d_ok = 0, d_to_zero = 0, d_to_part = 0, d_bytes = 0;
+    int64_t d_write_us = 0, d_write_max_us = 0;
+#endif
+
     xEventGroupSetBits(s_events, I2S_EVT_WRITER_ENTERED);
 
     while (!atomic_load(&s_stop_requested)) {
@@ -143,8 +163,44 @@ static void writer_task(void *arg)
          * watchdog when the external clock is absent (I2S-001). */
         size_t requested = pending_len;
         size_t written = 0;
+#ifdef ESP_PLATFORM
+        int64_t t0 = esp_timer_get_time();
+#endif
+        /* NOTE: i2s_channel_write() takes MILLISECONDS, not ticks — it
+         * converts internally. Passing pdMS_TO_TICKS() here double-converts
+         * (found live 2026-07-22: at CONFIG_FREERTOS_HZ=100 the intended
+         * 100 ms became 1 tick, causing constant spurious timeouts, 100 ms
+         * "no clock" naps, a DMA starved to ~1/3 wire rate, and stale-buffer
+         * replay heard as static). */
         esp_err_t err = i2s_channel_write(s_tx_chan, pending, pending_len, &written,
-                                          pdMS_TO_TICKS(I2S_WRITE_TIMEOUT_MS));
+                                          I2S_WRITE_TIMEOUT_MS);
+#ifdef ESP_PLATFORM
+        {
+            int64_t dt = esp_timer_get_time() - t0;
+            d_write_us += dt;
+            if (dt > d_write_max_us) d_write_max_us = dt;
+            d_bytes += (uint32_t)written;
+            if (err == ESP_ERR_TIMEOUT) {
+                if (written == 0) d_to_zero++; else d_to_part++;
+            } else if (err == ESP_OK) {
+                d_ok++;
+            }
+            int64_t now = esp_timer_get_time();
+            if (now - diag_last_us >= 5000000) {
+                int64_t elapsed = now - diag_last_us;
+                printf("DIAG|I2SWR|rate=%luB/s,ok=%lu,to_zero=%lu,to_part=%lu,busy=%lu%%,maxw=%" PRId64 "ms\n",
+                       (unsigned long)((int64_t)d_bytes * 1000000 / elapsed),
+                       (unsigned long)d_ok, (unsigned long)d_to_zero,
+                       (unsigned long)d_to_part,
+                       (unsigned long)(d_write_us * 100 / elapsed),
+                       d_write_max_us / 1000);
+                fflush(stdout);
+                diag_last_us = now;
+                d_ok = d_to_zero = d_to_part = d_bytes = 0;
+                d_write_us = d_write_max_us = 0;
+            }
+        }
+#endif
         if (written > pending_len) {
             written = pending_len;   /* defensive: driver must not exceed request */
             err = ESP_FAIL;
@@ -159,15 +215,35 @@ static void writer_task(void *arg)
         i2s_stats_record_write(err, requested, written, real_accepted);
 
         if (err == ESP_ERR_TIMEOUT) {
-            /* No external clock (yet). Retain pending, back off, retry —
-             * never faster than 10 Hz (SPEC §6.4). Not a terminal error:
-             * last_error is untouched (I2S-006 / spec §6.6). */
-            i2s_set_state(I2S_STATE_WAITING_FOR_CLOCK);
+            /* Distinguish two very different timeouts (found live 2026-07-22:
+             * conflating them starved the DMA to ~1/3 of the wire rate and
+             * the hardware replayed stale buffers as audible static):
+             *
+             *   written == 0  ->  the DMA accepted NOTHING for the whole
+             *     wait: no external clock. Retain pending, back off, retry —
+             *     never faster than 10 Hz (SPEC §6.4). Not a terminal error:
+             *     last_error is untouched (I2S-006 / spec §6.6).
+             *
+             *   written > 0   ->  the DMA drained data during the wait, so
+             *     the WROOM32's clock is provably present — the block merely
+             *     didn't complete within the window. Keep pumping
+             *     IMMEDIATELY: any sleep here lets the DMA wrap and replay
+             *     stale audio (a 100 ms nap = ~3 full replays of the default
+             *     6x240-frame DMA buffer). */
+            if (written == 0) {
+                i2s_set_state(I2S_STATE_WAITING_FOR_CLOCK);
+                if (first_result) {
+                    xEventGroupSetBits(s_events, I2S_EVT_WRITER_READY);
+                    first_result = false;
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+            i2s_set_state(I2S_STATE_RUNNING);
             if (first_result) {
                 xEventGroupSetBits(s_events, I2S_EVT_WRITER_READY);
                 first_result = false;
             }
-            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
         if (err != ESP_OK) {
