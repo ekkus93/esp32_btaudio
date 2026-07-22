@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_signal_gen.dir/test_signal_gen.c.o CMakeFiles/test_signal_gen.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/signal_gen/signal_gen.c.o -o test_signal_gen  libunity.a -lm 

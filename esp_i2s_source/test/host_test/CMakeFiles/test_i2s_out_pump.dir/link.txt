@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_i2s_out_pump.dir/test_i2s_out_pump.c.o CMakeFiles/test_i2s_out_pump.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/i2s_out/i2s_out_pump.c.o CMakeFiles/test_i2s_out_pump.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/i2s_out/pcm_ring.c.o -o test_i2s_out_pump  libunity.a 

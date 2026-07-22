@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_station_store.dir/test_station_store.c.o CMakeFiles/test_station_store.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/radio/station_store.c.o -o test_station_store  libunity.a 

@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_main_boot.dir/test_main_boot.c.o CMakeFiles/test_main_boot.dir/home/phil/work/esp32_btaudio/esp_i2s_source/main/main.c.o CMakeFiles/test_main_boot.dir/mocks/fake_task.c.o CMakeFiles/test_main_boot.dir/mocks/fake_esp_err.c.o -o test_main_boot  libunity.a 

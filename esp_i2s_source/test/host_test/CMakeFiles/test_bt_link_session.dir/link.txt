@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_bt_link_session.dir/test_bt_link_session.c.o CMakeFiles/test_bt_link_session.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/bt_link/bt_link_session.c.o CMakeFiles/test_bt_link_session.dir/home/phil/work/esp32_btaudio/esp_i2s_source/components/bt_link/bt_link_parser.c.o -o test_bt_link_session  libunity.a 

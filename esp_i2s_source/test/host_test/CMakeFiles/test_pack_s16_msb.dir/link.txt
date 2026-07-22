@@ -1,1 +1,0 @@
-/usr/bin/cc -g -fsanitize=address CMakeFiles/test_pack_s16_msb.dir/test_pack_s16_msb.c.o -o test_pack_s16_msb  libunity.a 
