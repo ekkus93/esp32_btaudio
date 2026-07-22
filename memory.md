@@ -1968,3 +1968,44 @@ phase below was hardware-smoke-tested without re-asking.
   busy=98%). Remaining untested residue: the DIAG|I2SWR telemetry itself is device-only; a
   rate-threshold assertion in tools/s3_gate_assert.py would close the loop at the hardware-gate
   level — noted as follow-up, not yet done.
+
+## 2026-07-22T12:28:57Z - Claude Sonnet 5 - Fixed corrupt stations NVS blob (found via Phase 12 endurance stressor); WiFi channel-change fallback observed
+
+- Phase 12 endurance test (baseline 08:00:24Z) ran to 3.84h continuous uptime before being
+  interrupted for diagnostics — comfortably exceeding the 2-hour target. Over that window: heap
+  flat (6,818,256 -> 6,818,268 B), 0 reconnects, 0 decode errors, DIAG|I2SWR steady at
+  352,552-352,961 B/s wire-exact rate with to_zero=to_part=0 — the i2s fix held completely.
+- Running the deferred station add/delete stressor hit `STATIONS_UNAVAILABLE` — capabilities.stations
+  was false. A deliberate soft-reset (RTS/DTR pulse, not a reflash) to capture a fresh boot log
+  showed why: `stations_init` -> `ESP_ERR_INVALID_CRC`, "V2 blob failed validation: reason=6
+  size=12348" (STATIONS_BLOB_BAD_CRC — structurally well-formed blob, corrupt payload bytes).
+  This is Phase 5A's CRC validation working exactly as designed: FIX3 §8.3 deliberately never
+  auto-replaces corrupt current data, so it degraded gracefully (clear 503 error, no crash) rather
+  than silently accepting bad data. The corruption itself predates tonight's session — likely stale
+  NVS state from earlier in the multi-day FIX3 effort.
+- Asked the user how to handle it; chose "clear just the stations NVS key" over a full NVS erase
+  (preserving WiFi creds/auth token/ctrl config) or leaving it degraded. Added
+  `stations_reset_persisted()` (stations.c/.h): erases both `stations_v2` and legacy `stations` NVS
+  keys, resets in-memory init state, and re-runs `stations_init()` in place — no reboot needed.
+  Wired to a new `STATIONS RESET` console-only subcommand (console.c), same physical-presence-only
+  trust boundary as `AUTH ROTATE` (never forwarded to WROOM32, never reachable over HTTP), and
+  republishes `runtime_capabilities` so `capabilities.stations` flips true immediately. Required
+  adding `radio` + `runtime_capabilities` to cmd_console's CMakeLists REQUIRES.
+  verify_host.sh + idf.py build both clean; flashed and confirmed on hardware: `STATIONS RESET` ->
+  `OK|STATIONS|RESET|count=5`, capabilities.stations now true, add/delete round-trip verified
+  against the live station list (not just response codes).
+  Note for future sessions: `stations_add`'s `id` output param (and the JSON `id` field in
+  `POST/DELETE /api/stations` responses) is actually the array *index*, not the stable
+  `station_t.id` — a pre-existing naming quirk, not a bug; don't confuse the two when verifying.
+- Also observed live: changing the kensington2 router's channel (4->6) made the S3 fall back to
+  its own standalone SoftAP (wifi_sm's STA/AP fallback) rather than reconnecting — confirms the
+  fallback state machine engages on a real disconnect, but does NOT auto-recover back to the
+  original STA network once it reappears; needed a manual `WIFI kensington2 <pass>` reprovision
+  over serial console to reconnect (device kept the same DHCP-assigned IP after reconnecting).
+  Not treated as a bug tonight (out of Phase 12 scope) but worth a closer look if it recurs.
+- Laptop-side: confirmed this laptop's WiFi (wlo1) and Bluetooth adapter share adjacent MAC
+  addresses (e8:fb:1c:25:e4:c3 / ...c2) — a combo chip sharing one antenna/radio. Two live audio
+  cutouts during this session correlated with WiFi-channel-change/BT-reconnect events on the
+  laptop side, not with any device-side telemetry (DIAG|I2SWR and radio reconnects/decode_errors
+  stayed clean throughout) — reinforces that remaining audio glitches on this specific laptop are
+  a BT/WiFi radio-sharing artifact, not a firmware regression.

@@ -330,6 +330,37 @@ esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_stat
     return result;
 }
 
+esp_err_t stations_reset_persisted(void)
+{
+    /* Erase both keys first (best-effort — a genuinely absent legacy key
+     * returning NOT_FOUND is not an error here), then let stations_init()'s
+     * normal not-found-on-both path build the seed and persist it, the same
+     * fresh-boot logic that runs when nothing was ever saved. */
+    nvs_handle_t h;
+    esp_err_t open_err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (open_err != ESP_OK) return open_err;
+
+    esp_err_t e1 = nvs_erase_key(h, NVS_KEY);
+    if (e1 == ESP_ERR_NVS_NOT_FOUND) e1 = ESP_OK;
+    esp_err_t e2 = nvs_erase_key(h, NVS_KEY_LEGACY);
+    if (e2 == ESP_ERR_NVS_NOT_FOUND) e2 = ESP_OK;
+    esp_err_t commit_err = (e1 == ESP_OK && e2 == ESP_OK) ? nvs_commit(h) : ESP_FAIL;
+    nvs_close(h);
+    if (e1 != ESP_OK) return e1;
+    if (e2 != ESP_OK) return e2;
+    if (commit_err != ESP_OK) return commit_err;
+
+    if (s_mtx) {
+        vSemaphoreDelete(s_mtx);
+        s_mtx = NULL;
+    }
+    atomic_store(&s_initialized, false);
+    s_seeded_this_boot = false;
+    printf("DIAG|STATIONS|RESET|key=" NVS_KEY "\n");
+    fflush(stdout);
+    return stations_init();
+}
+
 /* Helper: map station_result_t to esp_err_t */
 static esp_err_t station_result_to_err(station_result_t result)
 {

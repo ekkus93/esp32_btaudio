@@ -2,4 +2,4 @@
 idf_component_register(
     SRCS "console.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_driver_usb_serial_jtag wifi_mgr web_ui)
+    REQUIRES esp_driver_usb_serial_jtag wifi_mgr web_ui radio runtime_capabilities)

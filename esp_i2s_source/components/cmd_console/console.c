@@ -2,6 +2,8 @@
 #include "console.h"
 #include "wifi_mgr.h"
 #include "web_ui.h"
+#include "stations.h"
+#include "runtime_capabilities.h"
 
 #include <string.h>
 #include <strings.h>
@@ -73,6 +75,31 @@ static void handle_auth(char *args)
      * and AUTH|TOKEN_ROTATED — no further output here. */
 }
 
+/* STATIONS RESET — the only supported subcommand. Recovery path for a
+ * CRC-corrupt persisted blob that stations_init() deliberately refused to
+ * auto-repair (FIX3 §8.3). Local physical-presence path only: never
+ * forwarded to the WROOM32, never reachable over HTTP — same trust
+ * boundary as AUTH ROTATE. Republishes runtime_capabilities so
+ * capabilities.stations flips true immediately, no reboot required. */
+static void handle_stations(char *args)
+{
+    while (*args == ' ') args++;
+    if (strcasecmp(args, "RESET") != 0) {
+        printf("ERR|STATIONS|UNKNOWN_SUBCOMMAND|usage: STATIONS RESET\n");
+        return;
+    }
+    esp_err_t e = stations_reset_persisted();
+    if (e == ESP_OK) {
+        runtime_capabilities_t caps;
+        runtime_capabilities_get(&caps);
+        caps.stations = true;
+        runtime_capabilities_publish(&caps);
+        printf("OK|STATIONS|RESET|count=%d\n", stations_count());
+    } else {
+        printf("ERR|STATIONS|RESET_FAILED|%s\n", esp_err_to_name(e));
+    }
+}
+
 static void dispatch(char *line)
 {
     while (*line == ' ') line++;
@@ -85,6 +112,8 @@ static void dispatch(char *line)
         handle_wifi(args);
     } else if (strcasecmp(line, "AUTH") == 0) {
         handle_auth(args);
+    } else if (strcasecmp(line, "STATIONS") == 0) {
+        handle_stations(args);
     } else if (strcasecmp(line, "STATUS") == 0) {
         char buf[160];
         wifi_mgr_get_status(buf, sizeof(buf));
@@ -101,7 +130,7 @@ static void console_task(void *arg)
     uint8_t rx[64];
     char line[CONSOLE_LINE_MAX];
     size_t len = 0;
-    printf("DIAG|CONSOLE|READY|cmds=WIFI <ssid> [pass],WIFI STATUS,WIFI RESET,AUTH ROTATE,STATUS\n");
+    printf("DIAG|CONSOLE|READY|cmds=WIFI <ssid> [pass],WIFI STATUS,WIFI RESET,AUTH ROTATE,STATIONS RESET,STATUS\n");
     fflush(stdout);
     for (;;) {
         int n = usb_serial_jtag_read_bytes(rx, sizeof(rx), pdMS_TO_TICKS(100));
