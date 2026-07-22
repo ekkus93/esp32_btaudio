@@ -185,3 +185,60 @@ describe("FIX3 11.1/11.4: apiRequest auth behavior", () => {
     }
   });
 });
+
+describe("non-enveloped device responses (the /api/status crash)", () => {
+  it("returns a bare object (no ok field) directly instead of crashing", async () => {
+    (globalThis.fetch as Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ device: "esp-i2s-source", uptime_s: 42 }),
+    });
+    const { apiRequest } = await import("../api");
+    const r = await apiRequest<{ device: string; uptime_s: number }>("/api/status");
+    expect(r.device).toBe("esp-i2s-source");
+    expect(r.uptime_s).toBe(42);
+  });
+
+  it("returns an inline ok:true payload (no data wrapper) whole", async () => {
+    (globalThis.fetch as Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: true, on: true, hz: 440 }),
+    });
+    const { apiRequest, setAuthToken } = await import("../api");
+    setAuthToken(VALID_TOKEN);
+    const r = await apiRequest<{ ok: boolean; on: boolean; hz: number }>(
+      "/api/tone", { method: "POST", body: "{}" });
+    expect(r).toEqual({ ok: true, on: true, hz: 440 });
+  });
+
+  it("handles ok:false with a plain-string error field", async () => {
+    (globalThis.fetch as Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: false, error: "scan already running" }),
+    });
+    const { apiRequest, setAuthToken } = await import("../api");
+    setAuthToken(VALID_TOKEN);
+    await expect(
+      apiRequest("/api/scan", { method: "POST" }),
+    ).rejects.toThrow("scan already running");
+  });
+
+  it("handles ok:false with a missing error field without crashing", async () => {
+    (globalThis.fetch as Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: false }),
+    });
+    const { apiRequest, setAuthToken } = await import("../api");
+    setAuthToken(VALID_TOKEN);
+    await expect(
+      apiRequest("/api/radio", { method: "POST" }),
+    ).rejects.toThrow("HTTP 500");
+  });
+});

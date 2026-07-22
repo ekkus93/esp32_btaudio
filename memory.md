@@ -1915,3 +1915,27 @@ phase below was hardware-smoke-tested without re-asking.
 - The Phase 12 endurance run was invalidated by the mid-run reflashes; restarting it fresh on the
   fixed firmware. This bug shipped with Phase 3 and passed every FIX3 gate since — none of the
   hardware smoke tests *listened to the audio*. The user's ears were the only detector that fired.
+
+## 2026-07-22T07:50:00Z - Claude Fable 5 - Frontend: fixed apiRequest envelope crash ("Device unreachable: Cannot read properties of undefined"); pushed all FIX3 work to origin/master
+
+- User opened the actual web UI for the first time this session and hit two banners: (1) a red
+  "Device unreachable: Cannot read properties of undefined (reading 'message')" and (2) the new
+  auth panel's "A device token is required" (the latter = Phase 11 working as designed).
+- Root cause of (1): `apiRequest()` assumed EVERY response is an `{ok, data|error}` envelope, but
+  the device API is not uniformly enveloped — `/api/status`, `/api/bt`, `/api/console` return bare
+  objects with no `ok` field; mutating routes return `{ok, ...inline fields}` (no `data` wrapper);
+  some error paths return `{ok:false, error:"plain string"}` (web_ui_wifi.c) vs the structured
+  `{ok:false, error:{code,message,retryable}}` (web_send_error). The old code did
+  `payload.error.message` on a bare status object -> TypeError, which App.tsx displayed as
+  "Device unreachable". This predates FIX3 in source (the "10.11" envelope refactor) but was first
+  *served* by the Phase 1 bundle rebuild — nobody had opened the UI since; every FIX3 hardware gate
+  used curl. Second UI-only latent bug of the night (after the missing-Authorization-header one).
+- Fix: apiRequest now (a) treats a response as a failure envelope only when `ok === false`,
+  handling string/object/missing `error` fields; (b) unwraps `.data` only when it actually exists;
+  (c) returns bare or inline-ok payloads whole; (d) fires onAuthRequired on code AUTH_REQUIRED as
+  well as HTTP 401. Dropped the now-unused ApiEnvelope type. +4 vitest cases (23 total pass);
+  rebuilt/flashed the SPA (56.6 KB gz) and verified /api/status renders in the live UI.
+- Note the timestamp above is approximate (entry written immediately after the 07:37 i2s fix
+  commit; exact time in git).
+- Pushed to origin/master per user's /commit-push: afad0d75..d2dc7f67 (all 16 FIX3 + i2s-DMA-fix
+  commits), then this frontend fix as a follow-up commit (also pushed).

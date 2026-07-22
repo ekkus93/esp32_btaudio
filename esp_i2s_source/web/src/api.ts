@@ -60,10 +60,6 @@ export class ApiError extends Error {
   }
 }
 
-type ApiEnvelope<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: { code: string; message: string; retryable?: boolean } };
-
 // -----------------------------------------------------------------------
 // FIX3 11.2: auth token storage. Session-only by default (cleared when the
 // tab closes) — "remember on this browser" is an explicit opt-in that
@@ -154,22 +150,45 @@ export async function apiRequest<T>(
       );
     }
 
-    const payload = (await response.json()) as ApiEnvelope<T>;
-    if (!response.ok || !payload.ok) {
-      const error = !payload.ok
-        ? payload.error
-        : { code: "HTTP_ERROR", message: `HTTP ${response.status}`, retryable: true };
-      if (response.status === 401) {
+    // The device API is NOT uniformly enveloped: mutating routes reply
+    // {ok, ...} or {ok:false, error:{code,message,retryable}|"text"}, but
+    // plain data endpoints (/api/status, /api/bt, /api/console, ...) return
+    // bare objects with no `ok` field at all. Only treat a response as a
+    // failure envelope when `ok` is explicitly false; only unwrap `.data`
+    // when it actually exists. (Assuming the envelope everywhere crashed on
+    // /api/status with "Cannot read properties of undefined".)
+    const payload = (await response.json()) as Record<string, unknown> | null;
+    const envelopeFailed =
+      payload !== null && typeof payload === "object" && payload.ok === false;
+
+    if (!response.ok || envelopeFailed) {
+      let code = "HTTP_ERROR";
+      let message = `HTTP ${response.status}`;
+      let retryable = response.status >= 500;
+      if (envelopeFailed) {
+        const e = (payload as { error?: unknown }).error;
+        if (typeof e === "string") {
+          code = "ERROR";
+          message = e;
+          retryable = false;
+        } else if (e && typeof e === "object") {
+          const eo = e as { code?: string; message?: string; retryable?: boolean };
+          code = eo.code ?? "ERROR";
+          message = eo.message ?? "request failed";
+          retryable = eo.retryable ?? false;
+        }
+      }
+      if (response.status === 401 || code === "AUTH_REQUIRED") {
         notifyAuthRequired();
       }
-      throw new ApiError(
-        error.message,
-        response.status,
-        error.code,
-        error.retryable ?? false,
-      );
+      throw new ApiError(message, response.status, code, retryable);
     }
-    return payload.data;
+
+    if (payload !== null && typeof payload === "object" &&
+        payload.ok === true && "data" in payload) {
+      return (payload as { data: T }).data;
+    }
+    return payload as T;
   } finally {
     window.clearTimeout(timerId);
   }
