@@ -48,6 +48,21 @@ static const char *TAG = "bt_link";
 #define BT_LINK_EVENT_TASK_PRIO  (configMAX_PRIORITIES - 5)
 #define BT_LINK_EVENT_QUEUE_LEN  8
 
+/* Explicit lifecycle state (TODO 4.1). FAULTED_JOIN_PENDING means one or
+ * both worker tasks may still be running and may still touch
+ * s_active/s_cmd_queue/s_event_queue/s_subs — deinit() is forbidden in
+ * this state; only a retried stop() may attempt the join again. */
+typedef enum {
+    BT_LINK_STATE_UNINITIALIZED = 0,
+    BT_LINK_STATE_STARTING,
+    BT_LINK_STATE_RUNNING,
+    BT_LINK_STATE_STOPPING,
+    BT_LINK_STATE_STOPPED,
+    BT_LINK_STATE_FAULTED_JOIN_PENDING,
+} bt_link_state_t;
+
+static _Atomic bt_link_state_t s_lifecycle_state = BT_LINK_STATE_UNINITIALIZED;
+
 /* Two-owner refcounted request (TODO 4.2). refs starts at 1 (caller).
  * request_retain() bumps it to 2 to reserve the worker's eventual ownership
  * *before* the item is handed to the queue — if the enqueue itself fails,
@@ -59,6 +74,7 @@ typedef struct {
     atomic_uint             refs;
     char                    cmd[BT_LINK_LINE_MAX];
     bt_link_cmd_state_t     state;
+    esp_err_t               transport_err;  /* local transport result (TODO 4.2/4.3) */
     char                    result[BT_LINK_FIELD_MAX];
     char                    data[BT_LINK_FIELD_MAX];
     SemaphoreHandle_t       done_sem;
@@ -74,6 +90,7 @@ static bt_link_request_t *request_create(const char *cmd)
         free(req);
         return NULL;
     }
+    req->transport_err = ESP_OK;
     atomic_init(&req->refs, 1);
     return req;
 }
@@ -92,6 +109,24 @@ static void request_release(bt_link_request_t *req)
         vSemaphoreDelete(req->done_sem);
         free(req);
     }
+}
+
+/* One completion path for every way the worker finishes a request — normal
+ * terminal response, local UART transport failure, or shutdown cancellation
+ * (TODO 4.2). Called exactly once per request from the worker side. Writes
+ * fields, signals the caller's semaphore, then releases the worker's own
+ * reference (which may free the request if the caller already gave up). */
+static void request_complete_worker(bt_link_request_t *req, esp_err_t transport_err,
+                                    bt_link_cmd_state_t state,
+                                    const char *result, const char *data)
+{
+    if (!req) return;
+    req->transport_err = transport_err;
+    req->state = state;
+    if (result) strncpy(req->result, result, sizeof(req->result) - 1);
+    if (data) strncpy(req->data, data, sizeof(req->data) - 1);
+    xSemaphoreGive(req->done_sem);
+    request_release(req);
 }
 
 /* Deep-copied event item (TODO 4.5/BTLINK-013): never a pointer into the
@@ -117,13 +152,18 @@ static SemaphoreHandle_t  s_send_mutex;
 static bt_link_request_t *s_active;
 static uint32_t           s_cmd_timeout_ms; /* configured command timeout */
 
-static bool               s_initialized;
 static TaskHandle_t       s_task;
 static TaskHandle_t       s_event_task;
 static _Atomic bool       s_stop_requested;
 static EventGroupHandle_t s_lifecycle_events;
-#define BT_LINK_EVT_TASK_EXITED       (1u << 0)
-#define BT_LINK_EVT_EVENT_TASK_EXITED (1u << 1)
+/* ENTERED distinguishes "task scheduled and running" from task-creation
+ * success alone, so init() can wait for real task entry before publishing
+ * RUNNING (TODO 4.1/4.2), matching the same ENTERED/EXITED split used for
+ * i2s_out.c and radio.c elsewhere in this codebase. */
+#define BT_LINK_EVT_TASK_ENTERED       (1u << 0)
+#define BT_LINK_EVT_EVENT_TASK_ENTERED (1u << 1)
+#define BT_LINK_EVT_TASK_EXITED        (1u << 2)
+#define BT_LINK_EVT_EVENT_TASK_EXITED  (1u << 3)
 
 static QueueHandle_t      s_event_queue;
 static SemaphoreHandle_t  s_subs_mtx;
@@ -176,6 +216,8 @@ static void event_dispatch_task(void *arg)
     (void)arg;
     bt_link_event_item_t item;
 
+    xEventGroupSetBits(s_lifecycle_events, BT_LINK_EVT_EVENT_TASK_ENTERED);
+
     while (!atomic_load(&s_stop_requested)) {
         if (xQueueReceive(s_event_queue, &item, pdMS_TO_TICKS(200)) != pdTRUE) {
             continue;
@@ -218,24 +260,99 @@ static void on_line(void *ctx, char *line)
     }
 }
 
+/* Complete s_active (if any) and drain+complete every request still queued,
+ * each with a local cancellation error — called once, at worker exit
+ * (TODO 4.4 / BTLINK-002). Previously the drain only released the worker's
+ * reference on queued requests without ever signaling their semaphore or
+ * touching s_active at all, so callers blocked for their full timeout
+ * instead of failing fast, and an abandoned s_active request leaked (only
+ * one of its two references was ever released). */
+static void cancel_active_and_queued(void)
+{
+    if (s_active) {
+        bt_link_request_t *active = s_active;
+        s_active = NULL;
+        request_complete_worker(active, ESP_ERR_INVALID_STATE, BT_LINK_CMD_TIMEOUT,
+                                "CANCELLED", "shutdown");
+    }
+
+    bt_link_request_t *pending;
+    while (xQueueReceive(s_cmd_queue, &pending, 0) == pdTRUE) {
+        request_complete_worker(pending, ESP_ERR_INVALID_STATE, BT_LINK_CMD_TIMEOUT,
+                                "CANCELLED", "shutdown");
+    }
+}
+
+#ifdef UNIT_TEST
+void bt_link_test_inject_lifecycle_bits(uint32_t bits)
+{
+    if (s_lifecycle_events) {
+        xEventGroupSetBits(s_lifecycle_events, (EventBits_t)bits);
+    }
+}
+
+bool bt_link_test_move_one_queued_to_active(void)
+{
+    if (s_active) return false;
+    bt_link_request_t *req = NULL;
+    if (xQueueReceive(s_cmd_queue, &req, 0) != pdTRUE || !req) return false;
+    s_active = req;
+    return true;
+}
+
+void bt_link_test_invoke_cancel_active_and_queued(void)
+{
+    cancel_active_and_queued();
+}
+
+void bt_link_test_reset_module_state(void)
+{
+    s_task = NULL;
+    s_event_task = NULL;
+    if (s_cmd_queue) {
+        cancel_active_and_queued(); /* completes s_active too, if any */
+    } else {
+        s_active = NULL;
+    }
+    if (s_lifecycle_events) { vEventGroupDelete(s_lifecycle_events); s_lifecycle_events = NULL; }
+    if (s_event_queue) { vQueueDelete(s_event_queue); s_event_queue = NULL; }
+    if (s_subs_mtx) { vSemaphoreDelete(s_subs_mtx); s_subs_mtx = NULL; }
+    if (s_send_mutex) { vSemaphoreDelete(s_send_mutex); s_send_mutex = NULL; }
+    if (s_cmd_queue) { vQueueDelete(s_cmd_queue); s_cmd_queue = NULL; }
+    memset(s_subs, 0, sizeof(s_subs));
+    atomic_store(&s_stop_requested, false);
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_UNINITIALIZED);
+}
+#endif /* UNIT_TEST */
+
 static void bt_link_task(void *arg)
 {
     (void)arg;
     uint8_t rx[256];
     TickType_t last = xTaskGetTickCount();
 
+    xEventGroupSetBits(s_lifecycle_events, BT_LINK_EVT_TASK_ENTERED);
+
     while (!atomic_load(&s_stop_requested)) {
         /* Start the next queued command when nothing is in flight. */
         if (s_active == NULL) {
             bt_link_request_t *req = NULL;
             if (xQueueReceive(s_cmd_queue, &req, 0) == pdTRUE && req) {
-                s_active = req;
                 bt_link_session_begin(&s_session, req->cmd);
                 char out[BT_LINK_LINE_MAX + 2];
                 int n = snprintf(out, sizeof(out), "%s\r\n", req->cmd);
                 int written = (n > 0) ? uart_write_bytes(BT_LINK_UART, out, (size_t)n) : -1;
                 if (written != n) {
+                    /* Local transport failure — complete immediately rather
+                     * than waiting for the peer to never respond (TODO 4.3 /
+                     * BTLINK-004: this used to only log, letting the caller
+                     * discover the failure via the ordinary session
+                     * timeout). */
                     ESP_LOGW(TAG, "uart_write_bytes short/failed: wrote %d of %d", written, n);
+                    request_complete_worker(req, ESP_FAIL, BT_LINK_CMD_TIMEOUT,
+                                            "LOCAL_UART_WRITE_FAILED", "");
+                } else {
+                    s_active = req;
                 }
             }
         }
@@ -256,26 +373,15 @@ static void bt_link_task(void *arg)
                 st == BT_LINK_CMD_TIMEOUT) {
                 bt_link_request_t *req = s_active;
                 s_active = NULL;
-
-                req->state = st;
-                strncpy(req->result, s_session.last_result, sizeof(req->result) - 1);
-                strncpy(req->data, s_session.last_data, sizeof(req->data) - 1);
-
-                /* Signal the caller — semaphore ops provide the memory
-                 * barrier for the fields just written above. The worker
-                 * never touches *req again after this. */
-                xSemaphoreGive(req->done_sem);
-                request_release(req);
+                request_complete_worker(req, ESP_OK, st,
+                                        s_session.last_result, s_session.last_data);
             }
         }
     }
 
-    /* Drain and release any still-queued (never-started) requests so their
-     * refcounts resolve cleanly rather than leaking. */
-    bt_link_request_t *pending;
-    while (xQueueReceive(s_cmd_queue, &pending, 0) == pdTRUE) {
-        request_release(pending);
-    }
+    /* Complete (not just release) s_active and every still-queued request
+     * so no caller is left blocked until its own timeout (TODO 4.4). */
+    cancel_active_and_queued();
 
     xEventGroupSetBits(s_lifecycle_events, BT_LINK_EVT_TASK_EXITED);
     s_task = NULL;
@@ -284,16 +390,25 @@ static void bt_link_task(void *arg)
 
 bool bt_link_is_initialized(void)
 {
-    return s_initialized;
+    return atomic_load(&s_lifecycle_state) != BT_LINK_STATE_UNINITIALIZED;
 }
 
 esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
 {
     uint32_t timeout = cmd_timeout_ms ? cmd_timeout_ms : BT_LINK_DEFAULT_TIMEOUT_MS;
 
-    if (s_initialized) {
+    bt_link_state_t existing = atomic_load(&s_lifecycle_state);
+    if (existing == BT_LINK_STATE_RUNNING) {
+        /* Genuinely idempotent only while actually running. */
         return (timeout == s_cmd_timeout_ms) ? ESP_OK : ESP_ERR_INVALID_STATE;
     }
+    if (existing != BT_LINK_STATE_UNINITIALIZED) {
+        /* STARTING/STOPPING/STOPPED/FAULTED_JOIN_PENDING: never silently
+         * "OK" even with a matching timeout — the module isn't safely
+         * running and needs stop()/retry to resolve, not a repeated init(). */
+        return ESP_ERR_INVALID_STATE;
+    }
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_STARTING);
 
     esp_err_t err;
     bool uart_installed = false;
@@ -307,7 +422,10 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
         .source_clk = UART_SCLK_DEFAULT,
     };
     err = uart_driver_install(BT_LINK_UART, BT_LINK_RX_BUF, 0, 0, NULL, 0);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) {
+        atomic_store(&s_lifecycle_state, BT_LINK_STATE_UNINITIALIZED);
+        return err;
+    }
     uart_installed = true;
 
     err = uart_param_config(BT_LINK_UART, &cfg);
@@ -353,26 +471,70 @@ esp_err_t bt_link_init(uint32_t cmd_timeout_ms)
         goto fail;
     }
 
-    s_initialized = true;
+    /* Wait for task-entry acknowledgement before publishing RUNNING (TODO
+     * 4.1/4.2) — task-creation success alone doesn't prove either task has
+     * actually run yet. */
+    {
+        EventBits_t bits = xEventGroupWaitBits(
+            s_lifecycle_events,
+            BT_LINK_EVT_TASK_ENTERED | BT_LINK_EVT_EVENT_TASK_ENTERED,
+            pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
+        if ((bits & (BT_LINK_EVT_TASK_ENTERED | BT_LINK_EVT_EVENT_TASK_ENTERED)) !=
+            (BT_LINK_EVT_TASK_ENTERED | BT_LINK_EVT_EVENT_TASK_ENTERED)) {
+            atomic_store(&s_stop_requested, true);
+            err = ESP_ERR_TIMEOUT;
+            goto fail;
+        }
+    }
+
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_RUNNING);
     ESP_LOGI(TAG, "init: UART1 tx=%d rx=%d @115200, timeout=%ums",
              BT_LINK_UART_TX_GPIO, BT_LINK_UART_RX_GPIO,
              (unsigned)s_cmd_timeout_ms);
     return ESP_OK;
 
 fail:
+    /* Join-safety (TODO 4.6 / BTLINK-001): if either task was actually
+     * created, it must be given a chance to exit before its shared
+     * resources are deleted out from under it. stop_requested is already
+     * true by the time we reach here whenever a task exists. */
+    if (s_event_task || s_task) {
+        EventBits_t want = (s_event_task ? BT_LINK_EVT_EVENT_TASK_EXITED : 0) |
+                           (s_task ? BT_LINK_EVT_TASK_EXITED : 0);
+        EventBits_t got = xEventGroupWaitBits(s_lifecycle_events, want,
+                                              pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
+        if ((got & want) != want) {
+            /* The join itself is now the dominant problem — ownership is
+             * unresolved, which matters more to the caller than the
+             * original creation-failure cause (matches i2s_out.c's
+             * ack-timeout-then-join-timeout precedent). */
+            ESP_LOGW(TAG, "init failed and join timed out — resources retained");
+            atomic_store(&s_lifecycle_state, BT_LINK_STATE_FAULTED_JOIN_PENDING);
+            return ESP_ERR_TIMEOUT;
+        }
+    }
     if (s_lifecycle_events) { vEventGroupDelete(s_lifecycle_events); s_lifecycle_events = NULL; }
     if (s_event_queue) { vQueueDelete(s_event_queue); s_event_queue = NULL; }
     if (s_subs_mtx) { vSemaphoreDelete(s_subs_mtx); s_subs_mtx = NULL; }
     if (s_send_mutex) { vSemaphoreDelete(s_send_mutex); s_send_mutex = NULL; }
     if (s_cmd_queue) { vQueueDelete(s_cmd_queue); s_cmd_queue = NULL; }
     if (uart_installed) uart_driver_delete(BT_LINK_UART);
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_UNINITIALIZED);
     return err;
 }
 
 esp_err_t bt_link_stop(void)
 {
-    if (!s_initialized) return ESP_OK;
+    bt_link_state_t state = atomic_load(&s_lifecycle_state);
+    if (state == BT_LINK_STATE_UNINITIALIZED || state == BT_LINK_STATE_STOPPED) {
+        return ESP_OK;   /* idempotent */
+    }
+    /* Legal from STARTING (cancel an in-progress init's tasks — though
+     * init() itself already handles its own join-safety), RUNNING,
+     * STOPPING (a retry of a prior call), and FAULTED_JOIN_PENDING (retry
+     * a previously-timed-out join) — TODO 4.7. */
 
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_STOPPING);
     atomic_store(&s_stop_requested, true);
 
     EventBits_t bits = xEventGroupWaitBits(
@@ -382,15 +544,30 @@ esp_err_t bt_link_stop(void)
     if ((bits & (BT_LINK_EVT_TASK_EXITED | BT_LINK_EVT_EVENT_TASK_EXITED)) !=
         (BT_LINK_EVT_TASK_EXITED | BT_LINK_EVT_EVENT_TASK_EXITED)) {
         ESP_LOGW(TAG, "stop: task exit timed out, resources retained");
+        atomic_store(&s_lifecycle_state, BT_LINK_STATE_FAULTED_JOIN_PENDING);
         return ESP_ERR_TIMEOUT;
     }
+    /* Lifecycle owner clears the task handles once EXITED is confirmed —
+     * the worker tasks are not the sole source of truth for this (TODO
+     * 4.6); they also clear their own handle just before self-deleting,
+     * which is harmless/redundant on real hardware but this is the only
+     * place that's guaranteed to run. */
+    s_task = NULL;
+    s_event_task = NULL;
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_STOPPED);
     return ESP_OK;
 }
 
 esp_err_t bt_link_deinit(void)
 {
-    if (!s_initialized) return ESP_OK;
-    if (s_task || s_event_task) return ESP_ERR_INVALID_STATE;  /* stop() first */
+    bt_link_state_t state = atomic_load(&s_lifecycle_state);
+    if (state == BT_LINK_STATE_UNINITIALIZED) return ESP_OK;
+    /* Legal only from STOPPED — both tasks have confirmed exit and no
+     * request is left in flight. Rejects STARTING/RUNNING/STOPPING and,
+     * critically, FAULTED_JOIN_PENDING: a worker may still be running and
+     * may still touch these resources (TODO 4.7). */
+    if (state != BT_LINK_STATE_STOPPED) return ESP_ERR_INVALID_STATE;
+    if (s_task || s_event_task) return ESP_ERR_INVALID_STATE;
 
     uart_driver_delete(BT_LINK_UART);
     if (s_lifecycle_events) { vEventGroupDelete(s_lifecycle_events); s_lifecycle_events = NULL; }
@@ -399,7 +576,7 @@ esp_err_t bt_link_deinit(void)
     if (s_send_mutex) { vSemaphoreDelete(s_send_mutex); s_send_mutex = NULL; }
     if (s_cmd_queue) { vQueueDelete(s_cmd_queue); s_cmd_queue = NULL; }
     s_active = NULL;
-    s_initialized = false;
+    atomic_store(&s_lifecycle_state, BT_LINK_STATE_UNINITIALIZED);
     return ESP_OK;
 }
 
@@ -444,8 +621,22 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
 {
     if (!s_send_mutex) return ESP_ERR_INVALID_STATE;
     if (!command_is_valid(cmd)) return ESP_ERR_INVALID_ARG;
+    /* Gate on RUNNING before taking the send lock (TODO 4.5/BTLINK-003) —
+     * closes the window where STOPPING has already been published but the
+     * queue could still silently accept a request no worker will ever
+     * consume. */
+    if (atomic_load(&s_lifecycle_state) != BT_LINK_STATE_RUNNING) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     xSemaphoreTake(s_send_mutex, portMAX_DELAY);
+
+    /* Re-check after acquiring the lock — closes the race where stop()
+     * begins between the check above and taking the mutex. */
+    if (atomic_load(&s_lifecycle_state) != BT_LINK_STATE_RUNNING) {
+        xSemaphoreGive(s_send_mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
 
     bt_link_request_t *req = request_create(cmd);
     if (!req) {

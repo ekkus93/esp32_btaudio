@@ -204,7 +204,6 @@ add_executable(test_bt_link_lifecycle test_bt_link_lifecycle.c
     ${BT_LINK_DIR}/bt_link_session.c
     ${BT_LINK_DIR}/bt_link_parser.c
     mocks/freertos_event_group.c
-    mocks/fake_task.c
     mocks/fake_semphr.c
     mocks/fake_esp_err.c
     mocks/fake_uart.c

@@ -58,6 +58,35 @@ esp_err_t bt_link_send(const char *cmd, bt_link_cmd_state_t *out_state,
                        char *result, size_t result_sz,
                        char *data, size_t data_sz);
 
+#ifdef UNIT_TEST
+/* Test injection hooks (TODO 4.8). A mocked xTaskCreate() does not run the
+ * real task bodies, so host tests simulate what they would publish via
+ * these — same technique as i2s_out.c's i2s_test_inject_writer_bits().
+ * uint32_t (not EventBits_t) to keep FreeRTOS types out of this header. */
+void bt_link_test_inject_lifecycle_bits(uint32_t bits);
+#define BT_LINK_TEST_EVT_TASK_ENTERED       ((uint32_t)1)
+#define BT_LINK_TEST_EVT_EVENT_TASK_ENTERED ((uint32_t)2)
+#define BT_LINK_TEST_EVT_TASK_EXITED        ((uint32_t)4)
+#define BT_LINK_TEST_EVT_EVENT_TASK_EXITED  ((uint32_t)8)
+
+/* Move one request from s_cmd_queue to s_active, mimicking what
+ * bt_link_task()'s loop does right before writing to the UART — lets a
+ * test exercise "an active request gets cancelled on shutdown" (BTLINK-002)
+ * without the real task ever running. Returns true if a request was moved. */
+bool bt_link_test_move_one_queued_to_active(void);
+
+/* Directly invoke the same cancellation logic bt_link_task() runs at exit:
+ * complete s_active (if any) and every still-queued request with a local
+ * cancellation error, releasing the worker's reference on each exactly
+ * once. */
+void bt_link_test_invoke_cancel_active_and_queued(void);
+
+/* Force every module static back to pre-init state regardless of current
+ * lifecycle state — test isolation only (never compiled into production),
+ * same rationale as i2s_out.c's i2s_test_reset_module_state(). */
+void bt_link_test_reset_module_state(void);
+#endif /* UNIT_TEST */
+
 #ifdef __cplusplus
 }
 #endif
