@@ -59,6 +59,46 @@ header h1 {
 
 .card.provision { border-color: var(--accent); }
 
+/* FIX3 11.2: token-entry panel — a small dropdown anchored under the header
+ * lock button, not a full-screen modal (mutations are occasional, not the
+ * primary flow). */
+header { position: relative; }
+.auth-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.auth-toggle.ok { border-color: var(--ok); }
+.auth-toggle.bad { border-color: var(--bad); }
+.auth-panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  width: 260px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.auth-panel form { display: flex; flex-direction: column; gap: 10px; }
+.auth-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.auth-panel input[type="password"] {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  padding: 8px 10px;
+  font: inherit;
+}
+.auth-remember { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.auth-actions { display: flex; gap: 8px; }
+
 /* Settings tab: a fixed 2-column layout (Network+System, WiFi+Control AP), with
  * the full-width Bluetooth card below. Collapses to one column on phones. */
 .grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -1802,3 +1802,56 @@ phase below was hardware-smoke-tested without re-asking.
 - Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 11
   (frontend authenticated mutation flow) and Phase 12 (final verification, hardware gates, 2-hour
   endurance test) — the last two FIX3 phases.
+
+## 2026-07-22T05:06:54Z - Claude Sonnet 5 - FIX3 Phase 11 (frontend authenticated mutation flow) done — found and fixed a real "every mutation from the web UI has been silently broken since Phase 2A" bug
+
+- **Phase 11** (commit pending): all 5 sub-areas in `web/src/`.
+  - **Found the actual reason this phase mattered**: `api.ts`'s `apiRequest()` never attached an
+    `Authorization` header to ANY request, mutating or not — there was no token storage, no auth UI,
+    nothing. Since Phase 2A made every mutating route require a Bearer token, this meant **every
+    mutation from the actual web UI** (play radio, add/edit/delete a station, set WiFi, toggle the
+    control AP, set tone/volume, BT actions) has been returning 401 and silently failing from a real
+    browser since that commit — a live, user-facing regression that only console/curl-based testing
+    (this session's own verification method for earlier phases) would never have caught, since it
+    always supplied its own token by hand.
+  - **11.1**: `apiRequest()` now attaches `Authorization: Bearer <token>` for POST/PUT/DELETE/PATCH,
+    and — 11.4's "missing token prevents mutation before network call" — throws
+    `ApiError(401, "AUTH_REQUIRED", ...)` *before* calling `fetch()` at all if no token is stored, so a
+    logged-out mutation attempt never even reaches the network. Confirmed no component anywhere calls
+    raw `fetch()` directly (`grep` across `web/src/*.tsx` — zero hits); all mutation already went
+    through the shared helpers in `api.ts`.
+  - **11.2**: new `getAuthToken()`/`setAuthToken()`/`clearAuthToken()` (exact 64-lowercase-hex
+    validation on set, session-storage by default, an explicit `remember` flag additionally mirrors
+    into `localStorage`) and a new `Auth.tsx` `<AuthPanel>` — a small dropdown under a header lock
+    icon (🔒/🔓), never rendering the token as plain text (password-style input) and never touching a
+    URL/query string.
+  - **11.3**: new `onAuthRequired()` pub-sub in `api.ts` — `apiRequest()` fires it both on the
+    pre-flight missing-token case and on a real 401 response, so `<AuthPanel>` (mounted once in
+    `App.tsx`'s header) opens automatically regardless of which component triggered the mutation,
+    instead of every call site needing its own 401-handling logic. Separately, found and fixed a real
+    bug in `Radio.tsx`: three of its four mutation call sites (`submit()`, `saveEdit()`, and the shared
+    `wrap()` helper used by play/stop/move/delete) had **no catch block at all** — any `ApiError`
+    thrown by `apiRequest()` (missing token, 503, 500, anything) became an unhandled promise rejection,
+    silently dropped with no visible error banner. Not introduced by this phase, but exposed by it,
+    since the new pre-flight AUTH_REQUIRED throw is exactly the kind of exception these call sites
+    never handled. Added a shared `errText()` helper and wired `catch` into all three.
+  - **11.4**: 8 new Vitest tests in `api.test.ts` covering token validation (reject malformed, accept
+    exact 64-lowercase-hex), storage (`remember` true/false), and the auth flow itself (mutating
+    request without a token never calls `fetch()`; GET never requires a token; a stored token adds the
+    header; a 401 response and a missing-token both fire `onAuthRequired`). 19 total frontend tests
+    pass (was 11).
+  - **11.5**: rebuilt the embedded SPA from the modified sources (`tsc --noEmit` clean, `vite build`,
+    `embed_web.mjs`) — grew from 55.6 KB to 56.5 KB gzip (the new auth panel + logic). Verified with
+    `grep -ocE "[0-9a-f]{64}"` against the built `dist/index.html` that no token is embedded (0 matches
+    — there never was one in source, this was just the explicit check the spec calls for).
+- Verified live: flashed the rebuilt SPA, confirmed the served page contains the new auth-panel markup
+  (`grep -c "auth-panel"` against the live `--compressed` response), and confirmed the underlying
+  device-side 401/200 behavior end-to-end via curl (unchanged since Phase 2A — the bug was purely
+  frontend-side, never sending the header). **Could not perform interactive/visual browser testing of
+  the new token-entry panel in this environment** — verification here is TypeScript compile + 19
+  passing Vitest unit tests (specifically exercising the exact header-attachment and
+  blocks-before-network-call behaviors) + build/embed correctness + the live served-page content check
+  above, not a human clicking through the UI.
+- Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 12
+  — the final phase (clean re-verification, all hardware gates, 2-hour endurance test, documentation
+  reconciliation).

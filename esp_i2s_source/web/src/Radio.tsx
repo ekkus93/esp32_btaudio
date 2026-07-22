@@ -1,8 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   playRadio, stopRadio, getStations, addStation, updateStation, deleteStation, moveStation, setPrebuffer,
-  type RadioStatus, type Station,
+  ApiError, type RadioStatus, type Station,
 } from "./api";
+
+// FIX3 11.3: a rejected mutation (401/409/422/503/500) must be visible, not
+// silently dropped as an unhandled rejection — this is the one place every
+// call site below routes its error text through.
+function errText(e: unknown): string {
+  if (e instanceof ApiError) return e.message;
+  return e instanceof Error ? e.message : String(e);
+}
 
 function kb(n: number) {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`;
@@ -41,6 +49,8 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
     setErr(null);
     try {
       await fn();
+    } catch (e) {
+      setErr(errText(e));
     } finally {
       setBusy(false);
       if (reload) loadStations();
@@ -52,9 +62,14 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) return;
-    const r = await addStation(name, url);
-    if (r.ok) { setName(""); setUrl(""); loadStations(); }
-    else setErr((r as { error?: string }).error || "rejected");
+    setErr(null);
+    try {
+      const r = await addStation(name, url);
+      if (r.ok) { setName(""); setUrl(""); loadStations(); }
+      else setErr((r as { error?: string }).error || "rejected");
+    } catch (e) {
+      setErr(errText(e));
+    }
   };
 
   // Inline row editor.
@@ -69,6 +84,8 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
       const r = await updateStation(editId, editName, editUrl);
       if (r.ok) { setEditId(null); loadStations(); onChange(); }
       else setEditErr((r as { error?: string }).error || "rejected");
+    } catch (e) {
+      setEditErr(errText(e));
     } finally {
       setBusy(false);
     }

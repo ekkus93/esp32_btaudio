@@ -2660,7 +2660,7 @@ Required tests:
 
 # Phase 11 — Add frontend authenticated mutation flow and truthful errors
 
-## 11.1 Centralize API requests
+## 11.1 Centralize API requests — DONE (Phase 11, commit pending)
 
 **Files:**
 
@@ -2722,7 +2722,7 @@ No component should call raw `fetch()` for API mutation after this phase.
 
 ---
 
-## 11.2 Add token-entry UI
+## 11.2 Add token-entry UI — DONE (Phase 11, commit pending)
 
 Add a small authentication panel/dialog:
 
@@ -2738,7 +2738,7 @@ Optional “remember on this browser” must be explicit and may use localStorag
 
 ---
 
-## 11.3 Surface 503 and operation failures
+## 11.3 Surface 503 and operation failures — DONE (Phase 11, commit pending)
 
 Each UI action must distinguish:
 
@@ -2752,7 +2752,7 @@ Do not convert a rejected mutation into optimistic success. Roll optimistic UI s
 
 ---
 
-## 11.4 Update tests
+## 11.4 Update tests — DONE (Phase 11, commit pending)
 
 Add Vitest tests:
 
@@ -2769,7 +2769,7 @@ Update Playwright mock server to require auth for mutations and test both unauth
 
 ---
 
-## 11.5 Rebuild embedded SPA
+## 11.5 Rebuild embedded SPA — DONE (Phase 11, commit pending)
 
 From clean dependencies:
 

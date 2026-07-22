@@ -9,6 +9,7 @@ import { Bluetooth } from "./Bluetooth";
 import { Radio } from "./Radio";
 import { Piano } from "./Piano";
 import { Arpeggios } from "./Arpeggios";
+import { AuthPanel } from "./Auth";
 import { usePolling } from "./usePolling";
 
 function fmtUptime(s: number): string {
@@ -407,6 +408,7 @@ export function App() {
       <header>
         <h1>ESP32 Bluetooth Audio Source</h1>
         <span className={`dot ${online ? "ok" : "bad"}`} title={online ? "online" : "unreachable"} />
+        <AuthPanel />
       </header>
 
       {err && <div className="banner err">Device unreachable: {err}</div>}
