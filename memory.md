@@ -1519,7 +1519,7 @@ phase below was hardware-smoke-tested without re-asking.
   verified again live alongside a real SomaFM stream playing/stopping cleanly. 36+1 new host tests
   (two binaries: default-strict and the local-streams-allowed override, since the Kconfig branch is
   compile-time).
-- **Phase 6 — WiFi manager** (commit pending): fixed WIFI-001..004 from the code review.
+- **Phase 6 — WiFi manager** (commit `2a6d99d3`): fixed WIFI-001..004 from the code review.
   `bounded_length()`/`validate_ssid/sta_password/ap_password()`/`validate_stored_string()` pulled out
   into a new pure `wifi_creds_core.c` (host-tested, 31 tests × 2 binaries for the hex-PSK Kconfig
   branch) — `wifi_mgr.c` itself stays device-only/untested-on-host, same split as stations.c and
@@ -1544,6 +1544,78 @@ phase below was hardware-smoke-tested without re-asking.
   command shows the new `MDNS=` field.
 - Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed after every phase
   above. Ralph-loop mandate is to continue through Phase 12 without stopping for approval on ordinary
-  phases; next up is Phase 7 (radio session lifecycle + PSRAM). Still nothing pushed to
-  origin/master — all 12 FIX3 commits so far (`71e2427b` through Phase 6, not yet committed as of this
-  entry) remain local-only per standing convention.
+  phases. Still nothing pushed to origin/master — all FIX3 commits so far (`71e2427b` through Phase 6)
+  remain local-only per standing convention.
+
+## 2026-07-22T02:27:53Z - Claude Sonnet 5 - FIX3 Phase 7 (radio session lifecycle + PSRAM) done, hardware-verified — includes a real hardware-only crash found and fixed
+
+- **Phase 7** (commit pending): radio.c's `radio_state_t` gained `RADIO_STATE_BUFFERING`; event
+  bits split from a single STARTED into `ENTERED`/`READY` per worker (stream/decoder), plus
+  `RADIO_EVT_ALL_ENTERED`/`RADIO_EVT_ALL_READY`. `radio_play_sync()` now waits (bounded) for both
+  workers' ENTERED bits before publishing anything beyond STARTING — previously it published
+  RUNNING unconditionally the instant both `xTaskCreate()` calls returned pdPASS, without any
+  confirmation the workers had actually started. BUFFERING→RUNNING is a separate, later, async
+  transition (`radio_try_publish_running()`, called by each worker right after it sets its own READY
+  bit — stream: HTTP connected + codec recognized; decoder: opened successfully) once *both* READY
+  bits are set, gated by a new generation check (`radio_set_state_for_generation()`) so a stale
+  worker from an already-replaced/stopped session can never clobber a newer session's state.
+  `radio_deinit()` now returns `esp_err_t` (was `void`) and — per the spec's explicit "never
+  dereference a session a prior step may have freed" warning — no longer force-destroys a session
+  whose workers haven't confirmed exit; deleted `session_destroy_force()` entirely (its old call site
+  in deinit was a genuine use-after-free-shaped bug: it read `session_all_exited(s)` on a pointer
+  `radio_stop_sync()` may already have freed via `session_destroy_joined()`). `radio_stop_sync()`
+  collapsed from three near-duplicate branches (FAULTED_JOIN_PENDING / FAULTED / normal) into one
+  unified flow built on a new `session_join()` helper, matching the spec's pseudocode almost
+  verbatim. `radio_play_sync()`'s decoder-task-creation-failure path had a real bug: on a stream-join
+  timeout it would wait *again* (doubling the 8 s timeout) and then unconditionally
+  `vEventGroupDelete()`+`free()` the session regardless of whether the stream worker had actually
+  exited — freeing memory a still-running task could reference. Fixed to attach the session as active
+  `FAULTED_JOIN_PENDING` (recoverable) instead of freeing it on timeout. `radio_init()` is now
+  genuinely all-or-nothing: dropped the silent `MALLOC_CAP_DEFAULT` (plain-heap) fallback when a PSRAM
+  ring allocation fails (the spec explicitly forbids this — the two rings are ~1 MiB+ and would
+  silently starve internal DRAM instead of failing loudly), switched to `heap_caps_free()`
+  consistently, and rejects `ring_bytes == 0`. Command-worker shutdown (`radio_deinit()`) now waits on
+  a real exit-acknowledgement event bit (new module-level `g_radio_module_events` /
+  `RADIO_MODULE_EVT_CMD_EXITED`) instead of polling the task handle in a `vTaskDelay()` loop for up to
+  4 s regardless of actual state. `radio_prebuffer_load()` now returns `esp_err_t`, stores the
+  compile-time default *before* any NVS read (previously `g_radio_prebuffer_bytes` had no compile-time
+  initializer at all — a genuinely fresh device with no "radio" NVS key would silently run with a
+  **0 ms** prebuffer threshold, defeating the entire jitter-buffer gate, since `pcm_count >= 0` is
+  trivially always true), and treats an out-of-range stored value as corruption (`ESP_ERR_INVALID_SIZE`)
+  rather than silently clamping it.
+- Host tests: rewrote `test_radio_lifecycle.c`'s task mock from the shared `mocks/fake_task.c` to a
+  local one (same technique as `test_i2s_lifecycle.c`/`test_bt_link_lifecycle.c`) that auto-injects
+  each worker's ENTERED bit the instant its mocked `xTaskCreate()` succeeds, since a real worker body
+  never runs in host tests and the new BUFFERING gate would otherwise hang/fail every existing
+  "successful play" test. Removed `radio_deinit()`'s old force-destroy safety net from
+  `tearDown()`'s reliance path — tests that intentionally leave a session `FAULTED_JOIN_PENDING`
+  (to exercise the timeout path) now explicitly inject `ALL_EXITED` and call `radio_stop_sync()`
+  before `radio_deinit()`, matching the same real-world safety semantics as production code. 42 tests
+  total (6 new): generation-staleness (direct white-box call to `radio_set_state_for_generation()`),
+  both-ENTERED-required-before-BUFFERING, both-READY-required-before-RUNNING, command-worker
+  exit-timeout retains all resources, fresh-missing-prebuffer-key yields the compiled 3000 ms default,
+  and PSRAM-ring-alloc-failure makes exactly one allocation attempt (no DEFAULT-capability fallback).
+  Also updated an existing decoder-create-failure test whose old expectation — STOPPED — was actually
+  testing the pre-fix buggy behavior; it now expects the new, correct JOIN_PENDING outcome.
+- **Found and fixed a real crash that only reproduces on actual hardware, never in host tests**: the
+  first device-build+flash attempt of this phase crashed immediately after `bt_link_init` with
+  `assert failed: xQueueReceive queue.c:1531 (( pxQueue ))`. Root cause: `radio_init()`'s rewrite (for
+  the all-or-nothing requirement above) had moved every global assignment to a single block *after*
+  `xTaskCreate(radio_cmd_task, ...)` returned — but on a real scheduler the newly created task can
+  start running (and call `xQueueReceive(s_radio_cmd_q, ...)`) before `xTaskCreate()` even returns to
+  the caller, so `s_radio_cmd_q` was still NULL when the worker's very first statement ran. Host tests
+  never caught this because the host task mock never actually runs a created task's body — there is no
+  real concurrency to expose the ordering bug. Fixed by publishing every global the command worker's
+  first statement reads (`s_radio_cmd_q`, the three mutexes, the rings) *before* creating it, keeping
+  only the task handle itself published afterward. A second, identical-in-spirit hazard was pre-empted
+  the same way for the module event group (`g_radio_module_events`), needed by the worker's own exit
+  bit at self-delete time. This is a good example of why the phase-by-phase hardware smoke test
+  (not just host tests, which are single-threaded and structurally cannot catch this class of bug) is
+  load-bearing.
+- Verified live: `POST /api/radio` against a real SomaFM MP3 stream — `playing=true, buffering=false`,
+  correct ICY station/title metadata, `dec_rate=44100` — confirming the full
+  STARTING→BUFFERING→RUNNING transition chain works correctly end-to-end; `DELETE /api/radio` cleanly
+  stopped it (`playing=false, buffering=false`) afterward.
+- Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 8
+  (radio reconnect/playlist/decoder + deferred URL-policy DNS wiring + the 10s+32KiB reconnect
+  threshold).

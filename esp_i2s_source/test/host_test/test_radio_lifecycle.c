@@ -1,14 +1,15 @@
 /*
- * RH-S3-03: host tests for radio_play() task-creation failure paths.
+ * RH-S3-03 / FIX3 Phase 7: host tests for radio_play()/radio_stop()/
+ * radio_init()/radio_deinit() lifecycle correctness.
  *
- * Verifies that when task creation fails, radio_play() returns
- * ESP_ERR_NO_MEM and cleans up the session without leaking resources.
- *
- * Test scenarios:
- * - Stream task creation failure returns ESP_ERR_NO_MEM
- * - Decoder task creation failure returns ESP_ERR_NO_MEM
- * - Failed play leaves radio in STOPPED state
- * - Retry after failed play succeeds (or fails cleanly)
+ * The shared mocks/fake_task.c xTaskCreate() never runs a created task's
+ * body (host tests have no real concurrency), so a real stream_task/
+ * decoder_task/radio_cmd_task never executes here. This file defines its
+ * own local xTaskCreate()/vTaskDelete() mock instead (see below) that
+ * simulates "the task ran the instant it was scheduled" by setting the
+ * ENTERED bit(s) a real task would set as its very first action, directly
+ * on the session's event group — same technique as test_i2s_lifecycle.c /
+ * test_bt_link_lifecycle.c use for their own lifecycle workers.
  */
 #include "unity.h"
 
@@ -33,6 +34,9 @@
 
 /* Radio lifecycle types */
 #include "radio.h"
+/* White-box: radio_session_t + RADIO_EVT_* bit layout, for the local task
+ * mock to inject ENTERED bits directly on a session's event group. */
+#include "radio_internal.h"
 
 /* Stub declarations for i2s_out gain (tested via stubs, not the real i2s_out.c) */
 esp_err_t i2s_out_set_gain(int pct);
@@ -65,6 +69,7 @@ static int8_t s_nvs_gain;
 static esp_err_t s_nvs_open_err = ESP_OK;
 static esp_err_t s_nvs_set_err = ESP_OK;
 static esp_err_t s_nvs_commit_err = ESP_OK;
+static esp_err_t s_nvs_get_i32_err = ESP_OK;
 
 esp_err_t nvs_open(const char *namespace, int flags, nvs_handle_t *out)
 {
@@ -75,6 +80,7 @@ esp_err_t nvs_open(const char *namespace, int flags, nvs_handle_t *out)
 esp_err_t nvs_get_i32(nvs_handle_t h, const char *key, int32_t *out)
 {
     (void)h; (void)key;
+    if (s_nvs_get_i32_err != ESP_OK) return s_nvs_get_i32_err;
     *out = s_nvs_prebuf_ms;
     return ESP_OK;
 }
@@ -100,6 +106,8 @@ void nvs_close(nvs_handle_t h) { (void)h; }
 void mock_nvs_set_open_err(esp_err_t err) { s_nvs_open_err = err; }
 void mock_nvs_set_set_err(esp_err_t err) { s_nvs_set_err = err; }
 void mock_nvs_set_commit_err(esp_err_t err) { s_nvs_commit_err = err; }
+void mock_nvs_set_get_i32_err(esp_err_t err) { s_nvs_get_i32_err = err; }
+void mock_nvs_set_prebuf_ms(int32_t ms) { s_nvs_prebuf_ms = ms; }
 
 /* esp_http_client stubs — handle passed by value (matches ESP-IDF convention) */
 static int s_http_client_init_fail = 0;
@@ -122,11 +130,13 @@ void mock_http_client_set_init_fail(int val) { s_http_client_init_fail = val; }
 esp_err_t esp_crt_bundle_attach(void *cfg) { (void)cfg; return ESP_OK; }
 
 /* esp_heap_caps stubs — with NULL injection for allocation failure tests */
-static size_t s_heap_caps_fail_size = 0; /* fail if size matches */
-static int s_heap_caps_fail_all = 0;     /* fail ALL allocations */
+static size_t   s_heap_caps_fail_size = 0; /* fail if size matches */
+static int      s_heap_caps_fail_all = 0;  /* fail ALL allocations */
+static unsigned s_heap_caps_call_count;    /* 7.9: total esp_heap_caps_malloc() calls */
 void *esp_heap_caps_malloc(size_t size, int caps)
 {
     (void)caps;
+    s_heap_caps_call_count++;
     if (s_heap_caps_fail_all) return NULL;
     if (size == s_heap_caps_fail_size) return NULL;
     return malloc(size);
@@ -134,6 +144,7 @@ void *esp_heap_caps_malloc(size_t size, int caps)
 void esp_heap_caps_free(void *ptr) { free(ptr); }
 void mock_heap_caps_set_fail_size(size_t size) { s_heap_caps_fail_size = size; }
 void mock_heap_caps_set_fail_all(int val) { s_heap_caps_fail_all = val; }
+unsigned mock_heap_caps_call_count(void) { return s_heap_caps_call_count; }
 
 /* esp_audio_simple_dec stubs */
 esp_err_t esp_audio_simple_dec_open(esp_audio_simple_dec_cfg_t *cfg,
@@ -180,6 +191,84 @@ esp_err_t i2s_out_set_gain(int pct)
 int i2s_out_get_gain(void) { return s_stub_gain; }
 void i2s_out_gain_load(void) {}
 
+/* ---- Local FreeRTOS task mock (replaces mocks/fake_task.c for this
+ * target) — see file header comment for why. ---- */
+
+typedef enum {
+    TASK_SIM_ENTER,   /* default: publish ENTERED the instant xTaskCreate() succeeds */
+    TASK_SIM_SILENT,  /* publish nothing -- simulate a hung/never-started worker */
+} task_sim_t;
+
+static task_sim_t s_stream_sim = TASK_SIM_ENTER;
+static task_sim_t s_decoder_sim = TASK_SIM_ENTER;
+static bool       s_cmd_auto_exit = true;
+
+static BaseType_t s_task_create_result = pdPASS;
+static unsigned   s_fail_on_nth_create = 0;
+static unsigned   s_task_create_count;
+static unsigned   s_task_delete_count;
+
+static void local_task_mock_reset(void)
+{
+    s_stream_sim = TASK_SIM_ENTER;
+    s_decoder_sim = TASK_SIM_ENTER;
+    s_cmd_auto_exit = true;
+    s_task_create_result = pdPASS;
+    s_fail_on_nth_create = 0;
+    s_task_create_count = 0;
+    s_task_delete_count = 0;
+}
+
+BaseType_t xTaskCreate(void (*task)(void *), const char *name, unsigned stackDepth,
+                        void *params, unsigned uxPriority, TaskHandle_t *outHandle)
+{
+    (void)task; (void)stackDepth; (void)uxPriority;
+    s_task_create_count++;
+
+    BaseType_t result = s_task_create_result;
+    if (s_fail_on_nth_create && s_task_create_count == s_fail_on_nth_create) {
+        result = pdFAIL;
+    }
+
+    if (result != pdPASS) {
+        if (outHandle) *outHandle = NULL;
+        return result;
+    }
+    if (outHandle) *outHandle = (TaskHandle_t)(uintptr_t)(s_task_create_count + 1);
+
+    if (strcmp(name, "radio_cmd") == 0) {
+        if (s_cmd_auto_exit) radio_test_inject_cmd_exited();
+    } else if (strcmp(name, "radio") == 0) {
+        radio_session_t *s = (radio_session_t *)params;
+        if (s_stream_sim != TASK_SIM_SILENT && s && s->events) {
+            xEventGroupSetBits(s->events, RADIO_EVT_STREAM_ENTERED);
+        }
+    } else if (strcmp(name, "radio_dec") == 0) {
+        radio_session_t *s = (radio_session_t *)params;
+        if (s_decoder_sim != TASK_SIM_SILENT && s && s->events) {
+            xEventGroupSetBits(s->events, RADIO_EVT_DECODER_ENTERED);
+        }
+    }
+    return pdPASS;
+}
+
+void vTaskDelete(TaskHandle_t task)
+{
+    if (task) s_task_delete_count++;
+}
+
+/* Back-compat shims — the rest of the suite (and test_radio_lifecycle_faults.c)
+ * calls these exactly as it did against the shared fake_task.c. */
+void mock_task_reset(void) { local_task_mock_reset(); }
+void mock_task_set_create_result(BaseType_t result) { s_task_create_result = result; }
+void mock_task_set_fail_on_nth(unsigned n) { s_fail_on_nth_create = n; }
+
+/* New controls for FIX3 Phase 7 tests. */
+void mock_task_set_stream_silent(bool silent) { s_stream_sim = silent ? TASK_SIM_SILENT : TASK_SIM_ENTER; }
+void mock_task_set_decoder_silent(bool silent) { s_decoder_sim = silent ? TASK_SIM_SILENT : TASK_SIM_ENTER; }
+void mock_task_set_cmd_auto_exit(bool auto_exit) { s_cmd_auto_exit = auto_exit; }
+unsigned mock_task_create_count(void) { return s_task_create_count; }
+
 /* ---- Test fixtures ---- */
 void setUp(void)
 {
@@ -192,13 +281,26 @@ void setUp(void)
     s_nvs_open_err = ESP_OK;
     s_nvs_set_err = ESP_OK;
     s_nvs_commit_err = ESP_OK;
+    /* 7.11: default fixture simulates a fresh device (no "radio" NVS
+     * namespace/key yet) so radio_init() takes the compile-time prebuffer
+     * default cleanly, matching the common case. Tests that want a
+     * corrupt/out-of-range stored value override this explicitly. */
+    s_nvs_get_i32_err = ESP_ERR_NVS_NOT_FOUND;
     s_heap_caps_fail_size = 0;
     s_heap_caps_fail_all = 0;
+    s_heap_caps_call_count = 0;
 }
 
 void tearDown(void)
 {
-    /* Clean up ring buffers and mutexes to avoid ASan leaks between tests. */
+    /* 7.1 removed radio_deinit()'s force-destroy fallback: a session that
+     * hasn't confirmed exit now correctly blocks deinit instead of being
+     * torn down out from under a (simulated) still-running worker. Tests
+     * that intentionally leave a FAULTED_JOIN_PENDING session (to exercise
+     * the timeout path) rely on this to fully join before the next test's
+     * radio_init(). */
+    radio_test_inject_exit_bits(RADIO_EVT_ALL_EXITED);
+    radio_stop_sync();
     radio_deinit();
 }
 
@@ -510,10 +612,17 @@ void test_stop_timeout_no_exit(void);
 void test_stop_success_both_exit(void);
 void test_fault_blocks_restart(void);
 void test_stop_after_fault_returns_ok(void);
-void test_decoder_task_creation_failure_decoder_only(void);
+void test_decoder_task_creation_failure_join_pending(void);
 void test_event_group_create_fail(void);
 void test_asan_clean_init_play_stop(void);
 void test_asan_clean_fault_recovery(void);
+/* FIX3 Phase 7 */
+void test_both_entered_required_before_buffering(void);
+void test_ready_bits_required_before_running(void);
+void test_stale_generation_cannot_update_state(void);
+void test_cmd_worker_exit_timeout_retains_resources(void);
+void test_fresh_missing_prebuffer_key_yields_default(void);
+void test_ring_alloc_failure_no_malloc_fallback(void);
 
 int main(void)
 {
@@ -550,11 +659,18 @@ int main(void)
     RUN_TEST(test_fault_blocks_restart);
     RUN_TEST(test_stop_after_fault_returns_ok);
     /* 7.11: decoder task creation failure */
-    RUN_TEST(test_decoder_task_creation_failure_decoder_only);
+    RUN_TEST(test_decoder_task_creation_failure_join_pending);
     /* 7.11: event group creation failure */
     RUN_TEST(test_event_group_create_fail);
     /* 7.11: ASan verification */
     RUN_TEST(test_asan_clean_init_play_stop);
     RUN_TEST(test_asan_clean_fault_recovery);
+    /* FIX3 Phase 7 */
+    RUN_TEST(test_both_entered_required_before_buffering);
+    RUN_TEST(test_ready_bits_required_before_running);
+    RUN_TEST(test_stale_generation_cannot_update_state);
+    RUN_TEST(test_cmd_worker_exit_timeout_retains_resources);
+    RUN_TEST(test_fresh_missing_prebuffer_key_yields_default);
+    RUN_TEST(test_ring_alloc_failure_no_malloc_fallback);
     return UNITY_END();
 }

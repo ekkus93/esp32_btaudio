@@ -76,7 +76,8 @@ typedef enum {
 
 static audio_source_t choose_audio_source(radio_state_t radio_state, bool radio_ready, bool tone_on)
 {
-    if (radio_state == RADIO_STATE_RUNNING || radio_state == RADIO_STATE_STARTING) {
+    if (radio_state == RADIO_STATE_RUNNING || radio_state == RADIO_STATE_STARTING ||
+        radio_state == RADIO_STATE_BUFFERING) {
         return radio_ready ? AUDIO_SOURCE_RADIO : AUDIO_SOURCE_SILENCE;
     }
     return tone_on ? AUDIO_SOURCE_TONE : AUDIO_SOURCE_SILENCE;

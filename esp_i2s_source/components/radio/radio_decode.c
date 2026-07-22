@@ -55,6 +55,9 @@ void decoder_task(void *arg)
     static int16_t rsbuf[8192];     /* resampled stereo frames (4096 max) */
     size_t pending = 0;
 
+    /* 7.3: ENTERED fires immediately — before any operational check. */
+    xEventGroupSetBits(s->events, RADIO_EVT_DECODER_ENTERED);
+
     while (session_should_run(s)) {
         radio_codec_t codec;
         xSemaphoreTake(g_radio_ring_mtx, portMAX_DELAY);
@@ -75,6 +78,11 @@ void decoder_task(void *arg)
                 continue;
             }
             ESP_LOGI(TAG, "decoder open: %s", radio_codec_str(codec));
+            /* 7.3/7.8: READY — decoder has opened successfully. Try to
+             * promote BUFFERING -> RUNNING (the stream worker may already
+             * be READY too). */
+            xEventGroupSetBits(s->events, RADIO_EVT_DECODER_READY);
+            radio_try_publish_running(s);
         }
 
  /* RH-S3-05: read new compressed data after the pending tail. */

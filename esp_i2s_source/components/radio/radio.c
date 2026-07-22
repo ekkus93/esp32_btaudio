@@ -40,16 +40,10 @@ static const char *TAG = "radio";
  * and re-gated if it ever fully drains, so recovery re-buffers cleanly
  * rather than restarting choppy. */
 #define PCM_RING_BYTES      (1024 * 1024)
-/* Prebuffer (jitter cushion) is runtime-adjustable via the web UI, persisted in
- * NVS. Bounded below the PCM ring so the cushion always fits. */
-#define PCM_BYTES_PER_MS    176            /* 44100 Hz * 2ch * 2B / 1000 (rounded) */
-#define PREBUF_MS_MIN       500
-#define PREBUF_MS_MAX       5000           /* < PCM_RING_BYTES (~5.9 s) */
-#define PREBUF_MS_DEFAULT   3000           /* ~3.0 s cushion before/again after dry */
 #define NVS_NS_RADIO        "radio"
 #define NVS_KEY_PREBUF      "prebuf_ms"
 
-static void radio_prebuffer_load(void);
+static esp_err_t radio_prebuffer_load(void);
 
 /* 7.1: forward declarations for internal sync play/stop.
    Static for device builds (cmd-worker only). Non-static for host tests. */
@@ -76,30 +70,19 @@ static QueueHandle_t s_radio_cmd_q;  /* command queue */
 static TaskHandle_t  s_radio_cmd_task; /* worker task handle */
 static _Atomic bool  s_cmd_shutdown; /* shutdown flag for worker */
 
-/* 7.4: destroy a session only after both workers have exited.
- * Asserts both EXITED bits are set before freeing. */
+/* 7.10: module-level event group — command-worker exit acknowledgement.
+ * Distinct from any session's per-play event group, and outlives sessions. */
+EventGroupHandle_t g_radio_module_events;
+
+/* 7.4: destroy a session only after both workers have exited. configASSERT
+ * enforces this is never called otherwise — every call site below checks
+ * session_all_exited()/session_join() first, so a false assertion here
+ * means a genuine lifecycle bug, not a recoverable condition. */
 static void session_destroy_joined(radio_session_t *s)
 {
     if (!s) return;
+    configASSERT(session_all_exited(s));
     ESP_LOGI(TAG, "joining session gen=%" PRIu32, s->generation);
-    /* Assert: workers must have exited. If not, the session was freed
-     * prematurely — the task handles still point to running code. */
-    EventBits_t bits = xEventGroupGetBits(s->events);
-    if ((bits & RADIO_EVT_ALL_EXITED) != RADIO_EVT_ALL_EXITED) {
-        ESP_LOGE(TAG, "session_destroy called with workers still running (gen=%" PRIu32 ")",
-                 s->generation);
-        /* Don't free — mark faulted instead. The workers will free themselves
-         * when they eventually notice the session is gone. */
-        return;
-    }
-    vEventGroupDelete(s->events);
-    free(s);
-}
-
-/* Force-destroy session (used by radio_deinit() for teardown). */
-static void session_destroy_force(radio_session_t *s)
-{
-    if (!s) return;
     vEventGroupDelete(s->events);
     free(s);
 }
@@ -109,6 +92,36 @@ SemaphoreHandle_t g_radio_control_mtx;
 static radio_session_t *s_active_session;
 radio_state_t g_radio_state;
 static uint32_t s_next_generation;
+
+/* 7.8: only the generation that is still s_active_session's may mutate
+ * g_radio_state — a stale worker from a session already stopped/replaced
+ * can't clobber a newer session's state. */
+void radio_set_state_for_generation(uint32_t generation, radio_state_t state)
+{
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    if (s_active_session && s_active_session->generation == generation) {
+        g_radio_state = state;
+    }
+    xSemaphoreGive(g_radio_control_mtx);
+}
+
+/* 7.8: BUFFERING -> RUNNING once both READY bits are set, gated by
+ * generation so a stale worker can't promote a session that's no longer
+ * current. Called by stream_task/decoder_task right after each sets its
+ * own READY bit. */
+void radio_try_publish_running(radio_session_t *s)
+{
+    if (!s || !s->events) return;
+    EventBits_t bits = xEventGroupGetBits(s->events);
+    if ((bits & RADIO_EVT_ALL_READY) != RADIO_EVT_ALL_READY) return;
+
+    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+    if (s_active_session == s && s_active_session->generation == s->generation &&
+        g_radio_state == RADIO_STATE_BUFFERING) {
+        g_radio_state = RADIO_STATE_RUNNING;
+    }
+    xSemaphoreGive(g_radio_control_mtx);
+}
 
 /* ---- Test injection hooks (RH-S3-02) ---- */
 /* Expose event bits for failure injection tests (match above). */
@@ -126,6 +139,17 @@ void *radio_test_get_active_session(void)
 {
     return s_active_session;
 }
+
+#ifdef UNIT_TEST
+/* 7.10: the mocked command-worker task body never runs in host tests, so
+ * nothing else would ever set its module-level exit-acknowledgement bit. */
+void radio_test_inject_cmd_exited(void)
+{
+    if (g_radio_module_events) {
+        xEventGroupSetBits(g_radio_module_events, RADIO_MODULE_EVT_CMD_EXITED);
+    }
+}
+#endif
 
 /* ---- Telemetry (protected by g_radio_ring_mtx, defined in radio_ring.c) ---- */
 char           g_radio_url[RADIO_URL_MAX];
@@ -156,45 +180,57 @@ const char *radio_codec_str(radio_codec_t c)
     }
 }
 
-/* Teardown: release all ring buffers and mutexes.
- * Safe to call when not initialized (no-op). */
-void radio_deinit(void)
+/* 7.6: Teardown: release all ring buffers and mutexes. Safe to call when
+ * not initialized (no-op, returns ESP_OK). If a session is active and
+ * fails to stop/join, or the command worker fails to acknowledge shutdown,
+ * returns ESP_ERR_TIMEOUT and retains every resource untouched — never
+ * dereferences a session that a prior step may already have freed. */
+esp_err_t radio_deinit(void)
 {
-    /* Stop any active session first. */
-    if (g_radio_control_mtx) {
-        radio_session_t *s = s_active_session;
-        radio_stop_sync();
-        /* Force-destroy session if it wasn't freed by session_destroy_joined().
-         * session_destroy_joined() returns early (without freeing) when workers
-         * haven't exited. In that case, s_active_session was cleared by
-         * radio_stop_sync(), but the session memory wasn't freed. We use the
-         * saved pointer to force-destroy. */
-        if (s) {
-            /* Check if workers exited — if they did, session was freed.
-             * If they didn't, force-destroy. */
-            if (!session_all_exited(s)) {
-                session_destroy_force(s);
-            }
-        }
-    }
+    if (!g_radio_control_mtx) return ESP_OK;
 
-    /*
-    Shutdown command worker (RH-S3-09). */
+    /* 1-2: stop/join any active session first. radio_stop_sync() itself
+     * frees the session on success (via session_destroy_joined()) — this
+     * function must never touch the pointer again afterward. On timeout,
+     * radio_stop_sync() leaves the session attached as FAULTED_JOIN_PENDING
+     * and owned by s_active_session; retain everything and return. */
+    esp_err_t stop_err = radio_stop_sync();
+    if (stop_err != ESP_OK) return stop_err;
+
+    /* 3-5: signal command-worker shutdown and wait for its exit
+     * acknowledgement bit (7.10) instead of polling the handle. */
     if (s_radio_cmd_q && s_radio_cmd_task) {
         atomic_store(&s_cmd_shutdown, true);
-        /* Send dummy command to unblock the worker. */
         radio_cmd_t dummy = { .type = RADIO_CMD_STOP };
         xQueueSend(s_radio_cmd_q, &dummy, 0);
-        /* Wait for worker to exit (with timeout). */
-        for (int i = 0; i < 8 && s_radio_cmd_task; i++) {
-            vTaskDelay(pdMS_TO_TICKS(500));
+
+        EventBits_t bits = xEventGroupWaitBits(
+            g_radio_module_events, RADIO_MODULE_EVT_CMD_EXITED,
+            pdTRUE, pdTRUE, pdMS_TO_TICKS(RADIO_CMD_EXIT_TIMEOUT_MS));
+        if ((bits & RADIO_MODULE_EVT_CMD_EXITED) != RADIO_MODULE_EVT_CMD_EXITED) {
+            /* Worker didn't confirm exit — retain queue/mutex/rings/task
+             * untouched so a caller can retry rather than tearing down
+             * state a still-running worker might reference. */
+            atomic_store(&s_cmd_shutdown, false);
+            ESP_LOGW(TAG, "radio_deinit: command worker exit timeout");
+            printf("DIAG|RADIO|DEINIT_TIMEOUT|reason=cmd_worker\n");
+            fflush(stdout);
+            return ESP_ERR_TIMEOUT;
         }
+        /* Lifecycle owner clears the handle only after observing the bit —
+         * the worker itself never touches it (7.10). */
+        s_radio_cmd_task = NULL;
     }
+
+    /* 6-8: delete queue, mutexes, event group, and free rings. */
     if (s_radio_cmd_q) {
         vQueueDelete(s_radio_cmd_q);
         s_radio_cmd_q = NULL;
     }
-
+    if (g_radio_module_events) {
+        vEventGroupDelete(g_radio_module_events);
+        g_radio_module_events = NULL;
+    }
     if (g_radio_control_mtx) {
         vSemaphoreDelete(g_radio_control_mtx);
         g_radio_control_mtx = NULL;
@@ -207,24 +243,25 @@ void radio_deinit(void)
         vSemaphoreDelete(g_radio_ring_mtx);
         g_radio_ring_mtx = NULL;
     }
-
-    /* Free ring buffers. */
     if (g_radio_pcm) {
-        free(g_radio_pcm);
+        heap_caps_free(g_radio_pcm);
         g_radio_pcm = NULL;
         g_radio_pcm_cap = 0;
         g_radio_pcm_head = g_radio_pcm_tail = g_radio_pcm_count = 0;
     }
     if (g_radio_ring) {
-        free(g_radio_ring);
+        heap_caps_free(g_radio_ring);
         g_radio_ring = NULL;
         g_radio_ring_cap = 0;
         g_radio_ring_head = g_radio_ring_tail = g_radio_ring_count = 0;
     }
 
+    /* 9: reset globals. */
     g_radio_prebuffered = false;
     g_radio_state = RADIO_STATE_STOPPED;
     s_active_session = NULL;
+    s_cmd_shutdown = false;
+    return ESP_OK;
 }
 
 /* Command queue worker (RH-S3-09). */
@@ -247,7 +284,10 @@ static void radio_cmd_task(void *arg)
             break;
         }
     }
-    s_radio_cmd_task = NULL;
+    /* 7.10: set the exit-acknowledgement bit and self-delete. The lifecycle
+     * owner (radio_deinit()) clears s_radio_cmd_task only after observing
+     * this bit — the worker itself never touches its own handle. */
+    xEventGroupSetBits(g_radio_module_events, RADIO_MODULE_EVT_CMD_EXITED);
     vTaskDelete(NULL);
 }
 
@@ -268,63 +308,109 @@ esp_err_t radio_stop_async(void)
     return ESP_ERR_TIMEOUT;
 }
 
+/* 7.9: all-or-nothing init. Every allocation/object created here is either
+ * fully published (all globals set) or fully unwound on any failure — no
+ * generic malloc() fallback for the PSRAM ring buffers (a fallback would
+ * silently run the deep jitter rings out of scarce internal DRAM instead of
+ * failing loudly), and heap_caps_free() is used consistently for every
+ * heap_caps_malloc()'d buffer. */
 esp_err_t radio_init(size_t ring_bytes)
 {
     /* Check if already initialized — reject double-init. */
     if (g_radio_ring || g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
+    if (ring_bytes == 0) return ESP_ERR_INVALID_ARG;
 
-    /* Control mutex. */
-    g_radio_control_mtx = xSemaphoreCreateMutex();
-    if (!g_radio_control_mtx) return ESP_ERR_NO_MEM;
+    uint8_t *ring = heap_caps_malloc(ring_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!ring) return ESP_ERR_NO_MEM;
 
-    g_radio_ring_cap = ring_bytes;
-    g_radio_ring = heap_caps_malloc(g_radio_ring_cap, MALLOC_CAP_SPIRAM);
-    if (!g_radio_ring) g_radio_ring = heap_caps_malloc(g_radio_ring_cap, MALLOC_CAP_DEFAULT);
-    if (!g_radio_ring) return ESP_ERR_NO_MEM;
-
-    /* Decoded-PCM ring: deep jitter buffer (~5.9 s), gated by g_radio_prebuffered. */
-    g_radio_pcm_cap = PCM_RING_BYTES;
-    g_radio_pcm = heap_caps_malloc(g_radio_pcm_cap, MALLOC_CAP_SPIRAM);
-    if (!g_radio_pcm) g_radio_pcm = heap_caps_malloc(g_radio_pcm_cap, MALLOC_CAP_DEFAULT);
-    if (!g_radio_pcm) return ESP_ERR_NO_MEM;
-
-    g_radio_ring_mtx = xSemaphoreCreateMutex();
-    g_radio_pcm_mtx = xSemaphoreCreateMutex();
-    if (!g_radio_ring_mtx || !g_radio_pcm_mtx) {
-        /* Cleanup: free what we created. */
-        if (g_radio_pcm_mtx) vSemaphoreDelete(g_radio_pcm_mtx);
-        if (g_radio_ring_mtx) vSemaphoreDelete(g_radio_ring_mtx);
-        g_radio_pcm_mtx = NULL;
-        g_radio_ring_mtx = NULL;
-        free(g_radio_pcm); g_radio_pcm = NULL;
-        free(g_radio_ring); g_radio_ring = NULL;
+    uint8_t *pcm = heap_caps_malloc(PCM_RING_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!pcm) {
+        heap_caps_free(ring);
         return ESP_ERR_NO_MEM;
     }
+
+    SemaphoreHandle_t control_mtx = xSemaphoreCreateMutex();
+    SemaphoreHandle_t ring_mtx = xSemaphoreCreateMutex();
+    SemaphoreHandle_t pcm_mtx = xSemaphoreCreateMutex();
+    EventGroupHandle_t module_events = xEventGroupCreate();
+    if (!control_mtx || !ring_mtx || !pcm_mtx || !module_events) {
+        if (control_mtx) vSemaphoreDelete(control_mtx);
+        if (ring_mtx) vSemaphoreDelete(ring_mtx);
+        if (pcm_mtx) vSemaphoreDelete(pcm_mtx);
+        if (module_events) vEventGroupDelete(module_events);
+        heap_caps_free(pcm);
+        heap_caps_free(ring);
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Publish the module event group before creating the command worker —
+     * the worker's own exit-acknowledgement bit (7.10) targets this exact
+     * object, so it must already be the live g_radio_module_events by the
+     * time xTaskCreate() runs (and, in host tests, by the time a test hook
+     * fired from a mocked xTaskCreate() could touch it). */
+    g_radio_module_events = module_events;
 
     /* Command queue (RH-S3-09): serializes play/stop through a single worker. */
-    s_radio_cmd_q = xQueueCreate(4, sizeof(radio_cmd_t));
-    if (!s_radio_cmd_q) {
-        /* Cleanup queue failure: undo everything created so far. */
-        vSemaphoreDelete(g_radio_ring_mtx);
-        g_radio_ring_mtx = NULL;
-        vSemaphoreDelete(g_radio_pcm_mtx);
-        g_radio_pcm_mtx = NULL;
-        free(g_radio_pcm); g_radio_pcm = NULL;
-        free(g_radio_ring); g_radio_ring = NULL;
-        vSemaphoreDelete(g_radio_control_mtx);
-        g_radio_control_mtx = NULL;
+    QueueHandle_t cmd_q = xQueueCreate(4, sizeof(radio_cmd_t));
+    if (!cmd_q) {
+        g_radio_module_events = NULL;
+        vSemaphoreDelete(control_mtx);
+        vSemaphoreDelete(ring_mtx);
+        vSemaphoreDelete(pcm_mtx);
+        vEventGroupDelete(module_events);
+        heap_caps_free(pcm);
+        heap_caps_free(ring);
         return ESP_ERR_NO_MEM;
     }
+
+    /* Publish every global the command worker's very first statement reads
+     * BEFORE creating it — on real hardware the new task can start running
+     * (and call xQueueReceive(s_radio_cmd_q, ...)) before xTaskCreate()
+     * even returns to this function, so s_radio_cmd_q must already be live.
+     * A single-threaded host test can't expose this ordering bug, but a
+     * real scheduler preempting immediately after xTaskCreate() will. */
+    g_radio_control_mtx = control_mtx;
+    g_radio_ring_mtx = ring_mtx;
+    g_radio_pcm_mtx = pcm_mtx;
+    g_radio_ring_cap = ring_bytes;
+    g_radio_ring = ring;
+    g_radio_pcm_cap = PCM_RING_BYTES;
+    g_radio_pcm = pcm;
+    s_radio_cmd_q = cmd_q;
+
+    TaskHandle_t cmd_task = NULL;
     if (xTaskCreate(radio_cmd_task, "radio_cmd", 4096, NULL,
-                     tskIDLE_PRIORITY + 2, &s_radio_cmd_task) != pdPASS) {
-        vQueueDelete(s_radio_cmd_q);
+                     tskIDLE_PRIORITY + 2, &cmd_task) != pdPASS) {
+        g_radio_module_events = NULL;
+        g_radio_control_mtx = NULL;
+        g_radio_ring_mtx = NULL;
+        g_radio_pcm_mtx = NULL;
+        g_radio_ring = NULL;
+        g_radio_ring_cap = 0;
+        g_radio_pcm = NULL;
+        g_radio_pcm_cap = 0;
         s_radio_cmd_q = NULL;
-        /* Partial init — caller should radio_deinit() to cleanup. */
+        vQueueDelete(cmd_q);
+        vSemaphoreDelete(control_mtx);
+        vSemaphoreDelete(ring_mtx);
+        vSemaphoreDelete(pcm_mtx);
+        vEventGroupDelete(module_events);
+        heap_caps_free(pcm);
+        heap_caps_free(ring);
         ESP_LOGE(TAG, "radio_cmd_task creation failed");
         return ESP_ERR_NO_MEM;
     }
+    s_radio_cmd_task = cmd_task;
 
-    radio_prebuffer_load();                    /* restore persisted prebuffer depth */
+    /* 7.11: a non-NOT_FOUND load error is non-fatal (defaults already in
+     * effect) but must be visible, not silently treated as success. */
+    esp_err_t prebuf_err = radio_prebuffer_load();
+    if (prebuf_err != ESP_OK) {
+        ESP_LOGW(TAG, "prebuffer load failed (%s); using default %d ms",
+                 esp_err_to_name(prebuf_err), PREBUF_MS_DEFAULT);
+        printf("DIAG|RADIO|PREBUF_LOAD_FAILED|err=%s\n", esp_err_to_name(prebuf_err));
+        fflush(stdout);
+    }
     esp_audio_dec_register_default();          /* low-level MP3/AAC decoders */
     esp_audio_simple_dec_register_default();   /* simple/frame-parser wrappers */
     return ESP_OK;
@@ -391,48 +477,90 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     g_radio_prebuffered = false;
     xSemaphoreGive(g_radio_pcm_mtx);
 
-    /* Create stream task. */
+    /* Create stream task. Nothing has started yet — safe to free directly
+     * on failure (7.7). */
     if (xTaskCreate(stream_task, "radio", 6144, s, tskIDLE_PRIORITY + 4,
                      &s->stream_task) != pdPASS) {
-        goto fail_session;
+        vEventGroupDelete(s->events);
+        free(s);
+        xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+        g_radio_state = RADIO_STATE_STOPPED;
+        xSemaphoreGive(g_radio_control_mtx);
+        return ESP_ERR_NO_MEM;
     }
 
-    /* Create decoder task. */
+    /* Create decoder task. 7.7: the stream task is already running — do not
+     * unconditionally free the session. Synthesize DECODER_EXITED (it never
+     * started, so it has trivially "exited") and join on STREAM_EXITED via
+     * the same session_join()/session_destroy_joined() used everywhere
+     * else. If the stream doesn't confirm exit within the timeout, attach
+     * the session as active JOIN_PENDING so it remains owned/recoverable
+     * instead of freeing memory a running task might still reference. */
     if (xTaskCreate(decoder_task, "radio_dec", 8192, s, tskIDLE_PRIORITY + 4,
                      &s->decoder_task) != pdPASS) {
-        /* Decoder creation failed — stop the stream task and cleanup. */
+        xEventGroupSetBits(s->events, RADIO_EVT_DECODER_EXITED);
         atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-        EventBits_t bits = xEventGroupWaitBits(
-            s->events, RADIO_EVT_STREAM_EXITED, pdFALSE, pdTRUE,
-            pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
-        (void)bits;
-        goto fail_session;
+        if (s->stream_task) xTaskNotifyGive(s->stream_task);
+
+        esp_err_t join_err = session_join(s, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
+        if (join_err == ESP_OK) {
+            session_destroy_joined(s);
+            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+            g_radio_state = RADIO_STATE_STOPPED;
+            xSemaphoreGive(g_radio_control_mtx);
+        } else {
+            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+            s_active_session = s;
+            g_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
+            xSemaphoreGive(g_radio_control_mtx);
+            set_radio_error(RADIO_ERR_STOP_TIMEOUT, "decoder create failed, stream join timeout");
+            ESP_LOGW(TAG, "decoder create failed and stream join timed out (gen=%" PRIu32 ")",
+                     s->generation);
+        }
+        return ESP_ERR_NO_MEM;
     }
 
-    /* Both tasks created — publish as running. */
+    /* 7.8: both workers created — wait for both to confirm ENTERED before
+     * publishing anything beyond STARTING. A timeout (a worker hung before
+     * entering) or an early exit both fail this wait identically — either
+     * way startup didn't complete, so join and don't publish BUFFERING for
+     * a session that isn't actually alive on both sides. */
+    EventBits_t bits = xEventGroupWaitBits(
+        s->events, RADIO_EVT_ALL_ENTERED, pdFALSE, pdTRUE,
+        pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
+
+    if ((bits & RADIO_EVT_ALL_ENTERED) != RADIO_EVT_ALL_ENTERED) {
+        atomic_store_explicit(&s->stop_requested, true, memory_order_release);
+        if (s->stream_task) xTaskNotifyGive(s->stream_task);
+        if (s->decoder_task) xTaskNotifyGive(s->decoder_task);
+        esp_err_t join_err = session_join(s, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
+        if (join_err == ESP_OK) {
+            session_destroy_joined(s);
+            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+            g_radio_state = RADIO_STATE_STOPPED;
+            xSemaphoreGive(g_radio_control_mtx);
+        } else {
+            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
+            s_active_session = s;
+            g_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
+            xSemaphoreGive(g_radio_control_mtx);
+            set_radio_error(RADIO_ERR_STOP_TIMEOUT, "worker(s) never entered, join timeout");
+        }
+        return ESP_FAIL;
+    }
+
+    /* Both entered — publish BUFFERING now; RUNNING follows asynchronously
+     * once both READY bits are set (radio_try_publish_running(), called by
+     * the workers themselves). */
     xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     s_active_session = s;
-    g_radio_state = RADIO_STATE_RUNNING;
+    g_radio_state = RADIO_STATE_BUFFERING;
     xSemaphoreGive(g_radio_control_mtx);
 
     ESP_LOGI(TAG, "play gen=%" PRIu32 ": %s", s->generation, resolved);
     printf("DIAG|RADIO|START|gen=%" PRIu32 ",url=%s\n", s->generation, resolved);
     fflush(stdout);
     return ESP_OK;
-
-fail_session:
-    /* Request stop and join the stream task if it was created. */
-    atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-    if (s->stream_task) {
-        xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED,
-                            pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
-    }
-    vEventGroupDelete(s->events);
-    free(s);
-    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
-    g_radio_state = RADIO_STATE_STOPPED;
-    xSemaphoreGive(g_radio_control_mtx);
-    return ESP_ERR_NO_MEM;
 }
 
 /* 7.1: Internal synchronous stop — only the cmd worker calls this. */
@@ -443,6 +571,11 @@ esp_err_t radio_stop_sync(void)
 {
     if (!g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
 
+    /* 7.5: unified flow regardless of prior state (STOPPING, FAULTED,
+     * FAULTED_JOIN_PENDING, or a live RUNNING/BUFFERING session) — always
+     * (re)request stop and attempt to join. This also implements 7.2's
+     * "active session pointer remains set while JOIN_PENDING": only a
+     * successful join ever clears s_active_session. */
     xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     radio_session_t *s = s_active_session;
     if (!s) {
@@ -450,63 +583,27 @@ esp_err_t radio_stop_sync(void)
         xSemaphoreGive(g_radio_control_mtx);
         return ESP_OK;
     }
-    /* 7.4: If already FAULTED_JOIN_PENDING, wait for workers then destroy. */
-    if (g_radio_state == RADIO_STATE_FAULTED_JOIN_PENDING) {
-        g_radio_state = RADIO_STATE_STOPPING;
-        xSemaphoreGive(g_radio_control_mtx);
-        /* Wait for workers to exit (they may have stopped already). */
-        if (!session_all_exited(s)) {
-            (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
-                                       pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
-        }
-        if (session_all_exited(s)) {
-            /* Workers exited — safe to free. */
-            session_destroy_joined(s);
-            goto stopped;
-        }
-        /* Workers still running — leave s_active_session set so
-         * radio_deinit() can force-destroy. Return error to caller. */
-        return ESP_ERR_TIMEOUT;
-    }
-    /* If already FAULTED, wait for workers then destroy. */
-    if (g_radio_state == RADIO_STATE_FAULTED) {
-        xSemaphoreGive(g_radio_control_mtx);
-        /* Wait for workers to exit before freeing. */
-        (void)xEventGroupWaitBits(s->events, RADIO_EVT_ALL_EXITED,
-                                   pdFALSE, pdTRUE, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
-        if (session_all_exited(s)) {
-            /* Workers exited — safe to free. */
-            session_destroy_joined(s);
-            goto stopped;
-        }
-        /* Workers still running — leave s_active_session set so
-         * radio_deinit() can force-destroy. Return error to caller. */
-        return ESP_ERR_TIMEOUT;
-    }
     g_radio_state = RADIO_STATE_STOPPING;
     atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-    /* 7.5: notify workers to wake from any vTaskDelay() */
+    /* 7.5: notify workers to wake from any interruptible wait. */
     if (s->stream_task) xTaskNotifyGive(s->stream_task);
     if (s->decoder_task) xTaskNotifyGive(s->decoder_task);
     xSemaphoreGive(g_radio_control_mtx);
 
-    /* Wait for both workers to exit. */
-    EventBits_t bits = xEventGroupWaitBits(
-        s->events, RADIO_EVT_ALL_EXITED, pdFALSE, pdTRUE,
-        pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
+    esp_err_t join_err = session_join(s, pdMS_TO_TICKS(RADIO_STOP_TIMEOUT_MS));
 
-    if ((bits & RADIO_EVT_ALL_EXITED) != RADIO_EVT_ALL_EXITED) {
-        /* Timeout — leave session registered, block restart. */
+    if (join_err != ESP_OK) {
         xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
         g_radio_state = RADIO_STATE_FAULTED_JOIN_PENDING;
         xSemaphoreGive(g_radio_control_mtx);
+        set_radio_error(RADIO_ERR_STOP_TIMEOUT, "worker join timeout");
         ESP_LOGW(TAG, "radio stop timeout (gen=%" PRIu32 "); session FAULTED_JOIN_PENDING", s->generation);
         printf("DIAG|RADIO|STOP_TIMEOUT|gen=%" PRIu32 "\n", s->generation);
         fflush(stdout);
-        return ESP_ERR_TIMEOUT;
+        return join_err;
     }
 
-    /* Both exited — reclaim session. */
+    /* Joined — reclaim and destroy the session. */
     uint32_t gen = s->generation;
     xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
     if (s_active_session == s) s_active_session = NULL;
@@ -518,20 +615,13 @@ esp_err_t radio_stop_sync(void)
     printf("DIAG|RADIO|STOPPED|gen=%" PRIu32 "\n", gen);
     fflush(stdout);
     return ESP_OK;
-
-stopped:
-    xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
-    if (s_active_session) s_active_session = NULL;
-    g_radio_state = RADIO_STATE_STOPPED;
-    xSemaphoreGive(g_radio_control_mtx);
-    return ESP_OK;
 }
 
 bool radio_is_playing(void)
 {
     if (!g_radio_control_mtx) return false;
     xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
-    bool playing = (g_radio_state == RADIO_STATE_RUNNING);
+    bool playing = (g_radio_state == RADIO_STATE_RUNNING || g_radio_state == RADIO_STATE_BUFFERING);
     xSemaphoreGive(g_radio_control_mtx);
     return playing;
 }
@@ -583,8 +673,10 @@ void radio_get_status(radio_status_t *out)
     out->generation = s_next_generation;
     out->state = state;
     out->playing = (state == RADIO_STATE_RUNNING ||
-                    state == RADIO_STATE_STARTING);
-    out->buffering = (state == RADIO_STATE_RUNNING && !g_radio_prebuffered);
+                    state == RADIO_STATE_STARTING ||
+                    state == RADIO_STATE_BUFFERING);
+    out->buffering = (state == RADIO_STATE_BUFFERING) ||
+                      (state == RADIO_STATE_RUNNING && !g_radio_prebuffered);
 
     /* Telemetry snapshot (point-in-time, no additional lock needed). */
     out->codec = g_radio_codec;
@@ -641,15 +733,28 @@ esp_err_t radio_set_prebuffer_ms(int ms)
     return err;
 }
 
-static void radio_prebuffer_load(void)
+/* 7.11: explicit compile-time default is stored FIRST, before any NVS
+ * read, so a genuine load failure never leaves the threshold at whatever
+ * it happened to already be. NOT_FOUND (missing namespace or key) is the
+ * ordinary fresh-device case and returns ESP_OK with the default in
+ * effect; any other error is a real load failure and is returned so the
+ * caller can log/report it rather than silently treating it as success. */
+static esp_err_t radio_prebuffer_load(void)
 {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS_RADIO, NVS_READONLY, &h) != ESP_OK) return;
+    atomic_store(&g_radio_prebuffer_bytes, (size_t)PREBUF_MS_DEFAULT * PCM_BYTES_PER_MS);
+
+    nvs_handle_t h = 0;
+    esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READONLY, &h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
+    if (err != ESP_OK) return err;
+
     int32_t ms = PREBUF_MS_DEFAULT;
-    if (nvs_get_i32(h, NVS_KEY_PREBUF, &ms) == ESP_OK) {
-        ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
-        ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-        atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
-    }
+    err = nvs_get_i32(h, NVS_KEY_PREBUF, &ms);
     nvs_close(h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
+    if (err != ESP_OK) return err;
+    if (ms < PREBUF_MS_MIN || ms > PREBUF_MS_MAX) return ESP_ERR_INVALID_SIZE;
+
+    atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
+    return ESP_OK;
 }

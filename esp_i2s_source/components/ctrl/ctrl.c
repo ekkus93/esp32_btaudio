@@ -221,7 +221,8 @@ static bool scan_wait_for_radio_start(int64_t deadline_us, const char *_phase)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
         radio_state_t state = radio_get_state();
-        if (state == RADIO_STATE_STARTING || state == RADIO_STATE_RUNNING)
+        if (state == RADIO_STATE_STARTING || state == RADIO_STATE_BUFFERING ||
+            state == RADIO_STATE_RUNNING)
             return false;  /* started */
         if (esp_timer_get_time() >= deadline_us) break;
     }

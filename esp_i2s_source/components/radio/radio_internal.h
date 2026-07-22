@@ -25,6 +25,23 @@
  * FAULTED and restart is blocked. */
 #define RADIO_STOP_TIMEOUT_MS 8000
 
+/* Timeout for radio_deinit() waiting on the command worker's exit
+ * acknowledgement bit (7.10). */
+#define RADIO_CMD_EXIT_TIMEOUT_MS 4000
+
+/* Module-level event group (radio.c core): command-worker exit
+ * acknowledgement (7.10), distinct from any session's per-play event group. */
+#define RADIO_MODULE_EVT_CMD_EXITED ((EventBits_t)1)
+extern EventGroupHandle_t g_radio_module_events;
+
+/* Prebuffer (jitter cushion) defaults — shared so radio_ring.c can give
+ * g_radio_prebuffer_bytes a correct compile-time default (7.11: a fresh
+ * device with no NVS key must not silently prebuffer at 0 ms). */
+#define PCM_BYTES_PER_MS    176            /* 44100 Hz * 2ch * 2B / 1000 (rounded) */
+#define PREBUF_MS_MIN       500
+#define PREBUF_MS_MAX       5000           /* < PCM_RING_BYTES (~5.9 s) */
+#define PREBUF_MS_DEFAULT   3000           /* ~3.0 s cushion before/again after dry */
+
 /* Session object — one per radio_play() invocation. Owns the stop flag, event
  * group, and task handles. Freed only after both workers have exited. */
 typedef struct radio_session {
@@ -49,6 +66,16 @@ static inline bool session_all_exited(const radio_session_t *s)
     if (!s || !s->events) return false;
     EventBits_t bits = xEventGroupGetBits(s->events);
     return (bits & RADIO_EVT_ALL_EXITED) == RADIO_EVT_ALL_EXITED;
+}
+
+/* 7.4: wait (bounded) for both workers to exit. Does not free anything —
+ * callers decide what to do with the result (session_destroy_joined() on
+ * ESP_OK, or attach as FAULTED_JOIN_PENDING and retain on ESP_ERR_TIMEOUT). */
+static inline esp_err_t session_join(radio_session_t *s, TickType_t timeout)
+{
+    EventBits_t bits = xEventGroupWaitBits(
+        s->events, RADIO_EVT_ALL_EXITED, pdFALSE, pdTRUE, timeout);
+    return ((bits & RADIO_EVT_ALL_EXITED) == RADIO_EVT_ALL_EXITED) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 /* 7.5: interruptible wait — waits up to ms, returns true if stop requested.
@@ -93,6 +120,16 @@ extern char          g_radio_last_error_detail[64];
 
 /* Set the last error for the current session status (radio_stream.c). */
 void set_radio_error(radio_err_t err, const char *detail);
+
+/* 7.8: only mutate g_radio_state on behalf of the generation that is still
+ * s_active_session's — a stale worker from a session that has since been
+ * stopped/replaced can't clobber a newer session's state (radio.c core). */
+void radio_set_state_for_generation(uint32_t generation, radio_state_t state);
+
+/* 7.8: transition BUFFERING -> RUNNING once both READY bits are set for the
+ * given generation (radio.c core; called by stream_task/decoder_task right
+ * after each sets its own READY bit). */
+void radio_try_publish_running(radio_session_t *s);
 
 /* Fetch a (small) playlist body and resolve to a stream URL; pass through a
  * direct stream URL unchanged. Best-effort: on resolve failure, use as-is.

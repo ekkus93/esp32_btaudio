@@ -196,12 +196,12 @@ add_executable(test_radio_lifecycle test_radio_lifecycle.c
     ${RADIO_DIR}/radio_parse.c
     ${RADIO_DIR}/radio_resampler.c
     mocks/freertos_event_group.c
-    mocks/fake_task.c
     mocks/fake_semphr.c
     mocks/fake_queue.c
     mocks/fake_esp_err.c
     mocks/compat_strlcpy.c)
 target_include_directories(test_radio_lifecycle PRIVATE
+    ${RADIO_DIR}
     ${RADIO_DIR}/include
     ${I2S_OUT_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks

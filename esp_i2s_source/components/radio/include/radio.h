@@ -24,6 +24,7 @@ typedef enum {
 typedef enum {
     RADIO_STATE_STOPPED = 0,
     RADIO_STATE_STARTING,
+    RADIO_STATE_BUFFERING,   /* both workers entered; not yet READY (FIX3 7.2/7.8) */
     RADIO_STATE_RUNNING,
     RADIO_STATE_STOPPING,
     RADIO_STATE_FAULTED,
@@ -114,14 +115,27 @@ void radio_get_status(radio_status_t *out);
 void radio_test_inject_exit_bits(uint32_t bits);
 /* Return current active session for test inspection. */
 void *radio_test_get_active_session(void);
+#ifdef UNIT_TEST
+/* Set the command-worker's module-level exit-acknowledgement bit (7.10) —
+ * the mocked worker task body never runs in host tests, so nothing else
+ * would ever set it. */
+void radio_test_inject_cmd_exited(void);
+#endif
 
-/* Event bits for test injection (match RADIO_EVT_ constants in radio.c). */
-#define RADIO_EVT_STREAM_STARTED  ((EventBits_t)1)
-#define RADIO_EVT_DECODER_STARTED ((EventBits_t)2)
-#define RADIO_EVT_STREAM_EXITED   ((EventBits_t)4)
-#define RADIO_EVT_DECODER_EXITED  ((EventBits_t)8)
-#define RADIO_EVT_ALL_STARTED     (RADIO_EVT_STREAM_STARTED | RADIO_EVT_DECODER_STARTED)
-#define RADIO_EVT_ALL_EXITED      (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
+/* Event bits for test injection (match RADIO_EVT_ constants in radio.c/
+ * radio_stream.c/radio_decode.c). FIX3 7.3: ENTERED/READY/EXITED, not a
+ * single STARTED bit — ENTERED fires the instant the worker task begins
+ * running, READY only once it has passed its operational checks (stream:
+ * HTTP connected + codec recognized; decoder: decoder opened). */
+#define RADIO_EVT_STREAM_ENTERED   ((EventBits_t)1)
+#define RADIO_EVT_DECODER_ENTERED  ((EventBits_t)2)
+#define RADIO_EVT_STREAM_READY     ((EventBits_t)4)
+#define RADIO_EVT_DECODER_READY    ((EventBits_t)8)
+#define RADIO_EVT_STREAM_EXITED    ((EventBits_t)16)
+#define RADIO_EVT_DECODER_EXITED   ((EventBits_t)32)
+#define RADIO_EVT_ALL_ENTERED      (RADIO_EVT_STREAM_ENTERED | RADIO_EVT_DECODER_ENTERED)
+#define RADIO_EVT_ALL_READY        (RADIO_EVT_STREAM_READY | RADIO_EVT_DECODER_READY)
+#define RADIO_EVT_ALL_EXITED       (RADIO_EVT_STREAM_EXITED | RADIO_EVT_DECODER_EXITED)
 
 /* Return the current lifecycle state. */
 radio_state_t radio_get_state(void);
@@ -147,8 +161,12 @@ size_t radio_pcm_read(int16_t *dst, size_t frames);
  * allocation failure. */
 esp_err_t radio_init(size_t ring_bytes);
 
-/* Release the compressed-frame ring and internal sync. Call before process exit. */
-void radio_deinit(void);
+/* Release the compressed-frame ring and internal sync. Call before process
+ * exit. If a session is still active and fails to stop/join (7.6), or the
+ * command worker fails to acknowledge shutdown, returns ESP_ERR_TIMEOUT and
+ * retains every resource (queue/mutex/rings/session) untouched so a caller
+ * can retry rather than losing track of live state. */
+esp_err_t radio_deinit(void);
 
 const char *radio_codec_str(radio_codec_t c);
 

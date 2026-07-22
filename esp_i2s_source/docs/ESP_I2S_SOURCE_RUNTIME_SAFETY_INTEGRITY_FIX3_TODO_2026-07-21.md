@@ -1737,7 +1737,7 @@ Required tests:
 
 # Phase 7 — Repair radio session lifecycle, command worker, and PSRAM allocation
 
-## 7.1 Change deinit to return `esp_err_t`
+## 7.1 Change deinit to return `esp_err_t` — DONE (Phase 7, commit pending)
 
 **Files:**
 
@@ -1755,7 +1755,7 @@ Delete `session_destroy_force()`.
 
 ---
 
-## 7.2 Add BUFFERING and preserve JOIN_PENDING ownership
+## 7.2 Add BUFFERING and preserve JOIN_PENDING ownership — DONE (Phase 7, commit pending)
 
 Extend `radio_state_t`:
 
@@ -1775,7 +1775,7 @@ The active session pointer remains set while JOIN_PENDING.
 
 ---
 
-## 7.3 Define task and readiness bits
+## 7.3 Define task and readiness bits — DONE (Phase 7, commit pending)
 
 Update event definitions in `radio.h` or internal header:
 
@@ -1794,7 +1794,7 @@ Workers set ENTERED immediately, READY only after the required operational check
 
 ---
 
-## 7.4 Implement safe session join/destroy
+## 7.4 Implement safe session join/destroy — DONE (Phase 7, commit pending)
 
 ```c
 static bool session_all_exited(const radio_session_t *s)
@@ -1827,7 +1827,7 @@ No function may free if the assertion is false.
 
 ---
 
-## 7.5 Rewrite `radio_stop_sync()`
+## 7.5 Rewrite `radio_stop_sync()` — DONE (Phase 7, commit pending)
 
 Required behavior:
 
@@ -1865,7 +1865,7 @@ If a newer generation could replace the pointer, compare generation/pointer befo
 
 ---
 
-## 7.6 Rewrite `radio_deinit()`
+## 7.6 Rewrite `radio_deinit()` — DONE (Phase 7, commit pending)
 
 Sequence:
 
@@ -1883,7 +1883,7 @@ Never dereference a saved session after a function that may have freed it.
 
 ---
 
-## 7.7 Fix partial worker creation
+## 7.7 Fix partial worker creation — DONE (Phase 7, commit pending)
 
 In play:
 
@@ -1897,7 +1897,7 @@ Do not ignore wait bits.
 
 ---
 
-## 7.8 Publish BUFFERING, not RUNNING, after task entry
+## 7.8 Publish BUFFERING, not RUNNING, after task entry — DONE (Phase 7, commit pending)
 
 Wait for both ENTERED bits with timeout. If a worker exits before both enter, treat startup as failure and join.
 
@@ -1924,7 +1924,7 @@ Generation-check every worker state update so stale workers cannot overwrite a n
 
 ---
 
-## 7.9 Make radio initialization all-or-nothing
+## 7.9 Make radio initialization all-or-nothing — DONE (Phase 7, commit pending)
 
 Allocate local candidates:
 
@@ -1951,7 +1951,7 @@ Reject `ring_bytes == 0` before allocation/ring arithmetic.
 
 ---
 
-## 7.10 Add command-worker exit acknowledgement
+## 7.10 Add command-worker exit acknowledgement — DONE (Phase 7, commit pending)
 
 Create module event bit:
 
@@ -1970,7 +1970,7 @@ Lifecycle owner clears `s_radio_cmd_task` after observing the bit. Do not poll t
 
 ---
 
-## 7.11 Fix prebuffer default and error reporting
+## 7.11 Fix prebuffer default and error reporting — DONE (Phase 7, commit pending)
 
 Initialize atomic at compile time to default bytes or explicitly store default before NVS read:
 
@@ -2003,7 +2003,7 @@ If init chooses to continue with default after a non-not-found read error, recor
 
 ---
 
-## 7.12 Tests
+## 7.12 Tests — DONE (Phase 7, commit pending)
 
 Required tests:
 

@@ -56,9 +56,13 @@ size_t             g_radio_pcm_cap, g_radio_pcm_head, g_radio_pcm_tail, g_radio_
 SemaphoreHandle_t  g_radio_pcm_mtx;
 volatile bool      g_radio_prebuffered;    /* PCM cushion reached -> ok to feed I2S */
 
-/* 7.9: atomic prebuffer threshold — readers check under g_radio_pcm_mtx, writers
-   use atomic_store for safe concurrent updates. */
-atomic_size_t     g_radio_prebuffer_bytes;
+/* 7.11: atomic prebuffer threshold — readers check under g_radio_pcm_mtx,
+   writers use atomic_store for safe concurrent updates. Compile-time default
+   so a fresh device with no NVS key (or a genuinely absent "radio" NVS
+   namespace) never runs with an unset/zero threshold, which would defeat
+   prebuffering entirely (the gate `pcm_count >= 0` is trivially always
+   true). */
+atomic_size_t     g_radio_prebuffer_bytes = (PREBUF_MS_DEFAULT * PCM_BYTES_PER_MS);
 
 size_t pcm_write(const uint8_t *d, size_t n)
 {

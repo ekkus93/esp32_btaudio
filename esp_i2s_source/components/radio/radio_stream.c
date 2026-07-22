@@ -132,6 +132,8 @@ void stream_task(void *arg)
 {
     radio_session_t *s = arg;
     int backoff = 500;
+    /* 7.3: ENTERED fires immediately — before any operational check. */
+    xEventGroupSetBits(s->events, RADIO_EVT_STREAM_ENTERED);
     while (session_should_run(s)) {
         s_hdr_metaint = 0; s_hdr_br = 0; s_hdr_ct[0] = '\0'; s_hdr_name[0] = '\0';
         esp_http_client_config_t cfg = {
@@ -146,7 +148,7 @@ void stream_task(void *arg)
         if (!c) {
             set_radio_error(RADIO_ERR_HTTP_CLIENT_ALLOC, "client alloc failed");
             /* 7.5: interruptible wait on client alloc failure */
-            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
+            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_READY,
                                  pdFALSE, pdFALSE,
                                  pdMS_TO_TICKS(500 / portTICK_PERIOD_MS));
             continue;
@@ -177,9 +179,9 @@ void stream_task(void *arg)
             esp_http_client_close(c);
             esp_http_client_cleanup(c);
             atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
-            g_radio_state = RADIO_STATE_FAULTED;
-            xSemaphoreGive(g_radio_control_mtx);
+            /* 7.8: generation-gated — a stale worker from a session already
+             * replaced/stopped can't clobber a newer session's state. */
+            radio_set_state_for_generation(s->generation, RADIO_STATE_FAULTED);
             /* 7.3: break to single exit — not continue */
             break;
         }
@@ -193,9 +195,7 @@ void stream_task(void *arg)
             esp_http_client_close(c);
             esp_http_client_cleanup(c);
             atomic_store_explicit(&s->stop_requested, true, memory_order_release);
-            xSemaphoreTake(g_radio_control_mtx, portMAX_DELAY);
-            g_radio_state = RADIO_STATE_FAULTED;
-            xSemaphoreGive(g_radio_control_mtx);
+            radio_set_state_for_generation(s->generation, RADIO_STATE_FAULTED);
             /* 7.3: break to single exit — not continue */
             break;
         }
@@ -207,8 +207,11 @@ void stream_task(void *arg)
         fflush(stdout);
         backoff = 500;
 
-        /* 7.2: signal startup — stream has connected successfully */
-        xEventGroupSetBits(s->events, RADIO_EVT_STREAM_STARTED);
+        /* 7.3/7.8: READY — stream has connected and passed its operational
+         * checks (status + codec). Try to promote BUFFERING -> RUNNING now
+         * that this worker is ready (the decoder may already be READY too). */
+        xEventGroupSetBits(s->events, RADIO_EVT_STREAM_READY);
+        radio_try_publish_running(s);
 
         radio_icy_demux_t demux;
         radio_icy_demux_init(&demux, s_hdr_metaint);
@@ -237,7 +240,7 @@ void stream_task(void *arg)
             g_radio_reconnects++;
             xSemaphoreGive(g_radio_ring_mtx);
             /* 7.5: interruptible backoff wait via event group */
-            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_STARTED,
+            xEventGroupWaitBits(s->events, RADIO_EVT_STREAM_EXITED | RADIO_EVT_STREAM_READY,
                                  pdFALSE, pdFALSE,
                                  pdMS_TO_TICKS((uint32_t)backoff / portTICK_PERIOD_MS));
             backoff = (backoff < 8000) ? backoff * 2 : 8000;

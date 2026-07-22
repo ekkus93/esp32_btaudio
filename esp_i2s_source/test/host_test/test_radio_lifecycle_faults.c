@@ -20,6 +20,9 @@
 #include "nvs.h"
 
 #include "radio.h"
+/* White-box: radio_session_t + radio_set_state_for_generation()/
+ * radio_try_publish_running() for direct FIX3 7.8 generation/READY tests. */
+#include "radio_internal.h"
 
 /* Stub declaration for i2s_out gain (defined in test_radio_lifecycle.c). */
 esp_err_t i2s_out_set_gain(int pct);
@@ -29,9 +32,18 @@ int i2s_out_get_gain(void);
 void mock_nvs_set_open_err(esp_err_t err);
 void mock_nvs_set_set_err(esp_err_t err);
 void mock_nvs_set_commit_err(esp_err_t err);
+void mock_nvs_set_get_i32_err(esp_err_t err);
+void mock_nvs_set_prebuf_ms(int32_t ms);
+void mock_task_set_stream_silent(bool silent);
+void mock_task_set_decoder_silent(bool silent);
+void mock_task_set_cmd_auto_exit(bool auto_exit);
+unsigned mock_task_create_count(void);
+unsigned mock_heap_caps_call_count(void);
+void mock_heap_caps_set_fail_size(size_t size);
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /* ---- RH-S3-16: NVS error propagation from gain/prebuffer setters ---- */
 
@@ -164,13 +176,10 @@ void test_gain_clamp_on_nvs_fail(void)
 void radio_test_inject_exit_bits(uint32_t bits);
 void *radio_test_get_active_session(void);
 
-/* Event bits for failure injection (match RADIO_EVT_ constants in radio.c). */
-/* Must match radio.c's RADIO_EVT_* values exactly:
- *   RADIO_EVT_STREAM_EXITED   = 4
- *   RADIO_EVT_DECODER_EXITED  = 8
- * BIT0/1 are used for STARTED bits in radio.c. */
-#define TEST_EVT_STREAM_EXITED  ((uint32_t)4)
-#define TEST_EVT_DECODER_EXITED ((uint32_t)8)
+/* Event bits for failure injection (match RADIO_EVT_ constants in radio.h —
+ * FIX3 7.3 split STARTED into ENTERED/READY, and EXITED moved to bits 4/5). */
+#define TEST_EVT_STREAM_EXITED  ((uint32_t)RADIO_EVT_STREAM_EXITED)
+#define TEST_EVT_DECODER_EXITED ((uint32_t)RADIO_EVT_DECODER_EXITED)
 #define TEST_EVT_ALL_EXITED     (TEST_EVT_STREAM_EXITED | TEST_EVT_DECODER_EXITED)
 
 /* Stream exited, decoder did not → stop must time out and fault. */
@@ -292,7 +301,12 @@ void test_stop_after_fault_returns_ok(void)
 
 /* ---- 7.11: decoder task creation failure (stream succeeds, decoder fails) ---- */
 
-void test_decoder_task_creation_failure_decoder_only(void)
+/* 7.7: decoder create fails after the stream task is already running. The
+ * stream task never confirms exit by default (nothing auto-injects EXITED
+ * in host tests), so the join times out and the session must be attached
+ * as active JOIN_PENDING — never freed while a (simulated) running worker
+ * might still reference it. */
+void test_decoder_task_creation_failure_join_pending(void)
 {
     esp_err_t err = radio_init(64 * 1024);
     TEST_ASSERT_EQUAL(ESP_OK, err);
@@ -309,13 +323,18 @@ void test_decoder_task_creation_failure_decoder_only(void)
     err = radio_play_sync("http://example.com/stream.mp3");
     TEST_ASSERT_NOT_EQUAL(ESP_OK, err);
 
-    /* State must be STOPPED after failure. */
+    /* 7.7: the session is retained, not freed — state is FAULTED_JOIN_PENDING,
+     * blocking a new play() until it's explicitly recovered. */
     radio_state_t state = radio_get_state();
-    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
+    TEST_ASSERT_NOT_NULL(radio_test_get_active_session());
 
-    /* radio_stop should be safe after failed play. */
+    /* Recovery: once the stream worker confirms exit, stop_sync() joins and
+     * frees cleanly. */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
     err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, radio_get_state());
 
     /* Reset mock. */
     mock_task_set_fail_on_nth(0);
@@ -399,4 +418,146 @@ void test_asan_clean_fault_recovery(void)
     /* State must be STOPPED after recovery. */
     state = radio_get_state();
     TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
+}
+
+/* ---- FIX3 7.8: BUFFERING requires both ENTERED, RUNNING requires both READY ---- */
+
+void test_both_entered_required_before_buffering(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Decoder never confirms ENTERED (simulated hung/never-scheduled
+     * worker) — stream does. play_sync() must not publish BUFFERING; it
+     * should join (stream never exits either, by default) and time out
+     * into FAULTED_JOIN_PENDING rather than declaring success. */
+    mock_task_set_decoder_silent(true);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, err);
+
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
+
+    /* Recover: both confirm exit -> stop_sync() joins and frees. */
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, radio_get_state());
+
+    mock_task_set_decoder_silent(false);
+}
+
+void test_ready_bits_required_before_running(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(RADIO_STATE_BUFFERING, radio_get_state());
+
+    radio_session_t *s = (radio_session_t *)radio_test_get_active_session();
+    TEST_ASSERT_NOT_NULL(s);
+
+    /* Only the stream is READY -- must stay BUFFERING. */
+    radio_test_inject_exit_bits(RADIO_EVT_STREAM_READY);
+    radio_try_publish_running(s);
+    TEST_ASSERT_EQUAL(RADIO_STATE_BUFFERING, radio_get_state());
+
+    /* Both READY -- promotes to RUNNING. */
+    radio_test_inject_exit_bits(RADIO_EVT_DECODER_READY);
+    radio_try_publish_running(s);
+    TEST_ASSERT_EQUAL(RADIO_STATE_RUNNING, radio_get_state());
+
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    radio_stop_sync();
+}
+
+/* ---- FIX3 7.8: stale generation cannot update state ---- */
+
+void test_stale_generation_cannot_update_state(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    radio_session_t *s = (radio_session_t *)radio_test_get_active_session();
+    TEST_ASSERT_NOT_NULL(s);
+    uint32_t current_gen = s->generation;
+
+    /* A stale (older) generation must not be able to mutate g_radio_state. */
+    radio_set_state_for_generation(current_gen - 1, RADIO_STATE_FAULTED);
+    TEST_ASSERT_NOT_EQUAL(RADIO_STATE_FAULTED, radio_get_state());
+
+    /* The current generation can. */
+    radio_set_state_for_generation(current_gen, RADIO_STATE_FAULTED);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED, radio_get_state());
+
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    radio_stop_sync();
+}
+
+/* ---- FIX3 7.10: command-worker exit timeout retains queue/mutex/rings ---- */
+
+void test_cmd_worker_exit_timeout_retains_resources(void)
+{
+    /* Suppress the mock's default auto-injection of the command worker's
+     * exit-acknowledgement bit *before* radio_init() creates it, simulating
+     * a worker that never confirms shutdown. */
+    mock_task_set_cmd_auto_exit(false);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_deinit();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+
+    /* Every resource must still be alive -- a second radio_init() without
+     * first tearing down must be rejected (double-init guard), proving
+     * nothing was torn down. */
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, err);
+
+    /* Recovery: once the worker confirms exit, deinit succeeds and a fresh
+     * init works again. */
+    mock_task_set_cmd_auto_exit(true);
+    radio_test_inject_cmd_exited();
+    err = radio_deinit();
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+}
+
+/* ---- FIX3 7.11: fresh device (no NVS key) yields the compiled default ---- */
+
+void test_fresh_missing_prebuffer_key_yields_default(void)
+{
+    /* setUp()'s default fixture already simulates ESP_ERR_NVS_NOT_FOUND
+     * for nvs_get_i32() -- the ordinary fresh-device case. */
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    TEST_ASSERT_EQUAL_INT(3000, radio_get_prebuffer_ms());
+}
+
+/* ---- FIX3 7.9: PSRAM allocation failure never falls back to plain malloc ---- */
+
+void test_ring_alloc_failure_no_malloc_fallback(void)
+{
+    mock_heap_caps_set_fail_size(64 * 1024);
+
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, err);
+
+    /* Exactly one heap_caps_malloc() attempt for the ring -- no second
+     * (DEFAULT-capability) fallback call. */
+    TEST_ASSERT_EQUAL_UINT(1, mock_heap_caps_call_count());
+
+    mock_heap_caps_set_fail_size(0);
+    err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
 }
