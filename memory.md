@@ -2009,3 +2009,31 @@ phase below was hardware-smoke-tested without re-asking.
   laptop side, not with any device-side telemetry (DIAG|I2SWR and radio reconnects/decode_errors
   stayed clean throughout) — reinforces that remaining audio glitches on this specific laptop are
   a BT/WiFi radio-sharing artifact, not a firmware regression.
+
+## 2026-07-22T12:34:47Z - Claude Sonnet 5 - FIX3 Phase 12 complete: TODO annotated, implementation summary written, all local commits pushed
+
+- Closed out the ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3 effort (Phases 1-12, spanning
+  2026-07-21 into 2026-07-22). Annotated every Phase 12 subsection (12.1-12.11) and the final
+  completion checklist in the TODO doc with DONE/PARTIAL/evidence, honestly distinguishing what was
+  verified live tonight from what remains covered by host tests only. Per the user's earlier
+  explicit decision, the physical/destructive hardware gates (WROOM32 clock-line disconnect, a
+  fresh/erased-NVS first boot) are documented as **not re-verified**, not silently dropped.
+- Wrote `docs/ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3_SUMMARY_2026-07-22.md`: commits-by-phase
+  table (16 FIX3-spec commits + 4 more found/fixed live during Phase 12 itself: the i2s DMA-
+  starvation fix, the frontend envelope-crash fix, the i2s regression tests, and the stations
+  recovery fix), test commands/results, device log evidence, remaining limitations, and intentional
+  deviations from the TODO's scripted stressor list (real organic corruption discovery instead of a
+  synthetic byte-flip; real network/BT stressors instead of the exact scripted list, because the
+  endurance window overlapped with live audio-quality debugging at the user's request).
+- All 20 commits from `71e2427b` through `62d3afa7` are local, clean (verify_host.sh + idf.py build
+  both exit 0 after every one), and pushed to origin/master — no force-push, no PRs, matching the
+  user's standing instructions for this effort.
+- Net result: the FIX3 spec's intended safety/integrity hardening is implemented and largely
+  verified; two real, previously-unknown production bugs (the audio-choppiness root cause and a
+  latent stations-corruption dead end) were found and fixed as a direct result of actually
+  operating the device end-to-end during Phase 12, rather than only running the scripted checks —
+  worth remembering as a case for always including a live-operation pass in any future "final
+  verification" phase, not just automated gates.
+- Device left in a good state: playing SomaFM Groove Salad over BT to the laptop speakers, WiFi on
+  kensington2 (post-channel-change, manually reprovisioned), stations recovered to the 5 default
+  presets, uptime climbing cleanly on the final firmware.

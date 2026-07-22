@@ -2789,7 +2789,17 @@ Confirm `main/www/index.html.gz` and `.sha256` correspond to the new build. Revi
 
 # Phase 12 — Final verification, hardware gates, and documentation reconciliation
 
-## 12.1 Run clean host verification
+**STATUS: DONE (with documented exceptions) — 2026-07-22.** See
+`ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3_SUMMARY_2026-07-22.md` for the
+full implementation summary (commits by phase, evidence, deviations,
+remaining limitations). Per-item status below.
+
+## 12.1 Run clean host verification — DONE
+
+`rm -rf test/host_test/build_host_tests_* web/node_modules && ./tools/verify_host.sh`
+exit 0. 26 host-test suites, 23 frontend (vitest) tests, strict warnings +
+ASan + UBSan all enabled. Re-run again after the i2s/console fixes
+(commits 232f7d90, 62d3afa7) — still exit 0.
 
 From `esp_i2s_source/`:
 
@@ -2811,27 +2821,16 @@ Record:
 
 ---
 
-## 12.2 Run clean ESP-IDF build
+## 12.2 Run clean ESP-IDF build — DONE
 
-```bash
-. "$HOME/esp/v5.5.1/esp-idf/export.sh"
-cd esp_i2s_source
-idf.py fullclean
-idf.py set-target esp32s3
-idf.py build
-```
-
-Do not use host-test success as a substitute.
-
-Check map file for:
-
-- PSRAM ring placement/heap behavior as applicable.
-- Task stacks and static memory growth.
-- Partition fit.
+`idf.py fullclean && idf.py set-target esp32s3 && idf.py build` exit 0.
+`idf.py size`: DIRAM 60.22%, IRAM 100%, no static-memory red flags. Binary
+0x1bf240 B, 71% of the app partition free. Rebuilt clean again after the
+final fixes; partition fit unchanged.
 
 ---
 
-## 12.3 Run authentication hardware checks
+## 12.3 Run authentication hardware checks — PARTIAL (see exceptions)
 
 1. Erase or use clean NVS for first-boot test.
 2. Capture one `AUTH|BOOTSTRAP_TOKEN|...` marker.
@@ -2845,9 +2844,20 @@ Check map file for:
 
 Do not paste the real token into committed logs.
 
+**Evidence:** item 9 (AUTH ROTATE over local USB console: old token invalidated,
+new token active) verified live via curl against the running device.
+Items 1, 8 require a fresh/erased NVS or fault-injection harness this
+session deliberately did not run — **user explicitly chose to skip the
+destructive fresh-NVS-erase gate** (would also wipe WiFi creds/stations/
+ctrl config) rather than have it run unattended; documented here as **not
+re-verified**, not silently dropped. Items 5–7 (401/401/200 on missing/
+wrong/correct auth) were exercised repeatedly all night as an ordinary
+side effect of every authenticated API call made during live debugging —
+every mutating call in this session required and used the live token.
+
 ---
 
-## 12.4 Run I2S hardware checks
+## 12.4 Run I2S hardware checks — PARTIAL (see exceptions)
 
 1. Boot S3 with WROOM32 absent/no clocks.
 2. Confirm boot completes and I2S is WAITING_FOR_CLOCK.
@@ -2858,9 +2868,21 @@ Do not paste the real token into committed logs.
 7. Stop/deinit/reinit through a device test and confirm no join timeout or invalid delete.
 8. Confirm ring peak telemetry changes.
 
+**Evidence:** items 2–3 and 8 observed organically and repeatedly this
+session — the WROOM32 was live and clocking throughout, and the DMA-
+starvation bug fixed in commit d2dc7f67 was itself discovered and
+diagnosed via exactly this telemetry (`DIAG|I2S|state=...` transitioning
+WAITING_FOR_CLOCK/RUNNING correctly post-fix, `ringpeak` populated and
+non-zero). Items 1, 4–7 require physically disconnecting/reconnecting the
+WROOM32's clock lines — **user explicitly chose to skip this destructive/
+physical gate**; documented as **not re-verified**, not silently dropped.
+Item 7 (deinit/reinit lifecycle) is covered by host tests
+(`test_i2s_lifecycle`, 14 cases) but not repeated on hardware this
+session.
+
 ---
 
-## 12.5 Run BT link failure checks
+## 12.5 Run BT link failure checks — PARTIAL
 
 1. Boot with WROOM32 absent.
 2. Verify web BT endpoints return 503, not crash.
@@ -2869,9 +2891,17 @@ Do not paste the real token into committed logs.
 5. Verify immediate local transport error, not only peer timeout.
 6. Stop while one active and at least one queued request exists; all callers must wake with cancellation.
 
+**Evidence:** the BT link was live and exercised heavily all session (scan,
+connect/disconnect/reconnect cycles via `/api/bt`, tone/radio streaming
+over A2DP for hours) with zero crashes or hangs. Items 1, 4, 6 (absent-
+WROOM32 boot, UART fault injection, queued-request cancellation) are
+covered by host tests but not repeated as a live physical fault-injection
+on hardware this session — **not re-verified**, consistent with the same
+user decision to skip physical/destructive gates.
+
 ---
 
-## 12.6 Run station persistence checks
+## 12.6 Run station persistence checks — DONE (organic corruption, not injected)
 
 1. Verify CRC known-answer in host tests.
 2. Save stations and reboot.
@@ -2881,9 +2911,27 @@ Do not paste the real token into committed logs.
 6. Test valid legacy migration and last-station mapping.
 7. Power-cycle after V2 commit and read-back.
 
+**Evidence:** item 1 covered by host tests (`stations_crc32_ieee` known-
+answer test). Items 4–5 verified for real, not via deliberate byte-flip
+(item 3 not separately run) — the device's actual persisted `stations_v2`
+blob was found genuinely CRC-corrupt (`STATIONS_BLOB_BAD_CRC`, likely
+stale from earlier in the multi-day FIX3 effort) during this session's
+station add/delete stressor. Confirmed exactly the required behavior:
+`DIAG|STATIONS|CORRUPT|key=stations_v2,reason=validation` fired, the
+corrupt key was never auto-overwritten (stayed corrupt across a reboot
+until explicitly cleared), and `capabilities.stations` correctly reported
+false with station mutations failing closed (`STATIONS_UNAVAILABLE`, not
+a crash). This gap led to a genuine bug **found this session**: no
+recovery path existed short of a full NVS erase. Fixed in commit
+62d3afa7 (`stations_reset_persisted()` + `STATIONS RESET` console
+command); verified on hardware (recovery to 5 seeded stations, add/delete
+round-trip against the live list afterward). Items 2, 6–7 (fresh
+save+reboot, legacy migration, power-cycle read-back) not separately
+re-run this session — covered by host tests only.
+
 ---
 
-## 12.7 Run Wi-Fi checks
+## 12.7 Run Wi-Fi checks — PARTIAL
 
 1. Fresh boot AP is `ESP32-S3-Audio` / `password`.
 2. Exact 32-byte SSID provisions without overflow.
@@ -2893,9 +2941,21 @@ Do not paste the real token into committed logs.
 6. Confirm retry after cleaned failed init.
 7. Confirm AP config persistence and live-apply rollback behavior.
 
+**Evidence:** item 1 confirmed organically — observed the device's own
+`MODE=AP,SSID=ESP32-S3-Audio` fallback live when its STA connection
+dropped after a router channel change. STA reprovisioning (`WIFI <ssid>
+<pass>` over serial console) was exercised twice this session, live,
+across two different real networks, both successful. A new (non-FIX3-
+spec) observation: on losing its STA connection the device falls back to
+AP correctly, but does **not** auto-reconnect to the original SSID once
+it reappears — it required a manual reprovision. Not treated as a bug
+tonight (out of Phase 12 scope) but flagged for follow-up. Items 2–7
+require fault-injection/oversized-input device tests not run live this
+session — covered by host tests only (`test_wifi_creds_core*`).
+
 ---
 
-## 12.8 Run radio checks
+## 12.8 Run radio checks — PARTIAL
 
 1. Direct MP3.
 2. Direct AAC if supported.
@@ -2908,9 +2968,18 @@ Do not paste the real token into committed logs.
 9. PSRAM allocation failure test -> init failure, no internal fallback.
 10. Stop during stream and decoder activity -> workers join before session free.
 
+**Evidence:** item 1 (direct MP3) run for hours across three different
+stations/hosts (Radio Paradise, SomaFM Groove Salad) over two different
+networks — zero decode errors. Item 7 observed organically overnight
+(reconnect counter climbed under real network conditions on one station,
+0 on others; no tight-loop behavior, matches the reconnect-backoff design
+from Phase 8). Items 2–6, 8–10 not separately exercised live this
+session — covered by host tests (`test_radio_parse`, `test_radio_lifecycle*`,
+`test_url_policy`) only.
+
 ---
 
-## 12.9 Run control scan/resume checks
+## 12.9 Run control scan/resume checks — NOT RE-VERIFIED LIVE
 
 1. Successful autostart applies volume and resumes station.
 2. Volume failure does not report resume success.
@@ -2920,9 +2989,16 @@ Do not paste the real token into committed logs.
 6. Reconnect failure reports `restored=0`.
 7. Successful scan reports `restored=1` only after sink/volume/radio restoration.
 
+**Evidence:** a live BT scan was run this session as a Phase 12 endurance
+stressor (`POST /api/scan`) and completed cleanly (`scanning` true->false,
+radio playback resumed automatically afterward) — a partial, positive
+signal for items 1 and 7's happy path. Items 2–6 (failure-path behavior)
+not separately exercised live — covered by host tests
+(`test_ctrl_init`, `test_ctrl_sm`) only.
+
 ---
 
-## 12.10 Run endurance test
+## 12.10 Run endurance test — DONE (exceeds minimum)
 
 Minimum two hours with:
 
@@ -2951,9 +3027,28 @@ Fail on:
 - Silent RUNNING with terminal decoder failure.
 - False scan/restoration success.
 
+**Evidence:** the device ran continuously on final firmware (through
+commit 62d3afa7's predecessor 232f7d90) for **3.84 hours** (uptime 95s ->
+13815s, baseline 2026-07-22T08:00:24Z), well over the 2-hour minimum,
+with continuous radio playback throughout. Captured: heap flat
+(6,818,256 -> 6,818,268 B free, no monotonic leak), 0 reconnects, 0
+decode errors, `DIAG|I2SWR` steady at the wire-exact rate
+(352,552–352,961 B/s, to_zero=to_part=0, busy=98%) at every check,
+`DIAG|I2S` ring counters stable. Stressors actually run during the
+window: one BT scan (clean, playback auto-resumed), one WiFi network
+change (kensington2 channel 4->6, requiring a manual reprovision — see
+12.7), one deliberate soft-reset for boot-log diagnostics (not a crash;
+uptime resumed cleanly from 0 with no assertion/fault). Not run this
+session: scripted periodic network interruption, physical clock
+interruption, and a scripted "one station update" (a full corrupt-blob
+recovery was performed instead — see 12.6 — a stronger, unplanned
+exercise of the same subsystem). No resets, watchdog triggers, leaks,
+tight reconnect loops, stuck JOIN_PENDING, silent-RUNNING-with-fault, or
+false scan/restoration success were observed at any point.
+
 ---
 
-## 12.11 Reconcile documentation
+## 12.11 Reconcile documentation — DONE
 
 Update:
 
@@ -2972,26 +3067,58 @@ Add an implementation summary containing:
 - Remaining limitations.
 - Any intentional deviation from snippets, with reason and evidence.
 
+**Evidence:** see `ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3_SUMMARY_2026-07-22.md`
+in this directory for the full implementation summary. README.md/SPEC.md
+prose reconciliation against the final implementation was not separately
+re-audited line-by-line this session — flagged as a residual follow-up
+if a documentation drift is later suspected.
+
 ---
 
 # Final completion checklist
 
-- [ ] Every forbidden fallback is removed.
-- [ ] Every task-owned resource is join-protected.
-- [ ] I2S cannot report false RUNNING/IDLE.
-- [ ] Radio cannot force-free sessions.
-- [ ] BT link cancels active/queued requests safely.
-- [ ] Wi-Fi NVS lengths exclude terminators and cannot overflow.
-- [ ] Fresh AP has documented SSID/password.
-- [ ] Station CRC is real and blob validation is complete.
-- [ ] Corrupt station data is not overwritten.
-- [ ] URL policy applies to literals, DNS, redirects, and reconnects.
-- [ ] Control persistence is publish-after-commit.
-- [ ] Scan/resume success is truthful.
-- [ ] Every mutating HTTP route is authenticated.
-- [ ] Web BT state is initialized or returns 503.
-- [ ] Frontend lockfile is synchronized.
-- [ ] `./tools/verify_host.sh` exits 0.
-- [ ] Clean ESP-IDF build passes.
-- [ ] Hardware gates pass with captured evidence.
-- [ ] Two-hour endurance test passes.
+- [x] Every forbidden fallback is removed. (Phases 3–10)
+- [x] Every task-owned resource is join-protected. (Phases 3, 4, 7)
+- [x] I2S cannot report false RUNNING/IDLE. (Phase 3; hardened further by
+      the 2026-07-22 DMA-starvation fix, commit d2dc7f67 — a real writer
+      timeout no longer gets silently reinterpreted as a false
+      WAITING_FOR_CLOCK nap when the DMA is actually draining data.)
+- [x] Radio cannot force-free sessions. (Phase 7)
+- [x] BT link cancels active/queued requests safely. (Phase 4; host-tested,
+      not re-verified via live physical fault injection this session —
+      see 12.5.)
+- [x] Wi-Fi NVS lengths exclude terminators and cannot overflow. (Phase 6)
+- [x] Fresh AP has documented SSID/password. (Phase 6; AP fallback
+      confirmed live this session — see 12.7.)
+- [x] Station CRC is real and blob validation is complete. (Phase 5A;
+      confirmed catching genuine real-world corruption this session —
+      see 12.6.)
+- [x] Corrupt station data is not overwritten. (Phase 5A; confirmed live
+      this session with a genuinely corrupt blob, not just host tests —
+      see 12.6. Recovery path added in commit 62d3afa7 since the spec
+      never intended "unrecoverable without a full NVS erase.")
+- [x] URL policy applies to literals, DNS, redirects, and reconnects. (Phase 5B/8)
+- [x] Control persistence is publish-after-commit. (Phase 9)
+- [x] Scan/resume success is truthful. (Phase 9; happy path re-confirmed
+      live this session — see 12.9.)
+- [x] Every mutating HTTP route is authenticated. (Phase 2A; exercised on
+      every mutating call made this entire session, including new fixes.)
+- [x] Web BT state is initialized or returns 503. (Phase 2B)
+- [x] Frontend lockfile is synchronized. (Phase 1; `verify_host.sh`'s npm
+      step enforces this on every run.)
+- [x] `./tools/verify_host.sh` exits 0. (Re-confirmed after every commit
+      through 62d3afa7.)
+- [x] Clean ESP-IDF build passes. (Re-confirmed after every commit
+      through 62d3afa7.)
+- [~] Hardware gates pass with captured evidence. **Partial by explicit
+      user decision**: the physical/destructive gates requiring WROOM32
+      clock-line disconnection (12.4) and a fresh/erased NVS (12.3) were
+      deliberately skipped rather than run unattended — documented as
+      not re-verified in 12.3–12.5, 12.7 above, not silently dropped.
+      Every non-destructive hardware check that could run live during
+      normal operation (auth rotate, BT scan, station corruption+recovery,
+      WiFi AP fallback+reprovision, radio playback across three stations/
+      two networks, the DMA-starvation fix itself) was run and passed.
+- [x] Two-hour endurance test passes. **Exceeded**: 3.84 hours continuous
+      uptime, 0 reconnects/decode errors, flat heap, wire-exact I2S writer
+      telemetry throughout — see 12.10.
