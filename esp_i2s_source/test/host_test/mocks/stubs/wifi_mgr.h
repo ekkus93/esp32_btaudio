@@ -19,6 +19,7 @@ typedef struct {
     bool ap_secured;
     char ap_ip[16];
     int  ap_clients;
+    bool mdns_available;
 } wifi_mgr_info_t;
 
 esp_err_t wifi_mgr_init(void);

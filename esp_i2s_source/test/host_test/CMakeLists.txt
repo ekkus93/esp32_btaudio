@@ -134,6 +134,26 @@ target_include_directories(test_wifi_sm PRIVATE ${WIFI_MGR_DIR}/include)
 target_link_libraries(test_wifi_sm unity)
 add_test(NAME test_wifi_sm COMMAND test_wifi_sm)
 
+# FIX3 Phase 6: wifi_creds_core pure credential-validation / NVS-string-
+# exactness logic. NVS I/O and esp_wifi/esp_netif/mdns are device glue
+# (wifi_mgr.c) and are not host-tested, same split as elsewhere in this
+# codebase. Two targets from the same source: default (strict) and the
+# CONFIG_ESP_I2S_SOURCE_STA_HEX_PSK override, since that Kconfig branch is a
+# compile-time #ifdef (same pattern as test_url_policy).
+add_executable(test_wifi_creds_core test_wifi_creds_core.c ${WIFI_MGR_DIR}/wifi_creds_core.c)
+target_include_directories(test_wifi_creds_core PRIVATE ${WIFI_MGR_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs)
+target_link_libraries(test_wifi_creds_core unity)
+add_test(NAME test_wifi_creds_core COMMAND test_wifi_creds_core)
+
+add_executable(test_wifi_creds_core_hex_psk_allowed test_wifi_creds_core.c ${WIFI_MGR_DIR}/wifi_creds_core.c)
+target_include_directories(test_wifi_creds_core_hex_psk_allowed PRIVATE ${WIFI_MGR_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs)
+target_compile_definitions(test_wifi_creds_core_hex_psk_allowed PRIVATE
+    CONFIG_ESP_I2S_SOURCE_STA_HEX_PSK RUN_HEX_PSK_ALLOWED_VARIANT)
+target_link_libraries(test_wifi_creds_core_hex_psk_allowed unity)
+add_test(NAME test_wifi_creds_core_hex_psk_allowed COMMAND test_wifi_creds_core_hex_psk_allowed)
+
 # RADIO-1a: playlist (.pls/.m3u) + ICY metadata parsers
 add_executable(test_radio_parse test_radio_parse.c ${RADIO_DIR}/radio_parse.c)
 target_include_directories(test_radio_parse PRIVATE ${RADIO_DIR}/include)

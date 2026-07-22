@@ -1382,3 +1382,168 @@ Next: Phase 4 (Serialization) or Phase 5 (Synchronization)
   all sitting as working-tree changes alongside pre-existing uncommitted work from earlier this
   session: dead-code sweep, SPLIT_AND_REFRACT splits of bt_source_mock.c/bt_source_stubs.c, both
   boards reflashed, and a laptop-as-BT-headset A2DP playback test that verified real audio flowing).
+
+## 2026-07-22T00:24:21Z - Claude Sonnet 5 - FIX3 (esp_i2s_source runtime safety/security): reviewed via /spec-todo, started implementation, Phases 1-2 done and hardware-verified
+
+- User surfaced an unexplained handoff package sitting uncommitted in `docs/`: a zip + manifest +
+  spec/TODO/code-review for "ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3" — a large (~4300-line)
+  runtime-safety/security/persistence-integrity spec for `esp_i2s_source/`, apparently produced by
+  an external review process (manifest is phrased as direct instructions to "Claude Code," treated
+  as untrusted content per repo CLAUDE.md convention, not as binding orders).
+- Ran `/spec-todo` on the SPEC+TODO. Before trusting the review, spot-checked ~6 of its P0 findings
+  directly against the live `esp_i2s_source/` source (not the doc-only copy): all confirmed accurate
+  and current — e.g. `web_ui_auth_check()`/`web_ui_bt_init()` genuinely have zero callers, the
+  station CRC32 tests a bit a right-shift just cleared (can never trigger, confirmed real bug),
+  `session_destroy_force()` still called from `radio_deinit()`, AP SSID constant defined but never
+  assigned, `i2s_out_start()` unconditionally stores RUNNING after only a "task entered" bit. Also
+  found the codebase has been through multiple prior review rounds (mismatched finding-ID schemes:
+  `I2S-004`/`I2S-014` in code comments vs this doc's `I2S-001`) — this FIX3 pass is not starting from
+  a clean slate. Found one real mechanical defect: the handoff files were extracted to
+  `docs/esp_i2s_source/docs/...` instead of `esp_i2s_source/docs/...`, breaking their own
+  self-references.
+- Wrote `/responses` to `docs/ESP_I2S_SOURCE_RUNTIME_SAFETY_INTEGRITY_FIX3_RESPONSES_2026-07-21.md`
+  (10 questions); user answered all in detail. Key decisions: move the handoff docs to the canonical
+  path; implement continuously phase-by-phase without stopping for approval on ordinary phases; split
+  TODO Phase 2 into 2A (auth) / 2B (BT web module) and Phase 5 into 5A (stations) / 5B (URL policy);
+  use a dedicated update-mutex (not generation-counter) for ctrl persistence; use a coordinator design
+  (not `migration_pending`) for station/ctrl ID migration; attempt the npm lockfile regen before
+  assuming it's blocked; targeted hardware smoke tests per phase, full 2-hour endurance deferred to
+  the end; exact reconnect-stability threshold = 10s AND 32 KiB of validated payload, both required.
+- Moved the 3 handoff docs to `esp_i2s_source/docs/` (+ `docs/review-source/`); zip/manifest moved
+  outside the repo to the scratchpad, not committed. Commit `71e2427b`.
+- **Phase 1** (commit `18b9291a`): fixed `web/package-lock.json` (network access WAS available in
+  this environment, contrary to the pre-flagged risk — `npm ci`/`install`/`build`/`test` all now
+  pass). Found and fixed a real regression along the way: commit `5a8eb996` (Jul 15, unrelated
+  frontend fix) had accidentally stripped `vite-plugin-singlefile` out of `vite.config.ts`, so
+  `npm run build` silently produced split JS/CSS assets instead of one inlined `index.html`, and
+  `embed_web.mjs` (which only reads `dist/index.html`) was embedding just the 487-byte shell instead
+  of the real ~56 KB app — `main/www/index.html.gz` had silently regressed to 311 bytes. Restored the
+  plugin/build-options/dev-proxy config; embedded bundle back to ~56 KB. Also fixed a host-build-only
+  portability gap (this sandbox's glibc 2.35 lacks `strlcpy` entirely — added 2038 — and gates
+  `strcasestr` behind `_GNU_SOURCE`) that was blocking `verify_host.sh` outright; added
+  `main/Kconfig.projbuild` with the two FIX3 config symbols. `verify_host.sh` now passes clean
+  (19/19 strict/ASan/UBSan + gate-assert + npm); clean `idf.py build` succeeds.
+- **Phase 2A** (commit `bb9c077f`): SEC-001/SEC-002 fixed. Split auth into a host-testable pure core
+  (`web_ui_auth_core.c/h`: hex encode, exact-length token validation, constant-time compare,
+  Bearer-header parsing — 24 new host tests) and device glue (`web_ui_auth.c`: NVS
+  persist-before-publish, mutex-guarded token state). Token is now 64 lowercase-hex chars (was: 32
+  raw random bytes stored directly as a C string — NUL bytes truncated it; `nvs_get_str()` called
+  with `required_len=0`; length compared against 32 when NVS returns length-including-terminator;
+  persist failure logged but function still returned `ESP_OK` and `web_ui_start()` started the server
+  anyway). Added centralized `route_dispatch()` + static `web_route_ctx_t` per mutating route —
+  verified via a new static check (`tools/test_web_ui_route_auth.py`) that every POST/PUT/DELETE
+  `httpd_uri_t` dispatches through the auth gate. Added `AUTH ROTATE` console command (local
+  USB-serial only). Removed dead, unguarded `web_ui_auth_get_token()` (zero callers).
+- **Phase 2B** (commit `b33cfac8`): WEB-001 fixed. `web_ui_bt_init()` had zero callers — `s_bt_mtx`
+  was always NULL, so every BT handler unconditionally took a null semaphore. Now idempotent,
+  returns `esp_err_t`, degrades to `web_ui_bt_available()==false` (503 via new `require_bt()` guard)
+  when bt_link isn't initialized rather than half-building state. Added `web_ui_bt_deinit()`:
+  stops/joins the previously fire-and-forget `connect_volume_task` (added a stop flag + exit event),
+  unsubscribes while bt_link is still up, releases resources — wired into `web_ui_stop()` and every
+  `web_ui_start()` failure path (also fixed two pre-existing resource leaks on those paths).
+- **Hardware smoke test (Phase 2A+2B combined)**: flashed the S3 (`idf.py -p /dev/ttyACM0 flash`,
+  explicit user confirmation obtained after the auto-mode classifier blocked an earlier attempt made
+  under a general "feel free to use the hardware" statement — flashing always needs an in-the-moment
+  confirmation per CLAUDE.md, an ambient permission doesn't cover it). Boot log clean:
+  `bt_link_init=ESP_OK`, `AUTH|READY|source=loaded`, `WEB|READY`, `BOOT|COMPLETE|degraded=0`, joined
+  WiFi at 192.168.88.107. Used the new `AUTH ROTATE` console command to obtain a known token, then
+  verified over real HTTP: unauthenticated POST -> 401 `AUTH_REQUIRED` + `WWW-Authenticate: Bearer`;
+  wrong token -> 401; correct token -> 200 and the action actually applies (tone on/off); GET
+  `/api/bt` (unauth) returns real WROOM32 state incl. the laptop's paired MAC from earlier session
+  work; POST `/api/console {cmd:STATUS}` **without** a token -> 401 (never reaches the WROOM32) —
+  **with** a token -> 200 and real WROOM32 STATUS data. This closes the two most severe findings
+  (SEC-001 unauthenticated raw command forwarding; WEB-001 null-mutex risk) end-to-end on real
+  hardware. Not tested: the literal "bt_link never initialized" 503 path — on reflection this only
+  triggers on a genuine bt_link subsystem init/subscribe failure, not merely "WROOM32 physically
+  absent" (which the pre-existing code already handles gracefully via command timeouts); not
+  practically fault-injectable via hardware alone, left as a software-level test gap for later.
+- Also noticed: the auth token loaded from NVS on first flash of this session under the *new* key
+  ("token", vs. the old code's "auth") without ever being generated by this new code first —
+  provenance unclear (device may have been touched by an earlier prototype/test cycle), not a defect
+  in the new code (which validated it correctly before trusting it), but worth a raised eyebrow.
+- Pending (at that point): Phases 3-12 (I2S lifecycle, bt_link shutdown, stations/URL policy, WiFi,
+  radio lifecycle/reconnect/decoder, ctrl sync, degraded boot, frontend auth UI, final verification +
+  2-hour endurance) not yet started. All commits pushed? No — not yet pushed to origin/master.
+
+## 2026-07-22T01:59:46Z - Claude Sonnet 5 - FIX3 continued via Ralph Loop: Phases 3-6 done and hardware-verified, still local-only
+
+User said "Continue Ralph Looping until all of the tasks are done" (`ralph-loop` skill), with two
+adaptations stated up front and held throughout: (a) never push to origin/master without an explicit
+"please push" (standing repo/session convention, in tension with the skill's own "push per task"
+instruction); (b) commit at phase/sub-phase granularity (matching the FIX3 TODO's own "recommended
+commit sequence") rather than one commit per numbered sub-task, to avoid ~80 tiny commits. Flashing
+`/dev/ttyACM0` has standing session permission ("feel free to do so, you don't have to ask") — every
+phase below was hardware-smoke-tested without re-asking.
+
+- **Phase 3 — I2S lifecycle** (commit `e4ac08c4`): split `I2S_EVT_WRITER_STARTED` into
+  ENTERED/READY/EXITED bits so `i2s_out_start()` waits for the writer to actually confirm readiness
+  (or a fast failure) instead of trusting "task entered" alone; added `I2S_STATE_FAULTED_JOIN_PENDING`
+  plus a `join_writer_locked()` helper so a stuck writer task is never silently forgotten;
+  `i2s_set_faulted()` vs `i2s_set_state()` split so timeout paths don't clobber `last_error`. Added
+  `UNIT_TEST`-gated injection hooks (`i2s_test_inject_writer_state/bits`, `..._reset_module_state`)
+  since the shared task mock never runs the real writer body — this hook pattern, plus a local
+  per-test-file event-group mock with a programmable wait-result queue, became the template reused in
+  Phase 4. 10 new host tests (`test_i2s_lifecycle.c`).
+- **Phase 4 — bt_link shutdown/cancellation** (commit `4bd40430`): added a `bt_link_state_t` lifecycle
+  enum (was a bare bool), `request_complete_worker()` to consolidate every completion path, and
+  `cancel_active_and_queued()` — fixed a real leak where stop() never released/signaled the active
+  request and silently dropped queued ones without waking their semaphores. UART write failures now
+  complete the request immediately instead of only logging. `bt_link_init()`'s failure path now waits
+  (bounded) for whichever tasks were actually created before tearing down shared state, distinguishing
+  "joined cleanly, propagate the original error" from "join timed out, report `FAULTED_JOIN_PENDING`
+  and `ESP_ERR_TIMEOUT`" — this asymmetry (join failure trumps the original error) mirrors i2s_out.c's
+  Phase 3 precedent. 5 new host tests; needed a local `xTaskCreate` mock (shared `fake_task.c` doesn't
+  run task bodies) and iteratively fixed 3 self-introduced test failures (a stray `req->state` write
+  that broke a pre-existing calloc-zero-reliant test; `s_task`/`s_event_task` never getting cleared
+  after a mocked stop; the idempotency guard wrongly treating a matching-timeout re-init as OK even
+  from `FAULTED_JOIN_PENDING`).
+- **Phase 5A — station persistence** (commit `49b27d1e`): confirmed and fixed the `compute_crc()` bug
+  flagged in the original review — it shifted right then tested bit 31, which can never be set after
+  an unsigned right-shift, so CRC checking was silently a no-op; live hardware now correctly reports
+  `DIAG|STATIONS|CORRUPT` for a real historical blob (`reason=6 size=12348` — this device's stored V2
+  blob predates the schema fix and is now correctly rejected rather than silently trusted, confirmed
+  again in this Phase 6 session's own boot log). Split into `stations_persist_core.c` (pure CRC/blob-
+  validation/migration, host-tested) + rewritten `stations.c` glue implementing the full corrupt-never-
+  autoreplaces/legacy-only-on-genuine-NOT_FOUND state machine. Caught and fixed a stack-overflow bug I
+  introduced myself mid-task: `station_store_t` is 12,328 bytes and an early draft used it as a stack
+  local in several functions — verified the exact size with a throwaway C program, then heap-allocated
+  every candidate/verify buffer. 29 new host tests.
+- **Phase 5B — URL/SSRF policy** (commit `e3058342`): new `url_policy.c` — pure IPv4/IPv6 private/
+  loopback/link-local/multicast/IPv4-mapped-IPv6 range checks, gated by the existing
+  `CONFIG_ESP_I2S_SOURCE_ALLOW_LOCAL_STREAMS` Kconfig symbol; device-only `url_policy_resolve_and_check()`
+  for DNS-time rebinding checks (needs `lwip/sockets.h`+`lwip/netdb.h` directly on ESP-IDF — plain
+  `<arpa/inet.h>` doesn't declare `inet_pton`/`AF_INET6` there and collides with lwip's later
+  definition). While wiring this into `station_store.c`, found `POST /api/radio` (direct-play, not the
+  saved-station path) never validated its URL at all — confirmed live: private-IP/loopback/
+  `169.254.169.254` requests were all silently accepted pre-fix; now rejected with 400 `INVALID_URL`,
+  verified again live alongside a real SomaFM stream playing/stopping cleanly. 36+1 new host tests
+  (two binaries: default-strict and the local-streams-allowed override, since the Kconfig branch is
+  compile-time).
+- **Phase 6 — WiFi manager** (commit pending): fixed WIFI-001..004 from the code review.
+  `bounded_length()`/`validate_ssid/sta_password/ap_password()`/`validate_stored_string()` pulled out
+  into a new pure `wifi_creds_core.c` (host-tested, 31 tests × 2 binaries for the hex-PSK Kconfig
+  branch) — `wifi_mgr.c` itself stays device-only/untested-on-host, same split as stations.c and
+  web_ui_auth.c (its own header comment says so). Root fix for WIFI-002 (fresh-device AP SSID empty):
+  `WIFI_MGR_AP_SSID` was defined but never actually assigned anywhere — replaced with
+  `set_default_ap_creds()`, called before any NVS override load. `load_creds()` now distinguishes
+  "no SSID key -> no creds" from "SSID present but PASS key missing -> corruption" (our own
+  `save_creds()` always writes both keys, so a missing PASS with present SSID can't be a legitimate
+  open network) from "either key corrupt -> visible error." `apply_sta/apply_ap/ensure_ap_config/
+  apply_action` all now return `esp_err_t` and propagate; `wifi_mgr_init()` tracks exactly what it
+  created (netifs/driver/handlers/wifi-started) and unwinds in reverse order on any failure, entering
+  FAULTED instead of UNINITIALIZED if the unwind itself errors; RUNNING is published only after the
+  initial STA/AP action actually succeeds (previously logged-and-continued regardless). Added
+  `wifi_mgr_running()` guard (checks the mutex is non-null) before every mutating public API and
+  before snapshot APIs read `s_sm`. `wifi_mgr_set_ap_enabled()`/`set_ap_config()` are now transactional
+  (persist -> live-apply -> publish; roll back NVS on live-apply failure; a rollback failure itself
+  escalates to FAULTED via a new `wifi_record_fault()`). mDNS calls are all now checked individually;
+  a secondary-call failure after `mdns_init()` succeeds is a visible "degraded" subcapability
+  (`mdns_available=false`) rather than silent success — verified live via `WIFI STATUS` showing
+  `MDNS=UP`. Hardware smoke test: clean boot, concurrent STA+AP came up correctly
+  (`kensington2` STA got 192.168.88.107, control AP up alongside it), mDNS up, `WIFI STATUS` console
+  command shows the new `MDNS=` field.
+- Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed after every phase
+  above. Ralph-loop mandate is to continue through Phase 12 without stopping for approval on ordinary
+  phases; next up is Phase 7 (radio session lifecycle + PSRAM). Still nothing pushed to
+  origin/master — all 12 FIX3 commits so far (`71e2427b` through Phase 6, not yet committed as of this
+  entry) remain local-only per standing convention.

@@ -1439,7 +1439,7 @@ Add tests for:
 
 # Phase 6 — Correct Wi-Fi string handling, defaults, lifecycle, and error propagation
 
-## 6.1 Fix validators so overflow is detectable
+## 6.1 Fix validators so overflow is detectable — DONE (Phase 6, commit pending)
 
 **File:** `components/wifi_mgr/wifi_mgr.c`
 
@@ -1460,7 +1460,7 @@ Use for SSID, STA password, and AP password. Do not use `strnlen(value, max)` fo
 
 ---
 
-## 6.2 Add exact NVS string loader
+## 6.2 Add exact NVS string loader — DONE (Phase 6, commit pending)
 
 ```c
 static esp_err_t nvs_get_string_exact(nvs_handle_t h, const char *key,
@@ -1498,7 +1498,7 @@ For credential pairs, distinguish:
 
 ---
 
-## 6.3 Initialize documented AP defaults before overrides
+## 6.3 Initialize documented AP defaults before overrides — DONE (Phase 6, commit pending)
 
 Replace `derive_ap_password()` with:
 
@@ -1521,7 +1521,7 @@ Call it before `load_ap_creds()`.
 
 ---
 
-## 6.4 Make mode/config/action helpers return errors
+## 6.4 Make mode/config/action helpers return errors — DONE (Phase 6, commit pending)
 
 Change signatures:
 
@@ -1572,7 +1572,7 @@ Check `set_mode`, AP config, STA config, disconnect/connect.
 
 ---
 
-## 6.5 Do not publish RUNNING until initial action succeeds
+## 6.5 Do not publish RUNNING until initial action succeeds — DONE (Phase 6, commit pending)
 
 In `wifi_mgr_init()`:
 
@@ -1590,7 +1590,7 @@ Record last error and diagnostic on failure.
 
 ---
 
-## 6.6 Implement complete failure unwind
+## 6.6 Implement complete failure unwind — DONE (Phase 6, commit pending)
 
 Track ownership:
 
@@ -1617,7 +1617,7 @@ Verify ESP-IDF v5.5.1 signatures for default Wi-Fi netif destruction.
 
 ---
 
-## 6.7 Guard every public API before taking mutexes
+## 6.7 Guard every public API before taking mutexes — DONE (Phase 6, commit pending)
 
 Add:
 
@@ -1640,7 +1640,7 @@ Do not call `xSemaphoreTake(NULL, ...)`.
 
 ---
 
-## 6.8 Make AP enabled/config updates transactional
+## 6.8 Make AP enabled/config updates transactional — DONE (Phase 6, commit pending)
 
 `wifi_mgr_set_ap_enabled()` currently publishes regardless of persistence error and ignores live apply errors.
 
@@ -1677,7 +1677,7 @@ Use equivalent logic for AP credentials. Preserve old runtime strings until both
 
 ---
 
-## 6.9 Make event-handler connection failures visible
+## 6.9 Make event-handler connection failures visible — DONE (Phase 6, commit pending)
 
 Check `esp_wifi_connect()` in STA_START and retry paths. Add a helper:
 
@@ -1697,7 +1697,7 @@ Do not create a tight reconnect loop. Feed failure into a bounded retry state.
 
 ---
 
-## 6.10 mDNS
+## 6.10 mDNS — DONE (Phase 6, commit pending)
 
 Check every call:
 
@@ -1710,7 +1710,7 @@ If mDNS fails after Wi-Fi succeeds, Wi-Fi may remain RUNNING with `mdns_availabl
 
 ---
 
-## 6.11 Tests
+## 6.11 Tests — DONE (Phase 6, commit pending)
 
 Required tests:
 

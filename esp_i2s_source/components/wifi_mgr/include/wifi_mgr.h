@@ -15,7 +15,6 @@
 extern "C" {
 #endif
 
-#define WIFI_MGR_AP_SSID   "ESP32-S3-Audio"
 #define WIFI_MGR_HOSTNAME  "esp-i2s-source"
 #define WIFI_MGR_SSID_MAX  32
 #define WIFI_MGR_PASS_MAX  64
@@ -52,6 +51,9 @@ typedef struct {
     bool ap_secured; /* true if the AP has a password set */
     char ap_ip[16];
     int  ap_clients; /* stations currently associated to the SoftAP */
+    /* 6.10: mDNS is a degraded subcapability — Wi-Fi can be RUNNING with
+     * mdns_available=false if any mdns_*() call failed after Wi-Fi came up. */
+    bool mdns_available;
 } wifi_mgr_info_t;
 
 void wifi_mgr_get_info(wifi_mgr_info_t *out);
