@@ -281,6 +281,7 @@ target_include_directories(test_main_boot PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/cmd_console/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/web_ui/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/tone/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/runtime_capabilities/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
 target_compile_definitions(test_main_boot PRIVATE UNIT_TEST ESP_PLATFORM CONFIG_SPIRAM=0)

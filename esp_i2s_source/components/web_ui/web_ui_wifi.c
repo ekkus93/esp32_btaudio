@@ -30,9 +30,21 @@ static void provision_task(void *arg)
     vTaskDelete(NULL);
 }
 
+/* FIX3 10.3: a degraded boot (wifi_mgr_init() failed) must return 503,
+ * never queue a deferred provisioning task against a dead manager. */
+static esp_err_t require_wifi(httpd_req_t *req)
+{
+    if (wifi_mgr_is_running()) return ESP_OK;
+    return web_send_error(req, "503 Service Unavailable", "WIFI_UNAVAILABLE",
+                          "WiFi manager is unavailable", true);
+}
+
 /* POST /api/wifi {ssid, pass} — validate, reply, then switch AP->STA. */
 esp_err_t wifi_post(httpd_req_t *req)
 {
+    esp_err_t guard = require_wifi(req);
+    if (guard != ESP_OK) return guard;
+
     char body[256];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -78,6 +90,9 @@ esp_err_t wifi_post(httpd_req_t *req)
 
 esp_err_t apmode_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_wifi(req);
+    if (guard != ESP_OK) return guard;
+
     char body[160];
     if (recv_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");

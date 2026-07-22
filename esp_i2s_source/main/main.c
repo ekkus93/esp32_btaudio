@@ -51,6 +51,7 @@
 #include "radio.h"
 #include "stations.h"
 #include "ctrl.h"
+#include "runtime_capabilities.h"
 
 static const char *TAG = "main";
 
@@ -156,8 +157,16 @@ static void init_nvs(void)
 {
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        /* 10.5: this erases every NVS namespace — WiFi creds, stations,
+         * auth token, ctrl config. Make that destructive step visible
+         * before and after, never silent. Never log the old secret values
+         * themselves, only that they're gone. */
+        printf("DIAG|NVS|ERASE_REQUIRED|reason=%s\n", esp_err_to_name(err));
+        fflush(stdout);
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
+        printf("DIAG|NVS|ERASED|credentials_lost=1,stations_lost=1,auth_lost=1\n");
+        fflush(stdout);
     }
     ESP_ERROR_CHECK(err);
 }
@@ -236,7 +245,11 @@ boot_status_t run_boot_sequence(void)
     /* 8. ctrl — must exist before web_ui_start() touches its mutex. */
     boot.ctrl_ok = log_boot_step("ctrl_init", ctrl_init());
 
-    /* 9. audio_out task — only once I2S and the radio interface both exist. */
+    /* 9. audio_out task — only requires I2S. Radio is read through APIs
+     * that are guaranteed safe and report unavailable (STOPPED/not-ready)
+     * when radio_init() failed (10.2) — the arbiter falls back to
+     * tone/silence in that case, so it correctly does not also require
+     * boot.radio_ok here. */
     if (boot.i2s_ok) {
         atomic_store(&s_audio_out_stop, false);
         BaseType_t created = xTaskCreate(audio_out_task, "audio_out", 4096, NULL,
@@ -271,9 +284,29 @@ boot_status_t run_boot_sequence(void)
     /* 15. Bounded read-only WROOM probe — async, cannot delay the boot above. */
     if (boot.bt_link_ok) {
         TaskHandle_t probe_task = NULL;
-        xTaskCreate(link_health_probe_task, "link_probe", 4096, NULL,
-                    tskIDLE_PRIORITY + 1, &probe_task);
+        /* 10.4: check every task creation — do not claim the optional probe
+         * started if it didn't. */
+        if (xTaskCreate(link_health_probe_task, "link_probe", 4096, NULL,
+                        tskIDLE_PRIORITY + 1, &probe_task) != pdPASS) {
+            printf("DIAG|BOOT|DEGRADED|component=link_probe,err=NO_MEM\n");
+            fflush(stdout);
+        }
     }
+
+    /* 10.1: publish what actually succeeded so web_ui (and any other
+     * component) can gate on real capability rather than assuming boot
+     * success. */
+    runtime_capabilities_t caps = {
+        .i2s = boot.i2s_ok,
+        .audio_task = boot.audio_task_ok,
+        .bt_link = boot.bt_link_ok,
+        .radio = boot.radio_ok,
+        .stations = boot.stations_ok,
+        .ctrl = boot.ctrl_ok,
+        .wifi = boot.wifi_ok,
+        .web = boot.web_ok,
+    };
+    runtime_capabilities_publish(&caps);
 
     return boot;
 }

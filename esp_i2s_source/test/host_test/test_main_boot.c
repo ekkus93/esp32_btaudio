@@ -28,6 +28,7 @@
 #include "stations.h"
 #include "ctrl.h"
 #include "tone.h"
+#include "runtime_capabilities.h"
 
 extern void mock_task_reset(void);
 extern unsigned mock_task_create_count(void);
@@ -118,6 +119,19 @@ void tone_fill(int16_t *out, size_t frames) { if (out && frames) memset(out, 0, 
  * does not, but the symbol must still resolve at link time. ---- */
 void clock_diag_start(void) {}
 
+/* ---- runtime_capabilities stub (FIX3 10.1) — the real module needs a
+ * FreeRTOS mutex this target doesn't mock; a trivial no-op is enough since
+ * this test only exercises run_boot_sequence()'s own boot_status_t result. ---- */
+static runtime_capabilities_t s_published_caps;
+void runtime_capabilities_publish(const runtime_capabilities_t *caps)
+{
+    if (caps) s_published_caps = *caps;
+}
+void runtime_capabilities_get(runtime_capabilities_t *out)
+{
+    if (out) *out = s_published_caps;
+}
+
 /* ---- ESP-IDF platform stubs ---- */
 esp_err_t nvs_flash_init(void) { return ESP_OK; }
 esp_err_t nvs_flash_erase(void) { return ESP_OK; }
@@ -155,6 +169,20 @@ static void test_every_initializer_called_exactly_once(void)
     TEST_ASSERT_TRUE(boot.console_ok);
     TEST_ASSERT_TRUE(boot.web_ok);
     TEST_ASSERT_TRUE(boot.ctrl_start_ok);
+
+    /* 10.1: run_boot_sequence() must publish what actually succeeded, not
+     * just return it locally to app_main() (which used to discard it via
+     * `(void)boot;`). */
+    runtime_capabilities_t caps;
+    runtime_capabilities_get(&caps);
+    TEST_ASSERT_TRUE(caps.i2s);
+    TEST_ASSERT_TRUE(caps.audio_task);
+    TEST_ASSERT_TRUE(caps.bt_link);
+    TEST_ASSERT_TRUE(caps.radio);
+    TEST_ASSERT_TRUE(caps.stations);
+    TEST_ASSERT_TRUE(caps.ctrl);
+    TEST_ASSERT_TRUE(caps.wifi);
+    TEST_ASSERT_TRUE(caps.web);
 }
 
 static void test_boot_probe_issues_no_mutating_command(void)

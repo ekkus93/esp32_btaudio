@@ -82,5 +82,10 @@ static void clock_diag_task(void *arg)
 void clock_diag_start(void)
 {
     TaskHandle_t task = NULL;
-    xTaskCreate(clock_diag_task, "clock_diag", 3072, NULL, tskIDLE_PRIORITY + 1, &task);
+    /* 10.4: check every task creation — an optional diagnostic task failing
+     * to start must be visible, not silently claimed as running. */
+    if (xTaskCreate(clock_diag_task, "clock_diag", 3072, NULL, tskIDLE_PRIORITY + 1, &task) != pdPASS) {
+        printf("DIAG|BOOT|DEGRADED|component=clock_diag,err=NO_MEM\n");
+        fflush(stdout);
+    }
 }

@@ -1751,3 +1751,54 @@ phase below was hardware-smoke-tested without re-asking.
   climbing continuously throughout (no crash/reboot).
 - Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 10
   (degraded-boot capability boundaries, centralized 503 guards, runtime capability struct).
+
+## 2026-07-22T04:51:37Z - Claude Sonnet 5 - FIX3 Phase 10 (degraded-boot capability boundaries) done, hardware-verified against a genuinely-degraded device
+
+- **Phase 10** (commit pending): all 6 sub-areas.
+  - **10.1**: new standalone component `components/runtime_capabilities/` (`runtime_capabilities_t`:
+    i2s/audio_task/bt_link/radio/stations/ctrl/wifi/web bools, mutex-guarded publish/get). Lives in its
+    own component — not under `main/` — specifically so `web_ui` can depend on it without a circular
+    requirement on `main`. `main.c`'s `run_boot_sequence()` already computed exactly this per-component
+    result in its `boot_status_t` but only returned it locally to `app_main()`, which discarded it via
+    `(void)boot;` — nothing outside `main.c` could ever tell what actually initialized. Now published
+    once, right after boot, from those same `boot_status_t` fields.
+  - **10.2**: `audio_out_task`'s creation comment claimed a dependency on "I2S and radio" that the code
+    never actually checked (only `boot.i2s_ok`) — on inspection this was a **documentation** bug, not a
+    logic bug: the task's radio calls (`radio_get_state()`/`radio_audio_ready()`) already return safe
+    STOPPED/false when `radio_init()` never ran, so it correctly falls back to tone/silence. Fixed the
+    comment to describe the real (correct) dependency instead of adding an unneeded `boot.radio_ok`
+    check.
+  - **10.3**: added centralized `require_radio()`/`require_stations()` (`web_ui_radio.c`) and
+    `require_wifi()` (`web_ui_wifi.c`) guards, mirroring the `require_bt()` pattern already established
+    in Phase 2B — every radio/station-CRUD/WiFi-provisioning route had **zero** availability guard
+    before this (they'd just call into radio.c/stations.c/wifi_mgr.c, which are individually
+    "guaranteed safe" per their own internal `if (!s_mtx)`-style checks, but the HTTP layer never
+    translated that into a proper 503 with a stable error code — a caller got a misleading empty/200
+    response instead). Added a new public `wifi_mgr_is_running()` getter (wraps the existing internal
+    check) for `require_wifi()` to use. New stable codes: `RADIO_UNAVAILABLE`, `STATIONS_UNAVAILABLE`,
+    `WIFI_UNAVAILABLE` (matching the pre-existing `BT_LINK_UNAVAILABLE`).
+  - **10.4**: two task creations had unchecked `xTaskCreate()` return values —
+    `link_health_probe_task` in `main.c` and `clock_diag_task` in `clock_diag.c`. Both now check and
+    print `DIAG|BOOT|DEGRADED|component=...,err=NO_MEM` rather than silently claiming the optional
+    task started.
+  - **10.5**: `init_nvs()`'s erase-and-reinit path (triggered by `ESP_ERR_NVS_NO_FREE_PAGES`/
+    `NEW_VERSION_FOUND`) had no diagnostic before or after — a full NVS wipe (WiFi creds, stations,
+    auth token, ctrl config, all gone) happened silently. Added `DIAG|NVS|ERASE_REQUIRED|reason=...`
+    before and `DIAG|NVS|ERASED|credentials_lost=1,stations_lost=1,auth_lost=1` after (no secret
+    values logged, just the fact of loss).
+  - **10.6**: `/api/status` gained a `capabilities` object mirroring `runtime_capabilities_t` — the
+    frontend can now distinguish "component unavailable" from "idle/empty".
+  - Host tests: `test_main_boot.c` now asserts `runtime_capabilities_get()` reflects `boot_status_t`
+    after a successful `run_boot_sequence()` (needed a trivial no-op stub for the real component's
+    mutex-based publish/get, added to the include path). `web_ui`/`wifi_mgr.c`/`main.c`'s other changes
+    are device-glue, same "not host-tested, verified via idf.py build + hardware" split as every
+    other web_ui/device-glue file in this codebase.
+- **Verified live against a device with a genuinely corrupt stations blob** (left over from Phase 5A's
+  CRC-fix testing) — `/api/status` correctly reported `"capabilities":{"stations": false, ...}` (real
+  degraded state, not a synthetic test), `GET`/`POST /api/stations` both correctly returned
+  `503 STATIONS_UNAVAILABLE`, while `POST /api/radio` (a healthy, independent capability) still played
+  a real stream successfully on the same boot — proving the guards are scoped per-capability, not an
+  all-or-nothing fallback.
+- Full `verify_host.sh` (strict+ASan+UBSan+npm) and a clean `idf.py build` passed. Next up: Phase 11
+  (frontend authenticated mutation flow) and Phase 12 (final verification, hardware gates, 2-hour
+  endurance test) — the last two FIX3 phases.

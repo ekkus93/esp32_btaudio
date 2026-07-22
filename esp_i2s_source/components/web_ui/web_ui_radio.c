@@ -8,6 +8,7 @@
 #include "stations.h"
 #include "station_store.h"
 #include "ctrl.h"
+#include "runtime_capabilities.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -21,11 +22,35 @@
 
 static const char *TAG = "web_ui_radio";
 
+/* FIX3 10.3: centralized capability guards — a degraded boot (radio_init()
+ * or stations_init() failed) must return 503, never silently operate on an
+ * uninitialized module. Mirrors web_ui_bt.c's require_bt(). */
+static esp_err_t require_radio(httpd_req_t *req)
+{
+    runtime_capabilities_t caps;
+    runtime_capabilities_get(&caps);
+    if (caps.radio) return ESP_OK;
+    return web_send_error(req, "503 Service Unavailable", "RADIO_UNAVAILABLE",
+                          "radio is unavailable", true);
+}
+
+static esp_err_t require_stations(httpd_req_t *req)
+{
+    runtime_capabilities_t caps;
+    runtime_capabilities_get(&caps);
+    if (caps.stations) return ESP_OK;
+    return web_send_error(req, "503 Service Unavailable", "STATIONS_UNAVAILABLE",
+                          "station storage is unavailable", true);
+}
+
 /* POST /api/radio {url} — resolve + play; DELETE /api/radio — stop.
  * Commands are queued to the radio module's command worker (RH-S3-09). */
 
 esp_err_t radio_post(httpd_req_t *req)
 {
+    esp_err_t guard = require_radio(req);
+    if (guard != ESP_OK) return guard;
+
     web_json_body_t jbody;
     if (web_read_json(req, RADIO_URL_MAX + 128, &jbody) != ESP_OK) {
         return web_send_error(req, "400 Bad Request", "BAD_BODY", "invalid JSON body", false);
@@ -78,6 +103,9 @@ esp_err_t radio_post(httpd_req_t *req)
 
 esp_err_t radio_delete(httpd_req_t *req)
 {
+    esp_err_t guard = require_radio(req);
+    if (guard != ESP_OK) return guard;
+
     /* Queue the stop command (RH-S3-09). */
     esp_err_t err = radio_stop_async();
     if (err != ESP_OK) {
@@ -100,6 +128,9 @@ static int station_id_param(httpd_req_t *req)
 
 esp_err_t stations_get_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_stations(req);
+    if (guard != ESP_OK) return guard;
+
     cJSON *arr = cJSON_CreateArray();
     int n = stations_count();
     for (int i = 0; i < n; i++) {
@@ -163,6 +194,9 @@ static void station_reply_err(httpd_req_t *req, const char *err, int id)
 
 esp_err_t stations_post_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_stations(req);
+    if (guard != ESP_OK) return guard;
+
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
     if (!station_body(req, name, sizeof(name), url, sizeof(url))) {
         station_reply(req, false, -1);
@@ -182,6 +216,9 @@ esp_err_t stations_post_h(httpd_req_t *req)
 
 esp_err_t stations_put_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_stations(req);
+    if (guard != ESP_OK) return guard;
+
     int id = station_id_param(req);
     /* Reorder shortcut: PUT /api/stations?id=X&move=up|down (no body). */
     char q[64], mv[8];
@@ -217,6 +254,9 @@ esp_err_t stations_put_h(httpd_req_t *req)
 
 esp_err_t stations_delete_h(httpd_req_t *req)
 {
+    esp_err_t guard = require_stations(req);
+    if (guard != ESP_OK) return guard;
+
     int id = station_id_param(req);
     esp_err_t err = id >= 0 ? stations_remove(id) : ESP_ERR_INVALID_ARG;
     if (err == ESP_ERR_INVALID_ARG) {

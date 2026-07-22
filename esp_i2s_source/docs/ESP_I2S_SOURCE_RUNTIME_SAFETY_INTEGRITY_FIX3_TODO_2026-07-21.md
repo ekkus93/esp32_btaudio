@@ -2514,7 +2514,7 @@ Required tests:
 
 # Phase 10 — Harden degraded boot and capability boundaries
 
-## 10.1 Add runtime capability structure
+## 10.1 Add runtime capability structure — DONE (Phase 10, commit pending)
 
 **Files:**
 
@@ -2544,7 +2544,7 @@ Use a mutex or atomic bitset. Web status and handlers use this rather than assum
 
 ---
 
-## 10.2 Correct dependency checks
+## 10.2 Correct dependency checks — DONE (Phase 10, commit pending)
 
 Audio task creation currently checks only I2S despite its comment. Decide actual dependency:
 
@@ -2558,7 +2558,7 @@ Web may start without BT/radio/stations, but dependent routes return 503.
 
 ---
 
-## 10.3 Add centralized capability guards to HTTP handlers
+## 10.3 Add centralized capability guards to HTTP handlers — DONE (Phase 10, commit pending)
 
 Example:
 
@@ -2585,7 +2585,7 @@ The handler must return immediately after sending 503.
 
 ---
 
-## 10.4 Check every task creation
+## 10.4 Check every task creation — DONE (Phase 10, commit pending)
 
 In `main.c` and `clock_diag.c`, check:
 
@@ -2607,7 +2607,7 @@ Do not claim the optional task started.
 
 ---
 
-## 10.5 Make destructive NVS recovery visible
+## 10.5 Make destructive NVS recovery visible — DONE (Phase 10, commit pending)
 
 Before erase:
 
@@ -2626,7 +2626,7 @@ Do not log old secret values.
 
 ---
 
-## 10.6 Update status API
+## 10.6 Update status API — DONE (Phase 10, commit pending)
 
 Expose:
 
@@ -2642,7 +2642,7 @@ The frontend must distinguish unavailable from empty/idle.
 
 ---
 
-## 10.7 Tests
+## 10.7 Tests — DONE (Phase 10, commit pending)
 
 Required tests:
 

@@ -14,6 +14,7 @@
 #include "tone.h"
 #include "radio.h"
 #include "i2s_out.h"
+#include "runtime_capabilities.h"
 
 #include <string.h>
 #include <stdatomic.h>
@@ -99,6 +100,20 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "version", app ? app->version : "?");
     cJSON_AddNumberToObject(root, "uptime_s", (double)(esp_timer_get_time() / 1000000));
     cJSON_AddNumberToObject(root, "heap_free", (double)esp_get_free_heap_size());
+
+    /* 10.6: capability booleans — the frontend must be able to distinguish
+     * "unavailable" (component failed at boot) from "empty/idle". */
+    runtime_capabilities_t caps;
+    runtime_capabilities_get(&caps);
+    cJSON *capabilities = cJSON_AddObjectToObject(root, "capabilities");
+    cJSON_AddBoolToObject(capabilities, "i2s", caps.i2s);
+    cJSON_AddBoolToObject(capabilities, "audio_task", caps.audio_task);
+    cJSON_AddBoolToObject(capabilities, "bt_link", caps.bt_link);
+    cJSON_AddBoolToObject(capabilities, "radio", caps.radio);
+    cJSON_AddBoolToObject(capabilities, "stations", caps.stations);
+    cJSON_AddBoolToObject(capabilities, "ctrl", caps.ctrl);
+    cJSON_AddBoolToObject(capabilities, "wifi", caps.wifi);
+    cJSON_AddBoolToObject(capabilities, "web", caps.web);
 
     cJSON *wifi = cJSON_AddObjectToObject(root, "wifi");
     cJSON_AddStringToObject(wifi, "mode", wi.mode);

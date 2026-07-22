@@ -58,6 +58,10 @@ typedef struct {
 
 void wifi_mgr_get_info(wifi_mgr_info_t *out);
 
+/* 10.3: true once wifi_mgr_init() has completed successfully. Web request
+ * guards use this instead of assuming boot succeeded. */
+bool wifi_mgr_is_running(void);
+
 /* Concurrent-AP control: when enabled (default), the SoftAP stays up alongside
  * STA (APSTA). When disabled, the AP drops once STA is connected (STA-only).
  * The AP is always forced up when there are no STA creds (setup). Persisted. */

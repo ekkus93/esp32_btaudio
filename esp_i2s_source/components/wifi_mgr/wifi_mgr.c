@@ -123,6 +123,13 @@ static bool wifi_mgr_running(void)
     return s_mgr_mtx && s_state == WIFI_MGR_STATE_RUNNING;
 }
 
+/* 10.3: public capability check — callers (e.g. web_ui's request guards)
+ * use this rather than assuming wifi_mgr_init() succeeded at boot. */
+bool wifi_mgr_is_running(void)
+{
+    return wifi_mgr_running();
+}
+
 /* ---- credential persistence (8.5/6.2: transactional, exact-length) ---- */
 
 /* 6.2: read+validate an NVS string in one step. Pure invariant checking is
