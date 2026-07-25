@@ -331,6 +331,53 @@ void test_partial_init_recovers_when_first_task_exits_promptly(void)
     fresh_init();
 }
 
+/* ================= P2 (docs/UNIT_TESTS2_TODO.md): bt_link.c audit ================= */
+
+static void dummy_event_cb(void *ctx, const bt_link_msg_t *evt)
+{
+    (void)ctx; (void)evt;
+}
+
+static void test_is_initialized_reflects_lifecycle_state(void)
+{
+    /* Note: bt_link_deinit() isn't exercised elsewhere in this file in a way
+     * that leaves state UNINITIALIZED for a "false" case without disturbing
+     * later tests' shared init -- this asserts the post-init state, which is
+     * what every other test in this file already depends on implicitly. */
+    if (!s_init_done) bt_link_init(2000);
+    TEST_ASSERT_TRUE(bt_link_is_initialized());
+}
+
+static void test_subscribe_returns_valid_slot_and_unsubscribe_removes_it(void)
+{
+    if (!s_init_done) bt_link_init(2000);
+
+    int slot = bt_link_subscribe(dummy_event_cb, NULL);
+    TEST_ASSERT_TRUE(slot >= 0);
+
+    int removed = bt_link_unsubscribe(dummy_event_cb, NULL);
+    TEST_ASSERT_EQUAL_INT(slot, removed);
+
+    /* Unsubscribing an already-removed (cb, ctx) pair finds nothing. */
+    TEST_ASSERT_EQUAL_INT(-1, bt_link_unsubscribe(dummy_event_cb, NULL));
+}
+
+static void test_subscribe_rejects_null_callback(void)
+{
+    if (!s_init_done) bt_link_init(2000);
+    TEST_ASSERT_EQUAL_INT(-1, bt_link_subscribe(NULL, NULL));
+}
+
+/* Audit findings (docs/UNIT_TESTS2_TODO.md P2), not implemented here:
+ * - bt_link_task / event_dispatch_task: FreeRTOS task loops -- out of scope,
+ *   same category as every other *_task function in this project.
+ * - on_line / event_relay: static callbacks invoked only from within those
+ *   task loops (line parsing / event fan-out) -- reaching them meaningfully
+ *   would mean either de-static'ing + hand-driving them with synthetic UART
+ *   lines (a real but nontrivial addition) or exercising the task loop
+ *   itself. Deferred as a P2-of-P2; the three pure functions above were the
+ *   cheap, high-value wins in this file. */
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -350,5 +397,10 @@ int main(void)
     RUN_TEST(test_cancel_completes_active_and_queued);
     RUN_TEST(test_partial_init_join_pending_when_first_task_never_exits);
     RUN_TEST(test_partial_init_recovers_when_first_task_exits_promptly);
+
+    /* P2 (docs/UNIT_TESTS2_TODO.md): bt_link.c */
+    RUN_TEST(test_is_initialized_reflects_lifecycle_state);
+    RUN_TEST(test_subscribe_returns_valid_slot_and_unsubscribe_removes_it);
+    RUN_TEST(test_subscribe_rejects_null_callback);
     return UNITY_END();
 }

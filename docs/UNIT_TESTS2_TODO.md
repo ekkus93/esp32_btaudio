@@ -379,23 +379,56 @@ are not:
       call); success path copies `count`/`mac`/`name`/`rssi` correctly from
       `bt_ctx.discovered_devices`/`paired_devices` into the caller's buffer.
 
-## P2 — smaller / lower urgency
+## P2 — smaller / lower urgency ✅ ALL DONE
 
-- [ ] **`esp_i2s_source` `bt_link.c`** (62.9%, 291 instrumented lines): the
-      UART1 command-protocol glue to the WROOM32 — worth a pass after I2S-1/2/3,
-      not before.
-- [ ] **`esp_i2s_source` `i2s_out.c`** (69.5%, 305 lines): audit which
-      uncovered functions are pure (pump/gain math, testable) vs. driver-call
-      glue (`ESP_PLATFORM`-only, out of scope) before committing to a coverage
-      target — don't assume the gap is closeable without checking first.
-- [ ] **`esp_bt_audio_source` `audio_processor.c`** (62.3%, 228 lines):
-      `audio_processor_cleanup_partial_init`, `_drain_ring`,
-      `_get_work_buffer_bytes`, `_is_synth_mode_enabled`, `_is_wav_active`,
-      `_set_dram_only`, `_set_synth_mode` are 0-call — mostly small
-      state-accessor/flag functions, batch them into one task once P0/P1 land.
-- [ ] **`esp_bt_audio_source` `audio_processor_diag.c`** (66.0%, 106 lines):
-      `audio_processor_dump_tag_queue`, `diag_dump_bytes` untested — diagnostic
-      dump formatting, low risk, low effort; good filler task.
+- [x] **`esp_i2s_source` `bt_link.c`** (62.9% → 72.2%, 81.0% func): audited the
+      3 zero-call functions — `bt_link_task`/`event_dispatch_task` confirmed
+      genuine task loops (out of scope); `bt_link_is_initialized`,
+      `bt_link_subscribe`, `bt_link_unsubscribe` were cheap pure wins, added
+      to `test_bt_link_lifecycle.c` (3 new cases; already links `bt_link.c`
+      + calls the real `bt_link_init()`). `on_line`/`event_relay` (static
+      callbacks invoked only from the task loops) deferred — noted in the
+      test file as needing either de-static + synthetic UART line injection,
+      or exercising the task loop itself.
+- [x] **`esp_i2s_source` `i2s_out.c`** (69.5% → 72.1%, 95.2% func): audited —
+      `writer_task` confirmed a task loop (out of scope); `i2s_out_set_gain`/
+      `get_gain` were testable. Added 3 cases to `test_i2s_lifecycle.c`
+      (validation guard, NVS-open-failure propagation, get-gain read-back).
+      This file's `nvs_open()` stub is a fixed `ESP_ERR_NVS_NOT_FOUND` (not
+      controllable), so the success/persist path is untested here — would
+      need a controllable NVS stub to close further; correctly not chased
+      given this is the lowest-priority item in the lowest-priority section.
+- [x] **`esp_bt_audio_source` `audio_processor.c`** (62.3% → 80.7%, 93.3% func):
+      10 new cases in `test_audio_processor_diag.c` covering `get_work_buffer_bytes`,
+      `is_synth_mode_enabled`, `is_wav_active` (confirmed a dead-code stub —
+      WAV playback removed, always returns `false`; a dead-code-removal
+      candidate for a future pass, not fixed here), `set_dram_only`,
+      `set_synth_mode` (both directions, incl. the I2S mutual-exclusion
+      behavior), and `drain_ring` (uninitialized/null-ring guards + success
+      resetting playback state). `cleanup_partial_init` deferred — `static`,
+      reached only from `audio_processor_init()`'s failure label, would need
+      allocation-failure injection at several distinct steps to exercise
+      meaningfully; not fabricating a shallow test.
+- [x] **`esp_bt_audio_source` `audio_processor_diag.c`** (66.0% → 92.5%, 100% func):
+      4 new cases — `audio_processor_dump_tag_queue` (confirmed another
+      legacy-removed stub, always `ESP_ERR_NOT_SUPPORTED`) and `diag_dump_bytes`
+      (NULL-guards on all 3 params; a genuine multi-line/multi-row hex dump,
+      not just the single-row case already hit indirectly by BT-2).
+
+> **Two more missing header declarations found and fixed while writing P2
+> tests** (bringing this session's total to three — see BT-3 for the first):
+> `audio_processor_is_wav_active` and `audio_processor_dump_tag_queue` were
+> both public, real functions with **no declaration in `audio_processor.h`**,
+> working only via lucky implicit-int/bool-return matching. Both added.
+>
+> **Final numbers, full P0→P2 TODO (all sections done):**
+> | Project | Before | After |
+> |---|---|---|
+> | `esp_bt_audio_source` | 79.4% | **84.2%** (946 host cases, was 891) |
+> | `esp_i2s_source` | 55.1% | **61.7%** (27 suites, was 25) |
+>
+> Full suites green throughout (946/946 and 27/27), both `idf.py build`s
+> clean at every step.
 
 ---
 

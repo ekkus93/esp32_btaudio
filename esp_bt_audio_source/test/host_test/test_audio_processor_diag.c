@@ -638,6 +638,157 @@ void test_emit_sync_worker_diag_null_proc_buffer_yields_invalid_size(void)
  * indirectly by the success-path test above; no separate direct test adds
  * value beyond that. */
 
+/* ================= P2 (docs/UNIT_TESTS2_TODO.md): audio_processor.c accessors ================= */
+
+void test_get_work_buffer_bytes_reflects_runtime_value(void)
+{
+    s_runtime_work_bytes = 1234;
+    TEST_ASSERT_EQUAL_UINT32(1234, audio_processor_get_work_buffer_bytes());
+}
+
+void test_is_synth_mode_enabled_reflects_force_synth(void)
+{
+    s_force_synth = false;
+    TEST_ASSERT_FALSE(audio_processor_is_synth_mode_enabled());
+    s_force_synth = true;
+    TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
+}
+
+void test_is_wav_active_always_false(void)
+{
+    /* WAV playback was removed (play_manager deleted) -- this is a stub
+     * that always returns false. Locks in the current documented behavior;
+     * a candidate for outright removal in a future dead-code pass, not
+     * fixed here (out of scope for a coverage task). */
+    TEST_ASSERT_FALSE(audio_processor_is_wav_active());
+}
+
+void test_set_dram_only_toggles_flag(void)
+{
+    audio_processor_set_dram_only(true);
+    TEST_ASSERT_TRUE(s_dram_only_alloc);
+    audio_processor_set_dram_only(false);
+    TEST_ASSERT_FALSE(s_dram_only_alloc);
+}
+
+void test_set_synth_mode_enable_stops_i2s(void)
+{
+    audio_processor_core_stub_set_i2s_running(true);
+    s_force_synth = false;
+
+    audio_processor_set_synth_mode(true);
+
+    TEST_ASSERT_TRUE(s_force_synth);
+    TEST_ASSERT_FALSE(i2s_manager_is_running());
+}
+
+void test_set_synth_mode_disable_restarts_i2s_when_running(void)
+{
+    s_is_running = true;
+    s_force_synth = true;
+    audio_processor_core_stub_set_i2s_running(false);
+
+    audio_processor_set_synth_mode(false);
+
+    TEST_ASSERT_FALSE(s_force_synth);
+    TEST_ASSERT_TRUE(i2s_manager_is_running());
+}
+
+void test_set_synth_mode_disable_does_not_start_i2s_when_processor_stopped(void)
+{
+    s_is_running = false;
+    s_force_synth = true;
+    audio_processor_core_stub_set_i2s_running(false);
+
+    audio_processor_set_synth_mode(false);
+
+    TEST_ASSERT_FALSE(s_force_synth);
+    TEST_ASSERT_FALSE(i2s_manager_is_running());
+}
+
+/* ---- audio_processor_drain_ring ---- */
+
+void test_drain_ring_rejects_when_not_initialized(void)
+{
+    s_is_initialized = false;
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_STATE, audio_processor_drain_ring());
+}
+
+void test_drain_ring_rejects_when_ring_null(void)
+{
+    s_is_initialized = true;
+    s_audio_ring = NULL;
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_STATE, audio_processor_drain_ring());
+}
+
+void test_drain_ring_success_resets_playback_state(void)
+{
+    s_is_initialized = true;
+    /* audio_rb_available_to_read() stub always returns 0, so the drain loop
+     * itself is a no-op here -- this exercises the state-reset tail and the
+     * !=NULL guard, which is the reachable behavior with the stubbed ring. */
+    static int dummy_ring_marker;
+    s_audio_ring = (audio_rb_t *)&dummy_ring_marker;
+    s_audio_rb_residual_len = 10;
+    s_audio_rb_residual_pos = 5;
+    s_keepalive_armed = true;
+    s_force_synth = true;
+    s_last_source_was_synth = true;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_drain_ring());
+    TEST_ASSERT_EQUAL_UINT32(0, s_audio_rb_residual_len);
+    TEST_ASSERT_EQUAL_UINT32(0, s_audio_rb_residual_pos);
+    TEST_ASSERT_FALSE(s_keepalive_armed);
+    TEST_ASSERT_FALSE(s_force_synth);
+    TEST_ASSERT_FALSE(s_last_source_was_synth);
+
+    s_audio_ring = NULL; /* don't leak a dangling stack pointer to later tests */
+}
+
+/* Note (docs/UNIT_TESTS2_TODO.md P2): audio_processor_cleanup_partial_init()
+ * is static, called only from audio_processor_init()'s single failure label,
+ * and reverses a specific sequence of partial allocations. Meaningfully
+ * testing it needs allocation-failure injection at each of several distinct
+ * init steps -- deferred; not fabricating a shallow test that doesn't
+ * exercise the actual rollback logic. */
+
+/* ================= P2 (docs/UNIT_TESTS2_TODO.md): audio_processor_diag.c dump helpers ================= */
+
+void test_dump_tag_queue_is_legacy_removed_stub(void)
+{
+    /* Legacy tag queue removed; span log is the replacement -- this always
+     * returns ESP_ERR_NOT_SUPPORTED and zeroes captured_out if given. */
+    size_t captured = 999;
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_NOT_SUPPORTED, audio_processor_dump_tag_queue(10, &captured));
+    TEST_ASSERT_EQUAL_UINT32(0, captured);
+}
+
+void test_dump_tag_queue_accepts_null_captured_out(void)
+{
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_NOT_SUPPORTED, audio_processor_dump_tag_queue(10, NULL));
+}
+
+void test_diag_dump_bytes_null_guards_no_crash(void)
+{
+    uint8_t data[4] = {1, 2, 3, 4};
+    diag_dump_bytes(NULL, 4, "tag");
+    diag_dump_bytes(data, 0, "tag");
+    diag_dump_bytes(data, 4, NULL);
+    /* No crash is the assertion -- the function has no return value. */
+    TEST_PASS();
+}
+
+void test_diag_dump_bytes_multiline_dump_no_crash(void)
+{
+    /* 20 bytes spans two 16-byte rows -- exercises the while-loop's second
+     * iteration, not just the single-row path already hit by BT-2's
+     * sync-diag success test. */
+    uint8_t data[20];
+    for (int i = 0; i < 20; i++) data[i] = (uint8_t)i;
+    diag_dump_bytes(data, sizeof(data), "DIAG:test-dump");
+    TEST_PASS();
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -700,5 +851,22 @@ int main(void)
     RUN_TEST(test_emit_sync_worker_diag_rejects_when_not_initialized);
     RUN_TEST(test_emit_sync_worker_diag_succeeds_with_mock_generator);
     RUN_TEST(test_emit_sync_worker_diag_null_proc_buffer_yields_invalid_size);
+
+    /* P2 (docs/UNIT_TESTS2_TODO.md): audio_processor.c accessors */
+    RUN_TEST(test_get_work_buffer_bytes_reflects_runtime_value);
+    RUN_TEST(test_is_synth_mode_enabled_reflects_force_synth);
+    RUN_TEST(test_is_wav_active_always_false);
+    RUN_TEST(test_set_dram_only_toggles_flag);
+    RUN_TEST(test_set_synth_mode_enable_stops_i2s);
+    RUN_TEST(test_set_synth_mode_disable_restarts_i2s_when_running);
+    RUN_TEST(test_set_synth_mode_disable_does_not_start_i2s_when_processor_stopped);
+    RUN_TEST(test_drain_ring_rejects_when_not_initialized);
+    RUN_TEST(test_drain_ring_rejects_when_ring_null);
+    RUN_TEST(test_drain_ring_success_resets_playback_state);
+
+    RUN_TEST(test_dump_tag_queue_is_legacy_removed_stub);
+    RUN_TEST(test_dump_tag_queue_accepts_null_captured_out);
+    RUN_TEST(test_diag_dump_bytes_null_guards_no_crash);
+    RUN_TEST(test_diag_dump_bytes_multiline_dump_no_crash);
     return UNITY_END();
 }

@@ -248,6 +248,12 @@ bool audio_processor_is_beep_active(void);
 bool audio_processor_is_i2s_active(void);
 
 /**
+ * @brief Query whether WAV playback is active. Always returns false — WAV
+ * playback was removed along with play_manager; kept for API compatibility.
+ */
+bool audio_processor_is_wav_active(void);
+
+/**
  * @brief A2DP pull-rate snapshot (UARTAUDIO diagnostics).
  *
  * audio_processor_read() is called only by the A2DP data callback, so its
@@ -348,6 +354,13 @@ void audio_processor_arm_probe(size_t n_entries);
  * probe entries. Returns ESP_OK even if no entries were captured.
  */
 esp_err_t audio_processor_emit_probe(void);
+
+/**
+ * @brief Legacy tag-queue dump. Always returns ESP_ERR_NOT_SUPPORTED and
+ * zeroes *captured_out (if non-NULL) -- the tag queue was removed; the span
+ * log is its replacement. Kept for API compatibility.
+ */
+esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out);
 
 /**
  * @brief Emit a synchronous worker-like diagnostic snapshot.

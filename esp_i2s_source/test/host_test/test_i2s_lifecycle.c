@@ -617,6 +617,40 @@ void test_write_fault_stops_writer_loop(void)
     TEST_ASSERT_EQUAL(I2S_STATE_FAULTED, i2s_out_get_state());
 }
 
+/* ================= P2 (docs/UNIT_TESTS2_TODO.md): i2s_out.c audit ================= */
+/* i2s_out_set_gain/get_gain: this file's nvs_open() stub unconditionally
+ * returns ESP_ERR_NVS_NOT_FOUND (fixed, not controllable) -- exercises
+ * set_gain's validation guard and its NVS-open-failure error-propagation
+ * path (both real, reachable behavior with the existing stub), plus
+ * get_gain's read-back. The success (NVS write succeeds) path would need a
+ * controllable stub; deferred as the lowest-priority item in this batch. */
+
+static void test_set_gain_rejects_out_of_range(void)
+{
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG, i2s_out_set_gain(-1));
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_ARG, i2s_out_set_gain(101));
+}
+
+static void test_set_gain_propagates_nvs_open_failure(void)
+{
+    /* This file's nvs_open() stub always fails -- set_gain must propagate
+     * the error and NOT update the in-RAM gain. */
+    int before = i2s_out_get_gain();
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_NVS_NOT_FOUND, i2s_out_set_gain(42));
+    TEST_ASSERT_EQUAL_INT(before, i2s_out_get_gain());
+}
+
+static void test_get_gain_reads_back_current_value(void)
+{
+    /* Boundary values accepted by the validation guard still fail to
+     * persist (same fixed stub), so this only confirms get_gain reflects
+     * whatever set_gain last successfully published -- i.e. unchanged here,
+     * since every set_gain call in this file fails at nvs_open(). */
+    int v1 = i2s_out_get_gain();
+    int v2 = i2s_out_get_gain();
+    TEST_ASSERT_EQUAL_INT(v1, v2);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -635,5 +669,10 @@ int main(void)
     RUN_TEST(test_timeout_with_progress_keeps_running_and_never_naps);
     RUN_TEST(test_timeout_with_zero_written_backs_off_once);
     RUN_TEST(test_write_fault_stops_writer_loop);
+
+    /* P2 (docs/UNIT_TESTS2_TODO.md): i2s_out.c gain accessors */
+    RUN_TEST(test_set_gain_rejects_out_of_range);
+    RUN_TEST(test_set_gain_propagates_nvs_open_failure);
+    RUN_TEST(test_get_gain_reads_back_current_value);
     return UNITY_END();
 }
