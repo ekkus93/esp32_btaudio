@@ -97,13 +97,22 @@ add_test(NAME test_<name> COMMAND test_<name>)
 
 ## P0 — highest value (security-relevant or large clean surface)
 
-### I2S-1 — `radio_stream.c` redirect/policy re-check (15.2% → target 80%+)
-**Why this is P0, not just low:** this is the logic that stops a malicious/compromised
+### I2S-1 — `radio_stream.c` redirect/policy re-check (15.2% → 46.8% ✅ DONE)
+> Achieved 46.8% line / 76.9% func (was 15.2%/? — commits f33b821f, 5174abd6,
+> 15c9cb33, d98acd1b, 18954212, and the reconnect_delay_ms commit below). 33
+> new cases in `test_radio_stream_redirects.c`, all passing; full host suite
+> 26/26 throughout; `idf.py build` clean. Remaining gap to the original 80%
+> goal is `stream_task`, `http_evt`, `on_audio`, `on_title` — the task-loop
+> body and its ICY/header-capture callbacks, correctly out of scope per this
+> doc's "Out of scope" section (would need a much larger harness simulating
+> the full streaming loop, not just the redirect/policy logic this task
+> targeted). The SSRF-prevention assertion is CONFIRMED PASSING.
+**Why this was P0, not just low:** this is the logic that stops a malicious/compromised
 radio-stream server from redirecting the device to an internal address (SSRF).
-It currently has **zero test evidence it works** — `redirect_target_allowed`,
+It had **zero test evidence it worked** — `redirect_target_allowed`,
 `resolve_redirect_location`, and `connect_with_redirects` (the loop that calls
-them) are all 0-call. Only `has_playlist_extension`/`radio_resolve_input` (24
-calls each, via `test_radio_lifecycle`) and `set_radio_error` are exercised.
+them) were all 0-call. Only `has_playlist_extension`/`radio_resolve_input` (24
+calls each, via `test_radio_lifecycle`) and `set_radio_error` were exercised.
 
 **Prerequisite:** `mocks/stubs/esp_http_client.h` has declarations only, no
 controllable behavior. Write `mocks/fake_http_client.c`:
@@ -184,9 +193,11 @@ controllable behavior. Write `mocks/fake_http_client.c`:
       capability gap (no Ogg/Vorbis or Opus support), not a test gap — worth
       a product decision, not a coverage task. 7 new cases pass; full host
       suite 26/26.
-- [ ] **`reconnect_delay_ms`**: table lookup — verify the exact schedule
+- [x] **`reconnect_delay_ms`**: table lookup — verify the exact schedule
       `{500,1000,2000,4000,8000,15000}` and that it clamps (doesn't index past
-      the array) for `attempt` values at and beyond the table length.
+      the array) for `attempt` values at and beyond the table length. — **DONE**.
+      2 new cases pass (incl. `UINT32_MAX`); full host suite 26/26. **I2S-1
+      COMPLETE** — see the section header above for final numbers.
 
 ### I2S-2 — `radio_ring.c` SPSC byte rings (0% → target 90%+)
 Pure logic, no `ESP_PLATFORM` gate blocking it — currently linked into

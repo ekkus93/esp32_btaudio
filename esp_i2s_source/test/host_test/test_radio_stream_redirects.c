@@ -23,6 +23,7 @@
 #include "radio_internal.h"
 #include "fake_http_client.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -381,6 +382,26 @@ void test_codec_from_ct_null_is_unknown(void)
     TEST_ASSERT_EQUAL_INT(RADIO_CODEC_UNKNOWN, codec_from_ct(NULL));
 }
 
+/* ---- reconnect_delay_ms: bounded backoff schedule lookup. ---- */
+
+void test_reconnect_delay_ms_matches_schedule(void)
+{
+    static const uint32_t expected[] = {500, 1000, 2000, 4000, 8000, 15000};
+    for (uint32_t i = 0; i < 6; i++) {
+        TEST_ASSERT_EQUAL_UINT32(expected[i], reconnect_delay_ms(i));
+    }
+}
+
+void test_reconnect_delay_ms_clamps_at_last_entry_beyond_table(void)
+{
+    /* Table has 6 entries (indices 0-5); anything at/after that clamps to
+     * the last entry rather than indexing out of bounds. */
+    TEST_ASSERT_EQUAL_UINT32(15000, reconnect_delay_ms(6));
+    TEST_ASSERT_EQUAL_UINT32(15000, reconnect_delay_ms(7));
+    TEST_ASSERT_EQUAL_UINT32(15000, reconnect_delay_ms(1000));
+    TEST_ASSERT_EQUAL_UINT32(15000, reconnect_delay_ms(UINT32_MAX));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -419,5 +440,8 @@ int main(void)
     RUN_TEST(test_codec_from_ct_aac_and_mp4_map_to_aac);
     RUN_TEST(test_codec_from_ct_unknown_content_type_is_unknown);
     RUN_TEST(test_codec_from_ct_null_is_unknown);
+
+    RUN_TEST(test_reconnect_delay_ms_matches_schedule);
+    RUN_TEST(test_reconnect_delay_ms_clamps_at_last_entry_beyond_table);
     return UNITY_END();
 }
