@@ -1,6 +1,20 @@
 # ESP-IDF BT Audio Source Test App (Bluetooth Suite)
 cmake_minimum_required(VERSION 3.16)
 
+# This build uses CONFIG_APP_NO_BLOBS=y (see sdkconfig.defaults) so
+# bt_stack_stub provides mocked esp_bt_*/esp_a2d_*/esp_avrc_* implementations
+# instead of the real Bluedroid stack. bt_stack_stub's own header
+# (components/bt_stack_stub/include/esp_bt.h) does `#include_next "esp_bt.h"`
+# to reach the REAL declarations from components/bt — but that component
+# only exposes host/bluedroid/api/include/api (with esp_bt.h, esp_a2dp_api.h,
+# etc.) when CONFIG_BT_ENABLED=y, which APP_NO_BLOBS forces off. IDF_DOC_BUILD
+# is the one existing, tested escape hatch components/bt/CMakeLists.txt uses
+# to expose those headers without compiling the real stack in (see its
+# `if(CONFIG_IDF_DOC_BUILD)` block) — set here, not in sdkconfig.defaults,
+# because CONFIG_IDF_DOC_BUILD is an environment-driven Kconfig default
+# ($(IDF_DOC_BUILD)), not a regular settable bool.
+set(ENV{IDF_DOC_BUILD} "1")
+
 # Set extra components directory
 set(EXTRA_COMPONENT_DIRS
     "../../components"

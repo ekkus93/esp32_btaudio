@@ -1,3 +1,6 @@
+# Exclude the real Bluetooth blob stack (BT_ENABLED depends on !APP_NO_BLOBS)
+# so bt_stack_stub provides esp_bt.h for these mocked-BT device tests.
+CONFIG_APP_NO_BLOBS=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_UNITY_FREERTOS_STACK_SIZE=8192
 CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y

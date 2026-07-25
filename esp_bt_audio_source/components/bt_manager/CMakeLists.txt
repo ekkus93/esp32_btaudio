@@ -6,10 +6,6 @@ set(priv_requires
     audio_processor
     platform_shim)
 
-if(CONFIG_APP_NO_BLOBS)
-    list(APPEND priv_requires bt_stack_stub)
-endif()
-
 idf_component_register(
     SRCS
         "bt_manager.c"
@@ -25,6 +21,19 @@ idf_component_register(
         "bt_connection_manager.c"
         "bt_streaming_manager.c"
     INCLUDE_DIRS "include"
-    REQUIRES bt
+    # bt_stack_stub listed BEFORE bt: when CONFIG_APP_NO_BLOBS=y its
+    # esp_bt.h wrapper (which #include_next-s the real one and patches the
+    # BT_CONTROLLER_INIT_CONFIG_DEFAULT() static_assert poison) must win the
+    # header search over the real components/bt/include/**/esp_bt.h — CMake
+    # searches -I dirs in REQUIRES list order. Always listed (not gated on
+    # CONFIG_APP_NO_BLOBS): that symbol is unresolved during CMake's early
+    # requirements-expansion pass (runs before sdkconfig.cmake is generated
+    # — see idf_build_process() in tools/cmake/build.cmake), so a
+    # conditional REQUIRES here would always evaluate false regardless of
+    # the real Kconfig value. bt_stack_stub itself is a no-op (no sources,
+    # no include dir) unless APP_NO_BLOBS=y, matching the pattern
+    # components/bt/CMakeLists.txt uses for its own always-unconditional
+    # PRIV_REQUIRES.
+    REQUIRES bt_stack_stub bt
     PRIV_REQUIRES ${priv_requires}
 )

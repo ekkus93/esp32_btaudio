@@ -2,6 +2,9 @@
 CONFIG_SPIRAM=n
 # Enable mock hooks so test-only helpers (beep fallback, tag counters, etc.) are compiled for device tests.
 CONFIG_BT_MOCK_TESTING=y
+# Exclude the real Bluetooth blob stack (BT_ENABLED depends on !APP_NO_BLOBS)
+# so bt_stack_stub provides esp_bt.h for these mocked-BT device tests.
+CONFIG_APP_NO_BLOBS=y
 # Choose a reasonable default speed/mode — keep minimal to avoid platform-specific issues.
 # These can be adjusted per-board if needed.
 #CONFIG_SPIRAM_SPEED_80M=y
