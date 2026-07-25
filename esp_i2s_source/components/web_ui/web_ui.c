@@ -258,9 +258,9 @@ static esp_err_t register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 
 /* Centralized dispatcher: every mutating route registers with
  * .handler = route_dispatch and .user_ctx pointing at a static-lifetime
- * web_route_ctx_t. Bearer-token enforcement (FIX3 §5.4) is disabled here
- * per explicit user decision — anyone reaching this device's HTTP server
- * can call any route with no credential. */
+ * web_route_ctx_t. There is no authentication — bearer-token auth was
+ * removed per explicit user decision, so anyone reaching this device's HTTP
+ * server can call any route with no credential. */
 esp_err_t route_dispatch(httpd_req_t *req)
 {
     const web_route_ctx_t *ctx = (const web_route_ctx_t *)req->user_ctx;
@@ -270,35 +270,25 @@ esp_err_t route_dispatch(httpd_req_t *req)
     return ctx->handler(req);
 }
 
-static const web_route_ctx_t S_WIFI_POST       = { .handler = wifi_post,         .auth_required = true, .capability = "wifi" };
-static const web_route_ctx_t S_APMODE_POST     = { .handler = apmode_post_h,     .auth_required = true, .capability = "wifi" };
-static const web_route_ctx_t S_TONE_POST       = { .handler = tone_post,         .auth_required = true, .capability = "i2s" };
-static const web_route_ctx_t S_TONE_DELETE     = { .handler = tone_delete,       .auth_required = true, .capability = "i2s" };
-static const web_route_ctx_t S_RADIO_POST      = { .handler = radio_post,        .auth_required = true, .capability = "radio" };
-static const web_route_ctx_t S_RADIO_DELETE    = { .handler = radio_delete,      .auth_required = true, .capability = "radio" };
-static const web_route_ctx_t S_STATIONS_POST   = { .handler = stations_post_h,   .auth_required = true, .capability = "stations" };
-static const web_route_ctx_t S_STATIONS_PUT    = { .handler = stations_put_h,    .auth_required = true, .capability = "stations" };
-static const web_route_ctx_t S_STATIONS_DELETE = { .handler = stations_delete_h, .auth_required = true, .capability = "stations" };
-static const web_route_ctx_t S_SCAN_POST       = { .handler = scan_post_h,       .auth_required = true, .capability = "ctrl" };
-static const web_route_ctx_t S_VOLUME_POST     = { .handler = volume_post_h,     .auth_required = true, .capability = "i2s" };
-static const web_route_ctx_t S_PREBUFFER_POST  = { .handler = prebuffer_post_h,  .auth_required = true, .capability = "radio" };
-static const web_route_ctx_t S_BTVOLUME_POST   = { .handler = btvolume_post_h,   .auth_required = true, .capability = "bt_link" };
-static const web_route_ctx_t S_CTRL_POST       = { .handler = ctrl_post_h,       .auth_required = true, .capability = "ctrl" };
-static const web_route_ctx_t S_BT_POST         = { .handler = bt_post_h,         .auth_required = true, .capability = "bt_link" };
-static const web_route_ctx_t S_CONSOLE_POST    = { .handler = console_post_h,    .auth_required = true, .capability = "bt_link" };
+static const web_route_ctx_t S_WIFI_POST       = { .handler = wifi_post };
+static const web_route_ctx_t S_APMODE_POST     = { .handler = apmode_post_h };
+static const web_route_ctx_t S_TONE_POST       = { .handler = tone_post };
+static const web_route_ctx_t S_TONE_DELETE     = { .handler = tone_delete };
+static const web_route_ctx_t S_RADIO_POST      = { .handler = radio_post };
+static const web_route_ctx_t S_RADIO_DELETE    = { .handler = radio_delete };
+static const web_route_ctx_t S_STATIONS_POST   = { .handler = stations_post_h };
+static const web_route_ctx_t S_STATIONS_PUT    = { .handler = stations_put_h };
+static const web_route_ctx_t S_STATIONS_DELETE = { .handler = stations_delete_h };
+static const web_route_ctx_t S_SCAN_POST       = { .handler = scan_post_h };
+static const web_route_ctx_t S_VOLUME_POST     = { .handler = volume_post_h };
+static const web_route_ctx_t S_PREBUFFER_POST  = { .handler = prebuffer_post_h };
+static const web_route_ctx_t S_BTVOLUME_POST   = { .handler = btvolume_post_h };
+static const web_route_ctx_t S_CTRL_POST       = { .handler = ctrl_post_h };
+static const web_route_ctx_t S_BT_POST         = { .handler = bt_post_h };
+static const web_route_ctx_t S_CONSOLE_POST    = { .handler = console_post_h };
 
 esp_err_t web_ui_start(void)
 {
-    /* Initialise authentication (FIX3 §5.2) — must succeed before the HTTP
-     * server (or any other resource) starts. A failure here is never
-     * silently downgraded to "server started, unauthenticated." */
-    esp_err_t auth_err = web_ui_auth_init();
-    if (auth_err != ESP_OK) {
-        ESP_LOGE(TAG, "auth init failed: %s", esp_err_to_name(auth_err));
-        printf("DIAG|AUTH|ERROR|stage=init,err=%s\n", esp_err_to_name(auth_err));
-        fflush(stdout);
-        return auth_err;
-    }
     /* Initialise the BT web submodule (FIX3 WEB-001/§5.6) — before route
      * registration, so require_bt() guards are meaningful the instant
      * handlers become reachable. A non-OK return here is a genuine

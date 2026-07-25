@@ -1,5 +1,33 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T12:36:57Z - Claude Sonnet 5 - esp_i2s_source: ripped out the backend device-token machinery too
+
+- Follow-up to the frontend removal below (user: "Rip that out too"). Removed the
+  entire dormant bearer-token auth backend.
+- Deleted: components/web_ui/web_ui_auth.c, web_ui_auth_core.c,
+  include/web_ui_auth_core.h; test/host_test/test_web_auth.c;
+  tools/test_web_ui_route_auth.py (~665 lines).
+- web_ui.c: dropped the web_ui_auth_init() gate from web_ui_start() (boot no
+  longer generates/loads/prints a token; no more AUTH|BOOTSTRAP_TOKEN); stripped
+  the now-dead .auth_required + .capability fields from all 16 S_*_POST/DELETE
+  route ctxs (capability was write-only — never read via ctx->capability).
+  web_route_ctx_t is now just { handler }. web_ui_internal.h: removed the 4
+  web_ui_auth_* decls + trimmed the struct. web_ui.h: removed web_ui_auth_rotate.
+- console.c: removed handle_auth() + the "AUTH" dispatch branch + AUTH ROTATE
+  from the READY help string; dropped the now-unused web_ui.h include; removed
+  web_ui from cmd_console/CMakeLists REQUIRES. web_ui/CMakeLists: dropped the two
+  auth sources. host_test/CMakeLists: removed the test_web_auth target.
+  verify_host.sh: removed the route-auth pytest line. Updated 3 stale doc
+  comments that cited web_ui_auth as a split-pattern example (wifi_mgr.c,
+  wifi_creds_core.h, stations.h "same trust boundary as AUTH ROTATE").
+- Verified: host tests 25/25 (was 26; test_web_auth gone), idf.py build clean
+  (binary shrank 0x1c0130->0x1bf9c0), flashed S3 on /dev/ttyACM0, booted clean
+  (uptime OK, capabilities.web=true so web_ui_start succeeded without the auth
+  gate), console READY line no longer lists AUTH ROTATE, no BOOTSTRAP_TOKEN
+  emitted. Restarted Groove Salad (playing, mp3). NOTE: historical design docs
+  (SPEC.md, dated FIX3 §5 summaries) still describe the old auth design — left
+  as historical record, not rewritten.
+
 ## 2026-07-25T12:26:41Z - Claude Sonnet 5 - esp_i2s_source: removed the vestigial Device-token UI
 
 - Follow-up to the earlier auth-disable work. Device-token auth ENFORCEMENT was

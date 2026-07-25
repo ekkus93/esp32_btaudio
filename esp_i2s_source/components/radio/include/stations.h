@@ -62,9 +62,8 @@ esp_err_t stations_resolve_legacy_index(int16_t legacy_index, uint32_t *out_stat
  * the V2 and legacy NVS station blobs, then re-seed and re-initialize in
  * place — no reboot required. For a CRC-corrupt blob that stations_init()
  * refused to touch. Local physical-presence console path only (never
- * reachable over HTTP), same trust boundary as AUTH ROTATE. Returns the
- * result of the re-seed/persist; on success capabilities.stations becomes
- * true immediately. */
+ * reachable over HTTP). Returns the result of the re-seed/persist; on
+ * success capabilities.stations becomes true immediately. */
 esp_err_t stations_reset_persisted(void);
 
 #ifdef __cplusplus

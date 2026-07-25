@@ -7,9 +7,8 @@
  * (WIFI-001..004). Credential validation and NVS-string-exactness invariants
  * are pure logic in wifi_creds_core.c (host-tested); this file is device
  * glue (NVS I/O, esp_wifi/esp_netif/esp_event/mdns) and is not host-tested,
- * same split as station_store.c/stations.c and web_ui_auth_core.c/
- * web_ui_auth.c elsewhere in this codebase — verified via idf.py build plus
- * a hardware smoke test.
+ * same split as station_store.c/stations.c elsewhere in this codebase —
+ * verified via idf.py build plus a hardware smoke test.
  */
 #include "wifi_mgr.h"
 #include "wifi_mgr_internal.h"

@@ -2,8 +2,8 @@
  * wifi_creds_core — pure Wi-Fi credential validation logic (FIX3 Phase 6,
  * WIFI-001/6.1/6.2). No ESP-IDF deps beyond esp_err_t; host-tested. NVS I/O
  * itself (nvs_get_str/nvs_set_str/nvs_erase_key) is device glue in
- * wifi_mgr.c, same split as station_store.c/stations_persist_core.c and
- * web_ui_auth_core.c/web_ui_auth.c elsewhere in this codebase.
+ * wifi_mgr.c, same split as station_store.c/stations_persist_core.c
+ * elsewhere in this codebase.
  */
 #pragma once
 

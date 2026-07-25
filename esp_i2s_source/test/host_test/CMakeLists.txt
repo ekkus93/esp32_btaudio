@@ -289,16 +289,6 @@ target_compile_definitions(test_main_boot PRIVATE UNIT_TEST ESP_PLATFORM CONFIG_
 target_link_libraries(test_main_boot unity)
 add_test(NAME test_main_boot COMMAND test_main_boot)
 
-# FIX3 Phase 2A: web_ui_auth_core pure hex/validate/compare/parse logic.
-# NVS persistence + esp_fill_random + httpd header retrieval are device
-# glue (web_ui_auth.c) and are not host-tested, same split as
-# station_store.c/stations.c and wifi_sm.c/wifi_mgr.c elsewhere.
-set(WEB_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../components/web_ui)
-add_executable(test_web_auth test_web_auth.c ${WEB_UI_DIR}/web_ui_auth_core.c)
-target_include_directories(test_web_auth PRIVATE ${WEB_UI_DIR}/include)
-target_link_libraries(test_web_auth unity)
-add_test(NAME test_web_auth COMMAND test_web_auth)
-
 # FIX3 Phase 5A: stations_persist_core pure CRC/blob-validation/migration
 # logic. NVS I/O and the mutex are device glue (stations.c) and are not
 # host-tested, same split as elsewhere in this codebase.
