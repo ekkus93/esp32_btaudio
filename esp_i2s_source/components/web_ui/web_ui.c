@@ -244,20 +244,16 @@ static esp_err_t register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 
 /* Background WROOM32 probe task handle for cleanup. */
 
-/* Centralized authorization dispatcher (FIX3 §5.4): every mutating route
- * registers with .handler = route_dispatch and .user_ctx pointing at a
- * static-lifetime web_route_ctx_t, so no feature handler can be reached
- * without going through this check first. */
+/* Centralized dispatcher: every mutating route registers with
+ * .handler = route_dispatch and .user_ctx pointing at a static-lifetime
+ * web_route_ctx_t. Bearer-token enforcement (FIX3 §5.4) is disabled here
+ * per explicit user decision — anyone reaching this device's HTTP server
+ * can call any route with no credential. */
 esp_err_t route_dispatch(httpd_req_t *req)
 {
     const web_route_ctx_t *ctx = (const web_route_ctx_t *)req->user_ctx;
     if (!ctx || !ctx->handler) {
         return ESP_FAIL;
-    }
-    if (ctx->auth_required && !web_ui_auth_check(req)) {
-        httpd_resp_set_hdr(req, "WWW-Authenticate", "Bearer");
-        return web_send_error(req, "401 Unauthorized", "AUTH_REQUIRED",
-                              "A valid bearer token is required", false);
     }
     return ctx->handler(req);
 }

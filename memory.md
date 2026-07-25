@@ -1,5 +1,87 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T03:13:24Z - Claude Sonnet 5 - esp_bt_audio_source: fixed all 3 device Unity suites (0/3 -> 3/3 passing)
+
+- Root cause (verified against ESP-IDF's own `tools/cmake/build.cmake` /
+  `component.cmake`): component `REQUIRES`/`PRIV_REQUIRES` are resolved in
+  an early-expansion CMake pass that runs *before* `sdkconfig.cmake` even
+  exists, so any `if(CONFIG_X) list(APPEND requires ...) endif()` pattern
+  in a component's CMakeLists.txt always evaluates false regardless of the
+  real Kconfig value — official IDF components (e.g. `components/bt`)
+  never gate REQUIRES this way, only SRCS. This project's `bt_stack_stub`,
+  `bt_manager`, `command_interface`, and `main` all did gate on
+  `CONFIG_APP_NO_BLOBS` this way, so `bt_stack_stub` (mocked
+  `esp_bt.h`/`esp_a2dp_api.h`/etc. for BT-mocked test builds) could never
+  actually link in — a latent bug masked for a long time by stale
+  incremental build caches until this session's clean rebuilds exposed it.
+- Fix, across 4 CMakeLists.txt files: made the `bt_stack_stub` requirement
+  unconditional everywhere (matching `components/bt`'s own pattern), while
+  keeping `bt_stack_stub` itself a true no-op (empty SRCS/INCLUDE_DIRS)
+  when `CONFIG_APP_NO_BLOBS` is off, so the real production firmware is
+  unaffected (verified via a clean full rebuild of the main app — no
+  behavior change, sdkconfig untouched).
+- Two follow-on issues fixed along the way: (1) include-path ordering —
+  `bt_stack_stub` must be listed *before* `bt` in REQUIRES so its
+  `esp_bt.h` wrapper (which `#include_next`s the real header and patches a
+  poisoned `BT_CONTROLLER_INIT_CONFIG_DEFAULT()` static_assert) wins the
+  header search; (2) `bt_stack_stub` needs some of `bt`'s real headers
+  (Bluedroid API + `osi/allocator.h`) even without the real stack compiled
+  in — `bt`'s own CMakeLists.txt only exposes those behind
+  `CONFIG_BT_ENABLED`/`CONFIG_IDF_DOC_BUILD`, so
+  `test/test_bluetooth/CMakeLists.txt` now sets `IDF_DOC_BUILD=1` (env-var
+  driven Kconfig default, not a regular sdkconfig.defaults bool) for the
+  Bluedroid API headers, and `bt_stack_stub` reaches `osi/include`
+  directly for the one header that escape hatch doesn't cover.
+- Also found+fixed (earlier in this same session, separate from the above):
+  `test_bluetooth`/`test_app_audio`'s `sdkconfig.defaults` never set
+  `CONFIG_APP_NO_BLOBS=y` at all (a prerequisite for the fix above to even
+  apply) — `test_manager` didn't need it (doesn't touch `bt_manager`).
+- Result: full sweep now 99/99 device tests passing (`test_bluetooth` 46,
+  `test_app_audio` 35, `test_manager` 18) + 883/883 host tests, up from
+  0/3 working device suites at the start of this investigation.
+- Unrelated environment fix needed along the way to unblock builds at all:
+  `/home/phil/esp/esp-idf` (a generic symlink some tooling defaults to)
+  pointed at a `v5.5.4` install registered `esp32s3`-only; ran
+  `./install.sh esp32,esp32s3` in that checkout (user-approved) to add
+  classic-`esp32` toolchain support. The actual bt_stack_stub fix above was
+  verified under the project's documented `v5.5.1` toolchain, not v5.5.4.
+
+## 2026-07-25T02:11:37Z - Claude Sonnet 5 - esp_i2s_source: bearer-token auth (FIX3 Phase 2A) disabled per explicit user decision
+
+- User found the device-token gate (added in FIX3 Phase 2A) too disruptive
+  and, after being told it reverts a real security control (any mutating
+  web_ui route was previously reachable to anyone on the LAN/SoftAP with no
+  credential), explicitly chose "disable auth entirely" over three less
+  drastic options (fix `Remember on this browser`, network-scoped bypass,
+  print-token-every-boot).
+- Change: `esp_i2s_source/components/web_ui/web_ui.c`'s `route_dispatch()`
+  no longer calls `web_ui_auth_check()` / returns 401 — it now just calls
+  `ctx->handler(req)` unconditionally. Left `web_route_ctx_t.auth_required`
+  fields as `true` and the whole `web_ui_auth.c`/`web_ui_auth_core.c` token
+  generate/persist/rotate machinery in place (unused for gating, still
+  live for `AUTH ROTATE` on the console) — full removal of the auth
+  subsystem was out of scope for this ask.
+  `tools/test_web_ui_route_auth.py` is a static source-text check of the
+  `.auth_required` struct literals, not of `route_dispatch`'s runtime
+  behavior, so it still passes unchanged; verified live that
+  `POST /api/console` now returns 200 with no `Authorization` header.
+- `idf.py build` clean, flashed to the ESP32-S3 (`/dev/ttyACM0`), reconnected
+  to WiFi (see below) and verified over HTTP. Not yet committed — awaiting
+  user's go-ahead to commit/push this security-relevant change.
+- Also this session: reprovisioned the ESP32-S3's WiFi to a new network,
+  `CircuitLaunch` (password `makinghardwarelesshard`), IP `10.1.2.50`,
+  via `WIFI <ssid> <pass>` over the serial console — same device that FIX3
+  Phase 12 was closed out on.
+- Note for future sessions: the serial console's line reader
+  (`console_task` in `cmd_console/console.c`) has no line-boundary
+  recovery — if a partial/unterminated line is ever left in its buffer
+  (e.g., a dropped byte mid-command), all subsequent keystrokes silently
+  concatenate onto it until a newline arrives, then the whole garbled
+  line dispatches as one bad command. Symptom looks like
+  `ERR|UNKNOWN|<stale prefix><real command name>`. Fix when it happens:
+  send a bare `\r\n` first to flush/dispatch the stale buffer, then resend
+  the real command cleanly.
+
 ## 2026-07-04 - UART2 hardened to 14 host tests; NEXT UP: esp_i2s_source redo
 
 Dual-UART coverage now 14 tests (0fdbf508): burst/interleave/overflow
