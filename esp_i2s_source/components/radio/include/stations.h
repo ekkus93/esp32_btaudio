@@ -38,12 +38,17 @@ bool stations_get_url(int idx, char *url, size_t usz);
  * carries the error. */
 esp_err_t stations_add(const char *name, const char *url, int *out_idx,
                        station_result_t *reason);
-esp_err_t stations_update(int idx, const char *name, const char *url,
+/* update/remove/move identify the target by its STABLE station id (the value
+ * exposed as "id" by GET /api/stations and sent back by the web UI), NOT the
+ * array index — resolution to an index happens internally under the store
+ * lock. An unknown id yields STATION_ERR_NOT_FOUND (ESP_ERR_INVALID_ARG). */
+esp_err_t stations_update(uint32_t id, const char *name, const char *url,
                           station_result_t *reason);
-esp_err_t stations_remove(int idx);
+esp_err_t stations_remove(uint32_t id);
 
-/* Reorder: swap entry idx with its neighbour (delta -1 up, +1 down). */
-esp_err_t stations_move(int idx, int delta);
+/* Reorder: swap the entry with stable id `id` with its neighbour
+ * (delta -1 up, +1 down). */
+esp_err_t stations_move(uint32_t id, int delta);
 
 /* Resolve a legacy ctrl "last station index" (from the pre-ID V0 control
  * blob) to its current stable ID (FIX3 §9.4). legacy_index < 0 always

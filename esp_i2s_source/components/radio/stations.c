@@ -410,7 +410,7 @@ esp_err_t stations_add(const char *name, const char *url, int *out_idx,
     return err;
 }
 
-esp_err_t stations_update(int idx, const char *name, const char *url,
+esp_err_t stations_update(uint32_t id, const char *name, const char *url,
                           station_result_t *reason)
 {
     if (reason) *reason = STATION_OK;
@@ -421,7 +421,11 @@ esp_err_t stations_update(int idx, const char *name, const char *url,
 
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     *candidate = s_store;
-    station_result_t r = station_store_update(candidate, idx, name, url);
+    /* Resolve stable id -> array index under the same lock as the mutation
+     * (the web contract is stable id; the store is index-based). */
+    int idx = station_store_index_by_id(candidate, id);
+    station_result_t r = (idx < 0) ? STATION_ERR_NOT_FOUND
+                                   : station_store_update(candidate, idx, name, url);
     if (r != STATION_OK) {
         xSemaphoreGive(s_mtx);
         free(candidate);
@@ -438,7 +442,7 @@ esp_err_t stations_update(int idx, const char *name, const char *url,
     return err;
 }
 
-esp_err_t stations_remove(int idx)
+esp_err_t stations_remove(uint32_t id)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
@@ -447,7 +451,9 @@ esp_err_t stations_remove(int idx)
 
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     *candidate = s_store;
-    station_result_t r = station_store_remove(candidate, idx);
+    int idx = station_store_index_by_id(candidate, id);
+    station_result_t r = (idx < 0) ? STATION_ERR_NOT_FOUND
+                                   : station_store_remove(candidate, idx);
     if (r != STATION_OK) {
         xSemaphoreGive(s_mtx);
         free(candidate);
@@ -463,7 +469,7 @@ esp_err_t stations_remove(int idx)
     return err;
 }
 
-esp_err_t stations_move(int idx, int delta)
+esp_err_t stations_move(uint32_t id, int delta)
 {
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
@@ -472,7 +478,9 @@ esp_err_t stations_move(int idx, int delta)
 
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     *candidate = s_store;
-    station_result_t r = station_store_move(candidate, idx, delta);
+    int idx = station_store_index_by_id(candidate, id);
+    station_result_t r = (idx < 0) ? STATION_ERR_NOT_FOUND
+                                   : station_store_move(candidate, idx, delta);
     if (r != STATION_OK) {
         xSemaphoreGive(s_mtx);
         free(candidate);

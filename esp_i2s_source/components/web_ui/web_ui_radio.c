@@ -236,7 +236,7 @@ esp_err_t stations_put_h(httpd_req_t *req)
         httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK &&
         httpd_query_key_value(q, "move", mv, sizeof(mv)) == ESP_OK) {
         int delta = !strcmp(mv, "up") ? -1 : (!strcmp(mv, "down") ? 1 : 0);
-        esp_err_t err = delta != 0 ? stations_move(id, delta) : ESP_ERR_INVALID_ARG;
+        esp_err_t err = delta != 0 ? stations_move((uint32_t)id, delta) : ESP_ERR_INVALID_ARG;
         if (err == ESP_ERR_INVALID_ARG) {
             station_reply_bad(req, "cannot reorder (already at edge or bad id)");
         } else if (err != ESP_OK) {
@@ -252,7 +252,7 @@ esp_err_t stations_put_h(httpd_req_t *req)
         return ESP_OK;
     }
     station_result_t reason = STATION_ERR_INVALID_ARG;
-    esp_err_t err = stations_update(id, name, url, &reason);
+    esp_err_t err = stations_update((uint32_t)id, name, url, &reason);
     if (err == ESP_ERR_INVALID_ARG) {
         station_reply_bad(req, station_result_str(reason));
     } else if (err != ESP_OK) {
@@ -269,7 +269,7 @@ esp_err_t stations_delete_h(httpd_req_t *req)
     if (guard != ESP_OK) return guard;
 
     int id = station_id_param(req);
-    esp_err_t err = id >= 0 ? stations_remove(id) : ESP_ERR_INVALID_ARG;
+    esp_err_t err = id >= 0 ? stations_remove((uint32_t)id) : ESP_ERR_INVALID_ARG;
     if (err == ESP_ERR_INVALID_ARG) {
         station_reply_bad(req, "station not found");
     } else if (err != ESP_OK) {

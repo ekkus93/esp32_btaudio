@@ -15,7 +15,7 @@
   `test_result_str_is_distinct_and_json_safe` added (15/15 test_station_store);
   device build clean; verified live on S3 (10.1.2.50) — distinct 400s per
   cause. COMMITTED.
-- NEWLY FOUND, NOT YET FIXED — station id-vs-index mismatch: GET /api/stations
+- FIXED (2026-07-25, commit after 8eef1778) — station id-vs-index mismatch: GET /api/stations
   returns each station's STABLE id (`stations_get` -> items[idx].id), and
   the frontend sends that stable id for delete/move/edit (Radio.tsx uses
   s.id). But the backend treats the ?id= query param as an ARRAY INDEX
@@ -29,7 +29,15 @@
   has stable ids 1,2,4,5,7 at indices 0-4. RIGHT FIX (frontend contract is
   already stable-id): make the backend resolve ?id= to an index via a
   find-by-stable-id (station_store has ids; add/reuse a find_by_id) in the
-  DELETE/PUT handlers, and add host tests. Awaiting user go-ahead.
+  DELETE/PUT handlers, and add host tests.
+  FIX APPLIED: changed stations_update/remove/move to take a uint32_t stable
+  id (was int index) and resolve id->index via the existing host-tested
+  station_store_index_by_id() INSIDE the s_mtx hold (atomic, no TOCTOU);
+  unknown id -> STATION_ERR_NOT_FOUND. Web callers cast the guarded
+  station_id_param() result to uint32_t. Only callers were web_ui_radio.c
+  (no internal index-based callers). Verified live on S3: DELETE by stable
+  id (id=9 at index 5) removed the correct station and left the other 5
+  intact; move down+up by stable id=4 targeted correctly and restored order.
 
 ## 2026-07-25T03:40:17Z - Claude Opus 4.8 - esp_bt_audio_source: fixed SCAN (invalid inq_len) + esp_i2s_source frontend auth gate
 
