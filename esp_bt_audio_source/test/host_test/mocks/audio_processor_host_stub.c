@@ -463,15 +463,6 @@ void audio_processor_test_idle_i2s_failures(int failures, bool synth_enabled, si
         *failures_after = fail;
     }
 }
-esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
-{
-    (void)max_items;
-    if (captured_out) {
-        *captured_out = 0;
-    }
-    return ESP_OK;
-}
-
 /* Test helper functions for error injection */
 void audio_processor_test_set_read_error(esp_err_t error)
 {

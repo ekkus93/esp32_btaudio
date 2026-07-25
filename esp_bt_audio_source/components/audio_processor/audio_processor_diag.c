@@ -144,16 +144,6 @@ esp_err_t audio_processor_emit_probe(void)
     return ESP_OK;
 }
 
-esp_err_t audio_processor_dump_tag_queue(size_t max_items, size_t *captured_out)
-{
-    (void)max_items;
-    if (captured_out != NULL) {
-        *captured_out = 0;
-    }
-    ESP_LOGW(TAG, "AUDIO-TAG-DUMP: legacy queue removed; span log is the replacement");  // NOLINT(bugprone-branch-clone)
-    return ESP_ERR_NOT_SUPPORTED;
-}
-
 void diag_dump_bytes(const void* data, size_t len, const char* tag)
 {
     if  (data == NULL || len == 0 || tag == NULL) {

@@ -654,15 +654,6 @@ void test_is_synth_mode_enabled_reflects_force_synth(void)
     TEST_ASSERT_TRUE(audio_processor_is_synth_mode_enabled());
 }
 
-void test_is_wav_active_always_false(void)
-{
-    /* WAV playback was removed (play_manager deleted) -- this is a stub
-     * that always returns false. Locks in the current documented behavior;
-     * a candidate for outright removal in a future dead-code pass, not
-     * fixed here (out of scope for a coverage task). */
-    TEST_ASSERT_FALSE(audio_processor_is_wav_active());
-}
-
 void test_set_dram_only_toggles_flag(void)
 {
     audio_processor_set_dram_only(true);
@@ -754,20 +745,6 @@ void test_drain_ring_success_resets_playback_state(void)
 
 /* ================= P2 (docs/UNIT_TESTS2_TODO.md): audio_processor_diag.c dump helpers ================= */
 
-void test_dump_tag_queue_is_legacy_removed_stub(void)
-{
-    /* Legacy tag queue removed; span log is the replacement -- this always
-     * returns ESP_ERR_NOT_SUPPORTED and zeroes captured_out if given. */
-    size_t captured = 999;
-    TEST_ASSERT_EQUAL_INT(ESP_ERR_NOT_SUPPORTED, audio_processor_dump_tag_queue(10, &captured));
-    TEST_ASSERT_EQUAL_UINT32(0, captured);
-}
-
-void test_dump_tag_queue_accepts_null_captured_out(void)
-{
-    TEST_ASSERT_EQUAL_INT(ESP_ERR_NOT_SUPPORTED, audio_processor_dump_tag_queue(10, NULL));
-}
-
 void test_diag_dump_bytes_null_guards_no_crash(void)
 {
     uint8_t data[4] = {1, 2, 3, 4};
@@ -855,7 +832,6 @@ int main(void)
     /* P2 (docs/UNIT_TESTS2_TODO.md): audio_processor.c accessors */
     RUN_TEST(test_get_work_buffer_bytes_reflects_runtime_value);
     RUN_TEST(test_is_synth_mode_enabled_reflects_force_synth);
-    RUN_TEST(test_is_wav_active_always_false);
     RUN_TEST(test_set_dram_only_toggles_flag);
     RUN_TEST(test_set_synth_mode_enable_stops_i2s);
     RUN_TEST(test_set_synth_mode_disable_restarts_i2s_when_running);
@@ -864,8 +840,6 @@ int main(void)
     RUN_TEST(test_drain_ring_rejects_when_ring_null);
     RUN_TEST(test_drain_ring_success_resets_playback_state);
 
-    RUN_TEST(test_dump_tag_queue_is_legacy_removed_stub);
-    RUN_TEST(test_dump_tag_queue_accepts_null_captured_out);
     RUN_TEST(test_diag_dump_bytes_null_guards_no_crash);
     RUN_TEST(test_diag_dump_bytes_multiline_dump_no_crash);
     return UNITY_END();

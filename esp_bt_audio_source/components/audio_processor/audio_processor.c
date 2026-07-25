@@ -593,12 +593,6 @@ bool audio_processor_is_i2s_active(void)
     return s_is_running;
 }
 
-bool audio_processor_is_wav_active(void)
-{
-    AUDIO_PROC_LOG_ONCE();  // NOLINT(bugprone-branch-clone)
-    return false;  /* WAV playback removed (play_manager deleted) */
-}
-
 void audio_processor_set_diag_enabled(bool enable)
 {
     s_audio_diag_enabled = enable;

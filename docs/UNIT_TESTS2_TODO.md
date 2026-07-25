@@ -398,37 +398,50 @@ are not:
       controllable), so the success/persist path is untested here — would
       need a controllable NVS stub to close further; correctly not chased
       given this is the lowest-priority item in the lowest-priority section.
-- [x] **`esp_bt_audio_source` `audio_processor.c`** (62.3% → 80.7%, 93.3% func):
-      10 new cases in `test_audio_processor_diag.c` covering `get_work_buffer_bytes`,
-      `is_synth_mode_enabled`, `is_wav_active` (confirmed a dead-code stub —
-      WAV playback removed, always returns `false`; a dead-code-removal
-      candidate for a future pass, not fixed here), `set_dram_only`,
-      `set_synth_mode` (both directions, incl. the I2S mutual-exclusion
-      behavior), and `drain_ring` (uninitialized/null-ring guards + success
-      resetting playback state). `cleanup_partial_init` deferred — `static`,
-      reached only from `audio_processor_init()`'s failure label, would need
-      allocation-failure injection at several distinct steps to exercise
-      meaningfully; not fabricating a shallow test.
-- [x] **`esp_bt_audio_source` `audio_processor_diag.c`** (66.0% → 92.5%, 100% func):
-      4 new cases — `audio_processor_dump_tag_queue` (confirmed another
-      legacy-removed stub, always `ESP_ERR_NOT_SUPPORTED`) and `diag_dump_bytes`
-      (NULL-guards on all 3 params; a genuine multi-line/multi-row hex dump,
-      not just the single-row case already hit indirectly by BT-2).
+- [x] **`esp_bt_audio_source` `audio_processor.c`** (62.3% → 80.4%, 92.9% func):
+      9 cases in `test_audio_processor_diag.c` covering `get_work_buffer_bytes`,
+      `is_synth_mode_enabled`, `set_dram_only`, `set_synth_mode` (both
+      directions, incl. the I2S mutual-exclusion behavior), and `drain_ring`
+      (uninitialized/null-ring guards + success resetting playback state).
+      `is_wav_active` was tested then **removed entirely** (see below —
+      genuine dead code, not just untested). `cleanup_partial_init` deferred
+      — `static`, reached only from `audio_processor_init()`'s failure
+      label, would need allocation-failure injection at several distinct
+      steps to exercise meaningfully; not fabricating a shallow test.
+- [x] **`esp_bt_audio_source` `audio_processor_diag.c`** (66.0% → 92.1%, 100% func):
+      2 cases — `diag_dump_bytes` (NULL-guards on all 3 params; a genuine
+      multi-line/multi-row hex dump, not just the single-row case already
+      hit indirectly by BT-2). `audio_processor_dump_tag_queue` was tested
+      then **removed entirely** (see below).
 
+> **Two dead-code stubs identified, tested, then removed on user request**
+> (2026-07-25, follow-up commit): `audio_processor_is_wav_active` (WAV
+> playback removed along with `play_manager`; always returned `false`) and
+> `audio_processor_dump_tag_queue` (legacy tag queue removed; always
+> returned `ESP_ERR_NOT_SUPPORTED`) were both leftover stubs from earlier
+> feature removals, kept alive only by an unused public declaration. Deleted
+> the functions, their `audio_processor.h` declarations, the tests written
+> for them here, and an orphaned duplicate mock (`audio_processor_dump_tag_queue`
+> in `mocks/audio_processor_host_stub.c`, unused by anything). Coverage
+> numbers above reflect the post-removal state (943 host cases, was 946;
+> instrumented-line counts for both files dropped accordingly since the
+> dead code is simply gone, not just uncovered).
+>
 > **Two more missing header declarations found and fixed while writing P2
 > tests** (bringing this session's total to three — see BT-3 for the first):
 > `audio_processor_is_wav_active` and `audio_processor_dump_tag_queue` were
 > both public, real functions with **no declaration in `audio_processor.h`**,
-> working only via lucky implicit-int/bool-return matching. Both added.
+> working only via lucky implicit-int/bool-return matching. Both added, then
+> removed again along with the functions themselves (above) — net effect:
+> the missing-declaration gap is moot now that the functions don't exist.
 >
-> **Final numbers, full P0→P2 TODO (all sections done):**
+> **Final numbers, full P0→P2 TODO (all sections done) + the dead-code removal:**
 > | Project | Before | After |
 > |---|---|---|
-> | `esp_bt_audio_source` | 79.4% | **84.2%** (946 host cases, was 891) |
+> | `esp_bt_audio_source` | 79.4% | **84.2%** (943 host cases, was 891) |
 > | `esp_i2s_source` | 55.1% | **61.7%** (27 suites, was 25) |
 >
-> Full suites green throughout (946/946 and 27/27), both `idf.py build`s
-> clean at every step.
+> Full suites green throughout, both `idf.py build`s clean at every step.
 
 ---
 
