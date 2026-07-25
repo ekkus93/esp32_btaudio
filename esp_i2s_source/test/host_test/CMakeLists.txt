@@ -344,6 +344,23 @@ target_compile_options(test_radio_stream_redirects PRIVATE
 target_link_libraries(test_radio_stream_redirects unity m)
 add_test(NAME test_radio_stream_redirects COMMAND test_radio_stream_redirects)
 
+# I2S-2 (docs/UNIT_TESTS2_TODO.md): radio_ring.c's two SPSC byte rings
+# (ring_write/radio_read, pcm_write/radio_pcm_read) — pure logic, no
+# ESP_PLATFORM gate; only needs the semaphore mock (no HTTP/event-group/task
+# mocks — these functions never touch those).
+add_executable(test_radio_ring test_radio_ring.c
+    ${RADIO_DIR}/radio_ring.c
+    mocks/fake_semphr.c)
+target_include_directories(test_radio_ring PRIVATE
+    ${RADIO_DIR}
+    ${RADIO_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_radio_ring PRIVATE UNIT_TEST)
+target_link_libraries(test_radio_ring unity)
+add_test(NAME test_radio_ring COMMAND test_radio_ring)
+
 # FIX3 Phase 3: i2s_out.c lifecycle — join-safety, truthful state
 # publication, channel-enabled tracking. Local mocks for the I2S driver,
 # xTaskCreate, and the event group (queue-based wait results) — see

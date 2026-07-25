@@ -199,25 +199,32 @@ controllable behavior. Write `mocks/fake_http_client.c`:
       2 new cases pass (incl. `UINT32_MAX`); full host suite 26/26. **I2S-1
       COMPLETE** — see the section header above for final numbers.
 
-### I2S-2 — `radio_ring.c` SPSC byte rings (0% → target 90%+)
-Pure logic, no `ESP_PLATFORM` gate blocking it — currently linked into
-`test_radio_lifecycle` but never called (that suite only exercises task-creation
-failure paths). Needs its own focused suite, or new test cases added to
-`test_radio_lifecycle.c` if reusing that link setup is simpler.
-- [ ] **`ring_write`**: writes into empty ring; write that exactly fills capacity;
-      write attempted against a full ring (rejected/partial — confirm actual
-      contract); wraparound (tail past buffer end, continues from start).
-- [ ] **`radio_read`** (compressed-ring consumer): read less than available;
-      read exactly available; read against an empty ring (returns 0, doesn't block
-      forever — mutex-guarded, so confirm it just returns immediately with 0);
-      wraparound read spanning the buffer-end boundary.
-- [ ] **`pcm_write`** / **`radio_pcm_read`** (decoded-PCM ring): same matrix as
-      above, for the second ring.
-- [ ] **Concurrency-adjacent (still host-testable without real threads):**
+### I2S-2 — `radio_ring.c` SPSC byte rings (0% → 100% ✅ DONE)
+> Achieved 100% line / 100% func (was 0%/0%) in a dedicated `test_radio_ring.c`
+> + `test_radio_ring` target (just `radio_ring.c` + the semaphore mock — no
+> HTTP/event-group/task mocks needed). 20 new cases, all passing; full host
+> suite 27/27; `idf.py build` clean. Confirmed `ring_write`/`pcm_write` are
+> **partial-write on a full ring, not rejecting** (returns bytes actually
+> accepted, e.g. 0 when completely full) — the TODO's "rejected/partial"
+> open question is resolved: it's partial. Also covered the prebuffer gate
+> transitions (`g_radio_prebuffered` sets true at threshold, clears only on
+> full drain, stays true on partial drain) since they live in this same file.
+- [x] **`ring_write`**: writes into empty ring; write that exactly fills capacity;
+      write attempted against a full ring (confirmed: partial, not rejected —
+      0 bytes accepted when full, N bytes when N free); wraparound (tail past
+      buffer end, continues from start).
+- [x] **`radio_read`** (compressed-ring consumer): read less than available;
+      read exactly available; read against an empty ring (returns 0
+      immediately — mutex-guarded, no blocking); NULL `dst` → 0; wraparound
+      read spanning the buffer-end boundary.
+- [x] **`pcm_write`** / **`radio_pcm_read`** (decoded-PCM ring): same matrix as
+      above, plus frame-alignment masking (`radio_pcm_read` rounds down to
+      whole 4-byte stereo-s16 frames) and the prebuffer-gate transitions.
+- [x] **Concurrency-adjacent (still host-testable without real threads):**
       interleaved write-then-read-then-write sequences that exercise
       `g_radio_ring_head`/`_tail`/`_count` bookkeeping staying consistent —
       assert `count` is always `(head - tail) mod cap` after each op.
-- [ ] Byte-exact round-trip: write a known pattern (not all-zero — catches
+- [x] Byte-exact round-trip: write a known pattern (not all-zero — catches
       off-by-one copies), read it back, assert identical bytes in order.
 
 ## P1 — meaningful surface, some genuinely harder to fully close
