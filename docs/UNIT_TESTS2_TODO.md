@@ -173,10 +173,17 @@ controllable behavior. Write `mocks/fake_http_client.c`:
   - [x] 4xx/5xx terminal response → returned as-is (not treated as a redirect;
         caller classifies it).
   10 new cases pass (incl. the SSRF-prevention assertion); full host suite 26/26.
-- [ ] **`codec_from_ct`** and **`ci_contains`**: pure string-matching helpers,
+- [x] **`codec_from_ct`** and **`ci_contains`**: pure string-matching helpers,
       test directly — known content-type strings (`audio/mpeg`, `audio/aac`,
       `application/ogg`, etc.) map to the right codec enum; unknown → default/error;
-      case-insensitivity (`ci_contains`'s whole purpose).
+      case-insensitivity (`ci_contains`'s whole purpose). — **DONE**. Correction
+      to this bullet's own wording: `application/ogg` is NOT actually a
+      supported codec in the real code — `codec_from_ct` only recognizes
+      `mpeg`/`mp3` (→MP3) and `aac`/`mp4` (→AAC) substrings; anything else,
+      including ogg, maps to `RADIO_CODEC_UNKNOWN`. That's a source-level
+      capability gap (no Ogg/Vorbis or Opus support), not a test gap — worth
+      a product decision, not a coverage task. 7 new cases pass; full host
+      suite 26/26.
 - [ ] **`reconnect_delay_ms`**: table lookup — verify the exact schedule
       `{500,1000,2000,4000,8000,15000}` and that it clamps (doesn't index past
       the array) for `attempt` values at and beyond the table length.

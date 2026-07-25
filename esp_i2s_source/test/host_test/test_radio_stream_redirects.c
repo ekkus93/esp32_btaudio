@@ -335,6 +335,52 @@ void test_connect_4xx_5xx_returned_as_terminal(void)
     TEST_ASSERT_EQUAL_INT(500, esp_http_client_get_status_code(h500));
 }
 
+/* ---- ci_contains / codec_from_ct: pure string-matching helpers. ---- */
+
+void test_ci_contains_case_insensitive_match(void)
+{
+    TEST_ASSERT_TRUE(ci_contains("audio/MPEG", "mpeg"));
+    TEST_ASSERT_TRUE(ci_contains("AUDIO/mpeg", "MPEG"));
+}
+
+void test_ci_contains_no_match(void)
+{
+    TEST_ASSERT_FALSE(ci_contains("audio/ogg", "mpeg"));
+}
+
+void test_ci_contains_null_safe(void)
+{
+    TEST_ASSERT_FALSE(ci_contains(NULL, "mpeg"));
+    TEST_ASSERT_FALSE(ci_contains("audio/mpeg", NULL));
+    TEST_ASSERT_FALSE(ci_contains(NULL, NULL));
+}
+
+void test_codec_from_ct_mpeg_and_mp3_map_to_mp3(void)
+{
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_MP3, codec_from_ct("audio/mpeg"));
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_MP3, codec_from_ct("audio/mp3"));
+    /* case-insensitive, per ci_contains */
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_MP3, codec_from_ct("AUDIO/MPEG"));
+}
+
+void test_codec_from_ct_aac_and_mp4_map_to_aac(void)
+{
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_AAC, codec_from_ct("audio/aac"));
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_AAC, codec_from_ct("audio/mp4"));
+}
+
+void test_codec_from_ct_unknown_content_type_is_unknown(void)
+{
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_UNKNOWN, codec_from_ct("application/ogg"));
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_UNKNOWN, codec_from_ct("text/html"));
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_UNKNOWN, codec_from_ct(""));
+}
+
+void test_codec_from_ct_null_is_unknown(void)
+{
+    TEST_ASSERT_EQUAL_INT(RADIO_CODEC_UNKNOWN, codec_from_ct(NULL));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -365,5 +411,13 @@ int main(void)
     RUN_TEST(test_connect_init_alloc_failure);
     RUN_TEST(test_connect_open_failure_is_transient);
     RUN_TEST(test_connect_4xx_5xx_returned_as_terminal);
+
+    RUN_TEST(test_ci_contains_case_insensitive_match);
+    RUN_TEST(test_ci_contains_no_match);
+    RUN_TEST(test_ci_contains_null_safe);
+    RUN_TEST(test_codec_from_ct_mpeg_and_mp3_map_to_mp3);
+    RUN_TEST(test_codec_from_ct_aac_and_mp4_map_to_aac);
+    RUN_TEST(test_codec_from_ct_unknown_content_type_is_unknown);
+    RUN_TEST(test_codec_from_ct_null_is_unknown);
     return UNITY_END();
 }
