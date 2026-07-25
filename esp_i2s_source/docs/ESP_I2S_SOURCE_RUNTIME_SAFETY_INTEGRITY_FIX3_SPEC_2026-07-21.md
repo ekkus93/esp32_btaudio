@@ -1,5 +1,11 @@
 # ESP I2S Source Runtime Safety, Security, and State Integrity — FIX3 Specification
 
+> **⚠️ Superseded — device-token auth removed 2026-07-25.** The bearer/device-token
+> authentication specified in this document (§5) was later removed entirely
+> (frontend `78dc181d`, backend `132eb096`); the web server now has **no**
+> authentication. See `docs/SPEC.md` §7.1. The §5 auth content below is retained
+> only as a record of the original design.
+
 **Status:** Implementation specification  
 **Date:** 2026-07-21  
 **Applies to:** `esp_i2s_source/`  

@@ -1,5 +1,10 @@
 # Implementation Plan: Phases 7–12
 
+> **⚠️ Superseded — device-token auth removed 2026-07-25.** Any bearer/device-token
+> authentication mentioned in this archived plan was later removed entirely
+> (frontend `78dc181d`, backend `132eb096`); the web server now has **no**
+> authentication. See `docs/SPEC.md` §7.1.
+
 **Based on:** `ESP_I2S_SOURCE_IMPLEMENTATION_TODO_2026-07-15.md` and `ESP_I2S_SOURCE_IMPLEMENTATION_SUMMARY_2026-07-15.md`
 **Date:** 2026-07-15
 **Status:** Phases 1–6 complete. This plan covers the remaining work.

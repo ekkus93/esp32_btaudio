@@ -1,5 +1,10 @@
 # esp_i2s_source Implementation Summary
 
+> **⚠️ Superseded — device-token auth removed 2026-07-25.** Any bearer/device-token
+> authentication mentioned in this archived document was later removed entirely
+> (frontend `78dc181d`, backend `132eb096`); the web server now has **no**
+> authentication. See `docs/SPEC.md` §7.1.
+
 **Date:** 2026-07-15  
 **Project:** ESP32-S3 internet-radio/tone source firmware  
 **Target:** Sends 44.1 kHz stereo audio over I2S to ESP32-WROOM32 A2DP bridge

@@ -320,13 +320,18 @@ primary use case.)
 
 ## 7.1 Auth model
 
-Bearer token authentication (gated behind `CONFIG_ESP_I2S_SOURCE_HTTP_AUTH`):
+**None.** The HTTP server has no authentication — any client that can reach the
+device's web server may call any endpoint, including all POST/PUT/DELETE routes.
 
-- Token generated on first boot from ESP RNG, stored in NVS.
-- Printed once to USB serial as `AUTH|BOOTSTRAP_TOKEN|<token>`.
-- Required for all POST/PUT/DELETE endpoints via `Authorization: Bearer <token>`.
-- Constant-time token comparison prevents timing side-channel leakage.
-- Physical-button rotation documented in README for credential rotation.
+This is deliberate: the device is intended for use on a trusted LAN, and the
+per-request bearer-token scheme that originally lived here was removed at the
+user's request on 2026-07-25 (frontend removal `78dc181d`, backend removal
+`132eb096`). The former design — a 64-hex-char token generated on first boot,
+persisted in NVS, printed once as `AUTH|BOOTSTRAP_TOKEN|<token>`, and required
+on every mutating route — is described in the dated FIX3 §5 documents, which
+now carry a superseded banner. If network-level auth is ever wanted again,
+prefer terminating it at a reverse proxy rather than reintroducing the on-device
+token store.
 
 ## 8. Verification strategy
 

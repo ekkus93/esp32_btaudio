@@ -1,5 +1,19 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T12:41:09Z - Claude Sonnet 5 - esp_i2s_source: updated docs for the auth removal
+
+- Follow-up to the two removal commits below (user: "Update those too").
+- docs/SPEC.md §7.1 "Auth model" rewritten from the bearer-token description to
+  "None" — states the web server has no auth, why (trusted-LAN, user request
+  2026-07-25), points at the removal commits, and recommends a reverse proxy if
+  auth is ever wanted again (living spec = real content update).
+- Added a superseded/⚠️ banner under the title of the 8 dated/archived design
+  docs that still describe the old auth (FIX3 SPEC/TODO/SUMMARY, the FIX3 code
+  review, and archive/ IMPLEMENTATION_SUMMARY, IMPLEMENTATION_TODO, PHASES_7_12,
+  FIX_SPEC_V2). Historical bodies left intact — banner marks them stale rather
+  than rewriting the record. Verified: every auth-mentioning .md now has a banner
+  except SPEC.md (which carries the real updated §7.1). Docs-only; no code/build.
+
 ## 2026-07-25T12:36:57Z - Claude Sonnet 5 - esp_i2s_source: ripped out the backend device-token machinery too
 
 - Follow-up to the frontend removal below (user: "Rip that out too"). Removed the

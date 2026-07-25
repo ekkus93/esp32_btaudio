@@ -1,5 +1,10 @@
 # `esp_i2s_source` Implementation TODO
 
+> **⚠️ Superseded — device-token auth removed 2026-07-25.** Any bearer/device-token
+> authentication mentioned in this archived TODO was later removed entirely
+> (frontend `78dc181d`, backend `132eb096`); the web server now has **no**
+> authentication. See `docs/SPEC.md` §7.1.
+
 **Based on:** `ESP_I2S_SOURCE_FULL_CODE_REVIEW_2026-07-15.md` and `ESP_I2S_SOURCE_FIX_SPEC_V2_2026-07-15.md`  
 **Audience:** Qwen3.6 / Claude Code / human implementer  
 **Rule:** Complete phases in order. Do not combine unrelated phases into one large patch.

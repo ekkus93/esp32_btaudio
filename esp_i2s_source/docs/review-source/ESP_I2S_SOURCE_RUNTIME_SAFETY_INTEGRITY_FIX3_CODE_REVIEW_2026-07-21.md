@@ -1,5 +1,11 @@
 # ESP I2S Source Runtime Safety and Integrity — Code Review
 
+> **⚠️ Note — device-token auth removed 2026-07-25.** This review predates the
+> removal of the bearer/device-token authentication it discusses. That auth was
+> later removed entirely (frontend `78dc181d`, backend `132eb096`); the web server
+> now has **no** authentication (see `docs/SPEC.md` §7.1). Review findings about the
+> auth code are retained as a historical record of the reviewed snapshot.
+
 **Snapshot reviewed:** `esp32_btaudio-master_2607211238.zip`  
 **Scope:** `esp_i2s_source/` only  
 **Review date:** 2026-07-21  

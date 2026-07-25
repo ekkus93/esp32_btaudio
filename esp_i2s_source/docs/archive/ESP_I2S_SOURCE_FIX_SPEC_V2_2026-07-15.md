@@ -1,5 +1,10 @@
 # `esp_i2s_source` Repair and Hardening Specification v2
 
+> **⚠️ Superseded — device-token auth removed 2026-07-25.** Any bearer/device-token
+> authentication mentioned in this archived spec was later removed entirely
+> (frontend `78dc181d`, backend `132eb096`); the web server now has **no**
+> authentication. See `docs/SPEC.md` §7.1.
+
 **Status:** Implementation specification  
 **Date:** 2026-07-15  
 **Target:** ESP32-S3 source firmware in `esp_i2s_source/`  
