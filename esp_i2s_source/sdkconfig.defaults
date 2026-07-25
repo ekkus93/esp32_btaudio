@@ -27,6 +27,18 @@ CONFIG_HTTPD_WS_SUPPORT=y
 #     breaks while music is playing. 16 (the max) gives headroom. ---
 CONFIG_LWIP_MAX_SOCKETS=16
 
+# --- Dynamic mbedTLS buffers. Without this, every HTTPS connection pins a
+#     ~16 KB internal-RAM RX buffer for its whole lifetime. During an https://
+#     radio stream that squeezes the internal (DMA-capable) heap so hard that
+#     the WiFi driver's dynamic TX buffers can't allocate, and the web server's
+#     concurrent page sends stall with EAGAIN (no alloc-failure logged) -> the
+#     web UI hangs while an HTTPS station plays, but not an HTTP one. Enabling
+#     dynamic TX/RX buffers frees that RAM when idle. Measured on-device: under
+#     an HTTPS-AAC stream, largest free DMA block ~3-7 KB -> ~10-11 KB, and a
+#     10-concurrent page-load storm went 0/10 -> 10/10 (HTTP was 10/10 either
+#     way). See memory.md 2026-07-25. ---
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
 # --- Partition table: bigger app for TLS + decoders; larger NVS for presets ---
 # (RADIO-1b) Default single-app ~1 MB is too small once esp_http_client +
 # esp-tls + the mbedtls cert bundle link in. See partitions.csv.

@@ -1,5 +1,37 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T09:49:42Z - Claude Opus 4.8 - esp_i2s_source: HTTPS-vs-web-UI hang ROOT-CAUSED + FIXED (MBEDTLS_DYNAMIC_BUFFER)
+
+- CLOSES the multi-entry HTTPS-hang saga (see 2026-07-25T05:01/07:01 entries).
+  Earlier conclusions (weak WiFi; RAM-not-the-trigger) were both incomplete.
+  A clean AP-based test harness (laptop USB WiFi adapter wlx18d6c70f915d
+  connected to the S3 SoftAP ESP32-S3-Audio @192.168.4.1, ~4ms link, binary
+  0/10-vs-10/10 storm result, no router confound) isolated it definitively.
+- MECHANISM (confirmed, not inferred): each HTTPS connection pins a ~16KB
+  internal-RAM mbedTLS RX buffer for its lifetime (SSL_IN_CONTENT_LEN=16384,
+  INTERNAL_MEM_ALLOC=y, DYNAMIC_BUFFER was off). During an https stream that
+  drops internal DMA-capable largest-free-block to ~3-7KB. WiFi dynamic TX
+  buffers (ESP_WIFI_TX_BUFFER_TYPE=1, up to 32, each needs ~1.6KB contiguous
+  internal) then can't allocate under CONCURRENT web load -> httpd sends stall
+  with EAGAIN (errno 11), no alloc-failure logged -> web UI hangs. HTTP streams
+  don't pin that RAM so they never hit it. Elimination now complete: NOT codec
+  (http-aac fine), NOT bandwidth (mp3@128 fine > aac@64), NOT web-serve link
+  quality (fails over strong AP), NOT signal (fails at -57), NOT CPU/core
+  (pinning httpd to core1 while wifi on core0 changed nothing - tested), and
+  low-RAM-alone isn't it either (single loads fine at 3KB) — it's the
+  RAM-pins-TX-buffers-under-concurrency chain.
+- FIX: CONFIG_MBEDTLS_DYNAMIC_BUFFER=y (mbedTLS frees TX/RX buffers when idle).
+  Added to sdkconfig.defaults (NOT sdkconfig — that's GITIGNORED here; the
+  defaults file is the tracked source of truth; a bare sdkconfig edit would be
+  lost on fullclean). Deps ok (needs !DTLS, satisfied). Verified on-device via
+  the AP storm harness: under https-aac, dma_largest ~3-7KB -> 10.7KB, and the
+  10-concurrent storm went 0/10 -> 10/10 (ran twice); http-mp3 stayed 10/10;
+  https .pls resolves+plays, no crash, uptime climbing. Build clean, +~4KB bin.
+- Credit: Fable-5 second opinion nailed the refined mechanism (TLS RAM pin ->
+  WiFi TX buffer starvation under concurrency), reconciling why the earlier
+  router-paced 12/12 result (serialized demand) didn't contradict the AP 0/10
+  (simultaneous demand). Committed.
+
 ## 2026-07-25T08:32:55Z - Claude Opus 4.8 - esp_i2s_source: split radio.c (803 -> 748 lines)
 
 - Per user (get it < 800, same as wifi_mgr): extracted the prebuffer-threshold
