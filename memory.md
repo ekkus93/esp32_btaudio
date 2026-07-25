@@ -1,5 +1,36 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T04:03:51Z - Claude Opus 4.8 - esp_i2s_source: specific station errors + FOUND station id-vs-index bug (unfixed)
+
+- Fixed the "invalid/duplicate/full" catch-all on Add/Edit station: the
+  backend had 7 distinct station_result_t codes but collapsed them to one
+  string. Added pure `station_result_str()` (station_store.c/.h), threaded
+  the specific reason out of `stations_add`/`stations_update` via a new
+  nullable `station_result_t *reason` out-param (only caller is
+  web_ui_radio.c), and rewired web_ui_radio.c: new `station_reply_bad()`
+  emits the specific reason; replaced the old `station_reply(bool)` with a
+  success-only `station_reply_ok()`. Now returns e.g. "duplicate URL",
+  "invalid URL (need http:// or https://)", "station list full", "URL too
+  long". No frontend change (Radio.tsx already displays r.error). Host test
+  `test_result_str_is_distinct_and_json_safe` added (15/15 test_station_store);
+  device build clean; verified live on S3 (10.1.2.50) — distinct 400s per
+  cause. COMMITTED.
+- NEWLY FOUND, NOT YET FIXED — station id-vs-index mismatch: GET /api/stations
+  returns each station's STABLE id (`stations_get` -> items[idx].id), and
+  the frontend sends that stable id for delete/move/edit (Radio.tsx uses
+  s.id). But the backend treats the ?id= query param as an ARRAY INDEX
+  (`station_id_param` -> atoi -> `stations_remove/move/update` ->
+  `station_store_*(candidate, idx)` with an `idx >= count` bound check).
+  They only agree when stable-id == index, which diverges after any
+  delete/reorder. Confirmed empirically on-device: DELETE ?id=8 (KEXP's
+  stable id) -> "station not found"; DELETE ?id=5 (its array index) ->
+  removed it. IMPACT: delete/edit/move-up/down in the web UI silently target
+  the WRONG station (or fail) once ids != indices — e.g. user's current list
+  has stable ids 1,2,4,5,7 at indices 0-4. RIGHT FIX (frontend contract is
+  already stable-id): make the backend resolve ?id= to an index via a
+  find-by-stable-id (station_store has ids; add/reuse a find_by_id) in the
+  DELETE/PUT handlers, and add host tests. Awaiting user go-ahead.
+
 ## 2026-07-25T03:40:17Z - Claude Opus 4.8 - esp_bt_audio_source: fixed SCAN (invalid inq_len) + esp_i2s_source frontend auth gate
 
 - SCAN bug: `bt_scan.c` called `esp_bt_gap_start_discovery(..., inq_len=0, 0)`,

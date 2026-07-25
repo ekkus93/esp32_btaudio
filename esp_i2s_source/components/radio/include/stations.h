@@ -30,9 +30,16 @@ bool stations_get(int idx, char *name, size_t nsz,
 bool stations_get_url(int idx, char *url, size_t usz);
 
 /* Mutations (persist to NVS). Returns ESP_OK on success.
- * stations_add() passes the new index out via *out_idx (may be NULL). */
-esp_err_t stations_add(const char *name, const char *url, int *out_idx);
-esp_err_t stations_update(int idx, const char *name, const char *url);
+ * stations_add() passes the new index out via *out_idx (may be NULL).
+ * Both pass the specific store result out via *reason (may be NULL) so the
+ * caller can report exactly why a mutation was rejected (full vs duplicate
+ * vs invalid URL vs too long) instead of a collapsed catch-all. On a
+ * persist-layer failure *reason is left STATION_OK and the esp_err_t return
+ * carries the error. */
+esp_err_t stations_add(const char *name, const char *url, int *out_idx,
+                       station_result_t *reason);
+esp_err_t stations_update(int idx, const char *name, const char *url,
+                          station_result_t *reason);
 esp_err_t stations_remove(int idx);
 
 /* Reorder: swap entry idx with its neighbour (delta -1 up, +1 down). */

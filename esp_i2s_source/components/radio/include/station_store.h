@@ -59,6 +59,11 @@ station_result_t station_validate_url(const char *url);
 /* Legacy — returns true iff url passes station_validate_url(). */
 bool station_url_valid(const char *url);
 
+/* Short human-readable reason for a station_result_t, safe to embed in a JSON
+ * string (no quotes/backslashes/control chars). For surfacing the specific
+ * add/update failure to the web UI instead of a collapsed catch-all. */
+const char *station_result_str(station_result_t r);
+
 /* Add a station. Returns STATION_OK on success (new index via *out_idx),
  * or an error code. If name is NULL/empty it defaults to the URL host.
  * Rejects invalid URL, duplicates (exact-URL), and full store. */

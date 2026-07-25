@@ -43,6 +43,21 @@ bool station_url_valid(const char *url)
     return station_validate_url(url) == STATION_OK;
 }
 
+const char *station_result_str(station_result_t r)
+{
+    switch (r) {
+        case STATION_OK:              return "ok";
+        case STATION_ERR_INVALID_ARG: return "invalid request";
+        case STATION_ERR_INVALID_URL: return "invalid URL (need http:// or https://)";
+        case STATION_ERR_TOO_LONG:    return "URL too long";
+        case STATION_ERR_DUPLICATE:   return "duplicate URL";
+        case STATION_ERR_FULL:        return "station list full";
+        case STATION_ERR_NOT_FOUND:   return "station not found";
+        case STATION_ERR_PERSIST:     return "save failed";
+        default:                      return "rejected";
+    }
+}
+
 /* Copy the host (between "://" and the next '/' or ':') of a valid URL into
  * `out`; falls back to the whole URL if no scheme separator is found. */
 static void host_of(const char *url, char *out, size_t out_sz)

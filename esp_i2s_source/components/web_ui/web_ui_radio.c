@@ -170,16 +170,13 @@ static bool station_body(httpd_req_t *req, char *name, size_t nsz, char *url, si
     return ok;
 }
 
-static void station_reply(httpd_req_t *req, bool ok, int id)
+/* Success reply: {"ok":true,"id":<idx>}. All failure paths now use
+ * station_reply_bad()/station_reply_err() with a specific reason instead. */
+static void station_reply_ok(httpd_req_t *req, int id)
 {
     char r[48];
     httpd_resp_set_type(req, "application/json");
-    if (ok) {
-        snprintf(r, sizeof(r), "{\"ok\":true,\"id\":%d}", id);
-    } else {
-        httpd_resp_set_status(req, "400 Bad Request");
-        strlcpy(r, "{\"ok\":false,\"error\":\"invalid/duplicate/full\"}", sizeof(r));
-    }
+    snprintf(r, sizeof(r), "{\"ok\":true,\"id\":%d}", id);
     httpd_resp_sendstr(req, r);
 }
 
@@ -192,6 +189,18 @@ static void station_reply_err(httpd_req_t *req, const char *err, int id)
     httpd_resp_sendstr(req, r);
 }
 
+/* 400 with a specific, JSON-safe human reason — replaces the old collapsed
+ * "invalid/duplicate/full" so the UI can say exactly what was wrong. `reason`
+ * must be a trusted, quote-free literal (station_result_str() or a constant). */
+static void station_reply_bad(httpd_req_t *req, const char *reason)
+{
+    char r[96];
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_status(req, "400 Bad Request");
+    snprintf(r, sizeof(r), "{\"ok\":false,\"error\":\"%s\"}", reason);
+    httpd_resp_sendstr(req, r);
+}
+
 esp_err_t stations_post_h(httpd_req_t *req)
 {
     esp_err_t guard = require_stations(req);
@@ -199,17 +208,18 @@ esp_err_t stations_post_h(httpd_req_t *req)
 
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
     if (!station_body(req, name, sizeof(name), url, sizeof(url))) {
-        station_reply(req, false, -1);
+        station_reply_bad(req, "missing or invalid URL");
         return ESP_OK;
     }
     int id = -1;
-    esp_err_t err = stations_add(name, url, &id);
+    station_result_t reason = STATION_ERR_INVALID_ARG;
+    esp_err_t err = stations_add(name, url, &id, &reason);
     if (err == ESP_ERR_NO_MEM || err == ESP_ERR_INVALID_ARG) {
-        station_reply(req, false, id);
+        station_reply_bad(req, station_result_str(reason));
     } else if (err != ESP_OK) {
         station_reply_err(req, "failed to persist", id);
     } else {
-        station_reply(req, true, id);
+        station_reply_ok(req, id);
     }
     return ESP_OK;
 }
@@ -228,26 +238,27 @@ esp_err_t stations_put_h(httpd_req_t *req)
         int delta = !strcmp(mv, "up") ? -1 : (!strcmp(mv, "down") ? 1 : 0);
         esp_err_t err = delta != 0 ? stations_move(id, delta) : ESP_ERR_INVALID_ARG;
         if (err == ESP_ERR_INVALID_ARG) {
-            station_reply(req, false, id);
+            station_reply_bad(req, "cannot reorder (already at edge or bad id)");
         } else if (err != ESP_OK) {
             station_reply_err(req, "failed to persist", id);
         } else {
-            station_reply(req, true, id);
+            station_reply_ok(req, id);
         }
         return ESP_OK;
     }
     char name[STATION_NAME_MAX], url[STATION_URL_MAX];
     if (id < 0 || !station_body(req, name, sizeof(name), url, sizeof(url))) {
-        station_reply(req, false, id);
+        station_reply_bad(req, "missing or invalid URL");
         return ESP_OK;
     }
-    esp_err_t err = stations_update(id, name, url);
+    station_result_t reason = STATION_ERR_INVALID_ARG;
+    esp_err_t err = stations_update(id, name, url, &reason);
     if (err == ESP_ERR_INVALID_ARG) {
-        station_reply(req, false, id);
+        station_reply_bad(req, station_result_str(reason));
     } else if (err != ESP_OK) {
         station_reply_err(req, "failed to persist", id);
     } else {
-        station_reply(req, true, id);
+        station_reply_ok(req, id);
     }
     return ESP_OK;
 }
@@ -260,11 +271,11 @@ esp_err_t stations_delete_h(httpd_req_t *req)
     int id = station_id_param(req);
     esp_err_t err = id >= 0 ? stations_remove(id) : ESP_ERR_INVALID_ARG;
     if (err == ESP_ERR_INVALID_ARG) {
-        station_reply(req, false, id);
+        station_reply_bad(req, "station not found");
     } else if (err != ESP_OK) {
         station_reply_err(req, "failed to persist", id);
     } else {
-        station_reply(req, true, id);
+        station_reply_ok(req, id);
     }
     return ESP_OK;
 }

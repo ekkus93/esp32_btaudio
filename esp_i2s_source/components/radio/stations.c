@@ -379,8 +379,10 @@ static esp_err_t station_result_to_err(station_result_t result)
 
 /* station_store_t is ~12 KiB — too large for a task stack (TODO 5.7).
  * Every mutation heap-allocates its candidate. */
-esp_err_t stations_add(const char *name, const char *url, int *out_idx)
+esp_err_t stations_add(const char *name, const char *url, int *out_idx,
+                       station_result_t *reason)
 {
+    if (reason) *reason = STATION_OK;
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
     if (out_idx) *out_idx = -1;
 
@@ -394,6 +396,7 @@ esp_err_t stations_add(const char *name, const char *url, int *out_idx)
     if (r != STATION_OK) {
         xSemaphoreGive(s_mtx);
         free(candidate);
+        if (reason) *reason = r;
         return station_result_to_err(r);
     }
 
@@ -407,8 +410,10 @@ esp_err_t stations_add(const char *name, const char *url, int *out_idx)
     return err;
 }
 
-esp_err_t stations_update(int idx, const char *name, const char *url)
+esp_err_t stations_update(int idx, const char *name, const char *url,
+                          station_result_t *reason)
 {
+    if (reason) *reason = STATION_OK;
     if (!atomic_load(&s_initialized)) return ESP_ERR_INVALID_STATE;
 
     station_store_t *candidate = malloc(sizeof(*candidate));
@@ -420,6 +425,7 @@ esp_err_t stations_update(int idx, const char *name, const char *url)
     if (r != STATION_OK) {
         xSemaphoreGive(s_mtx);
         free(candidate);
+        if (reason) *reason = r;
         return station_result_to_err(r);
     }
 

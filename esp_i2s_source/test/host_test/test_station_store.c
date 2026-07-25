@@ -239,6 +239,36 @@ void test_validate_url_control_chars(void)
     TEST_ASSERT_EQUAL_INT(STATION_ERR_INVALID_ARG, r);
 }
 
+void test_result_str_is_distinct_and_json_safe(void)
+{
+    /* Each failure code must map to its own non-empty, JSON-safe string so the
+     * web UI can report exactly why an add/update was rejected (regression
+     * against the old collapsed "invalid/duplicate/full" message). */
+    const station_result_t codes[] = {
+        STATION_OK, STATION_ERR_INVALID_ARG, STATION_ERR_INVALID_URL,
+        STATION_ERR_TOO_LONG, STATION_ERR_DUPLICATE, STATION_ERR_FULL,
+        STATION_ERR_NOT_FOUND, STATION_ERR_PERSIST,
+    };
+    const int n = (int)(sizeof(codes) / sizeof(codes[0]));
+    for (int i = 0; i < n; i++) {
+        const char *s = station_result_str(codes[i]);
+        TEST_ASSERT_NOT_NULL(s);
+        TEST_ASSERT_TRUE(s[0] != '\0');
+        /* JSON-safe: no double-quote or backslash would corrupt the reply. */
+        TEST_ASSERT_NULL(strchr(s, '"'));
+        TEST_ASSERT_NULL(strchr(s, '\\'));
+        /* Distinct from every other code's string. */
+        for (int j = i + 1; j < n; j++) {
+            TEST_ASSERT_TRUE(strcmp(s, station_result_str(codes[j])) != 0);
+        }
+    }
+    /* The three previously-collapsed reasons are now individually identifiable. */
+    TEST_ASSERT_TRUE(strcmp(station_result_str(STATION_ERR_DUPLICATE),
+                            station_result_str(STATION_ERR_FULL)) != 0);
+    TEST_ASSERT_TRUE(strcmp(station_result_str(STATION_ERR_INVALID_URL),
+                            station_result_str(STATION_ERR_FULL)) != 0);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -256,5 +286,6 @@ int main(void)
     RUN_TEST(test_name_too_long);
     RUN_TEST(test_url_too_long);
     RUN_TEST(test_validate_url_control_chars);
+    RUN_TEST(test_result_str_is_distinct_and_json_safe);
     return UNITY_END();
 }
