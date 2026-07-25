@@ -1,5 +1,21 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T19:42:44Z - Claude Sonnet 5 - removed the 2 dead-code stubs flagged during the Ralph loop
+
+- Follow-up to the UNIT_TESTS2_TODO.md Ralph loop: user asked to remove the
+  2 dead-code stubs identified during P2 (audio_processor_is_wav_active,
+  audio_processor_dump_tag_queue). Confirmed via repo-wide grep neither had
+  any real caller anywhere (only the definition, header decl, and this
+  session's own tests referenced them).
+- Deleted both functions (audio_processor.c, audio_processor_diag.c), their
+  audio_processor.h declarations, the tests written for them, and an
+  orphaned duplicate mock of dump_tag_queue in
+  mocks/audio_processor_host_stub.c (also unused by anything).
+- Full host suite 74/74 (943 cases, was 946 — the 3 removed tests);
+  idf.py build clean. Coverage held at 84.2% overall (both files' line
+  counts dropped since the removed code simply doesn't exist anymore, not
+  just uncovered). Commit b5144a3a, pushed.
+
 ## 2026-07-25T19:31:52Z - Claude Sonnet 5 - Ralph loop: docs/UNIT_TESTS2_TODO.md complete (all P0/P1/P2)
 
 - User: "Ralph loop docs/UNIT_TESTS2_TODO.md" -> invoked the `ralph-loop` skill.
