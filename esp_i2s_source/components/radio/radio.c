@@ -448,15 +448,21 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
     if (!playlist_or_url || !playlist_or_url[0]) return ESP_ERR_INVALID_ARG;
     if (!g_radio_ring || !g_radio_pcm || !g_radio_control_mtx) return ESP_ERR_INVALID_STATE;
 
-    /* Block restart while FAULTED — the faulted session must be stopped
-     * explicitly before a new play can proceed. */
+    /* A prior session may have FAULTED (e.g. repeated stream failures on a
+     * weak link). An explicit play() is a deliberate restart request, so
+     * auto-recover instead of silently rejecting: radio_stop_sync() below
+     * tears down the faulted session via the unified §7.5 flow and resets to
+     * STOPPED. Previously this returned ESP_ERR_INVALID_STATE, which made the
+     * web Play button appear dead — the queued command was rejected here
+     * while the HTTP layer had already replied ok. If the worker genuinely
+     * can't be joined, radio_stop_sync() returns an error we surface below
+     * (we never silently proceed on a stuck session). */
     radio_state_t state = radio_get_state();
     if (state == RADIO_STATE_FAULTED || state == RADIO_STATE_FAULTED_JOIN_PENDING) {
-        ESP_LOGE(TAG, "cannot play while FAULTED; call radio_stop_sync() first");
-        return ESP_ERR_INVALID_STATE;
+        ESP_LOGW(TAG, "play() requested while FAULTED — auto-recovering via stop");
     }
 
-    /* Stop any previous session. */
+    /* Stop any previous session (also clears a faulted one). */
     esp_err_t err = radio_stop_sync();
     if (err != ESP_OK) return err;
 

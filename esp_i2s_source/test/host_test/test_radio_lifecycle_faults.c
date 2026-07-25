@@ -260,7 +260,10 @@ void test_stop_success_both_exit(void)
     TEST_ASSERT_EQUAL(RADIO_STATE_STOPPED, state);
 }
 
-/* Fault must block restart — play while FAULTED must fail. */
+/* A fault whose worker can't be joined still blocks restart: play()
+ * auto-recovers by calling radio_stop_sync() first, which times out again
+ * on the stuck worker, so play() propagates that error rather than starting
+ * a new session over a session that may still be running. */
 void test_fault_blocks_restart(void)
 {
     esp_err_t err = radio_init(64 * 1024);
@@ -269,14 +272,46 @@ void test_fault_blocks_restart(void)
     err = radio_play_sync("http://example.com/stream.mp3");
     TEST_ASSERT_EQUAL(ESP_OK, err);
 
-    /* Simulate partial exit → fault. */
+    /* Simulate partial exit → fault. The decoder never exits, so the
+     * session stays non-joinable. */
     radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
     err = radio_stop_sync();
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
 
-    /* Attempting to play while FAULTED should fail. */
+    /* Play while FAULTED with a stuck worker must still fail (stop can't
+     * join, so we never start a fresh session over it). */
     err = radio_play_sync("http://example.com/other.mp3");
     TEST_ASSERT_TRUE(err != ESP_OK);
+}
+
+/* An explicit play() must AUTO-RECOVER from a fault once the faulted
+ * session's workers become joinable — otherwise the web Play button stays
+ * dead after a transient stream fault until the user manually hits Stop
+ * (the bug this fixes). */
+void test_fault_play_autorecovers_when_joinable(void)
+{
+    esp_err_t err = radio_init(64 * 1024);
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    err = radio_play_sync("http://example.com/stream.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    /* Fault: only the stream task exits, so stop times out and faults. */
+    radio_test_inject_exit_bits(TEST_EVT_STREAM_EXITED);
+    err = radio_stop_sync();
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, err);
+    TEST_ASSERT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, radio_get_state());
+
+    /* The decoder now also exits, so the faulted session becomes joinable.
+     * A new play() must clear the fault (via stop) and start fresh instead
+     * of returning ESP_ERR_INVALID_STATE. */
+    radio_test_inject_exit_bits(TEST_EVT_ALL_EXITED);
+    err = radio_play_sync("http://example.com/other.mp3");
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    radio_state_t state = radio_get_state();
+    TEST_ASSERT_NOT_EQUAL(RADIO_STATE_FAULTED, state);
+    TEST_ASSERT_NOT_EQUAL(RADIO_STATE_FAULTED_JOIN_PENDING, state);
 }
 
 /* After fault, second stop should return OK (no active session after fault). */

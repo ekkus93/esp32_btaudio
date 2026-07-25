@@ -1,5 +1,47 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T05:01:43Z - Claude Opus 4.8 - esp_i2s_source: radio "won't play" — fixed FAULTED latch + WiFi TX power; sink issue remains
+
+- Reported symptom: internet radio "was working, now won't play." Investigated
+  the whole pipeline (radio state, WiFi, WROOM32 A2DP) on-device. Found THREE
+  distinct issues:
+  1. FAULTED latch (fixed): radio_play_sync() rejected any play while state was
+     RADIO_STATE_FAULTED/FAULTED_JOIN_PENDING (returned ESP_ERR_INVALID_STATE),
+     but the web layer had already replied ok:true (async queue) — so the Play
+     button silently did nothing; user had to hit Stop first. Fix: let an
+     explicit play() auto-recover — it already calls radio_stop_sync() right
+     after (unified §7.5 teardown clears the fault); if the worker can't be
+     joined, stop's error propagates so we never start over a live session.
+     radio.c only. New host test test_fault_play_autorecovers_when_joinable
+     (fault -> make joinable -> play succeeds); existing test_fault_blocks_restart
+     still passes (stuck worker -> stop keeps timing out -> play still fails).
+     Verified live: faulted via bogus URL, then Play (no Stop) auto-recovered.
+  2. Starved WiFi throughput (mitigated + likely environmental): stream read at
+     ~0.68 KB/s vs the ~16 KB/s a 128kbps station needs, so it never filled the
+     3s prebuffer, stayed buffering, and the stall watchdog kept reconnecting.
+     A/B PROOF it was the ESP32 link, not server/network/our code: laptop pulled
+     the SAME somafm stream (ice6.somafm.com/groovesalad-128-mp3) at ~57 KB/s on
+     the same CircuitLaunch 2.4GHz ch6 at the same moment; ESP32 got 0.68 KB/s
+     (85x gap). ESP32 RSSI was -70 (drifting from -62). Fix: added
+     esp_wifi_set_max_tx_power(84) in the WIFI_EVENT_STA_START handler
+     (wifi_mgr.c) — the STA uplink paces the L2/TCP ACKs that gate download
+     throughput. (WIFI_PS_NONE was already set from a prior identical
+     "stream throttled" fix.) After reflash: RSSI -61, throughput ~18.7 KB/s,
+     buffering=False, reconnects=0 — radio streams smoothly. NOTE: RSSI is
+     RX-side so the -70->-61 gain is partly re-association luck, not solely the
+     TX change; max TX power is a permanent edge but the real cure for a weak
+     spot is physical (move closer). CircuitLaunch is a congested makerspace;
+     "worked before" was almost certainly a better RF spot.
+  3. WROOM32 A2DP output = 0 (NOT fixed, physical): WROOM32 shows CONN=1 to
+     sink AD:CD:EE:FD:FE:CA but BYTES_REQ/PKTS/BYTES_PROD stay 0 even after a
+     START — a phantom/stale connection to a paired speaker that's off / out of
+     range / not accepting A2DP. NOT the laptop (its BT controller is
+     E8:FB:1C:25:E4:C2). So S3 delivers audio to the WROOM32 but the last hop
+     (WROOM32 -> BT speaker) is dead. User needs a working BT sink powered/in
+     range; can DISCONNECT + reconnect a real speaker, or re-add the laptop as
+     an A2DP sink to test end-to-end.
+- Both fixes committed; full host suite 26/26 green, device build clean.
+
 ## 2026-07-25T04:03:51Z - Claude Opus 4.8 - esp_i2s_source: specific station errors + FOUND station id-vs-index bug (unfixed)
 
 - Fixed the "invalid/duplicate/full" catch-all on Add/Edit station: the

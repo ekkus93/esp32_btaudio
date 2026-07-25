@@ -475,6 +475,15 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     (void)arg; (void)base; (void)data;
     switch (id) {
     case WIFI_EVENT_STA_START: {
+        /* Max out TX power (84 = 20 dBm, the ceiling) for the best link
+         * margin on a weak/congested AP. The STA's own uplink paces the L2
+         * and TCP ACKs that gate DOWNLOAD throughput, so a stronger uplink
+         * directly helps a marginal audio stream from starving the decoder.
+         * Same mains/USB-powered rationale as WIFI_PS_NONE above; non-fatal. */
+        esp_err_t tx = esp_wifi_set_max_tx_power(84);
+        if (tx != ESP_OK) {
+            ESP_LOGW(TAG, "set_max_tx_power failed: %s", esp_err_to_name(tx));
+        }
         esp_err_t err = esp_wifi_connect();
         if (err != ESP_OK) wifi_async_error("esp_wifi_connect(STA_START)", err);
         break;

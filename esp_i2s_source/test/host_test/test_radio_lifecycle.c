@@ -611,6 +611,7 @@ void test_stop_timeout_decoder_only_exit(void);
 void test_stop_timeout_no_exit(void);
 void test_stop_success_both_exit(void);
 void test_fault_blocks_restart(void);
+void test_fault_play_autorecovers_when_joinable(void);
 void test_stop_after_fault_returns_ok(void);
 void test_decoder_task_creation_failure_join_pending(void);
 void test_event_group_create_fail(void);
@@ -662,6 +663,7 @@ int main(void)
     RUN_TEST(test_stop_timeout_no_exit);
     RUN_TEST(test_stop_success_both_exit);
     RUN_TEST(test_fault_blocks_restart);
+    RUN_TEST(test_fault_play_autorecovers_when_joinable);
     RUN_TEST(test_stop_after_fault_returns_ok);
     /* 7.11: decoder task creation failure */
     RUN_TEST(test_decoder_task_creation_failure_join_pending);
