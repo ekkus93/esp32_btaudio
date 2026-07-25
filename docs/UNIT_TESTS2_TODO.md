@@ -250,48 +250,59 @@ are not:
       injectable wait primitive would be needed; if that's not already
       available, defer and note why).
 
-### BT-1 — `audio_processor_config.c` runtime-reconfig API (16.7% → target 70%+)
-**No new CMake target needed** — `test_audio_processor_diag` already links this
-file (and `audio_processor_sync_diag.c`); just add cases to
-`test_audio_processor_diag.c` (or split into a sibling file if it's getting long
-— it's currently 311 lines, so there's room). 7 of 10 functions are 0-call:
-`audio_processor_get_config`, `set_bit_depth`, `set_channels`, `set_i2s_pins`,
-`set_mute`, `set_sample_rate`, `configure_i2s`.
-- [ ] **Uninitialized-state guard**: every setter (`set_sample_rate`, `set_mute`,
+### BT-1 — `audio_processor_config.c` runtime-reconfig API (16.7% → 88.3% ✅ DONE)
+> Achieved 88.3% line / 100% func (was 16.7%/30%). 28 new cases added directly
+> to `test_audio_processor_diag.c` (no new CMake target needed, as planned).
+> `configure_i2s` was de-static'd (declared in `audio_processor_internal.h`) —
+> it's genuinely unreachable via the public setters otherwise, since none of
+> them ever pass NULL through; same de-static-for-testability convention this
+> codebase already uses elsewhere. Added a small call-count/last-value spy to
+> the SHARED test-only mock `audio_processor_core_logic_stubs.c` for
+> `i2s_manager_init` and `nvs_storage_set_i2s_pins` (mirroring the existing
+> `nvs_set_volume` spy pattern) — additive only, verified all 5 other binaries
+> that link this shared mock still pass. Full host suite 74/74 (916 total
+> cases, was 891); `idf.py build` clean.
+>
+> **Two things resolved that were open questions in this doc:**
+> 1. `set_channels` validates its enum arg (rejects non-MONO/STEREO);
+>    `set_bit_depth` does **not** (accepts any int) — confirmed asymmetric,
+>    left as-is (a product decision, not fixed here — flagging for awareness).
+> 2. The planned "`audio_processor_stop()` itself fails while was_running"
+>    case has **no reachable trigger** in this harness: `audio_processor_stop()`
+>    only fails on `!s_is_initialized`/`!s_is_running`, both already false
+>    in that scenario. Documented in the test file rather than fabricating
+>    a scenario the code can't produce.
+- [x] **Uninitialized-state guard**: every setter (`set_sample_rate`, `set_mute`,
       `set_channels`, `set_bit_depth`, `set_i2s_pins`) returns
       `ESP_ERR_INVALID_STATE` when `!s_is_initialized` — one test per function
       (cheap, and it's the first branch in all five).
-- [ ] **`set_mute`**: toggles `s_audio_config.mute` true→false→true; confirm
+- [x] **`set_mute`**: toggles `s_audio_config.mute` true→false→true; confirm
       `audio_processor_get_config`/`get_status` reflect it.
-- [ ] **`set_channels`**: rejects anything other than `AUDIO_CHANNEL_MONO`/
-      `_STEREO` with `ESP_ERR_INVALID_ARG` (this function validates; note below
-      that `set_bit_depth` does **not** — same-shape functions, asymmetric
-      validation. Worth a one-line comment/decision in the PR: intentional or a
-      gap in the source itself, not just the tests).
-  - [ ] No-op path: setting the same channel mode it's already in → `ESP_OK`,
-        no stop/restart cycle triggered (assert `audio_processor_stop`/`_start`
-        weren't called — needs a spy/counter on those, check
-        `audio_processor_test_hooks.c` for an existing hook before adding one).
-  - [ ] Changing while stopped → reconfigures without a stop/restart cycle.
-  - [ ] Changing while running → stops, reconfigures, restarts (assert ordering).
-  - [ ] `i2s_manager_init` failure during reconfigure → propagates the error,
-        does **not** silently continue as if it succeeded.
-- [ ] **`set_bit_depth`**: same no-op/stopped/running/init-failure matrix as
-      `set_channels` (the implementations are near-identical — same test shape).
-- [ ] **`set_sample_rate`**: same matrix; additionally confirm the "was_running,
-      stop fails" path returns the stop error and does **not** proceed to
-      reconfigure I2S with the processor in an inconsistent state.
-- [ ] **`set_i2s_pins`**: stop/reconfigure/restart matrix; confirm
+- [x] **`set_channels`**: rejects anything other than `AUDIO_CHANNEL_MONO`/
+      `_STEREO` with `ESP_ERR_INVALID_ARG`.
+  - [x] No-op path: setting the same channel mode it's already in → `ESP_OK`,
+        no reconfigure triggered (`i2s_manager_init` call count stays 0 —
+        used as the reconfigure-happened signal instead of a stop/start spy,
+        since a no-op structurally can't reach either).
+  - [x] Changing while stopped → reconfigures without a stop/restart cycle.
+  - [x] Changing while running → stops, reconfigures, restarts (`s_is_running`
+        true throughout the observable before/after; `i2s_manager_init`
+        called exactly once).
+  - [x] `i2s_manager_init` failure during reconfigure → propagates the error.
+        Noted: `s_audio_config` is updated BEFORE `i2s_manager_init` is
+        called, so it reflects the new value even on failure — real behavior,
+        not a rollback, documented rather than asserted-away.
+- [x] **`set_bit_depth`**: same no-op/stopped/running/init-failure matrix as
+      `set_channels`.
+- [x] **`set_sample_rate`**: same matrix (the "stop fails" sub-case has no
+      reachable trigger — see note above).
+- [x] **`set_i2s_pins`**: stop/reconfigure/restart matrix; confirmed
       `nvs_storage_set_i2s_pins` is called with the exact 4 values passed in
-      (needs the existing NVS mock, not a new one).
-- [ ] **`configure_i2s`** (static, reached only via the setters above): NULL
-      `config` → `ESP_ERR_INVALID_ARG` — cheapest possible test, currently
-      uncovered because nothing calls the public setters with valid args at all.
-- [ ] **`audio_processor_get_config`**: returns a struct matching whatever was
-      last set via the setters above (round-trip check once the setters have
-      cases) — NULL-output-pointer case too, if the function guards for it
-      (check; `get_status` does, `get_config`'s NULL-guard behavior wasn't
-      confirmed in the audit).
+      (new spy in the shared stub, since none existed).
+- [x] **`configure_i2s`** (de-static'd): NULL `config` → `ESP_ERR_INVALID_ARG`.
+- [x] **`audio_processor_get_config`**: round-trip after all 4 setters;
+      rejects when `!s_is_initialized`; rejects NULL output (confirmed it
+      does guard, checked after `!s_is_initialized`).
 
 ### BT-2 — `audio_processor_sync_diag.c` (0% → target 100%)
 Small (41 lines), both functions untested:

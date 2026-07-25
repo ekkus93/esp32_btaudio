@@ -26,7 +26,7 @@
 #include "esp_psram.h"
 #endif
 
-static esp_err_t configure_i2s(const audio_config_t* config);
+esp_err_t configure_i2s(const audio_config_t* config);
 
 /**
  * @brief Set the output sample rate
@@ -183,7 +183,7 @@ esp_err_t audio_processor_get_stats(audio_stats_t* stats)
 /**
  * @brief Configure capture path via i2s_manager using shared buffers.
  */
-static esp_err_t configure_i2s(const audio_config_t* config)
+esp_err_t configure_i2s(const audio_config_t* config)
 {
     if (config == NULL) {
         return ESP_ERR_INVALID_ARG;

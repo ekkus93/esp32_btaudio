@@ -254,6 +254,12 @@ extern uint32_t s_last_beep_duration_ms;
 extern double s_last_beep_freq_hz;
 #endif
 
+/* De-static'd from audio_processor_config.c for BT-1 host tests
+ * (docs/UNIT_TESTS2_TODO.md) — its NULL-config branch is otherwise
+ * unreachable from the public setter API (none of them ever pass NULL
+ * through). Not part of the public API. */
+esp_err_t configure_i2s(const audio_config_t* config);
+
 /* Shared helpers */
 size_t audio_get_runtime_work_bytes(void);
 int audio_bytes_per_sample(audio_bit_depth_t bit_depth);

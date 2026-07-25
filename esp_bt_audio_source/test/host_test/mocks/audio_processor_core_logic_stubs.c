@@ -16,6 +16,9 @@ static esp_err_t s_stub_i2s_init_result = ESP_OK;
 static esp_err_t s_stub_nvs_set_volume_result = ESP_OK;
 static uint32_t s_stub_nvs_set_volume_calls = 0;
 static uint8_t s_stub_last_nvs_set_volume_value = 0;
+static uint32_t s_stub_i2s_init_calls = 0;
+static uint32_t s_stub_nvs_set_i2s_pins_calls = 0;
+static int s_stub_last_i2s_pins[4] = {0, 0, 0, 0};
 
 void audio_processor_core_stub_set_i2s_running(bool running)
 {
@@ -76,6 +79,32 @@ void audio_processor_core_stub_reset(void)
     s_stub_nvs_set_volume_result = ESP_OK;
     s_stub_nvs_set_volume_calls = 0;
     s_stub_last_nvs_set_volume_value = 0;
+    s_stub_i2s_init_calls = 0;
+    s_stub_nvs_set_i2s_pins_calls = 0;
+    s_stub_last_i2s_pins[0] = s_stub_last_i2s_pins[1] = s_stub_last_i2s_pins[2] = s_stub_last_i2s_pins[3] = 0;
+}
+
+void audio_processor_core_stub_set_i2s_init_result(esp_err_t result)
+{
+    s_stub_i2s_init_result = result;
+}
+
+uint32_t audio_processor_core_stub_get_i2s_init_calls(void)
+{
+    return s_stub_i2s_init_calls;
+}
+
+uint32_t audio_processor_core_stub_get_nvs_set_i2s_pins_calls(void)
+{
+    return s_stub_nvs_set_i2s_pins_calls;
+}
+
+void audio_processor_core_stub_get_last_i2s_pins(int *bclk, int *ws, int *din, int *dout)
+{
+    if (bclk) *bclk = s_stub_last_i2s_pins[0];
+    if (ws)   *ws   = s_stub_last_i2s_pins[1];
+    if (din)  *din  = s_stub_last_i2s_pins[2];
+    if (dout) *dout = s_stub_last_i2s_pins[3];
 }
 
 void audio_processor_core_stub_set_nvs_set_volume_result(esp_err_t result)
@@ -102,10 +131,11 @@ esp_err_t nvs_storage_set_volume(uint8_t volume)
 
 esp_err_t nvs_storage_set_i2s_pins(int bclk_pin, int ws_pin, int din_pin, int dout_pin)
 {
-    (void)bclk_pin;
-    (void)ws_pin;
-    (void)din_pin;
-    (void)dout_pin;
+    s_stub_nvs_set_i2s_pins_calls++;
+    s_stub_last_i2s_pins[0] = bclk_pin;
+    s_stub_last_i2s_pins[1] = ws_pin;
+    s_stub_last_i2s_pins[2] = din_pin;
+    s_stub_last_i2s_pins[3] = dout_pin;
     return ESP_OK;
 }
 
@@ -113,6 +143,7 @@ esp_err_t i2s_manager_init(const audio_config_t* config, const i2s_manager_buffe
 {
     (void)config;
     (void)buffers;
+    s_stub_i2s_init_calls++;
     return s_stub_i2s_init_result;
 }
 
