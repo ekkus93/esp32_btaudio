@@ -1,5 +1,66 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T17:08:06Z - Claude Fable 5 - I2S static ROOT-CAUSED + FIXED (phase-lock hysteresis); UARTAUDIO streamer recovered
+
+- Continuation of the "BT silent" saga (see 13:35 entry). Major corrections to
+  that entry's conclusions:
+  (1) The WROOM32 STATUS counters (BYTES_REQ/PKTS/CALLBACKS) do NOT reflect the
+      live audio path — user heard audio while all read 0. Do not diagnose from
+      them. (2) The silence WAS fixed by the production reflash (bd0ff2ad fw ->
+      1da4d052); symptom then became music-with-static-patches.
+- USB isolation test (user's idea): streamed 40 s of 22.05 kHz stereo two-tone
+  laptop->USB->WROOM32->A2DP via UARTAUDIO — CLEAN (0 und/crc/lost/ovf, 100%
+  real-time A2DP pull, user confirmed clean audio). Proved the entire BT output
+  chain healthy; fault isolated to the S3->I2S->WROOM32 leg.
+- Found tools/stream_audio_uart.py had been accidentally truncated to a
+  136-byte stub by docs commit 3010bdd7 (was a working 290-line tool at
+  0bb5555e "first fully clean stream"). Restored verbatim; commit 26604b70.
+- STATIC ROOT CAUSE: i2s_manager re-ran i2s_frame_extract_detect() every block
+  with no memory. Serial capture during Groove Salad: 113 phase re-locks in
+  31 s (alternating 0,2 / 1,0 / 3,2 / ...); each re-lock reinterprets the
+  16-in-32 sample lanes mid-stream = static patches. (S3 packs sample<<16 in
+  main.c:127; contract says phase is session-constant, so thrash = detector
+  noise, not real slips.)
+- FIX (commit 593d2301): new pure helper i2s_frame_phase_hold() in
+  i2s_frame_extract.c — keep locked phase until the SAME challenger persists
+  I2S_FRAME_PHASE_HOLD_BLOCKS=8 consecutive blocks (~90 ms); silent blocks hold;
+  challenger switch restarts tally; state resets on channel re-enable
+  (i2s_manager_start). 7 new host tests (74/74 pass). On-device verification:
+  0 phase changes in 35 s (was 113/31 s), fw v0.2.0-18 flashed to WROOM32.
+- PENDING: audible confirmation — speaker "SICKLUGGAGE H1-013" dropped into
+  standby during the work (discoverable but refuses connect; needs a physical
+  button tap / power cycle), so user hasn't heard the fixed stream yet.
+  Commits 26604b70 + 593d2301 are local, NOT pushed.
+
+## 2026-07-25T13:35:35Z - Claude Sonnet 5 - BT audio silent: A2DP CALLBACKS=0, ruled out everything but the S3<->WROOM32 I2S wire
+
+- Symptom: radio "playing" on S3 but nothing audible through BT speaker
+  "SICKLUGGAGE H1-013" (AD:CD:EE:FD:FE:CA). Added station id 11 "Cleansing 2000s"
+  (http://142.44.136.201:5457/stream) — S3 decodes it perfectly (mp3 128k, 0
+  decode errs, ICY title, i2s_written climbing steadily).
+- WROOM32 STATUS shows A2DP **connected but transmitting zero**:
+  BYTES_REQ=0, BYTES_PROD=0, PKTS=0, CALLBACKS=0 — the A2DP source data callback
+  NEVER fires, so no audio reaches the speaker. Constant all session.
+- Ruled OUT, in order: the station/URL (S3 side flawless); volume (VOL 51, MUTE=0);
+  a stuck A2DP state (disconnect/reconnect, START, local BEEP — all left CALLBACKS=0);
+  WROOM32 BT stack (full RESET/reboot — still 0); the speaker (user's PHONE
+  connects + plays audio through it fine); phone holding the 1 A2DP slot (user
+  forgot it on the phone — still 0); and FIRMWARE — reflashed WROOM32 with the
+  latest production build (version went bd0ff2ad-> v0.2.0-17-g1da4d052, confirming
+  it WAS running different fw) and A2DP STILL CALLBACKS=0. So it is NOT firmware.
+- Leading hypothesis = the physical S3<->WROOM32 I2S link, specifically the DATA
+  wire. Wiring is 4 lines + GND; WROOM32 is I2S MASTER (drives BCLK/WS), S3 is
+  SLAVE (BCLK=GPIO15 in, WS=GPIO16 in, DOUT=GPIO7 out). S3's i2s_written keeps
+  climbing => it IS receiving the master's BCLK/WS (those wires + GND are good),
+  so the suspect is the DATA line **S3 GPIO7 (DOUT) -> WROOM32 DIN**. WROOM32
+  `I2S_PROBE` command consistently TIMES OUT (its I2S RX sees no data), which
+  plausibly stalls the audio->A2DP pipeline so media never actually streams
+  (CALLBACKS=0). NEEDS: physical check of that data wire + common ground, and a
+  WROOM32 serial-monitor capture (idf.py -p /dev/ttyUSB0 monitor) during a
+  connect+START to see the real AVDTP/I2S log. Left off awaiting user's hardware check.
+- Also this session: removed device-token auth end-to-end (frontend 78dc181d,
+  backend 132eb096, docs 1da4d052) — all pushed. WROOM32 reflashed with prod fw.
+
 ## 2026-07-25T12:41:09Z - Claude Sonnet 5 - esp_i2s_source: updated docs for the auth removal
 
 - Follow-up to the two removal commits below (user: "Update those too").
