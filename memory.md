@@ -1,5 +1,45 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T17:34:29Z - Claude Sonnet 5 - README/docs audit — brought living docs current, fixed real inaccuracies
+
+- User asked whether README.md and other markdown docs were up to date. Scoped
+  to LIVING docs only (READMEs, SPEC.md) — deliberately skipped the large
+  dated/historical archives (esp_bt_audio_source/code_review/*, esp_i2s_source/
+  docs/archive/*, the FIX3-dated docs, PRD.md/FS.md/REDO1_TODO.md) since those
+  are point-in-time records, not meant to track current state (same reasoning
+  as the auth-removal doc-banner pass earlier today).
+- Used 3 parallel Explore agents (root, esp_i2s_source, esp_bt_audio_source)
+  to fact-check each living doc's claims against actual code, then fixed
+  everything myself. Real findings beyond stale prose:
+  - **esp_bt_audio_source/README.md had the audio-source priority ORDER
+    WRONG**: doc said SYNTH ranks above I2S; `get_active_source()` in
+    audio_processor_engine.c actually ranks I2S above SYNTH (SYNTH is
+    fallback-only, "keeps A2DP alive when no I2S"). Real code/doc conflict,
+    not just staleness.
+  - Host test counts were stale on both projects: esp_i2s_source 19->25
+    suites (verified via CMakeLists add_test), esp_bt_audio_source 883->891
+    cases (verified via `run_all_tests.py --no-device --no-standalone`,
+    authoritative aggregator — the +7 came from today's I2S hysteresis tests
+    plus at least 1 more not yet reflected anywhere).
+  - esp_i2s_source's `/api/*` route table was missing 6 of 14 real routes
+    (bt, btvolume, scan, console, apmode, prebuffer) — verified against
+    web_ui.c's actual `.uri =` registrations.
+  - main/README.md's `main.c` line anchor (#L966-L977) was dead — file is
+    533 lines total; also said I2S role "slave" (WROOM32 is actually master,
+    per the 2026-07-11 role flip — a second, independent instance of the same
+    class of error).
+  - tools/README.md had a bad-merge artifact: the flash_and_verify_spiffs.py
+    section was duplicated verbatim back-to-back; test/host_test/README.md
+    had THREE overlapping copies of the same quick-start concatenated.
+  - Nothing anywhere documented UARTAUDIO's `stream_audio_uart.py`, the
+    Bluetooth tab, station export/import, or the payload-phase-hysteresis
+    mechanism — all real, committed, zero doc coverage.
+  - conda run -n python310 -> uv .venv, and unpinned `$HOME/esp/esp-idf` ->
+    `$HOME/esp/v5.5.1/esp-idf`, fixed everywhere per CLAUDE.md's documented
+    convention. AGENTS.md had drifted from CLAUDE.md (missing the
+    memory_archive.md addition) — resynced to identical.
+- Commit b3aeb733 (7 files). NOT pushed — awaiting explicit push instruction.
+
 ## 2026-07-25T17:12:20Z - Claude Fable 5 - I2S static fix CONFIRMED audibly; pushed
 
 - Closes the 17:08 entry's PENDING item. Speaker reconnected after user
