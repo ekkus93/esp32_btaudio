@@ -279,6 +279,7 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info);
 
 /* Legacy int-returning helpers used by command_interface and some host tests. */
 int bt_manager_start_scan(void);
+int bt_manager_pair(const char* mac);
 int bt_manager_connect(const char* mac);
 int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);

@@ -343,22 +343,41 @@ are not:
 - [x] **`mock_generate_i2s_audio`**: confirmed host-test-only scaffolding, not
       production logic — see note above.
 
-### BT-3 — `bt_manager.c` remaining gaps (70.1% → target 85%+)
-- [ ] **`bt_manager_pair`** / **`bt_manager_connect`**: thin wrappers —
-      `return (bt_pair(mac)==ESP_OK) ? 0 : -1` and the `bt_connect` equivalent.
-      Sibling wrapper `bt_manager_start_pair` already has `UNIT_TEST`-gated
-      forced-failure hooks (`bt_manager_forced_pair_failure`); these two don't
-      but could use the identical pattern — success (0) and forced-failure (-1)
-      cases, mirroring the existing hook style exactly.
-- [ ] **`bt_manager_set_name`**: on host build (`#else` branch) it's a no-op
-      returning 0 regardless of `name` — cheap test, currently unexercised.
-- [ ] **`bt_get_device_list_snapshot`** / **`bt_get_paired_devices_snapshot`**:
+### BT-3 — `bt_manager.c` remaining gaps (70.1% → 91.8% ✅ DONE)
+> Achieved 91.8% line / 100% func (was 70.1%/77.3%). 13 new cases added to
+> `test_bt_manager_profiles.c` (already links `bt_manager.c` + friends — no
+> new CMake target needed). Full host suite 74/74 (932 cases, was 919);
+> `idf.py build` clean.
+>
+> **Two genuine pre-existing gaps surfaced while writing these, both fixed:**
+> 1. `bt_manager_pair` had **no declaration in any header** — only ever
+>    defined in `bt_manager.c`, worked purely by lucky implicit-int-return
+>    declaration matching its actual signature. Added it to `bt_manager.h`'s
+>    "Legacy int-returning helpers" list next to `bt_manager_connect` et al.
+> 2. `bt_pair()`/`bt_connect()`/the two snapshot functions all call
+>    `bt_ctx_lock()`, which fails with `ESP_ERR_INVALID_STATE` whenever
+>    `s_bt_ctx_mutex` is NULL — and this test file, by established
+>    convention, never calls `bt_manager_init()` (which is what normally
+>    creates it). Every "should succeed" case initially failed for the wrong
+>    reason (lock failure masquerading as the expected uninitialized-state
+>    failure). Fixed by calling the existing `bt_manager_test_init_mutex()`
+>    test hook (already in `bt_manager.c`, just never used by this file) in
+>    `setUp()`. Not a new hook — this one already existed and simply wasn't
+>    wired in.
+- [x] **`bt_manager_pair`** / **`bt_manager_connect`**: thin wrappers —
+      success (initialized + valid MAC → 0), uninitialized → -1, and for
+      `pair` specifically a malformed-MAC case → -1 (its host branch
+      validates the MAC format; `connect`'s does too via the same
+      `parse_mac_bytes`, plus an already-connected → -1 case that's
+      `bt_connect`-specific).
+- [x] **`bt_manager_set_name`**: on host build (`#else` branch) it's a no-op
+      returning 0 regardless of `name` (including NULL) — confirmed.
+- [x] **`bt_get_device_list_snapshot`** / **`bt_get_paired_devices_snapshot`**:
       NULL `out` → `ESP_ERR_INVALID_ARG`; uninitialized `bt_ctx` →
-      `ESP_ERR_INVALID_STATE` (with the lock correctly released before
-      returning — check for a leaked lock on this path, that's a real bug class);
-      success path copies the right bytes (compare against `bt_get_device_list()`/
-      `bt_get_paired_devices()`'s direct-pointer view to confirm the snapshot
-      matches).
+      `ESP_ERR_INVALID_STATE` **with the lock correctly released** (verified
+      by calling it twice in a row — a leaked lock would hang the second
+      call); success path copies `count`/`mac`/`name`/`rssi` correctly from
+      `bt_ctx.discovered_devices`/`paired_devices` into the caller's buffer.
 
 ## P2 — smaller / lower urgency
 
