@@ -95,12 +95,12 @@ static esp_err_t http_evt(esp_http_client_event_t *e)
     return ESP_OK;
 }
 
-static bool ci_contains(const char *hay, const char *needle)
+bool ci_contains(const char *hay, const char *needle)
 {
     return hay && needle && strcasestr(hay, needle) != NULL;
 }
 
-static radio_codec_t codec_from_ct(const char *ct)
+radio_codec_t codec_from_ct(const char *ct)
 {
     if (ci_contains(ct, "mpeg") || ci_contains(ct, "mp3")) return RADIO_CODEC_MP3;
     if (ci_contains(ct, "aac") || ci_contains(ct, "mp4")) return RADIO_CODEC_AAC;
@@ -208,8 +208,8 @@ esp_err_t radio_resolve_input(const char *input, radio_resolution_t *out)
  * ("scheme://...") and root-relative ("/path") locations are supported —
  * stream-server redirects are overwhelmingly one or the other in practice.
  * Any other relative form is rejected rather than guessed at. */
-static bool resolve_redirect_location(const char *base_url, const char *location,
-                                       char *out, size_t out_sz)
+bool resolve_redirect_location(const char *base_url, const char *location,
+                               char *out, size_t out_sz)
 {
     if (!location || !location[0]) return false;
 
@@ -239,7 +239,7 @@ static bool resolve_redirect_location(const char *base_url, const char *location
 
 /* Literal-IP policy on both host and device; DNS-time policy (device-only —
  * needs lwip's getaddrinfo, wired here per the FIX3 5B deferral note). */
-static bool redirect_target_allowed(const char *url)
+bool redirect_target_allowed(const char *url)
 {
     if (!url_policy_check_literal(url)) return false;
 #ifdef ESP_PLATFORM
@@ -253,7 +253,7 @@ static bool redirect_target_allowed(const char *url)
 
 /* ---- 8.1: bounded, stop-aware reconnect backoff ---- */
 
-static uint32_t reconnect_delay_ms(uint32_t attempt)
+uint32_t reconnect_delay_ms(uint32_t attempt)
 {
     static const uint32_t schedule[] = {500, 1000, 2000, 4000, 8000, 15000};
     size_t idx = attempt < (sizeof(schedule) / sizeof(schedule[0]))
@@ -269,7 +269,7 @@ static uint32_t reconnect_delay_ms(uint32_t attempt)
  * usual. On failure, returns NULL; *out_permanent is true if the caller
  * should fault the session outright (redirect policy/limit violation)
  * rather than reconnect with backoff (transient connect failure). */
-static esp_http_client_handle_t connect_with_redirects(const char *url, bool *out_permanent)
+esp_http_client_handle_t connect_with_redirects(const char *url, bool *out_permanent)
 {
     char current_url[RADIO_URL_MAX];
     strlcpy(current_url, url, sizeof(current_url));

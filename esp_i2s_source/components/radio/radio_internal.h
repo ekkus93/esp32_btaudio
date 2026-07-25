@@ -20,6 +20,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/event_groups.h"
+#include "esp_http_client.h"
 
 /* Timeout for radio_stop() — the workers must exit by this or the session is
  * FAULTED and restart is blocked. */
@@ -153,6 +154,20 @@ typedef struct {
 } radio_resolution_t;
 
 esp_err_t radio_resolve_input(const char *input, radio_resolution_t *out);
+
+/* 8.3: redirect handling internals (radio_stream.c), de-static'd for I2S-1
+ * host tests (docs/UNIT_TESTS2_TODO.md). Not part of the public API. */
+bool resolve_redirect_location(const char *base_url, const char *location,
+                               char *out, size_t out_sz);
+bool redirect_target_allowed(const char *url);
+esp_http_client_handle_t connect_with_redirects(const char *url, bool *out_permanent);
+
+/* 8.1: reconnect backoff schedule (radio_stream.c). */
+uint32_t reconnect_delay_ms(uint32_t attempt);
+
+/* Content-type -> codec classification helpers (radio_stream.c). */
+bool ci_contains(const char *hay, const char *needle);
+radio_codec_t codec_from_ct(const char *ct);
 
 /* radio_prebuffer.c: load the persisted prebuffer threshold into
  * g_radio_prebuffer_bytes (default-first; NOT_FOUND -> ESP_OK with default).

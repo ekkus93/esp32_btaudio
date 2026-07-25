@@ -316,6 +316,34 @@ target_compile_definitions(test_url_policy_local_streams_allowed PRIVATE
 target_link_libraries(test_url_policy_local_streams_allowed unity)
 add_test(NAME test_url_policy_local_streams_allowed COMMAND test_url_policy_local_streams_allowed)
 
+# I2S-1 (docs/UNIT_TESTS2_TODO.md): radio_stream.c's redirect/SSRF-policy
+# re-check (resolve_redirect_location, redirect_target_allowed,
+# connect_with_redirects), de-static'd via radio_internal.h, plus
+# codec_from_ct/ci_contains/reconnect_delay_ms. Links radio_stream.c +
+# the real radio_parse.c + url_policy.c; stream_task's (never called)
+# references to radio.c-core/radio_ring.c symbols get link-only stubs
+# inside the test file itself rather than pulling in that whole subsystem.
+add_executable(test_radio_stream_redirects test_radio_stream_redirects.c
+    ${RADIO_DIR}/radio_stream.c
+    ${RADIO_DIR}/radio_parse.c
+    ${RADIO_DIR}/url_policy.c
+    mocks/fake_http_client.c
+    mocks/fake_semphr.c
+    mocks/freertos_event_group.c
+    mocks/fake_task.c
+    mocks/compat_strlcpy.c)
+target_include_directories(test_radio_stream_redirects PRIVATE
+    ${RADIO_DIR}
+    ${RADIO_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
+target_compile_definitions(test_radio_stream_redirects PRIVATE UNIT_TEST)
+target_compile_options(test_radio_stream_redirects PRIVATE
+    -include ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include/compat_string.h)
+target_link_libraries(test_radio_stream_redirects unity m)
+add_test(NAME test_radio_stream_redirects COMMAND test_radio_stream_redirects)
+
 # FIX3 Phase 3: i2s_out.c lifecycle — join-safety, truthful state
 # publication, channel-enabled tracking. Local mocks for the I2S driver,
 # xTaskCreate, and the event group (queue-based wait results) — see

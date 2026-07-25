@@ -118,10 +118,16 @@ controllable behavior. Write `mocks/fake_http_client.c`:
 - `esp_http_client_get_status_code` returns the current hop's status.
 - `esp_http_client_close`/`cleanup` just advance to the next queued hop / free.
 
-- [ ] Write `mocks/fake_http_client.c` + header per the shape above; add a
+- [x] Write `mocks/fake_http_client.c` + header per the shape above; add a
       `test_radio_stream_redirects` target linking `radio_stream.c`,
       `url_policy.c`, `radio_parse.c`, the fake HTTP client, and the existing
-      FreeRTOS mocks (event_group/semphr/queue/esp_err).
+      FreeRTOS mocks (event_group/semphr/queue/esp_err). — **DONE**: also
+      needed `mocks/fake_task.c` + `mocks/compat_strlcpy.c`, and link-only
+      stub globals/functions (`g_radio_*`, `ring_write`, `radio_session_fault`,
+      `radio_try_publish_running`, `radio_codec_str`) directly in the test
+      file for `stream_task`'s (never-called) references — see the test
+      file's header comment. Infra smoke test passing (1/1); full host suite
+      26/26; `idf.py build` clean.
 - [ ] **`resolve_redirect_location`** (pure, no mocking needed beyond strings):
   - [ ] Absolute location (`"http://host/path"`, contains `"://"`) → copied verbatim.
   - [ ] Root-relative location (`"/path"`) → host/scheme spliced from `base_url`,
