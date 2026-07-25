@@ -23,6 +23,7 @@
 #include "radio_internal.h"
 #include "fake_http_client.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /* ---- link-only stubs: satisfy stream_task's/on_audio's/on_title's/
@@ -176,6 +177,164 @@ void test_redirect_target_allowed_hostname_allowed_on_host(void)
     TEST_ASSERT_TRUE(redirect_target_allowed("http://stream.example.com/x"));
 }
 
+/* ---- connect_with_redirects: the full hop-following loop. ---- */
+
+void test_connect_single_hop_200_terminal(void)
+{
+    fake_http_client_queue_hop(200, NULL, 0);
+
+    bool permanent = true; /* pre-set to a wrong value to confirm it's reset */
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NOT_NULL(h);
+    TEST_ASSERT_FALSE(permanent);
+    TEST_ASSERT_EQUAL_INT(200, esp_http_client_get_status_code(h));
+    TEST_ASSERT_EQUAL_INT(1, fake_http_client_hops_consumed());
+}
+
+void test_connect_one_valid_redirect_follows_to_hop2(void)
+{
+    fake_http_header_t hop0_headers[] = { { "Location", "http://good.example/next" } };
+    fake_http_client_queue_hop(302, hop0_headers, 1);
+    fake_http_client_queue_hop(200, NULL, 0);
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NOT_NULL(h);
+    TEST_ASSERT_FALSE(permanent);
+    TEST_ASSERT_EQUAL_INT(200, esp_http_client_get_status_code(h));
+    TEST_ASSERT_EQUAL_INT(2, fake_http_client_hops_consumed());
+}
+
+void test_connect_exactly_max_redirects_succeeds_on_terminal(void)
+{
+    /* MAX_REDIRECTS == 5: 5 redirects (hops 0-4, each 3xx) followed by a
+     * terminal response on the 6th connection (hop index 5). */
+    for (int i = 0; i < 5; i++) {
+        char loc[64];
+        snprintf(loc, sizeof(loc), "http://good.example/hop%d", i + 1);
+        fake_http_header_t headers[] = { { "Location", loc } };
+        fake_http_client_queue_hop(302, headers, 1);
+    }
+    fake_http_client_queue_hop(200, NULL, 0);
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NOT_NULL(h);
+    TEST_ASSERT_FALSE(permanent);
+    TEST_ASSERT_EQUAL_INT(200, esp_http_client_get_status_code(h));
+    TEST_ASSERT_EQUAL_INT(6, fake_http_client_hops_consumed());
+}
+
+void test_connect_max_redirects_plus_one_fails_permanent(void)
+{
+    /* 6 consecutive 3xx responses (hops 0-5): the 6th is still 3xx while
+     * hop==MAX_REDIRECTS(5) -> redirect_limit, permanent fault. */
+    for (int i = 0; i < 6; i++) {
+        char loc[64];
+        snprintf(loc, sizeof(loc), "http://good.example/hop%d", i + 1);
+        fake_http_header_t headers[] = { { "Location", loc } };
+        fake_http_client_queue_hop(302, headers, 1);
+    }
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_TRUE(permanent);
+    TEST_ASSERT_EQUAL_INT(RADIO_ERR_HTTP_STATUS, g_radio_last_error);
+    TEST_ASSERT_EQUAL_STRING("redirect_limit", g_radio_last_error_detail);
+}
+
+void test_connect_missing_location_header_fails_malformed(void)
+{
+    fake_http_client_queue_hop(302, NULL, 0); /* 3xx, no Location at all */
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_TRUE(permanent);
+    TEST_ASSERT_EQUAL_INT(RADIO_ERR_HTTP_STATUS, g_radio_last_error);
+    TEST_ASSERT_EQUAL_STRING("redirect_malformed", g_radio_last_error_detail);
+}
+
+void test_connect_empty_location_header_fails_malformed(void)
+{
+    fake_http_header_t headers[] = { { "Location", "" } };
+    fake_http_client_queue_hop(302, headers, 1);
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_TRUE(permanent);
+    TEST_ASSERT_EQUAL_STRING("redirect_malformed", g_radio_last_error_detail);
+}
+
+void test_connect_redirect_to_blocked_target_fails_ssrf(void)
+{
+    /* THE assertion that matters most in this file: a redirect to a private
+     * address must be rejected, not followed. */
+    fake_http_header_t headers[] = { { "Location", "http://192.168.1.5/evil" } };
+    fake_http_client_queue_hop(302, headers, 1);
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_TRUE(permanent);
+    TEST_ASSERT_EQUAL_INT(RADIO_ERR_HTTP_STATUS, g_radio_last_error);
+    TEST_ASSERT_EQUAL_STRING("redirect_url_blocked", g_radio_last_error_detail);
+    /* Only the blocked hop's client was ever opened — the SSRF target was
+     * never connected to. */
+    TEST_ASSERT_EQUAL_INT(1, fake_http_client_hops_consumed());
+}
+
+void test_connect_init_alloc_failure(void)
+{
+    fake_http_client_force_init_null();
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_FALSE(permanent); /* transient, not a policy/limit violation */
+    TEST_ASSERT_EQUAL_INT(RADIO_ERR_HTTP_CLIENT_ALLOC, g_radio_last_error);
+}
+
+void test_connect_open_failure_is_transient(void)
+{
+    fake_http_client_queue_hop(200, NULL, 0); /* never reached */
+    fake_http_client_force_open_err(ESP_FAIL);
+
+    bool permanent = false;
+    esp_http_client_handle_t h = connect_with_redirects("http://good.example/a", &permanent);
+
+    TEST_ASSERT_NULL(h);
+    TEST_ASSERT_FALSE(permanent);
+}
+
+void test_connect_4xx_5xx_returned_as_terminal(void)
+{
+    fake_http_client_queue_hop(404, NULL, 0);
+    bool permanent404 = false;
+    esp_http_client_handle_t h404 = connect_with_redirects("http://good.example/a", &permanent404);
+    TEST_ASSERT_NOT_NULL(h404);
+    TEST_ASSERT_FALSE(permanent404);
+    TEST_ASSERT_EQUAL_INT(404, esp_http_client_get_status_code(h404));
+
+    fake_http_client_reset();
+    fake_http_client_queue_hop(500, NULL, 0);
+    bool permanent500 = false;
+    esp_http_client_handle_t h500 = connect_with_redirects("http://good.example/a", &permanent500);
+    TEST_ASSERT_NOT_NULL(h500);
+    TEST_ASSERT_FALSE(permanent500);
+    TEST_ASSERT_EQUAL_INT(500, esp_http_client_get_status_code(h500));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -195,5 +354,16 @@ int main(void)
     RUN_TEST(test_redirect_target_allowed_blocks_private);
     RUN_TEST(test_redirect_target_allowed_blocks_link_local);
     RUN_TEST(test_redirect_target_allowed_hostname_allowed_on_host);
+
+    RUN_TEST(test_connect_single_hop_200_terminal);
+    RUN_TEST(test_connect_one_valid_redirect_follows_to_hop2);
+    RUN_TEST(test_connect_exactly_max_redirects_succeeds_on_terminal);
+    RUN_TEST(test_connect_max_redirects_plus_one_fails_permanent);
+    RUN_TEST(test_connect_missing_location_header_fails_malformed);
+    RUN_TEST(test_connect_empty_location_header_fails_malformed);
+    RUN_TEST(test_connect_redirect_to_blocked_target_fails_ssrf);
+    RUN_TEST(test_connect_init_alloc_failure);
+    RUN_TEST(test_connect_open_failure_is_transient);
+    RUN_TEST(test_connect_4xx_5xx_returned_as_terminal);
     return UNITY_END();
 }

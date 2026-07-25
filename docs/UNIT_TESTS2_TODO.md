@@ -150,26 +150,29 @@ controllable behavior. Write `mocks/fake_http_client.c`:
         through correctly, not the policy itself).
   - [x] Hostname (non-literal) → allowed on host build (DNS check is device-only).
   5 new cases pass; full esp_i2s_source host suite 26/26.
-- [ ] **`connect_with_redirects`** (needs the fake HTTP client):
-  - [ ] Single hop, 200 status → returns an open client positioned at that
+- [x] **`connect_with_redirects`** (needs the fake HTTP client) — **DONE**:
+  - [x] Single hop, 200 status → returns an open client positioned at that
         response, `*out_permanent` stays `false`.
-  - [ ] One valid redirect (3xx + allowed Location) → follows to hop 2, returns
+  - [x] One valid redirect (3xx + allowed Location) → follows to hop 2, returns
         the terminal response.
-  - [ ] Redirect chain of exactly `MAX_REDIRECTS` (5) hops → succeeds on the
+  - [x] Redirect chain of exactly `MAX_REDIRECTS` (5) hops → succeeds on the
         final terminal response.
-  - [ ] Redirect chain of `MAX_REDIRECTS + 1` → fails, `*out_permanent = true`,
+  - [x] Redirect chain of `MAX_REDIRECTS + 1` → fails, `*out_permanent = true`,
         `set_radio_error(..., "redirect_limit")`.
-  - [ ] 3xx with missing/empty `Location` header → `resolve_redirect_location`
+  - [x] 3xx with missing/empty `Location` header → `resolve_redirect_location`
         fails → `*out_permanent = true`, error `"redirect_malformed"`.
-  - [ ] 3xx redirecting to a blocked target (private IP) → `*out_permanent = true`,
+  - [x] 3xx redirecting to a blocked target (private IP) → `*out_permanent = true`,
         error `"redirect_url_blocked"` — **this is the actual SSRF-prevention
-        assertion; it's the one test in this file that matters most.**
-  - [ ] `esp_http_client_init` returns NULL (alloc failure) → returns NULL,
+        assertion; it's the one test in this file that matters most. CONFIRMED
+        PASSING: the code correctly rejects a redirect to 192.168.1.5 and
+        never opens a connection to it (hops_consumed stays at 1).**
+  - [x] `esp_http_client_init` returns NULL (alloc failure) → returns NULL,
         `RADIO_ERR_HTTP_CLIENT_ALLOC`.
-  - [ ] `esp_http_client_open` fails (non-ESP_OK) → cleans up, returns NULL,
+  - [x] `esp_http_client_open` fails (non-ESP_OK) → cleans up, returns NULL,
         `*out_permanent` stays `false` (transient — caller should retry with backoff).
-  - [ ] 4xx/5xx terminal response → returned as-is (not treated as a redirect;
+  - [x] 4xx/5xx terminal response → returned as-is (not treated as a redirect;
         caller classifies it).
+  10 new cases pass (incl. the SSRF-prevention assertion); full host suite 26/26.
 - [ ] **`codec_from_ct`** and **`ci_contains`**: pure string-matching helpers,
       test directly — known content-type strings (`audio/mpeg`, `audio/aac`,
       `application/ogg`, etc.) map to the right codec enum; unknown → default/error;
