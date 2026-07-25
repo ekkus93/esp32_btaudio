@@ -30,6 +30,13 @@ MAYBE_WEAK void bt_manager_test_record_scan_start(void) {
 }
 #endif
 
+/* Inquiry duration passed to esp_bt_gap_start_discovery(), in units of 1.28s.
+ * MUST be within [ESP_BT_GAP_MIN_INQ_LEN (0x01), ESP_BT_GAP_MAX_INQ_LEN (0x30)]
+ * or the call returns ESP_ERR_INVALID_ARG (a 0 here silently broke SCAN on
+ * real hardware — host mocks ignored the arg, so tests never caught it).
+ * 10 -> ~12.8s, matching ESP-IDF's a2dp_source example. */
+#define BT_SCAN_INQ_LEN 10
+
 /* Public API implementation */
 
 bt_err_t bt_start_scan(void)
@@ -58,7 +65,7 @@ bt_err_t bt_start_scan(void)
 
 #ifdef ESP_PLATFORM
     err = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY,
-                                     0, 0);
+                                     BT_SCAN_INQ_LEN, 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Start device discovery failed: %s", esp_err_to_name(err));  // NOLINT(bugprone-branch-clone)
         if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) {
@@ -85,7 +92,7 @@ bt_err_t bt_start_scan(void)
     /* In host tests, call esp_bt_gap_start_discovery() so the mock can
      * control success/failure. Check the result and roll back if it fails. */
     esp_err_t gap_err = esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY,
-                                                   0, 0);
+                                                   BT_SCAN_INQ_LEN, 0);
     if (gap_err != ESP_OK) {
         if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) {
             return ESP_FAIL;

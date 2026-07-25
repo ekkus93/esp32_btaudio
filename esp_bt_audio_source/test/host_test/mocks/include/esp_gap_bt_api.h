@@ -20,6 +20,12 @@ typedef enum {
     ESP_BT_INQ_MODE_LIMITED_INQUIRY,
 } esp_bt_inq_mode_t;
 
+/* Inquiry duration bounds — mirror ESP-IDF's esp_gap_bt_api.h so the mock
+ * can enforce the same range check the real esp_bt_gap_start_discovery()
+ * does (out-of-range inq_len -> ESP_ERR_INVALID_ARG). */
+#define ESP_BT_GAP_MIN_INQ_LEN (0x01)
+#define ESP_BT_GAP_MAX_INQ_LEN (0x30)
+
 /* Device property type enum */
 typedef enum {
     ESP_BT_GAP_DEV_PROP_BDNAME = 0,

@@ -155,6 +155,33 @@ void test_bt_start_scan_success_should_clear_devices_and_set_scanning(void)
 }
 
 /**
+ * Regression: bt_start_scan() must pass an inq_len within ESP-IDF's valid
+ * [MIN,MAX] range. A 0 here returns ESP_ERR_INVALID_ARG on real hardware and
+ * silently broke SCAN; the mock now mirrors that range check, so this both
+ * asserts the captured value and would fail (via the mock returning
+ * INVALID_ARG) if the call site regressed to an out-of-range duration.
+ */
+void test_bt_start_scan_uses_valid_inq_len(void)
+{
+    // Arrange
+    bt_ctx.initialized = true;
+    bt_ctx.scanning = false;
+    mock_gap_set_start_discovery_result(ESP_OK);
+
+    // Act
+    bt_err_t result = bt_start_scan();
+
+    // Assert: scan actually started (mock did not reject the arguments)
+    TEST_ASSERT_EQUAL(ESP_OK, result);
+    TEST_ASSERT_TRUE(bt_ctx.scanning);
+
+    // Assert: inq_len passed is within the ESP-IDF-valid range
+    uint8_t inq = mock_gap_get_last_inq_len();
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT8(ESP_BT_GAP_MIN_INQ_LEN, inq);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT8(ESP_BT_GAP_MAX_INQ_LEN, inq);
+}
+
+/**
  * TDD Test 5: bt_stop_scan() should return ESP_FAIL when not initialized
  * 
  * Behavior: If bt_ctx.initialized is false, bt_stop_scan() must return ESP_FAIL
@@ -417,6 +444,7 @@ int main(void)
     RUN_TEST(test_bt_start_scan_already_scanning_should_return_ok);
     RUN_TEST(test_bt_start_scan_gap_failure_should_propagate_error);
     RUN_TEST(test_bt_start_scan_success_should_clear_devices_and_set_scanning);
+    RUN_TEST(test_bt_start_scan_uses_valid_inq_len);
     
     // bt_stop_scan() tests
     RUN_TEST(test_bt_stop_scan_not_initialized_should_fail);

@@ -18,6 +18,7 @@ static esp_err_t s_start_discovery_result = ESP_OK;
 static esp_err_t s_cancel_discovery_result = ESP_OK;
 static bool s_start_discovery_called = false;
 static bool s_cancel_discovery_called = false;
+static uint8_t s_last_inq_len = 0;      // last inq_len passed to start_discovery
 
 // Bond management mock state
 static esp_err_t s_remove_bond_result = ESP_OK;
@@ -35,6 +36,7 @@ void mock_gap_reset(void) {
     s_cancel_discovery_result = ESP_OK;
     s_start_discovery_called = false;
     s_cancel_discovery_called = false;
+    s_last_inq_len = 0;
     s_remove_bond_result = ESP_OK;
     s_bond_device_count = 0;
     s_remove_bond_fail_at_index = -1;
@@ -82,11 +84,24 @@ int esp_bt_gap_ssp_confirm_reply(uint8_t *bd_addr, bool accept) {
 // Discovery mock implementation and control functions
 
 esp_err_t esp_bt_gap_start_discovery(esp_bt_inq_mode_t mode, uint8_t inq_len, uint8_t num_rsps) {
-    (void)mode;
-    (void)inq_len;
     (void)num_rsps;
     s_start_discovery_called = true;
+    s_last_inq_len = inq_len;
+    /* Mirror the real ESP-IDF argument validation so callers passing an
+     * out-of-range inq_len (e.g. the 0 that silently broke SCAN on hardware)
+     * are caught by host tests instead of only on the device. */
+    if (mode != ESP_BT_INQ_MODE_GENERAL_INQUIRY &&
+            mode != ESP_BT_INQ_MODE_LIMITED_INQUIRY) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (inq_len < ESP_BT_GAP_MIN_INQ_LEN || inq_len > ESP_BT_GAP_MAX_INQ_LEN) {
+        return ESP_ERR_INVALID_ARG;
+    }
     return s_start_discovery_result;
+}
+
+uint8_t mock_gap_get_last_inq_len(void) {
+    return s_last_inq_len;
 }
 
 esp_err_t esp_bt_gap_cancel_discovery(void) {
