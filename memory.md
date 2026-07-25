@@ -1,5 +1,16 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T17:12:20Z - Claude Fable 5 - I2S static fix CONFIRMED audibly; pushed
+
+- Closes the 17:08 entry's PENDING item. Speaker reconnected after user
+  power-cycled it — manual CONNECT attempts still went nowhere (INITIATED,
+  then silence in the BT log), but a WROOM32 RESET's boot-time auto-reconnect
+  grabbed it immediately. Pattern to remember: when SICKLUGGAGE refuses a
+  manual connect, reboot the WROOM32 instead of retrying CONNECT.
+- User confirms Groove Salad plays CLEAN through the BT speaker — no static.
+  Phase-lock hysteresis fix verified end-to-end (0 re-locks on serial + ears).
+- Pushed 26604b70 + 593d2301 + 71de33b8 to origin/master.
+
 ## 2026-07-25T17:08:06Z - Claude Fable 5 - I2S static ROOT-CAUSED + FIXED (phase-lock hysteresis); UARTAUDIO streamer recovered
 
 - Continuation of the "BT silent" saga (see 13:35 entry). Major corrections to
