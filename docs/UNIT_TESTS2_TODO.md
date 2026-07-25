@@ -229,26 +229,46 @@ controllable behavior. Write `mocks/fake_http_client.c`:
 
 ## P1 — meaningful surface, some genuinely harder to fully close
 
-### I2S-3 — `ctrl.c` boot orchestrator helpers (21.6% → target 55%+)
+### I2S-3 — `ctrl.c` boot orchestrator helpers (21.6% → 46.9% ✅ DONE, short of 55% stretch goal)
+> Achieved 46.9% line / 75% func (was 21.6%/43.8%). 19 new cases added to
+> `test_ctrl_init.c` (already linked `ctrl.c`+`ctrl_sm.c`+`ctrl_cfg.c` — no
+> new CMake target needed, just made the existing device-stub mock
+> (`mocks/stubs/ctrl_device_stubs.c`) controllable via `mock_*` setters,
+> defaults unchanged so the file's original 12 tests are unaffected). De-static'd
+> `wifi_connected`, `status_running`, `resume_result_str`+`ctrl_resume_result_t`,
+> `scan_result_str`+`ctrl_scan_result_t`, `do_action`, and `s_sm` into a new
+> `ctrl_internal.h` (same convention as `radio_internal.h`). Full host suite
+> 27/27; `idf.py build` clean. Short of the 55% stretch goal because `ctrl.c`
+> is dominated by `orchestrator_task`/`scan_task`/`scan_wait_for_state`/
+> `scan_wait_for_radio_start` — confirmed genuine FreeRTOS polling loops
+> (`vTaskDelay` + no injectable clock), correctly out of scope, not a shortfall
+> in the work done on the testable surface (which hit 75% function coverage).
 The `_task` functions (`orchestrator_task`, `scan_task`) are FreeRTOS loops —
 out of scope for host unit tests (see below). The **pure helpers** around them
 are not:
-- [ ] **`wifi_connected`**: state-check helper — true/false against the relevant
+- [x] **`wifi_connected`**: state-check helper — true/false against the relevant
       wifi_mgr state values it inspects.
-- [ ] **`status_running`**: same shape — verify it reflects orchestrator state
-      correctly across the states it distinguishes.
-- [ ] **`scan_result_str`** / **`resume_result_str`**: string-formatting helpers —
-      one test per enum/result value they handle, confirming exact output text
-      (these are almost certainly used in `DIAG|`/`EVENT|` lines something
-      parses — a wrong string silently breaks a downstream consumer).
-- [ ] **`do_action`**: this dispatches orchestrator actions — identify its actual
-      signature/call sites first (it wasn't read in the audit pass), then test
-      each action branch it switches on, including an unknown/invalid action.
-- [ ] Note in the PR: `scan_wait_for_radio_start` / `scan_wait_for_state` — check
-      whether these are pure polling-predicate functions (testable) or embed
-      `vTaskDelay`/blocking waits (then they're borderline — a fake-clock or
-      injectable wait primitive would be needed; if that's not already
-      available, defer and note why).
+- [x] **`status_running`**: same shape — verify it reflects orchestrator state
+      correctly across the states it distinguishes, including NOT
+      false-positiving on `UNDERRUN_RATE=`/`UNDERRUNS=` substrings containing
+      `RUN=1`.
+- [x] **`scan_result_str`** / **`resume_result_str`**: string-formatting helpers —
+      one test per enum/result value they handle, confirming exact output text.
+- [x] **`do_action`**: identified the actual signature (`ctrl_action_t
+      do_action(ctrl_action_t act, const ctrl_cfg_t *cfg)`, using file-static
+      `s_sm` — de-static'd that too). Tested every action branch: SEND_STATUS
+      (connected → SEND_START/STARTING, disconnected → SEND_CONNECT/CONNECTING,
+      and confirmed a bt_link TIMEOUT is treated as disconnected even with
+      stale `RUN=1` data in the buffer), SEND_CONNECT (correct MAC in the
+      command string), SEND_START, RESUME_RADIO's full branch matrix
+      (volume-failed skips station lookup entirely, no-station-configured,
+      station-not-found, play-enqueue-failed, full success — distinguished via
+      observable side effects: whether/how `radio_play_async` was invoked,
+      confirmed against the printed `DIAG|CTRL|RESUME_FAILED|reason=...` lines
+      matching exactly), and the unknown/default action → `CTRL_ACT_WAIT`.
+- [x] `scan_wait_for_radio_start` / `scan_wait_for_state`: confirmed these embed
+      real `vTaskDelay` polling loops with no injectable clock — deferred,
+      out of scope, per the note above.
 
 ### BT-1 — `audio_processor_config.c` runtime-reconfig API (16.7% → 88.3% ✅ DONE)
 > Achieved 88.3% line / 100% func (was 16.7%/30%). 28 new cases added directly

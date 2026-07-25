@@ -7,7 +7,10 @@
 #include "esp_err.h"
 #include "ctrl.h"
 #include "ctrl_cfg.h"
+#include "ctrl_sm.h"
+#include "ctrl_internal.h"
 #include "freertos/FreeRTOS.h"
+#include "bt_link.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -21,11 +24,27 @@ extern void mock_ctrl_cfg_set_legacy(bool needs_resolve, int16_t legacy_index);
 extern void mock_ctrl_cfg_reset(void);
 extern void mock_stations_set_resolve_legacy_result(esp_err_t err, uint32_t station_id);
 
+/* I2S-3 (docs/UNIT_TESTS2_TODO.md) additions */
+extern void mock_wifi_set_state(const char *state);
+extern void mock_bt_link_set_response(bt_link_cmd_state_t st, const char *data);
+extern const char *mock_bt_link_get_last_cmd(void);
+extern unsigned mock_bt_link_get_send_calls(void);
+extern void mock_bt_link_reset(void);
+extern void mock_radio_set_play_async_result(esp_err_t err);
+extern const char *mock_radio_get_play_async_last_url(void);
+extern void mock_radio_reset(void);
+extern void mock_stations_set_list_entry(int idx, uint32_t id, const char *url);
+extern void mock_stations_set_count(int count);
+
 static void reset_ctrl_state(void)
 {
     mock_task_reset();
     mock_sem_reset();
     mock_ctrl_cfg_set_save_err(ESP_OK);
+    mock_wifi_set_state("IDLE");
+    mock_bt_link_reset();
+    mock_radio_reset();
+    mock_stations_set_count(0);
 }
 
 void setUp(void)
@@ -204,6 +223,241 @@ static void test_ctrl_start_rejects_duplicate_task(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, err);
 }
 
+/* ================= I2S-3 (docs/UNIT_TESTS2_TODO.md): ctrl.c helpers ================= */
+
+/* ---- wifi_connected ---- */
+
+static void test_wifi_connected_true_when_state_connected(void)
+{
+    mock_wifi_set_state("CONNECTED");
+    TEST_ASSERT_TRUE(wifi_connected());
+}
+
+static void test_wifi_connected_false_for_other_states(void)
+{
+    mock_wifi_set_state("IDLE");
+    TEST_ASSERT_FALSE(wifi_connected());
+    mock_wifi_set_state("CONNECTING");
+    TEST_ASSERT_FALSE(wifi_connected());
+    mock_wifi_set_state("");
+    TEST_ASSERT_FALSE(wifi_connected());
+}
+
+/* ---- status_running ---- */
+
+static void test_status_running_true_for_standalone_run_1(void)
+{
+    TEST_ASSERT_TRUE(status_running("MUTE=0,SAMPLE_RATE=44100,RUN=1,VOL=51"));
+    TEST_ASSERT_TRUE(status_running("RUN=1"));
+    TEST_ASSERT_TRUE(status_running("RUN=1,UNDERRUNS=0"));
+}
+
+static void test_status_running_false_for_run_0(void)
+{
+    TEST_ASSERT_FALSE(status_running("MUTE=0,RUN=0,VOL=51"));
+}
+
+static void test_status_running_ignores_underrun_prefixed_tokens(void)
+{
+    /* Must not false-positive on "UNDERRUN_RATE=1..." or "UNDERRUNS=1..."
+     * containing the substring "RUN=1" without a preceding ',' or start. */
+    TEST_ASSERT_FALSE(status_running("UNDERRUN_RATE=1.00,UNDERRUNS=10"));
+    TEST_ASSERT_FALSE(status_running("UNDERRUNS=1"));
+}
+
+static void test_status_running_false_when_absent(void)
+{
+    TEST_ASSERT_FALSE(status_running("MUTE=0,VOL=51"));
+    TEST_ASSERT_FALSE(status_running(""));
+}
+
+/* ---- resume_result_str / scan_result_str ---- */
+
+static void test_resume_result_str_maps_all_values(void)
+{
+    TEST_ASSERT_EQUAL_STRING("OK", resume_result_str(CTRL_RESUME_OK));
+    TEST_ASSERT_EQUAL_STRING("VOLUME_FAILED", resume_result_str(CTRL_RESUME_VOLUME_FAILED));
+    TEST_ASSERT_EQUAL_STRING("NO_STATION", resume_result_str(CTRL_RESUME_NO_STATION));
+    TEST_ASSERT_EQUAL_STRING("STATION_NOT_FOUND", resume_result_str(CTRL_RESUME_STATION_NOT_FOUND));
+    TEST_ASSERT_EQUAL_STRING("PLAY_ENQUEUE_FAILED", resume_result_str(CTRL_RESUME_PLAY_ENQUEUE_FAILED));
+    TEST_ASSERT_EQUAL_STRING("?", resume_result_str((ctrl_resume_result_t)999));
+}
+
+static void test_scan_result_str_maps_all_values(void)
+{
+    TEST_ASSERT_EQUAL_STRING("OK", scan_result_str(CTRL_SCAN_OK));
+    TEST_ASSERT_EQUAL_STRING("RADIO_STOP_FAILED", scan_result_str(CTRL_SCAN_RADIO_STOP_FAILED));
+    TEST_ASSERT_EQUAL_STRING("DISCONNECT_FAILED", scan_result_str(CTRL_SCAN_DISCONNECT_FAILED));
+    TEST_ASSERT_EQUAL_STRING("COMMAND_FAILED", scan_result_str(CTRL_SCAN_COMMAND_FAILED));
+    TEST_ASSERT_EQUAL_STRING("RECONNECT_FAILED", scan_result_str(CTRL_SCAN_RECONNECT_FAILED));
+    TEST_ASSERT_EQUAL_STRING("VOLUME_FAILED", scan_result_str(CTRL_SCAN_VOLUME_FAILED));
+    TEST_ASSERT_EQUAL_STRING("RADIO_RESUME_FAILED", scan_result_str(CTRL_SCAN_RADIO_RESUME_FAILED));
+    TEST_ASSERT_EQUAL_STRING("?", scan_result_str((ctrl_scan_result_t)999));
+}
+
+/* ---- do_action ---- */
+
+static void query_state_via_wifi_up(void)
+{
+    ctrl_sm_init(&s_sm, true, false);
+    ctrl_input_t in = {0};
+    in.ev = CTRL_EV_WIFI_UP;
+    ctrl_action_t act = ctrl_sm_step(&s_sm, &in);
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_STATUS, act);
+    TEST_ASSERT_EQUAL(CTRL_ST_QUERY, s_sm.state);
+}
+
+static void test_do_action_send_status_connected_advances_to_starting(void)
+{
+    query_state_via_wifi_up();
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "RUN=1,VOL=51");
+
+    ctrl_cfg_t cfg = {0};
+    ctrl_action_t next = do_action(CTRL_ACT_SEND_STATUS, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("STATUS", mock_bt_link_get_last_cmd());
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_START, next);
+    TEST_ASSERT_EQUAL(CTRL_ST_STARTING, s_sm.state);
+}
+
+static void test_do_action_send_status_disconnected_advances_to_connecting(void)
+{
+    query_state_via_wifi_up();
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "RUN=0");
+
+    ctrl_cfg_t cfg = {0};
+    ctrl_action_t next = do_action(CTRL_ACT_SEND_STATUS, &cfg);
+
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_CONNECT, next);
+    TEST_ASSERT_EQUAL(CTRL_ST_CONNECTING, s_sm.state);
+}
+
+static void test_do_action_send_status_timeout_treated_as_disconnected(void)
+{
+    query_state_via_wifi_up();
+    /* Timeout (not DONE_OK) must not be treated as connected even if the
+     * (stale/garbage) data buffer happened to contain RUN=1. */
+    mock_bt_link_set_response(BT_LINK_CMD_TIMEOUT, "RUN=1");
+
+    ctrl_cfg_t cfg = {0};
+    ctrl_action_t next = do_action(CTRL_ACT_SEND_STATUS, &cfg);
+
+    TEST_ASSERT_EQUAL(CTRL_ACT_SEND_CONNECT, next);
+    TEST_ASSERT_EQUAL(CTRL_ST_CONNECTING, s_sm.state);
+}
+
+static void test_do_action_send_connect_sends_mac(void)
+{
+    ctrl_sm_init(&s_sm, true, false);
+    ctrl_input_t in = {0};
+    in.ev = CTRL_EV_WIFI_UP;
+    ctrl_sm_step(&s_sm, &in); /* -> QUERY */
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "RUN=0");
+    ctrl_cfg_t cfg = {0};
+    strlcpy(cfg.sink_mac, "AA:BB:CC:DD:EE:FF", sizeof(cfg.sink_mac));
+    do_action(CTRL_ACT_SEND_STATUS, &cfg); /* -> CONNECTING */
+
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+    do_action(CTRL_ACT_SEND_CONNECT, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("CONNECT AA:BB:CC:DD:EE:FF", mock_bt_link_get_last_cmd());
+}
+
+static void test_do_action_send_start_sends_start_command(void)
+{
+    query_state_via_wifi_up();
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "RUN=1");
+    ctrl_cfg_t cfg = {0};
+    do_action(CTRL_ACT_SEND_STATUS, &cfg); /* -> STARTING */
+
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+    do_action(CTRL_ACT_SEND_START, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("START", mock_bt_link_get_last_cmd());
+}
+
+static void test_do_action_resume_radio_volume_failed_skips_station_lookup(void)
+{
+    ctrl_sm_init(&s_sm, true, true);
+    mock_bt_link_set_response(BT_LINK_CMD_TIMEOUT, ""); /* VOLUME command fails */
+    mock_stations_set_list_entry(0, 42, "http://good.example/stream");
+
+    ctrl_cfg_t cfg = {0};
+    cfg.volume = 50;
+    cfg.last_station_id = 42;
+    do_action(CTRL_ACT_RESUME_RADIO, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("VOLUME 50", mock_bt_link_get_last_cmd());
+    TEST_ASSERT_EQUAL_STRING("", mock_radio_get_play_async_last_url()); /* never reached */
+}
+
+static void test_do_action_resume_radio_no_station_configured(void)
+{
+    ctrl_sm_init(&s_sm, true, false);
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+
+    ctrl_cfg_t cfg = {0};
+    cfg.volume = 50;
+    cfg.last_station_id = CTRL_LAST_STATION_NONE;
+    do_action(CTRL_ACT_RESUME_RADIO, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("", mock_radio_get_play_async_last_url());
+}
+
+static void test_do_action_resume_radio_station_not_found(void)
+{
+    ctrl_sm_init(&s_sm, true, true);
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+    mock_stations_set_list_entry(0, 7, "http://good.example/a");
+
+    ctrl_cfg_t cfg = {0};
+    cfg.volume = 50;
+    cfg.last_station_id = 999; /* not in the list */
+    do_action(CTRL_ACT_RESUME_RADIO, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("", mock_radio_get_play_async_last_url());
+}
+
+static void test_do_action_resume_radio_play_enqueue_failed(void)
+{
+    ctrl_sm_init(&s_sm, true, true);
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+    mock_stations_set_list_entry(0, 42, "http://good.example/stream");
+    mock_radio_set_play_async_result(ESP_FAIL);
+
+    ctrl_cfg_t cfg = {0};
+    cfg.volume = 50;
+    cfg.last_station_id = 42;
+    do_action(CTRL_ACT_RESUME_RADIO, &cfg);
+
+    /* play_async WAS attempted (with the right URL), it just failed --
+     * distinct from the no-station/not-found cases above where it's never
+     * called at all. */
+    TEST_ASSERT_EQUAL_STRING("http://good.example/stream", mock_radio_get_play_async_last_url());
+}
+
+static void test_do_action_resume_radio_full_success(void)
+{
+    ctrl_sm_init(&s_sm, true, true);
+    mock_bt_link_set_response(BT_LINK_CMD_DONE_OK, "");
+    mock_stations_set_list_entry(0, 42, "http://good.example/stream");
+    mock_radio_set_play_async_result(ESP_OK);
+
+    ctrl_cfg_t cfg = {0};
+    cfg.volume = 50;
+    cfg.last_station_id = 42;
+    do_action(CTRL_ACT_RESUME_RADIO, &cfg);
+
+    TEST_ASSERT_EQUAL_STRING("http://good.example/stream", mock_radio_get_play_async_last_url());
+}
+
+static void test_do_action_unknown_action_returns_wait(void)
+{
+    ctrl_sm_init(&s_sm, true, false);
+    ctrl_cfg_t cfg = {0};
+    TEST_ASSERT_EQUAL(CTRL_ACT_WAIT, do_action(CTRL_ACT_IDLE, &cfg));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -222,5 +476,26 @@ int main(void)
     RUN_TEST(test_ctrl_note_station_after_init);
     RUN_TEST(test_ctrl_set_sink_persistence_failure_leaves_cfg_unchanged);
     RUN_TEST(test_ctrl_start_rejects_duplicate_task);
+
+    /* I2S-3 (docs/UNIT_TESTS2_TODO.md): ctrl.c helpers */
+    RUN_TEST(test_wifi_connected_true_when_state_connected);
+    RUN_TEST(test_wifi_connected_false_for_other_states);
+    RUN_TEST(test_status_running_true_for_standalone_run_1);
+    RUN_TEST(test_status_running_false_for_run_0);
+    RUN_TEST(test_status_running_ignores_underrun_prefixed_tokens);
+    RUN_TEST(test_status_running_false_when_absent);
+    RUN_TEST(test_resume_result_str_maps_all_values);
+    RUN_TEST(test_scan_result_str_maps_all_values);
+    RUN_TEST(test_do_action_send_status_connected_advances_to_starting);
+    RUN_TEST(test_do_action_send_status_disconnected_advances_to_connecting);
+    RUN_TEST(test_do_action_send_status_timeout_treated_as_disconnected);
+    RUN_TEST(test_do_action_send_connect_sends_mac);
+    RUN_TEST(test_do_action_send_start_sends_start_command);
+    RUN_TEST(test_do_action_resume_radio_volume_failed_skips_station_lookup);
+    RUN_TEST(test_do_action_resume_radio_no_station_configured);
+    RUN_TEST(test_do_action_resume_radio_station_not_found);
+    RUN_TEST(test_do_action_resume_radio_play_enqueue_failed);
+    RUN_TEST(test_do_action_resume_radio_full_success);
+    RUN_TEST(test_do_action_unknown_action_returns_wait);
     return UNITY_END();
 }

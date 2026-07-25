@@ -1,6 +1,7 @@
 /* ctrl — boot orchestrator device glue (CTRL-1b). See ctrl.h. */
 #include "ctrl.h"
 #include "ctrl_sm.h"
+#include "ctrl_internal.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -22,7 +23,7 @@ static const char *TAG = "ctrl";
 #define CTRL_LOOP_MS 500
 
 static ctrl_cfg_t        s_cfg;
-static ctrl_sm_t         s_sm;
+ctrl_sm_t                s_sm;
 static TaskHandle_t      s_task;
 static SemaphoreHandle_t s_mtx;
 /* 9.3: dedicated update mutex — held across the full snapshot -> validate ->
@@ -34,7 +35,7 @@ static SemaphoreHandle_t s_update_mtx;
 static TaskHandle_t      s_scan_task;
 static _Atomic bool      s_scan_active;   /* pause the orchestrator during a scan */
 
-static bool wifi_connected(void)
+bool wifi_connected(void)
 {
     wifi_mgr_info_t wi;
     wifi_mgr_get_info(&wi);
@@ -43,7 +44,7 @@ static bool wifi_connected(void)
 
 /* Parse the WROOM32 STATUS data ("...,RUN=1,...") for the streaming flag. Only
  * the standalone RUN= token counts (skips UNDERRUN_RATE=, UNDERRUNS=). */
-static bool status_running(const char *data)
+bool status_running(const char *data)
 {
     const char *p = data;
     while ((p = strstr(p, "RUN=")) != NULL) {
@@ -55,16 +56,9 @@ static bool status_running(const char *data)
 
 /* Truthful resume outcome (FIX3 9.5) — RESUME_DONE is only emitted once every
  * step below actually succeeds; any other outcome is RESUME_FAILED with a
- * distinct, loggable reason. */
-typedef enum {
-    CTRL_RESUME_OK = 0,
-    CTRL_RESUME_VOLUME_FAILED,
-    CTRL_RESUME_NO_STATION,
-    CTRL_RESUME_STATION_NOT_FOUND,
-    CTRL_RESUME_PLAY_ENQUEUE_FAILED,
-} ctrl_resume_result_t;
-
-static const char *resume_result_str(ctrl_resume_result_t r)
+ * distinct, loggable reason. Type declared in ctrl_internal.h (needed there
+ * for I2S-3 host tests). */
+const char *resume_result_str(ctrl_resume_result_t r)
 {
     switch (r) {
     case CTRL_RESUME_OK:                   return "OK";
@@ -81,7 +75,7 @@ static const char *resume_result_str(ctrl_resume_result_t r)
  * this one action chain — 9.1: never read the mutable s_cfg here, so a
  * concurrent ctrl_set_sink()/ctrl_note_station() can't hand this call a
  * torn view partway through an attempt. */
-static ctrl_action_t do_action(ctrl_action_t act, const ctrl_cfg_t *cfg)
+ctrl_action_t do_action(ctrl_action_t act, const ctrl_cfg_t *cfg)
 {
     ctrl_input_t in = {0};
     bt_link_cmd_state_t st = BT_LINK_CMD_TIMEOUT;
@@ -307,18 +301,9 @@ static bool scan_wait_for_radio_start(int64_t deadline_us, const char *_phase)
 }
 
 /* 9.6: explicit scan outcome — stored so a caller/diagnostic can tell exactly
- * which phase failed, rather than inferring it from log lines. */
-typedef enum {
-    CTRL_SCAN_OK = 0,
-    CTRL_SCAN_RADIO_STOP_FAILED,
-    CTRL_SCAN_DISCONNECT_FAILED,
-    CTRL_SCAN_COMMAND_FAILED,
-    CTRL_SCAN_RECONNECT_FAILED,
-    CTRL_SCAN_VOLUME_FAILED,
-    CTRL_SCAN_RADIO_RESUME_FAILED,
-} ctrl_scan_result_t;
-
-static const char *scan_result_str(ctrl_scan_result_t r)
+ * which phase failed, rather than inferring it from log lines. Type declared
+ * in ctrl_internal.h (needed there for I2S-3 host tests). */
+const char *scan_result_str(ctrl_scan_result_t r)
 {
     switch (r) {
     case CTRL_SCAN_OK:                    return "OK";

@@ -252,6 +252,7 @@ add_executable(test_ctrl_init test_ctrl_init.c
     mocks/compat_strlcpy.c)
 target_include_directories(test_ctrl_init PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/stubs  # stubs take precedence
+    ${CTRL_DIR}
     ${CTRL_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include)
