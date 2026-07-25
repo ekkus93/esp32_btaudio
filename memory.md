@@ -1,5 +1,33 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T18:15:34Z - Claude Sonnet 5 - coverage audit -> docs/UNIT_TESTS2_TODO.md
+
+- Follow-up to the "any parts of the code need more coverage" question: measured
+  fresh coverage for BOTH projects (esp_bt_audio_source 79.4%, up from README's
+  stale 78.1%; esp_i2s_source 55.1%, not tracked anywhere before). Went to
+  function-level (lcov .func.html) to separate real gaps from noise — several
+  files are *linked* into a test binary for compile completeness but never
+  actually invoked by any test case, which the file-level % alone can't show.
+- Biggest finding: esp_i2s_source's `radio_stream.c` (15.2%) has ZERO coverage
+  on `redirect_target_allowed`/`resolve_redirect_location`/`connect_with_redirects`
+  — the exact logic that re-validates the SSRF/URL policy on every HTTP
+  redirect hop. Currently no test evidence it actually blocks a malicious
+  redirect to a private/internal address. `radio_ring.c` (0%, the two SPSC byte
+  rings) is linked into test_radio_lifecycle but never called either.
+- User asked to write these up as a detailed TODO. Created
+  docs/UNIT_TESTS2_TODO.md (repo-root docs/, cross-project, follow-on to the
+  existing docs/UNIT_TESTS1_TODO.md Batch 1 which was esp_bt_audio_source-only
+  and already complete). Read the actual untested functions before writing
+  each subtask (not just names off the coverage report) — e.g. confirmed
+  redirect_target_allowed's DNS-check branch is ESP_PLATFORM-gated and compiles
+  out on host, so it's actually fully testable without network mocking; found
+  mocks/stubs/esp_http_client.h has declarations but no mock behavior, so
+  documented the exact fake-HTTP-client shape needed as a prerequisite; found
+  set_channels validates its enum arg but the near-identical set_bit_depth
+  doesn't (flagged as a question, not assumed a bug). Priority order: I2S-1
+  (SSRF-relevant) -> I2S-2 (cheap/clean) -> BT-1 (biggest single-file %) ->
+  I2S-3 -> BT-2 -> BT-3 -> P2 batch. Commit 63d76f93, not pushed.
+
 ## 2026-07-25T17:34:29Z - Claude Sonnet 5 - README/docs audit — brought living docs current, fixed real inaccuracies
 
 - User asked whether README.md and other markdown docs were up to date. Scoped
