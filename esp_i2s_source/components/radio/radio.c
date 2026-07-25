@@ -43,6 +43,17 @@ static const char *TAG = "radio";
 #define NVS_NS_RADIO        "radio"
 #define NVS_KEY_PREBUF      "prebuf_ms"
 
+/* Task stacks. An https:// station runs a TLS handshake (mbedTLS + the ESP-IDF
+ * cert bundle) on whichever task opens the connection, which alone needs
+ * ~5-6 KB of stack on top of the task's own frames. radio_cmd opens the
+ * connection during playlist (.pls/.m3u) resolution and stream opens the
+ * media stream, so BOTH must be sized for TLS. The old 4096 radio_cmd stack
+ * overflowed and panicked the device on the first https:// URL; 6144 for the
+ * stream task was likewise too small for a direct https stream. 9216 gives
+ * comfortable headroom over the observed TLS handshake cost. */
+#define RADIO_CMD_TASK_STACK    9216
+#define RADIO_STREAM_TASK_STACK 9216
+
 static esp_err_t radio_prebuffer_load(void);
 
 /* 7.1: forward declarations for internal sync play/stop.
@@ -401,7 +412,7 @@ esp_err_t radio_init(size_t ring_bytes)
     s_radio_cmd_q = cmd_q;
 
     TaskHandle_t cmd_task = NULL;
-    if (xTaskCreate(radio_cmd_task, "radio_cmd", 4096, NULL,
+    if (xTaskCreate(radio_cmd_task, "radio_cmd", RADIO_CMD_TASK_STACK, NULL,
                      tskIDLE_PRIORITY + 2, &cmd_task) != pdPASS) {
         g_radio_module_events = NULL;
         g_radio_control_mtx = NULL;
@@ -511,7 +522,7 @@ esp_err_t radio_play_sync(const char *playlist_or_url)
 
     /* Create stream task. Nothing has started yet — safe to free directly
      * on failure (7.7). */
-    if (xTaskCreate(stream_task, "radio", 6144, s, tskIDLE_PRIORITY + 4,
+    if (xTaskCreate(stream_task, "radio", RADIO_STREAM_TASK_STACK, s, tskIDLE_PRIORITY + 4,
                      &s->stream_task) != pdPASS) {
         vEventGroupDelete(s->events);
         free(s);

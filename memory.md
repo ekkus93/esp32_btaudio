@@ -1,5 +1,30 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T05:58:25Z - Claude Opus 4.8 - esp_i2s_source: AAC decoder verified working; fixed https:// station crash (radio task stack overflow)
+
+- AAC decoder WORKS (user asked): verified live on-device with SomaFM AAC
+  (codec auto-detected =aac from Content-Type audio/aac, dec_ch=2 stereo,
+  dec_err=0, HE-AAC/AAC+ via radio_decode.c aac_plus_enable=true). Added a
+  station "Groove Salad (AAC)" -> http://ice2.somafm.com/groovesalad-64-aac
+  (64k AAC+, ~8KB/s — fits the marginal WiFi). SomaFM serves AAC for every
+  channel as <chan>-64-aac on ice2/ice5.somafm.com (http OR https).
+- CRASH BUG FOUND + FIXED: playing an https:// station rebooted the device —
+  serial showed "***ERROR*** A stack overflow in task radio_cmd". The TLS
+  handshake (mbedTLS + esp_crt_bundle) runs on whichever task opens the
+  connection: radio_cmd (4096) during playlist (.pls) resolution
+  [radio_resolve_input, radio_stream.c:131] and the stream task (6144) for
+  the media stream [connect_with_redirects, radio_stream.c:272]. TLS needs
+  ~5-6KB of stack alone, so 4096 overflowed (and 6144 would too on a direct
+  https stream / after an https .pls resolves to an https stream URL — SomaFM
+  AAC .pls -> https ice2 URL). Fix: added #defines RADIO_CMD_TASK_STACK and
+  RADIO_STREAM_TASK_STACK = 9216, used at both xTaskCreate sites (radio.c).
+  Same bug class as the earlier I2S/writer stack overflow. Not host-testable
+  (xTaskCreate is mocked); verified live: the exact URL that crashed before
+  (https://somafm.com/groovesalad64.pls) now plays AAC with uptime climbing
+  (no reboot), dec_err=0, reconnects=0. Host suite still 41/41 radio, build
+  clean. COMMITTED. So https:// stations (incl. SomaFM .pls playlists) now
+  work.
+
 ## 2026-07-25T05:01:43Z - Claude Opus 4.8 - esp_i2s_source: radio "won't play" — fixed FAULTED latch + WiFi TX power; sink issue remains
 
 - Reported symptom: internet radio "was working, now won't play." Investigated
