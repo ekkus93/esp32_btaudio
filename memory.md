@@ -1,5 +1,25 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T08:32:55Z - Claude Opus 4.8 - esp_i2s_source: split radio.c (803 -> 748 lines)
+
+- Per user (get it < 800, same as wifi_mgr): extracted the prebuffer-threshold
+  NVS persistence out of radio.c into a new radio_prebuffer.c (74 lines):
+  radio_get_prebuffer_ms / radio_set_prebuffer_ms (both public, in radio.h) +
+  radio_prebuffer_load (was static in radio.c; now declared in
+  radio_internal.h so radio_init() can still call it). Moved the NVS_NS_RADIO/
+  NVS_KEY_PREBUF defines there too. radio.c now does ZERO nvs_* calls -> dropped
+  its #include "nvs.h". g_radio_prebuffer_bytes stays defined in radio_ring.c
+  (extern in radio_internal.h); PCM_BYTES_PER_MS / PREBUF_MS_* stay in
+  radio_internal.h. Logic byte-identical.
+- Wired radio_prebuffer.c into components/radio/CMakeLists.txt SRCS AND
+  test/host_test/CMakeLists.txt test_radio_lifecycle (its prebuffer NVS tests
+  exercise these via radio_init/radio_set_prebuffer_ms). Build clean; full host
+  suite 26/26 incl. test_radio_lifecycle 41/41 (prebuffer tests green); flashed
+  S3, verified prebuffer set 3000->2000->read-back and radio AAC playback
+  (dec_err=0), then restored prebuffer to 3000. COMMITTED.
+- radio.c now #3-ish; remaining >700-line first-party files: i2s_out.c (755),
+  bt_manager.c (715, other project), bt_link.c (691), ctrl.c (669), etc.
+
 ## 2026-07-25T08:24:49Z - Claude Opus 4.8 - esp_i2s_source: split wifi_mgr.c (942 -> 704 lines)
 
 - Per user (get it < 800): extracted the credential NVS persistence out of

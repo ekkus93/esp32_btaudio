@@ -5,7 +5,7 @@
 # (HTTP/ICY fetch), and radio_decode.c (decoder, RADIO-2) — see
 # radio_internal.h for the shared state contract between them.
 idf_component_register(
-    SRCS "radio_parse.c" "radio.c" "radio_ring.c" "radio_stream.c" "radio_decode.c"
+    SRCS "radio_parse.c" "radio.c" "radio_prebuffer.c" "radio_ring.c" "radio_stream.c" "radio_decode.c"
          "station_store.c" "stations.c" "stations_persist_core.c" "radio_resampler.c"
          "url_policy.c"
     INCLUDE_DIRS "include"

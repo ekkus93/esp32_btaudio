@@ -25,7 +25,6 @@
 #include "freertos/queue.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "nvs.h"
 
 #include "esp_audio_simple_dec_default.h"
 #include "esp_audio_dec_default.h"
@@ -40,8 +39,8 @@ static const char *TAG = "radio";
  * and re-gated if it ever fully drains, so recovery re-buffers cleanly
  * rather than restarting choppy. */
 #define PCM_RING_BYTES      (1024 * 1024)
-#define NVS_NS_RADIO        "radio"
-#define NVS_KEY_PREBUF      "prebuf_ms"
+/* Prebuffer-threshold persistence (NVS namespace/key) lives in
+ * radio_prebuffer.c along with radio_get/set_prebuffer_ms + radio_prebuffer_load. */
 
 /* Task stacks. An https:// station runs a TLS handshake (mbedTLS + the ESP-IDF
  * cert bundle) on whichever task opens the connection, which alone needs
@@ -53,8 +52,6 @@ static const char *TAG = "radio";
  * comfortable headroom over the observed TLS handshake cost. */
 #define RADIO_CMD_TASK_STACK    9216
 #define RADIO_STREAM_TASK_STACK 9216
-
-static esp_err_t radio_prebuffer_load(void);
 
 /* 7.1: forward declarations for internal sync play/stop.
    Static for device builds (cmd-worker only). Non-static for host tests. */
@@ -745,59 +742,7 @@ void radio_get_status(radio_status_t *out)
 
     xSemaphoreGive(g_radio_control_mtx);
 
-    /* Prebuffer setting is standalone (atomic, no lock needed). */
+    /* Prebuffer setting is standalone (atomic, no lock needed). Get/set +
+     * radio_prebuffer_load live in radio_prebuffer.c. */
     out->prebuffer_ms = radio_get_prebuffer_ms();
-}
-
-int radio_get_prebuffer_ms(void)
-{
-    return (int)(atomic_load(&g_radio_prebuffer_bytes) / PCM_BYTES_PER_MS);
-}
-
-esp_err_t radio_set_prebuffer_ms(int ms)
-{
-    ms = (ms < PREBUF_MS_MIN) ? PREBUF_MS_MIN : ms;
-    ms = (ms > PREBUF_MS_MAX) ? PREBUF_MS_MAX : ms;
-    atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
-
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READWRITE, &h);
-    if (err == ESP_OK) {
-        err = nvs_set_i32(h, NVS_KEY_PREBUF, ms);
-        if (err == ESP_OK) err = nvs_commit(h);
-    }
-    nvs_close(h);
-
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "prebuffer applied but persistence failed: %s",
-                 esp_err_to_name(err));
-    }
-    ESP_LOGI(TAG, "prebuffer set to %d ms (%" PRIu32 " bytes)", ms, (uint32_t)atomic_load(&g_radio_prebuffer_bytes));
-    return err;
-}
-
-/* 7.11: explicit compile-time default is stored FIRST, before any NVS
- * read, so a genuine load failure never leaves the threshold at whatever
- * it happened to already be. NOT_FOUND (missing namespace or key) is the
- * ordinary fresh-device case and returns ESP_OK with the default in
- * effect; any other error is a real load failure and is returned so the
- * caller can log/report it rather than silently treating it as success. */
-static esp_err_t radio_prebuffer_load(void)
-{
-    atomic_store(&g_radio_prebuffer_bytes, (size_t)PREBUF_MS_DEFAULT * PCM_BYTES_PER_MS);
-
-    nvs_handle_t h = 0;
-    esp_err_t err = nvs_open(NVS_NS_RADIO, NVS_READONLY, &h);
-    if (err == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
-    if (err != ESP_OK) return err;
-
-    int32_t ms = PREBUF_MS_DEFAULT;
-    err = nvs_get_i32(h, NVS_KEY_PREBUF, &ms);
-    nvs_close(h);
-    if (err == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
-    if (err != ESP_OK) return err;
-    if (ms < PREBUF_MS_MIN || ms > PREBUF_MS_MAX) return ESP_ERR_INVALID_SIZE;
-
-    atomic_store(&g_radio_prebuffer_bytes, (size_t)ms * PCM_BYTES_PER_MS);
-    return ESP_OK;
 }

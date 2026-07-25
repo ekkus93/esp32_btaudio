@@ -190,6 +190,7 @@ add_test(NAME test_ctrl_sm COMMAND test_ctrl_sm)
 add_executable(test_radio_lifecycle test_radio_lifecycle.c
     test_radio_lifecycle_faults.c
     ${RADIO_DIR}/radio.c
+    ${RADIO_DIR}/radio_prebuffer.c
     ${RADIO_DIR}/radio_ring.c
     ${RADIO_DIR}/radio_stream.c
     ${RADIO_DIR}/radio_decode.c

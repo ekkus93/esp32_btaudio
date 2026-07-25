@@ -154,6 +154,11 @@ typedef struct {
 
 esp_err_t radio_resolve_input(const char *input, radio_resolution_t *out);
 
+/* radio_prebuffer.c: load the persisted prebuffer threshold into
+ * g_radio_prebuffer_bytes (default-first; NOT_FOUND -> ESP_OK with default).
+ * Called once by radio_init(). The public get/set live in radio.h. */
+esp_err_t radio_prebuffer_load(void);
+
 /* Worker task entry points, started via xTaskCreate() from radio_play_sync()
  * in radio.c core. */
 void stream_task(void *arg);    /* radio_stream.c: network -> compressed ring */
