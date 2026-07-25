@@ -76,9 +76,86 @@ void test_infra_single_hop_200_returns_open_client(void)
     TEST_ASSERT_EQUAL_INT(1, fake_http_client_hops_consumed());
 }
 
+/* ---- resolve_redirect_location: pure string logic, no HTTP mocking. ---- */
+
+void test_resolve_redirect_absolute_location_copied_verbatim(void)
+{
+    char out[64];
+    bool ok = resolve_redirect_location("http://old.example/a", "http://new.example/b", out, sizeof(out));
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING("http://new.example/b", out);
+}
+
+void test_resolve_redirect_root_relative_splices_base_scheme_and_host(void)
+{
+    char out[64];
+    bool ok = resolve_redirect_location("http://old.example/dir/a", "/new/path", out, sizeof(out));
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING("http://old.example/new/path", out);
+}
+
+void test_resolve_redirect_root_relative_stops_at_query_and_fragment(void)
+{
+    char out[64];
+    /* host_end must stop at '?' / '#', not run to the end of base_url's path. */
+    bool ok = resolve_redirect_location("http://old.example/dir?x=1#frag", "/new", out, sizeof(out));
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING("http://old.example/new", out);
+}
+
+void test_resolve_redirect_other_relative_form_rejected(void)
+{
+    char out[64];
+    TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", "relative/path", out, sizeof(out)));
+    TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", "path", out, sizeof(out)));
+}
+
+void test_resolve_redirect_null_or_empty_location_rejected(void)
+{
+    char out[64];
+    TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", NULL, out, sizeof(out)));
+    TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", "", out, sizeof(out)));
+}
+
+void test_resolve_redirect_absolute_location_too_big_rejected_not_truncated(void)
+{
+    char out[8];
+    bool ok = resolve_redirect_location("http://old.example/a", "http://new.example/longpath", out, sizeof(out));
+    TEST_ASSERT_FALSE(ok);
+}
+
+void test_resolve_redirect_base_url_missing_scheme_with_root_relative_rejected(void)
+{
+    char out[64];
+    /* base_url has no "://" — malformed; root-relative location can't be spliced. */
+    TEST_ASSERT_FALSE(resolve_redirect_location("old.example/a", "/new", out, sizeof(out)));
+}
+
+void test_resolve_redirect_absolute_location_exact_boundary(void)
+{
+    /* "http://a" is 8 chars; strnlen(location, out_sz) with out_sz==9 means
+     * len==8 < out_sz==9 -> succeeds (needs len+1==9 bytes, exactly out_sz). */
+    char out9[9];
+    TEST_ASSERT_TRUE(resolve_redirect_location("http://old.example/a", "http://a", out9, sizeof(out9)));
+    TEST_ASSERT_EQUAL_STRING("http://a", out9);
+
+    /* out_sz==8: len==8 is NOT < out_sz==8 -> rejected (off-by-one guard). */
+    char out8[8];
+    TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", "http://a", out8, sizeof(out8)));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_infra_single_hop_200_returns_open_client);
+
+    RUN_TEST(test_resolve_redirect_absolute_location_copied_verbatim);
+    RUN_TEST(test_resolve_redirect_root_relative_splices_base_scheme_and_host);
+    RUN_TEST(test_resolve_redirect_root_relative_stops_at_query_and_fragment);
+    RUN_TEST(test_resolve_redirect_other_relative_form_rejected);
+    RUN_TEST(test_resolve_redirect_null_or_empty_location_rejected);
+    RUN_TEST(test_resolve_redirect_absolute_location_too_big_rejected_not_truncated);
+    RUN_TEST(test_resolve_redirect_base_url_missing_scheme_with_root_relative_rejected);
+    RUN_TEST(test_resolve_redirect_absolute_location_exact_boundary);
     return UNITY_END();
 }

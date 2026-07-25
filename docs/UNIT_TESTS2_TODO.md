@@ -128,17 +128,19 @@ controllable behavior. Write `mocks/fake_http_client.c`:
       file for `stream_task`'s (never-called) references — see the test
       file's header comment. Infra smoke test passing (1/1); full host suite
       26/26; `idf.py build` clean.
-- [ ] **`resolve_redirect_location`** (pure, no mocking needed beyond strings):
-  - [ ] Absolute location (`"http://host/path"`, contains `"://"`) → copied verbatim.
-  - [ ] Root-relative location (`"/path"`) → host/scheme spliced from `base_url`,
-        path appended.
-  - [ ] Any other relative form (e.g. `"path"`, no leading `/`, no scheme) → `false`.
-  - [ ] NULL or empty `location` → `false`.
-  - [ ] `location` (or the spliced result) that doesn't fit `out_sz` → `false`,
+- [x] **`resolve_redirect_location`** (pure, no mocking needed beyond strings) — **DONE**:
+  - [x] Absolute location (`"http://host/path"`, contains `"://"`) → copied verbatim.
+  - [x] Root-relative location (`"/path"`) → host/scheme spliced from `base_url`,
+        path appended. Also covers `host_end` stopping at `?`/`#`, not running
+        into the query/fragment.
+  - [x] Any other relative form (e.g. `"path"`, no leading `/`, no scheme) → `false`.
+  - [x] NULL or empty `location` → `false`.
+  - [x] `location` (or the spliced result) that doesn't fit `out_sz` → `false`,
         not truncated.
-  - [ ] `base_url` with no `"://"` (malformed) + root-relative `location` → `false`.
-  - [ ] Boundary: absolute location exactly `out_sz - 1` chars → succeeds; exactly
+  - [x] `base_url` with no `"://"` (malformed) + root-relative `location` → `false`.
+  - [x] Boundary: absolute location exactly `out_sz - 1` chars → succeeds; exactly
         `out_sz` → fails (off-by-one check, this function does raw `memcpy`).
+  8/8 new cases pass; full esp_i2s_source host suite 26/26.
 - [ ] **`redirect_target_allowed`** (on host, reduces to `url_policy_check_literal`
       — the `ESP_PLATFORM`-gated DNS re-check block compiles out entirely, so
       this is fully host-testable without network mocking):
