@@ -1,5 +1,25 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T08:24:49Z - Claude Opus 4.8 - esp_i2s_source: split wifi_mgr.c (942 -> 704 lines)
+
+- Per user (get it < 800): extracted the credential NVS persistence out of
+  wifi_mgr.c into a new wifi_mgr_nvs.c (225 lines) + wifi_mgr_internal.h (68).
+  Bundled the 9 file-static credential vars (s_ssid/s_pass/s_ap_ssid/s_ap_pass
+  + lens + s_ap_enabled) into a single `wifi_creds_t s_creds` struct defined
+  in the internal header; the moved functions (load/save/erase_creds,
+  load/save_ap_enabled, set_default/load_ap_creds, nvs_get_string_exact, +
+  new wifi_nvs_write_ap_creds) take `wifi_creds_t *` by pointer — no shared
+  globals. wifi_mgr.c now does zero direct nvs_* calls (dropped nvs.h include
+  and the NVS_KEY_ defines, both moved to the internal header). set_ap_config's
+  inline NVS persist+rollback now call wifi_nvs_write_ap_creds.
+- Logic unchanged (byte-identical bodies, just relocated + parameterized);
+  variable renames done via word-boundary sed. Build clean (no warnings),
+  host suite 26/26 (incl. the 3 wifi_creds/wifi_sm pure tests — untouched).
+  Hardware smoke test (this is device glue, not host-tested): flashed S3, it
+  loaded persisted CircuitLaunch creds -> STA CONNECTED 10.1.2.50, AP up,
+  MDNS=UP. Save/set_ap_config paths not live-exercised (would disrupt the
+  link) but the moved logic is unchanged. COMMITTED.
+
 ## 2026-07-25T07:49:11Z - Claude Opus 4.8 - esp_i2s_source: Bluetooth card moved to its own tab
 
 - Per user: moved the <Bluetooth /> card out of the Settings tab into a new

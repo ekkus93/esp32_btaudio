@@ -1,9 +1,10 @@
 # wifi_mgr — STA-with-NVS-creds + AP-mode provisioning fallback + mDNS (WIFI-1).
 # wifi_sm.c is the pure fallback state machine and wifi_creds_core.c is the
 # pure credential-validation/NVS-string-exactness logic (both host-tested);
-# wifi_mgr.c is the device glue (esp_wifi/esp_netif/mDNS, WIFI-1b).
+# wifi_mgr.c is the device glue (esp_wifi/esp_netif/mDNS, WIFI-1b) and
+# wifi_mgr_nvs.c is the credential NVS-persistence glue split out of it.
 idf_component_register(
-    SRCS "wifi_sm.c" "wifi_creds_core.c" "wifi_mgr.c"
+    SRCS "wifi_sm.c" "wifi_creds_core.c" "wifi_mgr.c" "wifi_mgr_nvs.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_wifi esp_netif esp_event nvs_flash
     PRIV_REQUIRES espressif__mdns)
