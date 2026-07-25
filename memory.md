@@ -1,5 +1,30 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T12:26:41Z - Claude Sonnet 5 - esp_i2s_source: removed the vestigial Device-token UI
+
+- Follow-up to the earlier auth-disable work. Device-token auth ENFORCEMENT was
+  already gone (backend route_dispatch() no longer checks a token; api.ts client
+  gate removed), but the UI element survived: the header lock button 🔒 +
+  Auth.tsx panel. The user re-noticed it (clicked the lock, saw "Device token"
+  panel with no error banner) and asked why it was back — it had never been
+  removed, only made non-functional.
+- Removed it fully from the frontend: deleted web/src/Auth.tsx; dropped
+  <AuthPanel/> + its import from App.tsx header; stripped the dormant token
+  machinery from api.ts (getAuthToken/setAuthToken/clearAuthToken/onAuthRequired/
+  notifyAuthRequired, TOKEN_KEY/RE, the apiRequest Authorization-header attach,
+  and the 401->notifyAuthRequired path); removed the dead .auth-* CSS from
+  index.css; deleted/trimmed the now-obsolete auth tests in __tests__/api.test.ts
+  (kept two "sends no auth" behavior tests).
+- Verified: vitest 22/22 pass, tsc+vite build clean, web asset re-embedded
+  (index.html.gz). idf.py build OK (71% app partition free). Flashed S3 on
+  /dev/ttyACM0. Confirmed served page has zero auth-toggle/auth-panel/"Device
+  token"/getAuthToken strings. NOTE: the BACKEND token machinery (web_ui_auth.c,
+  AUTH ROTATE console cmd) still exists but is dormant/unenforced — left in place;
+  a fuller purge would touch host tests (test_web_auth.c, route-auth tools).
+- Reflash rebooted the S3 and stopped playback; restarted Groove Salad
+  (POST /api/radio {url: somafm groovesalad.pls}) -> playing=True, codec=mp3,
+  bytes flowing. Committed locally; not pushed (awaiting explicit go-ahead).
+
 ## 2026-07-25T09:49:42Z - Claude Opus 4.8 - esp_i2s_source: HTTPS-vs-web-UI hang ROOT-CAUSED + FIXED (MBEDTLS_DYNAMIC_BUFFER)
 
 - CLOSES the multi-entry HTTPS-hang saga (see 2026-07-25T05:01/07:01 entries).

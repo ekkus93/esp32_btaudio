@@ -4,8 +4,6 @@
 import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
 import { ApiError } from "../api";
 
-const VALID_TOKEN = "a".repeat(64);
-
 // Mock fetch before each test to capture global fetch.
 beforeEach(() => {
   globalThis.fetch = vi.fn();
@@ -80,39 +78,8 @@ describe("ApiError class", () => {
   });
 });
 
-describe("FIX3 11: auth token storage", () => {
-  it("setAuthToken rejects a malformed token", async () => {
-    const { setAuthToken } = await import("../api");
-    expect(() => setAuthToken("not-hex")).toThrow(/64 lowercase hex/);
-    expect(() => setAuthToken("a".repeat(63))).toThrow(/64 lowercase hex/);
-    expect(() => setAuthToken("A".repeat(64))).toThrow(/64 lowercase hex/); // uppercase rejected
-  });
-
-  it("setAuthToken accepts an exact 64-lowercase-hex token", async () => {
-    const { setAuthToken, getAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
-    expect(getAuthToken()).toBe(VALID_TOKEN);
-  });
-
-  it("clearAuthToken removes the stored token", async () => {
-    const { setAuthToken, clearAuthToken, getAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
-    clearAuthToken();
-    expect(getAuthToken()).toBe("");
-  });
-
-  it("remember=true also persists to localStorage; remember=false does not", async () => {
-    const { setAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN, true);
-    expect(localStorage.getItem("esp_i2s_auth_token")).toBe(VALID_TOKEN);
-
-    setAuthToken(VALID_TOKEN, false);
-    expect(localStorage.getItem("esp_i2s_auth_token")).toBeNull();
-  });
-});
-
-describe("apiRequest auth behavior (device-token auth disabled server-side)", () => {
-  it("a mutating request without a stored token still reaches the network, with no Authorization header", async () => {
+describe("apiRequest sends no auth (device-token auth removed)", () => {
+  it("a mutating request reaches the network with no Authorization header", async () => {
     (globalThis.fetch as Mock).mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -140,46 +107,6 @@ describe("apiRequest auth behavior (device-token auth disabled server-side)", ()
     expect(result).toEqual({ device: "esp-i2s-source" });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
-
-  it("a mutating request with a stored token adds the Authorization header", async () => {
-    (globalThis.fetch as Mock).mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: { get: () => "application/json" },
-      json: async () => ({ ok: true, data: { ok: true } }),
-    });
-    const { apiRequest, setAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
-
-    await apiRequest("/api/radio", { method: "POST", body: JSON.stringify({ url: "x" }) });
-
-    const [, options] = (globalThis.fetch as Mock).mock.calls[0];
-    const headers = options.headers as Record<string, string>;
-    expect(headers.Authorization).toBe(`Bearer ${VALID_TOKEN}`);
-  });
-
-  it("a 401 response fires the onAuthRequired listener", async () => {
-    (globalThis.fetch as Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      headers: { get: () => "application/json" },
-      json: async () => ({ ok: false, error: { code: "AUTH_REQUIRED", message: "bad token" } }),
-    });
-    const { apiRequest, setAuthToken, onAuthRequired } = await import("../api");
-    setAuthToken(VALID_TOKEN);
-
-    const listener = vi.fn();
-    const unsubscribe = onAuthRequired(listener);
-    try {
-      await expect(
-        apiRequest("/api/radio", { method: "POST" }),
-      ).rejects.toThrow("bad token");
-      expect(listener).toHaveBeenCalledTimes(1);
-    } finally {
-      unsubscribe();
-    }
-  });
-
 });
 
 describe("non-enveloped device responses (the /api/status crash)", () => {
@@ -203,8 +130,7 @@ describe("non-enveloped device responses (the /api/status crash)", () => {
       headers: { get: () => "application/json" },
       json: async () => ({ ok: true, on: true, hz: 440 }),
     });
-    const { apiRequest, setAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
+    const { apiRequest } = await import("../api");
     const r = await apiRequest<{ ok: boolean; on: boolean; hz: number }>(
       "/api/tone", { method: "POST", body: "{}" });
     expect(r).toEqual({ ok: true, on: true, hz: 440 });
@@ -217,8 +143,7 @@ describe("non-enveloped device responses (the /api/status crash)", () => {
       headers: { get: () => "application/json" },
       json: async () => ({ ok: false, error: "scan already running" }),
     });
-    const { apiRequest, setAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
+    const { apiRequest } = await import("../api");
     await expect(
       apiRequest("/api/scan", { method: "POST" }),
     ).rejects.toThrow("scan already running");
@@ -231,8 +156,7 @@ describe("non-enveloped device responses (the /api/status crash)", () => {
       headers: { get: () => "application/json" },
       json: async () => ({ ok: false }),
     });
-    const { apiRequest, setAuthToken } = await import("../api");
-    setAuthToken(VALID_TOKEN);
+    const { apiRequest } = await import("../api");
     await expect(
       apiRequest("/api/radio", { method: "POST" }),
     ).rejects.toThrow("HTTP 500");

@@ -61,59 +61,14 @@ export class ApiError extends Error {
 }
 
 // -----------------------------------------------------------------------
-// FIX3 11.2: auth token storage. Session-only by default (cleared when the
-// tab closes) — "remember on this browser" is an explicit opt-in that
-// additionally mirrors into localStorage.
-const TOKEN_KEY = "esp_i2s_auth_token";
-const TOKEN_RE = /^[0-9a-f]{64}$/;
-
-export function getAuthToken(): string {
-  return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY) ?? "";
-}
-
-/** Exact 64-lowercase-hex validation — throws if malformed. */
-export function setAuthToken(token: string, remember = false): void {
-  if (!TOKEN_RE.test(token)) {
-    throw new Error("Token must be exactly 64 lowercase hexadecimal characters");
-  }
-  sessionStorage.setItem(TOKEN_KEY, token);
-  if (remember) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-  }
-}
-
-export function clearAuthToken(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(TOKEN_KEY);
-}
-
-// FIX3 11.3: centralized "the UI needs a (new) token" signal — apiRequest()
-// fires this on a missing/rejected token so a single auth panel (mounted
-// once in App) can react, instead of every caller re-implementing it.
-type AuthListener = () => void;
-const authListeners = new Set<AuthListener>();
-export function onAuthRequired(cb: AuthListener): () => void {
-  authListeners.add(cb);
-  return () => authListeners.delete(cb);
-}
-function notifyAuthRequired(): void {
-  for (const cb of authListeners) cb();
-}
-
-/** Centralised fetch wrapper — handles timeout, abort, auth, structured envelope. */
+// Device-token auth was removed entirely — route_dispatch() no longer checks
+// a token, so the client sends none and never gates a request on one.
+/** Centralised fetch wrapper — handles timeout, abort, structured envelope. */
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
   timeoutMs = 10_000,
 ): Promise<T> {
-  // Device-token auth is disabled server-side (route_dispatch() no longer
-  // checks it); still attach it if the user happens to have one set (e.g.
-  // via AUTH ROTATE), but never block a request on its absence.
-  const token = getAuthToken();
-  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   const controller = new AbortController();
   const timerId = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -124,7 +79,6 @@ export async function apiRequest<T>(
       headers: {
         Accept: "application/json",
         ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...authHeader,
         ...init.headers,
       },
     });
@@ -166,9 +120,6 @@ export async function apiRequest<T>(
           message = eo.message ?? "request failed";
           retryable = eo.retryable ?? false;
         }
-      }
-      if (response.status === 401 || code === "AUTH_REQUIRED") {
-        notifyAuthRequired();
       }
       throw new ApiError(message, response.status, code, retryable);
     }
