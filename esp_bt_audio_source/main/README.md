@@ -23,6 +23,12 @@ Audio pipeline (ring buffer core)
 - `audio_ringbuffer.c` implements a single-producer/single-consumer ring buffer used by the audio engine task and the BT stack callback.
 - Sources feeding the ring buffer:
 	- **I2S capture** via `i2s_manager.c`: reads DMA frames, converts bit depth, and resamples to the configured output rate before filling the ring buffer.
+	- **UARTAUDIO** via `components/command_interface/uart_audio.c` +
+	  `components/audio_processor/uart_source.c`: a PC streams 22.05 kHz
+	  stereo PCM over USB serial at 921600 baud; this is 2x-upsampled to
+	  44.1 kHz and fed straight to A2DP, bypassing I2S entirely (useful both
+	  as a dev audio-test path and as a diagnostic bypass for isolating I2S
+	  issues from the BT/A2DP output path).
 	- **Beep generation** via `beep_manager.c`: synthesizes short sine beeps with fade-in/out and overlays them during reads.
 	- **Synthetic tone/keepalive** via `synth_manager.c` (and helpers inside `audio_processor.c`): used when capture is unavailable or to keep the BT link alive.
 - `audio_processor` produces into the ring buffer, applies volume/mute, tracks stats, and the BT A2DP data callback reads from the ring. It also exposes diagnostics (probe dumps, tag-miss counters, ring drain helpers) and runtime switches (force synth mode, DRAM-only allocations).
@@ -44,7 +50,12 @@ Tasks, timers, and concurrency
 Configuration and data formats
 ------------------------------
 - `audio_config_t` (see `include/audio_processor.h`) defines sample rate, bit depth (16/24/32), channel mode (mono/stereo), volume (0–100), mute flag, I2S port, and optional pin assignments. Pins can be updated at runtime via `audio_processor_set_i2s_pins()`; the processor restarts to apply changes.
-- Default output format (A2DP payload): 16-bit, 48 kHz, stereo. See the boot-time init in [main.c](main/main.c#L966-L977). All sources (I2S capture, beep, synth) are converted/resampled to this configured output before entering the ring buffer.
+- Default output format (A2DP payload): 16-bit, 48 kHz, stereo, from Kconfig
+  (`CONFIG_AUDIO_DEFAULT_SAMPLE_RATE`/`_BIT_DEPTH`/`_VOLUME`). See the
+  boot-time init in [main.c](main.c) (`map_sample_rate_from_kconfig()` /
+  `load_audio_boot_config()`, ~L107-140). All sources (I2S capture, beep,
+  synth) are converted/resampled to this configured output before entering
+  the ring buffer.
 - Producers (beep_manager, i2s_manager, synth_manager) provide PCM in the current output format via source fill() functions; by default that is 16-bit, 48 kHz, stereo.
 - `audio_stats_t` reports samples processed, buffer overruns/underruns, conversion errors, CPU load (approximate), and buffer levels.
 - The ring buffer produces/consumes in 1024-byte chunks. Producers align chunk sizes to frame boundaries when possible.
@@ -58,8 +69,21 @@ Beep generation details (`beep_manager.c`)
 
 I2S capture details (`i2s_manager.c`)
 --------------------------------------
-- Configures an I2S RX channel as slave, sets DMA descriptors/counts, and assigns pins from `audio_config_t` (with `GPIO_NUM_NC` / `I2S_GPIO_UNUSED` fallbacks under mock builds).
-- Standard capture profile: Philips I2S framing, 48 kHz stereo, 16-bit samples in 32-bit slots, WS low = left / WS high = right, ESP32 as RX slave (external master provides BCLK/WS).
+- Configures an I2S RX channel as **master** (this board drives BCLK/WS; the
+  S3 peer is the I2S slave-TX — role flipped 2026-07-11, see
+  `../README.md` Architecture), sets DMA descriptors/counts, and assigns pins
+  from `audio_config_t` (with `GPIO_NUM_NC` / `I2S_GPIO_UNUSED` fallbacks
+  under mock builds).
+- Standard capture profile: Philips I2S framing, 48 kHz stereo, 16-bit samples
+  in 32-bit slots, WS low = left / WS high = right.
+- **Payload-phase detection**: the peer packs each 16-bit sample into a
+  32-bit slot (16 real bits + 16 zero-pad bits), and this side doesn't know
+  in advance which 16 bits are which — `i2s_frame_extract_detect()` finds the
+  two energetic half-offsets per block, and `i2s_frame_phase_hold()` locks
+  onto that phase with hysteresis (a challenger phase must persist ~90 ms
+  before the lock switches), rather than re-deciding every block. Without
+  the hold, per-block re-detection could thrash between phases and produce
+  audible static — see `components/audio_processor/i2s_frame_extract.c`.
 - Other sample rates/bit depths can be selected via Kconfig defaults or runtime commands; multi-profile I2S presets are future work.
 - Reads into a caller-supplied raw buffer, converts bit depth, resamples to the output rate, and fills the ring buffer with capture audio.
 - Mock/testing mode (`CONFIG_BT_MOCK_TESTING`) bypasses hardware by generating synthetic frames and uses a relaxed clock config.
@@ -100,19 +124,20 @@ Audio pipeline (source selection and flow)
 		      |
 		      v
 	       +--------------+
-	       | audio_proc   |<-------------------------+
-	       | coordinator  |                          |
-	       +------+-------+                          |
-		      |                                   |
-	  source select order                             |
-	  (beep > I2S > synth)                            |
-		      v                                   |
-    +-----------------+-----------------+                 |
-    |  Beep manager   |  I2S manager    | Synth manager   |
-    |  (tone synth)   |  (capture DMA)  |  (keepalive)    |
-    +--------+--------+--------+--------+--------+-------+
-	     |                 |                 |
-	     v                 v                 v
+	       | audio_proc   |<-----------------------------------------+
+	       | coordinator  |                                          |
+	       +------+-------+                                          |
+		      |                                                   |
+	  source select order (get_active_source(), highest first):       |
+	  beep > UARTAUDIO > I2S > SYNTH (fallback) > silence (default)    |
+		      v                                                   |
+    +-------+-------+-------+-------+-------+-------+-------+--------+
+    |  Beep manager |UARTAUDIO source|I2S manager    | Synth manager  |
+    |  (tone synth) |(USB->A2DP, no |(capture DMA)   | (keepalive     |
+    |               | I2S needed)   |                |  fallback)     |
+    +-------+-------+-------+-------+-------+--------+-------+-------+
+	     |                 |                 |               |
+	     v                 v                 v               v
 	      +------------------------+
 	      | audio_proc coordinator |
 	      | (mix, volume/mute)     |

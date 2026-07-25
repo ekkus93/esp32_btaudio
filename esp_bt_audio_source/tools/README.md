@@ -54,7 +54,7 @@ CI example
 This snippet shows a minimal CI job step (assumes the runner has serial access and ESP-IDF is sourced):
 
 ```bash
-. $HOME/esp/esp-idf/export.sh
+. $HOME/esp/v5.5.1/esp-idf/export.sh
 python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
   --port ${PORT:-/dev/ttyUSB0} \
   --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
@@ -75,87 +75,51 @@ Notes & troubleshooting
 - If the `PARTS` output does not list a `spiffs` partition, verify the flashed partition table contains a `spiffs` label (the `esp_bt_audio_source` project builds `build/partition_table/partition-table.bin`).
 - If the `FILES` output shows no entries, confirm the SPIFFS image actually contains files under `main/assets/spiffs/`.
 
-If you'd like, I can add this README to CI artifacts or link to it from your pipeline docs for quick reference.
-# Tools — esp_bt_audio_source
+stream_audio_uart.py — UARTAUDIO host streamer
+===============================================
 
-This folder contains helper scripts used for flashing, running and capturing on-device tests and simple CI/host smoke checks.
+Streams PCM audio from this machine to the ESP32 over the USB serial cable
+for immediate playback on the connected Bluetooth speaker/headset —
+`UARTAUDIO`'s host-side counterpart (see the root README and
+`components/command_interface/uart_audio.c`). Bypasses I2S entirely, so it
+doubles as a diagnostic bypass for isolating I2S-link problems from the
+BT/A2DP output path (used to confirm the A2DP/BT chain was healthy during
+the 2026-07-25 I2S static investigation).
 
-Helper of interest
-------------------
-
-- `flash_and_verify_spiffs.py` — automates a reproducible flash + SPIFFS write + verification sequence.
-
-Purpose
--------
-
-The `flash_and_verify_spiffs.py` helper performs the following steps (when called from the repository root):
-
-1. Runs `idf.py -C <project-dir> flash` to flash the app and partition table.
-2. Uses `esptool` to write the SPIFFS image to the configured SPIFFS partition offset.
-3. Opens the serial port, sends `PARTS` and `FILES` commands, captures the responses and asserts the presence of expected `OK|...|SUMMARY` lines.
+Wire format: stereo 22050 Hz s16le PCM in CRC-16/CCITT-FALSE-framed chunks
+(magic `A5 5A`, see `components/command_interface/uart_audio_frame.c`). The
+device 2x-upsamples to 44.1 kHz and plays it through the normal A2DP path.
 
 Usage
 -----
 
-Basic invocation:
+Input is a WAV file (must already be 22050 Hz / stereo / 16-bit) or `-` for
+raw s16le on stdin. Speaker must already be connected (e.g. via the
+`CONNECT` console command):
 
 ```bash
-python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
-  --port /dev/ttyUSB0 \
-  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
-  --spiffs-offset 0x1C0000 \
-  --project-dir esp_bt_audio_source \
-  --baud 115200 \
-  --monitor-wait 4
+python3 esp_bt_audio_source/tools/stream_audio_uart.py --port /dev/ttyUSB0 song.wav
 ```
 
-Options (summary)
-- `--port` (required): serial device (for example `/dev/ttyUSB0`).
-- `--spiffs-image` (required): path to the SPIFFS binary to write.
-- `--spiffs-offset` (required): flash offset where the SPIFFS partition is located (hex, e.g. `0x1C0000`).
-- `--project-dir` (optional, default `esp_bt_audio_source`): project path passed to `idf.py -C` for flashing.
-- `--baud` (optional, default 115200): serial monitor baud for the test commands.
-- `--monitor-wait` (optional, default 4): seconds to wait after flashing for the target to boot before opening serial.
-
-Exit codes
-----------
-
-The helper uses the following exit codes to make it CI-friendly:
-
-- `0` — success: flash completed, SPIFFS write succeeded, and both `PARTS` and `FILES` emitted expected `OK|...|SUMMARY` lines.
-- `1` — verification failure: either `PARTS` or `FILES` did not report the expected summary lines within the configured timeout.
-- `2` — fatal error: I/O or environment error (for example, cannot open serial, esptool not found, or `idf.py` failed to run).
-
-CI example
-----------
-
-This snippet shows a minimal CI job step (assumes the runner has serial access and ESP-IDF is sourced):
+To play arbitrary audio, transcode with ffmpeg into stdin:
 
 ```bash
-. $HOME/esp/esp-idf/export.sh
-python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
-  --port ${PORT:-/dev/ttyUSB0} \
-  --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \
-  --spiffs-offset 0x1C0000 \
-  --project-dir esp_bt_audio_source \
-  --baud 115200 \
-  --monitor-wait 6
-if [ $? -ne 0 ]; then
-  echo "SPIFFS flash or verification failed" >&2
-  exit 1
-fi
+ffmpeg -i song.mp3 -ar 22050 -ac 2 -f s16le - | \
+    python3 esp_bt_audio_source/tools/stream_audio_uart.py --port /dev/ttyUSB0 -
 ```
 
-Notes & troubleshooting
------------------------
+Options
+- `audio` (positional): WAV file path, or `-` for raw s16le stdin.
+- `--port` (default `/dev/ttyUSB0`): serial device.
+- `--baud` (default `921600`): streaming baud rate (only `921600` carries
+  stereo 22.05 kHz PCM in real time — see `uart_audio.c`'s `baud_is_supported()`).
+- `-v` / `--verbose`: print device feedback lines (`UA|FILL|...` progress).
 
-- If `make_spiffs.py` is used to build the image it may fall back to `spiffsgen.py` when `mkspiffs` is not available — that is expected in some toolchains.
-- If the `PARTS` output does not list a `spiffs` partition, verify the flashed partition table contains a `spiffs` label (the `esp_bt_audio_source` project builds `build/partition_table/partition-table.bin`).
-- If the `FILES` output shows no entries, confirm the SPIFFS image actually contains files under `main/assets/spiffs/`.
+Ctrl-C stops cleanly: a STOP frame is sent, the device drains its buffer,
+answers `UA|BYE`, and both sides drop back to 115200 text mode.
 
-If you'd like, add this README to CI artifacts or link to it from your pipeline docs for quick reference.
 Host Pairing Test Harness
-=========================
+==========================
 
 This folder contains a small test harness to exercise the device's deterministic
 mock pairing flow over a serial console.

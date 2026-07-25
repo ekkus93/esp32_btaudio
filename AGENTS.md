@@ -11,7 +11,8 @@ This is a monorepo containing several independent projects — don't assume comm
 - `archive/` — archived I2S source projects (superseded by `esp_i2s_source`):
   - `archive/bbgw_i2s_source/` — BeagleBone Green I2S source (Python/pytest)
   - `archive/rpi_i2s_source/` — Raspberry Pi I2S source
-- `memory.md` (repo root) — a large (~1.2MB) append-only human/agent dev journal, unrelated to Claude Code's own memory system. Don't read it wholesale; `grep` for topic keywords if historical context is needed.
+- `memory.md` (repo root) — a rolling append-only human/agent dev journal covering roughly the last 3 months, unrelated to Claude Code's own memory system. Don't read it wholesale; `grep` for topic keywords if historical context is needed.
+- `memory_archive.md` (repo root) — entries older than ~3 months, periodically split out of `memory.md` to keep it small. Grep this for older historical context; it is not read at session start.
 
 ## ESP-IDF installation
 
@@ -52,10 +53,11 @@ Various log and build-artifact files sit uncommitted at component roots (e.g. `e
 
 ## Memory file
 
-`memory.md` in the project root is the persistent project history log. It tracks what has happened in the project across sessions.
+`memory.md` in the project root is the persistent project history log. It tracks what has happened in the project across sessions, holding roughly a rolling 3-month window; older entries live in `memory_archive.md`.
 
 - Read `memory.md` at the start of each session to understand recent context.
 - Before ending a response that involved meaningful work, append a new entry to `memory.md`.
+- Periodically (when `memory.md` has grown large again), move entries older than ~3 months into `memory_archive.md`, preserving their relative order, to keep `memory.md` fast to read.
 - **Never fabricate or guess timestamps.** Always obtain the current time by running `date -u +"%Y-%m-%dT%H:%M:%SZ"` in the terminal immediately before writing the entry. If the entry describes a specific commit, use `git log -1 --format="%aI" <hash>` for that commit's actual timestamp.
 - Include the model name in the heading line so history records both time and model. Format:
 

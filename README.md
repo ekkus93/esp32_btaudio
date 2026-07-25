@@ -13,29 +13,36 @@ Protocol details, GPIO pin maps, and command references are authoritative in eac
 sub-project's own README/docs — see [Architecture](#architecture) below — to avoid
 duplicated, drifting copies here.
 
-## Project Status (2026-07-21)
+## Project Status (2026-07-25)
 
 **Completed recently**
-- **esp_bt_audio_source**: `bt_source_mock.c`/`bt_source_stubs.c` split into
-  per-domain files (SPLIT_AND_REFRACT), a dead-code sweep removed 13 unbuilt
-  test files, and a full test sweep is green: **883/883 host test cases + 99/99
-  device tests**.
+- **esp_i2s_source auth removed**: the device-token/bearer-token HTTP auth
+  scheme was removed entirely, frontend and backend — the web UI's REST API
+  has no authentication now (anyone reaching the device's HTTP server can
+  call any route). Deliberate, user-requested; see `esp_i2s_source/docs/SPEC.md`
+  §7.1.
+- **esp_i2s_source web UI**: Bluetooth now has its own tab (between Terminal
+  and Settings); the Internet Radio station list supports export/import with
+  merge+dedup; new HTTP-AAC/HTTPS-MP3 stations added. A `CONFIG_MBEDTLS_DYNAMIC_BUFFER`
+  fix resolved the web UI hanging while an HTTPS radio station streamed.
+  `wifi_mgr.c` and `radio.c` were split to keep files under ~800 lines
+  (NVS persistence extracted to `wifi_mgr_nvs.c` / `radio_prebuffer.c`).
+- **esp_bt_audio_source I2S static fixed**: the S3↔WROOM32 I2S link's
+  payload-phase detector used to re-decide every audio block with no memory,
+  thrashing between valid/invalid locks (measured 113 re-locks in 31s) and
+  producing audible static. Fixed with phase-lock hysteresis — a challenger
+  phase must persist ~90ms before the lock switches. Verified 0 phase changes
+  over 35s post-fix and audibly confirmed clean.
 - **UART audio streaming (UARTAUDIO):** stream stereo 22.05 kHz PCM from a PC
   over the USB serial cable straight to the Bluetooth speaker/headset — the
-  primary developer audio-test path (no I2S wiring needed). Verified
-  bit-faithful end-to-end and zero-defect to real earbuds, and separately
-  verified working with the laptop's own Bluetooth acting as the A2DP sink.
-- **esp_i2s_source**: the REDO1 roadmap (WiFi, web UI, internet radio,
-  BT control link) is complete; a reliability-hardening pass ("RH-*" tasks —
-  lifecycle races, atomic ring buffers, persistence error propagation) is
-  in progress.
+  primary developer audio-test path (no I2S wiring needed), and a useful
+  bypass for isolating I2S-link issues from the BT/A2DP output path. The host
+  streamer (`tools/stream_audio_uart.py`) was recovered after an earlier docs
+  commit accidentally truncated it to a stub.
 - `memory.md` is now a rolling ~3-month journal; older history moved to
-  `memory_archive.md`, with a topic-organized `memory_summary.md` covering
-  the full project history.
+  `memory_archive.md`.
 
 **Active TODOs**
-- `esp_i2s_source` reliability hardening: remaining RH-WR tasks and a Phase 10
-  validation pass (ASan, hardware regression, soak test).
 - Longer-duration UARTAUDIO pytest as an engine-throughput regression guard.
 - Physical UART2 verification still pending (needs a second USB-serial adapter).
 - `tools/run_all_tests.py` counts build-failed suites as 0 failures (reporting gap).
@@ -72,14 +79,14 @@ test image replaces the production firmware — reflash production afterwards.
 
 1. Ensure the ESP-IDF environment is active:
   ```bash
-  . "$HOME/esp/esp-idf/export.sh"
+  . "$HOME/esp/v5.5.1/esp-idf/export.sh"
   ```
 2. Run one suite with the non-interactive Unity runner (builds, flashes,
    monitors, auto-stops on the Unity summary, saves
    `<suite>/build/one_run_unity.log`):
   ```bash
   cd esp_bt_audio_source
-  conda run -n python310 python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
+  . ../.venv/bin/activate && python tools/run_unity.py -p /dev/ttyUSB0 -r test/test_bluetooth
   ```
 3. Exit code `0` = all passed; the runner prints an `N/N passed` summary and
    the saved log holds the full Unity output for failure context.
@@ -89,7 +96,8 @@ test image replaces the production firmware — reflash production afterwards.
 Use `tools/run_all_tests.py` from the repository root to execute host CTest plus all three Unity suites with fresh builds, SPIFFS flashing, and log aggregation:
 
 ```bash
-conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+. .venv/bin/activate
+python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
 ```
 
 Outputs:
@@ -107,7 +115,8 @@ The project maintains **78.1% line coverage** across production code, measured u
 
 ```bash
 # Run tests with coverage enabled
-conda run -n python310 python tools/run_all_tests.py --no-device --coverage --no-standalone
+. .venv/bin/activate
+python tools/run_all_tests.py --no-device --coverage --no-standalone
 
 # View HTML report
 xdg-open tmp/coverage_html/index.html

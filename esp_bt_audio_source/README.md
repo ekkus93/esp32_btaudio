@@ -5,12 +5,13 @@ ESP32 firmware that streams I2S audio to Bluetooth speakers/headphones via A2DP.
 ## Prerequisites
 
 - ESP-IDF v5.5.1 installed
-- Python tooling: test runners and scripts run under the conda env `python310`
-  (never create a new env for this — reuse `python310`):
+- Python tooling: test runners and scripts run under the repo root's
+  uv-managed `.venv` (never create a new env for this — reuse it):
 
 ```bash
 . $HOME/esp/v5.5.1/esp-idf/export.sh   # ESP-IDF toolchain and idf.py
-conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0
+. ../.venv/bin/activate
+python tools/run_all_tests.py --port /dev/ttyUSB0
 ```
 
 ## Quick Start
@@ -137,16 +138,26 @@ All I2S pins are configurable via NVS or the `I2S_CONFIG` command. The secondary
 
 **Components:**
 - `bt_manager` — Bluetooth lifecycle, connection management, pairing
-- `audio_processor` — I2S slave receiver, ring buffer, audio sources
+- `audio_processor` — I2S master receiver (BCLK/WS driven by this board), ring
+  buffer, audio sources. Includes payload-phase detection: the S3 packs each
+  16-bit sample into a 32-bit I2S slot, and a hysteresis-locked detector
+  (`i2s_frame_extract.c`) figures out which 16 bits are the real audio —
+  locking onto a phase and holding it (rather than re-guessing every block)
+  is what keeps the stream from thrashing into audible static.
 - `command_interface` — UART serial command protocol
+- `bt_stack_stub` — host-test stub for the Bluedroid/BT stack (device build
+  uses the real ESP-IDF BT stack; `UNIT_TEST` builds link this instead)
 - `nvs_storage` — Configuration persistence
 - `platform_shim` — Host/ESP32 abstraction layer for testing
+- `util_safe` — shared safe-copy/bounds-checked helpers
 
-**Audio sources (priority order):**
+**Audio sources (priority order — see `get_active_source()` in
+`components/audio_processor/audio_processor_engine.c`):**
 1. Beep overlay (mixes over active source)
 2. UARTAUDIO (development: PC → USB serial → A2DP)
-3. SYNTH (connection-hold: keeps A2DP link alive when no I2S signal)
-4. I2S (primary audio input)
+3. I2S (primary audio input)
+4. SYNTH (connection-hold fallback only, when no I2S signal: keeps the A2DP
+   link alive)
 5. Silence (default idle: active when no BEEP, UARTAUDIO, or I2S signal and SYNTH is not forced ON)
 
 **Serial commands:** Send text commands over UART (USB console or GPIO16/17). See `components/command_interface/` for command reference. Key commands: `SCAN`, `CONNECT`, `START`, `STOP`, `VOLUME`, `STATUS`, `VERSION`.
@@ -154,14 +165,16 @@ All I2S pins are configurable via NVS or the `I2S_CONFIG` command. The secondary
 ## Testing
 
 ```bash
-# Host tests (fast, no hardware)
+# Host tests (fast, no hardware) — from esp_bt_audio_source/
 cd test/host_test/build_host_tests
 ctest --output-on-failure
+cd ../../..   # back to esp_bt_audio_source/
 
-# All tests (host + device, requires ESP32)
-conda run -n python310 python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
+# All tests (host + device, requires ESP32) — from esp_bt_audio_source/
+. ../.venv/bin/activate
+python tools/run_all_tests.py --port /dev/ttyUSB0 --timeout 300
 ```
 
 ## Project Status
 
-Stable. 883/883 host test cases + 99/99 device tests passing. UARTAUDIO validated bit-faithful, including with the laptop's own Bluetooth acting as the A2DP sink. See `../memory.md` (and `../memory_archive.md` for older history) for recent changes.
+Stable. 891/891 host test cases + 99/99 device tests passing. UARTAUDIO validated bit-faithful, including with the laptop's own Bluetooth acting as the A2DP sink. The S3↔WROOM32 I2S link's payload-phase detector now uses lock hysteresis (see Architecture above) — fixed an intermittent static bug, audibly confirmed clean. See `../memory.md` (and `../memory_archive.md` for older history) for recent changes.
