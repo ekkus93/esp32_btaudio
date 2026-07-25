@@ -102,28 +102,17 @@ function notifyAuthRequired(): void {
   for (const cb of authListeners) cb();
 }
 
-const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
-
 /** Centralised fetch wrapper — handles timeout, abort, auth, structured envelope. */
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
   timeoutMs = 10_000,
 ): Promise<T> {
-  const method = (init.method ?? "GET").toUpperCase();
-  const mutating = MUTATING_METHODS.has(method);
-
-  // 11.1/11.4: a mutation without a token never reaches the network — fail
-  // closed before fetch(), not after a round trip.
-  let authHeader: Record<string, string> = {};
-  if (mutating) {
-    const token = getAuthToken();
-    if (!token) {
-      notifyAuthRequired();
-      throw new ApiError("Enter the device token", 401, "AUTH_REQUIRED", false);
-    }
-    authHeader = { Authorization: `Bearer ${token}` };
-  }
+  // Device-token auth is disabled server-side (route_dispatch() no longer
+  // checks it); still attach it if the user happens to have one set (e.g.
+  // via AUTH ROTATE), but never block a request on its absence.
+  const token = getAuthToken();
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   const controller = new AbortController();
   const timerId = window.setTimeout(() => controller.abort(), timeoutMs);

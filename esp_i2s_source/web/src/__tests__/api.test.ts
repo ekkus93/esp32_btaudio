@@ -111,13 +111,21 @@ describe("FIX3 11: auth token storage", () => {
   });
 });
 
-describe("FIX3 11.1/11.4: apiRequest auth behavior", () => {
-  it("a mutating request without a stored token never calls fetch()", async () => {
+describe("apiRequest auth behavior (device-token auth disabled server-side)", () => {
+  it("a mutating request without a stored token still reaches the network, with no Authorization header", async () => {
+    (globalThis.fetch as Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: true }),
+    });
     const { apiRequest } = await import("../api");
-    await expect(apiRequest("/api/radio", { method: "POST" })).rejects.toThrow(
-      "Enter the device token",
-    );
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    await apiRequest("/api/radio", { method: "POST" });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [, options] = (globalThis.fetch as Mock).mock.calls[0];
+    const headers = options.headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
   });
 
   it("a GET request does not require a token", async () => {
@@ -172,18 +180,6 @@ describe("FIX3 11.1/11.4: apiRequest auth behavior", () => {
     }
   });
 
-  it("a missing token fires the onAuthRequired listener before any network call", async () => {
-    const { apiRequest, onAuthRequired } = await import("../api");
-    const listener = vi.fn();
-    const unsubscribe = onAuthRequired(listener);
-    try {
-      await expect(apiRequest("/api/radio", { method: "POST" })).rejects.toThrow();
-      expect(listener).toHaveBeenCalledTimes(1);
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-    } finally {
-      unsubscribe();
-    }
-  });
 });
 
 describe("non-enveloped device responses (the /api/status crash)", () => {

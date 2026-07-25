@@ -1,5 +1,44 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T03:40:17Z - Claude Opus 4.8 - esp_bt_audio_source: fixed SCAN (invalid inq_len) + esp_i2s_source frontend auth gate
+
+- SCAN bug: `bt_scan.c` called `esp_bt_gap_start_discovery(..., inq_len=0, 0)`,
+  but ESP-IDF requires inq_len in [ESP_BT_GAP_MIN_INQ_LEN 0x01,
+  ESP_BT_GAP_MAX_INQ_LEN 0x30] — 0 returns ESP_ERR_INVALID_ARG, so SCAN
+  could never have worked on real hardware. Captured the actual error off
+  the WROOM32 serial log (`E BT_SCAN: Start device discovery failed:
+  ESP_ERR_INVALID_ARG`) to confirm. Fixed: added `#define BT_SCAN_INQ_LEN 10`
+  (~12.8s, matching ESP-IDF's a2dp_source example) and used it at both call
+  sites (ESP_PLATFORM + UNIT_TEST paths).
+- Why host tests missed it (same class as the earlier i2s DMA-starvation
+  bug — mock more permissive than real API): `mocks/mock_gap.c`'s
+  `esp_bt_gap_start_discovery` did `(void)inq_len;` and returned a canned
+  result, never replicating the range check. Fixed the mock to mirror
+  ESP-IDF's validation (returns ESP_ERR_INVALID_ARG for bad mode/inq_len),
+  added `ESP_BT_GAP_MIN/MAX_INQ_LEN` to the mock header, and added
+  `mock_gap_get_last_inq_len()`. New regression test
+  `test_bt_start_scan_uses_valid_inq_len` asserts the passed inq_len is in
+  range; verified it FAILS with the old inq_len=0 and passes with the fix.
+  Full host suite 74/74 green; SCAN verified `OK|SCAN|STARTED` on hardware.
+- Also committed the esp_i2s_source frontend half of the device-token
+  disable (the backend `route_dispatch()` half was 42460599): `api.ts`
+  had a *client-side* gate that threw AUTH_REQUIRED before fetch() for any
+  mutating request when no token was stored — that (not the server) was
+  what popped the token modal on HELP. Removed it: now attaches the token
+  only if one happens to be set, never blocks. Updated api.test.ts
+  (dropped the two "mutation without token never calls fetch / fires
+  onAuthRequired" tests, added one asserting it now reaches the network
+  with no Authorization header), 22/22 vitest green, rebuilt+re-embedded
+  the www bundle.
+- Operational note: earlier this session's `/lint-n-test` full sweep
+  flashed test_manager Unity firmware to the WROOM32 (/dev/ttyUSB0) and
+  never restored it — that was why the S3 Terminal's forwarded commands
+  timed out (wroom.reachable=false). Reflashed production
+  esp_bt_audio_source. LESSON: run_all_tests.py leaves whatever test suite
+  ran last on the WROOM32; reflash production firmware after a device
+  sweep. (wroom.reachable in /api/status lags — it's a periodic probe; a
+  working console round-trip is the real signal.)
+
 ## 2026-07-25T03:13:24Z - Claude Sonnet 5 - esp_bt_audio_source: fixed all 3 device Unity suites (0/3 -> 3/3 passing)
 
 - Root cause (verified against ESP-IDF's own `tools/cmake/build.cmake` /
