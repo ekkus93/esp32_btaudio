@@ -141,14 +141,15 @@ controllable behavior. Write `mocks/fake_http_client.c`:
   - [x] Boundary: absolute location exactly `out_sz - 1` chars → succeeds; exactly
         `out_sz` → fails (off-by-one check, this function does raw `memcpy`).
   8/8 new cases pass; full esp_i2s_source host suite 26/26.
-- [ ] **`redirect_target_allowed`** (on host, reduces to `url_policy_check_literal`
+- [x] **`redirect_target_allowed`** (on host, reduces to `url_policy_check_literal`
       — the `ESP_PLATFORM`-gated DNS re-check block compiles out entirely, so
-      this is fully host-testable without network mocking):
-  - [ ] Public IP literal in path → allowed.
-  - [ ] Private/loopback/link-local IP literal → blocked (mirror
+      this is fully host-testable without network mocking) — **DONE**:
+  - [x] Public IP literal in path → allowed.
+  - [x] Private/loopback/link-local IP literal → blocked (mirror
         `url_policy.c`'s own test matrix; this just confirms the *wrapper* calls
         through correctly, not the policy itself).
-  - [ ] Hostname (non-literal) → allowed on host build (DNS check is device-only).
+  - [x] Hostname (non-literal) → allowed on host build (DNS check is device-only).
+  5 new cases pass; full esp_i2s_source host suite 26/26.
 - [ ] **`connect_with_redirects`** (needs the fake HTTP client):
   - [ ] Single hop, 200 status → returns an open client positioned at that
         response, `*out_permanent` stays `false`.

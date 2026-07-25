@@ -144,6 +144,38 @@ void test_resolve_redirect_absolute_location_exact_boundary(void)
     TEST_ASSERT_FALSE(resolve_redirect_location("http://old.example/a", "http://a", out8, sizeof(out8)));
 }
 
+/* ---- redirect_target_allowed: on host, ESP_PLATFORM is undefined so this
+ * reduces to exactly url_policy_check_literal(url) — the DNS re-check block
+ * compiles out. These confirm the wrapper calls through correctly; the
+ * policy matrix itself is url_policy.c's own test responsibility. ---- */
+
+void test_redirect_target_allowed_public_ip_literal(void)
+{
+    TEST_ASSERT_TRUE(redirect_target_allowed("http://8.8.8.8/stream"));
+}
+
+void test_redirect_target_allowed_blocks_loopback(void)
+{
+    TEST_ASSERT_FALSE(redirect_target_allowed("http://127.0.0.1/x"));
+}
+
+void test_redirect_target_allowed_blocks_private(void)
+{
+    TEST_ASSERT_FALSE(redirect_target_allowed("http://192.168.1.1/x"));
+}
+
+void test_redirect_target_allowed_blocks_link_local(void)
+{
+    TEST_ASSERT_FALSE(redirect_target_allowed("http://169.254.1.1/x"));
+}
+
+void test_redirect_target_allowed_hostname_allowed_on_host(void)
+{
+    /* Non-literal hostname: DNS resolution happens device-side only
+     * (ESP_PLATFORM-gated); on host this passes through as allowed. */
+    TEST_ASSERT_TRUE(redirect_target_allowed("http://stream.example.com/x"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -157,5 +189,11 @@ int main(void)
     RUN_TEST(test_resolve_redirect_absolute_location_too_big_rejected_not_truncated);
     RUN_TEST(test_resolve_redirect_base_url_missing_scheme_with_root_relative_rejected);
     RUN_TEST(test_resolve_redirect_absolute_location_exact_boundary);
+
+    RUN_TEST(test_redirect_target_allowed_public_ip_literal);
+    RUN_TEST(test_redirect_target_allowed_blocks_loopback);
+    RUN_TEST(test_redirect_target_allowed_blocks_private);
+    RUN_TEST(test_redirect_target_allowed_blocks_link_local);
+    RUN_TEST(test_redirect_target_allowed_hostname_allowed_on_host);
     return UNITY_END();
 }
