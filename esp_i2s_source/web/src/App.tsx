@@ -375,6 +375,7 @@ const TABS = [
   { id: "radio", label: "Radio" },
   { id: "tone", label: "Tone" },
   { id: "terminal", label: "Terminal" },
+  { id: "bluetooth", label: "Bluetooth" },
   { id: "settings", label: "Settings" },
 ] as const;
 
@@ -456,8 +457,11 @@ export function App() {
           {/* Row 2: WiFi + Control AP */}
           <ProvisionForm wifi={w} />
           <ApControl ap={w?.ap} onChange={refresh} />
+        </div>
+      )}
 
-          {/* Row 3: Bluetooth (full width) */}
+      {tab === "bluetooth" && (
+        <div className="grid">
           <Bluetooth />
         </div>
       )}

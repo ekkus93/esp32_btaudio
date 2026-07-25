@@ -1,5 +1,15 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T07:49:11Z - Claude Opus 4.8 - esp_i2s_source: Bluetooth card moved to its own tab
+
+- Per user: moved the <Bluetooth /> card out of the Settings tab into a new
+  dedicated "Bluetooth" tab, ordered Radio/Tone/Terminal/**Bluetooth**/Settings
+  (between Terminal and Settings). web/src/App.tsx only: added the tab to TABS,
+  added a `tab === "bluetooth"` render block (<div class=grid><Bluetooth/></div>),
+  removed the "Row 3: Bluetooth (full width)" block from the settings grid.
+  Bluetooth() takes no props so it's self-contained. 28/28 vitest, build clean,
+  flashed; device-served bundle sha256 == committed. COMMITTED.
+
 ## 2026-07-25T07:43:47Z - Claude Opus 4.8 - esp_i2s_source: station list export/import (merge + dedup) in web UI
 
 - User asked for a way to download the station list and reload it, with dedup.
