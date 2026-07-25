@@ -1,5 +1,51 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T19:31:52Z - Claude Sonnet 5 - Ralph loop: docs/UNIT_TESTS2_TODO.md complete (all P0/P1/P2)
+
+- User: "Ralph loop docs/UNIT_TESTS2_TODO.md" -> invoked the `ralph-loop` skill.
+  Worked every task/subtask top to bottom, one commit+push per subtask, full
+  suite + idf.py build verified before each commit, per the loop's rules.
+  10 commits total (26604b70..e996b24b range continues into f33b821f..e996b24b
+  for this loop specifically). All pushed.
+- **I2S-1** (radio_stream.c SSRF/redirect logic, P0): built a new controllable
+  fake_http_client mock (hop-queue model, replays headers through the real
+  event_handler). De-static'd resolve_redirect_location/redirect_target_allowed/
+  connect_with_redirects/codec_from_ct/ci_contains/reconnect_delay_ms into
+  radio_internal.h. 33 new cases; confirmed the SSRF-block assertion passes.
+  15.2% -> 46.8%.
+- **I2S-2** (radio_ring.c, P0): new test_radio_ring target, semaphore mock
+  only. 20 cases. 0% -> 100%.
+- **BT-1** (audio_processor_config.c): de-static'd configure_i2s; added
+  i2s_manager_init/nvs_storage_set_i2s_pins spies to the shared stub. 28
+  cases. 16.7% -> 88.3%.
+- **I2S-3** (ctrl.c): new ctrl_internal.h de-statics do_action/wifi_connected/
+  status_running/resume_result_str/scan_result_str/s_sm; made
+  ctrl_device_stubs.c controllable. 19 cases. 21.6% -> 46.9% (task-loop-bound,
+  short of the 55% stretch goal, expected).
+- **BT-2** (audio_processor_sync_diag.c): 3 cases. 0% -> 87.8%.
+- **BT-3** (bt_manager.c): 13 cases covering pair/connect/set_name/snapshots.
+  70.1% -> 91.8%. Found+fixed a real bug-class gap: bt_ctx_lock() silently
+  failed the whole time because this test file never calls bt_manager_init()
+  (by convention) so s_bt_ctx_mutex was NULL -- fixed via the existing-but-
+  unused bt_manager_test_init_mutex() hook.
+- **P2** (bt_link.c, i2s_out.c audit + audio_processor.c/_diag.c fillers):
+  confirmed all remaining zero-call functions in both audited files are
+  genuine FreeRTOS task loops (out of scope); 13 more cases across 4 files.
+- **Found and fixed 3 missing header declarations** this loop (real
+  pre-existing gaps, not introduced by this work): bt_manager_pair,
+  audio_processor_is_wav_active, audio_processor_dump_tag_queue -- all
+  public functions that only "worked" via lucky implicit-declaration
+  matching their real signature. Also confirmed audio_processor_is_wav_active
+  and audio_processor_dump_tag_queue are dead-code stubs from removed
+  features (WAV/play_manager, legacy tag queue) -- flagged as dead-code-
+  removal candidates for a future pass, not removed here (out of scope).
+- **Final coverage**: esp_bt_audio_source 79.4% -> 84.2% (946 host cases, was
+  891, 74 suites unchanged); esp_i2s_source 55.1% -> 61.7% (27 suites, was 25).
+  Both projects' full suites green and idf.py builds clean at every commit.
+- docs/UNIT_TESTS2_TODO.md fully updated in place (every checkbox checked,
+  every section has a "✅ DONE" summary with before/after numbers) -- serves
+  as the permanent record of this work, no separate report needed.
+
 ## 2026-07-25T18:15:34Z - Claude Sonnet 5 - coverage audit -> docs/UNIT_TESTS2_TODO.md
 
 - Follow-up to the "any parts of the code need more coverage" question: measured
