@@ -1,5 +1,36 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T07:01:42Z - Claude Fable 5 - esp_i2s_source: HTTPS-vs-web-UI hang investigation (root = weak WiFi, not RAM)
+
+- Symptom: web UI (http://10.1.2.50/, ~57KB gz SPA) hangs while radio streams
+  an HTTPS station, but NOT an HTTP station. Prior (Opus) A/B test proved it's
+  TLS-specific, not the AAC decoder (HTTP-AAC loads fine; only HTTPS hangs) and
+  not a logged alloc failure; serial showed httpd send EAGAIN(11)/ECONNRESET(104)
+  -> "uri handler execution failed". Prior conclusion: root = weak WiFi airtime.
+- Fable second opinion challenged the (inferred) airtime mechanism and proposed
+  internal DMA-RAM starvation instead: /api/status heap_free =
+  esp_get_free_heap_size() = internal+PSRAM, PSRAM-dominated, so it HID internal
+  RAM; and MBEDTLS_INTERNAL_MEM_ALLOC=y + SSL_IN_CONTENT_LEN=16384 +
+  DYNAMIC_BUFFER off pins ~16KB internal per HTTPS conn, while WiFi dynamic TX
+  buffers + lwip are also internal (SPIRAM_TRY_ALLOCATE_WIFI_LWIP off).
+- EXPERIMENT (added heap_caps telemetry to /api/status — this commit): measured
+  heap_internal_free / heap_dma_free / heap_dma_largest under stopped/MP3/HTTPS.
+  RESULT: TLS pinning CONFIRMED (dma_largest 31744 stopped -> 23552 MP3 ->
+  ~3-7KB HTTPS). BUT hypothesis REFUTED as the trigger: at RSSI -62/-64 (good),
+  HTTPS-AAC + 12 concurrent page loads with dma_largest driven to 3328-5120B ->
+  12/12 loaded fine. Low DMA RAM alone does NOT cause the hang. The variable
+  that tracked the hang was RSSI: hung earlier when signal drifted to ~-70,
+  won't reproduce at -62. So Opus's "weak WiFi is root cause" stands; TLS's
+  ~16KB internal-RAM pinning is a real CO-FACTOR (makes HTTPS more fragile at
+  the margin, e.g. survived -70 on HTTP but not HTTPS) but not the trigger.
+  Residual confounds (couldn't reproduce in-the-act at -62; device was rebooted
+  since the hang, clearing any long-uptime fragmentation).
+- Upshot: fix = HTTP-AAC stations (work) or better WiFi (cure).
+  MBEDTLS_DYNAMIC_BUFFER would add RAM headroom but RAM isn't the binding
+  constraint, so not worth the churn. Kept the heap telemetry as a useful
+  permanent diagnostic (heap_internal_free/heap_dma_free/heap_dma_largest in
+  /api/status; frontend doesn't consume them).
+
 ## 2026-07-25T05:58:25Z - Claude Opus 4.8 - esp_i2s_source: AAC decoder verified working; fixed https:// station crash (radio task stack overflow)
 
 - AAC decoder WORKS (user asked): verified live on-device with SomaFM AAC

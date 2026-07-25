@@ -23,6 +23,7 @@
 #include "esp_app_desc.h"
 #include "esp_timer.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
@@ -100,6 +101,17 @@ static esp_err_t status_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "version", app ? app->version : "?");
     cJSON_AddNumberToObject(root, "uptime_s", (double)(esp_timer_get_time() / 1000000));
     cJSON_AddNumberToObject(root, "heap_free", (double)esp_get_free_heap_size());
+    /* DIAGNOSTIC (HTTPS-vs-web-server contention): esp_get_free_heap_size()
+     * above is internal+PSRAM and PSRAM-dominated, so it hides internal-RAM
+     * pressure. Report the internal (DMA-capable) pool explicitly — the WiFi
+     * TX buffers the web server needs to send a response come from here, and
+     * mbedTLS pins ~16 KB of it per HTTPS connection. */
+    cJSON_AddNumberToObject(root, "heap_internal_free",
+                            (double)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    cJSON_AddNumberToObject(root, "heap_dma_free",
+                            (double)heap_caps_get_free_size(MALLOC_CAP_DMA));
+    cJSON_AddNumberToObject(root, "heap_dma_largest",
+                            (double)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
 
     /* 10.6: capability booleans — the frontend must be able to distinguish
      * "unavailable" (component failed at boot) from "empty/idle". */
