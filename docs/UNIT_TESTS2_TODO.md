@@ -324,16 +324,24 @@ are not:
       rejects when `!s_is_initialized`; rejects NULL output (confirmed it
       does guard, checked after `!s_is_initialized`).
 
-### BT-2 — `audio_processor_sync_diag.c` (0% → target 100%)
-Small (41 lines), both functions untested:
-- [ ] **`audio_processor_emit_sync_worker_diag`**: call it and assert it returns
-      `ESP_OK` (or whatever its real contract is — read the function first,
-      this wasn't inspected in the audit) and emits the expected diagnostic
-      output/counters.
-- [ ] **`mock_generate_i2s_audio`**: this looks like a host-test-only synthetic
-      data generator; if it's genuinely test infrastructure rather than
-      production logic, downgrade this file's priority — confirm which before
-      spending time on it.
+### BT-2 — `audio_processor_sync_diag.c` (0% → 87.8% ✅ DONE)
+> Achieved 87.8% line / 100% func. 3 new cases added to `test_audio_processor_diag.c`
+> (already linked this file). Confirmed `mock_generate_i2s_audio` is genuine
+> test-only scaffolding (`#ifdef CONFIG_BT_MOCK_TESTING`) — exercised
+> indirectly via the success-path test, no separate direct test needed.
+> Confirmed the real-hardware sine-wave synthesis branch (`#else`) isn't even
+> compiled under this build's `CONFIG_BT_MOCK_TESTING`, so it's correctly
+> untested here (it would need a device build / different host config to
+> reach — out of scope for this task). The `target == 0` branch is
+> unreachable through the real `audio_get_runtime_work_bytes()` (always
+> falls back to `AUDIO_WORK_BUFFER_BYTES`) — not fabricated. Full host suite
+> 74/74 (919 cases, was 916); `idf.py build` clean.
+- [x] **`audio_processor_emit_sync_worker_diag`**: rejects when
+      `!s_is_initialized`; succeeds via the mock generator path (returns
+      `ESP_OK`, real `diag_dump_bytes` fires and prints the hex dump);
+      NULL `s_proc_buffer` → `ESP_ERR_INVALID_SIZE` (the `generated == 0` guard).
+- [x] **`mock_generate_i2s_audio`**: confirmed host-test-only scaffolding, not
+      production logic — see note above.
 
 ### BT-3 — `bt_manager.c` remaining gaps (70.1% → target 85%+)
 - [ ] **`bt_manager_pair`** / **`bt_manager_connect`**: thin wrappers —

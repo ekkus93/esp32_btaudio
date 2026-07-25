@@ -586,6 +586,58 @@ void test_get_config_round_trip_after_setters(void)
     TEST_ASSERT_EQUAL_INT(AUDIO_SAMPLE_RATE_48K, cfg.sample_rate);
 }
 
+/* ================= BT-2 (docs/UNIT_TESTS2_TODO.md): audio_processor_sync_diag.c ================= */
+
+/* Backing storage for s_proc_buffer/s_proc_buffer2, sized to
+ * AUDIO_WORK_BUFFER_BYTES (128 * 8 * 6 = 6144 under CONFIG_BT_MOCK_TESTING). */
+static uint8_t s_sync_diag_proc_buf[AUDIO_WORK_BUFFER_BYTES];
+static uint8_t s_sync_diag_proc_buf2[AUDIO_WORK_BUFFER_BYTES];
+
+void test_emit_sync_worker_diag_rejects_when_not_initialized(void)
+{
+    s_is_initialized = false;
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_STATE, audio_processor_emit_sync_worker_diag());
+}
+
+void test_emit_sync_worker_diag_succeeds_with_mock_generator(void)
+{
+    /* CONFIG_BT_MOCK_TESTING is defined for this build, so
+     * audio_processor_emit_sync_worker_diag() takes the mock_generate_i2s_audio
+     * path (not the real-hardware sine-wave synthesis branch, which isn't
+     * even compiled in under this config). */
+    s_is_initialized = true;
+    s_proc_buffer = s_sync_diag_proc_buf;
+    s_proc_buffer2 = s_sync_diag_proc_buf2;
+    s_audio_config.sample_rate = AUDIO_SAMPLE_RATE_44K;
+    s_audio_config.bit_depth = AUDIO_BIT_DEPTH_16;
+    s_audio_config.channels = AUDIO_CHANNEL_STEREO;
+
+    TEST_ASSERT_EQUAL_INT(ESP_OK, audio_processor_emit_sync_worker_diag());
+}
+
+void test_emit_sync_worker_diag_null_proc_buffer_yields_invalid_size(void)
+{
+    /* mock_generate_i2s_audio(NULL, target) returns 0 -> generated==0 ->
+     * ESP_ERR_INVALID_SIZE. Exercises the "generated == 0" guard. */
+    s_is_initialized = true;
+    s_proc_buffer = NULL;
+    s_proc_buffer2 = s_sync_diag_proc_buf2;
+
+    TEST_ASSERT_EQUAL_INT(ESP_ERR_INVALID_SIZE, audio_processor_emit_sync_worker_diag());
+}
+
+/* Note (docs/UNIT_TESTS2_TODO.md BT-2): the "target == 0" / ESP_ERR_INVALID_ARG
+ * branch (audio_get_runtime_work_bytes() returning 0) is unreachable through
+ * the real audio_get_runtime_work_bytes() (audio_processor_state.c) -- it
+ * always falls back to AUDIO_WORK_BUFFER_BYTES when s_runtime_work_bytes==0.
+ * Not fabricating a scenario the real helper can't produce.
+ *
+ * mock_generate_i2s_audio() itself (the other BT-2 target) is confirmed
+ * test-only scaffolding -- #ifdef CONFIG_BT_MOCK_TESTING, named "mock_",
+ * used only by this file to synthesize bytes for host tests. It's exercised
+ * indirectly by the success-path test above; no separate direct test adds
+ * value beyond that. */
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -643,5 +695,10 @@ int main(void)
     RUN_TEST(test_get_config_rejects_when_not_initialized);
     RUN_TEST(test_get_config_rejects_null_output);
     RUN_TEST(test_get_config_round_trip_after_setters);
+
+    /* BT-2 (docs/UNIT_TESTS2_TODO.md): audio_processor_sync_diag.c */
+    RUN_TEST(test_emit_sync_worker_diag_rejects_when_not_initialized);
+    RUN_TEST(test_emit_sync_worker_diag_succeeds_with_mock_generator);
+    RUN_TEST(test_emit_sync_worker_diag_null_proc_buffer_yields_invalid_size);
     return UNITY_END();
 }
