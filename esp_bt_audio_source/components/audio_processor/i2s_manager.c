@@ -79,6 +79,11 @@ static i2s_manager_state_t s_mgr = {0};
  * i2s_frame_extract.h). I2S_FRAME_PHASE_NONE until first detection;
  * reset on every channel (re)enable — the phase shifts across enables. */
 static int s_payload_phase = I2S_FRAME_PHASE_NONE;
+/* Hysteresis state for i2s_frame_phase_hold(): a pending challenger phase and
+ * how many consecutive blocks it has held. Reset with s_payload_phase on
+ * (re)enable so a fresh session locks cleanly from scratch. */
+static int s_phase_cand = I2S_FRAME_PHASE_NONE;
+static int s_phase_cand_count = 0;
 
 #if defined(ESP_PLATFORM) || defined(CONFIG_BT_MOCK_TESTING)
 static esp_err_t configure_i2s(const audio_config_t *cfg)
@@ -330,10 +335,15 @@ size_t i2s_source_fill(uint8_t *dst, size_t dst_bytes)
 	if (s_mgr.cfg.bit_depth == AUDIO_BIT_DEPTH_32) {
 		uint16_t *h = (uint16_t *)s_mgr.bufs.raw_buf;
 		size_t nh = read_bytes / sizeof(uint16_t);
-		int phase = i2s_frame_extract_detect(h, nh);
-		if (phase == I2S_FRAME_PHASE_NONE) {
-			phase = s_payload_phase;  /* silent block: reuse session phase */
-		} else if (phase != s_payload_phase) {
+		int detected = i2s_frame_extract_detect(h, nh);
+		/* Hysteresis: hold the locked phase through spurious single-block
+		 * picks; only a challenger sustained across I2S_FRAME_PHASE_HOLD_BLOCKS
+		 * re-locks. Without this, per-block re-detection thrashed (100+
+		 * switches/s on some streams), and every switch reinterpreted the
+		 * lanes mid-frame -> audible static. */
+		int phase = i2s_frame_phase_hold(s_payload_phase, detected,
+		                                 &s_phase_cand, &s_phase_cand_count);
+		if (phase != s_payload_phase) {
 			ESP_LOGI(TAG, "i2s payload phase: %d,%d",
 			         (phase >> 4) & 0xF, phase & 0xF);
 			s_payload_phase = phase;
@@ -512,6 +522,8 @@ esp_err_t i2s_manager_start(void)
 #endif
 
 	s_payload_phase = I2S_FRAME_PHASE_NONE;  /* phase shifts per enable — re-detect */
+	s_phase_cand = I2S_FRAME_PHASE_NONE;     /* fresh session: clear hysteresis too */
+	s_phase_cand_count = 0;
 	s_mgr.running = true;
 	return ESP_OK;
 }

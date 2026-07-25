@@ -79,3 +79,43 @@ size_t i2s_frame_extract(const uint16_t *halves, size_t nhalves, int phase,
 	}
 	return nframes * 2;
 }
+
+int i2s_frame_phase_hold(int locked, int detected,
+                         int *candidate, int *candidate_count)
+{
+	if (candidate == NULL || candidate_count == NULL) {
+		return locked;
+	}
+	/* Silent block carries no evidence either way — hold the lock and leave
+	 * any pending challenger untouched (a real slip resumes accumulating on
+	 * the next non-silent block). */
+	if (detected == I2S_FRAME_PHASE_NONE) {
+		return locked;
+	}
+	/* First lock of the session: adopt immediately, nothing to hold against. */
+	if (locked == I2S_FRAME_PHASE_NONE) {
+		*candidate = I2S_FRAME_PHASE_NONE;
+		*candidate_count = 0;
+		return detected;
+	}
+	/* Locked phase reaffirmed — drop any challenger. */
+	if (detected == locked) {
+		*candidate = I2S_FRAME_PHASE_NONE;
+		*candidate_count = 0;
+		return locked;
+	}
+	/* A different phase. Count it only while it stays the SAME challenger;
+	 * any deviation (including flipping to yet another phase) restarts the
+	 * tally, so scattered noise never accrues to a switch. */
+	if (detected == *candidate) {
+		if (++(*candidate_count) >= I2S_FRAME_PHASE_HOLD_BLOCKS) {
+			*candidate = I2S_FRAME_PHASE_NONE;
+			*candidate_count = 0;
+			return detected;
+		}
+		return locked;
+	}
+	*candidate = detected;
+	*candidate_count = 1;
+	return locked;
+}

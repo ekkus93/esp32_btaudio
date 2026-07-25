@@ -59,6 +59,36 @@ int i2s_frame_extract_detect(const uint16_t *halves, size_t nhalves);
 size_t i2s_frame_extract(const uint16_t *halves, size_t nhalves, int phase,
                          int16_t *out);
 
+/**
+ * Consecutive blocks a NEW detected phase must persist before it replaces the
+ * locked one. The link phase is constant within a session (see contract
+ * above), so a lone deviating block is detection noise — only a sustained
+ * change (a genuine channel-enable slip) should re-lock. At ~1 block per
+ * ~11 ms this is ~90 ms of evidence: rare enough to never chase noise, quick
+ * enough that a real slip recovers almost inaudibly.
+ */
+#define I2S_FRAME_PHASE_HOLD_BLOCKS 8
+
+/**
+ * Hysteresis for the per-block phase decision. Without it, re-detecting every
+ * block lets spurious single-block picks (or pathological 2-of-4 offsets)
+ * flip the lock constantly — heard as static, since each switch reinterprets
+ * the sample lanes mid-stream.
+ *
+ * @param locked          currently locked phase (I2S_FRAME_PHASE_NONE if none)
+ * @param detected        this block's detect() result (may be PHASE_NONE)
+ * @param candidate       [in/out] pending challenger phase across calls
+ * @param candidate_count [in/out] consecutive blocks the challenger has held
+ * @return the phase to use this block:
+ *   - PHASE_NONE detected (silent block) -> keep @p locked
+ *   - nothing locked yet -> adopt @p detected immediately
+ *   - detected == locked -> reaffirm (clears any challenger)
+ *   - a different phase -> keep @p locked until the SAME challenger has
+ *     persisted I2S_FRAME_PHASE_HOLD_BLOCKS consecutive blocks, then switch
+ */
+int i2s_frame_phase_hold(int locked, int detected,
+                         int *candidate, int *candidate_count);
+
 #ifdef __cplusplus
 }
 #endif

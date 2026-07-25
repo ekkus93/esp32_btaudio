@@ -222,6 +222,89 @@ void test_detect_then_extract_round_trip_all_phases(void)
     }
 }
 
+/* --- phase hold (hysteresis) -------------------------------------------- */
+
+void test_hold_first_detection_locks_immediately(void)
+{
+    int cand = I2S_FRAME_PHASE_NONE, n = 0;
+    TEST_ASSERT_EQUAL_INT(0x13, i2s_frame_phase_hold(I2S_FRAME_PHASE_NONE,
+                                                     0x13, &cand, &n));
+    TEST_ASSERT_EQUAL_INT(I2S_FRAME_PHASE_NONE, cand);
+    TEST_ASSERT_EQUAL_INT(0, n);
+}
+
+void test_hold_silent_block_keeps_lock_and_challenger(void)
+{
+    int cand = 0x02, n = 3;
+    TEST_ASSERT_EQUAL_INT(0x13, i2s_frame_phase_hold(0x13,
+                                                     I2S_FRAME_PHASE_NONE,
+                                                     &cand, &n));
+    /* challenger untouched: a slip resumes accumulating after silence */
+    TEST_ASSERT_EQUAL_INT(0x02, cand);
+    TEST_ASSERT_EQUAL_INT(3, n);
+}
+
+void test_hold_single_deviating_block_does_not_switch(void)
+{
+    int cand = I2S_FRAME_PHASE_NONE, n = 0;
+    TEST_ASSERT_EQUAL_INT(0x13, i2s_frame_phase_hold(0x13, 0x02, &cand, &n));
+    TEST_ASSERT_EQUAL_INT(0x02, cand);
+    TEST_ASSERT_EQUAL_INT(1, n);
+    /* locked phase re-detected: challenger dropped */
+    TEST_ASSERT_EQUAL_INT(0x13, i2s_frame_phase_hold(0x13, 0x13, &cand, &n));
+    TEST_ASSERT_EQUAL_INT(I2S_FRAME_PHASE_NONE, cand);
+    TEST_ASSERT_EQUAL_INT(0, n);
+}
+
+void test_hold_alternating_noise_never_switches(void)
+{
+    /* The observed hardware thrash: 0,2 alternating with assorted phases.
+     * Locked 0x02 must survive indefinitely. */
+    static const int noise[] = { 0x10, 0x02, 0x13, 0x02, 0x32, 0x02, 0x03 };
+    int cand = I2S_FRAME_PHASE_NONE, n = 0;
+    int locked = 0x02;
+    for (int i = 0; i < 100; i++) {
+        locked = i2s_frame_phase_hold(locked,
+                                      noise[i % (int)(sizeof(noise) / sizeof(noise[0]))],
+                                      &cand, &n);
+        TEST_ASSERT_EQUAL_INT(0x02, locked);
+    }
+}
+
+void test_hold_sustained_challenger_switches_after_threshold(void)
+{
+    int cand = I2S_FRAME_PHASE_NONE, n = 0;
+    int locked = 0x13;
+    for (int i = 0; i < I2S_FRAME_PHASE_HOLD_BLOCKS - 1; i++) {
+        locked = i2s_frame_phase_hold(locked, 0x02, &cand, &n);
+        TEST_ASSERT_EQUAL_INT(0x13, locked);
+    }
+    /* block #HOLD_BLOCKS of the same challenger: switch, state cleared */
+    locked = i2s_frame_phase_hold(locked, 0x02, &cand, &n);
+    TEST_ASSERT_EQUAL_INT(0x02, locked);
+    TEST_ASSERT_EQUAL_INT(I2S_FRAME_PHASE_NONE, cand);
+    TEST_ASSERT_EQUAL_INT(0, n);
+}
+
+void test_hold_challenger_change_restarts_tally(void)
+{
+    int cand = I2S_FRAME_PHASE_NONE, n = 0;
+    int locked = 0x13;
+    for (int i = 0; i < I2S_FRAME_PHASE_HOLD_BLOCKS - 1; i++) {
+        locked = i2s_frame_phase_hold(locked, 0x02, &cand, &n);
+    }
+    /* different challenger resets the count — no switch */
+    locked = i2s_frame_phase_hold(locked, 0x10, &cand, &n);
+    TEST_ASSERT_EQUAL_INT(0x13, locked);
+    TEST_ASSERT_EQUAL_INT(0x10, cand);
+    TEST_ASSERT_EQUAL_INT(1, n);
+}
+
+void test_hold_null_state_returns_locked(void)
+{
+    TEST_ASSERT_EQUAL_INT(0x13, i2s_frame_phase_hold(0x13, 0x02, NULL, NULL));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -241,5 +324,12 @@ int main(void)
     RUN_TEST(test_extract_preserves_negative_extremes);
     RUN_TEST(test_extract_rejects_bad_phase);
     RUN_TEST(test_detect_then_extract_round_trip_all_phases);
+    RUN_TEST(test_hold_first_detection_locks_immediately);
+    RUN_TEST(test_hold_silent_block_keeps_lock_and_challenger);
+    RUN_TEST(test_hold_single_deviating_block_does_not_switch);
+    RUN_TEST(test_hold_alternating_noise_never_switches);
+    RUN_TEST(test_hold_sustained_challenger_switches_after_threshold);
+    RUN_TEST(test_hold_challenger_change_restarts_tally);
+    RUN_TEST(test_hold_null_state_returns_locked);
     return UNITY_END();
 }
