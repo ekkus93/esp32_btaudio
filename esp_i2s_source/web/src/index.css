@@ -328,6 +328,7 @@ header { position: relative; }
 .radio-add input:first-of-type { width: 150px; }
 .radio-add input:nth-of-type(2) { flex: 1; min-width: 180px; }
 .radio-add input:focus { outline: none; border-color: var(--accent); }
+.radio-io { display: flex; gap: 8px; margin: 4px 0 10px; }
 .radio-now .stop { padding: 3px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); cursor: pointer; }
 .card.radio button {
   padding: 8px 14px;

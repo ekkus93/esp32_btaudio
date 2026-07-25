@@ -238,3 +238,80 @@ describe("non-enveloped device responses (the /api/status crash)", () => {
     ).rejects.toThrow("HTTP 500");
   });
 });
+
+describe("station export/import helpers", () => {
+  const stations = [
+    { id: 1, name: "Groove Salad", url: "http://somafm.com/groovesalad.pls" },
+    { id: 2, name: "Drone Zone", url: "http://somafm.com/dronezone.pls" },
+  ];
+
+  it("buildStationsExport emits the envelope with name+url only (no ids)", async () => {
+    const { buildStationsExport } = await import("../api");
+    const e = buildStationsExport(stations, "2026-07-25T00:00:00Z");
+    expect(e.format).toBe("esp-i2s-source/stations");
+    expect(e.version).toBe(1);
+    expect(e.exported_at).toBe("2026-07-25T00:00:00Z");
+    expect(e.stations).toEqual([
+      { name: "Groove Salad", url: "http://somafm.com/groovesalad.pls" },
+      { name: "Drone Zone", url: "http://somafm.com/dronezone.pls" },
+    ]);
+    expect((e.stations[0] as { id?: number }).id).toBeUndefined();
+  });
+
+  it("parseStationsImport accepts our envelope", async () => {
+    const { parseStationsImport } = await import("../api");
+    const text = JSON.stringify({
+      format: "esp-i2s-source/stations", version: 1,
+      stations: [{ name: "A", url: "http://a/s" }, { name: "B", url: "http://b/s" }],
+    });
+    expect(parseStationsImport(text)).toEqual([
+      { name: "A", url: "http://a/s" }, { name: "B", url: "http://b/s" },
+    ]);
+  });
+
+  it("parseStationsImport also accepts a bare array and trims / drops url-less entries", async () => {
+    const { parseStationsImport } = await import("../api");
+    const text = JSON.stringify([
+      { name: " A ", url: " http://a/s " },
+      { name: "no url" },              // dropped: no url
+      { url: "http://c/s" },           // name defaults to ""
+      "garbage",                        // dropped: not an object
+    ]);
+    expect(parseStationsImport(text)).toEqual([
+      { name: "A", url: "http://a/s" },
+      { name: "", url: "http://c/s" },
+    ]);
+  });
+
+  it("parseStationsImport throws on invalid JSON and on empty/shapeless input", async () => {
+    const { parseStationsImport } = await import("../api");
+    expect(() => parseStationsImport("{not json")).toThrow(/not valid JSON/);
+    expect(() => parseStationsImport("{}")).toThrow(/no stations/);
+    expect(() => parseStationsImport("[]")).toThrow(/no valid stations/);
+    expect(() => parseStationsImport(JSON.stringify([{ name: "x" }]))).toThrow(/no valid stations/);
+  });
+
+  it("planStationMerge dedups by exact URL against existing and within the file", async () => {
+    const { planStationMerge } = await import("../api");
+    const imported = [
+      { name: "Drone Zone dup", url: "http://somafm.com/dronezone.pls" }, // dup of existing
+      { name: "Star 90s", url: "http://x/star90s" },                       // new
+      { name: "Star 90s again", url: "http://x/star90s" },                 // dup within file
+      { name: "Lite 90s", url: "http://x/lite90s" },                       // new
+    ];
+    const { toAdd, duplicates } = planStationMerge(imported, stations);
+    expect(toAdd).toEqual([
+      { name: "Star 90s", url: "http://x/star90s" },
+      { name: "Lite 90s", url: "http://x/lite90s" },
+    ]);
+    expect(duplicates).toBe(2);
+  });
+
+  it("planStationMerge treats http vs https as distinct (exact-URL policy)", async () => {
+    const { planStationMerge } = await import("../api");
+    const { toAdd, duplicates } = planStationMerge(
+      [{ name: "GS https", url: "https://somafm.com/groovesalad.pls" }], stations);
+    expect(toAdd).toHaveLength(1);
+    expect(duplicates).toBe(0);
+  });
+});

@@ -1,5 +1,27 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-25T07:43:47Z - Claude Opus 4.8 - esp_i2s_source: station list export/import (merge + dedup) in web UI
+
+- User asked for a way to download the station list and reload it, with dedup.
+  Chose (via AskUserQuestion): import = MERGE + dedup (add new, keep existing,
+  never destructive) and dedup key = EXACT URL (matches the device's own
+  station_store dedup; http vs https vs ice2/ice5 are distinct).
+- Frontend-only feature (no firmware/API change; reuses GET+POST /api/stations,
+  whose POST already rejects exact-URL dupes). Added to web/src/api.ts three
+  PURE, unit-tested helpers: buildStationsExport(stations, now) ->
+  {format:"esp-i2s-source/stations",version:1,exported_at,stations:[{name,url}]},
+  parseStationsImport(text) (accepts our envelope OR a bare array; trims; drops
+  url-less/non-object entries; throws on bad JSON / empty), and
+  planStationMerge(imported, existing) -> {toAdd, duplicates} (dedup by exact
+  URL vs existing AND within the file, first-wins). Radio.tsx: Export button
+  (Blob download esp-radio-stations.json) + Import button (hidden file input;
+  reads file, plans merge, POSTs each toAdd via addStation, reports
+  "N added, M duplicates skipped[, K rejected]"). index.css: .radio-io row.
+- 6 new vitest cases (28 total, all green); npm run build clean (tsc + vite +
+  embed, 57.2KB gz); idf.py build clean; flashed to S3; device-served bundle
+  sha256 == committed main/www/index.html.gz; server-side dedup re-verified
+  live ("duplicate URL"). COMMITTED.
+
 ## 2026-07-25T07:01:42Z - Claude Fable 5 - esp_i2s_source: HTTPS-vs-web-UI hang investigation (root = weak WiFi, not RAM)
 
 - Symptom: web UI (http://10.1.2.50/, ~57KB gz SPA) hangs while radio streams

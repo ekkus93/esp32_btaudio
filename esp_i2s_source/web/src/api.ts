@@ -386,3 +386,80 @@ export async function moveStation(
     method: "PUT",
   });
 }
+
+// ---------------------------------------------------------------------------
+// Station backup: export the list to a JSON file and merge-import it back.
+// Pure functions (no fetch) so the export shape, parsing tolerance, and
+// dedup logic are unit-testable independently of the DOM/network.
+
+export interface StationsExport {
+  format: "esp-i2s-source/stations";
+  version: 1;
+  exported_at: string;
+  stations: { name: string; url: string }[];
+}
+
+/** Build the downloadable envelope (name+url only; ids are device-internal). */
+export function buildStationsExport(
+  stations: Station[],
+  now: string = new Date().toISOString(),
+): StationsExport {
+  return {
+    format: "esp-i2s-source/stations",
+    version: 1,
+    exported_at: now,
+    stations: stations.map((s) => ({ name: s.name, url: s.url })),
+  };
+}
+
+/** Parse an uploaded file. Accepts our export envelope OR a bare array of
+ *  {name,url}. Entries without a usable url string are dropped. Throws on
+ *  malformed JSON or a shape with no stations. */
+export function parseStationsImport(text: string): { name: string; url: string }[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("file is not valid JSON");
+  }
+  const arr: unknown = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray((data as StationsExport).stations)
+      ? (data as StationsExport).stations
+      : null;
+  if (!Array.isArray(arr)) throw new Error("no stations found in file");
+  const out: { name: string; url: string }[] = [];
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const rawUrl = (item as { url?: unknown }).url;
+    if (typeof rawUrl !== "string" || !rawUrl.trim()) continue;
+    const rawName = (item as { name?: unknown }).name;
+    out.push({
+      url: rawUrl.trim(),
+      name: typeof rawName === "string" ? rawName.trim() : "",
+    });
+  }
+  if (out.length === 0) throw new Error("no valid stations in file");
+  return out;
+}
+
+/** Merge plan: split imported stations into the ones to add vs. duplicates,
+ *  deduping by exact URL against the current list AND within the file itself
+ *  (first occurrence wins). Matches the device's own exact-URL dedup. */
+export function planStationMerge(
+  imported: { name: string; url: string }[],
+  existing: Station[],
+): { toAdd: { name: string; url: string }[]; duplicates: number } {
+  const seen = new Set(existing.map((s) => s.url));
+  const toAdd: { name: string; url: string }[] = [];
+  let duplicates = 0;
+  for (const s of imported) {
+    if (seen.has(s.url)) {
+      duplicates++;
+      continue;
+    }
+    seen.add(s.url);
+    toAdd.push(s);
+  }
+  return { toAdd, duplicates };
+}

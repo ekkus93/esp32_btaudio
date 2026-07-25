@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   playRadio, stopRadio, getStations, addStation, updateStation, deleteStation, moveStation, setPrebuffer,
+  buildStationsExport, parseStationsImport, planStationMerge,
   ApiError, type RadioStatus, type Station,
 } from "./api";
 
@@ -28,6 +29,8 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
   const [editUrl, setEditUrl] = useState("");
   const [editErr, setEditErr] = useState<string | null>(null);
   const [prebufMs, setPrebufMs] = useState(3000); // radio jitter cushion (ms)
+  const [ioMsg, setIoMsg] = useState<string | null>(null); // export/import status
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadStations = () => getStations().then(setStations).catch(() => {});
   useEffect(() => { loadStations(); }, []);
@@ -86,6 +89,46 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
       else setEditErr((r as { error?: string }).error || "rejected");
     } catch (e) {
       setEditErr(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Export the current list as a downloadable JSON file.
+  const exportStations = () => {
+    setIoMsg(null);
+    const blob = new Blob([JSON.stringify(buildStationsExport(stations), null, 2)],
+                          { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = "esp-radio-stations.json";
+    a.click();
+    URL.revokeObjectURL(href);
+  };
+
+  // Import a JSON file: merge new stations (dedup by exact URL), keep existing.
+  const importStations = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be picked again later
+    if (!file) return;
+    setBusy(true); setErr(null); setIoMsg(null);
+    try {
+      const imported = parseStationsImport(await file.text());
+      const { toAdd, duplicates } = planStationMerge(imported, stations);
+      let added = 0, failed = 0;
+      for (const s of toAdd) {
+        try {
+          const r = await addStation(s.name, s.url);
+          if (r.ok) added++; else failed++;
+        } catch { failed++; }
+      }
+      await loadStations();
+      onChange();
+      setIoMsg(`Imported: ${added} added, ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped`
+               + (failed ? `, ${failed} rejected` : "") + ".");
+    } catch (e) {
+      setErr(errText(e));
     } finally {
       setBusy(false);
     }
@@ -158,6 +201,15 @@ export function Radio({ radio, onChange }: { radio?: RadioStatus; onChange: () =
         <button type="button" disabled={busy || !url} onClick={() => wrap(() => playRadio(url))} title="play without saving">Play</button>
       </form>
       {err && <div className="banner err">{err}</div>}
+
+      <div className="radio-io">
+        <button type="button" disabled={busy || stations.length === 0} onClick={exportStations}
+                title="Download the station list as a JSON file">Export</button>
+        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}
+                title="Load stations from a JSON file (merges, skips duplicates)">Import…</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importStations} />
+      </div>
+      {ioMsg && <div className="banner">{ioMsg}</div>}
 
       <div className="vol-row buffer-row">
         <label>
