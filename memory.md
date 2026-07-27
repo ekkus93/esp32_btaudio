@@ -1,5 +1,29 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T22:00:31Z - Claude Sonnet 5 - retagged v0.3.0 again; learned moving a released tag orphans its GitHub Release
+
+- User asked again to retag HEAD as v0.3.0, now that the dead-code/build-
+  cruft cleanup landed (real code+CMake change, not just docs, since the
+  last retag at 98680b30). Deleted the old tag (local+origin), recreated it
+  as an annotated tag on the new HEAD (ed0442f7), appending a new "Release
+  housekeeping" section to the tag message covering CHANGELOG.md, the
+  GitHub Releases backfill, and the components/ cleanup. `git describe
+  --tags` confirmed exactly `v0.3.0` again.
+- **Important lesson**: `gh release edit v0.3.0 --notes-file ...` after the
+  tag move did NOT just update the notes -- it flipped the existing v0.3.0
+  Release into a **draft** pointed at a synthetic `untagged-<hash>` ref,
+  and `v0.2.0` silently became "Latest" in its place. Root cause: a GitHub
+  Release is bound to the tag's underlying git object at creation time;
+  deleting that tag (even to recreate one with the identical name)
+  orphans the Release from it. `gh release edit` cannot re-link a release
+  to a differently-recreated tag of the same name.
+  **Fix**: `gh release delete v0.3.0` then `gh release create v0.3.0
+  --latest=true` fresh, rather than editing. Takeaway for next time: if a
+  tag needs to move AFTER a GitHub Release already exists for it, delete
+  and recreate the Release too -- don't just `gh release edit`.
+- Verified via `gh release view v0.3.0`: isDraft=false, targetCommitish
+  master, Latest flag correctly back on v0.3.0.
+
 ## 2026-07-27T21:50:20Z - Claude Sonnet 5 - removed root-level dead code and stray build cruft
 
 - User asked (via a shared `ls -la` at repo root) to investigate `components/`,
