@@ -35,18 +35,3 @@ idf_component_register(
     PRIV_INCLUDE_DIRS
 )
 
-# Prefer project-local path when building as a sub-project (e.g. test_app).
-if(EXISTS "${PROJECT_DIR}/../components/bt_manager/include")
-    list(APPEND COMPONENT_PRIV_INCLUDE_DIRS "${PROJECT_DIR}/../components/bt_manager/include")
-else()
-    list(APPEND COMPONENT_PRIV_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/components/bt_manager/include")
-endif()
-
-# bt_core include lives next to this component when used from the project root;
-# also support the relative path when building from a subproject.
-if(EXISTS "${PROJECT_DIR}/../components/bt_core/include")
-    list(APPEND COMPONENT_PRIV_INCLUDE_DIRS "${PROJECT_DIR}/../components/bt_core/include")
-else()
-    list(APPEND COMPONENT_PRIV_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/../components/bt_core/include")
-endif()
-
