@@ -53,7 +53,7 @@ Do not use one large commit for the entire implementation.
 - [x] Confirm the current branch is `feature/esp-bt-audio-duplex`.
 - [x] Record its base commit and current head in the implementation notes.
 - [x] Confirm no unrelated local changes will be included.
-- [ ] Confirm both documentation files exist:
+- [x] Confirm both documentation files exist:
   - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
   - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
 - [x] Run the existing main-layering check.
@@ -61,7 +61,7 @@ Do not use one large commit for the entire implementation.
 
 ### Acceptance
 
-- [ ] Branch and baseline are written into `memory.md`.
+- [x] Branch and baseline are written into `memory.md`.
 - [x] No unrelated source or generated files are staged.
 
 ## FD-01 — Capture the pre-HFP build and runtime baseline [P0]
@@ -75,16 +75,16 @@ Do not use one large commit for the entire implementation.
 
 ### Required work
 
-- [ ] Build the unmodified branch using ESP-IDF v5.5.1.
-- [ ] Record application binary size.
-- [ ] Record application partition size and free bytes.
+- [x] Build the unmodified branch using ESP-IDF v5.5.1.
+- [x] Record application binary size.
+- [x] Record application partition size and free bytes.
 - [ ] Record component-level flash/DRAM contributions.
 - [ ] Record free internal heap after boot.
 - [ ] Record minimum-ever free heap after normal A2DP streaming.
 - [ ] Record largest internal free block.
 - [ ] Record stack high-water marks for existing Bluetooth and audio tasks.
 - [ ] Record A2DP underrun/drop counters during a 10-minute existing-path test.
-- [ ] Save measurements in `memory.md`; do not commit raw scratch logs unless intentionally converted into a maintained test artifact.
+- [x] Save measurements in `memory.md`; do not commit raw scratch logs unless intentionally converted into a maintained test artifact.
 
 ### Commands
 
@@ -98,8 +98,8 @@ idf.py size-components
 
 ### Acceptance
 
-- [ ] Existing host suite passes.
-- [ ] Existing device application builds.
+- [x] Existing host suite passes.
+- [x] Existing device application builds.
 - [ ] Baseline numbers are available for before/after comparison.
 
 ---
@@ -144,16 +144,16 @@ CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM=n
 
 ### Tests
 
-- [ ] Clean `idf.py build` passes.
-- [ ] Existing host tests pass after mock/config updates.
-- [ ] Existing A2DP symbols remain enabled.
-- [ ] No HFP audio is opened at runtime.
+- [x] Clean `idf.py build` passes.
+- [x] Existing host tests pass after mock/config updates.
+- [x] Existing A2DP symbols remain enabled.
+- [x] No HFP audio is opened at runtime.
 
 ### Measurements
 
-- [ ] Record binary-size increase.
-- [ ] Record static DRAM increase.
-- [ ] Confirm at least 256 KiB app-partition headroom remains.
+- [x] Record binary-size increase.
+- [x] Record static DRAM increase.
+- [x] Confirm at least 256 KiB app-partition headroom remains.
 
 ### Stop condition
 

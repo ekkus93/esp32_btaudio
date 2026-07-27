@@ -1,5 +1,13 @@
 <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
 
+## 2026-07-27T22:51:33Z - GPT-5.6 Thinking - started full-duplex Ralph loop; FD-00 and FD-02 compile gates passed
+
+- Working branch: `feature/esp-bt-audio-duplex`; draft PR #2. Confirmed current `master` is included, both full-duplex planning documents exist, the authoritative main-layering check passes, and no hardware was flashed.
+- Baseline commit `cb58d0b47cfc683542cae62efce2a1e66365c3a9`: host CI run 515 and ESP-IDF v5.5.1 device-build run 418 passed. Application image was 927,392 bytes with 842,080 bytes remaining in the 1,769,472-byte factory partition. `.dram0.data` was 21,824 bytes and `.dram0.bss` was 44,432 bytes.
+- FD-02 enabled HFP Audio Gateway over the HCI SCO path, disabled the HFP client role and WBS/mSBC for initial CVSD bring-up, and configured one synchronous connection. Application code still initializes no HFP/SCO APIs, so runtime behavior remains A2DP-only at this phase.
+- Validated clean head `7f2eb7a78cb558f187eda6c7097a5792eb09066e`: host CI run 529 and device-build run 432 passed. The image is 969,856 bytes (+42,464), leaving 799,616 bytes of app-partition headroom. Static DRAM increased by 6,120 bytes (`.dram0.data` +16, `.dram0.bss` +6,104). The FD-02 stop condition passes.
+- Hardware/runtime FD-01 measurements (heap, stack high-water marks, 10-minute A2DP counters) remain pending and are not represented as complete.
+
 ## 2026-07-27T22:07:57Z - Claude Sonnet 5 - narrowed memory.md from a 3-month to a 1-week rolling window
 
 - User: memory.md (2835 lines) was "still kind of big" -- asked to keep only the
