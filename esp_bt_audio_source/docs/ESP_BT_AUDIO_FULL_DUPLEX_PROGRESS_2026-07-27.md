@@ -32,4 +32,4 @@ Configured the tracked `sdkconfig` and `sdkconfig.defaults` for:
 - Internal codec path retained.
 - WBS/mSBC disabled for initial CVSD bring-up.
 
-Host and ESP-IDF v5.5.1 validation runs are triggered by this documentation commit. No HFP profile API is initialized yet.
+Host and ESP-IDF v5.5.1 validation runs are in progress. No HFP profile API is initialized yet.
