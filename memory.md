@@ -1,5 +1,24 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T21:36:10Z - Claude Sonnet 5 - added CHANGELOG.md, generated from existing git tags
+
+- Follow-up to the v0.3.0 retag: I'd recommended (exploratory question,
+  2-3 sentence tradeoff) that a CHANGELOG.md was probably unnecessary since
+  annotated git tags already serve as this project's release notes — user
+  said "generate it anyway."
+- Created root `CHANGELOG.md`, reverse-chronological, one entry per tag,
+  reproducing each annotated tag's actual message content (v0.3.0, v0.2.0,
+  v0.1.0) rather than summarizing/inventing. The two non-linear milestone
+  tags (`v0.1.0-pre-hardening` 2026-07-13, `v0.2.0-mainc-stable` 2026-02-01)
+  are included in strict chronological (tag date) order and explicitly
+  labeled "Milestone" rather than folded into the numbered releases, since
+  they're checkpoints, not the version-numbered release line.
+- Linked it from root README.md's intro. Kept the git-tag-as-release-notes
+  convention as the source of truth — CHANGELOG.md is a generated/derived
+  view for GitHub discoverability, not a new place to author release notes
+  from scratch; future releases should still get a full annotated tag
+  message first, then a matching CHANGELOG.md entry.
+
 ## 2026-07-27T21:26:55Z - Claude Sonnet 5 - retagged v0.3.0 onto new HEAD, bumped in-code versions
 
 - User: "retag HEAD on master as v0.3.0. Make sure that versions in the code

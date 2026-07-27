@@ -7,6 +7,8 @@ This project centers on two ESP32 devices for an audio streaming pipeline:
 - **esp_bt_audio_source** — Bluetooth A2DP audio source firmware (WROOM32 on `/dev/ttyUSB0`)
 - **esp_i2s_source** — internet-radio / I2S audio provider (ESP32-S3 on `/dev/ttyACM0`)
 
+See [`CHANGELOG.md`](CHANGELOG.md) for release history.
+
 Protocol details, GPIO pin maps, and command references are authoritative in each
 sub-project's own README/docs — see [Architecture](#architecture) below — to avoid
 duplicated, drifting copies here.
