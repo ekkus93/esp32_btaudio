@@ -1,5 +1,34 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T21:50:20Z - Claude Sonnet 5 - removed root-level dead code and stray build cruft
+
+- User asked (via a shared `ls -la` at repo root) to investigate `components/`,
+  `unity-app/`, `build/`, `build_clang_tidy/` at the repo root and clean up
+  if safe.
+- `components/` (tracked in git): pre-dual-ESP32-split legacy code
+  (`bt_core/*.c`, `bt_manager/include/bt_api.h`) from before commit
+  `b5fe809f` ("splitting up bluetooth and wifi/webserver to two esp32's").
+  Confirmed dead: grepped the whole tree, nothing outside this directory
+  includes `bt_interface.h`/`bt_registry.h`/`bt_api.h` anymore.
+  `esp_bt_audio_source/components/command_interface/CMakeLists.txt` had two
+  `if(EXISTS ".../components/bt_manager|bt_core/include")` blocks pointing
+  at it, but traced them to be fully redundant even when the paths did
+  resolve — `bt_manager` is already in `public_requires`/`REQUIRES`, and
+  ESP-IDF's component registry (via `EXTRA_COMPONENT_DIRS` in every
+  test_app's CMakeLists.txt) already exposes its real include dir
+  regardless of these manual appends. Removed the whole `components/`
+  tree (`git rm -r`) and both CMake blocks.
+- `unity-app/` (untracked, empty): leftover from a 2026 "relocate device
+  test apps under test" commit that moved its contents elsewhere; nothing
+  referenced it. Removed.
+- `build/` + `build_clang_tidy/` (untracked, gitignored, 172MB+512K):
+  stray `esp_bt_audio_source` build output built from the repo root instead
+  of from inside `esp_bt_audio_source/` (confirmed via `CMAKE_PROJECT_NAME`
+  in their CMakeCache.txt). Removed.
+- Verified the CMakeLists.txt edit didn't break anything: `idf.py build`
+  clean for esp_bt_audio_source, full host suite 74/74 passing.
+  Commit 3d639593.
+
 ## 2026-07-27T21:40:56Z - Claude Sonnet 5 - backfilled GitHub Releases for v0.1.0/v0.2.0/v0.3.0
 
 - Follow-up to the CHANGELOG.md work: user asked how to get release notes to
