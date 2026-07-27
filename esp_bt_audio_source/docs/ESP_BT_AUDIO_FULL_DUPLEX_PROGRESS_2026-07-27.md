@@ -4,7 +4,7 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Validated clean head:** `7f2eb7a78cb558f187eda6c7097a5792eb09066e`
+**Latest validated head:** `56d6deae200333adfc460419daf6696386ecb9e9`
 
 ## FD-00 — Branch and scope baseline
 
@@ -55,3 +55,26 @@ Validated clean head `7f2eb7a78cb558f187eda6c7097a5792eb09066e`:
 - Static DRAM total: 72,376 bytes, an increase of 6,120 bytes.
 
 The FD-02 link-time stop condition passes.
+
+## FD-03 — Authoritative duplex state and snapshot
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Public typed states for duplex mode, A2DP, HFP profile/audio, negotiated codec, I2S output, and health.
+- One mutex-protected snapshot containing the peer, session generation, requested/effective modes, all profile/audio states, last error, and protected 64-bit counters.
+- Case-insensitive same-peer enforcement and stale-generation rejection with explicit counters.
+- Checked legal transition matrices for A2DP, HFP, and I2S state.
+- Codec state derived only from confirmed HFP audio state.
+- Fault/quarantine state cannot be silently downgraded through an ordinary setter.
+- Explicit recovery requires a fault and proof that transient audio/I2S resources are stopped.
+- Same-peer session restart is rejected while transient resources remain active.
+- Stable and exhaustively tested state-to-string contracts.
+- No callbacks are invoked while the state lock is held; no `volatile` synchronization is used.
+
+Validation for head `56d6deae200333adfc460419daf6696386ecb9e9`:
+
+- Focused state suite: 13 tests, PASS under AddressSanitizer and UndefinedBehaviorSanitizer.
+- Strict host CI run 573: PASS.
+- Python test and CTest failures now propagate instead of being converted to success.
+- ESP-IDF v5.5.1 device-build run 474: PASS.
+- No hardware was flashed.
