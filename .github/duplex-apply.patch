@@ -1,0 +1,227 @@
+diff --git a/.github/workflows/ci-device-build.yml b/.github/workflows/ci-device-build.yml
+index ee34d00..981658d 100644
+--- a/.github/workflows/ci-device-build.yml
++++ b/.github/workflows/ci-device-build.yml
+@@ -45,6 +45,8 @@ jobs:
+           . $HOME/esp/esp-idf/export.sh
+           idf.py fullclean || true
+           idf.py build
++          idf.py size | tee build/idf-size.txt
++          idf.py size-components | tee build/idf-size-components.txt
+ 
+       - name: Upload build artifacts
+         if: always()
+@@ -56,6 +58,7 @@ jobs:
+             esp_bt_audio_source/build/**/*.elf
+             esp_bt_audio_source/build/**/*.map
+             esp_bt_audio_source/build/*.log
++            esp_bt_audio_source/build/idf-size*.txt
+ 
+       - name: Show brief build summary
+         if: always()
+diff --git a/.github/workflows/duplex-source-snapshot.yml b/.github/workflows/duplex-source-snapshot.yml
+deleted file mode 100644
+index 2267fad..0000000
+--- a/.github/workflows/duplex-source-snapshot.yml
++++ /dev/null
+@@ -1,35 +0,0 @@
+-name: Duplex source snapshot
+-
+-on:
+-  pull_request:
+-    branches:
+-      - master
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  snapshot:
+-    if: github.head_ref == 'feature/esp-bt-audio-duplex'
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Check out branch
+-        uses: actions/checkout@v4
+-
+-      - name: Package source tree
+-        run: |
+-          tar \
+-            --exclude='.git' \
+-            --exclude='**/build' \
+-            --exclude='**/build_*' \
+-            --exclude='**/.venv' \
+-            --exclude='**/node_modules' \
+-            -czf /tmp/esp32-btaudio-source.tar.gz .
+-
+-      - name: Upload source snapshot
+-        uses: actions/upload-artifact@v4
+-        with:
+-          name: esp32-btaudio-source
+-          path: /tmp/esp32-btaudio-source.tar.gz
+-          retention-days: 1
+diff --git a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md
+new file mode 100644
+index 0000000..1499fa0
+--- /dev/null
++++ b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md
+@@ -0,0 +1,35 @@
++# ESP32 Bluetooth Audio Full-Duplex Implementation Progress
++
++**Branch:** `feature/esp-bt-audio-duplex`  
++**Draft PR:** #2  
++**Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`  
++**First implementation-preparation commit:** `b03018e785a4495814cfe6eacac0c004c5e7d582`
++
++## FD-00 — Branch and scope baseline
++
++- Confirmed the feature branch contains current `master`.
++- Confirmed the companion spec and TODO exist at their documented paths.
++- Confirmed the only intended feature files before implementation were the spec and TODO.
++- Ran `esp_bt_audio_source/tools/ci_check_main_layering.sh esp_bt_audio_source/main/main.c`: PASS.
++- Opened draft PR #2 so host and ESP-IDF device builds validate each commit.
++- No hardware was flashed.
++
++## FD-01 — Pre-HFP baseline
++
++- Host CI run 515 on `cb58d0b...`: PASS.
++- Device build baseline and size artifacts: pending completion of CI run 418/419.
++- Runtime heap, stack, A2DP 10-minute, and hardware counters remain hardware-gated and are not claimed complete.
++
++## FD-02 — HFP link-time configuration
++
++Configured the tracked `sdkconfig` and `sdkconfig.defaults` for:
++
++- HFP enabled.
++- Audio Gateway role enabled.
++- Hands-Free client role disabled.
++- HCI SCO data path selected in host and controller.
++- One synchronous SCO/eSCO connection.
++- Internal codec path retained.
++- WBS/mSBC disabled for initial CVSD bring-up.
++
++Validation is pending the next host and ESP-IDF v5.5.1 CI runs.
+diff --git a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
+index 46e27b3..4baa9d1 100644
+--- a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
++++ b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
+@@ -50,19 +50,19 @@ Do not use one large commit for the entire implementation.
+ 
+ ### Required work
+ 
+-- [ ] Confirm the current branch is `feature/esp-bt-audio-duplex`.
+-- [ ] Record its base commit and current head in the implementation notes.
+-- [ ] Confirm no unrelated local changes will be included.
++- [x] Confirm the current branch is `feature/esp-bt-audio-duplex`.
++- [x] Record its base commit and current head in the implementation notes.
++- [x] Confirm no unrelated local changes will be included.
+ - [ ] Confirm both documentation files exist:
+-  - [ ] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
+-  - [ ] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
+-- [ ] Run the existing main-layering check.
+-- [ ] Do not touch `esp_i2s_source` during this feature unless a separately approved integration task is created.
++  - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
++  - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
++- [x] Run the existing main-layering check.
++- [x] Do not touch `esp_i2s_source` during this feature unless a separately approved integration task is created.
+ 
+ ### Acceptance
+ 
+ - [ ] Branch and baseline are written into `memory.md`.
+-- [ ] No unrelated source or generated files are staged.
++- [x] No unrelated source or generated files are staged.
+ 
+ ## FD-01 — Capture the pre-HFP build and runtime baseline [P0]
+ 
+@@ -117,16 +117,16 @@ idf.py size-components
+ 
+ ### Required work
+ 
+-- [ ] Verify exact ESP-IDF v5.5.1 symbols in the installed source tree.
+-- [ ] Enable HFP.
+-- [ ] Enable Audio Gateway role.
+-- [ ] Disable Hands-Free client role.
+-- [ ] Select HCI SCO data path.
+-- [ ] Set maximum synchronous BR/EDR connections to one.
+-- [ ] Start with WBS/mSBC disabled.
+-- [ ] Keep BLE disabled and preserve existing BLE-memory release behavior.
+-- [ ] Review the entire generated Bluetooth Kconfig diff.
+-- [ ] Do not initialize HFP APIs yet in this task.
++- [x] Verify exact ESP-IDF v5.5.1 symbols in the installed source tree.
++- [x] Enable HFP.
++- [x] Enable Audio Gateway role.
++- [x] Disable Hands-Free client role.
++- [x] Select HCI SCO data path.
++- [x] Set maximum synchronous BR/EDR connections to one.
++- [x] Start with WBS/mSBC disabled.
++- [x] Keep BLE disabled and preserve existing BLE-memory release behavior.
++- [x] Review the entire generated Bluetooth Kconfig diff.
++- [x] Do not initialize HFP APIs yet in this task.
+ 
+ Expected intent:
+ 
+diff --git a/esp_bt_audio_source/sdkconfig b/esp_bt_audio_source/sdkconfig
+index 8f6f011..576704b 100644
+--- a/esp_bt_audio_source/sdkconfig
++++ b/esp_bt_audio_source/sdkconfig
+@@ -565,7 +565,13 @@ CONFIG_BT_AVRCP_CT_COVER_ART_ENABLED=y
+ # CONFIG_BT_SDP_COMMON_ENABLED is not set
+ CONFIG_BT_SDP_PAD_LEN=300
+ CONFIG_BT_SDP_ATTR_LEN=300
+-# CONFIG_BT_HFP_ENABLE is not set
++CONFIG_BT_HFP_ENABLE=y
++# CONFIG_BT_HFP_CLIENT_ENABLE is not set
++CONFIG_BT_HFP_AG_ENABLE=y
++# CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM is not set
++CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y
++# CONFIG_BT_HFP_USE_EXTERNAL_CODEC is not set
++# CONFIG_BT_HFP_WBS_ENABLE is not set
+ # CONFIG_BT_HID_ENABLED is not set
+ # CONFIG_BT_PBAC_ENABLED is not set
+ CONFIG_BT_GOEPC_ENABLED=y
+@@ -763,10 +769,10 @@ CONFIG_BTDM_CTRL_MODE_BTDM=y
+ CONFIG_BTDM_CTRL_BLE_MAX_CONN=3
+ CONFIG_BTDM_CTRL_BR_EDR_MIN_ENC_KEY_SZ_DFT=7
+ CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN=2
+-CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=0
+-# CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI is not set
+-CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM=y
+-CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_EFF=1
++CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=1
++CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI=y
++# CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM is not set
++CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_EFF=0
+ CONFIG_BTDM_CTRL_PCM_ROLE_EDGE_CONFIG=y
+ CONFIG_BTDM_CTRL_PCM_ROLE_MASTER=y
+ # CONFIG_BTDM_CTRL_PCM_ROLE_SLAVE is not set
+@@ -784,7 +790,7 @@ CONFIG_BTDM_CTRL_LEGACY_AUTH_VENDOR_EVT_EFF=y
+ CONFIG_BTDM_CTRL_BLE_MAX_CONN_EFF=3
+ CONFIG_BTDM_CTRL_BR_EDR_MIN_ENC_KEY_SZ_DFT_EFF=7
+ CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN_EFF=2
+-CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF=0
++CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF=1
+ CONFIG_BTDM_CTRL_PINNED_TO_CORE_0=y
+ # CONFIG_BTDM_CTRL_PINNED_TO_CORE_1 is not set
+ CONFIG_BTDM_CTRL_PINNED_TO_CORE=0
+diff --git a/esp_bt_audio_source/sdkconfig.defaults b/esp_bt_audio_source/sdkconfig.defaults
+index c6437e3..a172398 100755
+--- a/esp_bt_audio_source/sdkconfig.defaults
++++ b/esp_bt_audio_source/sdkconfig.defaults
+@@ -33,6 +33,14 @@ CONFIG_AUDIO_USE_SYNTH_SOURCE=y
+ # when a previously paired Bluetooth headset reconnects.
+ CONFIG_AUDIO_AUTOSTART_DEFAULT=y
+ 
+-
+-
+-
++# Bluetooth full-duplex: HFP Audio Gateway over HCI (CVSD bring-up)
++CONFIG_BT_HFP_ENABLE=y
++CONFIG_BT_HFP_CLIENT_ENABLE=n
++CONFIG_BT_HFP_AG_ENABLE=y
++CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y
++CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM=n
++CONFIG_BT_HFP_USE_EXTERNAL_CODEC=n
++CONFIG_BT_HFP_WBS_ENABLE=n
++CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=1
++CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI=y
++CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM=n
