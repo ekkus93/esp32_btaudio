@@ -1,7 +1,7 @@
 {
   "name": "esp-i2s-source-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Web UI for the ESP32-S3 audio source. Built off-device; the gzipped single-file bundle is embedded into the firmware (see scripts/embed_web.mjs).",
   "scripts": {
