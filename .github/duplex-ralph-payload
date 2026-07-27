@@ -1,0 +1,162 @@
+docs(duplex): record FD-00 and FD-02 validation
+diff --git a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md
+index 17d39e6..da862ba 100644
+--- a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md
++++ b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md
+@@ -1,24 +1,34 @@
+ # ESP32 Bluetooth Audio Full-Duplex Implementation Progress
+ 
+-**Branch:** `feature/esp-bt-audio-duplex`  
+-**Draft PR:** #2  
+-**Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`  
++**Branch:** `feature/esp-bt-audio-duplex`
++**Draft PR:** #2
++**Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
+ **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
++**Validated clean head:** `7f2eb7a78cb558f187eda6c7097a5792eb09066e`
+ 
+ ## FD-00 — Branch and scope baseline
+ 
+ - Confirmed the feature branch contains current `master`.
+ - Confirmed the companion spec and TODO exist at their documented paths.
+-- Confirmed the only intended feature files before implementation were the spec and TODO.
++- Confirmed the intended scope is limited to `esp_bt_audio_source` and maintained project documentation.
+ - Ran `esp_bt_audio_source/tools/ci_check_main_layering.sh esp_bt_audio_source/main/main.c`: PASS.
+ - Opened draft PR #2 so host and ESP-IDF device builds validate each commit.
+ - No hardware was flashed.
+ 
+-## FD-01 — Pre-HFP baseline
++## FD-01 — Pre-HFP compile baseline
+ 
+-- Host CI run 515 on `cb58d0b...`: PASS.
+-- Device build baseline and size artifacts: pending final artifact collection.
+-- Runtime heap, stack, A2DP 10-minute, and hardware counters remain hardware-gated and are not claimed complete.
++Baseline commit `cb58d0b47cfc683542cae62efce2a1e66365c3a9`:
++
++- Host CI run 515: PASS.
++- ESP-IDF v5.5.1 device-build run 418: PASS.
++- Application image: 927,392 bytes.
++- Factory app partition: 1,769,472 bytes (`0x1B0000`).
++- App-partition headroom: 842,080 bytes.
++- `.dram0.data`: 21,824 bytes.
++- `.dram0.bss`: 44,432 bytes.
++- Static DRAM total for those sections: 66,256 bytes.
++
++Runtime heap, stack, A2DP 10-minute, and hardware counters remain hardware-gated and are not claimed complete.
+ 
+ ## FD-02 — HFP link-time configuration
+ 
+@@ -32,4 +42,16 @@ Configured the tracked `sdkconfig` and `sdkconfig.defaults` for:
+ - Internal codec path retained.
+ - WBS/mSBC disabled for initial CVSD bring-up.
+ 
+-Host and ESP-IDF v5.5.1 validation runs are in progress. No HFP profile API is initialized yet.
++Validated clean head `7f2eb7a78cb558f187eda6c7097a5792eb09066e`:
++
++- Host CI run 529: PASS.
++- ESP-IDF v5.5.1 device-build run 432: PASS.
++- A2DP remains enabled.
++- No HFP profile or SCO API is initialized by application code yet.
++- Application image: 969,856 bytes, an increase of 42,464 bytes.
++- App-partition headroom: 799,616 bytes (about 781 KiB), above the 256 KiB gate.
++- `.dram0.data`: 21,840 bytes, an increase of 16 bytes.
++- `.dram0.bss`: 50,536 bytes, an increase of 6,104 bytes.
++- Static DRAM total: 72,376 bytes, an increase of 6,120 bytes.
++
++The FD-02 link-time stop condition passes.
+diff --git a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
+index 4baa9d1..40ad36f 100644
+--- a/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
++++ b/esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md
+@@ -53,7 +53,7 @@ Do not use one large commit for the entire implementation.
+ - [x] Confirm the current branch is `feature/esp-bt-audio-duplex`.
+ - [x] Record its base commit and current head in the implementation notes.
+ - [x] Confirm no unrelated local changes will be included.
+-- [ ] Confirm both documentation files exist:
++- [x] Confirm both documentation files exist:
+   - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
+   - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
+ - [x] Run the existing main-layering check.
+@@ -61,7 +61,7 @@ Do not use one large commit for the entire implementation.
+ 
+ ### Acceptance
+ 
+-- [ ] Branch and baseline are written into `memory.md`.
++- [x] Branch and baseline are written into `memory.md`.
+ - [x] No unrelated source or generated files are staged.
+ 
+ ## FD-01 — Capture the pre-HFP build and runtime baseline [P0]
+@@ -75,16 +75,16 @@ Do not use one large commit for the entire implementation.
+ 
+ ### Required work
+ 
+-- [ ] Build the unmodified branch using ESP-IDF v5.5.1.
+-- [ ] Record application binary size.
+-- [ ] Record application partition size and free bytes.
++- [x] Build the unmodified branch using ESP-IDF v5.5.1.
++- [x] Record application binary size.
++- [x] Record application partition size and free bytes.
+ - [ ] Record component-level flash/DRAM contributions.
+ - [ ] Record free internal heap after boot.
+ - [ ] Record minimum-ever free heap after normal A2DP streaming.
+ - [ ] Record largest internal free block.
+ - [ ] Record stack high-water marks for existing Bluetooth and audio tasks.
+ - [ ] Record A2DP underrun/drop counters during a 10-minute existing-path test.
+-- [ ] Save measurements in `memory.md`; do not commit raw scratch logs unless intentionally converted into a maintained test artifact.
++- [x] Save measurements in `memory.md`; do not commit raw scratch logs unless intentionally converted into a maintained test artifact.
+ 
+ ### Commands
+ 
+@@ -98,8 +98,8 @@ idf.py size-components
+ 
+ ### Acceptance
+ 
+-- [ ] Existing host suite passes.
+-- [ ] Existing device application builds.
++- [x] Existing host suite passes.
++- [x] Existing device application builds.
+ - [ ] Baseline numbers are available for before/after comparison.
+ 
+ ---
+@@ -144,16 +144,16 @@ CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM=n
+ 
+ ### Tests
+ 
+-- [ ] Clean `idf.py build` passes.
+-- [ ] Existing host tests pass after mock/config updates.
+-- [ ] Existing A2DP symbols remain enabled.
+-- [ ] No HFP audio is opened at runtime.
++- [x] Clean `idf.py build` passes.
++- [x] Existing host tests pass after mock/config updates.
++- [x] Existing A2DP symbols remain enabled.
++- [x] No HFP audio is opened at runtime.
+ 
+ ### Measurements
+ 
+-- [ ] Record binary-size increase.
+-- [ ] Record static DRAM increase.
+-- [ ] Confirm at least 256 KiB app-partition headroom remains.
++- [x] Record binary-size increase.
++- [x] Record static DRAM increase.
++- [x] Confirm at least 256 KiB app-partition headroom remains.
+ 
+ ### Stop condition
+ 
+diff --git a/memory.md b/memory.md
+index 02ebd8b..276252b 100644
+--- a/memory.md
++++ b/memory.md
+@@ -1,5 +1,13 @@
+ <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
+ 
++## 2026-07-27T22:51:33Z - GPT-5.6 Thinking - started full-duplex Ralph loop; FD-00 and FD-02 compile gates passed
++
++- Working branch: `feature/esp-bt-audio-duplex`; draft PR #2. Confirmed current `master` is included, both full-duplex planning documents exist, the authoritative main-layering check passes, and no hardware was flashed.
++- Baseline commit `cb58d0b47cfc683542cae62efce2a1e66365c3a9`: host CI run 515 and ESP-IDF v5.5.1 device-build run 418 passed. Application image was 927,392 bytes with 842,080 bytes remaining in the 1,769,472-byte factory partition. `.dram0.data` was 21,824 bytes and `.dram0.bss` was 44,432 bytes.
++- FD-02 enabled HFP Audio Gateway over the HCI SCO path, disabled the HFP client role and WBS/mSBC for initial CVSD bring-up, and configured one synchronous connection. Application code still initializes no HFP/SCO APIs, so runtime behavior remains A2DP-only at this phase.
++- Validated clean head `7f2eb7a78cb558f187eda6c7097a5792eb09066e`: host CI run 529 and device-build run 432 passed. The image is 969,856 bytes (+42,464), leaving 799,616 bytes of app-partition headroom. Static DRAM increased by 6,120 bytes (`.dram0.data` +16, `.dram0.bss` +6,104). The FD-02 stop condition passes.
++- Hardware/runtime FD-01 measurements (heap, stack high-water marks, 10-minute A2DP counters) remain pending and are not represented as complete.
++
+ ## 2026-07-27T22:07:57Z - Claude Sonnet 5 - narrowed memory.md from a 3-month to a 1-week rolling window
+ 
+ - User: memory.md (2835 lines) was "still kind of big" -- asked to keep only the
