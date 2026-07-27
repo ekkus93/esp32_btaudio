@@ -12,6 +12,7 @@ void test_snapshot_never_exposes_torn_64_bit_counter_group(void);
 void test_negative_enum_values_are_rejected(void);
 void test_a2dp_transitions_are_checked(void);
 void test_strings_are_stable_and_invalid_values_are_visible(void);
+void test_all_state_strings_are_exhaustive(void);
 
 int main(void)
 {
@@ -28,5 +29,6 @@ int main(void)
     RUN_TEST(test_negative_enum_values_are_rejected);
     RUN_TEST(test_a2dp_transitions_are_checked);
     RUN_TEST(test_strings_are_stable_and_invalid_values_are_visible);
+    RUN_TEST(test_all_state_strings_are_exhaustive);
     return UNITY_END();
 }
