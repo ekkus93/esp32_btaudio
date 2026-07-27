@@ -1,0 +1,32 @@
+name: Apply duplex phase patch
+
+on:
+  push:
+    branches:
+      - feature/esp-bt-audio-duplex
+    paths:
+      - .github/duplex-apply.patch
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/esp-bt-audio-duplex
+          fetch-depth: 0
+
+      - name: Apply, commit, and remove temporary patch machinery
+        run: |
+          set -euo pipefail
+          git config user.name "ChatGPT Ralph Loop"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git apply --check .github/duplex-apply.patch
+          git apply --index .github/duplex-apply.patch
+          git rm .github/duplex-apply.patch .github/workflows/duplex-apply-patch.yml
+          git commit -m "chore(duplex): establish baseline and HFP configuration"
+          git push origin HEAD:feature/esp-bt-audio-duplex
