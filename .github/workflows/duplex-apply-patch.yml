@@ -6,7 +6,6 @@ on:
       - master
     paths:
       - .github/duplex-apply.patch
-      - .github/workflows/duplex-apply-patch.yml
 
 permissions:
   contents: write
@@ -26,13 +25,12 @@ jobs:
           ref: feature/esp-bt-audio-duplex
           fetch-depth: 0
 
-      - name: Apply, commit, and remove temporary patch machinery
+      - name: Apply and commit project patch
         run: |
           set -euo pipefail
           git config user.name "ChatGPT Ralph Loop"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git apply --check .github/duplex-apply.patch
           git apply --index .github/duplex-apply.patch
-          git rm .github/duplex-apply.patch .github/workflows/duplex-apply-patch.yml
           git commit -m "chore(duplex): establish baseline and HFP configuration"
           git push origin HEAD:feature/esp-bt-audio-duplex
