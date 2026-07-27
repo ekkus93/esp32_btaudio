@@ -50,19 +50,19 @@ Do not use one large commit for the entire implementation.
 
 ### Required work
 
-- [ ] Confirm the current branch is `feature/esp-bt-audio-duplex`.
-- [ ] Record its base commit and current head in the implementation notes.
-- [ ] Confirm no unrelated local changes will be included.
+- [x] Confirm the current branch is `feature/esp-bt-audio-duplex`.
+- [x] Record its base commit and current head in the implementation notes.
+- [x] Confirm no unrelated local changes will be included.
 - [ ] Confirm both documentation files exist:
-  - [ ] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
-  - [ ] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
-- [ ] Run the existing main-layering check.
-- [ ] Do not touch `esp_i2s_source` during this feature unless a separately approved integration task is created.
+  - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md`
+  - [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`
+- [x] Run the existing main-layering check.
+- [x] Do not touch `esp_i2s_source` during this feature unless a separately approved integration task is created.
 
 ### Acceptance
 
 - [ ] Branch and baseline are written into `memory.md`.
-- [ ] No unrelated source or generated files are staged.
+- [x] No unrelated source or generated files are staged.
 
 ## FD-01 — Capture the pre-HFP build and runtime baseline [P0]
 
@@ -117,16 +117,16 @@ idf.py size-components
 
 ### Required work
 
-- [ ] Verify exact ESP-IDF v5.5.1 symbols in the installed source tree.
-- [ ] Enable HFP.
-- [ ] Enable Audio Gateway role.
-- [ ] Disable Hands-Free client role.
-- [ ] Select HCI SCO data path.
-- [ ] Set maximum synchronous BR/EDR connections to one.
-- [ ] Start with WBS/mSBC disabled.
-- [ ] Keep BLE disabled and preserve existing BLE-memory release behavior.
-- [ ] Review the entire generated Bluetooth Kconfig diff.
-- [ ] Do not initialize HFP APIs yet in this task.
+- [x] Verify exact ESP-IDF v5.5.1 symbols in the installed source tree.
+- [x] Enable HFP.
+- [x] Enable Audio Gateway role.
+- [x] Disable Hands-Free client role.
+- [x] Select HCI SCO data path.
+- [x] Set maximum synchronous BR/EDR connections to one.
+- [x] Start with WBS/mSBC disabled.
+- [x] Keep BLE disabled and preserve existing BLE-memory release behavior.
+- [x] Review the entire generated Bluetooth Kconfig diff.
+- [x] Do not initialize HFP APIs yet in this task.
 
 Expected intent:
 
