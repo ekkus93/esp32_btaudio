@@ -1,17 +1,23 @@
 name: Apply duplex phase patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/esp-bt-audio-duplex
+      - master
     paths:
       - .github/duplex-apply.patch
+      - .github/workflows/duplex-apply-patch.yml
 
 permissions:
   contents: write
 
+concurrency:
+  group: duplex-apply-patch
+  cancel-in-progress: false
+
 jobs:
   apply:
+    if: github.head_ref == 'feature/esp-bt-audio-duplex'
     runs-on: ubuntu-latest
     steps:
       - name: Check out feature branch
