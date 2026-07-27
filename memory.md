@@ -1,5 +1,32 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T21:26:55Z - Claude Sonnet 5 - retagged v0.3.0 onto new HEAD, bumped in-code versions
+
+- User: "retag HEAD on master as v0.3.0. Make sure that versions in the code
+  is v0.3.0." The existing v0.3.0 tag (from the 2026-07-25 session) pointed
+  at 8d9626f1, 3 commits behind current HEAD (the README overhaul + Active
+  TODOs spec/TODO from this session).
+- Checked how each project reports its version: esp_bt_audio_source has no
+  PROJECT_VER override in CMakeLists.txt, so CONFIG_APP_PROJECT_VER is
+  derived automatically from `git describe` — no code change needed there,
+  it will read exactly "v0.3.0" once HEAD carries that tag cleanly.
+  esp_i2s_source hardcodes `set(PROJECT_VER "0.1.0")` in CMakeLists.txt
+  (stale) — bumped to "0.3.0". Also bumped the stale "0.1.0" in
+  esp_i2s_source/web/package.json and package-lock.json (npm metadata,
+  not shown in the UI, but was inconsistent with the release). Commit
+  98680b30, pushed.
+- Moved the tag: deleted the old v0.3.0 (local + `origin`, since it was
+  already pushed) and re-created it as an annotated tag on the new HEAD
+  (98680b30). Wrote an updated tag message carrying forward the full
+  original v0.3.0 release notes (auth removal, HTTPS-hang fix, I2S static
+  fix, coverage push) plus a new section covering what changed since that
+  tag point: the version-string note above, the README overhaul, and the
+  two new Active TODOs docs. Pushed the new tag to origin. Verified
+  `git describe --tags` at HEAD now prints exactly `v0.3.0`.
+- This project has no CHANGELOG.md; release documentation lives entirely in
+  annotated tag messages by established convention (see v0.1.0/v0.2.0/v0.3.0
+  tag bodies) — followed that pattern rather than introducing a new file.
+
 ## 2026-07-27T20:43:51Z - Claude Sonnet 5 - root README overhaul: cut stale content, added real wiring section
 
 - User (blunt, direct feedback): root README.md had "a lot of bullshit crap" —
