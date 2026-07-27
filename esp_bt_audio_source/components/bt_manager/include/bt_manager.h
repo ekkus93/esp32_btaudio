@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "bt_api.h"
+#include "bt_duplex_state.h"
 
 #if defined(ESP_PLATFORM)
 #include "esp_bt.h"
