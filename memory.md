@@ -1,5 +1,26 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T21:40:56Z - Claude Sonnet 5 - backfilled GitHub Releases for v0.1.0/v0.2.0/v0.3.0
+
+- Follow-up to the CHANGELOG.md work: user asked how to get release notes to
+  show up "with a tag" -> explained GitHub's separate Releases feature
+  (`gh release create <tag> --notes-file ...`) is what does this, distinct
+  from CHANGELOG.md. User said "let's do that."
+- Created 3 GitHub Releases (v0.1.0, v0.2.0, v0.3.0), notes pulled verbatim
+  from each tag's own annotated message via
+  `git for-each-ref refs/tags/<tag> --format='%(contents)'` — no new content
+  authored, matches the existing tag-message-as-release-notes convention.
+  v0.3.0 marked as the repo's "Latest" release; v0.1.0/v0.2.0 explicitly
+  `--latest=false`.
+- Deliberately did NOT create releases for the two milestone tags
+  (`v0.1.0-pre-hardening`, `v0.2.0-mainc-stable`) -- consistent with
+  CHANGELOG.md treating them as checkpoints, not the numbered release line.
+- Found and fixed a real gap while doing this: the `v0.1.0` tag existed only
+  locally and had never been pushed to `origin` (confirmed via
+  `git ls-remote --tags origin`) -- `gh release create` failed until it was
+  pushed. Now pushed; `origin` has all 3 numbered tags plus both milestone
+  tags.
+
 ## 2026-07-27T21:36:10Z - Claude Sonnet 5 - added CHANGELOG.md, generated from existing git tags
 
 - Follow-up to the v0.3.0 retag: I'd recommended (exploratory question,
