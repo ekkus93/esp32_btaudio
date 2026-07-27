@@ -7,45 +7,9 @@ This project centers on two ESP32 devices for an audio streaming pipeline:
 - **esp_bt_audio_source** — Bluetooth A2DP audio source firmware (WROOM32 on `/dev/ttyUSB0`)
 - **esp_i2s_source** — internet-radio / I2S audio provider (ESP32-S3 on `/dev/ttyACM0`)
 
-The Raspberry Pi (`rpi_i2s_source`) and BeagleBone Green (`bbgw_i2s_source`) I2S source projects have been archived in `archive/`; they are no longer needed as `esp_i2s_source` provides the I2S input.
-
 Protocol details, GPIO pin maps, and command references are authoritative in each
 sub-project's own README/docs — see [Architecture](#architecture) below — to avoid
 duplicated, drifting copies here.
-
-## Project Status (2026-07-25)
-
-**Completed recently**
-- **esp_i2s_source auth removed**: the device-token/bearer-token HTTP auth
-  scheme was removed entirely, frontend and backend — the web UI's REST API
-  has no authentication now (anyone reaching the device's HTTP server can
-  call any route). Deliberate, user-requested; see `esp_i2s_source/docs/SPEC.md`
-  §7.1.
-- **esp_i2s_source web UI**: Bluetooth now has its own tab (between Terminal
-  and Settings); the Internet Radio station list supports export/import with
-  merge+dedup; new HTTP-AAC/HTTPS-MP3 stations added. A `CONFIG_MBEDTLS_DYNAMIC_BUFFER`
-  fix resolved the web UI hanging while an HTTPS radio station streamed.
-  `wifi_mgr.c` and `radio.c` were split to keep files under ~800 lines
-  (NVS persistence extracted to `wifi_mgr_nvs.c` / `radio_prebuffer.c`).
-- **esp_bt_audio_source I2S static fixed**: the S3↔WROOM32 I2S link's
-  payload-phase detector used to re-decide every audio block with no memory,
-  thrashing between valid/invalid locks (measured 113 re-locks in 31s) and
-  producing audible static. Fixed with phase-lock hysteresis — a challenger
-  phase must persist ~90ms before the lock switches. Verified 0 phase changes
-  over 35s post-fix and audibly confirmed clean.
-- **UART audio streaming (UARTAUDIO):** stream stereo 22.05 kHz PCM from a PC
-  over the USB serial cable straight to the Bluetooth speaker/headset — the
-  primary developer audio-test path (no I2S wiring needed), and a useful
-  bypass for isolating I2S-link issues from the BT/A2DP output path. The host
-  streamer (`tools/stream_audio_uart.py`) was recovered after an earlier docs
-  commit accidentally truncated it to a stub.
-- `memory.md` is now a rolling ~3-month journal; older history moved to
-  `memory_archive.md`.
-
-**Active TODOs**
-- Longer-duration UARTAUDIO pytest as an engine-throughput regression guard.
-- Physical UART2 verification still pending (needs a second USB-serial adapter).
-- `tools/run_all_tests.py` counts build-failed suites as 0 failures (reporting gap).
 
 ## Architecture
 
@@ -68,6 +32,45 @@ are kept current as the firmware changes:
 - [`esp_i2s_source/README.md`](esp_i2s_source/README.md) and
   [`esp_i2s_source/docs/SPEC.md`](esp_i2s_source/docs/SPEC.md) — S3↔WROOM32 wiring contract, web API,
   radio/station design.
+
+## Connecting the ESP32-S3 to the ESP32-WROOM32
+
+The two boards are linked directly with jumper wires — I2S for audio (S3 → WROOM32)
+and a UART for command/control (bidirectional). Both boards run at 3.3 V logic,
+so the signal lines connect directly with no level shifting.
+
+> **⚠️ Do not tie the two boards' 3.3V pins together.** Each board has its own
+> onboard 3.3V regulator, powered from its own USB cable. Only connect **GND**
+> and the specific signal pins listed below between the boards — never bridge
+> the 3V3 (or 5V) power pins from one board to the other while both are
+> plugged into USB. Two live regulators fighting over the same rail can damage
+> one or both boards.
+
+```
+ESP32-S3 (esp_i2s_source)            ESP32-WROOM32 (esp_bt_audio_source)
+GPIO15 BCLK      in  ◀────────────── GPIO18  BCLK      out  (I2S master)
+GPIO16 WS/LRCLK  in  ◀────────────── GPIO19  WS/LRCLK  out
+GPIO7  DOUT      out ──────────────▶ GPIO22  DIN       in
+GPIO17 UART1 TX  out ──────────────▶ GPIO16  UART2 RX  in   (115200 8N1)
+GPIO18 UART1 RX  in  ◀────────────── GPIO17  UART2 TX  out
+GND              ◀─────────────────▶ GND
+```
+
+- The WROOM32 is the I2S **master** (generates BCLK/WS); the S3 is the I2S
+  **slave transmitter**, clocking PCM data out on the WROOM32's clock.
+- The UART link is the WROOM32's secondary command port (UART2) — it lets the
+  S3 send BT pairing/connect/volume commands and receive events without
+  competing with the WROOM32's primary USB console.
+- Keep the I2S jumpers (BCLK/WS/DOUT) short and similar length — BCLK runs at
+  ~2.8 MHz and long/mismatched leads can introduce enough skew to break sync.
+
+| WROOM32 side | S3 side |
+|---|---|
+| ![WROOM32 I2S/UART jumper wiring](imgs/20260711_185803.jpg) | ![ESP32-S3 I2S/UART jumper wiring](imgs/20260711_185827.jpg) |
+
+The full electrical contract — slot format, clock source rationale, and why the
+WROOM32/S3 I2S roles are inverted from the "obvious" assignment — is in
+[`esp_i2s_source/docs/SPEC.md`](esp_i2s_source/docs/SPEC.md) §3.
 
 ## Running Unity Firmware Tests
 

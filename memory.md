@@ -1,5 +1,50 @@
 <!-- Entries older than 2026-04-21 (3 months) were moved to memory_archive.md on 2026-07-21. See that file for full history back to 2025-01-13. -->
 
+## 2026-07-27T20:43:51Z - Claude Sonnet 5 - root README overhaul: cut stale content, added real wiring section
+
+- User (blunt, direct feedback): root README.md had "a lot of bullshit crap" —
+  cut the Raspberry Pi (`rpi_i2s_source`)/BeagleBone Green (`bbgw_i2s_source`)
+  archived-projects mention (no user-facing value) and the entire "Project
+  Status" section (dated snapshot, "kind of useless" as a living doc). Left
+  those mentions intact in CLAUDE.md/AGENTS.md (repo-layout reference for
+  agent sessions, not user-facing) and historical docs — only the top-level
+  README changed.
+- Added a new "Connecting the ESP32-S3 to the ESP32-WROOM32" section at root
+  level (previously this only lived in `esp_i2s_source/docs/SPEC.md` §3,
+  buried in a sub-project doc) with the actual wiring table (I2S BCLK/WS/DOUT
+  + UART2 cross-connect, sourced from SPEC.md §3.2) and both real jumper-wiring
+  photos from `imgs/` embedded side-by-side.
+- Added an explicit safety warning: never tie the two boards' 3.3V pins
+  together while both are on USB power — each board has its own onboard
+  regulator; only GND + the specific signal pins should cross between boards.
+  User's explicit ask, a real hardware-safety gap that wasn't documented
+  anywhere before.
+- Not committed yet — awaiting explicit instruction.
+
+## 2026-07-27T20:36:35Z - Claude Sonnet 5 - spec+TODO for the two README Active TODOs
+
+- User asked to create a spec file and TODO file for the two open "Active
+  TODOs" from root README.md (longer-duration UARTAUDIO regression pytest;
+  physical UART2 verification) — planning only, "we'll take care of it
+  later," no implementation this session.
+- Created `docs/ACTIVE_TODOS_SPEC.md` and `docs/ACTIVE_TODOS_TODO.md`.
+- Spec item 1 (UARTAUDIO throughput regression guard): traced the two real
+  bugs this guards against (bc2f2e8a chunk-per-wake/tick-starvation ceiling;
+  3ffbb670 UART FIFO overflow), found the existing E2E test
+  (`test_stream_tone_to_laptop_sink` in test_uart_streaming.py) only streams
+  ~3s and checks counters once at STOP — too short to have caught either
+  bug. Designed a two-tier approach: 60s default "extended" test with
+  mid-stream UA|FILL sampling (not just a final counter check), plus an
+  optional env-var-gated soak tier (10-30 min) using a generator-based tone
+  helper so duration doesn't scale test-process memory.
+- Spec item 2 (UART2 physical verification): wrote a manual verification
+  procedure (wiring incl. 3.3V-level warning, pre-check, basic round-trip,
+  independent-operation check, and — the actual reason UART2 exists —
+  concurrency-under-UARTAUDIO-load check) to run once a second USB-serial
+  adapter is acquired. No code changes anticipated; blocked purely on
+  hardware.
+- Not committed yet — planning docs only, awaiting explicit instruction.
+
 ## 2026-07-25T19:42:44Z - Claude Sonnet 5 - removed the 2 dead-code stubs flagged during the Ralph loop
 
 - Follow-up to the UNIT_TESTS2_TODO.md Ralph loop: user asked to remove the
