@@ -108,7 +108,9 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
         uint64_t lost_bytes = (uint64_t)(requested_bytes - confirmed_written);
         bool terminal_fault = false;
         s_output.write_failures++;
-        if (bytes_written != requested_bytes) s_output.short_writes++;
+        if (err == ESP_OK && bytes_written != requested_bytes) {
+            s_output.short_writes++;
+        }
         s_output.write_lost_bytes += lost_bytes;
         s_output.consecutive_write_failures++;
         hfp_i2s_output_set_error_locked(write_error);
