@@ -72,12 +72,14 @@ static esp_err_t rollback_start(esp_err_t cause)
         esp_err_t wait_err = hfp_i2s_output_ops_task_wait_stopped(
             s_output.task, s_output.config.stop_timeout_ms);
         if (wait_err != ESP_OK) {
+            HFP_I2S_LOGE("start rollback task stop failed: cause=%d cleanup=%d",
+                         (int)cause, (int)wait_err);
             if (hfp_i2s_output_lock() == ESP_OK) {
                 s_output.start_failures++;
                 hfp_i2s_output_enter_quarantine_locked(wait_err);
                 (void)hfp_i2s_output_unlock(ESP_OK);
             }
-            return cause;
+            return wait_err;
         }
         s_output.task_confirmed_stopped = true;
     }
@@ -95,12 +97,14 @@ static esp_err_t rollback_start(esp_err_t cause)
     }
 
     if (cleanup_error != ESP_OK) {
+        HFP_I2S_LOGE("start rollback resource cleanup failed: cause=%d cleanup=%d",
+                     (int)cause, (int)cleanup_error);
         if (hfp_i2s_output_lock() == ESP_OK) {
             s_output.start_failures++;
             hfp_i2s_output_enter_quarantine_locked(cleanup_error);
             (void)hfp_i2s_output_unlock(ESP_OK);
         }
-        return cause;
+        return cleanup_error;
     }
 
     release_allocations();
