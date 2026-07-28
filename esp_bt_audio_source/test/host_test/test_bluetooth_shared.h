@@ -59,6 +59,7 @@ void bt_manager_test_set_hfp_policy_status(bool peer_valid,
                                            esp_err_t result);
 void bt_manager_test_set_hfp_policy_results(esp_err_t profile_result,
                                             esp_err_t audio_result);
+void bt_manager_test_set_hfp_profile_created_generation(uint32_t generation);
 unsigned bt_manager_test_get_hfp_profile_calls(void);
 unsigned bt_manager_test_get_hfp_audio_policy_calls(void);
 uint32_t bt_manager_test_get_last_hfp_profile_generation(void);
@@ -127,6 +128,8 @@ void test_bt_init_skips_corrupt_paired_device_entries(void);
 void test_bt_stop_failure_then_recovery_on_state_event(void);
 
 /* Focused review-fix cases live in test_bt_a2dp_binding_cases.c. */
+void test_a2dp_first_profile_event_creates_and_binds_session(void);
+void test_a2dp_reconnect_rotates_lifecycle_serial(void);
 void test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted(void);
 void test_a2dp_binding_refreshes_after_hfp_generation_rotation(void);
 void test_a2dp_wrong_peer_event_is_rejected_and_counted(void);
