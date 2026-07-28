@@ -17,6 +17,24 @@ static uint64_t next_health_event_count_locked(void)
     return g_bt_duplex_ctx.health_event_count;
 }
 
+static void record_health_report_failure_locked(esp_err_t error)
+{
+    if (error == ESP_OK) return;
+    if (g_bt_duplex_ctx.health_report_failures != UINT64_MAX) {
+        g_bt_duplex_ctx.health_report_failures++;
+    }
+    g_bt_duplex_ctx.last_health_report_error = error;
+}
+
+static esp_err_t reject_health_report_before_lock(esp_err_t error)
+{
+    if (bt_duplex_lock() == ESP_OK) {
+        record_health_report_failure_locked(error);
+        (void)bt_duplex_unlock_result(ESP_OK);
+    }
+    return error;
+}
+
 static void note_delivery_result(esp_err_t result,
                                  uint32_t generation,
                                  const char *peer_mac)
@@ -154,6 +172,10 @@ esp_err_t bt_duplex_state_init(void)
     memset(&g_bt_duplex_ctx, 0, sizeof(g_bt_duplex_ctx));
     g_bt_duplex_ctx.lock = lock;
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
+    g_bt_duplex_ctx.last_health_report_error = ESP_OK;
+#ifdef UNIT_TEST
+    g_bt_duplex_ctx.test_health_report_result = ESP_OK;
+#endif
     g_bt_duplex_ctx.initialized = true;
     return ESP_OK;
 }
@@ -235,6 +257,20 @@ esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out)
     return bt_duplex_unlock_result(ESP_OK);
 }
 
+esp_err_t bt_duplex_get_health_report_diagnostics(
+    uint64_t *failure_count_out,
+    esp_err_t *last_error_out)
+{
+    if (failure_count_out == NULL || last_error_out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = bt_duplex_lock();
+    if (err != ESP_OK) return err;
+    *failure_count_out = g_bt_duplex_ctx.health_report_failures;
+    *last_error_out = g_bt_duplex_ctx.last_health_report_error;
+    return bt_duplex_unlock_result(ESP_OK);
+}
+
 #define DEFINE_ENUM_SETTER(name, field, type, count)                         \
     esp_err_t name(uint32_t generation, const char *peer_mac, type value)    \
     {                                                                        \
@@ -260,16 +296,23 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
                                const char *error_text)
 {
     if (!BT_DUPLEX_ENUM_VALUE_VALID(health, BT_AUDIO_HEALTH_COUNT)) {
-        return ESP_ERR_INVALID_ARG;
+        return reject_health_report_before_lock(ESP_ERR_INVALID_ARG);
     }
     if (error_text != NULL &&
         strlen(error_text) >= BT_DUPLEX_ERROR_TEXT_LEN) {
-        return ESP_ERR_INVALID_SIZE;
+        return reject_health_report_before_lock(ESP_ERR_INVALID_SIZE);
     }
 
     esp_err_t err = bt_duplex_lock();
     if (err != ESP_OK) return err;
-    err = bt_duplex_validate_event_locked(generation, peer_mac);
+#ifdef UNIT_TEST
+    if (g_bt_duplex_ctx.test_health_report_result != ESP_OK) {
+        err = g_bt_duplex_ctx.test_health_report_result;
+    } else
+#endif
+    {
+        err = bt_duplex_validate_event_locked(generation, peer_mac);
+    }
     if (err == ESP_OK &&
         g_bt_duplex_ctx.snapshot.health >= BT_AUDIO_HEALTH_FAULTED &&
         health < g_bt_duplex_ctx.snapshot.health) {
@@ -287,6 +330,8 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
         memcpy(g_bt_duplex_ctx.snapshot.last_error_text, error_text, n);
         g_bt_duplex_ctx.snapshot.last_error_text[n] = '\0';
         if (changed) count = next_health_event_count_locked();
+    } else {
+        record_health_report_failure_locked(err);
     }
     err = bt_duplex_unlock_result(err);
     if (err != ESP_OK) return err;
@@ -411,6 +456,17 @@ void bt_duplex_test_reset(void)
     if (bt_duplex_lock() != ESP_OK) return;
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
     g_bt_duplex_ctx.health_event_count = 0U;
+    g_bt_duplex_ctx.health_report_failures = 0U;
+    g_bt_duplex_ctx.last_health_report_error = ESP_OK;
+    g_bt_duplex_ctx.test_health_report_result = ESP_OK;
+    (void)bt_duplex_unlock_result(ESP_OK);
+}
+
+void bt_duplex_test_set_health_report_result(esp_err_t result)
+{
+    if (!g_bt_duplex_ctx.initialized) return;
+    if (bt_duplex_lock() != ESP_OK) return;
+    g_bt_duplex_ctx.test_health_report_result = result;
     (void)bt_duplex_unlock_result(ESP_OK);
 }
 #endif
