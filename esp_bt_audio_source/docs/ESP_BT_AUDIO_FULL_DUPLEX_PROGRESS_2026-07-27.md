@@ -4,7 +4,7 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Latest validated code head:** `70d55d57c5df7fc9ba96a174d96260f660191378`
+**Latest validated code head:** `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`
 
 ## FD-00 — Branch and scope baseline
 
@@ -149,3 +149,36 @@ Validation for code head `70d55d57c5df7fc9ba96a174d96260f660191378`:
 - No hardware was flashed.
 
 On-device confirmation of real `ESP_HF_PROF_STATE_EVT` delivery remains hardware-gated and is not claimed complete.
+
+## FD-07 — Generation-bound HFP SLC connect/disconnect APIs
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Public `bt_hfp_connect()` and `bt_hfp_disconnect()` declarations are exported through `bt_manager.h`; `bt_duplex_get_snapshot()` remains the authoritative completion/status view.
+- MAC addresses are parsed with the existing strict helper, and HFP operations require the same active peer already owned by the A2DP/ACL manager state.
+- A different remote peer is rejected and counted; no second headset/session is silently accepted.
+- Lower-layer `esp_hf_ag_slc_connect()` and `esp_hf_ag_slc_disconnect()` calls run through the existing BtAppTask work-dispatch ownership model.
+- The synchronous API result means the queued request reached the lower layer and was accepted or rejected immediately. SLC completion remains asynchronous and is confirmed only by HFP connection-state callbacks.
+- Every accepted operation records the active session generation, peer, serial number, operation type, deadline, immediate result, completion state, and explicit failure counters.
+- Late same-peer events after timeout or generation change are ignored and counted instead of mutating the current session.
+- A bounded BtAppTask request wait and a bounded SLC watchdog replace unbounded waits. Timeout leaves the profile state unchanged and degraded/visible; it never fabricates disconnection.
+- Remote connect rejection is reported asynchronously as a rejected operation with an explicit counter/error.
+- Already-connected connect and already-disconnected disconnect are deterministic and idempotent.
+- FD-07 never starts SCO audio or registers SCO data callbacks.
+- FD-07 timer, semaphore, and mutex cleanup is chained to `bt_hfp_ag_force_cleanup_after_stack_shutdown()`, after Bluedroid is confirmed unable to deliver callbacks.
+- Standalone AG/manager host suites use explicit test-only cleanup stubs; production behavior is not replaced by a permissive fallback.
+
+Validation for code head `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`:
+
+- Focused HFP SLC operation sanitizer suite: PASS.
+- HFP AG lifecycle/event and manager profile rollback sanitizer suites: PASS.
+- Full-duplex state, HFP PCM ring, and HFP voice conversion sanitizer suites: PASS.
+- Strict host CI run 721: PASS, including changed-Python lint, Python unit tests, and full CTest.
+- ESP-IDF v5.5.1 device-build run 615: PASS.
+- No hardware was flashed.
+
+Real WROOM32 SLC event delivery and earbud behavior remain hardware-gated and are not claimed complete.
+
+## Next phase
+
+FD-08 adds the I2S0 TX microphone-output component. It must preserve the selected GPIO32/GPIO33/GPIO27 master-output contract, reject pin conflicts visibly, and provide bounded writer-task shutdown and quarantine behavior.

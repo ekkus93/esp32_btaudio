@@ -499,9 +499,21 @@ Handle and test at least:
 
 ## FD-07 — Add HFP connect/disconnect public APIs [P0]
 
+### Files
+
+```text
+components/bt_manager/bt_hfp_connection.c
+components/bt_manager/include/bt_hfp_connection.h
+components/bt_manager/include/bt_manager.h
+components/bt_manager/bt_hfp_ag_events.c
+components/bt_manager/bt_hfp_ag_lifecycle.c
+components/bt_manager/bt_duplex_state_events.c
+components/bt_manager/CMakeLists.txt
+```
+
 ### Public API
 
-Add typed functions similar to:
+Implemented public API:
 
 ```c
 esp_err_t bt_hfp_connect(const char *mac);
@@ -511,28 +523,38 @@ esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 
 ### Required work
 
-- [ ] Parse and validate the Bluetooth address using existing helpers.
-- [ ] Require the HFP peer to match the active A2DP/ACL peer.
-- [ ] Reject a second remote peer.
-- [ ] Use the existing BtAppTask/event-dispatch ownership model where required.
-- [ ] Do not call profile APIs from arbitrary command task context if the existing architecture requires dispatch.
-- [ ] Separate accepted operation from confirmed completion.
-- [ ] Bind each accepted connect/disconnect operation to the active session generation.
-- [ ] Reject and count completion/events associated with a stale operation generation.
-- [ ] Add bounded connect/disconnect watchdogs.
-- [ ] Do not start SCO in this task.
+- [x] Parse and validate the Bluetooth address using existing helpers.
+- [x] Require the HFP peer to match the active A2DP/ACL peer.
+- [x] Reject a second remote peer.
+- [x] Use the existing BtAppTask/event-dispatch ownership model where required.
+- [x] Do not call profile APIs from arbitrary command task context if the existing architecture requires dispatch.
+- [x] Separate accepted operation from confirmed completion.
+- [x] Bind each accepted connect/disconnect operation to the active session generation.
+- [x] Reject and count completion/events associated with a stale operation generation.
+- [x] Add bounded connect/disconnect watchdogs.
+- [x] Do not start SCO in this task.
 
 ### Tests
 
-- [ ] Invalid MAC.
-- [ ] Manager not initialized.
-- [ ] Same peer accepted.
-- [ ] Different peer rejected.
-- [ ] Already connected is idempotent or specifically reported.
-- [ ] Connect API immediate failure is returned.
-- [ ] Remote rejection is delivered asynchronously as failure event.
-- [ ] Late same-peer completion/event for an old generation is ignored and counted.
-- [ ] Timeout does not fabricate disconnected state.
+- [x] Invalid MAC.
+- [x] Manager not initialized.
+- [x] Same peer accepted.
+- [x] Different peer rejected.
+- [x] Already connected is idempotent or specifically reported.
+- [x] Connect API immediate failure is returned.
+- [x] Remote rejection is delivered asynchronously as failure event.
+- [x] Late same-peer completion/event for an old generation is ignored and counted.
+- [x] Timeout does not fabricate disconnected state.
+
+### Validation
+
+- [x] Focused HFP SLC operation suite passes under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Public HFP connect/disconnect declarations are exported through `bt_manager.h`.
+- [x] FD-07 timer, semaphore, and mutex cleanup is chained to the verified post-Bluedroid HFP cleanup boundary.
+- [x] Strict host CI run 721 passes all focused sanitizer suites, changed-Python lint, Python unit tests, and full CTest.
+- [x] ESP-IDF v5.5.1 device-build run 615 passes.
+- [x] HFP audio/SCO is never started by FD-07.
+- [x] No hardware was flashed. Real WROOM32 SLC event confirmation remains hardware-gated.
 
 ---
 
