@@ -22,6 +22,8 @@ mkdir -p "${build_dir}"
     -fno-omit-frame-pointer \
     -pthread \
     -DUNIT_TEST \
+    -include inttypes.h \
+    -include stdio.h \
     -I"${unity_dir}" \
     -I"${test_dir}/mocks/include" \
     -I"${test_dir}/mocks" \
