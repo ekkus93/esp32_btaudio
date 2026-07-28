@@ -296,8 +296,6 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
     esp_err_t err = context_ensure();
     if (err != ESP_OK) return err;
 
-    bt_hfp_audio_profile_stopping();
-
     if (!snapshot->peer_valid ||
         strlen(event_peer_mac) != BT_DUPLEX_MAC_STR_LEN - 1U ||
         !same_peer(snapshot->peer_mac, event_peer_mac)) {
@@ -308,6 +306,11 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
         }
         return ESP_ERR_INVALID_STATE;
     }
+
+    /* Only an event for the bound peer may alter the fast callback gate. A
+     * wrong-peer event is rejected above without disrupting valid audio. */
+    bt_hfp_audio_profile_stopping();
+
     if (snapshot->hfp_audio_state == BT_HFP_AUDIO_CONNECTED_MSBC ||
         snapshot->codec == BT_HFP_CODEC_MSBC) {
         counter64_add(&s_audio.activation_failures, 1U);
