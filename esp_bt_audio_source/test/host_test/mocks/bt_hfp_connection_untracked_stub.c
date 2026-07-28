@@ -8,3 +8,8 @@ esp_err_t bt_hfp_connection_handle_event(
     (void)state;
     return ESP_ERR_NOT_FOUND;
 }
+
+esp_err_t bt_hfp_connection_cleanup_after_stack_shutdown(void)
+{
+    return ESP_OK;
+}
