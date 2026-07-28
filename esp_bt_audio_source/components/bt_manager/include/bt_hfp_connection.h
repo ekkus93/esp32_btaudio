@@ -6,6 +6,7 @@
 #include "esp_err.h"
 #include "esp_bt.h"
 #include "bt_hfp_ag.h"
+#include "bt_duplex_state_events.h"
 
 #ifdef __cplusplus
 extern "C" {
