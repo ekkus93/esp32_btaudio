@@ -13,6 +13,7 @@
 #include "bt_events_gap.h"
 #include "bt_events_a2dp.h"
 #include "bt_events_avrc.h"
+#include "bt_hfp_ag.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
@@ -128,6 +129,7 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 #include <inttypes.h>
 #include "nvs_flash.h"
 static esp_err_t bt_manager_init_profiles(void);
+static esp_err_t bt_manager_deinit_profiles(void);
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
 #endif
@@ -232,9 +234,17 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     bool controller_enabled = false;
     bool bluedroid_init_done = false;
     bool bluedroid_enabled = false;
+    bool duplex_state_initialized = false;
+    bool profiles_initialized = false;
+
+    esp_err_t ret = bt_duplex_state_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize duplex state failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+    duplex_state_initialized = true;
 
     // Initialize Bluetooth controller
-    esp_err_t ret;
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
     ret = esp_bt_controller_init(&bt_cfg);
@@ -270,21 +280,32 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
 
     // Configure device name
     // Use GAP API (not deprecated) to set the device name. esp_bt_dev_set_device_name is deprecated.
-    esp_err_t _err_name = esp_bt_gap_set_device_name(config->device_name);
-    if (_err_name != ESP_OK) {
-        ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s)", esp_err_to_name(_err_name));  // NOLINT(bugprone-branch-clone)
+    ret = esp_bt_gap_set_device_name(config->device_name);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set Bluetooth device name failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
 
     // Register GAP callback
-    esp_bt_gap_register_callback(bt_events_gap_callback);
+    ret = esp_bt_gap_register_callback(bt_events_gap_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register GAP callback failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
 
     ret = bt_manager_init_profiles();
     if (ret != ESP_OK) {
         goto fail;
     }
+    profiles_initialized = true;
 
     // Set device discoverable and connectable
-    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    ret = esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE,
+                                   ESP_BT_GENERAL_DISCOVERABLE);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set GAP scan mode failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
     
     ESP_LOGI(TAG, "Bluetooth manager initialized with name: %s", config->device_name);  // NOLINT(bugprone-branch-clone)
     
@@ -317,21 +338,47 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     return ESP_OK;
 
 fail:
-    /* (RH-WR-05) Rollback in reverse order of initialization */
+    /* Roll back in reverse order. Preserve the original initialization error. */
+    if (profiles_initialized) {
+        esp_err_t cleanup_err = bt_manager_deinit_profiles();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Profile rollback failed after init error %s: %s",
+                     esp_err_to_name(ret), esp_err_to_name(cleanup_err));
+        }
+    }
     if (bluedroid_enabled) {
-        esp_bluedroid_disable();
+        esp_err_t cleanup_err = esp_bluedroid_disable();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Bluedroid disable rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
     if (bluedroid_init_done) {
-        esp_bluedroid_deinit();
+        esp_err_t cleanup_err = esp_bluedroid_deinit();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Bluedroid deinit rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
     if (controller_enabled) {
-        esp_bt_controller_disable();
+        esp_err_t cleanup_err = esp_bt_controller_disable();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Controller disable rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
     if (controller_init_done) {
-        esp_bt_controller_deinit();
+        esp_err_t cleanup_err = esp_bt_controller_deinit();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Controller deinit rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
+    }
+    bt_hfp_ag_force_cleanup_after_stack_shutdown();
+    if (duplex_state_initialized) {
+        bt_duplex_state_deinit();
     }
 
-    /* Clean up the bt_ctx mutex */
     platform_mutex_delete(s_bt_ctx_mutex);
     s_bt_ctx_mutex = NULL;
 
@@ -345,42 +392,50 @@ fail:
 // Deinitialize Bluetooth Manager
  bt_err_t bt_manager_deinit(void) {
     if (!bt_ctx.initialized) {
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
-    
-#ifdef ESP_PLATFORM
-    // Stop scanning if active
-    if (bt_ctx.scanning) {
-        bt_stop_scan();
-    }
-    
-    // Disconnect if connected
-    if (bt_ctx.connected) {
-        bt_disconnect();
-    }
-    
-    // Deinitialize A2DP
-    esp_a2d_source_deinit();
-    
-    // Disable and deinitialize Bluetooth
-    esp_bluedroid_disable();
-    esp_bluedroid_deinit();
-    esp_bt_controller_disable();
-    esp_bt_controller_deinit();
-    
-    ESP_LOGI(TAG, "Bluetooth manager deinitialized");  // NOLINT(bugprone-branch-clone)
-#endif
-    
-    bt_ctx.initialized = false;
-    bt_ctx.connected = false;
-    bt_ctx.audio_playing = false;
-    // Optionally reset other fields if needed
 
-    /* Clean up the bt_ctx mutex last — after all BT state is reset. */
+    esp_err_t first_error = ESP_OK;
+#ifdef ESP_PLATFORM
+#define RECORD_DEINIT_ERROR(expr, label) do {                               \
+        esp_err_t _err = (expr);                                            \
+        if (_err != ESP_OK) {                                               \
+            ESP_LOGE(TAG, label " failed: %s", esp_err_to_name(_err));      \
+            if (first_error == ESP_OK) first_error = _err;                   \
+        }                                                                   \
+    } while (0)
+
+    if (bt_ctx.scanning) {
+        RECORD_DEINIT_ERROR(bt_stop_scan(), "Stop scan during deinit");
+    }
+    if (bt_ctx.connected || bt_ctx.connecting) {
+        RECORD_DEINIT_ERROR(bt_disconnect(), "Disconnect during deinit");
+    }
+
+    RECORD_DEINIT_ERROR(bt_manager_deinit_profiles(), "Profile deinit");
+    RECORD_DEINIT_ERROR(esp_bluedroid_disable(), "Bluedroid disable");
+    RECORD_DEINIT_ERROR(esp_bluedroid_deinit(), "Bluedroid deinit");
+    RECORD_DEINIT_ERROR(esp_bt_controller_disable(), "Controller disable");
+    RECORD_DEINIT_ERROR(esp_bt_controller_deinit(), "Controller deinit");
+
+    /* The stack is now stopped, so late HFP callbacks can no longer race the
+     * lifecycle context cleanup. */
+    bt_hfp_ag_force_cleanup_after_stack_shutdown();
+    bt_duplex_state_deinit();
+    ESP_LOGI(TAG, "Bluetooth manager deinitialized");
+#undef RECORD_DEINIT_ERROR
+#endif
+
+    bt_ctx.initialized = false;
+    bt_ctx.scanning = false;
+    bt_ctx.connected = false;
+    bt_ctx.connecting = false;
+    bt_ctx.audio_playing = false;
+
     platform_mutex_delete(s_bt_ctx_mutex);
     s_bt_ctx_mutex = NULL;
 
-    return ESP_OK;
+    return first_error;
 }
 
 // Expose a simple integer getter so other subsystems (command interface)
@@ -599,45 +654,105 @@ int bt_manager_stop_audio(void) {
 #ifdef ESP_PLATFORM
 static esp_err_t bt_manager_init_profiles(void)
 {
+    bool avrc_initialized = false;
+    bool a2dp_initialized = false;
+    bool hfp_attempted = false;
     esp_err_t ret = esp_avrc_ct_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize AVRCP controller failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Initialize AVRCP controller failed: %s",
+                 esp_err_to_name(ret));
+        return ret;
     }
+    avrc_initialized = true;
 
     ret = esp_avrc_ct_register_callback(bt_events_avrc_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s",
+                 esp_err_to_name(ret));
+        goto fail;
     }
 
     ret = esp_a2d_source_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Initialize A2DP source failed: %s",
+                 esp_err_to_name(ret));
+        goto fail;
     }
+    a2dp_initialized = true;
 
-    /* DESIGN: bt_events_a2dp_callback is the SINGLE registered A2DP callback.
-     * It dispatches to bt_connection_state_cb / bt_audio_state_cb in
-     * bt_connection_manager.  bt_connection_manager_init() also calls
-     * esp_a2d_register_callback() but that function is only used by isolated
-     * unit tests that need a minimal connection-manager harness; it is never
-     * called in production.  Do not add a second esp_a2d_register_callback()
-     * registration here — only the last registration wins in ESP-IDF and a
-     * second call would silently drop events for the other handler. */
+    /* bt_events_a2dp_callback is the single registered A2DP callback. */
     ret = esp_a2d_register_callback(bt_events_a2dp_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register A2DP source callback failed: %s",
+                 esp_err_to_name(ret));
+        goto fail;
     }
 
-    ret = esp_a2d_source_register_data_callback(bt_events_a2dp_data_callback);
+    ret = esp_a2d_source_register_data_callback(
+        bt_events_a2dp_data_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register A2DP data callback failed: %s",
+                 esp_err_to_name(ret));
+        goto fail;
+    }
+
+    hfp_attempted = true;
+    ret = bt_hfp_ag_profile_init(
+        BT_HFP_AG_DEFAULT_LIFECYCLE_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize HFP Audio Gateway failed: %s",
+                 esp_err_to_name(ret));
+        goto fail;
     }
 
     return ESP_OK;
+
+fail:
+    if (hfp_attempted) {
+        esp_err_t cleanup_err = bt_hfp_ag_profile_deinit(2000U);
+        if (cleanup_err != ESP_OK &&
+            cleanup_err != ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG, "HFP rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
+    }
+    if (a2dp_initialized) {
+        esp_err_t cleanup_err = esp_a2d_source_deinit();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "A2DP rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
+    }
+    if (avrc_initialized) {
+        esp_err_t cleanup_err = esp_avrc_ct_deinit();
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "AVRCP rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
+    }
+    return ret;
+}
+
+static esp_err_t bt_manager_deinit_profiles(void)
+{
+    esp_err_t first_error = ESP_OK;
+    bt_hfp_ag_snapshot_t hfp_snapshot;
+    esp_err_t err = bt_hfp_ag_get_snapshot(&hfp_snapshot);
+    if (err == ESP_OK &&
+        hfp_snapshot.lifecycle != BT_HFP_AG_LIFECYCLE_UNINITIALIZED) {
+        err = bt_hfp_ag_profile_deinit(
+            BT_HFP_AG_DEFAULT_LIFECYCLE_TIMEOUT_MS);
+        if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    } else if (err != ESP_OK && err != ESP_ERR_INVALID_STATE &&
+               first_error == ESP_OK) {
+        first_error = err;
+    }
+
+    err = esp_a2d_source_deinit();
+    if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    err = esp_avrc_ct_deinit();
+    if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    return first_error;
 }
 #endif
 
