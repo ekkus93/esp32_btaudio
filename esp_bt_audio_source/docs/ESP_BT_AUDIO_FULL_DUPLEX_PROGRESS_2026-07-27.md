@@ -4,7 +4,7 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Latest validated head:** `2d2d9d40a73127ed0f485ba7db79d9b5a492a7c7`
+**Latest validated code head:** `70d55d57c5df7fc9ba96a174d96260f660191378`
 
 ## FD-00 — Branch and scope baseline
 
@@ -122,3 +122,30 @@ Validation for head `2d2d9d40a73127ed0f485ba7db79d9b5a492a7c7`:
 - Strict host CI run 621: PASS.
 - ESP-IDF v5.5.1 device-build run 520: PASS.
 - No hardware was flashed.
+
+## FD-06 — HFP Audio Gateway profile lifecycle
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Registers the ESP-IDF v5.5.1 HFP Audio Gateway callback only after Bluedroid is enabled.
+- Treats `esp_hf_ag_init()` and `esp_hf_ag_deinit()` as asynchronous requests; profile readiness changes only after `ESP_HF_PROF_STATE_EVT` confirms completion.
+- Keeps HFP audio disconnected by default and registers no SCO data callbacks in this phase.
+- Normalizes profile, SLC, audio-link, codec, volume, unknown-AT, wrong-peer, and remote-disconnect events into the authoritative duplex state.
+- Records whether the lower-layer HFP initialization request was accepted. Callback-registration failure and immediate init-request rejection do not call an invalid lower-layer deinit; callback-reported failure and timeout receive bounded rollback.
+- Preserves the original initialization failure even if rollback also fails.
+- Rolls HFP, A2DP, and AVRCP back in reverse order.
+- Refuses to destroy HFP callback-owned synchronization state unless Bluedroid is confirmed `UNINITIALIZED`; incomplete teardown quarantines manager reinitialization instead of risking a late-callback use-after-free.
+- The focused manager rollback target compiles only the actual FD-06 dependency graph and retains compiler/sanitizer logs.
+- Python lint now strictly gates Python files changed by the branch. The pre-existing full-tree lint backlog remains explicitly reported in `flake8-full-tree.log` rather than being hidden or made an unrelated feature blocker.
+- Operation-generation binding/rejection is assigned to FD-07 because ESP-IDF HFP callbacks carry peer/state but no connect-operation generation token.
+
+Validation for code head `70d55d57c5df7fc9ba96a174d96260f660191378`:
+
+- HFP AG lifecycle/event sanitizer suite: PASS.
+- Manager HFP profile-init/rollback sanitizer suite: PASS.
+- Full-duplex state, HFP PCM ring, and voice-conversion sanitizer suites: PASS.
+- Strict host CI run 679: PASS, including changed-Python lint, Python unit tests, and full CTest.
+- ESP-IDF v5.5.1 device-build run 574: PASS.
+- No hardware was flashed.
+
+On-device confirmation of real `ESP_HF_PROF_STATE_EVT` delivery remains hardware-gated and is not claimed complete.
