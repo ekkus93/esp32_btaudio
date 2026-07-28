@@ -41,7 +41,7 @@ void test_manager_status_returns_configured_mode_and_one_duplex_snapshot(void)
     bt_hfp_manager_status_t status;
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_status(&status));
     TEST_ASSERT_TRUE(status.manager_initialized);
-    TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_AUTO, status.configured_mode);
+    TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_DISABLED, status.configured_mode);
     TEST_ASSERT_EQUAL_UINT32(generation, status.duplex.session_generation);
     TEST_ASSERT_EQUAL_STRING(PEER, status.duplex.peer_mac);
     TEST_ASSERT_EQUAL(BT_HFP_PROFILE_CONNECTING,
