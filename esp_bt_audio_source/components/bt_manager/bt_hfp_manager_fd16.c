@@ -246,19 +246,20 @@ esp_err_t bt_manager_hfp_get_policy_snapshot(
     return ESP_OK;
 }
 
-static esp_err_t get_bound_duplex_locked(const char *peer_mac,
+static esp_err_t get_bound_duplex_locked(uint32_t expected_generation,
+                                         const char *peer_mac,
                                          bt_duplex_snapshot_t *duplex)
 {
     esp_err_t err = bt_duplex_get_snapshot(duplex);
     if (err != ESP_OK) return err;
-    if (!duplex->peer_valid || peer_mac == NULL ||
-        strcasecmp(peer_mac, duplex->peer_mac) != 0) {
+    if (!valid_peer(duplex, expected_generation, peer_mac)) {
         return ESP_ERR_INVALID_STATE;
     }
     return ESP_OK;
 }
 
 esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
+    uint32_t expected_generation,
     const char *peer_mac,
     bt_a2dp_profile_state_t state)
 {
@@ -279,16 +280,20 @@ esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
     bt_duplex_snapshot_t duplex;
     err = bt_duplex_get_snapshot(&duplex);
     if (err == ESP_OK && !duplex.peer_valid) {
-        if (state == BT_A2DP_PROFILE_DISCONNECTED ||
-            state == BT_A2DP_PROFILE_DISCONNECTING) {
+        if (expected_generation != 0U) {
+            err = ESP_ERR_INVALID_STATE;
+        } else if (state == BT_A2DP_PROFILE_DISCONNECTED ||
+                   state == BT_A2DP_PROFILE_DISCONNECTING) {
             bt_ctx_unlock();
             return ESP_ERR_NOT_FOUND;
+        } else {
+            uint32_t generation = 0U;
+            err = bt_duplex_session_begin(
+                peer_mac, configured_mode, &generation);
+            if (err == ESP_OK) err = bt_duplex_get_snapshot(&duplex);
         }
-        uint32_t generation = 0U;
-        err = bt_duplex_session_begin(peer_mac, configured_mode, &generation);
-        if (err == ESP_OK) err = bt_duplex_get_snapshot(&duplex);
-    }
-    if (err == ESP_OK && strcasecmp(peer_mac, duplex.peer_mac) != 0) {
+    } else if (err == ESP_OK &&
+               !valid_peer(&duplex, expected_generation, peer_mac)) {
         err = ESP_ERR_INVALID_STATE;
     }
     if (err == ESP_OK && state == BT_A2DP_PROFILE_CONNECTED &&
@@ -307,10 +312,11 @@ esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
 }
 
 esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
+    uint32_t expected_generation,
     const char *peer_mac,
     bt_a2dp_audio_state_t state)
 {
-    if (peer_mac == NULL || (int)state < 0 ||
+    if (peer_mac == NULL || expected_generation == 0U || (int)state < 0 ||
         state >= BT_A2DP_AUDIO_STATE_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -323,7 +329,7 @@ esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
 
     bt_duplex_snapshot_t duplex;
     memset(&duplex, 0, sizeof(duplex));
-    err = get_bound_duplex_locked(peer_mac, &duplex);
+    err = get_bound_duplex_locked(expected_generation, peer_mac, &duplex);
     if (err != ESP_OK) {
         bt_ctx_unlock();
         return err;
