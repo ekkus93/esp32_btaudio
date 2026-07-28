@@ -194,11 +194,79 @@ void test_hfp_stats_max_values_are_split_without_truncation(void)
 
     const char *tx = execute_command("HFP STATS");
     TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_stats_calls());
+    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_diagnostics_calls());
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_STATE|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_I2S5|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_RESOURCE1|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_CALLBACK|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HFP|STATS|"));
     TEST_ASSERT_NULL(strstr(tx, "RESPONSE_TOO_LONG"));
     TEST_ASSERT_NULL(strstr(tx, "STATS_LINE_TOO_LONG"));
+}
+
+void test_hfp_stats_reports_fd13_available_diagnostics(void)
+{
+    bt_hfp_manager_diagnostics_t diagnostics;
+    memset(&diagnostics, 0, sizeof(diagnostics));
+    diagnostics.heap_available = true;
+    diagnostics.free_internal_bytes = 123456U;
+    diagnostics.minimum_free_heap_bytes_lifetime = 65432U;
+    diagnostics.largest_internal_free_block_bytes = 54321U;
+    diagnostics.hfp_app_task_stack_available = true;
+    diagnostics.hfp_app_task_min_free_stack_bytes_lifetime = 4096U;
+    diagnostics.i2s_writer_task_stack_available = true;
+    diagnostics.i2s_writer_task_min_free_stack_bytes_lifetime = 2048U;
+    diagnostics.incoming_callback_available = true;
+    diagnostics.incoming_callback_budget_us = 2000U;
+    diagnostics.incoming_callback_last_us = 123U;
+    diagnostics.incoming_callback_max_us_lifetime = 456U;
+    diagnostics.incoming_callback_over_budget_lifetime = 7U;
+    mock_bt_hfp_manager_set_diagnostics(&diagnostics, ESP_OK);
+
+    const char *tx = execute_command("HFP STATS");
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "INFO|HFP|STATS_RESOURCE1|HEAP_STATE=AVAILABLE,"
+            "FREE_INTERNAL_BYTES=123456,"
+            "MIN_FREE_HEAP_BYTES_LIFETIME=65432,"
+            "LARGEST_INTERNAL_BLOCK_BYTES=54321"));
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "INFO|HFP|STATS_RESOURCE2|HFP_APP_TASK_STATE=AVAILABLE,"
+            "HFP_APP_MIN_FREE_STACK_BYTES_LIFETIME=4096,"
+            "I2S_WRITER_TASK_STATE=AVAILABLE,"
+            "I2S_WRITER_MIN_FREE_STACK_BYTES_LIFETIME=2048"));
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "INFO|HFP|STATS_CALLBACK|STATE=AVAILABLE,BUDGET_US=2000,"
+            "LAST_US=123,MAX_US_LIFETIME=456,OVER_BUDGET_LIFETIME=7"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HFP|STATS|"));
+}
+
+void test_hfp_stats_reports_unavailable_diagnostics_without_fake_zero(void)
+{
+    const char *tx = execute_command("HFP STATS");
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "HEAP_STATE=UNAVAILABLE,FREE_INTERNAL_BYTES=NA,"
+            "MIN_FREE_HEAP_BYTES_LIFETIME=NA,"
+            "LARGEST_INTERNAL_BLOCK_BYTES=NA"));
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "HFP_APP_TASK_STATE=UNAVAILABLE,"
+            "HFP_APP_MIN_FREE_STACK_BYTES_LIFETIME=NA,"
+            "I2S_WRITER_TASK_STATE=UNAVAILABLE,"
+            "I2S_WRITER_MIN_FREE_STACK_BYTES_LIFETIME=NA"));
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "STATS_CALLBACK|STATE=UNAVAILABLE,BUDGET_US=NA,LAST_US=NA,"
+            "MAX_US_LIFETIME=NA,OVER_BUDGET_LIFETIME=NA"));
+    TEST_ASSERT_NULL(strstr(tx, "FREE_INTERNAL_BYTES=0"));
+}
+
+void test_hfp_stats_diagnostic_failure_is_exact_and_not_partial(void)
+{
+    mock_bt_hfp_manager_set_diagnostics(NULL, ESP_ERR_TIMEOUT);
+    const char *tx = execute_command("HFP STATS");
+    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_stats_calls());
+    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_diagnostics_calls());
+    TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|HFP|ESP_ERR_TIMEOUT|"));
+    TEST_ASSERT_NULL(strstr(tx, "INFO|HFP|STATS_STATE|"));
+    TEST_ASSERT_NULL(strstr(tx, "OK|HFP|STATS|"));
 }
 
 void test_hfp_resetstats_reports_exact_success_or_failure(void)
