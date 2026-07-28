@@ -5,7 +5,7 @@
 
 _Static_assert(ATOMIC_INT_LOCK_FREE == 2,
                "HFP PCM ring requires lock-free 32-bit integer atomics");
-_Static_assert(sizeof(uint32_t) == sizeof(unsigned int),
+_Static_assert(UINT_MAX == UINT32_MAX,
                "HFP PCM ring expects 32-bit unsigned int atomics");
 
 static void counter64_init(hfp_pcm_counter64_t *counter)
@@ -34,9 +34,11 @@ static void counter64_add(hfp_pcm_counter64_t *counter, uint64_t amount)
                                     memory_order_release);
 }
 
-static uint64_t counter64_read(const hfp_pcm_counter64_t *counter)
+static bool counter64_read(const hfp_pcm_counter64_t *counter,
+                           uint64_t *value_out)
 {
-    for (;;) {
+    enum { HFP_PCM_SNAPSHOT_RETRIES = 32 };
+    for (unsigned attempt = 0; attempt < HFP_PCM_SNAPSHOT_RETRIES; ++attempt) {
         uint32_t before = atomic_load_explicit(&counter->sequence,
                                                memory_order_acquire);
         if ((before & 1U) != 0U) {
@@ -49,15 +51,17 @@ static uint64_t counter64_read(const hfp_pcm_counter64_t *counter)
         uint32_t after = atomic_load_explicit(&counter->sequence,
                                               memory_order_acquire);
         if (before == after) {
-            return ((uint64_t)high << 32U) | low;
+            *value_out = ((uint64_t)high << 32U) | low;
+            return true;
         }
     }
+    return false;
 }
 
 static bool ring_initialized(const hfp_pcm_ring_t *ring)
 {
     return ring != NULL &&
-           atomic_load_explicit(&ring->initialized, memory_order_acquire);
+           atomic_load_explicit(&ring->initialized, memory_order_acquire) != 0U;
 }
 
 static bool producer_generation_valid(hfp_pcm_ring_t *ring,
@@ -120,12 +124,9 @@ static void update_peak(hfp_pcm_ring_t *ring, uint32_t used)
 {
     uint32_t peak = atomic_load_explicit(&ring->peak_used,
                                          memory_order_relaxed);
-    while (used > peak &&
-           !atomic_compare_exchange_weak_explicit(&ring->peak_used,
-                                                  &peak,
-                                                  used,
-                                                  memory_order_relaxed,
-                                                  memory_order_relaxed)) {
+    if (used > peak) {
+        /* Producer-only field: no compare/exchange loop is required. */
+        atomic_store_explicit(&ring->peak_used, used, memory_order_relaxed);
     }
 }
 
@@ -146,7 +147,7 @@ esp_err_t hfp_pcm_ring_init(hfp_pcm_ring_t *ring,
     atomic_init(&ring->head, 0U);
     atomic_init(&ring->tail, 0U);
     atomic_init(&ring->peak_used, 0U);
-    atomic_init(&ring->initialized, false);
+    atomic_init(&ring->initialized, 0U);
 
     counter64_init(&ring->total_written_bytes);
     counter64_init(&ring->overflow_frames);
@@ -159,7 +160,7 @@ esp_err_t hfp_pcm_ring_init(hfp_pcm_ring_t *ring,
     counter64_init(&ring->stale_read_operations);
     counter64_init(&ring->invalid_read_operations);
 
-    atomic_store_explicit(&ring->initialized, true, memory_order_release);
+    atomic_store_explicit(&ring->initialized, 1U, memory_order_release);
     return ESP_OK;
 }
 
@@ -273,7 +274,7 @@ esp_err_t hfp_pcm_ring_get_snapshot(const hfp_pcm_ring_t *ring,
     }
     memset(out, 0, sizeof(*out));
     out->initialized = atomic_load_explicit(&ring->initialized,
-                                            memory_order_acquire);
+                                            memory_order_acquire) != 0U;
     if (!out->initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -282,7 +283,9 @@ esp_err_t hfp_pcm_ring_get_snapshot(const hfp_pcm_ring_t *ring,
                                            memory_order_acquire);
     out->capacity = ring->capacity;
 
-    for (;;) {
+    enum { HFP_PCM_SNAPSHOT_RETRIES = 32 };
+    bool occupancy_stable = false;
+    for (unsigned attempt = 0; attempt < HFP_PCM_SNAPSHOT_RETRIES; ++attempt) {
         uint32_t tail_before = atomic_load_explicit(&ring->tail,
                                                     memory_order_acquire);
         uint32_t head = atomic_load_explicit(&ring->head,
@@ -293,23 +296,34 @@ esp_err_t hfp_pcm_ring_get_snapshot(const hfp_pcm_ring_t *ring,
         if (tail_before == tail_after && used <= ring->capacity) {
             out->current_used = used;
             out->current_free = ring->capacity - used;
+            occupancy_stable = true;
             break;
         }
+    }
+    if (!occupancy_stable) {
+        return ESP_ERR_TIMEOUT;
     }
 
     out->peak_used = atomic_load_explicit(&ring->peak_used,
                                           memory_order_relaxed);
-    out->total_written_bytes = counter64_read(&ring->total_written_bytes);
-    out->total_read_bytes = counter64_read(&ring->total_read_bytes);
-    out->overflow_frames = counter64_read(&ring->overflow_frames);
-    out->overflow_bytes = counter64_read(&ring->overflow_bytes);
-    out->underflow_events = counter64_read(&ring->underflow_events);
-    out->underflow_bytes = counter64_read(&ring->underflow_bytes);
-    out->stale_generation_operations =
-        counter64_read(&ring->stale_write_operations) +
-        counter64_read(&ring->stale_read_operations);
-    out->invalid_operations =
-        counter64_read(&ring->invalid_write_operations) +
-        counter64_read(&ring->invalid_read_operations);
+    uint64_t stale_writes = 0;
+    uint64_t stale_reads = 0;
+    uint64_t invalid_writes = 0;
+    uint64_t invalid_reads = 0;
+    if (!counter64_read(&ring->total_written_bytes,
+                        &out->total_written_bytes) ||
+        !counter64_read(&ring->total_read_bytes, &out->total_read_bytes) ||
+        !counter64_read(&ring->overflow_frames, &out->overflow_frames) ||
+        !counter64_read(&ring->overflow_bytes, &out->overflow_bytes) ||
+        !counter64_read(&ring->underflow_events, &out->underflow_events) ||
+        !counter64_read(&ring->underflow_bytes, &out->underflow_bytes) ||
+        !counter64_read(&ring->stale_write_operations, &stale_writes) ||
+        !counter64_read(&ring->stale_read_operations, &stale_reads) ||
+        !counter64_read(&ring->invalid_write_operations, &invalid_writes) ||
+        !counter64_read(&ring->invalid_read_operations, &invalid_reads)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    out->stale_generation_operations = stale_writes + stale_reads;
+    out->invalid_operations = invalid_writes + invalid_reads;
     return ESP_OK;
 }
