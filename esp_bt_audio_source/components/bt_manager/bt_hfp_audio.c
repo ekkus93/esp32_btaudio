@@ -38,7 +38,6 @@ typedef struct {
     atomic_uint codec;
     atomic_uint active_callbacks;
     atomic_uint callback_last_us;
-    atomic_uint callback_max_us;
 
     bt_hfp_audio_counter64_t registration_failures;
     bt_hfp_audio_counter64_t activation_failures;
@@ -59,7 +58,6 @@ typedef struct {
     bt_hfp_audio_counter64_t unsupported_codec_bytes;
     bt_hfp_audio_counter64_t ring_rejected_frames;
     bt_hfp_audio_counter64_t ring_rejected_bytes;
-    bt_hfp_audio_counter64_t callback_over_budget;
 #ifdef UNIT_TEST
     bt_hfp_audio_platform_ops_t test_ops;
     bool test_ops_set;
@@ -67,6 +65,17 @@ typedef struct {
 } bt_hfp_audio_context_t;
 
 static bt_hfp_audio_context_t s_audio;
+
+/* These values describe the process lifetime, not one HFP profile lifecycle.
+ * They intentionally live outside s_audio so verified profile teardown cannot
+ * silently erase fields exposed as MAX_US_LIFETIME and
+ * OVER_BUDGET_LIFETIME. */
+static atomic_uint s_callback_max_us_lifetime = ATOMIC_VAR_INIT(0U);
+static bt_hfp_audio_counter64_t s_callback_over_budget_lifetime = {
+    .sequence = ATOMIC_VAR_INIT(0U),
+    .low = ATOMIC_VAR_INIT(0U),
+    .high = ATOMIC_VAR_INIT(0U),
+};
 
 static void counter64_init(bt_hfp_audio_counter64_t *counter)
 {
@@ -136,7 +145,6 @@ static void counters_init(void)
     INIT_COUNTER(unsupported_codec_bytes);
     INIT_COUNTER(ring_rejected_frames);
     INIT_COUNTER(ring_rejected_bytes);
-    INIT_COUNTER(callback_over_budget);
 #undef INIT_COUNTER
 }
 
@@ -166,7 +174,6 @@ static esp_err_t context_ensure(void)
     atomic_init(&s_audio.codec, (unsigned)BT_HFP_CODEC_NONE);
     atomic_init(&s_audio.active_callbacks, 0U);
     atomic_init(&s_audio.callback_last_us, 0U);
-    atomic_init(&s_audio.callback_max_us, 0U);
     counters_init();
     return ESP_OK;
 }
@@ -362,15 +369,15 @@ static void update_max_duration(uint32_t duration_us)
 {
     atomic_store_explicit(&s_audio.callback_last_us, duration_us,
                           memory_order_relaxed);
-    uint32_t current = atomic_load_explicit(&s_audio.callback_max_us,
+    uint32_t current = atomic_load_explicit(&s_callback_max_us_lifetime,
                                             memory_order_relaxed);
     while (duration_us > current &&
            !atomic_compare_exchange_weak_explicit(
-               &s_audio.callback_max_us, &current, duration_us,
+               &s_callback_max_us_lifetime, &current, duration_us,
                memory_order_relaxed, memory_order_relaxed)) {
     }
     if (duration_us > BT_HFP_AUDIO_CALLBACK_BUDGET_US) {
-        counter64_add(&s_audio.callback_over_budget, 1U);
+        counter64_add(&s_callback_over_budget_lifetime, 1U);
     }
 }
 
@@ -523,7 +530,7 @@ esp_err_t bt_hfp_audio_get_snapshot(bt_hfp_audio_snapshot_t *out)
     memcpy(out->peer_mac, s_audio.peer_mac, sizeof(out->peer_mac));
     out->callback_last_us = atomic_load_explicit(&s_audio.callback_last_us,
                                                  memory_order_relaxed);
-    out->callback_max_us = atomic_load_explicit(&s_audio.callback_max_us,
+    out->callback_max_us = atomic_load_explicit(&s_callback_max_us_lifetime,
                                                 memory_order_relaxed);
     out->active_callbacks = atomic_load_explicit(&s_audio.active_callbacks,
                                                  memory_order_acquire);
@@ -549,8 +556,11 @@ esp_err_t bt_hfp_audio_get_snapshot(bt_hfp_audio_snapshot_t *out)
     READ_COUNTER(unsupported_codec_bytes);
     READ_COUNTER(ring_rejected_frames);
     READ_COUNTER(ring_rejected_bytes);
-    READ_COUNTER(callback_over_budget);
 #undef READ_COUNTER
+    if (!counter64_read(&s_callback_over_budget_lifetime,
+                        &out->callback_over_budget)) {
+        err = ESP_ERR_TIMEOUT;
+    }
     return audio_unlock(err);
 }
 
@@ -593,6 +603,9 @@ void bt_hfp_audio_test_reset(void)
 {
     (void)bt_hfp_audio_cleanup_after_stack_shutdown();
     memset(&s_audio, 0, sizeof(s_audio));
+    atomic_store_explicit(&s_callback_max_us_lifetime, 0U,
+                          memory_order_relaxed);
+    counter64_init(&s_callback_over_budget_lifetime);
 }
 
 void bt_hfp_audio_test_handle_incoming(uint16_t sync_conn_handle,
@@ -603,5 +616,10 @@ void bt_hfp_audio_test_handle_incoming(uint16_t sync_conn_handle,
 {
     handle_incoming_timed(sync_conn_handle, data, data_len, buffer_capacity,
                           bad_frame);
+}
+
+void bt_hfp_audio_test_record_callback_duration(uint32_t duration_us)
+{
+    update_max_duration(duration_us);
 }
 #endif
