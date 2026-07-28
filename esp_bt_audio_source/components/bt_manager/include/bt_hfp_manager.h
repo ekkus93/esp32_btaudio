@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "bt_duplex_policy.h"
 #include "bt_duplex_state.h"
 #include "esp_err.h"
 
@@ -15,6 +16,7 @@ typedef struct {
     bool manager_initialized;
     bt_duplex_mode_t configured_mode;
     bt_duplex_snapshot_t duplex;
+    bt_duplex_policy_snapshot_t policy;
 } bt_hfp_manager_status_t;
 
 typedef struct {
@@ -152,8 +154,8 @@ esp_err_t bt_manager_hfp_audio_stop(void);
 esp_err_t bt_manager_hfp_set_mode(bt_duplex_mode_t mode);
 esp_err_t bt_manager_hfp_get_configured_mode(bt_duplex_mode_t *mode_out);
 
-/* One duplex-state lock acquisition supplies every generation-bound status
- * field, so callers cannot combine fields from different sessions. */
+/* One bt_ctx-serialized operation supplies the authoritative duplex and policy
+ * snapshots so STATUS cannot combine different generations. */
 esp_err_t bt_manager_hfp_get_status(bt_hfp_manager_status_t *out);
 
 /* Statistics are reported relative to the most recent successful reset.
