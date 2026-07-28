@@ -86,15 +86,40 @@ cmd_status_t cmd_deinit(void)
     return CMD_SUCCESS;
 }
 
-static void cmd_write_port(int port, const char *buf, size_t len)
+static cmd_status_t cmd_write_port(int port, const char *buf, size_t len)
 {
-#if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
-    uart_write_bytes(port, buf, len);
-#else
-    if (uart_is_driver_installed(port)) {
-        uart_write_bytes(port, buf, len);
+    if (buf == NULL || len == 0U) return CMD_ERROR_INVALID_PARAM;
+
+#if !defined(UNIT_TEST) && defined(ESP_PLATFORM)
+    if (!uart_is_driver_installed(port)) {
+        ESP_LOGE(TAG, "command UART %d is not installed", port);
+        return CMD_ERROR_NOT_INITIALIZED;
     }
 #endif
+
+    int written = uart_write_bytes(port, buf, len);
+    if (written < 0) {
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG, "command UART %d write failed", port);
+#endif
+        return CMD_ERROR_UNKNOWN;
+    }
+    if ((size_t)written != len) {
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG,
+                 "command UART %d short write: expected=%u actual=%d",
+                 port, (unsigned)len, written);
+#endif
+        return CMD_ERROR_UNKNOWN;
+    }
+    return CMD_SUCCESS;
+}
+
+static cmd_status_t retain_first_delivery_failure(cmd_status_t current,
+                                                   cmd_status_t candidate)
+{
+    if (current != CMD_SUCCESS) return current;
+    return candidate;
 }
 
 static cmd_status_t format_response(char *buf, size_t buf_size,
@@ -146,15 +171,19 @@ cmd_status_t cmd_send_response(const char *status, const char *command,
         return format_status;
     }
 
+    cmd_status_t delivery_status = CMD_SUCCESS;
     if (status != NULL && strcmp(status, CMD_STATUS_EVENT) == 0) {
         for (size_t index = 0U; index < CMD_PORT_COUNT; ++index) {
-            cmd_write_port(s_cmd_ports[index], buf, len);
+            delivery_status = retain_first_delivery_failure(
+                delivery_status,
+                cmd_write_port(s_cmd_ports[index], buf, len));
         }
     } else {
-        cmd_write_port(s_reply_uart, buf, len);
+        delivery_status = cmd_write_port(s_reply_uart, buf, len);
     }
     capture_response(buf);
-    return format_status;
+    return delivery_status != CMD_SUCCESS
+        ? delivery_status : format_status;
 }
 
 cmd_status_t cmd_send_response_all(const char *status, const char *command,
@@ -169,11 +198,15 @@ cmd_status_t cmd_send_response_all(const char *status, const char *command,
         return format_status;
     }
 
+    cmd_status_t delivery_status = CMD_SUCCESS;
     for (size_t index = 0U; index < CMD_PORT_COUNT; ++index) {
-        cmd_write_port(s_cmd_ports[index], buf, len);
+        delivery_status = retain_first_delivery_failure(
+            delivery_status,
+            cmd_write_port(s_cmd_ports[index], buf, len));
     }
     capture_response(buf);
-    return format_status;
+    return delivery_status != CMD_SUCCESS
+        ? delivery_status : format_status;
 }
 
 cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
@@ -195,8 +228,9 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
     int chars_written = snprintf(diagnostic, sizeof(diagnostic),
                                  "EVENT|PAIR|%s|%s",
                                  subtype != NULL ? subtype : "", payload);
-    (void)cmd_send_response(CMD_STATUS_EVENT, "PAIR",
-                            subtype != NULL ? subtype : "", payload);
+    cmd_status_t delivery_status = cmd_send_response(
+        CMD_STATUS_EVENT, "PAIR",
+        subtype != NULL ? subtype : "", payload);
 
 #ifdef ESP_PLATFORM
     ESP_LOGI(TAG, "DIAG-EVENT: %s", diagnostic);
@@ -215,7 +249,7 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
     } else {
         printf("HOOK-DEBUG: test_push_event not present or n<=0\n");
     }
-    return CMD_SUCCESS;
+    return delivery_status;
 }
 
 static cmd_type_t parse_command_type(const char *token)
