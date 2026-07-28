@@ -121,14 +121,13 @@ int bt_manager_test_get_last_audio_state(void) {
     return s_last_audio_state;
 }
 
-/* Generic command targets intentionally do not link the FD-11 manager facade.
- * Provide a strong, explicit failure backend so they link without making an
- * HFP command look successful. The focused FD-11 command suite links the real
- * handler and its injectable public-manager stub instead of this file. */
+/* Generic host targets intentionally do not link the FD-11 manager facade.
+ * This strong stub prevents a linker fallback from pretending HFP worked.
+ * Focused FD-11 tests compile the real handler with an injectable public
+ * manager backend and do not link this shared mock object. */
 cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
     (void)ctx;
-    (void)cmd_send_response("ERR", "HFP", "TEST_BACKEND_NOT_LINKED", NULL);
-    return CMD_SUCCESS;
+    return CMD_ERROR_NOT_INITIALIZED;
 }
 
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */
