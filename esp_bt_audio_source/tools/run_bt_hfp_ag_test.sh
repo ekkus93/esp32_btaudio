@@ -37,6 +37,7 @@ mkdir -p "${build_dir}"
     "${project_dir}/test/host_test/mocks/bt_hfp_connection_untracked_stub.c" \
     "${project_dir}/test/host_test/mocks/bt_hfp_audio_lifecycle_stub.c" \
     "${project_dir}/test/host_test/test_bt_hfp_ag_cases.c" \
+    "${project_dir}/test/host_test/test_bt_hfp_ag_fd10_cases.c" \
     "${project_dir}/test/host_test/test_bt_hfp_ag.c" \
     -o "${binary}"
 
