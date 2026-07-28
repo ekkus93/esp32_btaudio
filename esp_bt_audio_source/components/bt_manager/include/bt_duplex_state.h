@@ -118,6 +118,14 @@ void bt_duplex_state_deinit(void);
 esp_err_t bt_duplex_session_begin(const char *peer_mac,
                                   bt_duplex_mode_t requested_mode,
                                   uint32_t *generation_out);
+
+/* Rotate only the transient HFP audio generation while preserving the active
+ * peer, SLC, A2DP state, modes, health, counters, and error history. This is
+ * legal only when the same peer is SLC-connected, HFP audio is disconnected,
+ * I2S is stopped, the mode is enabled, and no fault/quarantine is present. */
+esp_err_t bt_duplex_audio_session_begin(const char *peer_mac,
+                                        uint32_t *generation_out);
+
 esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 
 /* Global HFP profile lifecycle transition used before a peer session exists
@@ -126,31 +134,31 @@ esp_err_t bt_duplex_set_hfp_profile_global_state(
     bt_hfp_profile_state_t state);
 
 esp_err_t bt_duplex_set_requested_mode(uint32_t generation,
-                                      const char *peer_mac,
-                                      bt_duplex_mode_t mode);
-esp_err_t bt_duplex_set_effective_mode(uint32_t generation,
-                                      const char *peer_mac,
-                                      bt_duplex_mode_t mode);
-esp_err_t bt_duplex_set_a2dp_profile_state(uint32_t generation,
-                                          const char *peer_mac,
-                                          bt_a2dp_profile_state_t state);
-esp_err_t bt_duplex_set_a2dp_audio_state(uint32_t generation,
-                                        const char *peer_mac,
-                                        bt_a2dp_audio_state_t state);
-esp_err_t bt_duplex_set_hfp_profile_state(uint32_t generation,
-                                         const char *peer_mac,
-                                         bt_hfp_profile_state_t state);
-esp_err_t bt_duplex_set_hfp_audio_state(uint32_t generation,
                                        const char *peer_mac,
-                                       bt_hfp_audio_state_t state);
+                                       bt_duplex_mode_t mode);
+esp_err_t bt_duplex_set_effective_mode(uint32_t generation,
+                                       const char *peer_mac,
+                                       bt_duplex_mode_t mode);
+esp_err_t bt_duplex_set_a2dp_profile_state(uint32_t generation,
+                                           const char *peer_mac,
+                                           bt_a2dp_profile_state_t state);
+esp_err_t bt_duplex_set_a2dp_audio_state(uint32_t generation,
+                                         const char *peer_mac,
+                                         bt_a2dp_audio_state_t state);
+esp_err_t bt_duplex_set_hfp_profile_state(uint32_t generation,
+                                          const char *peer_mac,
+                                          bt_hfp_profile_state_t state);
+esp_err_t bt_duplex_set_hfp_audio_state(uint32_t generation,
+                                        const char *peer_mac,
+                                        bt_hfp_audio_state_t state);
 esp_err_t bt_duplex_set_i2s_state(uint32_t generation,
-                                 const char *peer_mac,
-                                 bt_hfp_i2s_state_t state);
+                                  const char *peer_mac,
+                                  bt_hfp_i2s_state_t state);
 esp_err_t bt_duplex_set_health(uint32_t generation,
-                              const char *peer_mac,
-                              bt_audio_health_t health,
-                              esp_err_t error,
-                              const char *error_text);
+                               const char *peer_mac,
+                               bt_audio_health_t health,
+                               esp_err_t error,
+                               const char *error_text);
 esp_err_t bt_duplex_recover(uint32_t generation, const char *peer_mac,
                             uint32_t *new_generation_out);
 
@@ -158,7 +166,7 @@ esp_err_t bt_duplex_record_incoming(uint32_t generation, const char *peer_mac,
                                     size_t bytes, bool accepted);
 esp_err_t bt_duplex_record_i2s_underflow(uint32_t generation, const char *peer_mac);
 esp_err_t bt_duplex_record_i2s_timeout(uint32_t generation, const char *peer_mac,
-                                      esp_err_t error);
+                                       esp_err_t error);
 
 const char *bt_duplex_mode_to_string(bt_duplex_mode_t value);
 const char *bt_a2dp_profile_state_to_string(bt_a2dp_profile_state_t value);
