@@ -51,6 +51,9 @@ jobs:
       - name: Run HFP Audio Gateway sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_hfp_ag_test.sh
 
+      - name: Run HFP SLC operation sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_hfp_connection_test.sh
+
       - name: Run manager HFP profile rollback sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_manager_hfp_profiles_test.sh
 
