@@ -12,6 +12,7 @@
 #include "esp_bt.h"
 #include "command_interface.h"
 #include "bt_duplex_policy.h"
+#include "bt_duplex_state_events.h"
 #include "bt_hfp_manager.h"
 #include "../../components/audio_processor/include/audio_processor.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
@@ -31,6 +32,22 @@ static int s_last_audio_state = -1;
 static bool s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
 static bt_connection_info_t s_mock_conn_info;        /* zeroed => not connected */
 
+static bt_hfp_manager_status_t s_hfp_status;
+static esp_err_t s_hfp_status_result = ESP_OK;
+static esp_err_t s_hfp_profile_result = ESP_ERR_NOT_FOUND;
+static esp_err_t s_hfp_audio_result = ESP_ERR_NOT_FOUND;
+static unsigned s_hfp_profile_calls;
+static unsigned s_hfp_audio_calls;
+static uint32_t s_last_hfp_profile_generation;
+static uint32_t s_last_hfp_audio_generation;
+static bt_a2dp_profile_state_t s_last_hfp_profile_state;
+static bt_a2dp_audio_state_t s_last_hfp_audio_policy_state;
+static char s_last_hfp_profile_peer[BT_DUPLEX_MAC_STR_LEN];
+static char s_last_hfp_audio_peer[BT_DUPLEX_MAC_STR_LEN];
+static unsigned s_stale_operation_records;
+static uint32_t s_last_stale_generation;
+static char s_last_stale_peer[BT_DUPLEX_MAC_STR_LEN];
+
 void bt_manager_test_reset_btstate_mock(void) {
     s_mock_connected = 0;
     s_beep_active = false;
@@ -39,6 +56,65 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_last_audio_state = -1;
     s_force_streaming_info_failure = false;  /* CODE_REVIEW8 Task B */
     memset(&s_mock_conn_info, 0, sizeof(s_mock_conn_info));
+    memset(&s_hfp_status, 0, sizeof(s_hfp_status));
+    s_hfp_status.manager_initialized = true;
+    s_hfp_status.configured_mode = BT_DUPLEX_MODE_DISABLED;
+    s_hfp_status_result = ESP_OK;
+    s_hfp_profile_result = ESP_ERR_NOT_FOUND;
+    s_hfp_audio_result = ESP_ERR_NOT_FOUND;
+    s_hfp_profile_calls = 0U;
+    s_hfp_audio_calls = 0U;
+    s_last_hfp_profile_generation = 0U;
+    s_last_hfp_audio_generation = 0U;
+    s_last_hfp_profile_state = BT_A2DP_PROFILE_DISCONNECTED;
+    s_last_hfp_audio_policy_state = BT_A2DP_AUDIO_STOPPED;
+    memset(s_last_hfp_profile_peer, 0, sizeof(s_last_hfp_profile_peer));
+    memset(s_last_hfp_audio_peer, 0, sizeof(s_last_hfp_audio_peer));
+    s_stale_operation_records = 0U;
+    s_last_stale_generation = 0U;
+    memset(s_last_stale_peer, 0, sizeof(s_last_stale_peer));
+}
+
+void bt_manager_test_set_hfp_policy_status(bool peer_valid,
+                                           const char *peer,
+                                           uint32_t generation,
+                                           esp_err_t result) {
+    memset(&s_hfp_status, 0, sizeof(s_hfp_status));
+    s_hfp_status.manager_initialized = true;
+    s_hfp_status.configured_mode = BT_DUPLEX_MODE_DISABLED;
+    s_hfp_status.duplex.peer_valid = peer_valid;
+    s_hfp_status.duplex.session_generation = generation;
+    if (peer_valid && peer != NULL) {
+        strncpy(s_hfp_status.duplex.peer_mac, peer,
+                sizeof(s_hfp_status.duplex.peer_mac) - 1U);
+    }
+    s_hfp_status_result = result;
+}
+
+void bt_manager_test_set_hfp_policy_results(esp_err_t profile_result,
+                                            esp_err_t audio_result) {
+    s_hfp_profile_result = profile_result;
+    s_hfp_audio_result = audio_result;
+}
+
+unsigned bt_manager_test_get_hfp_profile_calls(void) {
+    return s_hfp_profile_calls;
+}
+
+unsigned bt_manager_test_get_hfp_audio_policy_calls(void) {
+    return s_hfp_audio_calls;
+}
+
+uint32_t bt_manager_test_get_last_hfp_profile_generation(void) {
+    return s_last_hfp_profile_generation;
+}
+
+uint32_t bt_manager_test_get_last_hfp_audio_generation(void) {
+    return s_last_hfp_audio_generation;
+}
+
+unsigned bt_manager_test_get_stale_operation_records(void) {
+    return s_stale_operation_records;
 }
 
 /* CODE_REVIEW8 Task B: Test helper to force bt_get_streaming_info failure */
@@ -135,28 +211,46 @@ cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
 __attribute__((weak)) esp_err_t bt_manager_hfp_get_status(
     bt_hfp_manager_status_t *out) {
     if (out == NULL) return ESP_ERR_INVALID_ARG;
-    memset(out, 0, sizeof(*out));
-    out->manager_initialized = true;
-    out->configured_mode = BT_DUPLEX_MODE_DISABLED;
+    if (s_hfp_status_result != ESP_OK) return s_hfp_status_result;
+    *out = s_hfp_status;
     return ESP_OK;
 }
 
 __attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
     uint32_t expected_generation, const char *peer_mac,
     bt_a2dp_profile_state_t state) {
-    (void)expected_generation;
-    (void)peer_mac;
-    (void)state;
-    return ESP_ERR_NOT_FOUND;
+    s_hfp_profile_calls++;
+    s_last_hfp_profile_generation = expected_generation;
+    s_last_hfp_profile_state = state;
+    if (peer_mac != NULL) {
+        strncpy(s_last_hfp_profile_peer, peer_mac,
+                sizeof(s_last_hfp_profile_peer) - 1U);
+    }
+    return s_hfp_profile_result;
 }
 
 __attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
     uint32_t expected_generation, const char *peer_mac,
     bt_a2dp_audio_state_t state) {
-    (void)expected_generation;
-    (void)peer_mac;
-    (void)state;
-    return ESP_ERR_NOT_FOUND;
+    s_hfp_audio_calls++;
+    s_last_hfp_audio_generation = expected_generation;
+    s_last_hfp_audio_policy_state = state;
+    if (peer_mac != NULL) {
+        strncpy(s_last_hfp_audio_peer, peer_mac,
+                sizeof(s_last_hfp_audio_peer) - 1U);
+    }
+    return s_hfp_audio_result;
+}
+
+__attribute__((weak)) esp_err_t bt_duplex_record_stale_operation_event(
+    uint32_t generation, const char *peer_mac) {
+    s_stale_operation_records++;
+    s_last_stale_generation = generation;
+    if (peer_mac != NULL) {
+        strncpy(s_last_stale_peer, peer_mac,
+                sizeof(s_last_stale_peer) - 1U);
+    }
+    return ESP_OK;
 }
 
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */
