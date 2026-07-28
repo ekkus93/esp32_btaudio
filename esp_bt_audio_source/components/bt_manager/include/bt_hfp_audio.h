@@ -116,6 +116,10 @@ typedef struct {
  * and is intentionally outside FD-09/FD-10. */
 esp_err_t bt_hfp_audio_register_callback(void);
 
+/* Allocate the bounded FD-10 control resources after HFP profile and incoming
+ * callback initialization have both been confirmed. */
+esp_err_t bt_hfp_audio_control_init(void);
+
 /* Apply a callback-safe fast-state binding derived from one authoritative
  * duplex snapshot. Connected CVSD is accepted only when the same peer/session
  * owns an already-running I2S output. All other states disable acceptance. */
