@@ -72,6 +72,9 @@ jobs:
       - name: Run HFP audio control sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_hfp_audio_control_test.sh
 
+      - name: Run HFP FD-13 diagnostics sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_hfp_diagnostics_test.sh
+
       - name: Install Python test deps
         run: |
           python3 -m pip install --upgrade pip
