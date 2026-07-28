@@ -44,6 +44,7 @@ common_flags=(
         "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
         "${project_dir}/components/bt_manager/bt_hfp_manager_fd11.c" \
         "${test_dir}/mocks/bt_hfp_event_command_stub.c" \
+        "${test_dir}/mocks/bt_duplex_policy_legacy_stub.c" \
         "${test_dir}/mocks/bt_hfp_manager_util_stubs.c" \
         "${test_dir}/mocks/bt_hfp_manager_dependencies.c" \
         "${test_dir}/test_bt_hfp_manager_cases.c" \
