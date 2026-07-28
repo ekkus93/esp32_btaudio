@@ -32,25 +32,27 @@ void setUp(void) {
     nvs_storage_mock_reset();
     bt_manager_test_reset_btstate_mock();
     bt_manager_test_reset_autostart_attempts();
-    
+
     // Initialize the BT manager
     bt_manager_init_t config = {
         .device_name = "ESP32_TEST",
         .connected_cb = test_bt_connected_cb,
         .disconnected_cb = test_bt_disconnected_cb
     };
-    
+
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_init(&config));
+    bt_events_a2dp_test_reset_binding();
 }
 
 void tearDown(void) {
+    bt_events_a2dp_test_reset_binding();
     // Clean up BT manager
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_deinit());
 }
 
 int main(void) {
     UNITY_BEGIN();
-    
+
     RUN_TEST(test_bt_init_deinit);
     RUN_TEST(test_bt_scanning);
     RUN_TEST(test_bt_connect_disconnect);
@@ -67,6 +69,9 @@ int main(void) {
     RUN_TEST(test_bt_a2dp_audio_state_forwarding);
     RUN_TEST(test_bt_a2dp_remote_suspend_clears_playing);
     RUN_TEST(test_bt_a2dp_remote_suspend_then_resume);
+    RUN_TEST(test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted);
+    RUN_TEST(test_a2dp_binding_refreshes_after_hfp_generation_rotation);
+    RUN_TEST(test_a2dp_wrong_peer_event_is_rejected_and_counted);
     RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
     RUN_TEST(test_bt_gap_auth_failure_allows_retry);
     RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
@@ -78,6 +83,6 @@ int main(void) {
     RUN_TEST(test_bt_init_survives_nvs_failures);
     RUN_TEST(test_bt_init_skips_corrupt_paired_device_entries);
     RUN_TEST(test_bt_stop_failure_then_recovery_on_state_event);
-    
+
     return UNITY_END();
 }
