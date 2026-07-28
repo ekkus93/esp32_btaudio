@@ -9,7 +9,7 @@
 
 #include "command_interface.h"
 
-#define BT_HFP_EVENT_DATA_LEN 160U
+#define BT_HFP_EVENT_DATA_LEN 192U
 
 static const char *profile_wire(bt_hfp_profile_state_t state)
 {
@@ -71,6 +71,48 @@ static const char *mode_reason_wire(bt_hfp_mode_event_reason_t reason)
         return "A2DP_STOPPED_DURING_SCO";
     case BT_HFP_MODE_EVENT_REASON_A2DP_RESUMED: return "A2DP_RESUMED";
     case BT_HFP_MODE_EVENT_REASON_SCO_STOPPED: return "SCO_STOPPED";
+    default: return NULL;
+    }
+}
+
+static const char *policy_state_wire(bt_duplex_policy_state_t state)
+{
+    switch (state) {
+    case BT_DUPLEX_POLICY_SATISFIED: return "SATISFIED";
+    case BT_DUPLEX_POLICY_WAITING: return "WAITING";
+    case BT_DUPLEX_POLICY_INCOMPATIBLE: return "INCOMPATIBLE";
+    case BT_DUPLEX_POLICY_COMPATIBILITY_REQUIRED:
+        return "COMPATIBILITY_REQUIRED";
+    default: return NULL;
+    }
+}
+
+static const char *policy_reason_wire(bt_duplex_policy_reason_t reason)
+{
+    switch (reason) {
+    case BT_DUPLEX_POLICY_REASON_REQUESTED_MODE: return "REQUESTED_MODE";
+    case BT_DUPLEX_POLICY_REASON_WAITING_A2DP_CONNECTION:
+        return "WAITING_A2DP_CONNECTION";
+    case BT_DUPLEX_POLICY_REASON_WAITING_A2DP_STREAM:
+        return "WAITING_A2DP_STREAM";
+    case BT_DUPLEX_POLICY_REASON_WAITING_HFP_SLC:
+        return "WAITING_HFP_SLC";
+    case BT_DUPLEX_POLICY_REASON_WAITING_SCO: return "WAITING_SCO";
+    case BT_DUPLEX_POLICY_REASON_REMOTE_SUSPENDED_A2DP_DURING_SCO:
+        return "REMOTE_SUSPENDED_A2DP_DURING_SCO";
+    case BT_DUPLEX_POLICY_REASON_A2DP_STOPPED_DURING_SCO:
+        return "A2DP_STOPPED_DURING_SCO";
+    case BT_DUPLEX_POLICY_REASON_A2DP_RESUMED: return "A2DP_RESUMED";
+    case BT_DUPLEX_POLICY_REASON_SCO_STOPPED: return "SCO_STOPPED";
+    default: return NULL;
+    }
+}
+
+static const char *downlink_owner_wire(bt_duplex_downlink_owner_t owner)
+{
+    switch (owner) {
+    case BT_DUPLEX_DOWNLINK_OWNER_A2DP: return "A2DP";
+    case BT_DUPLEX_DOWNLINK_OWNER_HFP: return "HFP";
     default: return NULL;
     }
 }
@@ -252,6 +294,30 @@ esp_err_t bt_hfp_event_emit_mode(bt_duplex_mode_t old_mode,
                            "%s|%s|%s|%" PRIu32,
                            old_text, new_text, reason_text,
                            session_generation);
+}
+
+esp_err_t bt_hfp_event_emit_policy(bt_duplex_policy_state_t state,
+                                   bt_duplex_policy_reason_t reason,
+                                   bt_duplex_mode_t requested,
+                                   bt_duplex_mode_t effective,
+                                   bt_duplex_downlink_owner_t downlink_owner,
+                                   uint32_t session_generation)
+{
+    const char *state_text = policy_state_wire(state);
+    const char *reason_text = policy_reason_wire(reason);
+    const char *requested_text = mode_wire(requested);
+    const char *effective_text = mode_wire(effective);
+    const char *owner_text = downlink_owner_wire(downlink_owner);
+    char data[BT_HFP_EVENT_DATA_LEN];
+    if (state_text == NULL || reason_text == NULL || requested_text == NULL ||
+        effective_text == NULL || owner_text == NULL ||
+        session_generation == 0U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return format_and_emit("POLICY", data, sizeof(data),
+                           "%s|%s|%s|%s|%s|%" PRIu32,
+                           state_text, reason_text, requested_text,
+                           effective_text, owner_text, session_generation);
 }
 
 esp_err_t bt_hfp_event_emit_i2s(bt_hfp_i2s_state_t state,
