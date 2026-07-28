@@ -11,6 +11,8 @@
 typedef struct {
     bool a2dp_interrupted_during_sco;
     bt_duplex_policy_reason_t interruption_reason;
+    bool input_valid;
+    bt_duplex_policy_input_t last_input;
     bt_duplex_policy_snapshot_t snapshot;
 } bt_hfp_policy_runtime_t;
 
@@ -95,9 +97,15 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
 
     begin_generation_locked(duplex->session_generation);
 
+    bt_duplex_mode_t prior_effective = duplex->effective_mode;
+    if (s_policy.snapshot.initialized &&
+        s_policy.snapshot.generation == duplex->session_generation) {
+        prior_effective = s_policy.snapshot.effective;
+    }
+
     const bt_duplex_policy_input_t input = {
         .requested = duplex->requested_mode,
-        .current_effective = duplex->effective_mode,
+        .current_effective = prior_effective,
         .a2dp_connected = duplex->a2dp_profile_state ==
                           BT_A2DP_PROFILE_CONNECTED,
         .a2dp_streaming = duplex->a2dp_audio_state == BT_A2DP_AUDIO_STARTED,
@@ -108,6 +116,12 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
             s_policy.a2dp_interrupted_during_sco,
         .interruption_reason = s_policy.interruption_reason,
     };
+
+    if (s_policy.input_valid &&
+        memcmp(&s_policy.last_input, &input, sizeof(input)) == 0) {
+        return ESP_OK;
+    }
+
     bt_duplex_policy_result_t result;
     esp_err_t err = bt_duplex_policy_evaluate(&input, &result);
     if (err != ESP_OK) return err;
@@ -149,6 +163,8 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
         }
     }
 
+    s_policy.last_input = input;
+    s_policy.input_valid = true;
     s_policy.snapshot = next;
     return ESP_OK;
 }
