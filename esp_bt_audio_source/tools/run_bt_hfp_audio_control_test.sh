@@ -44,6 +44,7 @@ common_flags=(
         "${project_dir}/components/bt_manager/bt_hfp_audio_control.c" \
         "${test_dir}/mocks/bt_hfp_audio_control_dependencies.c" \
         "${test_dir}/test_bt_hfp_audio_control_cases.c" \
+        "${test_dir}/test_bt_hfp_audio_control_lifecycle_cases.c" \
         "${test_dir}/test_bt_hfp_audio_control.c" \
         -o "${binary}"
 } 2>&1 | tee "${compile_log}"
