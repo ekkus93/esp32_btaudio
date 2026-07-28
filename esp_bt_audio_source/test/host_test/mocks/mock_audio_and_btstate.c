@@ -10,7 +10,7 @@
 #include "esp_err.h"
 #include "bt_api.h"
 #include "esp_bt.h"
-#include "cmd_handlers.h"
+#include "command_interface.h"
 #include "../../components/audio_processor/include/audio_processor.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
 #include "bt_manager.h"  /* Defines bt_device_t */
