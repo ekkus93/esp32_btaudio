@@ -8,8 +8,8 @@
 #include "util_safe.h"
 
 bool hfp_i2s_output_push_cvsd(const int16_t *samples_8k,
-                              size_t sample_count,
-                              uint32_t generation)
+                               size_t sample_count,
+                               uint32_t generation)
 {
     atomic_fetch_add_explicit(&s_output.push_calls, 1U, memory_order_relaxed);
     if (samples_8k == NULL || sample_count == 0U ||
@@ -103,9 +103,13 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
     s_output.write_calls++;
     if (err != ESP_OK || bytes_written != requested_bytes) {
         esp_err_t write_error = err != ESP_OK ? err : ESP_ERR_INVALID_SIZE;
+        size_t confirmed_written = bytes_written < requested_bytes
+            ? bytes_written : requested_bytes;
+        uint64_t lost_bytes = (uint64_t)(requested_bytes - confirmed_written);
         bool terminal_fault = false;
         s_output.write_failures++;
         if (bytes_written != requested_bytes) s_output.short_writes++;
+        s_output.write_lost_bytes += lost_bytes;
         s_output.consecutive_write_failures++;
         hfp_i2s_output_set_error_locked(write_error);
         if (s_output.consecutive_write_failures >=
@@ -114,10 +118,10 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
             terminal_fault = true;
             HFP_I2S_LOGE(
                 "writer faulted after %" PRIu32
-                " consecutive failures: error=%d written=%u expected=%u",
+                " consecutive failures: error=%d written=%u expected=%u lost=%" PRIu64,
                 s_output.consecutive_write_failures,
                 (int)s_output.last_error, (unsigned)bytes_written,
-                (unsigned)requested_bytes);
+                (unsigned)requested_bytes, lost_bytes);
         }
         esp_err_t unlock_error = hfp_i2s_output_unlock(write_error);
         if (!terminal_fault) return unlock_error;
@@ -158,6 +162,7 @@ esp_err_t hfp_i2s_output_get_snapshot(hfp_i2s_output_snapshot_t *out)
     out->write_calls = s_output.write_calls;
     out->write_failures = s_output.write_failures;
     out->short_writes = s_output.short_writes;
+    out->write_lost_bytes = s_output.write_lost_bytes;
     out->silence_intervals = s_output.silence_intervals;
     out->silence_samples = s_output.silence_samples;
     out->degraded_events = s_output.degraded_events;
