@@ -12,6 +12,7 @@
 #include "esp_bt.h"
 #include "command_interface.h"
 #include "bt_duplex_policy.h"
+#include "bt_hfp_manager.h"
 #include "../../components/audio_processor/include/audio_processor.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
 #include "bt_manager.h"  /* Defines bt_device_t */
@@ -131,15 +132,28 @@ cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
     return CMD_ERROR_NOT_INITIALIZED;
 }
 
+__attribute__((weak)) esp_err_t bt_manager_hfp_get_status(
+    bt_hfp_manager_status_t *out) {
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
+    memset(out, 0, sizeof(*out));
+    out->manager_initialized = true;
+    out->configured_mode = BT_DUPLEX_MODE_DISABLED;
+    return ESP_OK;
+}
+
 __attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
-    const char *peer_mac, bt_a2dp_profile_state_t state) {
+    uint32_t expected_generation, const char *peer_mac,
+    bt_a2dp_profile_state_t state) {
+    (void)expected_generation;
     (void)peer_mac;
     (void)state;
     return ESP_ERR_NOT_FOUND;
 }
 
 __attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
-    const char *peer_mac, bt_a2dp_audio_state_t state) {
+    uint32_t expected_generation, const char *peer_mac,
+    bt_a2dp_audio_state_t state) {
+    (void)expected_generation;
     (void)peer_mac;
     (void)state;
     return ESP_ERR_NOT_FOUND;
