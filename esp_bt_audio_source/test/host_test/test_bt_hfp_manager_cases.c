@@ -101,6 +101,18 @@ void test_manager_connect_rejects_non_active_peer_before_lower_request(void)
     TEST_ASSERT_EQUAL_UINT(0U, mock_bt_hfp_manager_slc_connect_calls());
 }
 
+void test_manager_connect_rejects_malformed_mac_exactly(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, bt_manager_hfp_connect(NULL));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
+                      bt_manager_hfp_connect("AA-BB-CC-DD-EE-FF"));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
+                      bt_manager_hfp_connect("GG:BB:CC:DD:EE:FF"));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
+                      bt_manager_hfp_connect("AA:BB:CC:DD:EE"));
+    TEST_ASSERT_EQUAL_UINT(0U, mock_bt_hfp_manager_slc_connect_calls());
+}
+
 void test_manager_wrappers_preserve_exact_lower_errors(void)
 {
     mock_bt_hfp_manager_set_slc_connect_result(ESP_ERR_TIMEOUT);
@@ -250,6 +262,21 @@ void test_manager_stats_detects_regressed_lifetime_source(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_reset_stats());
     install_absolute_module_stats(10U);
 
+    bt_hfp_manager_stats_t stats;
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_manager_hfp_get_stats(&stats));
+}
+
+void test_manager_stats_detects_regressed_lifetime_maximum(void)
+{
+    bt_hfp_audio_snapshot_t incoming;
+    memset(&incoming, 0, sizeof(incoming));
+    incoming.callback_max_us = 100U;
+    mock_bt_hfp_manager_set_incoming_snapshot(&incoming, ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_reset_stats());
+
+    incoming.callback_max_us = 99U;
+    mock_bt_hfp_manager_set_incoming_snapshot(&incoming, ESP_OK);
     bt_hfp_manager_stats_t stats;
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
                       bt_manager_hfp_get_stats(&stats));
