@@ -45,11 +45,13 @@ bool hfp_i2s_output_push_cvsd(const int16_t *samples_8k,
         return false;
     }
 
-    int16_t converted[HFP_I2S_CVSD_MAX_INPUT_SAMPLES * 2U];
+    int16_t converted[HFP_I2S_CVSD_MAX_INPUT_SAMPLES *
+                      HFP_I2S_CVSD_UPSAMPLE_FACTOR];
     size_t produced = hfp_cvsd_8k_to_16k(
         samples_8k, sample_count, converted,
         sizeof(converted) / sizeof(converted[0]));
-    bool accepted = produced == sample_count * 2U &&
+    bool accepted =
+        produced == sample_count * HFP_I2S_CVSD_UPSAMPLE_FACTOR &&
         hfp_pcm_ring_write_frame(&s_output.ring, converted,
                                  produced * sizeof(converted[0]), generation);
     if (!accepted) {
