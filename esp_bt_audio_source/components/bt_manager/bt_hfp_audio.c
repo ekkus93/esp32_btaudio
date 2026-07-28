@@ -77,6 +77,13 @@ static bt_hfp_audio_counter64_t s_callback_over_budget_lifetime = {
     .high = ATOMIC_VAR_INIT(0U),
 };
 
+/* ESP-IDF does not document a callback-serialization guarantee strong enough
+ * for the custom 64-bit single-writer counters below. Reject overlap rather
+ * than silently lose increments. The gate is nonblocking and callback-safe:
+ * no allocation, wait, log, I2S call, or retry loop occurs on rejection. */
+static atomic_flag s_callback_gate = ATOMIC_FLAG_INIT;
+static atomic_uint s_callback_overlap_rejections = ATOMIC_VAR_INIT(0U);
+
 static void counter64_init(bt_hfp_audio_counter64_t *counter)
 {
     atomic_init(&counter->sequence, 0U);
@@ -84,6 +91,8 @@ static void counter64_init(bt_hfp_audio_counter64_t *counter)
     atomic_init(&counter->high, 0U);
 }
 
+/* This counter implementation is deliberately single-writer. The incoming
+ * callback gate below enforces that contract for callback-owned counters. */
 static void counter64_add(bt_hfp_audio_counter64_t *counter, uint64_t amount)
 {
     (void)atomic_fetch_add_explicit(&counter->sequence, 1U,
@@ -365,6 +374,39 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
     return audio_unlock(ESP_OK);
 }
 
+static void atomic_uint_increment_saturating(atomic_uint *counter)
+{
+    unsigned current = atomic_load_explicit(counter, memory_order_relaxed);
+    while (current != UINT_MAX &&
+           !atomic_compare_exchange_weak_explicit(
+               counter, &current, current + 1U, memory_order_relaxed,
+               memory_order_relaxed)) {
+    }
+}
+
+static bool callback_try_enter(void)
+{
+    /* Increment before acquiring the gate so teardown cannot observe zero
+     * callbacks during the small gate-acquisition window. */
+    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
+    if (atomic_flag_test_and_set_explicit(&s_callback_gate,
+                                          memory_order_acquire)) {
+        atomic_uint_increment_saturating(&s_callback_overlap_rejections);
+        atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
+                                  memory_order_acq_rel);
+        return false;
+    }
+    return true;
+}
+
+static void callback_exit(void)
+{
+    atomic_flag_clear_explicit(&s_callback_gate, memory_order_release);
+    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
+}
+
 static void update_max_duration(uint32_t duration_us)
 {
     atomic_store_explicit(&s_audio.callback_last_us, duration_us,
@@ -463,8 +505,7 @@ static void handle_incoming_timed(uint16_t sync_conn_handle,
                                   size_t buffer_capacity,
                                   bool bad_frame)
 {
-    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
+    if (!callback_try_enter()) return;
     int64_t started = platform_now_us();
     process_incoming(sync_conn_handle, data, data_len, buffer_capacity,
                      bad_frame);
@@ -475,8 +516,7 @@ static void handle_incoming_timed(uint16_t sync_conn_handle,
         duration = delta > UINT32_MAX ? UINT32_MAX : (uint32_t)delta;
     }
     update_max_duration(duration);
-    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
+    callback_exit();
 }
 #endif
 
@@ -485,8 +525,14 @@ static void production_incoming_callback(esp_hf_sync_conn_hdl_t sync_conn_hdl,
                                          esp_hf_audio_buff_t *audio_buf,
                                          bool bad_frame)
 {
-    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
+    if (!callback_try_enter()) {
+        if (audio_buf != NULL) {
+            /* Required by the ESP-IDF HCI callback ownership contract even
+             * when this application rejects an overlapping callback. */
+            esp_hf_ag_audio_buff_free(audio_buf);
+        }
+        return;
+    }
     int64_t started = platform_now_us();
     if (audio_buf == NULL) {
         process_incoming(sync_conn_hdl, NULL, 0U, 0U, bad_frame);
@@ -504,8 +550,7 @@ static void production_incoming_callback(esp_hf_sync_conn_hdl_t sync_conn_hdl,
         duration = delta > UINT32_MAX ? UINT32_MAX : (uint32_t)delta;
     }
     update_max_duration(duration);
-    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
+    callback_exit();
 }
 #endif
 
@@ -534,6 +579,8 @@ esp_err_t bt_hfp_audio_get_snapshot(bt_hfp_audio_snapshot_t *out)
                                                 memory_order_relaxed);
     out->active_callbacks = atomic_load_explicit(&s_audio.active_callbacks,
                                                  memory_order_acquire);
+    out->callback_overlap_rejections = atomic_load_explicit(
+        &s_callback_overlap_rejections, memory_order_relaxed);
     out->last_error = s_audio.last_error;
 #define READ_COUNTER(name) \
     if (!counter64_read(&s_audio.name, &out->name)) err = ESP_ERR_TIMEOUT
@@ -605,6 +652,9 @@ void bt_hfp_audio_test_reset(void)
     memset(&s_audio, 0, sizeof(s_audio));
     atomic_store_explicit(&s_callback_max_us_lifetime, 0U,
                           memory_order_relaxed);
+    atomic_store_explicit(&s_callback_overlap_rejections, 0U,
+                          memory_order_relaxed);
+    atomic_flag_clear_explicit(&s_callback_gate, memory_order_release);
     counter64_init(&s_callback_over_budget_lifetime);
 }
 
