@@ -1,5 +1,9 @@
 #include "unity.h"
 
+/* Compile the focused RF-03 fault-injection cases into the established control
+ * runner without duplicating its large explicit CMake source list. */
+#include "test_bt_hfp_audio_control_health_cases.c"
+
 void test_audio_start_requires_slc_and_registered_callback(void);
 void test_audio_start_starts_i2s_before_sco_and_waits_for_confirmation(void);
 void test_duplicate_audio_start_is_rejected_without_second_request(void);
@@ -34,5 +38,10 @@ int main(void)
     RUN_TEST(test_msbc_confirmation_is_visibly_rejected);
     RUN_TEST(test_wrong_peer_event_does_not_complete_operation);
     RUN_TEST(test_profile_stopping_closes_fast_gate_before_control_init);
+    RUN_TEST(test_health_report_failure_after_i2s_start_failure_is_visible);
+    RUN_TEST(test_health_report_failure_after_i2s_stop_failure_is_visible);
+    RUN_TEST(test_health_report_failure_after_connect_event_timeout_is_visible);
+    RUN_TEST(test_health_report_failure_during_rollback_is_visible);
+    RUN_TEST(test_health_report_failure_during_remote_cleanup_is_visible);
     return UNITY_END();
 }
