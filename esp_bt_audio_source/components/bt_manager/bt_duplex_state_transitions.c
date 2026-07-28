@@ -78,6 +78,7 @@ static bool hfp_audio_transition_ok(bt_hfp_audio_state_t from,
     case BT_HFP_AUDIO_CONNECTING:
         return to == BT_HFP_AUDIO_CONNECTED_CVSD ||
                to == BT_HFP_AUDIO_CONNECTED_MSBC ||
+               to == BT_HFP_AUDIO_DISCONNECTING ||
                to == BT_HFP_AUDIO_DISCONNECTED ||
                to == BT_HFP_AUDIO_FAULTED;
     case BT_HFP_AUDIO_CONNECTED_CVSD:
@@ -105,7 +106,8 @@ static bool i2s_transition_ok(bt_hfp_i2s_state_t from,
     case BT_HFP_I2S_STARTING:
         return to == BT_HFP_I2S_RUNNING ||
                to == BT_HFP_I2S_STOPPED ||
-               to == BT_HFP_I2S_FAULTED;
+               to == BT_HFP_I2S_FAULTED ||
+               to == BT_HFP_I2S_QUARANTINED;
     case BT_HFP_I2S_RUNNING:
         return to == BT_HFP_I2S_STOPPING ||
                to == BT_HFP_I2S_FAULTED;
