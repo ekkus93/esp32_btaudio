@@ -4,7 +4,7 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Latest validated head:** `318609fcf34500f0cfa90efd757ad43e0efbffb2`
+**Latest validated head:** `2d2d9d40a73127ed0f485ba7db79d9b5a492a7c7`
 
 ## FD-00 — Branch and scope baseline
 
@@ -100,4 +100,25 @@ Validation for head `318609fcf34500f0cfa90efd757ad43e0efbffb2`:
 - Includes a 50,000-frame pthread producer/consumer order-preservation stress test.
 - Strict host CI run 605: PASS.
 - ESP-IDF v5.5.1 device-build run 505: PASS.
+- No hardware was flashed.
+
+## FD-05 — HFP voice conversion helpers
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Exact all-or-nothing CVSD 8 kHz to 16 kHz sample duplication.
+- Signed 16-bit stereo-to-mono conversion using widened arithmetic and explicit narrowing safety.
+- Stateful input-driven conversion from canonical mono PCM to 8 kHz or 16 kHz.
+- Partial averaging windows persist across arbitrary input chunk boundaries.
+- Explicit consumed/produced counts prevent hidden input loss when destination capacity is exhausted.
+- The converter never zero-pads or fabricates output when insufficient input exists.
+- Equal-rate 16 kHz input is an exact passthrough.
+- Explicit reset removes prior-session phase and partial-window state.
+
+Validation for head `2d2d9d40a73127ed0f485ba7db79d9b5a492a7c7`:
+
+- Focused conversion suite: 11 tests, PASS under AddressSanitizer and UndefinedBehaviorSanitizer.
+- Includes 44.1 kHz one-shot versus irregular-chunk equivalence testing.
+- Strict host CI run 621: PASS.
+- ESP-IDF v5.5.1 device-build run 520: PASS.
 - No hardware was flashed.
