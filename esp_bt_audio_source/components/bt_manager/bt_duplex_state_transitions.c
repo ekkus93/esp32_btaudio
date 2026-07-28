@@ -116,7 +116,11 @@ static bool i2s_transition_ok(bt_hfp_i2s_state_t from,
                to == BT_HFP_I2S_FAULTED ||
                to == BT_HFP_I2S_QUARANTINED;
     case BT_HFP_I2S_FAULTED:
-        return to == BT_HFP_I2S_QUARANTINED;
+        /* STOPPED is legal only after the local FD-08 stop API has proved that
+         * all writer/channel resources were cleaned. Health remains faulted
+         * until explicit higher-level recovery. */
+        return to == BT_HFP_I2S_STOPPED ||
+               to == BT_HFP_I2S_QUARANTINED;
     case BT_HFP_I2S_QUARANTINED:
     default:
         return false;
