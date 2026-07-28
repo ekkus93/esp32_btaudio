@@ -47,6 +47,7 @@ mkdir -p "${build_dir}"
     "${project_dir}/components/bt_manager/bt_duplex_state_profile.c" \
     "${project_dir}/components/bt_manager/bt_hfp_ag_lifecycle.c" \
     "${test_dir}/mocks/bt_hfp_connection_untracked_stub.c" \
+    "${test_dir}/mocks/bt_hfp_audio_lifecycle_stub.c" \
     "${test_dir}/mocks/mock_a2dp.c" \
     "${test_dir}/mocks/mock_avrc.c" \
     "${test_dir}/mocks/fake_esp_err.c" \
