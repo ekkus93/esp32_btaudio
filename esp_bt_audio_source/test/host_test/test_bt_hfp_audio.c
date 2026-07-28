@@ -12,6 +12,7 @@ void test_valid_unaligned_cvsd_frame_is_copied_whole(void);
 void test_ring_rejection_counts_exact_frame_and_bytes(void);
 void test_stale_generation_is_rejected_by_generation_bound_i2s(void);
 void test_callback_timing_tracks_last_max_and_budget(void);
+void test_cleanup_refuses_while_full_callback_lifetime_is_active(void);
 
 int main(void)
 {
@@ -28,5 +29,6 @@ int main(void)
     RUN_TEST(test_ring_rejection_counts_exact_frame_and_bytes);
     RUN_TEST(test_stale_generation_is_rejected_by_generation_bound_i2s);
     RUN_TEST(test_callback_timing_tracks_last_max_and_budget);
+    RUN_TEST(test_cleanup_refuses_while_full_callback_lifetime_is_active);
     return UNITY_END();
 }
