@@ -29,6 +29,9 @@ common_flags=(
     -I"${project_dir}/components/command_interface/include"
     -I"${project_dir}/components/bt_manager/include"
     -I"${project_dir}/components/audio_processor/include"
+    -I"${project_dir}/components/nvs_storage"
+    -I"${project_dir}/components/platform_shim"
+    -I"${project_dir}/components/util_safe/include"
 )
 
 {
@@ -38,7 +41,7 @@ common_flags=(
         "${project_dir}/components/command_interface/cmd_handlers_hfp_fd11.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
         "${test_dir}/mocks/fake_esp_err.c" \
-        "${test_dir}/mocks/mock_uart.c" \
+        "${test_dir}/mocks/bt_hfp_command_uart_stub.c" \
         "${test_dir}/mocks/bt_hfp_manager_command_stub.c" \
         "${test_dir}/mocks/bt_hfp_command_dependencies.c" \
         "${test_dir}/test_bt_hfp_commands_cases.c" \
