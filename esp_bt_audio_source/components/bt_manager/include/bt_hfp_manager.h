@@ -116,6 +116,28 @@ typedef struct {
     bt_hfp_manager_i2s_stats_t i2s;
 } bt_hfp_manager_stats_t;
 
+/* FD-13 resource diagnostics are sampled on demand. Availability flags are
+ * authoritative: an unavailable task handle is never represented as a valid
+ * zero-byte high-water mark. Heap minimums, task minimum-free-stack marks, and
+ * callback lifetime maxima/counters are not modified by HFP RESETSTATS. */
+typedef struct {
+    bool heap_available;
+    size_t free_internal_bytes;
+    size_t minimum_free_heap_bytes_lifetime;
+    size_t largest_internal_free_block_bytes;
+
+    bool hfp_app_task_stack_available;
+    size_t hfp_app_task_min_free_stack_bytes_lifetime;
+    bool i2s_writer_task_stack_available;
+    size_t i2s_writer_task_min_free_stack_bytes_lifetime;
+
+    bool incoming_callback_available;
+    uint32_t incoming_callback_budget_us;
+    uint32_t incoming_callback_last_us;
+    uint32_t incoming_callback_max_us_lifetime;
+    uint64_t incoming_callback_over_budget_lifetime;
+} bt_hfp_manager_diagnostics_t;
+
 /* Request acceptance is distinct from callback-confirmed SLC completion. */
 esp_err_t bt_manager_hfp_connect(const char *mac);
 esp_err_t bt_manager_hfp_disconnect(void);
@@ -138,12 +160,28 @@ esp_err_t bt_manager_hfp_get_status(bt_hfp_manager_status_t *out);
  * Current gauges and lifetime maxima are explicitly named as such. */
 esp_err_t bt_manager_hfp_get_stats(bt_hfp_manager_stats_t *out);
 
+/* Live resource gauges and non-resettable historical diagnostics. The output
+ * is committed only after every required source has either succeeded or
+ * returned an explicitly supported unavailable result. */
+esp_err_t bt_manager_hfp_get_diagnostics(bt_hfp_manager_diagnostics_t *out);
+
 /* Reset is a non-destructive baseline operation. It is accepted only while
  * HFP audio and I2S are stopped and no HFP SLC/audio operation or incoming
  * callback is active. No live atomic counter is rewritten. */
 esp_err_t bt_manager_hfp_reset_stats(void);
 
 #ifdef UNIT_TEST
+typedef struct {
+    size_t (*free_internal_bytes)(void);
+    size_t (*minimum_free_heap_bytes_lifetime)(void);
+    size_t (*largest_internal_free_block_bytes)(void);
+    esp_err_t (*hfp_app_task_min_free_stack_bytes_lifetime)(size_t *out);
+    esp_err_t (*i2s_writer_task_min_free_stack_bytes_lifetime)(size_t *out);
+} bt_hfp_manager_diagnostics_platform_ops_t;
+
+esp_err_t bt_manager_hfp_fd13_test_set_platform_ops(
+    const bt_hfp_manager_diagnostics_platform_ops_t *ops);
+void bt_manager_hfp_fd13_test_reset_platform_ops(void);
 void bt_manager_hfp_test_reset_diagnostics(void);
 #endif
 
