@@ -67,9 +67,12 @@ jobs:
 
       - name: Run linter (flake8)
         run: |
+          set -euo pipefail
           python3 -m pip install flake8
           echo "Running flake8 on tools and esp_bt_audio_source/tools"
-          python3 -m flake8 tools esp_bt_audio_source/tools
+          mkdir -p esp_bt_audio_source/test/host_test/build_host_tests
+          python3 -m flake8 tools esp_bt_audio_source/tools 2>&1 \
+            | tee esp_bt_audio_source/test/host_test/build_host_tests/flake8.log
 
       - name: Run Python unit tests
         run: |
