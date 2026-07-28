@@ -24,7 +24,7 @@ typedef struct {
     hfp_i2s_output_state_t local_i2s_state;
 } bt_hfp_raw_stats_t;
 
-static bt_duplex_mode_t s_configured_mode = BT_DUPLEX_MODE_AUTO;
+static bt_duplex_mode_t s_configured_mode = BT_DUPLEX_MODE_DISABLED;
 static bt_hfp_manager_stats_t s_stats_baseline;
 static uint64_t s_stats_reset_sequence;
 
@@ -334,9 +334,10 @@ static void subtract_baseline(bt_hfp_manager_stats_t *current,
 
 void bt_manager_hfp_runtime_reset(void)
 {
-    s_configured_mode = BT_DUPLEX_MODE_AUTO;
+    s_configured_mode = BT_DUPLEX_MODE_DISABLED;
     memset(&s_stats_baseline, 0, sizeof(s_stats_baseline));
     s_stats_reset_sequence = 0U;
+    bt_manager_hfp_policy_runtime_reset();
 }
 
 esp_err_t bt_manager_hfp_get_configured_mode(bt_duplex_mode_t *mode_out)
@@ -367,6 +368,7 @@ esp_err_t bt_manager_hfp_set_mode(bt_duplex_mode_t mode)
     if (err == ESP_OK && duplex.peer_valid) {
         err = bt_duplex_set_mode(duplex.session_generation,
                                  duplex.peer_mac, mode);
+        if (err == ESP_OK) err = bt_manager_hfp_policy_refresh_locked();
     }
     if (err == ESP_OK) s_configured_mode = mode;
     bt_ctx_unlock();
@@ -386,6 +388,7 @@ esp_err_t bt_manager_hfp_get_status(bt_hfp_manager_status_t *out)
     out->manager_initialized = true;
     out->configured_mode = s_configured_mode;
     err = bt_duplex_get_snapshot(&out->duplex);
+    if (err == ESP_OK) bt_manager_hfp_policy_copy_locked(&out->policy);
     bt_ctx_unlock();
     return err;
 }
@@ -422,21 +425,24 @@ static esp_err_t ensure_command_duplex_session(const char *mac,
             err = bt_duplex_set_a2dp_profile_state(
                 generation, mac, BT_A2DP_PROFILE_CONNECTED);
         }
+        if (err == ESP_OK) err = bt_manager_hfp_policy_refresh();
         return err;
     }
     if (!same_mac(mac, duplex.peer_mac)) return ESP_ERR_INVALID_STATE;
     if (duplex.requested_mode != mode) {
-        return bt_duplex_set_mode(duplex.session_generation,
-                                  duplex.peer_mac, mode);
+        err = bt_duplex_set_mode(duplex.session_generation,
+                                 duplex.peer_mac, mode);
+        if (err == ESP_OK) err = bt_manager_hfp_policy_refresh();
+        return err;
     }
-    return ESP_OK;
+    return bt_manager_hfp_policy_refresh();
 }
 
 esp_err_t bt_manager_hfp_connect(const char *mac)
 {
     if (!valid_mac(mac)) return ESP_ERR_INVALID_ARG;
     char active_peer[BT_DUPLEX_MAC_STR_LEN] = {0};
-    bt_duplex_mode_t mode = BT_DUPLEX_MODE_AUTO;
+    bt_duplex_mode_t mode = BT_DUPLEX_MODE_DISABLED;
     esp_err_t err = snapshot_active_peer(active_peer, &mode);
     if (err != ESP_OK) return err;
     if (!same_mac(mac, active_peer)) return ESP_ERR_INVALID_STATE;
