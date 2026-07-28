@@ -1,5 +1,10 @@
 #include "test_bluetooth_shared.h"
 
+/* Keep the focused RF-02 cases in their own source file while compiling them
+ * into this established host runner without expanding the already-large CMake
+ * target declaration. */
+#include "test_bt_a2dp_binding_cases.c"
+
 // Mock variables
 bool bt_connected_callback_called = false;
 bool bt_disconnected_callback_called = false;
