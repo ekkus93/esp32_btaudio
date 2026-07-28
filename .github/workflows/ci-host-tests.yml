@@ -43,7 +43,6 @@ jobs:
           cd build_host_tests
           cmake ..
           cmake --build . -- -j$(nproc)
-          # show build dir contents for debugging
           ls -la .. || true
 
       - name: Run full-duplex state sanitizer tests
@@ -51,6 +50,9 @@ jobs:
 
       - name: Run HFP PCM ring sanitizer tests
         run: bash esp_bt_audio_source/tools/run_hfp_pcm_ring_test.sh
+
+      - name: Run HFP voice conversion sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_hfp_voice_convert_test.sh
 
       - name: Install Python test deps
         run: |
@@ -71,7 +73,6 @@ jobs:
       - name: Run CTest
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
-          # Run tests. Produce JUnit XML when supported. Always capture full CTest output to ctest.log.
           set -euo pipefail
           mkdir -p .
           if ctest --help | grep -q -- --output-junit; then
