@@ -267,16 +267,14 @@ esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
         return ESP_ERR_INVALID_ARG;
     }
 
-    bt_duplex_mode_t configured_mode;
-    esp_err_t err = bt_manager_hfp_get_configured_mode(&configured_mode);
-    if (err != ESP_OK) return err;
-
-    err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
     if (!bt_ctx.initialized) {
         bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
+    const bt_duplex_mode_t configured_mode =
+        bt_manager_hfp_configured_mode_locked();
 
     bt_duplex_snapshot_t duplex;
     err = bt_duplex_get_snapshot(&duplex);
