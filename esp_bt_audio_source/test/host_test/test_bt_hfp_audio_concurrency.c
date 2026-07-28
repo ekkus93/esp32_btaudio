@@ -10,6 +10,7 @@
 #define CONCURRENCY_PEER "AA:BB:CC:DD:EE:FF"
 #define CONCURRENCY_GENERATION 77U
 #define CONCURRENCY_SYNC_HANDLE 0x4567U
+#define OVERLAP_THREADS 4U
 
 void mock_hfp_audio_i2s_reset(void);
 void mock_hfp_audio_i2s_set_expected_generation(uint32_t generation);
@@ -96,9 +97,21 @@ void test_cleanup_refuses_while_full_callback_lifetime_is_active(void)
     }
     TEST_ASSERT_EQUAL_INT(0, pthread_mutex_unlock(&s_pause_lock));
 
+    pthread_t overlaps[OVERLAP_THREADS];
+    for (unsigned index = 0U; index < OVERLAP_THREADS; ++index) {
+        TEST_ASSERT_EQUAL_INT(
+            0, pthread_create(&overlaps[index], NULL, callback_thread, NULL));
+    }
+    for (unsigned index = 0U; index < OVERLAP_THREADS; ++index) {
+        TEST_ASSERT_EQUAL_INT(0, pthread_join(overlaps[index], NULL));
+    }
+
     bt_hfp_audio_snapshot_t snapshot;
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_get_snapshot(&snapshot));
     TEST_ASSERT_EQUAL_UINT32(1, snapshot.active_callbacks);
+    TEST_ASSERT_EQUAL_UINT32(OVERLAP_THREADS,
+                               snapshot.callback_overlap_rejections);
+    TEST_ASSERT_EQUAL_UINT64(0, snapshot.incoming_callbacks);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
                       bt_hfp_audio_cleanup_after_stack_shutdown());
 
@@ -110,6 +123,9 @@ void test_cleanup_refuses_while_full_callback_lifetime_is_active(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_get_snapshot(&snapshot));
     TEST_ASSERT_EQUAL_UINT32(0, snapshot.active_callbacks);
+    TEST_ASSERT_EQUAL_UINT32(OVERLAP_THREADS,
+                               snapshot.callback_overlap_rejections);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.incoming_callbacks);
     TEST_ASSERT_EQUAL_UINT64(0, snapshot.accepted_frames);
     TEST_ASSERT_EQUAL_UINT64(1, snapshot.inactive_frames);
     TEST_ASSERT_EQUAL_UINT64(1, snapshot.dropped_frames);
