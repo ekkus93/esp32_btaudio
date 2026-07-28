@@ -103,6 +103,50 @@ static const char *wire_health(bt_audio_health_t value)
     }
 }
 
+static const char *wire_policy_state(bt_duplex_policy_state_t value)
+{
+    switch (value) {
+    case BT_DUPLEX_POLICY_SATISFIED: return "SATISFIED";
+    case BT_DUPLEX_POLICY_WAITING: return "WAITING";
+    case BT_DUPLEX_POLICY_INCOMPATIBLE: return "INCOMPATIBLE";
+    case BT_DUPLEX_POLICY_COMPATIBILITY_REQUIRED:
+        return "COMPATIBILITY_REQUIRED";
+    default: return "UNKNOWN";
+    }
+}
+
+static const char *wire_policy_reason(bt_duplex_policy_reason_t value)
+{
+    switch (value) {
+    case BT_DUPLEX_POLICY_REASON_REQUESTED_MODE: return "REQUESTED_MODE";
+    case BT_DUPLEX_POLICY_REASON_WAITING_A2DP_CONNECTION:
+        return "WAITING_A2DP_CONNECTION";
+    case BT_DUPLEX_POLICY_REASON_WAITING_A2DP_STREAM:
+        return "WAITING_A2DP_STREAM";
+    case BT_DUPLEX_POLICY_REASON_WAITING_HFP_SLC:
+        return "WAITING_HFP_SLC";
+    case BT_DUPLEX_POLICY_REASON_WAITING_SCO: return "WAITING_SCO";
+    case BT_DUPLEX_POLICY_REASON_HFP_DOWNLINK_NOT_IMPLEMENTED:
+        return "HFP_DOWNLINK_NOT_IMPLEMENTED";
+    case BT_DUPLEX_POLICY_REASON_REMOTE_SUSPENDED_A2DP_DURING_SCO:
+        return "REMOTE_SUSPENDED_A2DP_DURING_SCO";
+    case BT_DUPLEX_POLICY_REASON_A2DP_STOPPED_DURING_SCO:
+        return "A2DP_STOPPED_DURING_SCO";
+    case BT_DUPLEX_POLICY_REASON_A2DP_RESUMED: return "A2DP_RESUMED";
+    case BT_DUPLEX_POLICY_REASON_SCO_STOPPED: return "SCO_STOPPED";
+    default: return "UNKNOWN";
+    }
+}
+
+static const char *wire_downlink_owner(bt_duplex_downlink_owner_t value)
+{
+    switch (value) {
+    case BT_DUPLEX_DOWNLINK_OWNER_A2DP: return "A2DP";
+    case BT_DUPLEX_DOWNLINK_OWNER_HFP: return "HFP";
+    default: return "UNKNOWN";
+    }
+}
+
 static bt_duplex_mode_t effective_mode(bt_duplex_mode_t mode)
 {
     return mode == BT_DUPLEX_MODE_AUTO
@@ -180,6 +224,33 @@ static bool same_peer(const char *lhs, const char *rhs)
     return lhs != NULL && rhs != NULL && strcasecmp(lhs, rhs) == 0;
 }
 
+static bool send_policy_status(const bt_hfp_manager_status_t *status)
+{
+    if (status == NULL) return false;
+
+    const bt_duplex_policy_snapshot_t *policy = &status->policy;
+    const bool available = policy->initialized;
+    char data[HFP_DATA_BUFFER_SIZE];
+    if (!format_checked(
+            data, sizeof(data),
+            "STATE=%s,REASON=%s,REQUESTED=%s,EFFECTIVE=%s,"
+            "DOWNLINK_OWNER=%s,HFP_DOWNLINK_REQUESTED=%u,GEN=%" PRIu32,
+            available ? wire_policy_state(policy->state) : "UNAVAILABLE",
+            available ? wire_policy_reason(policy->reason) : "NONE",
+            available ? wire_mode(policy->requested) : "NONE",
+            available ? wire_mode(policy->effective) : "NONE",
+            available ? wire_downlink_owner(policy->downlink_owner) : "NONE",
+            available && policy->request_hfp_downlink ? 1U : 0U,
+            available ? policy->generation : 0U)) {
+        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
+                                "STATUS_POLICY_LINE_TOO_LONG", NULL);
+        return false;
+    }
+
+    return cmd_send_response(CMD_STATUS_INFO, "HFP", "STATUS_POLICY", data) ==
+           CMD_SUCCESS;
+}
+
 static cmd_status_t handle_status(void)
 {
     bt_hfp_manager_status_t status;
@@ -218,6 +289,7 @@ static cmd_status_t handle_status(void)
         return CMD_SUCCESS;
     }
 
+    if (!send_policy_status(&status)) return CMD_SUCCESS;
     (void)cmd_send_response(CMD_STATUS_OK, "HFP", "STATUS", data);
     return CMD_SUCCESS;
 }
