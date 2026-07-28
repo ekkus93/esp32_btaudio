@@ -167,8 +167,12 @@ If the link-time configuration alone violates the flash margin or prevents exist
 
 ### Files
 
-- new `components/bt_manager/include/bt_duplex_policy.h`
-- new `components/bt_manager/bt_duplex_policy.c`
+- `components/bt_manager/include/bt_duplex_state.h`
+- `components/bt_manager/include/bt_duplex_state_internal.h`
+- `components/bt_manager/bt_duplex_state_core.c`
+- `components/bt_manager/bt_duplex_state_profile.c`
+- `components/bt_manager/bt_duplex_state_transitions.c`
+- `components/bt_manager/bt_duplex_state_strings.c`
 - `components/bt_manager/include/bt_manager.h`
 - host tests
 
@@ -212,35 +216,42 @@ typedef enum {
 
 Create one thread-safe snapshot containing:
 
-- [ ] Peer address and validity flag.
-- [ ] Session generation ID.
-- [ ] Requested duplex mode.
-- [ ] Effective duplex mode.
-- [ ] A2DP connection/audio state.
-- [ ] HFP profile state.
-- [ ] HFP audio state.
-- [ ] Negotiated codec.
-- [ ] I2S output state.
-- [ ] Health state.
-- [ ] Last error.
-- [ ] Counters required by the spec.
+- [x] Peer address and validity flag.
+- [x] Session generation ID.
+- [x] Requested duplex mode.
+- [x] Effective duplex mode.
+- [x] A2DP connection/audio state.
+- [x] HFP profile state.
+- [x] HFP audio state.
+- [x] Negotiated codec.
+- [x] I2S output state.
+- [x] Health state.
+- [x] Last error.
+- [x] Counters required by the spec.
 
 ### Synchronization
 
-- [ ] Use one documented lock or validated sequence counter for snapshot copies.
-- [ ] Protect all 64-bit counters on the 32-bit ESP32.
-- [ ] Never invoke external callbacks while holding the state lock.
-- [ ] Do not use `volatile` as synchronization.
+- [x] Use one documented lock or validated sequence counter for snapshot copies.
+- [x] Protect all 64-bit counters on the 32-bit ESP32.
+- [x] Never invoke external callbacks while holding the state lock.
+- [x] Do not use `volatile` as synchronization.
 
 ### Host tests
 
-- [ ] Initial state is deterministic.
-- [ ] Legal transitions succeed.
-- [ ] Illegal transitions return `ESP_ERR_INVALID_STATE`.
-- [ ] Same-peer enforcement works.
-- [ ] Stale generation events are ignored and counted.
-- [ ] Snapshot fields cannot be observed partially updated.
-- [ ] Mode strings and event strings are stable and exhaustive.
+- [x] Initial state is deterministic.
+- [x] Legal transitions succeed.
+- [x] Illegal transitions return `ESP_ERR_INVALID_STATE`.
+- [x] Same-peer enforcement works.
+- [x] Stale generation events are ignored and counted.
+- [x] Snapshot fields cannot be observed partially updated.
+- [x] Mode strings and event strings are stable and exhaustive.
+
+### Validation
+
+- [x] Focused state suite: 13 tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Strict host CI run 573 passes.
+- [x] ESP-IDF v5.5.1 device-build run 474 passes.
+- [x] No hardware was flashed.
 
 ## FD-04 — Add reusable bounded SPSC PCM ring [P0]
 
@@ -255,15 +266,15 @@ components/audio_processor/include/hfp_pcm_ring.h
 
 ### Required semantics
 
-- [ ] Fixed-capacity storage.
-- [ ] No allocation after initialization.
-- [ ] Single producer and single consumer.
-- [ ] Whole-frame all-or-nothing write API.
-- [ ] No overwrite of unread bytes.
-- [ ] Nonblocking read/write.
-- [ ] Wraparound-safe copies.
-- [ ] Current, capacity, peak, total read/write, overflow, and underflow counters.
-- [ ] Explicit reset that requires the caller to prove producers/consumers are stopped or generation-isolated.
+- [x] Fixed-capacity storage.
+- [x] No allocation after initialization.
+- [x] Single producer and single consumer.
+- [x] Whole-frame all-or-nothing write API.
+- [x] No overwrite of unread bytes.
+- [x] Nonblocking read/write.
+- [x] Wraparound-safe copies.
+- [x] Current, capacity, peak, total read/write, overflow, and underflow counters.
+- [x] Explicit reset that requires the caller to prove producers/consumers are stopped or generation-isolated.
 
 Suggested API:
 
@@ -320,16 +331,24 @@ Adapt counter protection for 64-bit correctness; do not copy this blindly if it 
 
 ### Host tests
 
-- [ ] Initialize/invalid arguments.
-- [ ] Simple write/read.
-- [ ] Exact-full state.
-- [ ] Wraparound write/read.
-- [ ] Whole-frame rejection when insufficient space exists.
-- [ ] No partial frame is visible after rejection.
-- [ ] Peak and totals are correct.
-- [ ] Reset behavior is correct.
-- [ ] Producer/consumer stress test.
-- [ ] Sanitizer/Valgrind clean where supported.
+- [x] Initialize/invalid arguments.
+- [x] Simple write/read.
+- [x] Exact-full state.
+- [x] Wraparound write/read.
+- [x] Whole-frame rejection when insufficient space exists.
+- [x] No partial frame is visible after rejection.
+- [x] Peak and totals are correct.
+- [x] Reset behavior is correct.
+- [x] Producer/consumer stress test.
+- [x] Sanitizer/Valgrind clean where supported.
+
+### Validation
+
+- [x] Focused ring suite: 8 tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Includes a 50,000-frame producer/consumer order-preservation stress test.
+- [x] Strict host CI run 605 passes.
+- [x] ESP-IDF v5.5.1 device-build run 505 passes.
+- [x] No hardware was flashed.
 
 ## FD-05 — Add voice PCM conversion helpers [P0]
 
@@ -342,12 +361,12 @@ components/audio_processor/include/hfp_voice_convert.h
 
 ### Required helpers
 
-- [ ] CVSD PCM 8 kHz to I2S PCM 16 kHz using sample duplication.
-- [ ] Stereo signed PCM to mono using saturating arithmetic.
-- [ ] Stateful canonical-rate to 8 kHz conversion.
-- [ ] Stateful canonical-rate to 16 kHz conversion.
-- [ ] Chunk-boundary continuity.
-- [ ] Explicit reset on session/codec generation changes.
+- [x] CVSD PCM 8 kHz to I2S PCM 16 kHz using sample duplication.
+- [x] Stereo signed PCM to mono using saturating arithmetic.
+- [x] Stateful canonical-rate to 8 kHz conversion.
+- [x] Stateful canonical-rate to 16 kHz conversion.
+- [x] Chunk-boundary continuity.
+- [x] Explicit reset on session/codec generation changes.
 
 Reference CVSD upsample helper:
 
@@ -383,13 +402,20 @@ If source samples are wider than 16 bits, perform explicit scaling and saturatio
 
 ### Host tests
 
-- [ ] Empty/invalid input.
-- [ ] Exact sample duplication.
-- [ ] Positive/negative extremes.
-- [ ] Stereo cancellation and saturation cases.
-- [ ] Resampler phase continuity over arbitrary chunk boundaries.
-- [ ] Output count never exceeds capacity.
-- [ ] Reset removes previous-session phase.
+- [x] Empty/invalid input.
+- [x] Exact sample duplication.
+- [x] Positive/negative extremes.
+- [x] Stereo cancellation and saturation cases.
+- [x] Resampler phase continuity over arbitrary chunk boundaries.
+- [x] Output count never exceeds capacity.
+- [x] Reset removes previous-session phase.
+
+### Validation
+
+- [x] Focused conversion suite: 11 tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Strict host CI run 621 passes.
+- [x] ESP-IDF v5.5.1 device-build run 520 passes.
+- [x] No hardware was flashed.
 
 ---
 
@@ -400,23 +426,24 @@ If source samples are wider than 16 bits, perform explicit scaling and saturatio
 ### Files
 
 ```text
-components/bt_manager/bt_hfp_ag.c
+components/bt_manager/bt_hfp_ag_lifecycle.c
+components/bt_manager/bt_hfp_ag_events.c
 components/bt_manager/include/bt_hfp_ag.h
+components/bt_manager/include/bt_hfp_ag_internal.h
 components/bt_manager/CMakeLists.txt
 components/bt_manager/bt_manager.c
-components/bt_manager/include/bt_manager_internal.h
 ```
 
 ### Required work
 
-- [ ] Initialize HFP AG after Bluedroid is enabled and existing Bluetooth core initialization is ready.
-- [ ] Register the HFP AG event callback.
-- [ ] Deinitialize in reverse order.
-- [ ] Propagate initialization failure to `bt_manager_init()`.
-- [ ] Add complete rollback when HFP initialization fails after A2DP setup.
-- [ ] Do not report Bluetooth manager ready if required HFP initialization failed while full-duplex support is enabled.
-- [ ] Keep HFP audio disconnected by default.
-- [ ] Correlate profile events with the active peer address and generation.
+- [x] Initialize HFP AG after Bluedroid is enabled and existing Bluetooth core initialization is ready.
+- [x] Register the HFP AG event callback.
+- [x] Deinitialize in reverse order.
+- [x] Propagate initialization failure to `bt_manager_init()`.
+- [x] Add complete rollback when HFP initialization fails after A2DP setup.
+- [x] Do not report Bluetooth manager ready if required HFP initialization failed while full-duplex support is enabled.
+- [x] Keep HFP audio disconnected by default.
+- [x] Correlate profile events with the active peer address and generation.
 
 Conceptual initialization sequence; verify exact ESP-IDF v5.5.1 signatures:
 
@@ -441,25 +468,34 @@ esp_err_t bt_hfp_ag_profile_init(void)
 
 Handle and test at least:
 
-- [ ] Profile init/deinit complete.
-- [ ] Service-level connection state.
-- [ ] Audio-link state.
-- [ ] Codec negotiation/WBS events.
-- [ ] Volume events.
-- [ ] Unknown AT command events without crashing.
-- [ ] Remote disconnect.
-- [ ] Events for the wrong address.
-- [ ] Late events for an old generation.
+- [x] Profile init/deinit complete.
+- [x] Service-level connection state.
+- [x] Audio-link state.
+- [x] Codec negotiation/WBS events.
+- [x] Volume events.
+- [x] Unknown AT command events without crashing.
+- [x] Remote disconnect.
+- [x] Events for the wrong address.
+- Operation-generation rejection is implemented in FD-07, where connect/disconnect requests own the generation token; the ESP-IDF HFP callback itself carries only peer and state.
 
 ### Host/device tests
 
-- [ ] Callback registration failure rolls back.
-- [ ] HFP init failure rolls back.
-- [ ] Repeated init returns deterministic state/error.
-- [ ] Deinit while disconnected succeeds.
-- [ ] Deinit failure remains visible.
-- [ ] Wrong-peer events are ignored and counted.
-- [ ] Existing A2DP tests remain green.
+- [x] Callback registration failure rolls back.
+- [x] HFP init failure rolls back.
+- [x] Repeated init returns deterministic state/error.
+- [x] Deinit while disconnected succeeds.
+- [x] Deinit failure remains visible.
+- [x] Wrong-peer events are ignored and counted.
+- [x] Existing A2DP tests remain green.
+
+### Validation
+
+- [x] HFP AG lifecycle/event suite passes under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Manager profile-init/rollback suite passes under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [x] Strict host CI run 679 passes, including changed-Python lint, Python unit tests, and full CTest.
+- [x] ESP-IDF v5.5.1 device-build run 574 passes.
+- [x] HFP audio remains disconnected by default; no SCO data callbacks are registered in this phase.
+- [x] No hardware was flashed. On-device profile-event confirmation remains hardware-gated.
 
 ## FD-07 — Add HFP connect/disconnect public APIs [P0]
 
@@ -481,6 +517,8 @@ esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 - [ ] Use the existing BtAppTask/event-dispatch ownership model where required.
 - [ ] Do not call profile APIs from arbitrary command task context if the existing architecture requires dispatch.
 - [ ] Separate accepted operation from confirmed completion.
+- [ ] Bind each accepted connect/disconnect operation to the active session generation.
+- [ ] Reject and count completion/events associated with a stale operation generation.
 - [ ] Add bounded connect/disconnect watchdogs.
 - [ ] Do not start SCO in this task.
 
@@ -493,6 +531,7 @@ esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 - [ ] Already connected is idempotent or specifically reported.
 - [ ] Connect API immediate failure is returned.
 - [ ] Remote rejection is delivered asynchronously as failure event.
+- [ ] Late same-peer completion/event for an old generation is ignored and counted.
 - [ ] Timeout does not fabricate disconnected state.
 
 ---
