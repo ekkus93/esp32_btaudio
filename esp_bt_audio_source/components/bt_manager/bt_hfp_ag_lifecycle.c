@@ -1,4 +1,5 @@
 #include "bt_hfp_ag_internal.h"
+#include "bt_hfp_audio.h"
 #include "bt_hfp_connection.h"
 
 #include <string.h>
@@ -187,7 +188,23 @@ esp_err_t bt_hfp_ag_profile_init(uint32_t timeout_ms)
     err = bt_hfp_ag_lock();
     if (err != ESP_OK) return err;
     esp_err_t completion = g_bt_hfp_ag.completion_result;
-    return bt_hfp_ag_unlock(completion);
+    err = bt_hfp_ag_unlock(completion);
+    if (err != ESP_OK) return err;
+
+    /* The HCI audio callback is registered only after the asynchronous HFP
+     * profile-init event confirms that the profile is usable. Failure here is
+     * a real profile initialization failure and must trigger manager rollback. */
+    err = bt_hfp_audio_register_callback();
+    if (err != ESP_OK) {
+        if (bt_hfp_ag_lock() == ESP_OK) {
+            bt_hfp_ag_set_fault_locked(err);
+            (void)bt_hfp_ag_unlock(ESP_OK);
+        }
+        (void)bt_duplex_set_hfp_profile_global_state(
+            BT_HFP_PROFILE_FAULTED);
+        return err;
+    }
+    return ESP_OK;
 }
 
 esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
@@ -207,6 +224,9 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     g_bt_hfp_ag.completion_result = ESP_ERR_INVALID_STATE;
     err = bt_hfp_ag_unlock(ESP_OK);
     if (err != ESP_OK) return err;
+
+    /* Reject new callback data before asking the stack to tear down HFP. */
+    bt_hfp_audio_profile_stopping();
 
     err = platform_profile_deinit();
     if (err != ESP_OK) {
@@ -246,6 +266,15 @@ void bt_hfp_ag_force_cleanup_after_stack_shutdown(void)
 #ifdef ESP_PLATFORM
         ESP_LOGE(TAG, "Refusing HFP AG cleanup after SLC operation cleanup failed: %s",
                  esp_err_to_name(connection_cleanup));
+#endif
+        return;
+    }
+
+    esp_err_t audio_cleanup = bt_hfp_audio_cleanup_after_stack_shutdown();
+    if (audio_cleanup != ESP_OK) {
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG, "Refusing HFP AG cleanup after audio callback cleanup failed: %s",
+                 esp_err_to_name(audio_cleanup));
 #endif
         return;
     }
