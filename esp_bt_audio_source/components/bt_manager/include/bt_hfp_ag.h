@@ -52,6 +52,7 @@ typedef enum {
 typedef struct {
     bt_hfp_ag_lifecycle_t lifecycle;
     bool callback_registered;
+    bool profile_init_request_accepted;
     bool profile_ready;
     esp_err_t last_error;
     bt_hfp_ag_codec_t last_codec_event;
