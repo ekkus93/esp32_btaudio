@@ -4,8 +4,9 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Latest validated code head:** `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`
+**Latest validated code head:** `4fb8856f2be50a15fa3216341e701aa150778a18`
 **FD-07 documentation closeout commit:** `985fdbd3990d50234fdb3ba3ed3aa96b340b04b4`
+**FD-08 validation/artifact head:** `75ba8a54d0edda81ac57fc42a3a231ec51090c32`
 
 ## FD-00 — Branch and scope baseline
 
@@ -180,6 +181,40 @@ Validation for code head `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`:
 
 Real WROOM32 SLC event delivery and earbud behavior remain hardware-gated and are not claimed complete.
 
+## FD-08 — Dedicated I2S0 TX microphone output
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Added an audio-owned I2S0 TX component split into public contract, private state, ESP-IDF platform adapter, bounded lifecycle, and data/writer modules.
+- Fixed wire contract: GPIO32 BCLK, GPIO33 WS/LRCLK, GPIO27 DOUT, 16 kHz signed 16-bit mono Philips I2S, no MCLK, no DIN, default clock source rather than APLL.
+- Added project Kconfig and `sdkconfig.defaults` values for port, pins, sample rate, ring, DMA, writer buffer, task, timeouts, and fault thresholds.
+- Startup validates the dedicated port and all pin ownership before channel allocation. Playback I2S1 pins, UART2 pins, UART0 console pins, flash pins, input-only/nonexistent pins, strapping pins, duplicate pins, and the project’s known-bad GPIO25/26 clock routes are rejected. Invalid pins are never rewritten to defaults.
+- Runtime playback ownership is read through `audio_processor_get_config()` so NVS-overridden I2S1 pins are checked rather than assuming compile-time defaults.
+- The audio component intentionally does not call `bt_duplex_state` directly because `bt_manager` already depends on `audio_processor`; FD-09/FD-10 will translate the local snapshot without creating a circular component dependency.
+- Fixed ring and writer scratch memory are allocated from internal RAM at start; there is no PSRAM or alternate-memory fallback.
+- The writer task is created and gated before I2S enable. Every startup failure rolls allocations, channel, mode, task, and enable back in reverse order.
+- Shutdown first stops new producers, waits for in-flight pushes, requests cooperative task exit, waits a bounded time for explicit stopped confirmation, then disables/deletes the channel and frees storage.
+- Stop timeout or cleanup failure preserves resources and enters quarantine rather than deleting a live task or returning false success.
+- CVSD PCM is duplicated from 8 kHz to 16 kHz before whole-frame ring insertion. Ring-full rejection exposes no partial frame.
+- Missing samples are explicitly zero-filled and counted. Driver DMA auto-clear is disabled so uncounted silence cannot be inserted underneath the application.
+- Sustained underflow sets an explicit degraded flag/event. Repeated write failures enter faulted state and immediately disable I2S; disable failure escalates to quarantine.
+- FD-08 starts no SCO link and registers no SCO callbacks.
+
+Validation for code head `4fb8856f2be50a15fa3216341e701aa150778a18` and artifact head `75ba8a54d0edda81ac57fc42a3a231ec51090c32`:
+
+- Focused FD-08 suite: 12 config, rollback, lifecycle, generation, CVSD, silence, fault, and quarantine tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+- Strict host CI run 768: PASS, including all focused sanitizer suites, changed-Python lint, Python unit tests, and full CTest.
+- ESP-IDF v5.5.1 device-build run 662: PASS.
+- The generated build `sdkconfig` contains all 15 configured `CONFIG_HFP_I2S_*` values from `sdkconfig.defaults`.
+- Application image: 978,080 bytes.
+- Factory app-partition headroom: 791,392 bytes.
+- Image delta from the FD-02 HFP-enabled baseline: +8,224 bytes.
+- `.dram0.data + .dram0.bss`: 72,896 bytes, +520 bytes from FD-02.
+- Device-build artifacts now retain the ESP-IDF-generated `sdkconfig` for configuration audits.
+- No hardware was flashed.
+
+Hardware-open items are not claimed complete: GPIO32 BCLK frequency, GPIO33 WS frequency and Philips timing, GPIO27 DOUT behavior, real receiver compatibility, runtime heap/largest-block/stack measurements, and proof that I2S0 TX does not disturb I2S1 RX/UART2/A2DP.
+
 ## Next phase
 
-FD-08 adds the I2S0 TX microphone-output component. It must preserve the selected GPIO32/GPIO33/GPIO27 master-output contract, reject pin conflicts visibly, and provide bounded writer-task shutdown and quarantine behavior.
+FD-09 adds the HFP HCI incoming-audio callback and routes validated CVSD PCM into the FD-08 generation-bound I2S output without allocation, blocking, I2S calls, resampling, or per-frame logging in the Bluetooth callback.
