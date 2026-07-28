@@ -251,7 +251,7 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     }
     err = bt_hfp_ag_lock();
     if (err != ESP_OK) return err;
-    completion = g_bt_hfp_ag.completion_result;
+    esp_err_t completion = g_bt_hfp_ag.completion_result;
     return bt_hfp_ag_unlock(completion);
 }
 
@@ -351,7 +351,7 @@ void bt_hfp_ag_handle_profile_result(bt_hfp_ag_profile_result_t result)
     (void)bt_hfp_ag_unlock(ESP_OK);
     if (!signal) return;
 
-    completion = success
+    esp_err_t completion = success
         ? bt_duplex_set_hfp_profile_global_state(target)
         : ESP_FAIL;
     if (!success && target == BT_HFP_PROFILE_FAULTED) {
