@@ -54,3 +54,9 @@ common_flags=(
     UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
         "${binary}"
 } 2>&1 | tee "${test_log}"
+
+# FD-11 builds the public manager facade and command protocol as separate,
+# focused sanitizer binaries. Keep these explicit rather than allowing the
+# generic host command mocks to stand in for the real FD-11 behavior.
+bash "${project_dir}/tools/run_bt_hfp_manager_test.sh"
+bash "${project_dir}/tools/run_bt_hfp_commands_test.sh"
