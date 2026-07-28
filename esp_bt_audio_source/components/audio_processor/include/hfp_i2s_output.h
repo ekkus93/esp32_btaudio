@@ -70,6 +70,7 @@ typedef struct {
     uint64_t write_calls;
     uint64_t write_failures;
     uint64_t short_writes;
+    uint64_t write_lost_bytes;
     uint64_t silence_intervals;
     uint64_t silence_samples;
     uint64_t degraded_events;
@@ -89,14 +90,14 @@ esp_err_t hfp_i2s_output_validate_config(
     const hfp_i2s_pin_owners_t *owners);
 
 esp_err_t hfp_i2s_output_init(const hfp_i2s_output_config_t *config,
-                              const hfp_i2s_pin_owners_t *owners);
+                               const hfp_i2s_pin_owners_t *owners);
 esp_err_t hfp_i2s_output_start(uint32_t generation, const char *peer_mac);
 esp_err_t hfp_i2s_output_stop(uint32_t timeout_ms);
 esp_err_t hfp_i2s_output_deinit(void);
 
 bool hfp_i2s_output_push_cvsd(const int16_t *samples_8k,
-                              size_t sample_count,
-                              uint32_t generation);
+                               size_t sample_count,
+                               uint32_t generation);
 
 esp_err_t hfp_i2s_output_get_snapshot(hfp_i2s_output_snapshot_t *out);
 const char *hfp_i2s_output_state_to_string(hfp_i2s_output_state_t state);
@@ -106,9 +107,9 @@ typedef struct {
     void *(*alloc)(size_t bytes);
     void (*free)(void *ptr);
     esp_err_t (*channel_new)(const hfp_i2s_output_config_t *config,
-                             void **channel_out);
+                              void **channel_out);
     esp_err_t (*channel_init_mode)(void *channel,
-                                   const hfp_i2s_output_config_t *config);
+                                    const hfp_i2s_output_config_t *config);
     esp_err_t (*channel_enable)(void *channel);
     esp_err_t (*channel_disable)(void *channel);
     esp_err_t (*channel_delete)(void *channel);
@@ -116,14 +117,14 @@ typedef struct {
     esp_err_t (*task_release_start)(void *task);
     esp_err_t (*task_wait_stopped)(void *task, uint32_t timeout_ms);
     esp_err_t (*channel_write)(void *channel, const void *data, size_t bytes,
-                               size_t *bytes_written, uint32_t timeout_ms);
+                                size_t *bytes_written, uint32_t timeout_ms);
 } hfp_i2s_output_platform_ops_t;
 
 esp_err_t hfp_i2s_output_test_set_platform_ops(
     const hfp_i2s_output_platform_ops_t *ops);
 void hfp_i2s_output_test_reset(void);
 size_t hfp_i2s_output_test_read_pcm(void *dst, size_t bytes,
-                                    uint32_t generation);
+                                     uint32_t generation);
 esp_err_t hfp_i2s_output_test_writer_once(void);
 #endif
 
