@@ -1,4 +1,5 @@
 #include "bt_hfp_ag_internal.h"
+#include "bt_hfp_connection.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +24,14 @@ void bt_hfp_ag_handle_connection_state(const char *peer_mac,
         bt_hfp_ag_remember_peer_locked(peer_mac);
         (void)bt_hfp_ag_unlock(ESP_OK);
     }
+
+    esp_err_t tracked = bt_hfp_connection_handle_event(peer_mac, state);
+    if (tracked == ESP_OK) return;
+    if (tracked != ESP_ERR_NOT_FOUND) {
+        bt_hfp_ag_handle_invalid_event();
+        return;
+    }
+
     bt_duplex_snapshot_t snapshot;
     if (!get_session(peer_mac, &snapshot)) return;
     bt_hfp_profile_state_t mapped;
