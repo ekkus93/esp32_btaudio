@@ -3,7 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#define EVENT_STUB_MAX_LINES 32U
+/* This stub is linked into several pre-FD-12 lifecycle suites whose setUp()
+ * functions do not know about the event capture fixture. Keep enough bounded
+ * storage for the complete sanitizer process so an unrelated legacy test can
+ * never be converted into an event-delivery failure merely because earlier
+ * cases emitted valid transitions. Focused FD-12 tests still reset explicitly. */
+#define EVENT_STUB_MAX_LINES 512U
 #define EVENT_STUB_LINE_LEN 256U
 
 static cmd_status_t s_status = CMD_SUCCESS;
