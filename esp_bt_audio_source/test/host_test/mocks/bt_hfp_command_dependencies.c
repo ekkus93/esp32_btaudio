@@ -7,6 +7,14 @@
 #include "audio_processor.h"
 #include "uart_audio.h"
 
+/* commands_priv.h intentionally remaps these calls to production safety
+ * wrappers. This file implements the wrappers themselves, so use the real C
+ * library primitives inside the host stub instead of recursively invoking the
+ * macros being defined. */
+#undef memcpy
+#undef memmove
+#undef memset
+
 esp_err_t audio_processor_init(const audio_config_t *config)
 {
     (void)config;
