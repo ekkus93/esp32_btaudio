@@ -48,11 +48,10 @@ set +e
     "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_events.c" \
     "${test_dir}/mocks/bt_app_core_host_stub.c" \
+    "${test_dir}/mocks/bt_hfp_connection_platform_stubs.c" \
     "${test_dir}/mocks/fake_esp_err.c" \
     "${test_dir}/mocks/fake_log.c" \
-    "${project_dir}/components/util_safe/util_safe.c" \
     "${project_dir}/components/platform_shim/platform_sync_host.c" \
-    "${project_dir}/components/platform_shim/platform_timing_host.c" \
     -lm \
     -o "${binary}" 2>&1 | tee "${compile_log}"
 compile_status=${PIPESTATUS[0]}
