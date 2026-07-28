@@ -10,6 +10,7 @@
 #include "esp_err.h"
 #include "bt_api.h"
 #include "esp_bt.h"
+#include "cmd_handlers.h"
 #include "../../components/audio_processor/include/audio_processor.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
 #include "bt_manager.h"  /* Defines bt_device_t */
@@ -120,6 +121,16 @@ int bt_manager_test_get_last_audio_state(void) {
     return s_last_audio_state;
 }
 
+/* Generic command targets intentionally do not link the FD-11 manager facade.
+ * Provide a strong, explicit failure backend so they link without making an
+ * HFP command look successful. The focused FD-11 command suite links the real
+ * handler and its injectable public-manager stub instead of this file. */
+cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
+    (void)ctx;
+    (void)cmd_send_response("ERR", "HFP", "TEST_BACKEND_NOT_LINKED", NULL);
+    return CMD_SUCCESS;
+}
+
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */
 void bt_connection_state_cb(esp_a2d_connection_state_t state, esp_bd_addr_t bd_addr) {
     (void)bd_addr;
@@ -130,6 +141,3 @@ void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr) {
     (void)bd_addr;
     s_last_audio_state = (int)state;
 }
-
-
-
