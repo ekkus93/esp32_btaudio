@@ -7,6 +7,7 @@
 #include <string.h>
 #include "unity.h"
 #include "bt_manager.h"
+#include "bt_events_a2dp.h"
 #include "esp_err.h"
 
 /* bt_manager_status_t is defined in bt_source.h, but including that header
@@ -50,6 +51,20 @@ int bt_manager_test_get_pair_event_count(void);
 const char* bt_manager_test_get_last_pair_event_subtype(void);
 const char* bt_manager_test_get_last_pair_event_data(void);
 void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
+
+/* Focused A2DP lifecycle-policy mock controls. */
+void bt_manager_test_set_hfp_policy_status(bool peer_valid,
+                                           const char *peer,
+                                           uint32_t generation,
+                                           esp_err_t result);
+void bt_manager_test_set_hfp_policy_results(esp_err_t profile_result,
+                                            esp_err_t audio_result);
+unsigned bt_manager_test_get_hfp_profile_calls(void);
+unsigned bt_manager_test_get_hfp_audio_policy_calls(void);
+uint32_t bt_manager_test_get_last_hfp_profile_generation(void);
+uint32_t bt_manager_test_get_last_hfp_audio_generation(void);
+unsigned bt_manager_test_get_stale_operation_records(void);
+
 // Manager wrapper prototypes (not exposed via header)
 int bt_manager_disconnect(void);
 int bt_manager_start_audio(void);
@@ -82,7 +97,7 @@ extern char bt_disconnected_mac[18];
 void test_bt_connected_cb(const char* mac, const char* name);
 void test_bt_disconnected_cb(const char* mac);
 
-/* Test bodies live in test_bluetooth_cases.c */
+/* Test bodies live in test_bluetooth_cases.c. */
 void test_bt_init_deinit(void);
 void test_bt_scanning(void);
 void test_bt_connect_disconnect(void);
@@ -110,5 +125,10 @@ void test_bt_start_stop_failure_recovery(void);
 void test_bt_init_survives_nvs_failures(void);
 void test_bt_init_skips_corrupt_paired_device_entries(void);
 void test_bt_stop_failure_then_recovery_on_state_event(void);
+
+/* Focused review-fix cases live in test_bt_a2dp_binding_cases.c. */
+void test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted(void);
+void test_a2dp_binding_refreshes_after_hfp_generation_rotation(void);
+void test_a2dp_wrong_peer_event_is_rejected_and_counted(void);
 
 #endif /* TEST_BLUETOOTH_SHARED_H */
