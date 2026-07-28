@@ -3,6 +3,8 @@
 void test_hfp_profile_init_requires_callback_confirmation(void);
 void test_hfp_callback_registration_failure_is_visible(void);
 void test_hfp_audio_callback_registration_failure_is_visible(void);
+void test_hfp_audio_control_initializes_after_callback_registration(void);
+void test_hfp_audio_control_initialization_failure_is_visible(void);
 void test_hfp_init_request_failure_is_visible(void);
 void test_hfp_init_callback_failure_is_visible(void);
 void test_hfp_init_timeout_does_not_claim_ready(void);
@@ -20,6 +22,8 @@ int main(void)
     RUN_TEST(test_hfp_profile_init_requires_callback_confirmation);
     RUN_TEST(test_hfp_callback_registration_failure_is_visible);
     RUN_TEST(test_hfp_audio_callback_registration_failure_is_visible);
+    RUN_TEST(test_hfp_audio_control_initializes_after_callback_registration);
+    RUN_TEST(test_hfp_audio_control_initialization_failure_is_visible);
     RUN_TEST(test_hfp_init_request_failure_is_visible);
     RUN_TEST(test_hfp_init_callback_failure_is_visible);
     RUN_TEST(test_hfp_init_timeout_does_not_claim_ready);
