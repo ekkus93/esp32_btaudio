@@ -53,6 +53,21 @@ void cmd_safe_copy(char *dst, size_t dst_size, const char *src)
     dst[length] = '\0';
 }
 
+void *cmd_memcpy_safe(void *dst, const void *src, size_t len)
+{
+    return memcpy(dst, src, len);
+}
+
+void *cmd_memmove_safe(void *dst, const void *src, size_t len)
+{
+    return memmove(dst, src, len);
+}
+
+void *cmd_memset_safe(void *dst, int value, size_t len)
+{
+    return memset(dst, value, len);
+}
+
 int cmd_vsnprintf_safe(char *dst, size_t dst_size,
                        const char *fmt, va_list args)
 {
