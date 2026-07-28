@@ -120,6 +120,11 @@ esp_err_t bt_duplex_session_begin(const char *peer_mac,
                                   uint32_t *generation_out);
 esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 
+/* Global HFP profile lifecycle transition used before a peer session exists
+ * and after the HFP profile has been fully deinitialized. */
+esp_err_t bt_duplex_set_hfp_profile_global_state(
+    bt_hfp_profile_state_t state);
+
 esp_err_t bt_duplex_set_requested_mode(uint32_t generation,
                                       const char *peer_mac,
                                       bt_duplex_mode_t mode);
