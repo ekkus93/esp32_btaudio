@@ -13,6 +13,40 @@ extern "C" {
 
 #define HFP_I2S_OUTPUT_MAC_STR_LEN 18U
 #define HFP_I2S_CVSD_MAX_INPUT_SAMPLES 120U
+#define HFP_I2S_CVSD_UPSAMPLE_FACTOR 2U
+
+/* The incoming HFP callback currently nests two fixed audio arrays:
+ *
+ * - bt_hfp_audio.c: 120 input samples = 240 bytes
+ * - hfp_i2s_output_data.c: 240 converted samples = 480 bytes
+ *
+ * The combined fixed audio-array contribution is therefore 720 bytes. Keep a
+ * reviewed 1024-byte ceiling so a future frame-size or conversion change fails
+ * at compile time instead of silently consuming more callback stack. This does
+ * not claim hardware stack validation; the real task high-water marks remain a
+ * required hardware gate. */
+#define HFP_I2S_CALLBACK_AUDIO_ARRAY_BUDGET_BYTES 1024U
+#define HFP_I2S_CALLBACK_ALIGNED_BYTES \
+    (HFP_I2S_CVSD_MAX_INPUT_SAMPLES * sizeof(int16_t))
+#define HFP_I2S_CALLBACK_CONVERTED_BYTES \
+    (HFP_I2S_CVSD_MAX_INPUT_SAMPLES * HFP_I2S_CVSD_UPSAMPLE_FACTOR * \
+     sizeof(int16_t))
+
+#ifdef __cplusplus
+static_assert(HFP_I2S_CVSD_MAX_INPUT_SAMPLES <= 120U,
+              "CVSD callback input bound exceeds reviewed maximum");
+static_assert(HFP_I2S_CALLBACK_ALIGNED_BYTES +
+                  HFP_I2S_CALLBACK_CONVERTED_BYTES <=
+              HFP_I2S_CALLBACK_AUDIO_ARRAY_BUDGET_BYTES,
+              "HFP callback audio arrays exceed reviewed stack budget");
+#else
+_Static_assert(HFP_I2S_CVSD_MAX_INPUT_SAMPLES <= 120U,
+               "CVSD callback input bound exceeds reviewed maximum");
+_Static_assert(HFP_I2S_CALLBACK_ALIGNED_BYTES +
+                   HFP_I2S_CALLBACK_CONVERTED_BYTES <=
+               HFP_I2S_CALLBACK_AUDIO_ARRAY_BUDGET_BYTES,
+               "HFP callback audio arrays exceed reviewed stack budget");
+#endif
 
 typedef enum {
     HFP_I2S_OUTPUT_UNINITIALIZED = 0,
