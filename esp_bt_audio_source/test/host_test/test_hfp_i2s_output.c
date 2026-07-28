@@ -6,6 +6,8 @@ void test_channel_allocation_failure_rolls_back(void);
 void test_mode_init_failure_rolls_back(void);
 void test_task_create_failure_rolls_back(void);
 void test_channel_enable_failure_stops_task_and_rolls_back(void);
+void test_start_rollback_timeout_returns_timeout_and_quarantines(void);
+void test_start_cleanup_failure_returns_cleanup_error_and_quarantines(void);
 void test_start_stop_are_idempotent_for_same_session(void);
 void test_stop_timeout_quarantines_without_freeing_live_resources(void);
 void test_stale_generation_and_cvsd_duplication(void);
@@ -22,6 +24,8 @@ int main(void)
     RUN_TEST(test_mode_init_failure_rolls_back);
     RUN_TEST(test_task_create_failure_rolls_back);
     RUN_TEST(test_channel_enable_failure_stops_task_and_rolls_back);
+    RUN_TEST(test_start_rollback_timeout_returns_timeout_and_quarantines);
+    RUN_TEST(test_start_cleanup_failure_returns_cleanup_error_and_quarantines);
     RUN_TEST(test_start_stop_are_idempotent_for_same_session);
     RUN_TEST(test_stop_timeout_quarantines_without_freeing_live_resources);
     RUN_TEST(test_stale_generation_and_cvsd_duplication);
