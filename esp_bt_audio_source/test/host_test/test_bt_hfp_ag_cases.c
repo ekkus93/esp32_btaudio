@@ -100,6 +100,7 @@ void test_hfp_profile_init_requires_callback_confirmation(void)
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_READY, hfp.lifecycle);
     TEST_ASSERT_TRUE(hfp.profile_ready);
     TEST_ASSERT_TRUE(hfp.callback_registered);
+    TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(1, s_register_calls);
     TEST_ASSERT_EQUAL_UINT(1, s_init_calls);
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
@@ -115,7 +116,10 @@ void test_hfp_callback_registration_failure_is_visible(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_FALSE(hfp.profile_ready);
+    TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(0, s_init_calls);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, bt_hfp_ag_profile_deinit(10));
+    TEST_ASSERT_EQUAL_UINT(0, s_deinit_calls);
 }
 
 void test_hfp_init_request_failure_is_visible(void)
@@ -126,6 +130,9 @@ void test_hfp_init_request_failure_is_visible(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_EQUAL(ESP_FAIL, hfp.last_error);
+    TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, bt_hfp_ag_profile_deinit(10));
+    TEST_ASSERT_EQUAL_UINT(0, s_deinit_calls);
 }
 
 void test_hfp_init_callback_failure_is_visible(void)
@@ -136,6 +143,9 @@ void test_hfp_init_callback_failure_is_visible(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
     TEST_ASSERT_EQUAL_UINT64(1, hfp.profile_events);
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
+    TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_deinit(10));
+    TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
 }
 
 void test_hfp_init_timeout_does_not_claim_ready(void)
@@ -147,6 +157,9 @@ void test_hfp_init_timeout_does_not_claim_ready(void)
     TEST_ASSERT_EQUAL_UINT64(1, hfp.init_timeouts);
     TEST_ASSERT_FALSE(hfp.profile_ready);
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
+    TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_deinit(10));
+    TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
 }
 
 void test_hfp_repeated_init_is_rejected(void)
@@ -167,6 +180,7 @@ void test_hfp_profile_deinit_requires_callback_confirmation(void)
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_UNINITIALIZED,
                       hfp.lifecycle);
     TEST_ASSERT_FALSE(hfp.profile_ready);
+    TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
     TEST_ASSERT_EQUAL(BT_HFP_PROFILE_UNINITIALIZED,
@@ -182,6 +196,7 @@ void test_hfp_deinit_request_failure_is_visible(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_EQUAL(ESP_FAIL, hfp.last_error);
+    TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
 }
 
 void test_hfp_events_update_authoritative_same_peer_state(void)
