@@ -13,6 +13,7 @@ idf_component_register(
        
         "audio_ringbuffer.c"
         "hfp_pcm_ring.c"
+        "hfp_voice_convert.c"
         "audio_span_log.c"
         "audio_util.c"
         "audio_resampler_stream.c"
