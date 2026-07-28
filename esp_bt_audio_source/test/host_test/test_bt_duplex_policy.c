@@ -48,17 +48,17 @@ static uint32_t begin_session(bt_duplex_mode_t configured_mode)
 {
     bt_duplex_policy_manager_stub_reset(configured_mode);
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_profile_event(
-        PEER, BT_A2DP_PROFILE_CONNECTED));
+        0U, PEER, BT_A2DP_PROFILE_CONNECTED));
     bt_duplex_snapshot_t snapshot;
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&snapshot));
     TEST_ASSERT_TRUE(snapshot.peer_valid);
     return snapshot.session_generation;
 }
 
-static void start_a2dp(void)
+static void start_a2dp(uint32_t generation)
 {
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_STARTED));
+        generation, PEER, BT_A2DP_AUDIO_STARTED));
 }
 
 static void connect_hfp(uint32_t generation)
@@ -98,7 +98,7 @@ static void connect_sco(uint32_t generation)
 static void prepare_active(bt_duplex_mode_t mode, uint32_t *generation_out)
 {
     uint32_t generation = begin_session(mode);
-    start_a2dp();
+    start_a2dp(generation);
     connect_hfp(generation);
     connect_sco(generation);
     bt_hfp_event_command_stub_reset();
@@ -175,6 +175,9 @@ void test_hfp_full_reserves_hfp_downlink(void)
     bt_duplex_policy_result_t result;
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_policy_evaluate(&input, &result));
     TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_HFP_FULL_DUPLEX, result.effective);
+    TEST_ASSERT_EQUAL(BT_DUPLEX_POLICY_COMPATIBILITY_REQUIRED, result.state);
+    TEST_ASSERT_EQUAL(BT_DUPLEX_POLICY_REASON_HFP_DOWNLINK_NOT_IMPLEMENTED,
+                      result.reason);
     TEST_ASSERT_EQUAL(BT_DUPLEX_DOWNLINK_OWNER_HFP, result.downlink_owner);
     TEST_ASSERT_TRUE(result.request_hfp_downlink);
 }
@@ -214,7 +217,7 @@ void test_strict_a2dp_mic_reports_incompatibility_without_mode_change(void)
     TEST_ASSERT_NOT_EQUAL(0U, generation);
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
+        generation, PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
 
     bt_duplex_policy_snapshot_t policy;
     bt_duplex_snapshot_t duplex;
@@ -242,9 +245,9 @@ void test_auto_remote_suspend_switches_effective_mode_once(void)
     prepare_active(BT_DUPLEX_MODE_AUTO, &generation);
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
+        generation, PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
+        generation, PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
 
     bt_duplex_policy_snapshot_t policy;
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_policy_snapshot(&policy));
@@ -275,11 +278,11 @@ void test_auto_a2dp_resume_restores_preferred_mode(void)
     uint32_t generation;
     prepare_active(BT_DUPLEX_MODE_AUTO, &generation);
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
+        generation, PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
     bt_hfp_event_command_stub_reset();
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_STARTED));
+        generation, PEER, BT_A2DP_AUDIO_STARTED));
 
     bt_duplex_policy_snapshot_t policy;
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_policy_snapshot(&policy));
@@ -296,7 +299,7 @@ void test_auto_sco_stop_restores_preferred_mode(void)
     uint32_t generation;
     prepare_active(BT_DUPLEX_MODE_AUTO, &generation);
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_handle_a2dp_audio_event(
-        PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
+        generation, PEER, BT_A2DP_AUDIO_REMOTE_SUSPENDED));
     bt_hfp_event_command_stub_reset();
 
     bt_duplex_snapshot_t before;
@@ -328,10 +331,12 @@ void test_stale_generation_policy_event_is_rejected(void)
     bt_hfp_event_command_stub_reset();
 
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
-                      bt_manager_hfp_policy_note_hfp_audio_transition(
+                      bt_manager_hfp_handle_a2dp_audio_event(
+                          old_generation, PEER, BT_A2DP_AUDIO_STARTED));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_manager_hfp_handle_a2dp_profile_event(
                           old_generation, PEER,
-                          BT_HFP_AUDIO_CONNECTING,
-                          BT_HFP_AUDIO_CONNECTED_CVSD));
+                          BT_A2DP_PROFILE_DISCONNECTING));
     TEST_ASSERT_EQUAL_size_t(0U, bt_hfp_event_command_stub_count());
 }
 
