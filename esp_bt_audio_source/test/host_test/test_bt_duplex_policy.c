@@ -225,7 +225,15 @@ void test_strict_a2dp_mic_reports_incompatibility_without_mode_change(void)
         BT_DUPLEX_POLICY_REASON_REMOTE_SUSPENDED_A2DP_DURING_SCO,
         policy.reason);
     TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_A2DP_PLUS_HFP_MIC, duplex.effective_mode);
-    TEST_ASSERT_EQUAL_size_t(0U, bt_hfp_event_command_stub_count());
+    TEST_ASSERT_EQUAL_size_t(1U, bt_hfp_event_command_stub_count());
+
+    char expected[192];
+    (void)snprintf(expected, sizeof(expected),
+                   "EVENT|HFP|POLICY|INCOMPATIBLE|"
+                   "REMOTE_SUSPENDED_A2DP_DURING_SCO|A2DP_MIC|A2DP_MIC|"
+                   "A2DP|%" PRIu32,
+                   generation);
+    TEST_ASSERT_EQUAL_STRING(expected, bt_hfp_event_command_stub_line(0U));
 }
 
 void test_auto_remote_suspend_switches_effective_mode_once(void)
@@ -246,14 +254,20 @@ void test_auto_remote_suspend_switches_effective_mode_once(void)
     TEST_ASSERT_TRUE(policy.request_hfp_downlink);
     TEST_ASSERT_EQUAL_UINT64(1U, policy.a2dp_interruptions_lifetime);
     TEST_ASSERT_EQUAL_UINT64(1U, policy.effective_mode_changes_lifetime);
-    TEST_ASSERT_EQUAL_size_t(1U, bt_hfp_event_command_stub_count());
+    TEST_ASSERT_EQUAL_size_t(2U, bt_hfp_event_command_stub_count());
 
-    char expected[160];
+    char expected[192];
     (void)snprintf(expected, sizeof(expected),
                    "EVENT|HFP|MODE|A2DP_MIC|HFP_FULL|"
                    "REMOTE_SUSPENDED_A2DP_DURING_SCO|%" PRIu32,
                    generation);
     TEST_ASSERT_EQUAL_STRING(expected, bt_hfp_event_command_stub_line(0U));
+    (void)snprintf(expected, sizeof(expected),
+                   "EVENT|HFP|POLICY|COMPATIBILITY_REQUIRED|"
+                   "REMOTE_SUSPENDED_A2DP_DURING_SCO|AUTO|HFP_FULL|HFP|%"
+                   PRIu32,
+                   generation);
+    TEST_ASSERT_EQUAL_STRING(expected, bt_hfp_event_command_stub_line(1U));
 }
 
 void test_auto_a2dp_resume_restores_preferred_mode(void)
@@ -271,7 +285,10 @@ void test_auto_a2dp_resume_restores_preferred_mode(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_policy_snapshot(&policy));
     TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_A2DP_PLUS_HFP_MIC, policy.effective);
     TEST_ASSERT_EQUAL(BT_DUPLEX_POLICY_REASON_A2DP_RESUMED, policy.reason);
+    TEST_ASSERT_EQUAL_size_t(2U, bt_hfp_event_command_stub_count());
     TEST_ASSERT_TRUE(captured_contains("|HFP_FULL|A2DP_MIC|A2DP_RESUMED|"));
+    TEST_ASSERT_TRUE(captured_contains(
+        "EVENT|HFP|POLICY|SATISFIED|A2DP_RESUMED|AUTO|A2DP_MIC|A2DP|"));
 }
 
 void test_auto_sco_stop_restores_preferred_mode(void)
@@ -294,7 +311,10 @@ void test_auto_sco_stop_restores_preferred_mode(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_policy_snapshot(&policy));
     TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_A2DP_PLUS_HFP_MIC, policy.effective);
     TEST_ASSERT_EQUAL(BT_DUPLEX_POLICY_REASON_SCO_STOPPED, policy.reason);
+    TEST_ASSERT_EQUAL_size_t(2U, bt_hfp_event_command_stub_count());
     TEST_ASSERT_TRUE(captured_contains("|HFP_FULL|A2DP_MIC|SCO_STOPPED|"));
+    TEST_ASSERT_TRUE(captured_contains(
+        "EVENT|HFP|POLICY|WAITING|SCO_STOPPED|AUTO|A2DP_MIC|A2DP|"));
 }
 
 void test_stale_generation_policy_event_is_rejected(void)
