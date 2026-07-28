@@ -373,6 +373,7 @@ void test_ring_full_rejects_entire_cvsd_frame(void)
 void test_writer_counts_silence_and_faults_after_bounded_failures(void)
 {
     hfp_i2s_output_snapshot_t snapshot;
+    config.underflow_degraded_threshold = 1U;
     initialize_component();
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_start(GENERATION, PEER));
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_test_writer_once());
@@ -384,6 +385,8 @@ void test_writer_counts_silence_and_faults_after_bounded_failures(void)
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_get_snapshot(&snapshot));
     TEST_ASSERT_EQUAL_UINT64(1, snapshot.silence_intervals);
     TEST_ASSERT_EQUAL_UINT64(config.writer_samples, snapshot.silence_samples);
+    TEST_ASSERT_TRUE(snapshot.degraded);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.degraded_events);
 
     fake.write_result = ESP_ERR_TIMEOUT;
     for (uint32_t i = 0; i < config.max_consecutive_write_failures; ++i) {
@@ -394,6 +397,7 @@ void test_writer_counts_silence_and_faults_after_bounded_failures(void)
     TEST_ASSERT_EQUAL(HFP_I2S_OUTPUT_FAULTED, snapshot.state);
     TEST_ASSERT_EQUAL_UINT64(config.max_consecutive_write_failures,
                              snapshot.write_failures);
+    TEST_ASSERT_EQUAL_INT(1, fake.channel_disable_calls);
     fake.task_wait_result = ESP_OK;
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
                       hfp_i2s_output_stop(config.stop_timeout_ms));
