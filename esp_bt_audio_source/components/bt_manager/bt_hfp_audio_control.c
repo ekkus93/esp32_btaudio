@@ -10,21 +10,11 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_hf_ag_api.h"
-#include "esp_log.h"
 #endif
 
 #define BT_HFP_AUDIO_WORK_EVENT 0x7002U
 #define BT_HFP_AUDIO_REMOTE_CLEANUP_EVENT 0x7003U
 #define BT_HFP_AUDIO_FALLBACK_I2S_STOP_TIMEOUT_MS 1000U
-
-#ifdef ESP_PLATFORM
-static const char *TAG = "BT_HFP_AUDIO_CTL";
-#define CONTROL_LOGE(...) ESP_LOGE(TAG, __VA_ARGS__)
-#define CONTROL_LOGW(...) ESP_LOGW(TAG, __VA_ARGS__)
-#else
-#define CONTROL_LOGE(...) ((void)0)
-#define CONTROL_LOGW(...) ((void)0)
-#endif
 
 typedef struct {
     uint32_t serial;
@@ -35,6 +25,7 @@ typedef struct {
 typedef struct {
     uint32_t generation;
     bool disconnect_lower;
+    bool stop_i2s;
     char peer_mac[BT_DUPLEX_MAC_STR_LEN];
 } bt_hfp_audio_remote_cleanup_t;
 
@@ -68,9 +59,9 @@ static bool parse_mac(const char *text, esp_bd_addr_t out)
 {
     if (text == NULL || out == NULL || strlen(text) != 17U) return false;
     for (size_t index = 0; index < 6U; ++index) {
-        size_t offset = index * 3U;
-        int high = hex_value(text[offset]);
-        int low = hex_value(text[offset + 1U]);
+        const size_t offset = index * 3U;
+        const int high = hex_value(text[offset]);
+        const int low = hex_value(text[offset + 1U]);
         if (high < 0 || low < 0) return false;
         if (index < 5U && text[offset + 2U] != ':') return false;
         out[index] = (uint8_t)((high << 4) | low);
@@ -102,7 +93,7 @@ static esp_err_t control_lock(void)
 
 static esp_err_t control_unlock(esp_err_t prior)
 {
-    esp_err_t err = platform_mutex_unlock(s_control.lock);
+    const esp_err_t err = platform_mutex_unlock(s_control.lock);
     return prior != ESP_OK ? prior : err;
 }
 
@@ -142,6 +133,11 @@ static esp_err_t context_ensure(void)
     s_control.snapshot.last_error = ESP_OK;
     s_control.initialized = true;
     return ESP_OK;
+}
+
+esp_err_t bt_hfp_audio_control_init(void)
+{
+    return context_ensure();
 }
 
 static esp_err_t platform_audio_connect(esp_bd_addr_t remote_bda)
@@ -226,9 +222,10 @@ static void set_health(uint32_t generation, const char *peer_mac,
 
 static esp_err_t local_i2s_snapshot(hfp_i2s_output_snapshot_t *out)
 {
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
+    memset(out, 0, sizeof(*out));
     esp_err_t err = hfp_i2s_output_get_snapshot(out);
     if (err == ESP_ERR_INVALID_STATE) {
-        memset(out, 0, sizeof(*out));
         out->state = HFP_I2S_OUTPUT_UNINITIALIZED;
         out->last_error = ESP_OK;
         return ESP_OK;
@@ -239,7 +236,7 @@ static esp_err_t local_i2s_snapshot(hfp_i2s_output_snapshot_t *out)
 static esp_err_t sync_i2s_state(uint32_t generation, const char *peer_mac,
                                 hfp_i2s_output_snapshot_t *snapshot_out)
 {
-    hfp_i2s_output_snapshot_t local;
+    hfp_i2s_output_snapshot_t local = {0};
     esp_err_t err = local_i2s_snapshot(&local);
     if (err != ESP_OK) return err;
     err = set_i2s_state_if_needed(generation, peer_mac,
@@ -250,7 +247,7 @@ static esp_err_t sync_i2s_state(uint32_t generation, const char *peer_mac,
 
 static esp_err_t ensure_i2s_initialized(void)
 {
-    hfp_i2s_output_snapshot_t local;
+    hfp_i2s_output_snapshot_t local = {0};
     esp_err_t err = local_i2s_snapshot(&local);
     if (err != ESP_OK) return err;
     if (local.initialized) {
@@ -279,19 +276,26 @@ static esp_err_t start_i2s_for_session(uint32_t generation,
         err = hfp_i2s_output_start(generation, peer_mac);
     }
     if (err != ESP_OK) {
-        hfp_i2s_output_snapshot_t local;
-        esp_err_t sync_err = sync_i2s_state(generation, peer_mac, &local);
+        hfp_i2s_output_snapshot_t local = {0};
+        const esp_err_t sync_err =
+            sync_i2s_state(generation, peer_mac, &local);
+        if (sync_err != ESP_OK) {
+            (void)set_i2s_state_if_needed(
+                generation, peer_mac, BT_HFP_I2S_FAULTED);
+        }
         if (control_lock() == ESP_OK) {
             s_control.snapshot.i2s_start_failures++;
-            s_control.snapshot.last_error = err;
+            s_control.snapshot.last_error = sync_err != ESP_OK ? sync_err : err;
             (void)control_unlock(ESP_OK);
         }
-        if (local.state == HFP_I2S_OUTPUT_QUARANTINED) {
+        if (sync_err == ESP_OK &&
+            local.state == HFP_I2S_OUTPUT_QUARANTINED) {
             set_health(generation, peer_mac, BT_AUDIO_HEALTH_QUARANTINED,
                        err, "HFP I2S startup rollback quarantined");
         } else {
             set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
-                       err, "HFP I2S startup failed");
+                       sync_err != ESP_OK ? sync_err : err,
+                       "HFP I2S startup failed");
         }
         return sync_err != ESP_OK ? sync_err : err;
     }
@@ -299,11 +303,31 @@ static esp_err_t start_i2s_for_session(uint32_t generation,
     return set_i2s_state_if_needed(generation, peer_mac, BT_HFP_I2S_RUNNING);
 }
 
+static void record_i2s_stop_failure(uint32_t generation, const char *peer_mac,
+                                    esp_err_t result,
+                                    const hfp_i2s_output_snapshot_t *after,
+                                    bool snapshot_valid)
+{
+    if (control_lock() == ESP_OK) {
+        s_control.snapshot.i2s_stop_failures++;
+        s_control.snapshot.last_error = result;
+        (void)control_unlock(ESP_OK);
+    }
+    if (snapshot_valid && after != NULL &&
+        after->state == HFP_I2S_OUTPUT_QUARANTINED) {
+        set_health(generation, peer_mac, BT_AUDIO_HEALTH_QUARANTINED,
+                   result, "HFP I2S stop quarantined");
+    } else {
+        set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
+                   result, "HFP I2S stop failed");
+    }
+}
+
 static void stop_i2s_for_session(uint32_t generation, const char *peer_mac,
                                  esp_err_t *result_out)
 {
     esp_err_t result = ESP_OK;
-    hfp_i2s_output_snapshot_t local;
+    hfp_i2s_output_snapshot_t local = {0};
     esp_err_t err = local_i2s_snapshot(&local);
     if (err != ESP_OK) {
         result = err;
@@ -324,39 +348,36 @@ static void stop_i2s_for_session(uint32_t generation, const char *peer_mac,
         goto done;
     }
 
-    if (local.state == HFP_I2S_OUTPUT_RUNNING ||
-        local.state == HFP_I2S_OUTPUT_FAULTED) {
+    if (local.state != HFP_I2S_OUTPUT_RUNNING &&
+        local.state != HFP_I2S_OUTPUT_FAULTED) {
+        result = ESP_ERR_INVALID_STATE;
+        goto done;
+    }
+
+    /* The authoritative transition to STOPPING is legal only from RUNNING.
+     * A faulted local writer is stopped directly and then synchronized to its
+     * actual terminal state; we never fabricate FAULTED -> STOPPING. */
+    if (local.state == HFP_I2S_OUTPUT_RUNNING) {
         err = set_i2s_state_if_needed(
             generation, peer_mac, BT_HFP_I2S_STOPPING);
         if (err != ESP_OK) {
             result = err;
             goto done;
         }
-        uint32_t timeout_ms = local.config.stop_timeout_ms != 0U
-            ? local.config.stop_timeout_ms
-            : BT_HFP_AUDIO_FALLBACK_I2S_STOP_TIMEOUT_MS;
-        err = hfp_i2s_output_stop(timeout_ms);
-        hfp_i2s_output_snapshot_t after;
-        esp_err_t sync_err = sync_i2s_state(generation, peer_mac, &after);
-        result = sync_err != ESP_OK ? sync_err : err;
-        if (result != ESP_OK) {
-            if (control_lock() == ESP_OK) {
-                s_control.snapshot.i2s_stop_failures++;
-                s_control.snapshot.last_error = result;
-                (void)control_unlock(ESP_OK);
-            }
-            if (after.state == HFP_I2S_OUTPUT_QUARANTINED) {
-                set_health(generation, peer_mac, BT_AUDIO_HEALTH_QUARANTINED,
-                           result, "HFP I2S stop quarantined");
-            } else {
-                set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
-                           result, "HFP I2S stop failed");
-            }
-        }
-        goto done;
     }
 
-    result = ESP_ERR_INVALID_STATE;
+    const uint32_t timeout_ms = local.config.stop_timeout_ms != 0U
+        ? local.config.stop_timeout_ms
+        : BT_HFP_AUDIO_FALLBACK_I2S_STOP_TIMEOUT_MS;
+    err = hfp_i2s_output_stop(timeout_ms);
+    hfp_i2s_output_snapshot_t after = {0};
+    const esp_err_t sync_err =
+        sync_i2s_state(generation, peer_mac, &after);
+    result = sync_err != ESP_OK ? sync_err : err;
+    if (result != ESP_OK) {
+        record_i2s_stop_failure(generation, peer_mac, result, &after,
+                                sync_err == ESP_OK);
+    }
 
 done:
     if (result_out != NULL) *result_out = result;
@@ -368,31 +389,39 @@ static void remote_cleanup_handler(uint16_t event, void *param)
     const bt_hfp_audio_remote_cleanup_t *cleanup =
         (const bt_hfp_audio_remote_cleanup_t *)param;
 
+    esp_err_t disconnect_result = ESP_OK;
     if (cleanup->disconnect_lower) {
         esp_bd_addr_t bda = {0};
-        if (!parse_mac(cleanup->peer_mac, bda) ||
-            platform_audio_disconnect(bda) != ESP_OK) {
+        disconnect_result = parse_mac(cleanup->peer_mac, bda)
+            ? platform_audio_disconnect(bda)
+            : ESP_ERR_INVALID_ARG;
+        if (disconnect_result != ESP_OK && cleanup->generation != 0U) {
             set_health(cleanup->generation, cleanup->peer_mac,
-                       BT_AUDIO_HEALTH_FAULTED, ESP_FAIL,
+                       BT_AUDIO_HEALTH_FAULTED, disconnect_result,
                        "Failed to reject unexpected HFP audio link");
         }
     }
 
-    esp_err_t stop_result = ESP_OK;
-    stop_i2s_for_session(cleanup->generation, cleanup->peer_mac, &stop_result);
+    if (cleanup->stop_i2s && cleanup->generation != 0U) {
+        esp_err_t stop_result = ESP_OK;
+        stop_i2s_for_session(cleanup->generation, cleanup->peer_mac,
+                             &stop_result);
+    }
 }
 
 static void dispatch_remote_cleanup(uint32_t generation, const char *peer_mac,
-                                    bool disconnect_lower)
+                                    bool disconnect_lower, bool stop_i2s)
 {
     bt_hfp_audio_remote_cleanup_t cleanup = {
         .generation = generation,
         .disconnect_lower = disconnect_lower,
+        .stop_i2s = stop_i2s,
     };
     copy_peer(cleanup.peer_mac, peer_mac);
     if (!bt_app_work_dispatch(remote_cleanup_handler,
                               BT_HFP_AUDIO_REMOTE_CLEANUP_EVENT,
-                              &cleanup, (int)sizeof(cleanup), NULL)) {
+                              &cleanup, (int)sizeof(cleanup), NULL) &&
+        generation != 0U) {
         set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
                    ESP_ERR_NO_MEM,
                    "Failed to dispatch HFP remote audio cleanup");
@@ -424,7 +453,7 @@ static void work_handler(uint16_t event, void *param)
     (void)control_unlock(ESP_OK);
 
     esp_bd_addr_t bda = {0};
-    esp_err_t result = parse_mac(peer, bda)
+    const esp_err_t result = parse_mac(peer, bda)
         ? (request->type == BT_HFP_AUDIO_OPERATION_START
                ? platform_audio_connect(bda)
                : platform_audio_disconnect(bda))
@@ -649,6 +678,20 @@ static esp_err_t issue_cleanup_disconnect(uint32_t serial)
     return result;
 }
 
+static bool lower_request_may_be_live(uint32_t serial)
+{
+    bool live = false;
+    if (control_lock() == ESP_OK) {
+        if (serial == s_control.snapshot.serial) {
+            live = s_control.snapshot.lower_request_accepted ||
+                   s_control.snapshot.state ==
+                       BT_HFP_AUDIO_OPERATION_TIMED_OUT;
+        }
+        (void)control_unlock(ESP_OK);
+    }
+    return live;
+}
+
 static esp_err_t rollback_started_i2s(uint32_t serial, uint32_t generation,
                                       const char *peer_mac,
                                       esp_err_t cause,
@@ -676,7 +719,7 @@ static esp_err_t rollback_started_i2s(uint32_t serial, uint32_t generation,
 
     esp_err_t stop_result = ESP_OK;
     stop_i2s_for_session(generation, peer_mac, &stop_result);
-    esp_err_t result = stop_result != ESP_OK
+    const esp_err_t result = stop_result != ESP_OK
         ? stop_result
         : (disconnect_result != ESP_OK ? disconnect_result : cause);
 
@@ -734,7 +777,7 @@ esp_err_t bt_hfp_audio_start(void)
     err = set_audio_state_if_needed(
         generation, duplex.peer_mac, BT_HFP_AUDIO_CONNECTING);
     if (err != ESP_OK) {
-        esp_err_t rollback = rollback_started_i2s(
+        const esp_err_t rollback = rollback_started_i2s(
             serial, generation, duplex.peer_mac, err, false);
         finish_operation(serial, rollback, BT_HFP_AUDIO_OPERATION_FAULTED);
         return rollback;
@@ -742,8 +785,10 @@ esp_err_t bt_hfp_audio_start(void)
 
     err = queue_lower_request(serial, BT_HFP_AUDIO_OPERATION_START);
     if (err != ESP_OK) {
-        esp_err_t rollback = rollback_started_i2s(
-            serial, generation, duplex.peer_mac, err, false);
+        const bool disconnect_lower =
+            err == ESP_ERR_TIMEOUT || lower_request_may_be_live(serial);
+        const esp_err_t rollback = rollback_started_i2s(
+            serial, generation, duplex.peer_mac, err, disconnect_lower);
         finish_operation(serial, rollback, BT_HFP_AUDIO_OPERATION_REJECTED);
         return rollback;
     }
@@ -765,7 +810,7 @@ esp_err_t bt_hfp_audio_start(void)
             generation, duplex.peer_mac, BT_HFP_AUDIO_FAULTED);
         set_health(generation, duplex.peer_mac, BT_AUDIO_HEALTH_FAULTED,
                    err, "HFP audio connect event timed out");
-        esp_err_t rollback = rollback_started_i2s(
+        const esp_err_t rollback = rollback_started_i2s(
             serial, generation, duplex.peer_mac, err, true);
         finish_operation(serial, rollback, BT_HFP_AUDIO_OPERATION_TIMED_OUT);
         return rollback;
@@ -783,7 +828,7 @@ esp_err_t bt_hfp_audio_start(void)
         (void)control_unlock(ESP_OK);
     }
     if (completion != ESP_OK || state != BT_HFP_AUDIO_OPERATION_CONFIRMED) {
-        esp_err_t rollback = rollback_started_i2s(
+        const esp_err_t rollback = rollback_started_i2s(
             serial, generation, duplex.peer_mac,
             completion != ESP_OK ? completion : ESP_FAIL, accepted);
         finish_operation(serial, rollback, state);
@@ -819,7 +864,7 @@ esp_err_t bt_hfp_audio_stop(void)
     update_operation_generation(serial, duplex.session_generation);
     bt_hfp_audio_profile_stopping();
 
-    bool request_disconnect =
+    const bool request_disconnect =
         duplex.hfp_audio_state != BT_HFP_AUDIO_DISCONNECTED;
     if (request_disconnect) {
         err = set_audio_state_if_needed(
@@ -841,7 +886,8 @@ esp_err_t bt_hfp_audio_stop(void)
             esp_err_t stop_result = ESP_OK;
             stop_i2s_for_session(duplex.session_generation,
                                  duplex.peer_mac, &stop_result);
-            esp_err_t result = stop_result != ESP_OK ? stop_result : err;
+            const esp_err_t result =
+                stop_result != ESP_OK ? stop_result : err;
             finish_operation(serial, result, BT_HFP_AUDIO_OPERATION_FAULTED);
             return result;
         }
@@ -867,7 +913,8 @@ esp_err_t bt_hfp_audio_stop(void)
             esp_err_t stop_result = ESP_OK;
             stop_i2s_for_session(duplex.session_generation,
                                  duplex.peer_mac, &stop_result);
-            esp_err_t result = stop_result != ESP_OK ? stop_result : err;
+            const esp_err_t result =
+                stop_result != ESP_OK ? stop_result : err;
             finish_operation(serial, result, BT_HFP_AUDIO_OPERATION_TIMED_OUT);
             return result;
         }
@@ -912,6 +959,38 @@ esp_err_t bt_hfp_audio_stop(void)
     return ESP_OK;
 }
 
+static void record_wrong_peer_event(void)
+{
+    if (control_lock() == ESP_OK) {
+        s_control.snapshot.wrong_peer_events++;
+        (void)control_unlock(ESP_OK);
+    }
+}
+
+static void reject_unexpected_connected_event(
+    const char *peer_mac, const bt_duplex_snapshot_t *duplex)
+{
+    bt_hfp_audio_profile_stopping();
+    if (control_lock() == ESP_OK) {
+        s_control.snapshot.unexpected_connected_events++;
+        (void)control_unlock(ESP_OK);
+    }
+
+    if (duplex != NULL && duplex->peer_valid &&
+        same_peer(peer_mac, duplex->peer_mac)) {
+        set_health(duplex->session_generation, duplex->peer_mac,
+                   BT_AUDIO_HEALTH_DEGRADED, ESP_ERR_INVALID_STATE,
+                   "Unexpected HFP audio connection was rejected");
+        dispatch_remote_cleanup(duplex->session_generation,
+                                duplex->peer_mac, true, true);
+    } else {
+        record_wrong_peer_event();
+        /* No authoritative peer state is mutated for a foreign connection.
+         * The lower link is still explicitly rejected. */
+        dispatch_remote_cleanup(0U, peer_mac, true, false);
+    }
+}
+
 esp_err_t bt_hfp_audio_control_handle_event(
     const char *peer_mac,
     bt_hfp_ag_audio_state_t state,
@@ -927,20 +1006,24 @@ esp_err_t bt_hfp_audio_control_handle_event(
     esp_err_t err = bt_hfp_audio_control_get_snapshot(&operation);
     if (err != ESP_OK) return err;
 
+    bt_duplex_snapshot_t duplex;
+    const esp_err_t duplex_err = bt_duplex_get_snapshot(&duplex);
+
     if (operation.type == BT_HFP_AUDIO_OPERATION_NONE) {
+        if (state == BT_HFP_AG_AUDIO_CONNECTED_CVSD ||
+            state == BT_HFP_AG_AUDIO_CONNECTED_MSBC) {
+            reject_unexpected_connected_event(
+                peer_mac, duplex_err == ESP_OK ? &duplex : NULL);
+            return ESP_OK;
+        }
         return ESP_ERR_NOT_FOUND;
     }
     if (!same_peer(peer_mac, operation.peer_mac)) {
-        if (control_lock() == ESP_OK) {
-            s_control.snapshot.wrong_peer_events++;
-            (void)control_unlock(ESP_OK);
-        }
+        record_wrong_peer_event();
         return ESP_OK;
     }
 
-    bt_duplex_snapshot_t duplex;
-    if (bt_duplex_get_snapshot(&duplex) != ESP_OK ||
-        operation.generation == 0U ||
+    if (duplex_err != ESP_OK || operation.generation == 0U ||
         operation.generation != duplex.session_generation) {
         if (control_lock() == ESP_OK) {
             s_control.snapshot.stale_events++;
@@ -949,7 +1032,7 @@ esp_err_t bt_hfp_audio_control_handle_event(
         return ESP_OK;
     }
 
-    bool terminal_late =
+    const bool terminal_late =
         operation.state == BT_HFP_AUDIO_OPERATION_TIMED_OUT ||
         operation.state == BT_HFP_AUDIO_OPERATION_FAULTED ||
         operation.state == BT_HFP_AUDIO_OPERATION_REJECTED;
@@ -979,6 +1062,15 @@ esp_err_t bt_hfp_audio_control_handle_event(
                 err = bt_hfp_audio_apply_duplex_state(
                     &duplex, peer_mac, sync_conn_handle,
                     preferred_frame_size);
+            }
+            if (err != ESP_OK) {
+                bt_hfp_audio_profile_stopping();
+                (void)set_audio_state_if_needed(
+                    operation.generation, operation.peer_mac,
+                    BT_HFP_AUDIO_FAULTED);
+                set_health(operation.generation, operation.peer_mac,
+                           BT_AUDIO_HEALTH_FAULTED, err,
+                           "HFP callback route activation failed");
             }
             completion = err;
             terminal = true;
@@ -1030,9 +1122,7 @@ esp_err_t bt_hfp_audio_control_handle_event(
 
     if (operation.pending &&
         operation.type == BT_HFP_AUDIO_OPERATION_STOP) {
-        if (state != BT_HFP_AG_AUDIO_DISCONNECTED) {
-            return ESP_OK;
-        }
+        if (state != BT_HFP_AG_AUDIO_DISCONNECTED) return ESP_OK;
         bt_hfp_audio_profile_stopping();
         err = set_audio_state_if_needed(
             operation.generation, operation.peer_mac,
@@ -1064,22 +1154,13 @@ esp_err_t bt_hfp_audio_control_handle_event(
                    BT_AUDIO_HEALTH_DEGRADED, ESP_FAIL,
                    "Remote HFP audio disconnected outside explicit stop");
         dispatch_remote_cleanup(operation.generation,
-                                operation.peer_mac, false);
+                                operation.peer_mac, false, true);
         return ESP_OK;
     }
 
     if (state == BT_HFP_AG_AUDIO_CONNECTED_CVSD ||
         state == BT_HFP_AG_AUDIO_CONNECTED_MSBC) {
-        bt_hfp_audio_profile_stopping();
-        if (control_lock() == ESP_OK) {
-            s_control.snapshot.unexpected_connected_events++;
-            (void)control_unlock(ESP_OK);
-        }
-        set_health(operation.generation, operation.peer_mac,
-                   BT_AUDIO_HEALTH_DEGRADED, ESP_ERR_INVALID_STATE,
-                   "Unexpected HFP audio connection was rejected");
-        dispatch_remote_cleanup(operation.generation,
-                                operation.peer_mac, true);
+        reject_unexpected_connected_event(peer_mac, &duplex);
         return ESP_OK;
     }
 
@@ -1090,7 +1171,7 @@ esp_err_t bt_hfp_audio_control_get_snapshot(
     bt_hfp_audio_control_snapshot_t *out)
 {
     if (out == NULL) return ESP_ERR_INVALID_ARG;
-    esp_err_t err = control_lock();
+    const esp_err_t err = control_lock();
     if (err != ESP_OK) return err;
     *out = s_control.snapshot;
     return control_unlock(ESP_OK);
@@ -1098,8 +1179,10 @@ esp_err_t bt_hfp_audio_control_get_snapshot(
 
 void bt_hfp_audio_control_profile_stopping(void)
 {
-    if (!s_control.initialized) return;
+    /* The fast callback gate must close even if no start/stop API has ever
+     * initialized the control context. */
     bt_hfp_audio_profile_stopping();
+    if (!s_control.initialized) return;
     if (control_lock() != ESP_OK) return;
     if (s_control.snapshot.api_active || s_control.snapshot.pending) {
         s_control.snapshot.pending = false;
