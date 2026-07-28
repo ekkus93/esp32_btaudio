@@ -191,10 +191,13 @@ esp_err_t bt_hfp_ag_profile_init(uint32_t timeout_ms)
     err = bt_hfp_ag_unlock(completion);
     if (err != ESP_OK) return err;
 
-    /* The HCI audio callback is registered only after the asynchronous HFP
-     * profile-init event confirms that the profile is usable. Failure here is
-     * a real profile initialization failure and must trigger manager rollback. */
+    /* The HCI audio callback and bounded FD-10 control state are created only
+     * after the asynchronous profile-init event confirms a usable AG profile.
+     * Either failure is a real profile-init failure and drives manager rollback. */
     err = bt_hfp_audio_register_callback();
+    if (err == ESP_OK) {
+        err = bt_hfp_audio_control_init();
+    }
     if (err != ESP_OK) {
         if (bt_hfp_ag_lock() == ESP_OK) {
             bt_hfp_ag_set_fault_locked(err);
@@ -248,7 +251,7 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     }
     err = bt_hfp_ag_lock();
     if (err != ESP_OK) return err;
-    esp_err_t completion = g_bt_hfp_ag.completion_result;
+    completion = g_bt_hfp_ag.completion_result;
     return bt_hfp_ag_unlock(completion);
 }
 
@@ -348,7 +351,7 @@ void bt_hfp_ag_handle_profile_result(bt_hfp_ag_profile_result_t result)
     (void)bt_hfp_ag_unlock(ESP_OK);
     if (!signal) return;
 
-    esp_err_t completion = success
+    completion = success
         ? bt_duplex_set_hfp_profile_global_state(target)
         : ESP_FAIL;
     if (!success && target == BT_HFP_PROFILE_FAULTED) {
