@@ -87,7 +87,9 @@ esp_err_t bt_manager_hfp_get_configured_mode(bt_duplex_mode_t *mode_out);
 
 /* FD-16 manager adapter. These APIs serialize policy application through the
  * existing bt_ctx ownership lock and bind every event to the active peer and
- * generation. Expected duplicate transitions are harmless and emit nothing. */
+ * generation. For the first A2DP connection event, expected_generation is
+ * zero; every event for an existing session must carry its captured nonzero
+ * generation and is rejected if the session changed before handling. */
 void bt_manager_hfp_policy_runtime_reset(void);
 esp_err_t bt_manager_hfp_policy_refresh(void);
 esp_err_t bt_manager_hfp_policy_note_hfp_profile_transition(
@@ -101,9 +103,11 @@ esp_err_t bt_manager_hfp_policy_note_hfp_audio_transition(
     bt_hfp_audio_state_t old_state,
     bt_hfp_audio_state_t new_state);
 esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
+    uint32_t expected_generation,
     const char *peer_mac,
     bt_a2dp_profile_state_t state);
 esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
+    uint32_t expected_generation,
     const char *peer_mac,
     bt_a2dp_audio_state_t state);
 esp_err_t bt_manager_hfp_get_policy_snapshot(
