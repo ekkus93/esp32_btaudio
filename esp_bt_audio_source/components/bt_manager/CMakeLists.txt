@@ -31,6 +31,7 @@ idf_component_register(
         "bt_hfp_ag_events.c"
         "bt_hfp_connection.c"
         "bt_hfp_audio.c"
+        "bt_hfp_audio_control.c"
     INCLUDE_DIRS "include"
     # bt_stack_stub listed BEFORE bt: when CONFIG_APP_NO_BLOBS=y its
     # esp_bt.h wrapper (which #include_next-s the real one and patches the
