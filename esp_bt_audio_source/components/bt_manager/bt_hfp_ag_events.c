@@ -1,6 +1,7 @@
 #include "bt_hfp_ag_internal.h"
 #include "bt_hfp_audio.h"
 #include "bt_hfp_connection.h"
+#include "bt_duplex_policy.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +19,16 @@ static bool get_session(const char *peer_mac,
     return bt_duplex_get_snapshot(snapshot_out) == ESP_OK;
 }
 
+static void note_policy_result(esp_err_t err)
+{
+    if (err == ESP_OK || err == ESP_ERR_NOT_FOUND) return;
+    if (bt_hfp_ag_lock() == ESP_OK) {
+        g_bt_hfp_ag.snapshot.invalid_events++;
+        g_bt_hfp_ag.snapshot.last_error = err;
+        (void)bt_hfp_ag_unlock(ESP_OK);
+    }
+}
+
 void bt_hfp_ag_handle_connection_state(const char *peer_mac,
                                        bt_hfp_ag_connection_state_t state)
 {
@@ -28,7 +39,10 @@ void bt_hfp_ag_handle_connection_state(const char *peer_mac,
     }
 
     esp_err_t tracked = bt_hfp_connection_handle_event(peer_mac, state);
-    if (tracked == ESP_OK) return;
+    if (tracked == ESP_OK) {
+        note_policy_result(bt_manager_hfp_policy_refresh());
+        return;
+    }
     if (tracked != ESP_ERR_NOT_FOUND) {
         bt_hfp_ag_handle_invalid_event();
         return;
@@ -55,8 +69,14 @@ void bt_hfp_ag_handle_connection_state(const char *peer_mac,
         bt_hfp_ag_handle_invalid_event();
         return;
     }
-    (void)bt_duplex_set_hfp_profile_state(snapshot.session_generation,
-                                          peer_mac, mapped);
+    esp_err_t err = bt_duplex_set_hfp_profile_state(
+        snapshot.session_generation, peer_mac, mapped);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_policy_note_hfp_profile_transition(
+            snapshot.session_generation, peer_mac,
+            snapshot.hfp_profile_state, mapped);
+    }
+    note_policy_result(err);
 }
 
 void bt_hfp_ag_handle_audio_state(const char *peer_mac,
@@ -87,8 +107,14 @@ void bt_hfp_ag_handle_audio_state(const char *peer_mac,
         bt_hfp_ag_handle_invalid_event();
         return;
     }
-    (void)bt_duplex_set_hfp_audio_state(snapshot.session_generation,
-                                        peer_mac, mapped);
+    esp_err_t err = bt_duplex_set_hfp_audio_state(
+        snapshot.session_generation, peer_mac, mapped);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_policy_note_hfp_audio_transition(
+            snapshot.session_generation, peer_mac,
+            snapshot.hfp_audio_state, mapped);
+    }
+    note_policy_result(err);
 }
 
 void bt_hfp_ag_handle_codec_event(const char *peer_mac,
@@ -211,6 +237,7 @@ static void handle_production_audio_event(const char *peer,
             bt_hfp_ag_remember_peer_locked(peer);
             (void)bt_hfp_ag_unlock(ESP_OK);
         }
+        note_policy_result(bt_manager_hfp_policy_refresh());
         return;
     }
     if (tracked != ESP_ERR_NOT_FOUND) {
