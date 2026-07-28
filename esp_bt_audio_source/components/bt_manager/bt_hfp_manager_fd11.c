@@ -340,6 +340,11 @@ void bt_manager_hfp_runtime_reset(void)
     bt_manager_hfp_policy_runtime_reset();
 }
 
+bt_duplex_mode_t bt_manager_hfp_configured_mode_locked(void)
+{
+    return s_configured_mode;
+}
+
 esp_err_t bt_manager_hfp_get_configured_mode(bt_duplex_mode_t *mode_out)
 {
     if (mode_out == NULL) return ESP_ERR_INVALID_ARG;
