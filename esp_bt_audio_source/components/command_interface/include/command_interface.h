@@ -4,19 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/**
- * Command Interface - Handles serial command protocol
- */
-
-/** Wire-protocol status token constants.
- *  Use these instead of bare string literals to prevent silent typos that
- *  would produce malformed responses the client cannot parse. */
 #define CMD_STATUS_OK    "OK"
 #define CMD_STATUS_ERR   "ERR"
 #define CMD_STATUS_INFO  "INFO"
 #define CMD_STATUS_EVENT "EVENT"
 
-// Status codes
 typedef enum {
     CMD_SUCCESS = 0,
     CMD_ERROR_INIT_FAILED,
@@ -26,15 +18,8 @@ typedef enum {
     CMD_ERROR_TOO_MANY_PARAMS
 } cmd_status_t;
 
-/**
- * Convert cmd_status_t to human-readable string
- * 
- * @param status Status code to convert
- * @return String representation (e.g., "CMD_SUCCESS", "CMD_ERROR_INIT_FAILED")
- */
 const char* cmd_status_to_name(cmd_status_t status);
 
-// Command types
 typedef enum {
     CMD_TYPE_SCAN = 0,
     CMD_TYPE_CONNECT,
@@ -65,7 +50,6 @@ typedef enum {
     CMD_TYPE_UNPAIR_ALL,
     CMD_TYPE_PARTS,
     CMD_TYPE_HELP,
-    // Add new command types here
     CMD_TYPE_AUDIO_AUTOSTART,
     CMD_TYPE_AUDIO_STATUS,
     CMD_TYPE_SPANLOG,
@@ -74,96 +58,32 @@ typedef enum {
     CMD_TYPE_I2S_PROBE,
     CMD_TYPE_I2S_RXTEST,
     CMD_TYPE_I2S_CLKGEN,
+    CMD_TYPE_HFP,
     CMD_TYPE_UNKNOWN
 } cmd_type_t;
 
-// Maximum parameter count and length
 #define CMD_MAX_PARAMS 5
-/* Increased from 32 to 64: Bluetooth device names can be up to 64+ bytes.
- * CONNECT_NAME with names longer than the old limit was silently truncated,
- * causing connection failures for long device names. */
 #define CMD_MAX_PARAM_LEN 64
 
-// Command context
 typedef struct {
     cmd_type_t type;
     int param_count;
     char params[CMD_MAX_PARAMS][CMD_MAX_PARAM_LEN];
 } cmd_context_t;
 
-/**
- * Initialize command interface
- *
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_init(void);
-
-/**
- * Deinitialize command interface
- *
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_deinit(void);
-
-/**
- * Parse a command string
- *
- * @param cmd_str Command string to parse
- * @param ctx Pointer to command context (result)
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_parse(const char* cmd_str, cmd_context_t* ctx);
-
-/**
- * Execute a command
- *
- * @param ctx Command context
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_execute(const cmd_context_t* ctx);
-
-/**
- * Send a response
- *
- * @param status Status (OK, ERROR, INFO)
- * @param command Command name
- * @param result Result string
- * @param data Additional data (or NULL)
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_send_response(const char* status, const char* command,
-                              const char* result, const char* data);
-
-/**
- * Like cmd_send_response(), but broadcasts to EVERY command port instead of the
- * one the current command arrived on. Use for asynchronous results that are
- * emitted after the initiating command's cmd_process() cycle has ended (e.g.
- * scan INFO|SCAN|RESULT lines), which would otherwise misroute to the primary
- * UART regardless of which port requested them.
- */
+                               const char* result, const char* data);
 cmd_status_t cmd_send_response_all(const char* status, const char* command,
                                    const char* result, const char* data);
-
-/**
- * Process incoming serial data
- * This should be called regularly to handle commands
- *
- * @return CMD_SUCCESS if successful
- */
 cmd_status_t cmd_process(void);
-
-/**
- * Convenience helper to emit pairing-related events to the serial interface.
- * This wraps the standard response format using status=EVENT and command=PAIR.
- *
- * @param subtype Event subtype (e.g. "PIN_REQUEST", "CONFIRM", "SUCCESS", "FAILED")
- * @param data Optional data string (MAC, PIN, or comma-separated values)
- * @return CMD_SUCCESS if the event was emitted
- */
 cmd_status_t cmd_send_event_pair(const char* subtype, const char* data);
 
 #if defined(UNIT_TEST)
 void cmd_test_reset_cmd_process_state(void);
 #endif
 
-#endif // COMMAND_INTERFACE_H
+#endif
