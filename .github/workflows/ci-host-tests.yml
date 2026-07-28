@@ -51,6 +51,9 @@ jobs:
       - name: Run HFP Audio Gateway sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_hfp_ag_test.sh
 
+      - name: Run manager HFP profile rollback sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_manager_hfp_profiles_test.sh
+
       - name: Run HFP PCM ring sanitizer tests
         run: bash esp_bt_audio_source/tools/run_hfp_pcm_ring_test.sh
 
@@ -66,7 +69,7 @@ jobs:
         run: |
           python3 -m pip install flake8
           echo "Running flake8 on tools and esp_bt_audio_source/tools"
-          python3 -m flake8 tools esp_bt_audio_source/tools || true
+          python3 -m flake8 tools esp_bt_audio_source/tools
 
       - name: Run Python unit tests
         run: |
@@ -89,13 +92,12 @@ jobs:
         run: |
           if [ -f test-results.xml ]; then
             echo "JUnit XML produced"
-          else
-            if [ ! -f ctest.log ]; then
-              echo "No ctest.log found; creating placeholder" > ctest.log
-            fi
+          elif [ ! -f ctest.log ]; then
+            echo "No ctest.log found; creating placeholder" > ctest.log
           fi
 
       - name: Upload test results (JUnit or ctest.log)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: host-test-results
