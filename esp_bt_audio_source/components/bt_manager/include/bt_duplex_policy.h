@@ -81,6 +81,11 @@ const char *bt_duplex_policy_reason_to_string(bt_duplex_policy_reason_t value);
 const char *bt_duplex_downlink_owner_to_string(
     bt_duplex_downlink_owner_t value);
 
+/* Existing manager dependency used before an A2DP event creates the first
+ * authoritative duplex session. Declared here so the adapter's public header
+ * is self-contained; bt_hfp_manager.h exposes the same signature. */
+esp_err_t bt_manager_hfp_get_configured_mode(bt_duplex_mode_t *mode_out);
+
 /* FD-16 manager adapter. These APIs serialize policy application through the
  * existing bt_ctx ownership lock and bind every event to the active peer and
  * generation. Expected duplicate transitions are harmless and emit nothing. */
