@@ -5,6 +5,7 @@
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
 **Latest validated code head:** `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`
+**FD-07 documentation closeout commit:** `985fdbd3990d50234fdb3ba3ed3aa96b340b04b4`
 
 ## FD-00 — Branch and scope baseline
 
