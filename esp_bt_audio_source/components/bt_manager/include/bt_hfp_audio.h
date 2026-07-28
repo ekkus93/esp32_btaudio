@@ -177,6 +177,7 @@ void bt_hfp_audio_test_handle_incoming(uint16_t sync_conn_handle,
                                        size_t data_len,
                                        size_t buffer_capacity,
                                        bool bad_frame);
+void bt_hfp_audio_test_record_callback_duration(uint32_t duration_us);
 
 esp_err_t bt_hfp_audio_control_test_set_platform_ops(
     const bt_hfp_audio_control_platform_ops_t *ops);
