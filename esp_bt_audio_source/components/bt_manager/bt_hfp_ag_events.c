@@ -197,6 +197,31 @@ static void bind_audio_callback_state(const char *peer,
     }
 }
 
+static void handle_production_audio_event(const char *peer,
+                                          const esp_hf_cb_param_t *param)
+{
+    bt_hfp_ag_audio_state_t state =
+        (bt_hfp_ag_audio_state_t)param->audio_stat.state;
+    esp_err_t tracked = bt_hfp_audio_control_handle_event(
+        peer, state, param->audio_stat.sync_conn_handle,
+        param->audio_stat.preferred_frame_size);
+    if (tracked == ESP_OK) {
+        if (bt_hfp_ag_lock() == ESP_OK) {
+            g_bt_hfp_ag.snapshot.audio_events++;
+            bt_hfp_ag_remember_peer_locked(peer);
+            (void)bt_hfp_ag_unlock(ESP_OK);
+        }
+        return;
+    }
+    if (tracked != ESP_ERR_NOT_FOUND) {
+        bt_hfp_ag_handle_invalid_event();
+        return;
+    }
+
+    bt_hfp_ag_handle_audio_state(peer, state);
+    bind_audio_callback_state(peer, param);
+}
+
 static void production_event_callback(esp_hf_cb_event_t event,
                                       esp_hf_cb_param_t *param)
 {
@@ -240,9 +265,7 @@ static void production_event_callback(esp_hf_cb_event_t event,
         break;
     case ESP_HF_AUDIO_STATE_EVT:
         bda_to_string(param->audio_stat.remote_addr, peer);
-        bt_hfp_ag_handle_audio_state(
-            peer, (bt_hfp_ag_audio_state_t)param->audio_stat.state);
-        bind_audio_callback_state(peer, param);
+        handle_production_audio_event(peer, param);
         break;
     case ESP_HF_BCS_RESPONSE_EVT:
         bda_to_string(param->bcs_rep.remote_addr, peer);
