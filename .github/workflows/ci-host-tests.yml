@@ -63,6 +63,9 @@ jobs:
       - name: Run HFP voice conversion sanitizer tests
         run: bash esp_bt_audio_source/tools/run_hfp_voice_convert_test.sh
 
+      - name: Run HFP I2S output sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_hfp_i2s_output_test.sh
+
       - name: Install Python test deps
         run: |
           python3 -m pip install --upgrade pip
