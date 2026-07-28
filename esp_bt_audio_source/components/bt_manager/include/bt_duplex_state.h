@@ -128,6 +128,14 @@ esp_err_t bt_duplex_audio_session_begin(const char *peer_mac,
 
 esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out);
 
+/* Return process-lifetime failures from bt_duplex_set_health(). The counter is
+ * reset-relative only when a higher-level statistics baseline is applied; the
+ * authoritative state object itself never silently clears it during a session
+ * rotation. */
+esp_err_t bt_duplex_get_health_report_diagnostics(
+    uint64_t *failure_count_out,
+    esp_err_t *last_error_out);
+
 /* Global HFP profile lifecycle transition used before a peer session exists
  * and after the HFP profile has been fully deinitialized. */
 esp_err_t bt_duplex_set_hfp_profile_global_state(
@@ -186,6 +194,7 @@ const char *bt_audio_health_to_string(bt_audio_health_t value);
 
 #ifdef UNIT_TEST
 void bt_duplex_test_reset(void);
+void bt_duplex_test_set_health_report_result(esp_err_t result);
 #endif
 
 #ifdef __cplusplus
