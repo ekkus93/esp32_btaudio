@@ -3,17 +3,16 @@
 #include "uart_audio.h"
 
 #define TAG "CMD_IF"
+#define CMD_RESPONSE_BUF_SIZE 512U
 
 __attribute__((weak)) void cmd_test_capture_response(const char *line);
 
-static uint32_t s_event_sequence = 0;
+static uint32_t s_event_sequence;
 
 #ifndef CMD_BUF_SIZE
 #define CMD_BUF_SIZE 256
 #endif
 
-/* Command ports polled by cmd_process(). Index 0 is always the primary
- * (console/USB) UART; the optional secondary UART is purely additive. */
 static const int s_cmd_ports[] = {
     CMD_UART_NUM,
 #ifdef CMD_UART_SECONDARY
@@ -22,12 +21,8 @@ static const int s_cmd_ports[] = {
 };
 #define CMD_PORT_COUNT (sizeof(s_cmd_ports) / sizeof(s_cmd_ports[0]))
 
-/* per-port line accumulators — bytes from different ports never mix */
 static char s_cmd_line_buf[CMD_PORT_COUNT][CMD_BUF_SIZE];
 static size_t s_cmd_line_len[CMD_PORT_COUNT];
-
-/* Port the currently-executing command arrived on; responses go here.
- * Async callers (events) never depend on it — events broadcast. */
 static int s_reply_uart = CMD_UART_NUM;
 
 #if defined(UNIT_TEST)
@@ -42,7 +37,7 @@ void cmd_test_reset_cmd_process_state(void)
 #if defined(UNIT_TEST) || defined(ESP_PLATFORM)
 void cmd_reset_event_sequence(void)
 {
-    s_event_sequence = 0;
+    s_event_sequence = 0U;
 }
 #endif
 
@@ -55,9 +50,6 @@ cmd_status_t cmd_init(void)
     bt_manager_test_reset_btstate_mock();
 #endif
 #if defined(ESP_PLATFORM) && !defined(UNIT_TEST) && defined(CMD_UART_SECONDARY)
-    /* Secondary command UART (Kconfig). Configured here — not main.c —
-     * because uart_param_config/uart_set_pin belong to the cmd layer
-     * (tools/ci_check_main_layering.sh enforces this for main.c). */
     const uart_config_t uart2_cfg = {
         .baud_rate = CONFIG_CMD_UART2_BAUD,
         .data_bits = UART_DATA_8_BITS,
@@ -73,13 +65,15 @@ cmd_status_t cmd_init(void)
                              UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     }
     if (u2err == ESP_OK) {
-        u2err = uart_driver_install(CMD_UART_SECONDARY, 1024, 1024, 0, NULL, 0);
+        u2err = uart_driver_install(CMD_UART_SECONDARY, 1024, 1024,
+                                    0, NULL, 0);
     }
     if (u2err != ESP_OK) {
-        /* degrade gracefully: primary/USB command port is unaffected */
-        ESP_LOGW(TAG, "secondary command UART init failed: %s", esp_err_to_name(u2err));
+        ESP_LOGW(TAG, "secondary command UART init failed: %s",
+                 esp_err_to_name(u2err));
     } else {
-        ESP_LOGI(TAG, "secondary command UART ready: uart=%d tx=%d rx=%d baud=%d",
+        ESP_LOGI(TAG,
+                 "secondary command UART ready: uart=%d tx=%d rx=%d baud=%d",
                  CMD_UART_SECONDARY, CONFIG_CMD_UART2_TX_PIN,
                  CONFIG_CMD_UART2_RX_PIN, CONFIG_CMD_UART2_BAUD);
     }
@@ -97,87 +91,117 @@ static void cmd_write_port(int port, const char *buf, size_t len)
 #if defined(UNIT_TEST) || !defined(ESP_PLATFORM)
     uart_write_bytes(port, buf, len);
 #else
-    if (uart_is_driver_installed(port))
-    {
+    if (uart_is_driver_installed(port)) {
         uart_write_bytes(port, buf, len);
     }
 #endif
 }
 
-cmd_status_t cmd_send_response(const char *status, const char *command, const char *result, const char *data)
+static cmd_status_t format_response(char *buf, size_t buf_size,
+                                    const char *status,
+                                    const char *command,
+                                    const char *result,
+                                    const char *data,
+                                    size_t *length_out)
 {
-    char buf[512];
-    const char *d = data ? data : "";
-    int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n", status ? status : "", command ? command : "", result ? result : "", d);
+    if (buf == NULL || buf_size == 0U || length_out == NULL) {
+        return CMD_ERROR_INVALID_PARAM;
+    }
 
-    /* EVENT lines are asynchronous notifications — broadcast to every
-     * command port. Direct responses go only to the port the command
-     * came from (USB behavior unchanged when the command came via USB). */
-    if (status != NULL && strcmp(status, "EVENT") == 0)
-    {
-        for (size_t i = 0; i < CMD_PORT_COUNT; i++)
-        {
-            cmd_write_port(s_cmd_ports[i], buf, (size_t)len);
+    const char *safe_status = status != NULL ? status : "";
+    const char *safe_command = command != NULL ? command : "";
+    const char *safe_result = result != NULL ? result : "";
+    const char *safe_data = data != NULL ? data : "";
+    int written = snprintf(buf, buf_size, "%s|%s|%s|%s\r\n",
+                           safe_status, safe_command, safe_result, safe_data);
+    if (written < 0) return CMD_ERROR_UNKNOWN;
+    if ((size_t)written >= buf_size) {
+        written = snprintf(buf, buf_size,
+                           "ERR|%s|RESPONSE_TOO_LONG|\r\n", safe_command);
+        if (written < 0 || (size_t)written >= buf_size) {
+            return CMD_ERROR_TOO_MANY_PARAMS;
         }
+        *length_out = (size_t)written;
+        return CMD_ERROR_TOO_MANY_PARAMS;
     }
-    else
-    {
-        cmd_write_port(s_reply_uart, buf, (size_t)len);
-    }
-    if (cmd_test_capture_response)
-    {
-        cmd_test_capture_response(buf);
-    }
+
+    *length_out = (size_t)written;
     return CMD_SUCCESS;
 }
 
-cmd_status_t cmd_send_response_all(const char *status, const char *command, const char *result, const char *data)
+static void capture_response(const char *buf)
 {
-    /* Broadcast to every command port. Used for ASYNC results (e.g. scan
-     * INFO|SCAN|RESULT / OK|SCAN|DONE) that arrive long after the initiating
-     * command's cmd_process() cycle ended — by then s_reply_uart has reset to
-     * the primary, so a plain cmd_send_response() would misroute them to USB
-     * even when the scan was requested over the secondary (bt_link) UART. */
-    char buf[512];
-    const char *d = data ? data : "";
-    int len = snprintf(buf, sizeof(buf), "%s|%s|%s|%s\r\n",
-                       status ? status : "", command ? command : "",
-                       result ? result : "", d);
-    for (size_t i = 0; i < CMD_PORT_COUNT; i++)
-    {
-        cmd_write_port(s_cmd_ports[i], buf, (size_t)len);
+    if (cmd_test_capture_response != NULL) cmd_test_capture_response(buf);
+}
+
+cmd_status_t cmd_send_response(const char *status, const char *command,
+                               const char *result, const char *data)
+{
+    char buf[CMD_RESPONSE_BUF_SIZE];
+    size_t len = 0U;
+    cmd_status_t format_status = format_response(
+        buf, sizeof(buf), status, command, result, data, &len);
+    if (format_status != CMD_SUCCESS &&
+        format_status != CMD_ERROR_TOO_MANY_PARAMS) {
+        return format_status;
     }
-    if (cmd_test_capture_response)
-    {
-        cmd_test_capture_response(buf);
+
+    if (status != NULL && strcmp(status, CMD_STATUS_EVENT) == 0) {
+        for (size_t index = 0U; index < CMD_PORT_COUNT; ++index) {
+            cmd_write_port(s_cmd_ports[index], buf, len);
+        }
+    } else {
+        cmd_write_port(s_reply_uart, buf, len);
     }
-    return CMD_SUCCESS;
+    capture_response(buf);
+    return format_status;
+}
+
+cmd_status_t cmd_send_response_all(const char *status, const char *command,
+                                   const char *result, const char *data)
+{
+    char buf[CMD_RESPONSE_BUF_SIZE];
+    size_t len = 0U;
+    cmd_status_t format_status = format_response(
+        buf, sizeof(buf), status, command, result, data, &len);
+    if (format_status != CMD_SUCCESS &&
+        format_status != CMD_ERROR_TOO_MANY_PARAMS) {
+        return format_status;
+    }
+
+    for (size_t index = 0U; index < CMD_PORT_COUNT; ++index) {
+        cmd_write_port(s_cmd_ports[index], buf, len);
+    }
+    capture_response(buf);
+    return format_status;
 }
 
 cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
 {
     uint32_t seq = ++s_event_sequence;
     uint64_t ts_ms = cmd_get_timestamp_ms();
-
-    const char *d = data ? data : "";
+    const char *safe_data = data != NULL ? data : "";
     char payload[256];
-    if (d[0] != '\0')
-    {
-        snprintf(payload, sizeof(payload), "%s,SEQ=%lu,TS=%llu", d, (unsigned long)seq, (unsigned long long)ts_ms);
-    }
-    else
-    {
-        snprintf(payload, sizeof(payload), "SEQ=%lu,TS=%llu", (unsigned long)seq, (unsigned long long)ts_ms);
+    if (safe_data[0] != '\0') {
+        snprintf(payload, sizeof(payload), "%s,SEQ=%lu,TS=%llu",
+                 safe_data, (unsigned long)seq,
+                 (unsigned long long)ts_ms);
+    } else {
+        snprintf(payload, sizeof(payload), "SEQ=%lu,TS=%llu",
+                 (unsigned long)seq, (unsigned long long)ts_ms);
     }
 
-    char buf[512];
-    int chars_written = snprintf(buf, sizeof(buf), "EVENT|PAIR|%s|%s", subtype ? subtype : "", payload);
-    cmd_send_response("EVENT", "PAIR", subtype ? subtype : "", payload);
+    char diagnostic[512];
+    int chars_written = snprintf(diagnostic, sizeof(diagnostic),
+                                 "EVENT|PAIR|%s|%s",
+                                 subtype != NULL ? subtype : "", payload);
+    (void)cmd_send_response(CMD_STATUS_EVENT, "PAIR",
+                            subtype != NULL ? subtype : "", payload);
 
 #ifdef ESP_PLATFORM
-    ESP_LOGI(TAG, "DIAG-EVENT: %s", buf);  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "DIAG-EVENT: %s", diagnostic);
 #else
-    printf("DIAG-EVENT: %s\n", buf);
+    printf("DIAG-EVENT: %s\n", diagnostic);
 #endif
 
 #if defined(__GNUC__)
@@ -185,380 +209,232 @@ cmd_status_t cmd_send_event_pair(const char *subtype, const char *data)
 #else
     extern void test_push_event(const char *event);
 #endif
-    if (chars_written > 0 && test_push_event)
-    {
+    if (chars_written > 0 && test_push_event != NULL) {
         printf("HOOK-DEBUG: test_push_event symbol present, forwarding event\n");
-        test_push_event(buf);
-    }
-    else
-    {
+        test_push_event(diagnostic);
+    } else {
         printf("HOOK-DEBUG: test_push_event not present or n<=0\n");
     }
-
     return CMD_SUCCESS;
+}
+
+static cmd_type_t parse_command_type(const char *token)
+{
+    if (strcasecmp(token, "SCAN") == 0) return CMD_TYPE_SCAN;
+    if (strcasecmp(token, "AUDIO_STATUS") == 0) return CMD_TYPE_AUDIO_STATUS;
+    if (strcasecmp(token, "CONNECT") == 0) return CMD_TYPE_CONNECT;
+    if (strcasecmp(token, "CONNECT_NAME") == 0) return CMD_TYPE_CONNECT_NAME;
+    if (strcasecmp(token, "DISCONNECT") == 0) return CMD_TYPE_DISCONNECT;
+    if (strcasecmp(token, "PAIRED") == 0) return CMD_TYPE_PAIRED;
+    if (strcasecmp(token, "SET_NAME") == 0) return CMD_TYPE_SET_NAME;
+    if (strcasecmp(token, "START") == 0) return CMD_TYPE_START;
+    if (strcasecmp(token, "STOP") == 0) return CMD_TYPE_STOP;
+    if (strcasecmp(token, "VOLUME") == 0) return CMD_TYPE_VOLUME;
+    if (strcasecmp(token, "MUTE") == 0) return CMD_TYPE_MUTE;
+    if (strcasecmp(token, "UNMUTE") == 0) return CMD_TYPE_UNMUTE;
+    if (strcasecmp(token, "STATUS") == 0) return CMD_TYPE_STATUS;
+    if (strcasecmp(token, "VERSION") == 0) return CMD_TYPE_VERSION;
+    if (strcasecmp(token, "RESET") == 0) return CMD_TYPE_RESET;
+    if (strcasecmp(token, "DEBUG") == 0) return CMD_TYPE_DEBUG;
+    if (strcasecmp(token, "SAMPLE_RATE") == 0) return CMD_TYPE_SAMPLE_RATE;
+    if (strcasecmp(token, "MEM") == 0) return CMD_TYPE_MEM;
+    if (strcasecmp(token, "SYNTH") == 0) return CMD_TYPE_SYNTH;
+    if (strcasecmp(token, "I2S_CONFIG") == 0) return CMD_TYPE_I2S_CONFIG;
+    if (strcasecmp(token, "I2S_PROBE") == 0) return CMD_TYPE_I2S_PROBE;
+    if (strcasecmp(token, "I2S_RXTEST") == 0) return CMD_TYPE_I2S_RXTEST;
+    if (strcasecmp(token, "I2S_CLKGEN") == 0) return CMD_TYPE_I2S_CLKGEN;
+    if (strcasecmp(token, "BEEP") == 0) return CMD_TYPE_BEEP;
+    if (strcasecmp(token, "PAIR") == 0) return CMD_TYPE_PAIR;
+    if (strcasecmp(token, "CONFIRM_PIN") == 0) return CMD_TYPE_CONFIRM_PIN;
+    if (strcasecmp(token, "ENTER_PIN") == 0) return CMD_TYPE_ENTER_PIN;
+    if (strcasecmp(token, "SET_DEFAULT_PIN") == 0) return CMD_TYPE_SET_DEFAULT_PIN;
+    if (strcasecmp(token, "UNPAIR") == 0) return CMD_TYPE_UNPAIR;
+    if (strcasecmp(token, "UNPAIR_ALL") == 0) return CMD_TYPE_UNPAIR_ALL;
+    if (strcasecmp(token, "PARTS") == 0) return CMD_TYPE_PARTS;
+    if (strcasecmp(token, "AUDIO_AUTOSTART") == 0) return CMD_TYPE_AUDIO_AUTOSTART;
+    if (strcasecmp(token, "LAST_MAC") == 0) return CMD_TYPE_LAST_MAC;
+    if (strcasecmp(token, "DIAG") == 0) return CMD_TYPE_DIAG;
+    if (strcasecmp(token, "UARTAUDIO") == 0) return CMD_TYPE_UARTAUDIO;
+    if (strcasecmp(token, "SPANLOG") == 0) return CMD_TYPE_SPANLOG;
+    if (strcasecmp(token, "HELP") == 0) return CMD_TYPE_HELP;
+    if (strcasecmp(token, "HFP") == 0) return CMD_TYPE_HFP;
+    return CMD_TYPE_UNKNOWN;
 }
 
 cmd_status_t cmd_parse(const char *cmd_str, cmd_context_t *ctx)
 {
-    if (!cmd_str || !ctx) {
-        return CMD_ERROR_INVALID_PARAM;
-    }
-
+    if (cmd_str == NULL || ctx == NULL) return CMD_ERROR_INVALID_PARAM;
     memset(ctx, 0, sizeof(*ctx));
 
     char buf[512];
     cmd_safe_copy(buf, sizeof(buf), cmd_str);
-    char *s = buf;
-    while (*s && isspace((unsigned char)*s)) {
-        ++s;
-    }
-    /* Guard: if the entire string was whitespace, strlen(s) == 0 and
-     * computing s - 1 would be UB.  Bail out early. */
-    if (*s == '\0') {
-        return CMD_ERROR_UNKNOWN;
-    }
-    char *end = s + strlen(s) - 1;
-    while (end >= s && isspace((unsigned char)*end))
-    {
+    char *start = buf;
+    while (*start != '\0' && isspace((unsigned char)*start)) ++start;
+    if (*start == '\0') return CMD_ERROR_UNKNOWN;
+
+    char *end = start + strlen(start) - 1;
+    while (end >= start && isspace((unsigned char)*end)) {
         *end = '\0';
         --end;
     }
-    if (*s == '\0') {
-        return CMD_ERROR_UNKNOWN;
-    }
+    if (*start == '\0') return CMD_ERROR_UNKNOWN;
 
     char *save = NULL;
-    char *token = strtok_r(s, " \t", &save);
-    if (!token) {
-        return CMD_ERROR_UNKNOWN;
-    }
+    char *token = strtok_r(start, " \t", &save);
+    if (token == NULL) return CMD_ERROR_UNKNOWN;
+    ctx->type = parse_command_type(token);
 
-    if (strcasecmp(token, "SCAN") == 0) {
-        ctx->type = CMD_TYPE_SCAN;
-    }
-    else if (strcasecmp(token, "AUDIO_STATUS") == 0) {
-        ctx->type = CMD_TYPE_AUDIO_STATUS;
-    }
-    else if (strcasecmp(token, "CONNECT") == 0) {
-        ctx->type = CMD_TYPE_CONNECT;
-    }
-    else if (strcasecmp(token, "CONNECT_NAME") == 0) {
-        ctx->type = CMD_TYPE_CONNECT_NAME;
-    }
-    else if (strcasecmp(token, "DISCONNECT") == 0) {
-        ctx->type = CMD_TYPE_DISCONNECT;
-    }
-    else if (strcasecmp(token, "PAIRED") == 0) {
-        ctx->type = CMD_TYPE_PAIRED;
-    }
-    else if (strcasecmp(token, "SET_NAME") == 0) {
-        ctx->type = CMD_TYPE_SET_NAME;
-    }
-    else if (strcasecmp(token, "START") == 0) {
-        ctx->type = CMD_TYPE_START;
-    }
-    else if (strcasecmp(token, "STOP") == 0) {
-        ctx->type = CMD_TYPE_STOP;
-    }
-    else if (strcasecmp(token, "VOLUME") == 0) {
-        ctx->type = CMD_TYPE_VOLUME;
-    }
-    else if (strcasecmp(token, "MUTE") == 0) {
-        ctx->type = CMD_TYPE_MUTE;
-    }
-    else if (strcasecmp(token, "UNMUTE") == 0) {
-        ctx->type = CMD_TYPE_UNMUTE;
-    }
-    else if (strcasecmp(token, "STATUS") == 0) {
-        ctx->type = CMD_TYPE_STATUS;
-    }
-    else if (strcasecmp(token, "VERSION") == 0) {
-        ctx->type = CMD_TYPE_VERSION;
-    }
-    else if (strcasecmp(token, "RESET") == 0) {
-        ctx->type = CMD_TYPE_RESET;
-    }
-    else if (strcasecmp(token, "DEBUG") == 0) {
-        ctx->type = CMD_TYPE_DEBUG;
-    }
-    else if (strcasecmp(token, "SAMPLE_RATE") == 0) {
-        ctx->type = CMD_TYPE_SAMPLE_RATE;
-    }
-    else if (strcasecmp(token, "MEM") == 0) {
-        ctx->type = CMD_TYPE_MEM;
-    }
-    else if (strcasecmp(token, "SYNTH") == 0) {
-        ctx->type = CMD_TYPE_SYNTH;
-    }
-    else if (strcasecmp(token, "I2S_CONFIG") == 0) {
-        ctx->type = CMD_TYPE_I2S_CONFIG;
-    }
-    else if (strcasecmp(token, "I2S_PROBE") == 0) {
-        ctx->type = CMD_TYPE_I2S_PROBE;
-    }
-    else if (strcasecmp(token, "I2S_RXTEST") == 0) {
-        ctx->type = CMD_TYPE_I2S_RXTEST;
-    }
-    else if (strcasecmp(token, "I2S_CLKGEN") == 0) {
-        ctx->type = CMD_TYPE_I2S_CLKGEN;
-    }
-    else if (strcasecmp(token, "BEEP") == 0) {
-        ctx->type = CMD_TYPE_BEEP;
-    }
-    else if (strcasecmp(token, "PAIR") == 0) {
-        ctx->type = CMD_TYPE_PAIR;
-    }
-    else if (strcasecmp(token, "CONFIRM_PIN") == 0) {
-        ctx->type = CMD_TYPE_CONFIRM_PIN;
-    }
-    else if (strcasecmp(token, "ENTER_PIN") == 0) {
-        ctx->type = CMD_TYPE_ENTER_PIN;
-    }
-    else if (strcasecmp(token, "SET_DEFAULT_PIN") == 0) {
-        ctx->type = CMD_TYPE_SET_DEFAULT_PIN;
-    }
-    else if (strcasecmp(token, "UNPAIR") == 0) {
-        ctx->type = CMD_TYPE_UNPAIR;
-    }
-    else if (strcasecmp(token, "UNPAIR_ALL") == 0) {
-        ctx->type = CMD_TYPE_UNPAIR_ALL;
-    }
-    else if (strcasecmp(token, "PARTS") == 0) {
-        ctx->type = CMD_TYPE_PARTS;
-    }
-    else if (strcasecmp(token, "AUDIO_AUTOSTART") == 0) {
-        ctx->type = CMD_TYPE_AUDIO_AUTOSTART;
-    }
-    else if (strcasecmp(token, "LAST_MAC") == 0) {
-        ctx->type = CMD_TYPE_LAST_MAC;
-    }
-    else if (strcasecmp(token, "DIAG") == 0) {
-        ctx->type = CMD_TYPE_DIAG;
-    }
-    else if (strcasecmp(token, "UARTAUDIO") == 0) {
-        ctx->type = CMD_TYPE_UARTAUDIO;
-    }
-    else if (strcasecmp(token, "SPANLOG") == 0) {
-        ctx->type = CMD_TYPE_SPANLOG;
-    }
-    else if (strcasecmp(token, "HELP") == 0) {
-        ctx->type = CMD_TYPE_HELP;
-    }
-    else {
-        ctx->type = CMD_TYPE_UNKNOWN;
-    }
-
-    if (ctx->type == CMD_TYPE_CONNECT_NAME)
-    {
+    if (ctx->type == CMD_TYPE_CONNECT_NAME) {
         char *rest = save;
-        while (rest && *rest && isspace((unsigned char)*rest)) {
+        while (rest != NULL && *rest != '\0' &&
+               isspace((unsigned char)*rest)) {
             ++rest;
         }
-        if (rest && *rest)
-        {
+        if (rest != NULL && *rest != '\0') {
             cmd_safe_copy(ctx->params[0], CMD_MAX_PARAM_LEN, rest);
             ctx->param_count = 1;
-        }
-        else
-        {
-            ctx->param_count = 0;
         }
         return CMD_SUCCESS;
     }
 
-    int idx = 0;
-    while ((token = strtok_r(NULL, " \t", &save)) != NULL && idx < CMD_MAX_PARAMS)
-    {
-        cmd_safe_copy(ctx->params[idx], CMD_MAX_PARAM_LEN, token);
-        ++idx;
+    int index = 0;
+    while ((token = strtok_r(NULL, " \t", &save)) != NULL &&
+           index < CMD_MAX_PARAMS) {
+        cmd_safe_copy(ctx->params[index], CMD_MAX_PARAM_LEN, token);
+        ++index;
     }
-    ctx->param_count = idx;
-
-    return (ctx->type == CMD_TYPE_UNKNOWN) ? CMD_ERROR_UNKNOWN : CMD_SUCCESS;
+    ctx->param_count = index;
+    return ctx->type == CMD_TYPE_UNKNOWN
+        ? CMD_ERROR_UNKNOWN : CMD_SUCCESS;
 }
 
-/* Read pending bytes from one port and execute any complete lines.
- * pi indexes s_cmd_ports and the per-port line accumulators. */
-static void cmd_process_port(size_t pi)
+static void cmd_process_port(size_t port_index)
 {
-    const int read_uart = s_cmd_ports[pi];
-    char *line_buf = s_cmd_line_buf[pi];
+    const int read_uart = s_cmd_ports[port_index];
+    char *line_buf = s_cmd_line_buf[port_index];
     uint8_t read_buf[CMD_BUF_SIZE];
 
 #if !defined(UNIT_TEST) && defined(ESP_PLATFORM)
-    if (!uart_is_driver_installed(read_uart))
-    {
-        return;  /* port not ready (e.g. secondary UART disabled) */
-    }
+    if (!uart_is_driver_installed(read_uart)) return;
 #endif
 
-    int bytes_read = uart_read_bytes(read_uart, read_buf, sizeof(read_buf) - 1, 0);
-    if (bytes_read <= 0)
-    {
-        return;
-    }
+    int bytes_read = uart_read_bytes(read_uart, read_buf,
+                                     sizeof(read_buf) - 1U, 0);
+    if (bytes_read <= 0) return;
 
     size_t to_copy = (size_t)bytes_read;
-    if (s_cmd_line_len[pi] + to_copy >= CMD_BUF_SIZE)
-    {
+    if (s_cmd_line_len[port_index] + to_copy >= CMD_BUF_SIZE) {
 #ifdef ESP_PLATFORM
-        ESP_LOGW(TAG, "cmd_process: line buffer overflow on uart %d, resetting", read_uart);  // NOLINT(bugprone-branch-clone)
+        ESP_LOGW(TAG,
+                 "cmd_process: line buffer overflow on uart %d, resetting",
+                 read_uart);
 #endif
-        s_cmd_line_len[pi] = 0;
-        to_copy = CMD_BUF_SIZE - 1;
+        s_cmd_line_len[port_index] = 0U;
+        to_copy = CMD_BUF_SIZE - 1U;
     }
-    memcpy(line_buf + s_cmd_line_len[pi], read_buf, to_copy);
-    s_cmd_line_len[pi] += to_copy;
-    line_buf[s_cmd_line_len[pi]] = '\0';
-
-    /* responses for lines found below belong to this port */
+    memcpy(line_buf + s_cmd_line_len[port_index], read_buf, to_copy);
+    s_cmd_line_len[port_index] += to_copy;
+    line_buf[s_cmd_line_len[port_index]] = '\0';
     s_reply_uart = read_uart;
 
     char *start = line_buf;
-    while (true)
-    {
-        char *newline_pos = (char *)memchr(start, '\n', (size_t)(line_buf + s_cmd_line_len[pi] - start));
-        char *cr_pos = (char *)memchr(start, '\r', (size_t)(line_buf + s_cmd_line_len[pi] - start));
-        char *term = newline_pos ? newline_pos : cr_pos;
-        if (!term) {
-            break;
-        }
+    while (true) {
+        size_t available =
+            (size_t)(line_buf + s_cmd_line_len[port_index] - start);
+        char *newline_pos = (char *)memchr(start, '\n', available);
+        char *cr_pos = (char *)memchr(start, '\r', available);
+        char *term = newline_pos != NULL ? newline_pos : cr_pos;
+        if (term == NULL) break;
 
         *term = '\0';
         char *line_end = term - 1;
-        while (line_end >= start && isspace((unsigned char)*line_end))
-        {
+        while (line_end >= start && isspace((unsigned char)*line_end)) {
             *line_end = '\0';
             --line_end;
         }
 
         cmd_context_t ctx;
         cmd_status_t parse_status = cmd_parse(start, &ctx);
-        if (parse_status == CMD_SUCCESS)
-        {
-            cmd_execute(&ctx);
-        }
-        else if (parse_status == CMD_ERROR_UNKNOWN)
-        {
-            cmd_send_response("ERR", "UNKNOWN", "COMMAND_NOT_FOUND", NULL);
+        if (parse_status == CMD_SUCCESS) {
+            (void)cmd_execute(&ctx);
+        } else if (parse_status == CMD_ERROR_UNKNOWN) {
+            (void)cmd_send_response(CMD_STATUS_ERR, "UNKNOWN",
+                                    "COMMAND_NOT_FOUND", NULL);
         }
 
         start = term + 1;
-        while (start < line_buf + s_cmd_line_len[pi] && (*start == '\n' || *start == '\r')) {
+        while (start < line_buf + s_cmd_line_len[port_index] &&
+               (*start == '\n' || *start == '\r')) {
             ++start;
         }
     }
 
-    size_t remaining = (size_t)(line_buf + s_cmd_line_len[pi] - start);
-    if (remaining > 0) {
-        memmove(line_buf, start, remaining);
-    }
-    s_cmd_line_len[pi] = remaining;
-    line_buf[s_cmd_line_len[pi]] = '\0';
-
+    size_t remaining =
+        (size_t)(line_buf + s_cmd_line_len[port_index] - start);
+    if (remaining > 0U) memmove(line_buf, start, remaining);
+    s_cmd_line_len[port_index] = remaining;
+    line_buf[remaining] = '\0';
     s_reply_uart = CMD_UART_NUM;
 }
 
 cmd_status_t cmd_process(void)
 {
-    for (size_t pi = 0; pi < CMD_PORT_COUNT; pi++)
-    {
-        /* UARTAUDIO gate: while streaming, the reader task owns the
-         * PRIMARY UART's RX — never consume a byte from it here. The
-         * secondary port keeps serving commands mid-stream. */
-        if (s_cmd_ports[pi] == CMD_UART_NUM && uart_audio_is_streaming())
-        {
+    for (size_t index = 0U; index < CMD_PORT_COUNT; ++index) {
+        if (s_cmd_ports[index] == CMD_UART_NUM &&
+            uart_audio_is_streaming()) {
             continue;
         }
-        cmd_process_port(pi);
+        cmd_process_port(index);
     }
     return CMD_SUCCESS;
 }
 
 cmd_status_t cmd_execute(const cmd_context_t *ctx)
 {
-    if (ctx == NULL) {
-        return CMD_ERROR_NOT_INITIALIZED;
-    }
+    if (ctx == NULL) return CMD_ERROR_NOT_INITIALIZED;
 
-    switch (ctx->type)
-    {
-    case CMD_TYPE_STATUS:
-        return cmd_handle_status(ctx);
-    case CMD_TYPE_AUDIO_STATUS:
-        return cmd_handle_audio_status(ctx);
-    case CMD_TYPE_MEM:
-        return cmd_handle_mem(ctx);
-    case CMD_TYPE_VERSION:
-        return cmd_handle_version(ctx);
-    case CMD_TYPE_RESET:
-        return cmd_handle_reset(ctx);
-    case CMD_TYPE_SCAN:
-        return cmd_handle_scan(ctx);
-    case CMD_TYPE_SYNTH:
-        return cmd_handle_synth(ctx);
-    case CMD_TYPE_DIAG:
-        return cmd_handle_diag(ctx);
-    case CMD_TYPE_BEEP:
-        return cmd_handle_beep(ctx);
-    case CMD_TYPE_CONNECT:
-        return cmd_handle_connect(ctx);
-    case CMD_TYPE_DISCONNECT:
-        return cmd_handle_disconnect(ctx);
-    case CMD_TYPE_START:
-        return cmd_handle_start(ctx);
-    case CMD_TYPE_STOP:
-        return cmd_handle_stop(ctx);
-    case CMD_TYPE_PARTS:
-        return cmd_handle_parts(ctx);
-    case CMD_TYPE_CONNECT_NAME:
-        return cmd_handle_connect_name(ctx);
-    case CMD_TYPE_CONFIRM_PIN:
-        return cmd_handle_confirm_pin(ctx);
-    case CMD_TYPE_ENTER_PIN:
-        return cmd_handle_enter_pin(ctx);
-    case CMD_TYPE_MUTE:
-        return cmd_handle_mute(ctx);
-    case CMD_TYPE_UNMUTE:
-        return cmd_handle_unmute(ctx);
-    case CMD_TYPE_VOLUME:
-        return cmd_handle_volume(ctx);
-    case CMD_TYPE_I2S_CONFIG:
-        return cmd_handle_i2s_config(ctx);
-    case CMD_TYPE_I2S_PROBE:
-        return cmd_handle_i2s_probe(ctx);
-    case CMD_TYPE_I2S_RXTEST:
-        return cmd_handle_i2s_rxtest(ctx);
-    case CMD_TYPE_I2S_CLKGEN:
-        return cmd_handle_i2s_clkgen(ctx);
-    case CMD_TYPE_AUDIO_AUTOSTART:
-        return cmd_handle_audio_autostart(ctx);
-    case CMD_TYPE_LAST_MAC:
-        return cmd_handle_last_mac(ctx);
-    case CMD_TYPE_PAIR:
-        return cmd_handle_pair(ctx);
-    case CMD_TYPE_PAIRED:
-        return cmd_handle_paired(ctx);
-    case CMD_TYPE_SAMPLE_RATE:
-        return cmd_handle_sample_rate(ctx);
-    case CMD_TYPE_SET_NAME:
-        return cmd_handle_set_name(ctx);
-    case CMD_TYPE_DEBUG:
-        return cmd_handle_debug(ctx);
-    case CMD_TYPE_SET_DEFAULT_PIN:
-        return cmd_handle_set_default_pin(ctx);
-    case CMD_TYPE_UNPAIR:
-        return cmd_handle_unpair(ctx);
-    case CMD_TYPE_UNPAIR_ALL:
-        return cmd_handle_unpair_all(ctx);
-    case CMD_TYPE_SPANLOG:
-        return cmd_handle_spanlog(ctx);
-    case CMD_TYPE_UARTAUDIO:
-        return cmd_handle_uartaudio(ctx);
-    case CMD_TYPE_HELP:
-        return cmd_handle_help(ctx);
+    switch (ctx->type) {
+    case CMD_TYPE_STATUS: return cmd_handle_status(ctx);
+    case CMD_TYPE_AUDIO_STATUS: return cmd_handle_audio_status(ctx);
+    case CMD_TYPE_MEM: return cmd_handle_mem(ctx);
+    case CMD_TYPE_VERSION: return cmd_handle_version(ctx);
+    case CMD_TYPE_RESET: return cmd_handle_reset(ctx);
+    case CMD_TYPE_SCAN: return cmd_handle_scan(ctx);
+    case CMD_TYPE_SYNTH: return cmd_handle_synth(ctx);
+    case CMD_TYPE_DIAG: return cmd_handle_diag(ctx);
+    case CMD_TYPE_BEEP: return cmd_handle_beep(ctx);
+    case CMD_TYPE_CONNECT: return cmd_handle_connect(ctx);
+    case CMD_TYPE_DISCONNECT: return cmd_handle_disconnect(ctx);
+    case CMD_TYPE_START: return cmd_handle_start(ctx);
+    case CMD_TYPE_STOP: return cmd_handle_stop(ctx);
+    case CMD_TYPE_PARTS: return cmd_handle_parts(ctx);
+    case CMD_TYPE_CONNECT_NAME: return cmd_handle_connect_name(ctx);
+    case CMD_TYPE_CONFIRM_PIN: return cmd_handle_confirm_pin(ctx);
+    case CMD_TYPE_ENTER_PIN: return cmd_handle_enter_pin(ctx);
+    case CMD_TYPE_MUTE: return cmd_handle_mute(ctx);
+    case CMD_TYPE_UNMUTE: return cmd_handle_unmute(ctx);
+    case CMD_TYPE_VOLUME: return cmd_handle_volume(ctx);
+    case CMD_TYPE_I2S_CONFIG: return cmd_handle_i2s_config(ctx);
+    case CMD_TYPE_I2S_PROBE: return cmd_handle_i2s_probe(ctx);
+    case CMD_TYPE_I2S_RXTEST: return cmd_handle_i2s_rxtest(ctx);
+    case CMD_TYPE_I2S_CLKGEN: return cmd_handle_i2s_clkgen(ctx);
+    case CMD_TYPE_AUDIO_AUTOSTART: return cmd_handle_audio_autostart(ctx);
+    case CMD_TYPE_LAST_MAC: return cmd_handle_last_mac(ctx);
+    case CMD_TYPE_PAIR: return cmd_handle_pair(ctx);
+    case CMD_TYPE_PAIRED: return cmd_handle_paired(ctx);
+    case CMD_TYPE_SAMPLE_RATE: return cmd_handle_sample_rate(ctx);
+    case CMD_TYPE_SET_NAME: return cmd_handle_set_name(ctx);
+    case CMD_TYPE_DEBUG: return cmd_handle_debug(ctx);
+    case CMD_TYPE_SET_DEFAULT_PIN: return cmd_handle_set_default_pin(ctx);
+    case CMD_TYPE_UNPAIR: return cmd_handle_unpair(ctx);
+    case CMD_TYPE_UNPAIR_ALL: return cmd_handle_unpair_all(ctx);
+    case CMD_TYPE_SPANLOG: return cmd_handle_spanlog(ctx);
+    case CMD_TYPE_UARTAUDIO: return cmd_handle_uartaudio(ctx);
+    case CMD_TYPE_HELP: return cmd_handle_help(ctx);
+    case CMD_TYPE_HFP: return cmd_handle_hfp(ctx);
     default:
-        cmd_send_response("INFO", "COMMAND", "RECEIVED", "Not implemented yet");
+        (void)cmd_send_response(CMD_STATUS_INFO, "COMMAND",
+                                "RECEIVED", "Not implemented yet");
         return CMD_SUCCESS;
     }
 }
