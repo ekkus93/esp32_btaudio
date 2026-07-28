@@ -311,7 +311,8 @@ void test_auto_sco_stop_restores_preferred_mode(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_hfp_get_policy_snapshot(&policy));
     TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_A2DP_PLUS_HFP_MIC, policy.effective);
     TEST_ASSERT_EQUAL(BT_DUPLEX_POLICY_REASON_SCO_STOPPED, policy.reason);
-    TEST_ASSERT_EQUAL_size_t(2U, bt_hfp_event_command_stub_count());
+    TEST_ASSERT_EQUAL_size_t(3U, bt_hfp_event_command_stub_count());
+    TEST_ASSERT_TRUE(captured_contains("EVENT|HFP|AUDIO|DISCONNECTED|NONE|"));
     TEST_ASSERT_TRUE(captured_contains("|HFP_FULL|A2DP_MIC|SCO_STOPPED|"));
     TEST_ASSERT_TRUE(captured_contains(
         "EVENT|HFP|POLICY|WAITING|SCO_STOPPED|AUTO|A2DP_MIC|A2DP|"));
