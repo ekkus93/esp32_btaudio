@@ -58,6 +58,7 @@ typedef struct {
     bool initialized;
     hfp_i2s_output_state_t state;
     bool quarantined;
+    bool degraded;
     uint32_t generation;
     char peer_mac[HFP_I2S_OUTPUT_MAC_STR_LEN];
     hfp_i2s_output_config_t config;
@@ -71,6 +72,8 @@ typedef struct {
     uint64_t short_writes;
     uint64_t silence_intervals;
     uint64_t silence_samples;
+    uint64_t degraded_events;
+    uint32_t consecutive_underflows;
     uint64_t push_calls;
     uint64_t push_failures;
     uint64_t stale_pushes;
