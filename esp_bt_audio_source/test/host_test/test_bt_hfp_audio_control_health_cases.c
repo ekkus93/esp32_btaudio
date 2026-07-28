@@ -12,6 +12,8 @@ void mock_hfp_audio_control_set_i2s_start_result(esp_err_t result,
                                                  bool quarantine);
 void mock_hfp_audio_control_set_i2s_stop_result(esp_err_t result,
                                                 bool quarantine);
+void mock_hfp_audio_control_force_i2s_running(uint32_t generation,
+                                              const char *peer);
 
 static esp_err_t no_event_connect(esp_bd_addr_t remote_bda)
 {
@@ -65,6 +67,27 @@ static void inject_health_timeout(void)
     bt_duplex_test_set_health_report_result(ESP_ERR_TIMEOUT);
 }
 
+static uint32_t force_confirmed_audio_state(void)
+{
+    bt_duplex_snapshot_t current;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&current));
+    uint32_t generation = current.session_generation;
+    if (current.hfp_audio_state == BT_HFP_AUDIO_DISCONNECTED) {
+        TEST_ASSERT_EQUAL(ESP_OK,
+            bt_duplex_audio_session_begin(HEALTH_PEER, &generation));
+        TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_set_i2s_state(
+            generation, HEALTH_PEER, BT_HFP_I2S_STARTING));
+        TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_set_i2s_state(
+            generation, HEALTH_PEER, BT_HFP_I2S_RUNNING));
+        TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_set_hfp_audio_state(
+            generation, HEALTH_PEER, BT_HFP_AUDIO_CONNECTING));
+        TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_set_hfp_audio_state(
+            generation, HEALTH_PEER, BT_HFP_AUDIO_CONNECTED_CVSD));
+    }
+    mock_hfp_audio_control_force_i2s_running(generation, HEALTH_PEER);
+    return generation;
+}
+
 void test_health_report_failure_after_i2s_start_failure_is_visible(void)
 {
     inject_health_timeout();
@@ -107,6 +130,26 @@ void test_health_report_failure_after_connect_event_timeout_is_visible(void)
     TEST_ASSERT_GREATER_OR_EQUAL_UINT64(
         1U, health_report_failure_count(&last_error));
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
+}
+
+void test_health_report_failure_after_disconnect_event_timeout_is_visible(void)
+{
+    (void)force_confirmed_audio_state();
+    reinstall_control_ops(no_event_connect, successful_disconnect);
+    inject_health_timeout();
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, bt_hfp_audio_stop());
+
+    esp_err_t last_error = ESP_OK;
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT64(
+        1U, health_report_failure_count(&last_error));
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
+
+    bt_duplex_snapshot_t duplex;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL(BT_HFP_AUDIO_FAULTED, duplex.hfp_audio_state);
+    TEST_ASSERT_EQUAL(BT_HFP_I2S_STOPPED, duplex.i2s_state);
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_OK, duplex.health);
 }
 
 void test_health_report_failure_during_rollback_is_visible(void)
