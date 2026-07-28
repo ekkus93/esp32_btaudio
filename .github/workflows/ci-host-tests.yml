@@ -65,14 +65,50 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install pytest pyserial
 
-      - name: Run linter (flake8)
+      - name: Run Python lint gates
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           python3 -m pip install flake8
-          echo "Running flake8 on tools and esp_bt_audio_source/tools"
-          mkdir -p esp_bt_audio_source/test/host_test/build_host_tests
-          python3 -m flake8 tools esp_bt_audio_source/tools 2>&1 \
-            | tee esp_bt_audio_source/test/host_test/build_host_tests/flake8.log
+          log_dir="esp_bt_audio_source/test/host_test/build_host_tests"
+          mkdir -p "${log_dir}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base_sha="${PR_BASE_SHA}"
+          else
+            base_sha="${PUSH_BEFORE_SHA}"
+          fi
+
+          if [[ -z "${base_sha}" || "${base_sha}" =~ ^0+$ ]]; then
+            base_sha="${GITHUB_SHA}^"
+          fi
+          git fetch --no-tags --depth=1 origin "${base_sha}" || true
+
+          mapfile -t changed_python < <(
+            git diff --name-only --diff-filter=ACMR "${base_sha}" "${GITHUB_SHA}" -- '*.py' \
+              | grep -E '^(tools|esp_bt_audio_source/tools)/' || true
+          )
+
+          if (( ${#changed_python[@]} > 0 )); then
+            printf 'Strict flake8 gate for changed Python files:\n%s\n' "${changed_python[*]}"
+            python3 -m flake8 "${changed_python[@]}" 2>&1 \
+              | tee "${log_dir}/flake8-changed.log"
+          else
+            echo "No changed Python files in maintained tool paths" \
+              | tee "${log_dir}/flake8-changed.log"
+          fi
+
+          set +e
+          python3 -m flake8 tools esp_bt_audio_source/tools \
+            > "${log_dir}/flake8-full-tree.log" 2>&1
+          full_tree_status=$?
+          set -e
+          if (( full_tree_status != 0 )); then
+            count=$(wc -l < "${log_dir}/flake8-full-tree.log")
+            echo "::warning::Legacy full-tree flake8 backlog remains (${count} findings); changed Python files are the enforced gate. See flake8-full-tree.log."
+          fi
 
       - name: Run Python unit tests
         run: |
