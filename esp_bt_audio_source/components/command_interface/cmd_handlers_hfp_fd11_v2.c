@@ -353,6 +353,23 @@ static cmd_status_t handle_disconnect(void)
     return CMD_SUCCESS;
 }
 
+static cmd_status_t send_audio_status_unavailable(const char *operation,
+                                                   esp_err_t error)
+{
+    char data[160];
+    if (!format_checked(
+            data, sizeof(data),
+            "OPERATION=%s,LOWER_OPERATION=SUCCEEDED,STATUS_ERROR=%s",
+            operation, esp_err_to_name(error))) {
+        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
+                                "AUDIO_STATUS_LINE_TOO_LONG", NULL);
+        return CMD_SUCCESS;
+    }
+    (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
+                            "AUDIO_STATUS_UNAVAILABLE", data);
+    return CMD_SUCCESS;
+}
+
 static cmd_status_t handle_audio_start(void)
 {
     esp_err_t err = bt_manager_hfp_audio_start();
@@ -360,16 +377,7 @@ static cmd_status_t handle_audio_start(void)
 
     bt_hfp_manager_status_t status;
     err = bt_manager_hfp_get_status(&status);
-    if (err != ESP_OK) {
-        char data[96];
-        if (!format_checked(data, sizeof(data),
-                            "STATUS_ERROR=%s", esp_err_to_name(err))) {
-            data[0] = '\0';
-        }
-        (void)cmd_send_response(CMD_STATUS_OK, "HFP",
-                                "AUDIO_STARTED_STATUS_UNAVAILABLE", data);
-        return CMD_SUCCESS;
-    }
+    if (err != ESP_OK) return send_audio_status_unavailable("START", err);
 
     char data[96];
     if (!format_checked(data, sizeof(data),
@@ -391,16 +399,7 @@ static cmd_status_t handle_audio_stop(void)
 
     bt_hfp_manager_status_t status;
     err = bt_manager_hfp_get_status(&status);
-    if (err != ESP_OK) {
-        char data[96];
-        if (!format_checked(data, sizeof(data),
-                            "STATUS_ERROR=%s", esp_err_to_name(err))) {
-            data[0] = '\0';
-        }
-        (void)cmd_send_response(CMD_STATUS_OK, "HFP",
-                                "AUDIO_STOPPED_STATUS_UNAVAILABLE", data);
-        return CMD_SUCCESS;
-    }
+    if (err != ESP_OK) return send_audio_status_unavailable("STOP", err);
 
     char data[64];
     if (!format_checked(data, sizeof(data),
@@ -543,14 +542,17 @@ static bool send_stats_lines(const bt_hfp_manager_stats_t *stats)
          "UNEXPECTED=%" PRIu64 ",ROLLBACK=%" PRIu64
          ",ROLLBACK_FAIL=%" PRIu64 ",CLEANUP_REQ=%" PRIu64
          ",CLEANUP_FAIL=%" PRIu64 ",I2S_START_FAIL=%" PRIu64
-         ",I2S_STOP_FAIL=%" PRIu64,
+         ",I2S_STOP_FAIL=%" PRIu64 ",HEALTH_REPORT_FAIL=%" PRIu64
+         ",LAST_HEALTH_REPORT_ERROR=%s",
          stats->audio_control.unexpected_connected_events,
          stats->audio_control.rollback_attempts,
          stats->audio_control.rollback_failures,
          stats->audio_control.cleanup_disconnect_requests,
          stats->audio_control.cleanup_disconnect_failures,
          stats->audio_control.i2s_start_failures,
-         stats->audio_control.i2s_stop_failures);
+         stats->audio_control.i2s_stop_failures,
+         stats->audio_control.health_report_failures,
+         esp_err_to_name(stats->audio_control.last_health_report_error));
     SEND("STATS_RX1",
          "CALLBACKS=%" PRIu64 ",ACCEPT_FRAMES=%" PRIu64
          ",ACCEPT_BYTES=%" PRIu64 ",DROP_FRAMES=%" PRIu64
@@ -582,11 +584,12 @@ static bool send_stats_lines(const bt_hfp_manager_stats_t *stats)
          stats->incoming.ring_rejected_bytes);
     SEND("STATS_RX4",
          "REG_FAIL=%" PRIu64 ",ACTIVATE_FAIL=%" PRIu64
-         ",OVER_BUDGET=%" PRIu64 ",LAST_US=%" PRIu32
-         ",MAX_US_LIFETIME=%" PRIu32,
+         ",OVER_BUDGET=%" PRIu64 ",OVERLAP_REJECT=%" PRIu32
+         ",LAST_US=%" PRIu32 ",MAX_US_LIFETIME=%" PRIu32,
          stats->incoming.registration_failures,
          stats->incoming.activation_failures,
          stats->incoming.callback_over_budget,
+         stats->incoming.callback_overlap_rejections,
          stats->incoming.callback_last_us,
          stats->incoming.callback_max_us_lifetime);
     SEND("STATS_I2S1",
