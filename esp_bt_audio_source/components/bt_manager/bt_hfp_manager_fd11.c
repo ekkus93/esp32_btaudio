@@ -84,7 +84,11 @@ static esp_err_t optional_audio_control_snapshot(
 {
     memset(out, 0, sizeof(*out));
     esp_err_t err = bt_hfp_audio_control_get_snapshot(out);
-    return err == ESP_ERR_INVALID_STATE ? ESP_OK : err;
+    if (err == ESP_ERR_INVALID_STATE) err = ESP_OK;
+    if (err != ESP_OK) return err;
+    return bt_duplex_get_health_report_diagnostics(
+        &out->health_report_failures,
+        &out->last_health_report_error);
 }
 
 static esp_err_t optional_incoming_snapshot(bt_hfp_audio_snapshot_t *out)
