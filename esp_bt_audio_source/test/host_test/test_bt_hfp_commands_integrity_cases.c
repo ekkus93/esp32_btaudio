@@ -54,6 +54,22 @@ void test_hfp_audio_success_is_not_retracted_by_status_failure(void)
     TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STOPPED|"));
 }
 
+void test_hfp_stats_exposes_health_and_callback_review_failures(void)
+{
+    bt_hfp_manager_stats_t stats;
+    memset(&stats, 0, sizeof(stats));
+    stats.audio_control.health_report_failures = 3U;
+    stats.audio_control.last_health_report_error = ESP_ERR_TIMEOUT;
+    stats.incoming.callback_overlap_rejections = 4U;
+    mock_bt_hfp_manager_set_stats(&stats, ESP_OK);
+
+    const char *tx = run_hfp("HFP STATS");
+    TEST_ASSERT_NOT_NULL(strstr(
+        tx, "HEALTH_REPORT_FAIL=3,LAST_HEALTH_REPORT_ERROR=ESP_ERR_TIMEOUT"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OVERLAP_REJECT=4"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|HFP|STATS|"));
+}
+
 void test_hfp_mode_success_does_not_require_followup_snapshot(void)
 {
     mock_bt_hfp_manager_set_status(NULL, ESP_ERR_TIMEOUT);
