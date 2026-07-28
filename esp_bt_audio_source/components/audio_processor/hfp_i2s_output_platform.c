@@ -1,5 +1,8 @@
 #include "hfp_i2s_output_internal.h"
 
+#include <stdatomic.h>
+#include <stdint.h>
+
 #ifdef ESP_PLATFORM
 #include "driver/i2s_std.h"
 #include "esp_heap_caps.h"
@@ -8,6 +11,21 @@
 #endif
 
 #ifdef ESP_PLATFORM
+static atomic_size_t s_writer_stack_min_free_bytes_lifetime =
+    ATOMIC_VAR_INIT(SIZE_MAX);
+
+static void record_writer_stack_high_water_mark(void)
+{
+    size_t observed = (size_t)uxTaskGetStackHighWaterMark(NULL);
+    size_t current = atomic_load_explicit(
+        &s_writer_stack_min_free_bytes_lifetime, memory_order_relaxed);
+    while (observed < current &&
+           !atomic_compare_exchange_weak_explicit(
+               &s_writer_stack_min_free_bytes_lifetime, &current, observed,
+               memory_order_relaxed, memory_order_relaxed)) {
+    }
+}
+
 static void *default_alloc(size_t bytes)
 {
     return heap_caps_calloc(1U, bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -90,11 +108,14 @@ static esp_err_t default_channel_write(void *channel, const void *data,
 static void writer_task(void *arg)
 {
     (void)arg;
+    record_writer_stack_high_water_mark();
     if (platform_binary_sem_take(s_output.start_gate,
                                  PLATFORM_WAIT_FOREVER) == ESP_OK) {
+        record_writer_stack_high_water_mark();
         while (!atomic_load_explicit(&s_output.stop_requested,
                                      memory_order_acquire)) {
             esp_err_t err = hfp_i2s_output_writer_iteration();
+            record_writer_stack_high_water_mark();
             if (err != ESP_OK) {
                 bool faulted = false;
                 if (hfp_i2s_output_lock() == ESP_OK) {
@@ -106,6 +127,7 @@ static void writer_task(void *arg)
             }
         }
     }
+    record_writer_stack_high_water_mark();
     (void)platform_binary_sem_give(s_output.stopped);
     vTaskDelete(NULL);
 }
@@ -134,6 +156,20 @@ static esp_err_t default_task_wait_stopped(void *task, uint32_t timeout_ms)
     return platform_binary_sem_take(s_output.stopped, timeout_ms);
 }
 #endif
+
+esp_err_t hfp_i2s_output_get_stack_high_water_mark(size_t *bytes_out)
+{
+    if (bytes_out == NULL) return ESP_ERR_INVALID_ARG;
+#ifdef ESP_PLATFORM
+    size_t value = atomic_load_explicit(
+        &s_writer_stack_min_free_bytes_lifetime, memory_order_relaxed);
+    if (value == SIZE_MAX) return ESP_ERR_NOT_FOUND;
+    *bytes_out = value;
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
 
 void *hfp_i2s_output_ops_alloc(size_t bytes)
 {
