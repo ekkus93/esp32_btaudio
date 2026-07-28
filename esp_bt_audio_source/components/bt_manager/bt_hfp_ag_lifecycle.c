@@ -1,4 +1,5 @@
 #include "bt_hfp_ag_internal.h"
+#include "bt_hfp_connection.h"
 
 #include <string.h>
 
@@ -238,6 +239,17 @@ void bt_hfp_ag_force_cleanup_after_stack_shutdown(void)
         return;
     }
 #endif
+
+    esp_err_t connection_cleanup =
+        bt_hfp_connection_cleanup_after_stack_shutdown();
+    if (connection_cleanup != ESP_OK) {
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG, "Refusing HFP AG cleanup after SLC operation cleanup failed: %s",
+                 esp_err_to_name(connection_cleanup));
+#endif
+        return;
+    }
+
     if (!g_bt_hfp_ag.resources_ready) return;
     platform_mutex_t lock = g_bt_hfp_ag.lock;
     platform_binary_sem_t completion = g_bt_hfp_ag.completion;
