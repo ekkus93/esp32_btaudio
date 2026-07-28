@@ -33,6 +33,9 @@ void test_audio_generation_rotation_preserves_session_state_and_telemetry(void)
         first, PEER, BT_AUDIO_HEALTH_DEGRADED,
         ESP_ERR_TIMEOUT, "preserve this diagnostic"));
 
+    bt_duplex_snapshot_t before;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&before));
+
     uint32_t second = 0U;
     TEST_ASSERT_EQUAL(ESP_OK,
                       bt_duplex_audio_session_begin(PEER, &second));
@@ -41,24 +44,26 @@ void test_audio_generation_rotation_preserves_session_state_and_telemetry(void)
     bt_duplex_snapshot_t snapshot;
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&snapshot));
     TEST_ASSERT_TRUE(snapshot.peer_valid);
-    TEST_ASSERT_EQUAL_STRING(PEER, snapshot.peer_mac);
+    TEST_ASSERT_EQUAL_STRING(before.peer_mac, snapshot.peer_mac);
     TEST_ASSERT_EQUAL_UINT32(second, snapshot.session_generation);
-    TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_AUTO, snapshot.requested_mode);
-    TEST_ASSERT_EQUAL(BT_DUPLEX_MODE_AUTO, snapshot.effective_mode);
-    TEST_ASSERT_EQUAL(BT_A2DP_PROFILE_CONNECTED,
+    TEST_ASSERT_EQUAL(before.requested_mode, snapshot.requested_mode);
+    TEST_ASSERT_EQUAL(before.effective_mode, snapshot.effective_mode);
+    TEST_ASSERT_EQUAL(before.a2dp_profile_state,
                       snapshot.a2dp_profile_state);
-    TEST_ASSERT_EQUAL(BT_A2DP_AUDIO_STARTED, snapshot.a2dp_audio_state);
-    TEST_ASSERT_EQUAL(BT_HFP_PROFILE_SLC_CONNECTED,
+    TEST_ASSERT_EQUAL(before.a2dp_audio_state, snapshot.a2dp_audio_state);
+    TEST_ASSERT_EQUAL(before.hfp_profile_state,
                       snapshot.hfp_profile_state);
     TEST_ASSERT_EQUAL(BT_HFP_AUDIO_DISCONNECTED,
                       snapshot.hfp_audio_state);
     TEST_ASSERT_EQUAL(BT_HFP_I2S_STOPPED, snapshot.i2s_state);
-    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_DEGRADED, snapshot.health);
-    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, snapshot.last_error);
-    TEST_ASSERT_EQUAL_STRING("preserve this diagnostic",
+    TEST_ASSERT_EQUAL(before.health, snapshot.health);
+    TEST_ASSERT_EQUAL(before.last_error, snapshot.last_error);
+    TEST_ASSERT_EQUAL_STRING(before.last_error_text,
                              snapshot.last_error_text);
-    TEST_ASSERT_EQUAL_UINT64(1U, snapshot.counters.incoming_frames);
-    TEST_ASSERT_EQUAL_UINT64(12U, snapshot.counters.incoming_bytes);
+    TEST_ASSERT_EQUAL_UINT64(before.counters.incoming_frames,
+                             snapshot.counters.incoming_frames);
+    TEST_ASSERT_EQUAL_UINT64(before.counters.incoming_bytes,
+                             snapshot.counters.incoming_bytes);
 }
 
 void test_audio_generation_rotation_rejects_invalid_transient_states(void)
