@@ -126,7 +126,8 @@ static void map_control(bt_hfp_manager_audio_control_stats_t *out,
     COPY(unexpected_connected_events); COPY(rollback_attempts);
     COPY(rollback_failures); COPY(cleanup_disconnect_requests);
     COPY(cleanup_disconnect_failures); COPY(i2s_start_failures);
-    COPY(i2s_stop_failures);
+    COPY(i2s_stop_failures); COPY(health_report_failures);
+    COPY(last_health_report_error);
 #undef COPY
 }
 
@@ -142,7 +143,7 @@ static void map_incoming(bt_hfp_manager_incoming_stats_t *out,
     COPY(bad_bytes); COPY(unsupported_codec_frames);
     COPY(unsupported_codec_bytes); COPY(ring_rejected_frames);
     COPY(ring_rejected_bytes); COPY(callback_over_budget);
-    COPY(callback_last_us);
+    COPY(callback_overlap_rejections); COPY(callback_last_us);
 #undef COPY
     out->callback_max_us_lifetime = in->callback_max_us;
 }
@@ -247,6 +248,7 @@ static bool counters_regressed(const bt_hfp_manager_stats_t *current,
         REG(audio_control, cleanup_disconnect_failures) ||
         REG(audio_control, i2s_start_failures) ||
         REG(audio_control, i2s_stop_failures) ||
+        REG(audio_control, health_report_failures) ||
         REG(incoming, registration_failures) ||
         REG(incoming, activation_failures) || REG(incoming, incoming_callbacks) ||
         REG(incoming, accepted_frames) || REG(incoming, accepted_bytes) ||
@@ -261,6 +263,7 @@ static bool counters_regressed(const bt_hfp_manager_stats_t *current,
         REG(incoming, ring_rejected_frames) ||
         REG(incoming, ring_rejected_bytes) ||
         REG(incoming, callback_over_budget) ||
+        REG(incoming, callback_overlap_rejections) ||
         REG(incoming, callback_max_us_lifetime) ||
         REG(i2s, start_calls) || REG(i2s, stop_calls) ||
         REG(i2s, start_failures) || REG(i2s, stop_timeouts) ||
@@ -306,6 +309,10 @@ static void subtract_baseline(bt_hfp_manager_stats_t *current,
     SUB(audio_control, cleanup_disconnect_requests);
     SUB(audio_control, cleanup_disconnect_failures);
     SUB(audio_control, i2s_start_failures); SUB(audio_control, i2s_stop_failures);
+    SUB(audio_control, health_report_failures);
+    if (current->audio_control.health_report_failures == 0U) {
+        current->audio_control.last_health_report_error = ESP_OK;
+    }
 
     SUB(incoming, registration_failures); SUB(incoming, activation_failures);
     SUB(incoming, incoming_callbacks); SUB(incoming, accepted_frames);
@@ -317,6 +324,7 @@ static void subtract_baseline(bt_hfp_manager_stats_t *current,
     SUB(incoming, bad_bytes); SUB(incoming, unsupported_codec_frames);
     SUB(incoming, unsupported_codec_bytes); SUB(incoming, ring_rejected_frames);
     SUB(incoming, ring_rejected_bytes); SUB(incoming, callback_over_budget);
+    SUB(incoming, callback_overlap_rejections);
 
     SUB(i2s, start_calls); SUB(i2s, stop_calls); SUB(i2s, start_failures);
     SUB(i2s, stop_timeouts); SUB(i2s, write_calls); SUB(i2s, write_failures);
