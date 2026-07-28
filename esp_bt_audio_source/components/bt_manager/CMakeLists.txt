@@ -4,7 +4,10 @@ set(priv_requires
     command_interface
     util_safe
     audio_processor
-    platform_shim)
+    platform_shim
+    esp_timer
+    esp_system
+    heap)
 
 idf_component_register(
     SRCS
@@ -20,6 +23,23 @@ idf_component_register(
         "bt_app_core.c"
         "bt_connection_manager.c"
         "bt_streaming_manager.c"
+        "bt_duplex_state_core.c"
+        "bt_duplex_state_audio.c"
+        "bt_duplex_state_mode.c"
+        "bt_duplex_state_profile.c"
+        "bt_duplex_state_transitions.c"
+        "bt_duplex_state_strings.c"
+        "bt_duplex_state_events.c"
+        "bt_duplex_policy.c"
+        "bt_hfp_event_contract.c"
+        "bt_hfp_ag_lifecycle.c"
+        "bt_hfp_ag_events.c"
+        "bt_hfp_connection.c"
+        "bt_hfp_audio.c"
+        "bt_hfp_audio_control.c"
+        "bt_hfp_manager_fd11.c"
+        "bt_hfp_manager_fd13.c"
+        "bt_hfp_manager_fd16.c"
     INCLUDE_DIRS "include"
     # bt_stack_stub listed BEFORE bt: when CONFIG_APP_NO_BLOBS=y its
     # esp_bt.h wrapper (which #include_next-s the real one and patches the
@@ -28,12 +48,11 @@ idf_component_register(
     # searches -I dirs in REQUIRES list order. Always listed (not gated on
     # CONFIG_APP_NO_BLOBS): that symbol is unresolved during CMake's early
     # requirements-expansion pass (runs before sdkconfig.cmake is generated
-    # — see idf_build_process() in tools/cmake/build.cmake), so a
-    # conditional REQUIRES here would always evaluate false regardless of
-    # the real Kconfig value. bt_stack_stub itself is a no-op (no sources,
-    # no include dir) unless APP_NO_BLOBS=y, matching the pattern
-    # components/bt/CMakeLists.txt uses for its own always-unconditional
-    # PRIV_REQUIRES.
+    # — see tools/cmake/build.cmake), so a conditional REQUIRES here would
+    # always evaluate false regardless of the real Kconfig value. bt_stack_stub
+    # itself is a no-op (no sources, no include dir) unless APP_NO_BLOBS=y,
+    # matching the pattern components/bt/CMakeLists.txt uses for its own
+    # always-unconditional PRIV_REQUIRES.
     REQUIRES bt_stack_stub bt
     PRIV_REQUIRES ${priv_requires}
 )

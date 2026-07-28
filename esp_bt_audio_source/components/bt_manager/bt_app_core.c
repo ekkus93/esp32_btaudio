@@ -4,19 +4,20 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 
+#include <stdarg.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdbool.h>
+
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
 #include "osi/allocator.h"
-#include "util_safe.h"
-#include <stdarg.h>
 #include "platform_timing.h"
-
+#include "util_safe.h"
 
 /* Convenience aliases for safe memory functions */
 #define safe_memcpy util_safe_memcpy
@@ -33,6 +34,23 @@ typedef struct {
 static QueueHandle_t s_bt_app_queue = NULL;
 /* Task handle */
 static TaskHandle_t s_bt_app_task_handle = NULL;
+
+#ifdef ESP_PLATFORM
+static atomic_size_t s_bt_app_stack_min_free_bytes_lifetime =
+    ATOMIC_VAR_INIT(SIZE_MAX);
+
+static void bt_app_record_stack_high_water_mark(void)
+{
+    size_t observed = (size_t)uxTaskGetStackHighWaterMark(NULL);
+    size_t current = atomic_load_explicit(
+        &s_bt_app_stack_min_free_bytes_lifetime, memory_order_relaxed);
+    while (observed < current &&
+           !atomic_compare_exchange_weak_explicit(
+               &s_bt_app_stack_min_free_bytes_lifetime, &current, observed,
+               memory_order_relaxed, memory_order_relaxed)) {
+    }
+}
+#endif
 
 static void bt_app_task_handler(void *arg);
 static bool bt_app_send_msg(bt_app_msg_t msg, void *param);
@@ -116,6 +134,20 @@ void bt_app_task_shut_down(void)
     }
 }
 
+esp_err_t bt_app_task_get_stack_high_water_mark(size_t *bytes_out)
+{
+    if (bytes_out == NULL) return ESP_ERR_INVALID_ARG;
+#ifdef ESP_PLATFORM
+    size_t value = atomic_load_explicit(
+        &s_bt_app_stack_min_free_bytes_lifetime, memory_order_relaxed);
+    if (value == SIZE_MAX) return ESP_ERR_NOT_FOUND;
+    *bytes_out = value;
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
 static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
 {
     if (s_bt_app_queue == NULL) {
@@ -129,10 +161,11 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
      * holds a deep-copied buffer when bt_app_work_dispatch copied it.
      * The caller may pass `param` as NULL (the prior bug), so using
      * msg.param ensures handlers receive the actual data pointer. */
+    (void)param;
     evt_msg.param = msg.param;
 
     if (xQueueSend(s_bt_app_queue, &evt_msg, 10 / portTICK_PERIOD_MS) != pdTRUE) {
-        /* Queue full: the message is dropped.  Callers waiting on a semaphore
+        /* Queue full: the message is dropped. Callers waiting on a semaphore
          * that BtAppTask would have signalled will time out instead of
          * blocking indefinitely. Log clearly so diagnostics show queue pressure
          * rather than a mysterious BtAppTask hang. */
@@ -149,9 +182,13 @@ static bool bt_app_send_msg(bt_app_msg_t msg, void *param)
 
 static void bt_app_task_handler(void *arg)
 {
+    (void)arg;
     bt_app_evt_msg_t evt_msg;
 
     ESP_LOGI(TAG, "%s: starting", __func__);  // NOLINT(bugprone-branch-clone)
+#ifdef ESP_PLATFORM
+    bt_app_record_stack_high_water_mark();
+#endif
 
     while (1) {
         /* Wait for event */
@@ -178,6 +215,9 @@ static void bt_app_task_handler(void *arg)
             // If queue receive times out, sleep a bit to prevent tight loop
             platform_delay_ms(10);
         }
+#ifdef ESP_PLATFORM
+        bt_app_record_stack_high_water_mark();
+#endif
     }
 }
 

@@ -13,6 +13,7 @@
 #include "bt_events_gap.h"
 #include "bt_events_a2dp.h"
 #include "bt_events_avrc.h"
+#include "bt_hfp_ag.h"
 #include "nvs_storage.h"
 #include "esp_bt.h"
 #include "util_safe.h"
@@ -67,6 +68,9 @@ bool s_autostart_enabled = true;
  * bt_manager_get_status) acquire the lock to obtain a consistent
  * snapshot.  Callbacks are NOT invoked while holding the lock. */
 static platform_mutex_t s_bt_ctx_mutex;
+/* A failed teardown may leave Bluetooth callbacks alive. In that case the
+ * manager is quarantined until reboot and init is rejected. */
+static bool s_bt_manager_quarantined;
 
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
@@ -123,11 +127,11 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 #endif
 #endif
 
-
 #ifdef ESP_PLATFORM
 #include <inttypes.h>
 #include "nvs_flash.h"
 static esp_err_t bt_manager_init_profiles(void);
+static esp_err_t bt_manager_deinit_profiles(void);
 // Audio processor API - used by A2DP data callback to pull PCM
 #include "audio_processor.h"
 #endif
@@ -194,6 +198,11 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
         return ESP_FAIL;
     }
 
+    if (s_bt_manager_quarantined) {
+        ESP_LOGE(TAG, "Bluetooth manager is quarantined after an incomplete teardown; reboot required");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (bt_ctx.initialized) {
         return ESP_OK; // Already initialized
     }
@@ -232,9 +241,17 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     bool controller_enabled = false;
     bool bluedroid_init_done = false;
     bool bluedroid_enabled = false;
+    bool duplex_state_initialized = false;
+    bool profiles_initialized = false;
+
+    esp_err_t ret = bt_duplex_state_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize duplex state failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+    duplex_state_initialized = true;
 
     // Initialize Bluetooth controller
-    esp_err_t ret;
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     bt_cfg.mode = ESP_BT_MODE_CLASSIC_BT;
     ret = esp_bt_controller_init(&bt_cfg);
@@ -268,36 +285,38 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     }
     bluedroid_enabled = true;
 
-    // Configure device name
-    // Use GAP API (not deprecated) to set the device name. esp_bt_dev_set_device_name is deprecated.
-    esp_err_t _err_name = esp_bt_gap_set_device_name(config->device_name);
-    if (_err_name != ESP_OK) {
-        ESP_LOGW(TAG, "esp_bt_gap_set_device_name failed (%s)", esp_err_to_name(_err_name));  // NOLINT(bugprone-branch-clone)
+    ret = esp_bt_gap_set_device_name(config->device_name);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set Bluetooth device name failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
 
-    // Register GAP callback
-    esp_bt_gap_register_callback(bt_events_gap_callback);
+    ret = esp_bt_gap_register_callback(bt_events_gap_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register GAP callback failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
 
     ret = bt_manager_init_profiles();
     if (ret != ESP_OK) {
         goto fail;
     }
+    profiles_initialized = true;
 
-    // Set device discoverable and connectable
-    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+    ret = esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE,
+                                   ESP_BT_GENERAL_DISCOVERABLE);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set GAP scan mode failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
     
     ESP_LOGI(TAG, "Bluetooth manager initialized with name: %s", config->device_name);  // NOLINT(bugprone-branch-clone)
     
-    // Load persisted paired devices from NVS (NVS already initialized by main.c)
     int count = 0;
     if (nvs_storage_get_paired_count(&count) == ESP_OK && count > 0) {
         for (int i = 0; i < count && bt_ctx.paired_devices.count < 20; i++) {
             char mac[32] = {0};
             char name[32] = {0};
-            /* Some build configurations may not use 'name' visibly
-             * (e.g., stripped logging). Mark as used to avoid
-             * -Wunused-variable warnings while preserving logic.
-             */
             (void)name;
             if (nvs_storage_get_paired_device_by_index(i, mac, sizeof(mac), name, sizeof(name)) == ESP_OK) {
                 int idx = bt_ctx.paired_devices.count;
@@ -317,25 +336,70 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     return ESP_OK;
 
 fail:
-    /* (RH-WR-05) Rollback in reverse order of initialization */
+    /* Roll back in reverse order. Preserve the original initialization error.
+     * Do not free callback-owned state unless Bluedroid deinit confirms that
+     * callbacks can no longer arrive. */
+    bool cleanup_complete = true;
+    bool callbacks_stopped = !bluedroid_init_done;
+    if (profiles_initialized) {
+        esp_err_t cleanup_err = bt_manager_deinit_profiles();
+        if (cleanup_err != ESP_OK) {
+            cleanup_complete = false;
+            ESP_LOGE(TAG, "Profile rollback failed after init error %s: %s",
+                     esp_err_to_name(ret), esp_err_to_name(cleanup_err));
+        }
+    }
     if (bluedroid_enabled) {
-        esp_bluedroid_disable();
+        esp_err_t cleanup_err = esp_bluedroid_disable();
+        if (cleanup_err != ESP_OK) {
+            cleanup_complete = false;
+            ESP_LOGE(TAG, "Bluedroid disable rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
     if (bluedroid_init_done) {
-        esp_bluedroid_deinit();
+        esp_err_t cleanup_err = esp_bluedroid_deinit();
+        if (cleanup_err != ESP_OK) {
+            cleanup_complete = false;
+            ESP_LOGE(TAG, "Bluedroid deinit rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        } else {
+            callbacks_stopped = true;
+        }
     }
     if (controller_enabled) {
-        esp_bt_controller_disable();
+        esp_err_t cleanup_err = esp_bt_controller_disable();
+        if (cleanup_err != ESP_OK) {
+            cleanup_complete = false;
+            ESP_LOGE(TAG, "Controller disable rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
     if (controller_init_done) {
-        esp_bt_controller_deinit();
+        esp_err_t cleanup_err = esp_bt_controller_deinit();
+        if (cleanup_err != ESP_OK) {
+            cleanup_complete = false;
+            ESP_LOGE(TAG, "Controller deinit rollback failed: %s",
+                     esp_err_to_name(cleanup_err));
+        }
     }
 
-    /* Clean up the bt_ctx mutex */
-    platform_mutex_delete(s_bt_ctx_mutex);
-    s_bt_ctx_mutex = NULL;
+    if (callbacks_stopped) {
+        bt_hfp_ag_force_cleanup_after_stack_shutdown();
+        if (duplex_state_initialized) {
+            bt_duplex_state_deinit();
+        }
+        platform_mutex_delete(s_bt_ctx_mutex);
+        s_bt_ctx_mutex = NULL;
+    } else {
+        ESP_LOGE(TAG, "Bluedroid shutdown was not confirmed; preserving callback-owned state and quarantining manager");
+    }
 
+    if (!cleanup_complete) {
+        s_bt_manager_quarantined = true;
+    }
     return ret;
+
 #else
     bt_ctx.initialized = true;
     return ESP_OK;
@@ -345,122 +409,113 @@ fail:
 // Deinitialize Bluetooth Manager
  bt_err_t bt_manager_deinit(void) {
     if (!bt_ctx.initialized) {
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
-    
+
+    esp_err_t first_error = ESP_OK;
+    bool callbacks_stopped = true;
 #ifdef ESP_PLATFORM
-    // Stop scanning if active
+    callbacks_stopped = false;
+#define RECORD_DEINIT_ERROR(expr, label) do {                               \
+        esp_err_t _err = (expr);                                            \
+        if (_err != ESP_OK) {                                               \
+            ESP_LOGE(TAG, label " failed: %s", esp_err_to_name(_err));      \
+            if (first_error == ESP_OK) first_error = _err;                   \
+        }                                                                   \
+    } while (0)
+
     if (bt_ctx.scanning) {
-        bt_stop_scan();
+        RECORD_DEINIT_ERROR(bt_stop_scan(), "Stop scan during deinit");
     }
-    
-    // Disconnect if connected
-    if (bt_ctx.connected) {
-        bt_disconnect();
+    if (bt_ctx.connected || bt_ctx.connecting) {
+        RECORD_DEINIT_ERROR(bt_disconnect(), "Disconnect during deinit");
     }
-    
-    // Deinitialize A2DP
-    esp_a2d_source_deinit();
-    
-    // Disable and deinitialize Bluetooth
-    esp_bluedroid_disable();
-    esp_bluedroid_deinit();
-    esp_bt_controller_disable();
-    esp_bt_controller_deinit();
-    
-    ESP_LOGI(TAG, "Bluetooth manager deinitialized");  // NOLINT(bugprone-branch-clone)
+
+    RECORD_DEINIT_ERROR(bt_manager_deinit_profiles(), "Profile deinit");
+    RECORD_DEINIT_ERROR(esp_bluedroid_disable(), "Bluedroid disable");
+    esp_err_t bluedroid_deinit_err = esp_bluedroid_deinit();
+    if (bluedroid_deinit_err != ESP_OK) {
+        ESP_LOGE(TAG, "Bluedroid deinit failed: %s",
+                 esp_err_to_name(bluedroid_deinit_err));
+        if (first_error == ESP_OK) first_error = bluedroid_deinit_err;
+    } else {
+        callbacks_stopped = true;
+    }
+    RECORD_DEINIT_ERROR(esp_bt_controller_disable(), "Controller disable");
+    RECORD_DEINIT_ERROR(esp_bt_controller_deinit(), "Controller deinit");
+
+    if (callbacks_stopped) {
+        bt_hfp_ag_force_cleanup_after_stack_shutdown();
+        bt_duplex_state_deinit();
+        ESP_LOGI(TAG, "Bluetooth manager deinitialized");
+    } else {
+        ESP_LOGE(TAG, "Bluedroid shutdown was not confirmed; preserving callback-owned state and quarantining manager");
+    }
+#undef RECORD_DEINIT_ERROR
 #endif
-    
+
     bt_ctx.initialized = false;
+    bt_ctx.scanning = false;
     bt_ctx.connected = false;
+    bt_ctx.connecting = false;
     bt_ctx.audio_playing = false;
-    // Optionally reset other fields if needed
 
-    /* Clean up the bt_ctx mutex last — after all BT state is reset. */
-    platform_mutex_delete(s_bt_ctx_mutex);
-    s_bt_ctx_mutex = NULL;
+    if (first_error != ESP_OK) {
+        s_bt_manager_quarantined = true;
+    }
+    if (callbacks_stopped) {
+        platform_mutex_delete(s_bt_ctx_mutex);
+        s_bt_ctx_mutex = NULL;
+    }
 
-    return ESP_OK;
+    return first_error;
 }
 
-// Expose a simple integer getter so other subsystems (command interface)
-// can query the manager's connected flag without depending on internal
-// structures. Return 1 when connected, 0 otherwise.
-// CODE_REVIEW8 P2 Phase 3: Use thread-safe access via queue
 int bt_manager_is_connected(void) {
 #ifdef ESP_PLATFORM
     bt_manager_status_t status;
     if (bt_manager_get_status(&status) == ESP_OK) {
         return status.connected ? 1 : 0;
     }
-    return 0; /* Timeout/error - assume not connected */
+    return 0;
 #else
-    return bt_ctx.connected ? 1 : 0; /* Host tests: direct access OK (single-threaded) */
+    return bt_ctx.connected ? 1 : 0;
 #endif
 }
 
-// Get the list of discovered devices
-// UNSAFE: returns a direct pointer into bt_ctx which BtAppTask can modify.
-// Use bt_get_device_list_snapshot() for concurrent-safe access.
 bt_device_list_t* bt_get_device_list(void) {
-    if (!bt_ctx.initialized) {
-        return NULL;
-    }
-
+    if (!bt_ctx.initialized) return NULL;
     return &bt_ctx.discovered_devices;
 }
 
-// Get the list of paired devices
-// UNSAFE: returns a direct pointer into bt_ctx which BtAppTask can modify.
-// Use bt_get_paired_devices_snapshot() for concurrent-safe access.
 bt_device_list_t* bt_get_paired_devices(void) {
-    if (!bt_ctx.initialized) {
-        return NULL;
-    }
-
+    if (!bt_ctx.initialized) return NULL;
     return &bt_ctx.paired_devices;
 }
 
-// Thread-safe snapshot: copies discovered device list into caller-supplied buffer.
-// Safer than bt_get_device_list() because the caller holds a copy and is not
-// affected by concurrent BtAppTask updates.  On the device, call only from a
-// context that does not hold any BtAppTask-owned lock.
 esp_err_t bt_get_device_list_snapshot(bt_device_list_t *out)
 {
-    if (out == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
-    if (err != ESP_OK) {
-        return err;
-    }
-
+    if (err != ESP_OK) return err;
     if (!bt_ctx.initialized) {
         bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
-
     safe_memcpy(out, sizeof(*out), &bt_ctx.discovered_devices, sizeof(bt_device_list_t));
     bt_ctx_unlock();
     return ESP_OK;
 }
 
-// Thread-safe snapshot: copies paired device list into caller-supplied buffer.
 esp_err_t bt_get_paired_devices_snapshot(bt_device_list_t *out)
 {
-    if (out == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
-    if (err != ESP_OK) {
-        return err;
-    }
-
+    if (err != ESP_OK) return err;
     if (!bt_ctx.initialized) {
         bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
-
     safe_memcpy(out, sizeof(*out), &bt_ctx.paired_devices, sizeof(bt_device_list_t));
     bt_ctx_unlock();
     return ESP_OK;
@@ -468,32 +523,22 @@ esp_err_t bt_get_paired_devices_snapshot(bt_device_list_t *out)
 
 void bt_manager_set_autostart_enabled(bool enable) {
     s_autostart_enabled = enable;
-    ESP_LOGI(TAG, "bt_manager: autostart %s", enable ? "ENABLED" : "DISABLED");  // NOLINT(bugprone-branch-clone)
+    ESP_LOGI(TAG, "bt_manager: autostart %s", enable ? "ENABLED" : "DISABLED");
 }
 
 bool bt_manager_is_autostart_enabled(void) {
     return s_autostart_enabled;
 }
 
-// C-compatible wrappers expected by other components (command_interface)
-// These provide a simple int-based return (0=success) while delegating to
-// the bt_manager-style APIs above.
-// Manager-prefixed C wrappers that forward to the bt_manager API. These are
-// used by other components after we update their forward declarations.
 int bt_manager_set_name(const char* name) {
 #ifdef ESP_PLATFORM
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
-    if (err != ESP_OK) {
-        return -1;
-    }
-
+    if (err != ESP_OK) return -1;
     if (!bt_ctx.initialized) {
         bt_ctx_unlock();
         return -1;
     }
-
     bt_ctx_unlock();
-
     err = esp_bt_gap_set_device_name(name);
     return (err == ESP_OK) ? 0 : -1;
 #else
@@ -512,9 +557,6 @@ int bt_manager_connect(const char* mac) {
 
 int bt_manager_disconnect(void) {
 #ifdef UNIT_TEST
-    /* Test hook: allow unit tests to force a failure path. Implemented in
-     * test code via a weak symbol returning non-zero when a failure should
-     * be simulated. */
     extern int bt_manager_forced_disconnect_failure(void);
     if (bt_manager_forced_disconnect_failure()) return -1;
 #endif
@@ -529,41 +571,24 @@ int bt_manager_start_audio(void) {
     return (bt_start_audio() == ESP_OK) ? 0 : -1;
 }
 
-// Wrapper so command layer and host tests can call a consistent bt_manager_
-// prefixed API for starting scans. Returns 0 on success, -1 on failure.
 int bt_manager_start_scan(void) {
 #ifdef UNIT_TEST
-    /* Allow tests to force a failure path if they need to exercise error
-     * handling. Tests may provide a weak symbol to indicate a forced
-     * failure; absent that symbol the normal path is taken. */
     extern int bt_manager_forced_start_failure(void);
     if (bt_manager_forced_start_failure()) return -1;
 #endif
-    int ret = (bt_start_scan() == ESP_OK) ? 0 : -1;
-    /* Note: bt_start_scan() in bt_scan.c handles the test hook call */
-    return ret;
+    return (bt_start_scan() == ESP_OK) ? 0 : -1;
 }
 
-// Wrapper so command layer and host tests can call a consistent bt_manager_
-// prefixed API for starting a pairing operation. Returns 0 on success, -1 on
-// failure. In unit-test builds this will also invoke a weak test hook so the
-// host-side test harness can deterministically observe that pairing was
-// initiated.
 int bt_manager_start_pair(const char* mac) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_pair_failure(void);
     if (bt_manager_forced_pair_failure()) return -1;
 #endif
-    /* Call the underlying bt_pair() so we can capture the esp_err_t and
-     * emit a diagnostic when pairing fails. bt_manager_pair() hides the
-     * exact error code which makes on-target triage harder; using the
-     * lower-level API preserves behaviour while improving visibility. */
     bt_err_t perr = bt_pair(mac);
     int ret = (perr == ESP_OK) ? 0 : -1;
-
 #if defined(ESP_PLATFORM)
     if (ret != 0) {
-        ESP_LOGE(TAG, "bt_manager_start_pair: failed to start pairing for %s: %s (%d)",  // NOLINT(bugprone-branch-clone)
+        ESP_LOGE(TAG, "bt_manager_start_pair: failed to start pairing for %s: %s (%d)",
                  mac ? mac : "<null>", esp_err_to_name(perr), (int)perr);
     }
 #else
@@ -572,18 +597,12 @@ int bt_manager_start_pair(const char* mac) {
         fflush(stdout);
     }
 #endif
-
 #if defined(UNIT_TEST)
     if (ret == 0) {
         extern void bt_manager_test_record_pair_start(const char* mac);
-        /* Call the weak test hook directly; production builds provide a
-         * no-op weak definition and host tests provide an overriding
-         * implementation. Avoid taking the function pointer address to
-         * prevent -Werror=address warnings on some toolchains. */
         bt_manager_test_record_pair_start(mac);
     }
 #endif
-
     return ret;
 }
 
@@ -595,49 +614,82 @@ int bt_manager_stop_audio(void) {
     return (bt_stop_audio() == ESP_OK) ? 0 : -1;
 }
 
-
 #ifdef ESP_PLATFORM
 static esp_err_t bt_manager_init_profiles(void)
 {
+    bool avrc_initialized = false;
+    bool a2dp_initialized = false;
+    bool hfp_attempted = false;
     esp_err_t ret = esp_avrc_ct_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize AVRCP controller failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Initialize AVRCP controller failed: %s", esp_err_to_name(ret));
+        return ret;
     }
+    avrc_initialized = true;
 
     ret = esp_avrc_ct_register_callback(bt_events_avrc_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register AVRCP controller callback failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
-
     ret = esp_a2d_source_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Initialize a2dp source failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Initialize A2DP source failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
-
-    /* DESIGN: bt_events_a2dp_callback is the SINGLE registered A2DP callback.
-     * It dispatches to bt_connection_state_cb / bt_audio_state_cb in
-     * bt_connection_manager.  bt_connection_manager_init() also calls
-     * esp_a2d_register_callback() but that function is only used by isolated
-     * unit tests that need a minimal connection-manager harness; it is never
-     * called in production.  Do not add a second esp_a2d_register_callback()
-     * registration here — only the last registration wins in ESP-IDF and a
-     * second call would silently drop events for the other handler. */
+    a2dp_initialized = true;
     ret = esp_a2d_register_callback(bt_events_a2dp_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp source callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register A2DP source callback failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
-
     ret = esp_a2d_source_register_data_callback(bt_events_a2dp_data_callback);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register a2dp data callback failed: %s", esp_err_to_name(ret));  // NOLINT(bugprone-branch-clone)
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Register A2DP data callback failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
-
+    hfp_attempted = true;
+    ret = bt_hfp_ag_profile_init(BT_HFP_AG_DEFAULT_LIFECYCLE_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Initialize HFP Audio Gateway failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
     return ESP_OK;
+
+fail:
+    if (hfp_attempted) {
+        esp_err_t cleanup_err = bt_hfp_ag_profile_deinit(2000U);
+        if (cleanup_err != ESP_OK && cleanup_err != ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG, "HFP rollback failed: %s", esp_err_to_name(cleanup_err));
+        }
+    }
+    if (a2dp_initialized) {
+        esp_err_t cleanup_err = esp_a2d_source_deinit();
+        if (cleanup_err != ESP_OK) ESP_LOGE(TAG, "A2DP rollback failed: %s", esp_err_to_name(cleanup_err));
+    }
+    if (avrc_initialized) {
+        esp_err_t cleanup_err = esp_avrc_ct_deinit();
+        if (cleanup_err != ESP_OK) ESP_LOGE(TAG, "AVRCP rollback failed: %s", esp_err_to_name(cleanup_err));
+    }
+    return ret;
+}
+
+static esp_err_t bt_manager_deinit_profiles(void)
+{
+    esp_err_t first_error = ESP_OK;
+    bt_hfp_ag_snapshot_t hfp_snapshot;
+    esp_err_t err = bt_hfp_ag_get_snapshot(&hfp_snapshot);
+    if (err == ESP_OK && hfp_snapshot.lifecycle != BT_HFP_AG_LIFECYCLE_UNINITIALIZED) {
+        err = bt_hfp_ag_profile_deinit(BT_HFP_AG_DEFAULT_LIFECYCLE_TIMEOUT_MS);
+        if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    } else if (err != ESP_OK && err != ESP_ERR_INVALID_STATE && first_error == ESP_OK) {
+        first_error = err;
+    }
+    err = esp_a2d_source_deinit();
+    if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    err = esp_avrc_ct_deinit();
+    if (err != ESP_OK && first_error == ESP_OK) first_error = err;
+    return first_error;
 }
 #endif
 
@@ -647,61 +699,61 @@ esp_err_t bt_manager_test_init_profiles(void)
 #ifdef ESP_PLATFORM
     return bt_manager_init_profiles();
 #else
-    /* Host test build: call mock functions in the same order as ESP build */
-    esp_err_t ret;
-    
-    ret = esp_avrc_ct_init();
-    if (ret != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
+#ifdef BT_MANAGER_TEST_HFP_PROFILES
+    bool avrc_initialized = false;
+    bool a2dp_initialized = false;
+    bool hfp_attempted = false;
+    esp_err_t ret = esp_avrc_ct_init();
+    if (ret != ESP_OK) return ret;
+    avrc_initialized = true;
     ret = esp_avrc_ct_register_callback(NULL);
-    if (ret != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
+    if (ret != ESP_OK) goto host_fail;
     ret = esp_a2d_source_init();
-    if (ret != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
+    if (ret != ESP_OK) goto host_fail;
+    a2dp_initialized = true;
     ret = esp_a2d_register_callback(NULL);
-    if (ret != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
+    if (ret != ESP_OK) goto host_fail;
     ret = esp_a2d_source_register_data_callback(NULL);
-    if (ret != ESP_OK) {
-        return ESP_FAIL;
-    }
-    
+    if (ret != ESP_OK) goto host_fail;
+    hfp_attempted = true;
+    ret = bt_hfp_ag_profile_init(10U);
+    if (ret != ESP_OK) goto host_fail;
     return ESP_OK;
+
+host_fail:
+    if (hfp_attempted) {
+        esp_err_t cleanup_err = bt_hfp_ag_profile_deinit(10U);
+        if (cleanup_err != ESP_OK && cleanup_err != ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG, "Host HFP rollback failed: %s", esp_err_to_name(cleanup_err));
+        }
+    }
+    if (a2dp_initialized) (void)esp_a2d_source_deinit();
+    if (avrc_initialized) (void)esp_avrc_ct_deinit();
+    return ret;
+#else
+    esp_err_t ret;
+    ret = esp_avrc_ct_init();
+    if (ret != ESP_OK) return ESP_FAIL;
+    ret = esp_avrc_ct_register_callback(NULL);
+    if (ret != ESP_OK) return ESP_FAIL;
+    ret = esp_a2d_source_init();
+    if (ret != ESP_OK) return ESP_FAIL;
+    ret = esp_a2d_register_callback(NULL);
+    if (ret != ESP_OK) return ESP_FAIL;
+    ret = esp_a2d_source_register_data_callback(NULL);
+    if (ret != ESP_OK) return ESP_FAIL;
+    return ESP_OK;
+#endif
 #endif
 }
 #endif
 
-#ifdef ESP_PLATFORM
-/* ESP-IDF build */
-#else
-/* Host build */
-#endif
-
-/* Test hooks for host-mode unit tests --------------------------------------
- *
- * The host tests manipulate bt_ctx directly without calling bt_manager_init().
- * These helpers create/destroy the s_bt_ctx_mutex so that bt_ctx_lock()/bt_ctx_unlock()
- * succeed during unit testing.
- */
 #ifdef UNIT_TEST
 esp_err_t bt_manager_test_init_mutex(void)
 {
-    if (s_bt_ctx_mutex) {
-        platform_mutex_delete(s_bt_ctx_mutex);
-    }
+    if (s_bt_ctx_mutex) platform_mutex_delete(s_bt_ctx_mutex);
     s_bt_ctx_mutex = platform_mutex_create();
-    if (s_bt_ctx_mutex == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
+    if (s_bt_ctx_mutex == NULL) return ESP_ERR_NO_MEM;
     return ESP_OK;
 }
 

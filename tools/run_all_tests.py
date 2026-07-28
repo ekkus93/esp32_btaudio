@@ -509,7 +509,7 @@ def main(argv: list[str] | None = None):
                         tests = counted.get("tests", tests)
                         failed_count = counted.get("failures", failed_count if failed_count is not None else 0)
                         ignored = counted.get("ignored", ignored if ignored is not None else 0)
-                        passed = tests - failed - ignored
+                        passed = tests - failed_count - ignored
                     except Exception:
                         pass
 

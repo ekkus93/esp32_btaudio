@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "bt_api.h"
+#include "bt_duplex_state.h"
 
 #if defined(ESP_PLATFORM)
 #include "esp_bt.h"
@@ -157,6 +158,31 @@ bt_err_t bt_connect_by_name(const char* name);
  * @return ESP_OK (bt_err_t) if successful
  */
 bt_err_t bt_disconnect(void);
+
+/**
+ * Initiate an HFP service-level connection to the active A2DP/ACL peer.
+ *
+ * The return value reports whether the request was accepted and sent through
+ * BtAppTask. Confirmed SLC completion is reported asynchronously in the
+ * duplex snapshot. This function never starts SCO audio.
+ *
+ * @param mac Bluetooth address in XX:XX:XX:XX:XX:XX form. It must match the
+ *            currently active A2DP/ACL peer.
+ * @return ESP_OK when the lower-level request was accepted, otherwise an
+ *         explicit esp_err_t failure.
+ */
+esp_err_t bt_hfp_connect(const char *mac);
+
+/**
+ * Initiate HFP service-level disconnection from the active peer.
+ *
+ * The return value reports request acceptance only. Confirmed disconnection
+ * is reported asynchronously in the duplex snapshot.
+ *
+ * @return ESP_OK when the lower-level request was accepted or the profile is
+ *         already disconnected, otherwise an explicit esp_err_t failure.
+ */
+esp_err_t bt_hfp_disconnect(void);
 
 /**
  * Get the list of discovered devices

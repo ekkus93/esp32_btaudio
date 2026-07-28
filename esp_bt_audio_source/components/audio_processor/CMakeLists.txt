@@ -12,6 +12,12 @@ idf_component_register(
         "audio_processor_sync_diag.c"
        
         "audio_ringbuffer.c"
+        "hfp_pcm_ring.c"
+        "hfp_voice_convert.c"
+        "hfp_i2s_output.c"
+        "hfp_i2s_output_platform.c"
+        "hfp_i2s_output_lifecycle.c"
+        "hfp_i2s_output_data.c"
         "audio_span_log.c"
         "audio_util.c"
         "audio_resampler_stream.c"

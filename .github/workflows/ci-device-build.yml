@@ -52,6 +52,7 @@ jobs:
         with:
           name: device-build-artifacts
           path: |
+            esp_bt_audio_source/sdkconfig
             esp_bt_audio_source/build/**/*.bin
             esp_bt_audio_source/build/**/*.elf
             esp_bt_audio_source/build/**/*.map

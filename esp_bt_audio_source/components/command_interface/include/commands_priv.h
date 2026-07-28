@@ -1,6 +1,14 @@
 #ifndef COMMANDS_PRIV_H
 #define COMMANDS_PRIV_H
 
+/* commands.c is built as strict ISO C11 by the focused host sanitizer suite.
+ * Request the POSIX declarations used by the parser before any system header
+ * is included. ESP-IDF/newlib supplies these APIs through its own platform
+ * configuration, so do not alter the embedded feature-test environment. */
+#if !defined(ESP_PLATFORM) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "command_interface.h"
 
 #include <ctype.h>
@@ -12,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "audio_processor.h"
 #include "bt_manager.h"

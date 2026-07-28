@@ -1,5 +1,23 @@
 <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
 
+## 2026-07-28T05:20:46Z - GPT-5.6 Thinking - completed FD-03 through FD-07 full-duplex software foundations
+
+- Continued exclusively on `feature/esp-bt-audio-duplex`; no helper branch or additional PR was created, and no hardware was flashed.
+- FD-03 added the authoritative generation-checked duplex snapshot and legal transition matrices. FD-04 added a caller-owned bounded SPSC HFP PCM ring with whole-frame writes and protected 64-bit statistics. FD-05 added no-fabrication CVSD/downmix/rate-conversion helpers.
+- FD-06 added the asynchronous ESP-IDF v5.5.1 HFP Audio Gateway lifecycle, normalized HFP events, stage-accurate reverse rollback, and callback-shutdown quarantine rules.
+- FD-07 added public `bt_hfp_connect()` / `bt_hfp_disconnect()` APIs, same-active-peer enforcement, BtAppTask-owned lower-layer requests, separation of request acceptance from callback-confirmed SLC completion, generation-bound stale-event rejection/counters, bounded request/SLC watchdogs, remote-rejection visibility, and no SCO startup.
+- Final acceptance review found and fixed two omissions after an earlier green run: the HFP APIs are now exported through `bt_manager.h`, and FD-07 timer/semaphore/mutex cleanup is chained to the verified post-Bluedroid HFP cleanup boundary. Standalone host suites use explicit test-only cleanup stubs; production behavior is not weakened.
+- Validated code head `172f8c5ccc3db1c48d5affd6ab116d065a2ed310`: strict host CI run 721 passed all focused ASan/UBSan suites, manager rollback coverage, changed-Python lint, Python tests, and full CTest; ESP-IDF v5.5.1 device-build run 615 passed.
+- Hardware-gated work remains: FD-01 runtime heap/stack/A2DP baseline measurements and real WROOM32 HFP/SLC event confirmation. FD-08 is the next software phase.
+
+## 2026-07-27T22:51:33Z - GPT-5.6 Thinking - started full-duplex Ralph loop; FD-00 and FD-02 compile gates passed
+
+- Working branch: `feature/esp-bt-audio-duplex`; draft PR #2. Confirmed current `master` is included, both full-duplex planning documents exist, the authoritative main-layering check passes, and no hardware was flashed.
+- Baseline commit `cb58d0b47cfc683542cae62efce2a1e66365c3a9`: host CI run 515 and ESP-IDF v5.5.1 device-build run 418 passed. Application image was 927,392 bytes with 842,080 bytes remaining in the 1,769,472-byte factory partition. `.dram0.data` was 21,824 bytes and `.dram0.bss` was 44,432 bytes.
+- FD-02 enabled HFP Audio Gateway over the HCI SCO path, disabled the HFP client role and WBS/mSBC for initial CVSD bring-up, and configured one synchronous connection. Application code still initializes no HFP/SCO APIs, so runtime behavior remains A2DP-only at this phase.
+- Validated clean head `7f2eb7a78cb558f187eda6c7097a5792eb09066e`: host CI run 529 and device-build run 432 passed. The image is 969,856 bytes (+42,464), leaving 799,616 bytes of app-partition headroom. Static DRAM increased by 6,120 bytes (`.dram0.data` +16, `.dram0.bss` +6,104). The FD-02 stop condition passes.
+- Hardware/runtime FD-01 measurements (heap, stack high-water marks, 10-minute A2DP counters) remain pending and are not represented as complete.
+
 ## 2026-07-27T22:07:57Z - Claude Sonnet 5 - narrowed memory.md from a 3-month to a 1-week rolling window
 
 - User: memory.md (2835 lines) was "still kind of big" -- asked to keep only the

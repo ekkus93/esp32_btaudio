@@ -137,6 +137,12 @@ const char* mock_uart_get_tx_data(void) {
 
 esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size, 
                              int queue_size, void* uart_queue, int intr_alloc_flags) {
+    (void)rx_buffer_size;
+    (void)tx_buffer_size;
+    (void)queue_size;
+    (void)uart_queue;
+    (void)intr_alloc_flags;
+
     if (uart_num >= UART_NUM_MAX) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -168,6 +174,8 @@ esp_err_t uart_driver_delete(uart_port_t uart_num) {
 }
 
 int uart_read_bytes(uart_port_t uart_num, uint8_t *buf, uint32_t length, TickType_t ticks_to_wait) {
+    (void)ticks_to_wait;
+
     if (uart_num >= UART_NUM_MAX || buf == NULL) {
         return -1;
     }

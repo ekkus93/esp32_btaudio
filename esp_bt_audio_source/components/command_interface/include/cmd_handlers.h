@@ -14,7 +14,7 @@ cmd_status_t cmd_handle_help(const cmd_context_t *ctx);
 
 cmd_status_t cmd_handle_scan(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_synth(const cmd_context_t *ctx);
-cmd_status_t cmd_handle_uartaudio(const cmd_context_t *ctx);  /* uart_audio.c */
+cmd_status_t cmd_handle_uartaudio(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_diag(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_beep(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_start(const cmd_context_t *ctx);
@@ -44,5 +44,6 @@ cmd_status_t cmd_handle_unpair(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_unpair_all(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_set_name(const cmd_context_t *ctx);
 cmd_status_t cmd_handle_debug(const cmd_context_t *ctx);
+cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx);
 
-#endif /* CMD_HANDLERS_H */
+#endif

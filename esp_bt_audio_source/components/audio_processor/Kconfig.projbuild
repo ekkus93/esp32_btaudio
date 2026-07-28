@@ -1,0 +1,77 @@
+menu "HFP I2S Microphone Output"
+    config HFP_I2S_PORT
+        int "I2S TX port"
+        default 0
+        range 0 1
+        help
+            Dedicated standard-mode TX controller for HFP microphone PCM.
+            The existing playback capture path uses I2S1, so the supported
+            default is I2S0.
+
+    config HFP_I2S_BCLK_GPIO
+        int "I2S TX BCLK GPIO"
+        default 32
+
+    config HFP_I2S_WS_GPIO
+        int "I2S TX WS/LRCLK GPIO"
+        default 33
+
+    config HFP_I2S_DOUT_GPIO
+        int "I2S TX data GPIO"
+        default 27
+
+    config HFP_I2S_SAMPLE_RATE
+        int "I2S TX sample rate"
+        default 16000
+        range 16000 16000
+
+    config HFP_I2S_RING_BYTES
+        int "HFP microphone PCM ring bytes"
+        default 4096
+        range 1024 16384
+
+    config HFP_I2S_DMA_DESC_NUM
+        int "I2S TX DMA descriptors"
+        default 8
+        range 2 16
+
+    config HFP_I2S_DMA_FRAME_NUM
+        int "Frames per I2S TX DMA descriptor"
+        default 120
+        range 32 512
+
+    config HFP_I2S_WRITER_SAMPLES
+        int "Samples written per writer iteration"
+        default 120
+        range 32 512
+
+    config HFP_I2S_TASK_STACK_BYTES
+        int "I2S TX writer task stack bytes"
+        default 4096
+        range 3072 8192
+
+    config HFP_I2S_TASK_PRIORITY
+        int "I2S TX writer task priority"
+        default 5
+        range 1 20
+
+    config HFP_I2S_WRITE_TIMEOUT_MS
+        int "I2S TX write timeout (ms)"
+        default 20
+        range 1 100
+
+    config HFP_I2S_STOP_TIMEOUT_MS
+        int "I2S TX cooperative stop timeout (ms)"
+        default 1000
+        range 100 5000
+
+    config HFP_I2S_MAX_CONSECUTIVE_WRITE_FAILURES
+        int "Consecutive write failures before fault"
+        default 3
+        range 1 20
+
+    config HFP_I2S_UNDERFLOW_DEGRADED_THRESHOLD
+        int "Consecutive silence intervals before degraded status"
+        default 20
+        range 1 1000
+endmenu

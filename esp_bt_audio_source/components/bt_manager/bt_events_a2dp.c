@@ -5,8 +5,11 @@
 #include "bt_manager_internal.h"
 #include "bt_manager.h"
 #include "bt_pairing_store.h"
+#include "bt_duplex_policy.h"
+#include "bt_hfp_manager.h"
 #include "audio_processor.h"
 #include <string.h>
+#include <strings.h>
 
 #define TAG "BT_EVT_A2DP"
 
@@ -17,6 +20,95 @@ extern void bt_audio_state_cb(esp_a2d_audio_state_t state, esp_bd_addr_t bd_addr
 extern bt_err_t bt_start_audio(void);
 #endif
 
+static void bda_to_string(const uint8_t bda[6], char out[18])
+{
+    safe_snprintf(out, 18U, "%02x:%02x:%02x:%02x:%02x:%02x",
+                  bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+}
+
+static void report_policy_result(const char *event_name, esp_err_t err)
+{
+    if (err == ESP_OK || err == ESP_ERR_NOT_FOUND) return;
+    ESP_LOGE(TAG, "%s policy update failed: %s", event_name,
+             esp_err_to_name(err));
+}
+
+static esp_err_t capture_policy_generation(const char *peer,
+                                           bool allow_no_session,
+                                           uint32_t *generation_out)
+{
+    if (peer == NULL || generation_out == NULL) return ESP_ERR_INVALID_ARG;
+    bt_hfp_manager_status_t status;
+    esp_err_t err = bt_manager_hfp_get_status(&status);
+    if (err != ESP_OK) return err;
+    if (!status.duplex.peer_valid) {
+        if (!allow_no_session) return ESP_ERR_INVALID_STATE;
+        *generation_out = 0U;
+        return ESP_OK;
+    }
+    if (strcasecmp(peer, status.duplex.peer_mac) != 0 ||
+        status.duplex.session_generation == 0U) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    *generation_out = status.duplex.session_generation;
+    return ESP_OK;
+}
+
+static void apply_connection_policy(const esp_a2d_cb_param_t *param)
+{
+    bt_a2dp_profile_state_t mapped;
+    switch (param->conn_stat.state) {
+    case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
+        mapped = BT_A2DP_PROFILE_DISCONNECTED;
+        break;
+    case ESP_A2D_CONNECTION_STATE_CONNECTING:
+        mapped = BT_A2DP_PROFILE_CONNECTING;
+        break;
+    case ESP_A2D_CONNECTION_STATE_CONNECTED:
+        mapped = BT_A2DP_PROFILE_CONNECTED;
+        break;
+    case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
+        mapped = BT_A2DP_PROFILE_DISCONNECTING;
+        break;
+    default:
+        report_policy_result("A2DP connection", ESP_ERR_INVALID_ARG);
+        return;
+    }
+    char peer[18];
+    bda_to_string(param->conn_stat.remote_bda, peer);
+    uint32_t generation = 0U;
+    esp_err_t err = capture_policy_generation(peer, true, &generation);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_handle_a2dp_profile_event(
+            generation, peer, mapped);
+    }
+    report_policy_result("A2DP connection", err);
+}
+
+static void apply_audio_policy(const esp_a2d_cb_param_t *param)
+{
+    bt_a2dp_audio_state_t mapped;
+    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+        mapped = BT_A2DP_AUDIO_STARTED;
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
+        mapped = BT_A2DP_AUDIO_REMOTE_SUSPENDED;
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
+        mapped = BT_A2DP_AUDIO_STOPPED;
+    } else {
+        report_policy_result("A2DP audio", ESP_ERR_INVALID_ARG);
+        return;
+    }
+    char peer[18];
+    bda_to_string(param->audio_stat.remote_bda, peer);
+    uint32_t generation = 0U;
+    esp_err_t err = capture_policy_generation(peer, false, &generation);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_handle_a2dp_audio_event(
+            generation, peer, mapped);
+    }
+    report_policy_result("A2DP audio", err);
+}
+
 void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
     if (!param) {
         return;
@@ -24,10 +116,7 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
 
     if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
         char bda_str[18];
-        safe_snprintf(bda_str, sizeof(bda_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                      param->conn_stat.remote_bda[0], param->conn_stat.remote_bda[1],
-                      param->conn_stat.remote_bda[2], param->conn_stat.remote_bda[3],
-                      param->conn_stat.remote_bda[4], param->conn_stat.remote_bda[5]);
+        bda_to_string(param->conn_stat.remote_bda, bda_str);
 
         ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
 
@@ -88,6 +177,8 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
          * (e.g. page timeout, HCI connection refused). */
         bt_pairing_handle_connection_failed(tmp_addr);
     }
+
+    apply_connection_policy(param);
 }
 
 void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
@@ -123,6 +214,8 @@ void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     }
+
+    apply_audio_policy(param);
 }
 
 // A2DP callback for audio events
@@ -144,23 +237,23 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
 int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 {
     /* Input validation (CODE_REVIEW 2602101453, P1.1.4)
-     * 
+     *
      * WHY: Negative or zero length indicates a bug in the Bluetooth stack.
      *      Null buffer pointer is invalid and would cause crashes.
      *      Same defensive programming pattern as bt_audio_data_callback().
-     * 
+     *
      * SAFETY: Guard against upstream bugs by rejecting invalid parameters immediately.
      */
     if (buf == NULL) {
         ESP_LOGE(TAG, "bt_events_a2dp_data_callback: NULL buffer pointer");
         return 0;
     }
-    
+
     if (len < 0) {
         ESP_LOGE(TAG, "bt_events_a2dp_data_callback: INVALID negative length=%d (BT stack bug!)", len);
         return 0;
     }
-    
+
     if (len == 0) {
         ESP_LOGW(TAG, "bt_events_a2dp_data_callback: zero-length request (should never happen)");
         return 0;
