@@ -26,6 +26,7 @@ idf_component_register(
         "cmd_handlers_audio.c"
         "cmd_handlers_bt.c"
         "cmd_handlers_debug.c"
+        "cmd_handlers_hfp.c"
         "uart_audio_frame.c"
         "uart_audio_rx.c"
         "uart_audio.c"
@@ -34,4 +35,3 @@ idf_component_register(
     PRIV_REQUIRES ${priv_requires}
     PRIV_INCLUDE_DIRS
 )
-
