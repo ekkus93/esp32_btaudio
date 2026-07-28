@@ -49,6 +49,7 @@ common_flags=(
         "${project_dir}/components/platform_shim/platform_sync_host.c" \
         "${test_dir}/mocks/bt_hfp_audio_i2s_stub.c" \
         "${test_dir}/test_bt_hfp_audio_cases.c" \
+        "${test_dir}/test_bt_hfp_audio_concurrency.c" \
         "${test_dir}/test_bt_hfp_audio.c" \
         -o "${binary}"
 } 2>&1 | tee "${compile_log}"
