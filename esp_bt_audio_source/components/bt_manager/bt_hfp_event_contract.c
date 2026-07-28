@@ -65,6 +65,12 @@ static const char *mode_reason_wire(bt_hfp_mode_event_reason_t reason)
     case BT_HFP_MODE_EVENT_REASON_SESSION_BEGIN: return "SESSION_BEGIN";
     case BT_HFP_MODE_EVENT_REASON_RECOVERY: return "RECOVERY";
     case BT_HFP_MODE_EVENT_REASON_POLICY: return "POLICY";
+    case BT_HFP_MODE_EVENT_REASON_REMOTE_SUSPENDED_A2DP_DURING_SCO:
+        return "REMOTE_SUSPENDED_A2DP_DURING_SCO";
+    case BT_HFP_MODE_EVENT_REASON_A2DP_STOPPED_DURING_SCO:
+        return "A2DP_STOPPED_DURING_SCO";
+    case BT_HFP_MODE_EVENT_REASON_A2DP_RESUMED: return "A2DP_RESUMED";
+    case BT_HFP_MODE_EVENT_REASON_SCO_STOPPED: return "SCO_STOPPED";
     default: return NULL;
     }
 }
