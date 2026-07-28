@@ -11,6 +11,8 @@ void test_recovery_rejects_healthy_or_live_resources(void);
 void test_snapshot_never_exposes_torn_64_bit_counter_group(void);
 void test_negative_enum_values_are_rejected(void);
 void test_a2dp_transitions_are_checked(void);
+void test_audio_generation_rotation_preserves_session_state_and_telemetry(void);
+void test_audio_generation_rotation_rejects_invalid_transient_states(void);
 void test_strings_are_stable_and_invalid_values_are_visible(void);
 void test_all_state_strings_are_exhaustive(void);
 
@@ -28,6 +30,8 @@ int main(void)
     RUN_TEST(test_snapshot_never_exposes_torn_64_bit_counter_group);
     RUN_TEST(test_negative_enum_values_are_rejected);
     RUN_TEST(test_a2dp_transitions_are_checked);
+    RUN_TEST(test_audio_generation_rotation_preserves_session_state_and_telemetry);
+    RUN_TEST(test_audio_generation_rotation_rejects_invalid_transient_states);
     RUN_TEST(test_strings_are_stable_and_invalid_values_are_visible);
     RUN_TEST(test_all_state_strings_are_exhaustive);
     return UNITY_END();
