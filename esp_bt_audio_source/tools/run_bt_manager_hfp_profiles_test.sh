@@ -7,6 +7,8 @@ unity_dir="${repo_dir}/esp_i2s_source/test/third_party/unity/src"
 test_dir="${project_dir}/test/host_test"
 build_dir="${test_dir}/build_host_tests/bt_manager_hfp_profiles"
 binary="${build_dir}/test_bt_manager_hfp_profiles"
+compile_log="${build_dir}/compile.log"
+test_log="${build_dir}/test.log"
 
 if [[ ! -f "${unity_dir}/unity.c" || ! -f "${unity_dir}/unity.h" ]]; then
     echo "ERROR: vendored Unity source not found at ${unity_dir}" >&2
@@ -15,6 +17,7 @@ fi
 
 mkdir -p "${build_dir}"
 
+{
 "${CC:-cc}" \
     -std=c11 \
     -Wall -Wextra -Werror \
@@ -68,7 +71,10 @@ mkdir -p "${build_dir}"
     "${project_dir}/components/platform_shim/platform_storage_host.c" \
     -lm \
     -o "${binary}"
+} 2>&1 | tee "${compile_log}"
 
+{
 ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
 UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
     "${binary}"
+} 2>&1 | tee "${test_log}"
