@@ -1,0 +1,277 @@
+name: Ralph RF phase 1
+
+on:
+  push:
+    branches:
+      - feature/esp-bt-audio-duplex
+    paths:
+      - '.github/workflows/ralph-rf-phase1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/esp-bt-audio-duplex
+          fetch-depth: 0
+      - name: Apply focused review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          # RF-01: explicitly serialize the incoming callback. ESP-IDF does not
+          # document a concurrency guarantee that is strong enough to rely on.
+          path = 'esp_bt_audio_source/components/bt_manager/include/bt_hfp_audio.h'
+          text = read(path)
+          text = replace_once(
+              text,
+              '    uint64_t callback_over_budget;\n    uint32_t callback_last_us;',
+              '    uint64_t callback_over_budget;\n    uint32_t callback_overlap_rejections;\n    uint32_t callback_last_us;',
+              'bt_hfp_audio snapshot overlap field')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/components/bt_manager/bt_hfp_audio.c'
+          text = read(path)
+          text = replace_once(
+              text,
+              'static atomic_uint s_callback_max_us_lifetime = ATOMIC_VAR_INIT(0U);\n',
+              'static atomic_uint s_callback_max_us_lifetime = ATOMIC_VAR_INIT(0U);\n'
+              '/* ESP-IDF does not promise that incoming HFP audio callbacks can\n'
+              ' * never overlap. The gate makes every 64-bit callback counter a\n'
+              ' * true single-writer counter. An overlapping callback is rejected\n'
+              ' * immediately and recorded by a lock-free saturating 32-bit counter;\n'
+              ' * it never spins, blocks, allocates, logs, or touches I2S. */\n'
+              'static atomic_flag s_callback_gate = ATOMIC_FLAG_INIT;\n'
+              'static atomic_uint s_callback_overlap_rejections = ATOMIC_VAR_INIT(0U);\n',
+              'callback gate globals')
+          marker = 'static void update_max_duration(uint32_t duration_us)\n'
+          helper = '''static void atomic_uint_increment_saturating(atomic_uint *counter)\n{\n    unsigned current = atomic_load_explicit(counter, memory_order_relaxed);\n    while (current != UINT_MAX &&\n           !atomic_compare_exchange_weak_explicit(\n               counter, &current, current + 1U, memory_order_relaxed,\n               memory_order_relaxed)) {\n    }\n}\n\nstatic bool callback_try_enter(void)\n{\n    if (atomic_flag_test_and_set_explicit(&s_callback_gate,\n                                          memory_order_acquire)) {\n        atomic_uint_increment_saturating(\n            &s_callback_overlap_rejections);\n        return false;\n    }\n    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,\n                              memory_order_acq_rel);\n    return true;\n}\n\nstatic void callback_exit(void)\n{\n    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,\n                              memory_order_acq_rel);\n    atomic_flag_clear_explicit(&s_callback_gate, memory_order_release);\n}\n\n'''
+          text = replace_once(text, marker, helper + marker, 'callback gate helpers')
+          text = replace_once(
+              text,
+              '    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,\n'
+              '                              memory_order_acq_rel);\n'
+              '    int64_t started = platform_now_us();',
+              '    if (!callback_try_enter()) return;\n'
+              '    int64_t started = platform_now_us();',
+              'unit callback enter')
+          text = replace_once(
+              text,
+              '    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,\n'
+              '                              memory_order_acq_rel);\n}\n#endif\n\n#ifdef ESP_PLATFORM',
+              '    callback_exit();\n}\n#endif\n\n#ifdef ESP_PLATFORM',
+              'unit callback exit')
+          text = replace_once(
+              text,
+              '    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,\n'
+              '                              memory_order_acq_rel);\n'
+              '    int64_t started = platform_now_us();\n'
+              '    if (audio_buf == NULL) {',
+              '    if (!callback_try_enter()) {\n'
+              '        if (audio_buf != NULL) esp_hf_ag_audio_buff_free(audio_buf);\n'
+              '        return;\n'
+              '    }\n'
+              '    int64_t started = platform_now_us();\n'
+              '    if (audio_buf == NULL) {',
+              'production callback enter')
+          text = replace_once(
+              text,
+              '    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,\n'
+              '                              memory_order_acq_rel);\n}\n#endif\n\nesp_err_t bt_hfp_audio_get_snapshot',
+              '    callback_exit();\n}\n#endif\n\nesp_err_t bt_hfp_audio_get_snapshot',
+              'production callback exit')
+          text = replace_once(
+              text,
+              '    out->active_callbacks = atomic_load_explicit(&s_audio.active_callbacks,\n'
+              '                                                 memory_order_acquire);\n'
+              '    out->last_error = s_audio.last_error;',
+              '    out->active_callbacks = atomic_load_explicit(&s_audio.active_callbacks,\n'
+              '                                                 memory_order_acquire);\n'
+              '    out->callback_overlap_rejections = atomic_load_explicit(\n'
+              '        &s_callback_overlap_rejections, memory_order_relaxed);\n'
+              '    out->last_error = s_audio.last_error;',
+              'snapshot overlap counter')
+          text = replace_once(
+              text,
+              '    atomic_store_explicit(&s_callback_max_us_lifetime, 0U,\n'
+              '                          memory_order_relaxed);\n'
+              '    counter64_init(&s_callback_over_budget_lifetime);',
+              '    atomic_store_explicit(&s_callback_max_us_lifetime, 0U,\n'
+              '                          memory_order_relaxed);\n'
+              '    atomic_store_explicit(&s_callback_overlap_rejections, 0U,\n'
+              '                          memory_order_relaxed);\n'
+              '    atomic_flag_clear_explicit(&s_callback_gate, memory_order_release);\n'
+              '    counter64_init(&s_callback_over_budget_lifetime);',
+              'test reset callback gate')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/components/bt_manager/include/bt_hfp_manager.h'
+          text = read(path)
+          text = replace_once(
+              text,
+              '    uint64_t callback_over_budget;\n    uint32_t callback_last_us;',
+              '    uint64_t callback_over_budget;\n    uint32_t callback_overlap_rejections;\n    uint32_t callback_last_us;',
+              'manager incoming overlap field')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/components/bt_manager/bt_hfp_manager_fd11.c'
+          text = read(path)
+          text = replace_once(
+              text,
+              '    COPY(ring_rejected_bytes); COPY(callback_over_budget);\n'
+              '    COPY(callback_last_us);',
+              '    COPY(ring_rejected_bytes); COPY(callback_over_budget);\n'
+              '    COPY(callback_overlap_rejections); COPY(callback_last_us);',
+              'map incoming overlap')
+          text = replace_once(
+              text,
+              '        REG(incoming, callback_over_budget) ||\n'
+              '        REG(incoming, callback_max_us_lifetime) ||',
+              '        REG(incoming, callback_over_budget) ||\n'
+              '        REG(incoming, callback_overlap_rejections) ||\n'
+              '        REG(incoming, callback_max_us_lifetime) ||',
+              'regression incoming overlap')
+          text = replace_once(
+              text,
+              '    SUB(incoming, callback_over_budget);\n',
+              '    SUB(incoming, callback_over_budget);\n'
+              '    SUB(incoming, callback_overlap_rejections);\n',
+              'subtract incoming overlap')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/components/command_interface/cmd_handlers_hfp_fd11_v2.c'
+          text = read(path)
+          text = replace_once(
+              text,
+              '         ",OVER_BUDGET=%" PRIu64 ",LAST_US=%" PRIu32\n'
+              '         ",MAX_US_LIFETIME=%" PRIu32,\n'
+              '         stats->incoming.registration_failures,\n'
+              '         stats->incoming.activation_failures,\n'
+              '         stats->incoming.callback_over_budget,\n'
+              '         stats->incoming.callback_last_us,',
+              '         ",OVER_BUDGET=%" PRIu64 ",OVERLAP_REJECT=%" PRIu32\n'
+              '         ",LAST_US=%" PRIu32 ",MAX_US_LIFETIME=%" PRIu32,\n'
+              '         stats->incoming.registration_failures,\n'
+              '         stats->incoming.activation_failures,\n'
+              '         stats->incoming.callback_over_budget,\n'
+              '         stats->incoming.callback_overlap_rejections,\n'
+              '         stats->incoming.callback_last_us,',
+              'stats overlap output')
+
+          # RF-04: operation success with an unavailable status snapshot is an
+          # explicit error record that states the lower operation succeeded.
+          start_old = '''    if (err != ESP_OK) {\n        char data[96];\n        if (!format_checked(data, sizeof(data),\n                            "STATUS_ERROR=%s", esp_err_to_name(err))) {\n            data[0] = '\\0';\n        }\n        (void)cmd_send_response(CMD_STATUS_OK, "HFP",\n                                "AUDIO_STARTED_STATUS_UNAVAILABLE", data);\n        return CMD_SUCCESS;\n    }'''
+          start_new = '''    if (err != ESP_OK) {\n        char data[160];\n        if (!format_checked(\n                data, sizeof(data),\n                "OPERATION=START,LOWER_OPERATION=SUCCEEDED,STATUS_ERROR=%s",\n                esp_err_to_name(err))) {\n            (void)cmd_send_response(CMD_STATUS_ERR, "HFP",\n                                    "AUDIO_STATUS_LINE_TOO_LONG", NULL);\n            return CMD_SUCCESS;\n        }\n        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",\n                                "AUDIO_STATUS_UNAVAILABLE", data);\n        return CMD_SUCCESS;\n    }'''
+          text = replace_once(text, start_old, start_new, 'audio start status error')
+          stop_old = '''    if (err != ESP_OK) {\n        char data[96];\n        if (!format_checked(data, sizeof(data),\n                            "STATUS_ERROR=%s", esp_err_to_name(err))) {\n            data[0] = '\\0';\n        }\n        (void)cmd_send_response(CMD_STATUS_OK, "HFP",\n                                "AUDIO_STOPPED_STATUS_UNAVAILABLE", data);\n        return CMD_SUCCESS;\n    }'''
+          stop_new = '''    if (err != ESP_OK) {\n        char data[160];\n        if (!format_checked(\n                data, sizeof(data),\n                "OPERATION=STOP,LOWER_OPERATION=SUCCEEDED,STATUS_ERROR=%s",\n                esp_err_to_name(err))) {\n            (void)cmd_send_response(CMD_STATUS_ERR, "HFP",\n                                    "AUDIO_STATUS_LINE_TOO_LONG", NULL);\n            return CMD_SUCCESS;\n        }\n        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",\n                                "AUDIO_STATUS_UNAVAILABLE", data);\n        return CMD_SUCCESS;\n    }'''
+          text = replace_once(text, stop_old, stop_new, 'audio stop status error')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/test/host_test/test_bt_hfp_commands_integrity_cases.c'
+          text = read(path)
+          old = '''void test_hfp_audio_success_is_not_retracted_by_status_failure(void)\n{\n    mock_bt_hfp_manager_set_status(NULL, ESP_ERR_TIMEOUT);\n    const char *tx = run_hfp("HFP AUDIO START");\n    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_start_calls());\n    TEST_ASSERT_NOT_NULL(strstr(\n        tx, "OK|HFP|AUDIO_STARTED_STATUS_UNAVAILABLE|"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));\n    TEST_ASSERT_NULL(strstr(tx, "ERR|HFP|ESP_ERR_TIMEOUT|"));\n\n    tx = run_hfp("HFP AUDIO STOP");\n    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_stop_calls());\n    TEST_ASSERT_NOT_NULL(strstr(\n        tx, "OK|HFP|AUDIO_STOPPED_STATUS_UNAVAILABLE|"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));\n}'''
+          new = '''void test_hfp_audio_success_is_not_retracted_by_status_failure(void)\n{\n    mock_bt_hfp_manager_set_status(NULL, ESP_ERR_TIMEOUT);\n    const char *tx = run_hfp("HFP AUDIO START");\n    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_start_calls());\n    TEST_ASSERT_NOT_NULL(strstr(\n        tx, "ERR|HFP|AUDIO_STATUS_UNAVAILABLE|OPERATION=START,"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "LOWER_OPERATION=SUCCEEDED"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));\n    TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STARTED|"));\n\n    tx = run_hfp("HFP AUDIO STOP");\n    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_stop_calls());\n    TEST_ASSERT_NOT_NULL(strstr(\n        tx, "ERR|HFP|AUDIO_STATUS_UNAVAILABLE|OPERATION=STOP,"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "LOWER_OPERATION=SUCCEEDED"));\n    TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));\n    TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STOPPED|"));\n}'''
+          text = replace_once(text, old, new, 'command integrity status semantics')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/test/host_test/test_bt_hfp_audio_concurrency.c'
+          text = read(path)
+          text = replace_once(
+              text,
+              '    pthread_t thread;\n    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL,\n                                            callback_thread, NULL));',
+              '    pthread_t thread;\n    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL,\n                                            callback_thread, NULL));',
+              'concurrency primary thread anchor')
+          anchor = '''    TEST_ASSERT_EQUAL_INT(0, pthread_mutex_unlock(&s_pause_lock));\n\n    bt_hfp_audio_snapshot_t snapshot;'''
+          insert = '''    TEST_ASSERT_EQUAL_INT(0, pthread_mutex_unlock(&s_pause_lock));\n\n    enum { OVERLAP_THREADS = 4 };\n    pthread_t overlap_threads[OVERLAP_THREADS];\n    for (unsigned i = 0U; i < OVERLAP_THREADS; ++i) {\n        TEST_ASSERT_EQUAL_INT(\n            0, pthread_create(&overlap_threads[i], NULL, callback_thread, NULL));\n    }\n    for (unsigned i = 0U; i < OVERLAP_THREADS; ++i) {\n        TEST_ASSERT_EQUAL_INT(0, pthread_join(overlap_threads[i], NULL));\n    }\n\n    bt_hfp_audio_snapshot_t snapshot;'''
+          text = replace_once(text, anchor, insert, 'concurrency overlap threads')
+          text = replace_once(
+              text,
+              '    TEST_ASSERT_EQUAL_UINT32(1, snapshot.active_callbacks);\n'
+              '    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,',
+              '    TEST_ASSERT_EQUAL_UINT32(1, snapshot.active_callbacks);\n'
+              '    TEST_ASSERT_EQUAL_UINT32(OVERLAP_THREADS,\n'
+              '                               snapshot.callback_overlap_rejections);\n'
+              '    TEST_ASSERT_EQUAL_UINT64(0, snapshot.incoming_callbacks);\n'
+              '    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,',
+              'concurrency overlap assertions')
+          text = replace_once(
+              text,
+              '    TEST_ASSERT_EQUAL_UINT32(0, snapshot.active_callbacks);\n'
+              '    TEST_ASSERT_EQUAL_UINT64(0, snapshot.accepted_frames);',
+              '    TEST_ASSERT_EQUAL_UINT32(0, snapshot.active_callbacks);\n'
+              '    TEST_ASSERT_EQUAL_UINT32(OVERLAP_THREADS,\n'
+              '                               snapshot.callback_overlap_rejections);\n'
+              '    TEST_ASSERT_EQUAL_UINT64(1, snapshot.incoming_callbacks);\n'
+              '    TEST_ASSERT_EQUAL_UINT64(0, snapshot.accepted_frames);',
+              'concurrency final assertions')
+          write(path, text)
+
+          # RF-05: codify the nested callback stack arrays and their reviewed
+          # maximum. The current path uses 120 int16 input samples plus a 2x
+          # conversion buffer: 240 + 480 = 720 bytes of fixed audio arrays.
+          path = 'esp_bt_audio_source/components/audio_processor/include/hfp_i2s_output.h'
+          text = read(path)
+          text = replace_once(
+              text,
+              '#define HFP_I2S_CVSD_MAX_INPUT_SAMPLES 120U\n',
+              '#define HFP_I2S_CVSD_MAX_INPUT_SAMPLES 120U\n'
+              '#define HFP_I2S_CVSD_UPSAMPLE_FACTOR 2U\n'
+              '#define HFP_I2S_CALLBACK_AUDIO_ARRAY_BUDGET_BYTES 1024U\n'
+              '#define HFP_I2S_CALLBACK_ALIGNED_BYTES \\\n'
+              '    (HFP_I2S_CVSD_MAX_INPUT_SAMPLES * sizeof(int16_t))\n'
+              '#define HFP_I2S_CALLBACK_CONVERTED_BYTES \\\n'
+              '    (HFP_I2S_CVSD_MAX_INPUT_SAMPLES * \\\n'
+              '     HFP_I2S_CVSD_UPSAMPLE_FACTOR * sizeof(int16_t))\n'
+              '_Static_assert(HFP_I2S_CVSD_MAX_INPUT_SAMPLES <= 120U,\n'
+              '               "CVSD callback input bound exceeds reviewed maximum");\n'
+              '_Static_assert(\n'
+              '    HFP_I2S_CALLBACK_ALIGNED_BYTES +\n'
+              '        HFP_I2S_CALLBACK_CONVERTED_BYTES <=\n'
+              '        HFP_I2S_CALLBACK_AUDIO_ARRAY_BUDGET_BYTES,\n'
+              '    "HFP callback audio arrays exceed reviewed stack budget");\n',
+              'callback stack assertions')
+          write(path, text)
+
+          path = 'esp_bt_audio_source/components/audio_processor/hfp_i2s_output_data.c'
+          text = read(path)
+          text = replace_once(
+              text,
+              '    int16_t converted[HFP_I2S_CVSD_MAX_INPUT_SAMPLES * 2U];',
+              '    int16_t converted[HFP_I2S_CVSD_MAX_INPUT_SAMPLES *\n'
+              '                      HFP_I2S_CVSD_UPSAMPLE_FACTOR];',
+              'conversion array factor')
+          text = replace_once(
+              text,
+              '    bool accepted = produced == sample_count * 2U &&',
+              '    bool accepted =\n'
+              '        produced == sample_count * HFP_I2S_CVSD_UPSAMPLE_FACTOR &&',
+              'conversion produced factor')
+          write(path, text)
+          PY
+
+          git rm .github/workflows/ralph-rf-phase1.yml
+          git config user.name 'ChatGPT Ralph Loop'
+          git config user.email 'actions@users.noreply.github.com'
+          git add esp_bt_audio_source
+          git commit -m 'fix(hfp): harden callback and command observability'
+          git push origin HEAD:feature/esp-bt-audio-duplex
