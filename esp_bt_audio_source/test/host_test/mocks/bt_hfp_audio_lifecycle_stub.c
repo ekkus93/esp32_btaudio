@@ -23,6 +23,8 @@ void mock_bt_hfp_audio_set_register_result(esp_err_t result)
 void mock_bt_hfp_audio_set_cleanup_result(esp_err_t result)
 {
     s_cleanup_result = result;
+    /* Begin a new explicitly configured cleanup observation window. */
+    s_cleanup_calls = 0U;
 }
 
 unsigned mock_bt_hfp_audio_register_calls(void)
