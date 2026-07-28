@@ -33,16 +33,6 @@ static void delete_task_sync(void)
     s_output.stopped = NULL;
 }
 
-static void enter_quarantine_locked(esp_err_t error)
-{
-    s_output.state = HFP_I2S_OUTPUT_QUARANTINED;
-    s_output.quarantine_events++;
-    s_output.last_error = error;
-    atomic_store_explicit(&s_output.accepting_pushes, false,
-                          memory_order_release);
-    HFP_I2S_LOGE("component quarantined: error=%d", (int)error);
-}
-
 static esp_err_t wait_for_pushes_to_drain(uint32_t timeout_ms)
 {
 #ifdef ESP_PLATFORM
@@ -84,7 +74,7 @@ static esp_err_t rollback_start(esp_err_t cause)
         if (wait_err != ESP_OK) {
             if (hfp_i2s_output_lock() == ESP_OK) {
                 s_output.start_failures++;
-                enter_quarantine_locked(wait_err);
+                hfp_i2s_output_enter_quarantine_locked(wait_err);
                 (void)hfp_i2s_output_unlock(ESP_OK);
             }
             return cause;
@@ -107,7 +97,7 @@ static esp_err_t rollback_start(esp_err_t cause)
     if (cleanup_error != ESP_OK) {
         if (hfp_i2s_output_lock() == ESP_OK) {
             s_output.start_failures++;
-            enter_quarantine_locked(cleanup_error);
+            hfp_i2s_output_enter_quarantine_locked(cleanup_error);
             (void)hfp_i2s_output_unlock(ESP_OK);
         }
         return cause;
@@ -137,9 +127,7 @@ esp_err_t hfp_i2s_output_start(uint32_t generation, const char *peer_mac)
     }
     esp_err_t err = hfp_i2s_output_lock();
     if (err != ESP_OK) return err;
-    if (!s_output.initialized) {
-        return hfp_i2s_output_unlock(ESP_ERR_INVALID_STATE);
-    }
+    if (!s_output.initialized) return hfp_i2s_output_unlock(ESP_ERR_INVALID_STATE);
     if (s_output.state == HFP_I2S_OUTPUT_QUARANTINED ||
         s_output.state == HFP_I2S_OUTPUT_FAULTED) {
         return hfp_i2s_output_unlock(ESP_ERR_INVALID_STATE);
@@ -189,8 +177,7 @@ esp_err_t hfp_i2s_output_start(uint32_t generation, const char *peer_mac)
 
     err = hfp_i2s_output_ops_channel_new(&s_output.config, &s_output.channel);
     if (err != ESP_OK) return rollback_start(err);
-    err = hfp_i2s_output_ops_channel_init_mode(s_output.channel,
-                                               &s_output.config);
+    err = hfp_i2s_output_ops_channel_init_mode(s_output.channel, &s_output.config);
     if (err != ESP_OK) return rollback_start(err);
     err = hfp_i2s_output_ops_task_create(&s_output.task);
     if (err != ESP_OK) return rollback_start(err);
@@ -222,7 +209,7 @@ static esp_err_t stop_and_cleanup(uint32_t timeout_ms)
     if (err != ESP_OK) {
         if (hfp_i2s_output_lock() == ESP_OK) {
             s_output.stop_timeouts++;
-            enter_quarantine_locked(err);
+            hfp_i2s_output_enter_quarantine_locked(err);
             (void)hfp_i2s_output_unlock(ESP_OK);
         }
         return err;
@@ -234,7 +221,7 @@ static esp_err_t stop_and_cleanup(uint32_t timeout_ms)
     if (err != ESP_OK) {
         if (hfp_i2s_output_lock() == ESP_OK) {
             s_output.stop_timeouts++;
-            enter_quarantine_locked(err);
+            hfp_i2s_output_enter_quarantine_locked(err);
             (void)hfp_i2s_output_unlock(ESP_OK);
         }
         return err;
@@ -254,7 +241,7 @@ static esp_err_t stop_and_cleanup(uint32_t timeout_ms)
     }
     if (first_error != ESP_OK) {
         if (hfp_i2s_output_lock() == ESP_OK) {
-            enter_quarantine_locked(first_error);
+            hfp_i2s_output_enter_quarantine_locked(first_error);
             (void)hfp_i2s_output_unlock(ESP_OK);
         }
         return first_error;
@@ -270,9 +257,7 @@ esp_err_t hfp_i2s_output_stop(uint32_t timeout_ms)
     if (timeout_ms == 0U) return ESP_ERR_INVALID_ARG;
     esp_err_t err = hfp_i2s_output_lock();
     if (err != ESP_OK) return err;
-    if (!s_output.initialized) {
-        return hfp_i2s_output_unlock(ESP_ERR_INVALID_STATE);
-    }
+    if (!s_output.initialized) return hfp_i2s_output_unlock(ESP_ERR_INVALID_STATE);
     s_output.stop_calls++;
     if (s_output.state == HFP_I2S_OUTPUT_STOPPED) {
         return hfp_i2s_output_unlock(ESP_OK);
@@ -292,21 +277,24 @@ esp_err_t hfp_i2s_output_stop(uint32_t timeout_ms)
     if (err != ESP_OK) return err;
 
     esp_err_t result = ESP_OK;
-    if (hfp_i2s_output_lock() == ESP_OK) {
-        if (was_faulted) {
-            result = s_output.last_error != ESP_OK
-                ? s_output.last_error : ESP_FAIL;
-            s_output.state = HFP_I2S_OUTPUT_FAULTED;
-        } else {
-            s_output.state = HFP_I2S_OUTPUT_STOPPED;
-            s_output.last_error = ESP_OK;
-        }
-        s_output.task = NULL;
-        s_output.task_created = false;
-        s_output.task_confirmed_stopped = false;
-        hfp_i2s_output_clear_session_locked();
-        (void)hfp_i2s_output_unlock(ESP_OK);
+    err = hfp_i2s_output_lock();
+    if (err != ESP_OK) return err;
+    if (was_faulted) {
+        result = s_output.last_error != ESP_OK ? s_output.last_error : ESP_FAIL;
+        s_output.state = HFP_I2S_OUTPUT_FAULTED;
+    } else {
+        s_output.state = HFP_I2S_OUTPUT_STOPPED;
+        s_output.last_error = ESP_OK;
     }
+    s_output.degraded = false;
+    s_output.consecutive_underflows = 0U;
+    s_output.task = NULL;
+    s_output.task_created = false;
+    s_output.task_confirmed_stopped = false;
+    hfp_i2s_output_clear_session_locked();
+    err = hfp_i2s_output_unlock(result);
+    if (err != result && result == ESP_OK) return err;
+    result = err;
     if (result == ESP_OK) HFP_I2S_LOGI("stopped");
     else HFP_I2S_LOGE("stopped after writer fault: error=%d", (int)result);
     return result;
