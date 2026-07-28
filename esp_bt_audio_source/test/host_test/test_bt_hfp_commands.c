@@ -13,6 +13,10 @@ void test_hfp_stats_max_values_are_split_without_truncation(void);
 void test_hfp_resetstats_reports_exact_success_or_failure(void);
 void test_hfp_invalid_forms_are_explicit(void);
 void test_response_overflow_fails_closed_without_buffer_overread(void);
+void test_hfp_connect_invalid_mac_preserves_exact_backend_error(void);
+void test_hfp_connect_pre_status_failure_does_not_block_accepted_request(void);
+void test_hfp_audio_success_is_not_retracted_by_status_failure(void);
+void test_hfp_mode_success_does_not_require_followup_snapshot(void);
 
 int main(void)
 {
@@ -30,5 +34,9 @@ int main(void)
     RUN_TEST(test_hfp_resetstats_reports_exact_success_or_failure);
     RUN_TEST(test_hfp_invalid_forms_are_explicit);
     RUN_TEST(test_response_overflow_fails_closed_without_buffer_overread);
+    RUN_TEST(test_hfp_connect_invalid_mac_preserves_exact_backend_error);
+    RUN_TEST(test_hfp_connect_pre_status_failure_does_not_block_accepted_request);
+    RUN_TEST(test_hfp_audio_success_is_not_retracted_by_status_failure);
+    RUN_TEST(test_hfp_mode_success_does_not_require_followup_snapshot);
     return UNITY_END();
 }
