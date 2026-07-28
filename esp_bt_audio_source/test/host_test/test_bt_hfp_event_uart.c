@@ -51,9 +51,23 @@ void test_fd12_event_records_broadcast_unchanged_to_both_command_uarts(void)
     TEST_ASSERT_EQUAL_STRING(primary, secondary);
 }
 
+void test_partial_broadcast_failure_is_reported_without_hiding_delivery(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, uart_driver_delete(SECONDARY));
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_hfp_event_emit_profile(
+        BT_HFP_PROFILE_CONNECTING, "AA:BB:CC:DD:EE:FF", 22U));
+
+    TEST_ASSERT_NOT_NULL(strstr(
+        mock_uart_get_tx_data_port(PRIMARY),
+        "EVENT|HFP|PROFILE|CONNECTING|AA:BB:CC:DD:EE:FF|22\r\n"));
+    TEST_ASSERT_EQUAL_STRING("", mock_uart_get_tx_data_port(SECONDARY));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_fd12_event_records_broadcast_unchanged_to_both_command_uarts);
+    RUN_TEST(test_partial_broadcast_failure_is_reported_without_hiding_delivery);
     return UNITY_END();
 }
