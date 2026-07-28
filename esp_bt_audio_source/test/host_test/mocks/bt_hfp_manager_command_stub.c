@@ -4,8 +4,10 @@
 
 static bt_hfp_manager_status_t s_status;
 static bt_hfp_manager_stats_t s_stats;
+static bt_hfp_manager_diagnostics_t s_diagnostics;
 static esp_err_t s_status_result;
 static esp_err_t s_stats_result;
+static esp_err_t s_diagnostics_result;
 static esp_err_t s_connect_result;
 static esp_err_t s_disconnect_result;
 static esp_err_t s_audio_start_result;
@@ -14,6 +16,7 @@ static esp_err_t s_mode_result;
 static esp_err_t s_reset_stats_result;
 static unsigned s_status_calls;
 static unsigned s_stats_calls;
+static unsigned s_diagnostics_calls;
 static unsigned s_connect_calls;
 static unsigned s_disconnect_calls;
 static unsigned s_audio_start_calls;
@@ -27,6 +30,7 @@ void mock_bt_hfp_manager_reset(void)
 {
     memset(&s_status, 0, sizeof(s_status));
     memset(&s_stats, 0, sizeof(s_stats));
+    memset(&s_diagnostics, 0, sizeof(s_diagnostics));
     s_status.manager_initialized = true;
     s_status.configured_mode = BT_DUPLEX_MODE_AUTO;
     s_status.duplex.requested_mode = BT_DUPLEX_MODE_AUTO;
@@ -41,6 +45,7 @@ void mock_bt_hfp_manager_reset(void)
     s_status.duplex.last_error = ESP_OK;
     s_status_result = ESP_OK;
     s_stats_result = ESP_OK;
+    s_diagnostics_result = ESP_OK;
     s_connect_result = ESP_OK;
     s_disconnect_result = ESP_OK;
     s_audio_start_result = ESP_OK;
@@ -49,6 +54,7 @@ void mock_bt_hfp_manager_reset(void)
     s_reset_stats_result = ESP_OK;
     s_status_calls = 0U;
     s_stats_calls = 0U;
+    s_diagnostics_calls = 0U;
     s_connect_calls = 0U;
     s_disconnect_calls = 0U;
     s_audio_start_calls = 0U;
@@ -73,6 +79,14 @@ void mock_bt_hfp_manager_set_stats(const bt_hfp_manager_stats_t *stats,
     s_stats_result = result;
 }
 
+void mock_bt_hfp_manager_set_diagnostics(
+    const bt_hfp_manager_diagnostics_t *diagnostics,
+    esp_err_t result)
+{
+    if (diagnostics != NULL) s_diagnostics = *diagnostics;
+    s_diagnostics_result = result;
+}
+
 void mock_bt_hfp_manager_set_connect_result(esp_err_t result) { s_connect_result = result; }
 void mock_bt_hfp_manager_set_disconnect_result(esp_err_t result) { s_disconnect_result = result; }
 void mock_bt_hfp_manager_set_audio_start_result(esp_err_t result) { s_audio_start_result = result; }
@@ -81,6 +95,7 @@ void mock_bt_hfp_manager_set_mode_result(esp_err_t result) { s_mode_result = res
 void mock_bt_hfp_manager_set_reset_stats_result(esp_err_t result) { s_reset_stats_result = result; }
 unsigned mock_bt_hfp_manager_status_calls(void) { return s_status_calls; }
 unsigned mock_bt_hfp_manager_stats_calls(void) { return s_stats_calls; }
+unsigned mock_bt_hfp_manager_diagnostics_calls(void) { return s_diagnostics_calls; }
 unsigned mock_bt_hfp_manager_connect_calls(void) { return s_connect_calls; }
 unsigned mock_bt_hfp_manager_disconnect_calls(void) { return s_disconnect_calls; }
 unsigned mock_bt_hfp_manager_audio_start_calls(void) { return s_audio_start_calls; }
@@ -152,6 +167,14 @@ esp_err_t bt_manager_hfp_get_stats(bt_hfp_manager_stats_t *out)
     if (out == NULL) return ESP_ERR_INVALID_ARG;
     if (s_stats_result == ESP_OK) *out = s_stats;
     return s_stats_result;
+}
+
+esp_err_t bt_manager_hfp_get_diagnostics(bt_hfp_manager_diagnostics_t *out)
+{
+    s_diagnostics_calls++;
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
+    if (s_diagnostics_result == ESP_OK) *out = s_diagnostics;
+    return s_diagnostics_result;
 }
 
 esp_err_t bt_manager_hfp_reset_stats(void)
