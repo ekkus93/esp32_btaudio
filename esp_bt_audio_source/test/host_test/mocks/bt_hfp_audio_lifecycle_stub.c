@@ -53,6 +53,18 @@ void bt_hfp_audio_profile_stopping(void)
     s_stopping_calls++;
 }
 
+void bt_hfp_audio_control_profile_stopping(void)
+{
+    /* The production control hook closes the fast callback gate itself. Keep
+     * one observable lifecycle count for the existing AG assertions. */
+    s_stopping_calls++;
+}
+
+esp_err_t bt_hfp_audio_control_cleanup_after_stack_shutdown(void)
+{
+    return ESP_OK;
+}
+
 esp_err_t bt_hfp_audio_cleanup_after_stack_shutdown(void)
 {
     s_cleanup_calls++;
