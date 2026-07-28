@@ -41,6 +41,7 @@ int main(void)
     RUN_TEST(test_health_report_failure_after_i2s_start_failure_is_visible);
     RUN_TEST(test_health_report_failure_after_i2s_stop_failure_is_visible);
     RUN_TEST(test_health_report_failure_after_connect_event_timeout_is_visible);
+    RUN_TEST(test_health_report_failure_after_disconnect_event_timeout_is_visible);
     RUN_TEST(test_health_report_failure_during_rollback_is_visible);
     RUN_TEST(test_health_report_failure_during_remote_cleanup_is_visible);
     return UNITY_END();
