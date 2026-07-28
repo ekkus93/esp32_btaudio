@@ -44,6 +44,7 @@ common_flags=(
         "${test_dir}/mocks/bt_hfp_manager_command_stub.c" \
         "${test_dir}/mocks/bt_hfp_command_dependencies.c" \
         "${test_dir}/test_bt_hfp_commands_cases.c" \
+        "${test_dir}/test_bt_hfp_commands_fd16_cases.c" \
         "${test_dir}/test_bt_hfp_commands_integrity_cases.c" \
         "${test_dir}/test_bt_hfp_commands.c" \
         -o "${binary}"
