@@ -30,6 +30,7 @@ idf_component_register(
         "bt_duplex_state_transitions.c"
         "bt_duplex_state_strings.c"
         "bt_duplex_state_events.c"
+        "bt_duplex_policy.c"
         "bt_hfp_event_contract.c"
         "bt_hfp_ag_lifecycle.c"
         "bt_hfp_ag_events.c"
@@ -38,6 +39,7 @@ idf_component_register(
         "bt_hfp_audio_control.c"
         "bt_hfp_manager_fd11.c"
         "bt_hfp_manager_fd13.c"
+        "bt_hfp_manager_fd16.c"
     INCLUDE_DIRS "include"
     # bt_stack_stub listed BEFORE bt: when CONFIG_APP_NO_BLOBS=y its
     # esp_bt.h wrapper (which #include_next-s the real one and patches the
