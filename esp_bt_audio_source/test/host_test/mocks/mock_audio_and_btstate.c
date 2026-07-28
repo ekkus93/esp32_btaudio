@@ -11,6 +11,7 @@
 #include "bt_api.h"
 #include "esp_bt.h"
 #include "command_interface.h"
+#include "bt_duplex_policy.h"
 #include "../../components/audio_processor/include/audio_processor.h"
 /* CODE_REVIEW5 Task 3.1: Need bt_streaming_info_t for stub */
 #include "bt_manager.h"  /* Defines bt_device_t */
@@ -121,13 +122,27 @@ int bt_manager_test_get_last_audio_state(void) {
     return s_last_audio_state;
 }
 
-/* Generic host targets intentionally do not link the FD-11 manager facade.
- * This strong stub prevents a linker fallback from pretending HFP worked.
- * Focused FD-11 tests compile the real handler with an injectable public
- * manager backend and do not link this shared mock object. */
+/* Generic host targets intentionally do not link the FD-11/FD-16 manager
+ * facades. The HFP handler fails closed, while A2DP policy callbacks report
+ * ESP_ERR_NOT_FOUND so the legacy event path can proceed without inventing an
+ * authoritative duplex session. Focused FD-16 tests link the real policy. */
 cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
     (void)ctx;
     return CMD_ERROR_NOT_INITIALIZED;
+}
+
+__attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
+    const char *peer_mac, bt_a2dp_profile_state_t state) {
+    (void)peer_mac;
+    (void)state;
+    return ESP_ERR_NOT_FOUND;
+}
+
+__attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
+    const char *peer_mac, bt_a2dp_audio_state_t state) {
+    (void)peer_mac;
+    (void)state;
+    return ESP_ERR_NOT_FOUND;
 }
 
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */
