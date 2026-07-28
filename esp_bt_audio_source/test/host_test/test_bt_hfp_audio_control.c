@@ -6,6 +6,7 @@ void test_duplicate_audio_start_is_rejected_without_second_request(void);
 void test_i2s_start_failure_prevents_sco_request(void);
 void test_immediate_sco_connect_failure_rolls_back_i2s(void);
 void test_confirmed_connected_route_failure_rolls_back_and_disconnects(void);
+void test_unsolicited_connected_event_is_rejected_without_fast_route(void);
 void test_audio_stop_handles_connecting_and_connected_states(void);
 void test_audio_disconnect_timeout_faults_but_stops_i2s_and_preserves_peer(void);
 void test_i2s_stop_timeout_is_quarantined_and_takes_precedence(void);
@@ -23,6 +24,7 @@ int main(void)
     RUN_TEST(test_i2s_start_failure_prevents_sco_request);
     RUN_TEST(test_immediate_sco_connect_failure_rolls_back_i2s);
     RUN_TEST(test_confirmed_connected_route_failure_rolls_back_and_disconnects);
+    RUN_TEST(test_unsolicited_connected_event_is_rejected_without_fast_route);
     RUN_TEST(test_audio_stop_handles_connecting_and_connected_states);
     RUN_TEST(test_audio_disconnect_timeout_faults_but_stops_i2s_and_preserves_peer);
     RUN_TEST(test_i2s_stop_timeout_is_quarantined_and_takes_precedence);
