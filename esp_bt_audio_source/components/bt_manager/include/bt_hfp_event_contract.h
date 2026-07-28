@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "bt_duplex_policy.h"
 #include "bt_duplex_state.h"
 
 #ifdef __cplusplus
@@ -20,7 +21,7 @@ typedef enum {
     BT_HFP_MODE_EVENT_REASON_COUNT,
 } bt_hfp_mode_event_reason_t;
 
-/* Stable FD-12 HFP event contract. All fields are emitted as bounded,
+/* Stable HFP event contract. All fields are emitted as bounded,
  * delimiter-free protocol tokens through the command interface's EVENT path. */
 esp_err_t bt_hfp_event_emit_profile(bt_hfp_profile_state_t state,
                                      const char *peer_mac,
@@ -32,6 +33,12 @@ esp_err_t bt_hfp_event_emit_mode(bt_duplex_mode_t old_mode,
                                  bt_duplex_mode_t new_mode,
                                  bt_hfp_mode_event_reason_t reason,
                                  uint32_t session_generation);
+esp_err_t bt_hfp_event_emit_policy(bt_duplex_policy_state_t state,
+                                   bt_duplex_policy_reason_t reason,
+                                   bt_duplex_mode_t requested,
+                                   bt_duplex_mode_t effective,
+                                   bt_duplex_downlink_owner_t downlink_owner,
+                                   uint32_t session_generation);
 esp_err_t bt_hfp_event_emit_i2s(bt_hfp_i2s_state_t state,
                                 esp_err_t error,
                                 uint32_t session_generation);
