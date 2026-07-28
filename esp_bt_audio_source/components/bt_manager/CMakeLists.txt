@@ -22,6 +22,7 @@ idf_component_register(
         "bt_connection_manager.c"
         "bt_streaming_manager.c"
         "bt_duplex_state_core.c"
+        "bt_duplex_state_audio.c"
         "bt_duplex_state_profile.c"
         "bt_duplex_state_transitions.c"
         "bt_duplex_state_strings.c"
