@@ -231,6 +231,17 @@ void test_hfp_events_update_authoritative_same_peer_state(void)
     TEST_ASSERT_EQUAL(BT_HFP_AG_CODEC_CVSD, hfp.last_codec_event);
     TEST_ASSERT_EQUAL_INT(9, hfp.speaker_volume);
     TEST_ASSERT_EQUAL_INT(7, hfp.microphone_volume);
+
+    bt_hfp_ag_handle_audio_state(PEER, BT_HFP_AG_AUDIO_DISCONNECTED);
+    bt_hfp_ag_handle_connection_state(PEER,
+                                      BT_HFP_AG_CONNECTION_DISCONNECTING);
+    bt_hfp_ag_handle_connection_state(PEER,
+                                      BT_HFP_AG_CONNECTION_DISCONNECTED);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL(BT_HFP_AUDIO_DISCONNECTED, duplex.hfp_audio_state);
+    TEST_ASSERT_EQUAL(BT_HFP_CODEC_NONE, duplex.codec);
+    TEST_ASSERT_EQUAL(BT_HFP_PROFILE_DISCONNECTED,
+                      duplex.hfp_profile_state);
 }
 
 void test_hfp_wrong_peer_and_response_failures_are_visible(void)
