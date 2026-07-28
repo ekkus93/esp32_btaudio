@@ -118,6 +118,16 @@ void hfp_i2s_output_set_error_locked(esp_err_t error)
     s_output.last_error = error;
 }
 
+void hfp_i2s_output_enter_quarantine_locked(esp_err_t error)
+{
+    s_output.state = HFP_I2S_OUTPUT_QUARANTINED;
+    s_output.quarantine_events++;
+    s_output.last_error = error;
+    atomic_store_explicit(&s_output.accepting_pushes, false,
+                          memory_order_release);
+    HFP_I2S_LOGE("component quarantined: error=%d", (int)error);
+}
+
 void hfp_i2s_output_clear_session_locked(void)
 {
     atomic_store_explicit(&s_output.generation, 0U, memory_order_release);
@@ -208,9 +218,6 @@ esp_err_t hfp_i2s_output_validate_config(
         config->ws_gpio == config->dout_gpio) {
         return ESP_ERR_INVALID_ARG;
     }
-    /* GPIO25/26 are valid generic outputs but were proven unsuitable for the
-     * project master-clock pins during hardware bring-up. Keep that policy
-     * explicit rather than retrying a known-bad clock route. */
     if (config->bclk_gpio == 25 || config->bclk_gpio == 26 ||
         config->ws_gpio == 25 || config->ws_gpio == 26) {
         return ESP_ERR_INVALID_ARG;
@@ -278,7 +285,6 @@ esp_err_t hfp_i2s_output_test_set_platform_ops(
 
 void hfp_i2s_output_test_reset(void)
 {
-    /* Test-only hard cleanup. Production never frees quarantined resources. */
     if (s_output.writer_pcm != NULL && g_hfp_i2s_test_ops_set) {
         g_hfp_i2s_test_ops.free(s_output.writer_pcm);
     }
