@@ -34,6 +34,7 @@ mkdir -p "${build_dir}"
     "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state_cases.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state_audio_cases.c" \
+    "${project_dir}/test/host_test/test_bt_duplex_state_cleanup_cases.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state_strings.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state.c" \
     -o "${binary}"
