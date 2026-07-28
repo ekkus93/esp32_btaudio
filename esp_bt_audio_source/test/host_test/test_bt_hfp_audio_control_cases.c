@@ -214,11 +214,35 @@ void test_confirmed_connected_route_failure_rolls_back_and_disconnects(void)
     TEST_ASSERT_EQUAL(ESP_FAIL, bt_hfp_audio_start());
 
     bt_hfp_audio_control_snapshot_t control;
+    bt_duplex_snapshot_t duplex;
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_get_snapshot(&control));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
     TEST_ASSERT_EQUAL_UINT(1U, s_connect_calls);
     TEST_ASSERT_EQUAL_UINT(1U, s_disconnect_calls);
     TEST_ASSERT_EQUAL_UINT(1U, mock_hfp_audio_control_i2s_stop_calls());
     TEST_ASSERT_EQUAL_UINT64(1U, control.rollback_attempts);
+    TEST_ASSERT_EQUAL(BT_HFP_AUDIO_FAULTED, duplex.hfp_audio_state);
+    TEST_ASSERT_EQUAL(BT_HFP_I2S_STOPPED, duplex.i2s_state);
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_FAULTED, duplex.health);
+}
+
+void test_unsolicited_connected_event_is_rejected_without_fast_route(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_init());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_handle_event(
+        PEER, BT_HFP_AG_AUDIO_CONNECTED_CVSD, SYNC_HANDLE, 120U));
+
+    bt_hfp_audio_control_snapshot_t control;
+    bt_duplex_snapshot_t duplex;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_get_snapshot(&control));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL_UINT64(1U, control.unexpected_connected_events);
+    TEST_ASSERT_EQUAL_UINT(1U, s_disconnect_calls);
+    TEST_ASSERT_EQUAL_UINT(0U, mock_hfp_audio_control_apply_calls());
+    TEST_ASSERT_EQUAL(BT_HFP_AUDIO_DISCONNECTED,
+                      duplex.hfp_audio_state);
+    TEST_ASSERT_EQUAL(BT_HFP_I2S_STOPPED, duplex.i2s_state);
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_DEGRADED, duplex.health);
 }
 
 void test_audio_stop_handles_connecting_and_connected_states(void)
@@ -292,7 +316,7 @@ void test_late_old_connected_event_after_timeout_is_ignored(void)
 {
     s_emit_connect_event = false;
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, bt_hfp_audio_start());
-    unsigned apply_before = mock_hfp_audio_control_apply_calls();
+    const unsigned apply_before = mock_hfp_audio_control_apply_calls();
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_handle_event(
         PEER, BT_HFP_AG_AUDIO_CONNECTED_CVSD, SYNC_HANDLE, 120U));
