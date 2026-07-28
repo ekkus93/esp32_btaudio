@@ -33,6 +33,20 @@ static bool sco_connected(bt_hfp_audio_state_t state)
            state == BT_HFP_AUDIO_CONNECTED_MSBC;
 }
 
+static bool same_input(const bt_duplex_policy_input_t *lhs,
+                       const bt_duplex_policy_input_t *rhs)
+{
+    return lhs->requested == rhs->requested &&
+           lhs->current_effective == rhs->current_effective &&
+           lhs->a2dp_connected == rhs->a2dp_connected &&
+           lhs->a2dp_streaming == rhs->a2dp_streaming &&
+           lhs->hfp_slc_connected == rhs->hfp_slc_connected &&
+           lhs->sco_connected == rhs->sco_connected &&
+           lhs->a2dp_interrupted_during_sco ==
+               rhs->a2dp_interrupted_during_sco &&
+           lhs->interruption_reason == rhs->interruption_reason;
+}
+
 static bt_hfp_mode_event_reason_t event_reason(
     bt_duplex_policy_reason_t reason)
 {
@@ -117,8 +131,7 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
         .interruption_reason = s_policy.interruption_reason,
     };
 
-    if (s_policy.input_valid &&
-        memcmp(&s_policy.last_input, &input, sizeof(input)) == 0) {
+    if (s_policy.input_valid && same_input(&s_policy.last_input, &input)) {
         return ESP_OK;
     }
 
@@ -201,11 +214,9 @@ esp_err_t bt_manager_hfp_get_policy_snapshot(
         return ESP_ERR_INVALID_STATE;
     }
 
-    err = bt_manager_hfp_policy_refresh_locked();
-    if (err == ESP_ERR_NOT_FOUND) err = ESP_OK;
-    if (err == ESP_OK) *out = s_policy.snapshot;
+    *out = s_policy.snapshot;
     bt_ctx_unlock();
-    return err;
+    return ESP_OK;
 }
 
 static esp_err_t get_bound_duplex_locked(const char *peer_mac,
