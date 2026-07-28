@@ -48,6 +48,9 @@ jobs:
       - name: Run full-duplex state sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_duplex_state_test.sh
 
+      - name: Run HFP Audio Gateway sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_hfp_ag_test.sh
+
       - name: Run HFP PCM ring sanitizer tests
         run: bash esp_bt_audio_source/tools/run_hfp_pcm_ring_test.sh
 
