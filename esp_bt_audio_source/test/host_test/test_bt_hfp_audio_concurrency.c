@@ -13,6 +13,7 @@
 
 void mock_hfp_audio_i2s_reset(void);
 void mock_hfp_audio_i2s_set_expected_generation(uint32_t generation);
+unsigned mock_hfp_audio_i2s_calls(void);
 
 static pthread_mutex_t s_pause_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_pause_cv = PTHREAD_COND_INITIALIZER;
@@ -109,6 +110,9 @@ void test_cleanup_refuses_while_full_callback_lifetime_is_active(void)
 
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_get_snapshot(&snapshot));
     TEST_ASSERT_EQUAL_UINT32(0, snapshot.active_callbacks);
-    TEST_ASSERT_EQUAL_UINT64(1, snapshot.accepted_frames);
+    TEST_ASSERT_EQUAL_UINT64(0, snapshot.accepted_frames);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.inactive_frames);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.dropped_frames);
+    TEST_ASSERT_EQUAL_UINT(0, mock_hfp_audio_i2s_calls());
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_cleanup_after_stack_shutdown());
 }
