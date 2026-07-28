@@ -100,6 +100,12 @@ bool hfp_i2s_output_push_cvsd(const int16_t *samples_8k,
                                uint32_t generation);
 
 esp_err_t hfp_i2s_output_get_snapshot(hfp_i2s_output_snapshot_t *out);
+
+/* Return the process-lifetime minimum free stack observed by hfp_i2s_tx.
+ * ESP-IDF reports this value in bytes. The retained value survives writer-task
+ * stop/start cycles and is never reset by HFP RESETSTATS. */
+esp_err_t hfp_i2s_output_get_stack_high_water_mark(size_t *bytes_out);
+
 const char *hfp_i2s_output_state_to_string(hfp_i2s_output_state_t state);
 
 #ifdef UNIT_TEST
