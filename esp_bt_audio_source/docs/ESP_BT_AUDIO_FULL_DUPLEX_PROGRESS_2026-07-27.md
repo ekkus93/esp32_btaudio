@@ -4,7 +4,7 @@
 **Draft PR:** #2
 **Baseline merge commit:** `cb58d0b47cfc683542cae62efce2a1e66365c3a9`
 **HFP configuration commit:** `cfa3c5f35fe81ed82bc0869578da0b84db8e6f70`
-**Latest validated head:** `56d6deae200333adfc460419daf6696386ecb9e9`
+**Latest validated head:** `318609fcf34500f0cfa90efd757ad43e0efbffb2`
 
 ## FD-00 — Branch and scope baseline
 
@@ -77,4 +77,27 @@ Validation for head `56d6deae200333adfc460419daf6696386ecb9e9`:
 - Strict host CI run 573: PASS.
 - Python test and CTest failures now propagate instead of being converted to success.
 - ESP-IDF v5.5.1 device-build run 474: PASS.
+- No hardware was flashed.
+
+## FD-04 — Bounded SPSC HFP PCM ring
+
+Implemented on `feature/esp-bt-audio-duplex`:
+
+- Separate HFP microphone ring; the existing A2DP playback ring is not reused.
+- Caller-owned fixed storage with no allocation, PSRAM fallback, or memory substitution.
+- Single-producer/single-consumer nonblocking byte ring using lock-free 32-bit atomics.
+- Whole-frame all-or-nothing writes; unread bytes are never overwritten.
+- Wraparound-safe reads and writes with monotonic 32-bit positions.
+- Generation-checked producer and consumer operations reject stale sessions visibly.
+- Exact current/capacity/peak/total/overflow/underflow/stale/invalid statistics.
+- Sequence-protected split 64-bit counters avoid torn reads on the 32-bit target.
+- Snapshot stabilization and counter reads use bounded retries and return `ESP_ERR_TIMEOUT`; no unbounded retry loop remains.
+- Reset requires explicit proof that both endpoints are stopped and a new nonzero generation.
+
+Validation for head `318609fcf34500f0cfa90efd757ad43e0efbffb2`:
+
+- Focused ring suite: 8 tests, PASS under AddressSanitizer and UndefinedBehaviorSanitizer.
+- Includes a 50,000-frame pthread producer/consumer order-preservation stress test.
+- Strict host CI run 605: PASS.
+- ESP-IDF v5.5.1 device-build run 505: PASS.
 - No hardware was flashed.
