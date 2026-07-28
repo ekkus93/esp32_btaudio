@@ -37,11 +37,11 @@ common_flags=(
     "${CC:-cc}" "${common_flags[@]}" \
         "${unity_dir}/unity.c" \
         "${project_dir}/components/platform_shim/platform_sync_host.c" \
-        "${project_dir}/components/util_safe/util_safe.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_mode.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
         "${project_dir}/components/bt_manager/bt_hfp_manager_fd11.c" \
+        "${test_dir}/mocks/bt_hfp_manager_util_stubs.c" \
         "${test_dir}/mocks/bt_hfp_manager_dependencies.c" \
         "${test_dir}/test_bt_hfp_manager_cases.c" \
         "${test_dir}/test_bt_hfp_manager.c" \
