@@ -124,7 +124,11 @@ static esp_err_t fake_write(void *channel, const void *data, size_t bytes,
         ? bytes : sizeof(fake.last_write);
     memcpy(fake.last_write, data, fake.last_write_bytes);
     if (bytes_written != NULL) {
-        *bytes_written = fake.short_write && bytes > 0U ? bytes - 1U : bytes;
+        if (fake.write_result != ESP_OK) {
+            *bytes_written = 0U;
+        } else {
+            *bytes_written = fake.short_write && bytes > 0U ? bytes - 1U : bytes;
+        }
     }
     return fake.write_result;
 }
@@ -292,6 +296,40 @@ void test_channel_enable_failure_stops_task_and_rolls_back(void)
     TEST_ASSERT_EQUAL_INT(2, fake.free_calls);
 }
 
+void test_start_rollback_timeout_returns_timeout_and_quarantines(void)
+{
+    hfp_i2s_output_snapshot_t snapshot;
+    fake.channel_enable_result = ESP_FAIL;
+    fake.task_wait_result = ESP_ERR_TIMEOUT;
+    initialize_component();
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      hfp_i2s_output_start(GENERATION, PEER));
+    TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_get_snapshot(&snapshot));
+    TEST_ASSERT_EQUAL(HFP_I2S_OUTPUT_QUARANTINED, snapshot.state);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, snapshot.last_error);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.start_failures);
+    TEST_ASSERT_EQUAL_INT(0, fake.channel_delete_calls);
+    TEST_ASSERT_EQUAL_INT(0, fake.free_calls);
+}
+
+void test_start_cleanup_failure_returns_cleanup_error_and_quarantines(void)
+{
+    hfp_i2s_output_snapshot_t snapshot;
+    fake.channel_init_result = ESP_FAIL;
+    fake.channel_delete_result = ESP_ERR_INVALID_STATE;
+    initialize_component();
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      hfp_i2s_output_start(GENERATION, PEER));
+    TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_get_snapshot(&snapshot));
+    TEST_ASSERT_EQUAL(HFP_I2S_OUTPUT_QUARANTINED, snapshot.state);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, snapshot.last_error);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.start_failures);
+    TEST_ASSERT_EQUAL_INT(1, fake.channel_delete_calls);
+    TEST_ASSERT_EQUAL_INT(0, fake.free_calls);
+}
+
 void test_start_stop_are_idempotent_for_same_session(void)
 {
     hfp_i2s_output_snapshot_t snapshot;
@@ -373,12 +411,12 @@ void test_ring_full_rejects_entire_cvsd_frame(void)
 void test_writer_counts_silence_and_faults_after_bounded_failures(void)
 {
     hfp_i2s_output_snapshot_t snapshot;
+    size_t requested_bytes = config.writer_samples * sizeof(int16_t);
     config.underflow_degraded_threshold = 1U;
     initialize_component();
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_start(GENERATION, PEER));
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_test_writer_once());
-    TEST_ASSERT_EQUAL(config.writer_samples * sizeof(int16_t),
-                      fake.last_write_bytes);
+    TEST_ASSERT_EQUAL(requested_bytes, fake.last_write_bytes);
     for (size_t i = 0; i < fake.last_write_bytes; ++i) {
         TEST_ASSERT_EQUAL_UINT8(0, fake.last_write[i]);
     }
@@ -388,8 +426,12 @@ void test_writer_counts_silence_and_faults_after_bounded_failures(void)
     TEST_ASSERT_TRUE(snapshot.degraded);
     TEST_ASSERT_EQUAL_UINT64(1, snapshot.degraded_events);
 
+    fake.short_write = true;
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_SIZE,
+                      hfp_i2s_output_test_writer_once());
+    fake.short_write = false;
     fake.write_result = ESP_ERR_TIMEOUT;
-    for (uint32_t i = 0; i < config.max_consecutive_write_failures; ++i) {
+    for (uint32_t i = 1U; i < config.max_consecutive_write_failures; ++i) {
         TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
                           hfp_i2s_output_test_writer_once());
     }
@@ -397,6 +439,11 @@ void test_writer_counts_silence_and_faults_after_bounded_failures(void)
     TEST_ASSERT_EQUAL(HFP_I2S_OUTPUT_FAULTED, snapshot.state);
     TEST_ASSERT_EQUAL_UINT64(config.max_consecutive_write_failures,
                              snapshot.write_failures);
+    TEST_ASSERT_EQUAL_UINT64(1, snapshot.short_writes);
+    TEST_ASSERT_EQUAL_UINT64(
+        1U + ((uint64_t)config.max_consecutive_write_failures - 1U) *
+            requested_bytes,
+        snapshot.write_lost_bytes);
     TEST_ASSERT_EQUAL_INT(1, fake.channel_disable_calls);
     fake.task_wait_result = ESP_OK;
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
