@@ -40,15 +40,18 @@ void test_hfp_audio_success_is_not_retracted_by_status_failure(void)
     const char *tx = run_hfp("HFP AUDIO START");
     TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_start_calls());
     TEST_ASSERT_NOT_NULL(strstr(
-        tx, "OK|HFP|AUDIO_STARTED_STATUS_UNAVAILABLE|"));
+        tx, "ERR|HFP|AUDIO_STATUS_UNAVAILABLE|OPERATION=START,"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "LOWER_OPERATION=SUCCEEDED"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));
-    TEST_ASSERT_NULL(strstr(tx, "ERR|HFP|ESP_ERR_TIMEOUT|"));
+    TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STARTED|"));
 
     tx = run_hfp("HFP AUDIO STOP");
     TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_stop_calls());
     TEST_ASSERT_NOT_NULL(strstr(
-        tx, "OK|HFP|AUDIO_STOPPED_STATUS_UNAVAILABLE|"));
+        tx, "ERR|HFP|AUDIO_STATUS_UNAVAILABLE|OPERATION=STOP,"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "LOWER_OPERATION=SUCCEEDED"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "STATUS_ERROR=ESP_ERR_TIMEOUT"));
+    TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STOPPED|"));
 }
 
 void test_hfp_mode_success_does_not_require_followup_snapshot(void)
