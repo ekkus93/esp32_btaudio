@@ -93,3 +93,39 @@ void test_audio_generation_rotation_rejects_invalid_transient_states(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
                       bt_duplex_audio_session_begin(PEER, &next));
 }
+
+void test_rejected_health_report_is_retained_without_mutating_health(void)
+{
+    uint32_t generation = prepare_slc_session();
+
+    bt_duplex_snapshot_t before;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&before));
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_OK, before.health);
+
+    bt_duplex_test_set_health_report_result(ESP_ERR_TIMEOUT);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, bt_duplex_set_health(
+        generation, PEER, BT_AUDIO_HEALTH_DEGRADED,
+        ESP_FAIL, "injected report failure"));
+
+    bt_duplex_snapshot_t after;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&after));
+    TEST_ASSERT_EQUAL(before.health, after.health);
+    TEST_ASSERT_EQUAL(before.last_error, after.last_error);
+    TEST_ASSERT_EQUAL_STRING(before.last_error_text, after.last_error_text);
+
+    uint64_t failures = 0U;
+    esp_err_t last_error = ESP_OK;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_health_report_diagnostics(
+        &failures, &last_error));
+    TEST_ASSERT_EQUAL_UINT64(1U, failures);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
+
+    bt_duplex_test_set_health_report_result(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_set_health(
+        generation, PEER, BT_AUDIO_HEALTH_DEGRADED,
+        ESP_FAIL, "visible health update"));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_health_report_diagnostics(
+        &failures, &last_error));
+    TEST_ASSERT_EQUAL_UINT64(1U, failures);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
+}
