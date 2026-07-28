@@ -14,6 +14,7 @@ void test_late_old_connected_event_after_timeout_is_ignored(void);
 void test_dispatch_failure_rolls_back_without_lower_request(void);
 void test_msbc_confirmation_is_visibly_rejected(void);
 void test_wrong_peer_event_does_not_complete_operation(void);
+void test_profile_stopping_closes_fast_gate_before_control_init(void);
 
 int main(void)
 {
@@ -32,5 +33,6 @@ int main(void)
     RUN_TEST(test_dispatch_failure_rolls_back_without_lower_request);
     RUN_TEST(test_msbc_confirmation_is_visibly_rejected);
     RUN_TEST(test_wrong_peer_event_does_not_complete_operation);
+    RUN_TEST(test_profile_stopping_closes_fast_gate_before_control_init);
     return UNITY_END();
 }
