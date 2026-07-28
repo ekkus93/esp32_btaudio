@@ -567,12 +567,100 @@ static bool send_stats_lines(const bt_hfp_manager_stats_t *stats)
     return true;
 }
 
+static bool format_size_or_na(char *out, size_t out_size,
+                              bool available, size_t value)
+{
+    return available
+        ? format_checked(out, out_size, "%zu", value)
+        : format_checked(out, out_size, "NA");
+}
+
+static bool send_diagnostics_lines(
+    const bt_hfp_manager_diagnostics_t *diagnostics)
+{
+    char free_internal[32];
+    char minimum_free[32];
+    char largest_internal[32];
+    char hfp_stack[32];
+    char i2s_stack[32];
+
+    if (!format_size_or_na(free_internal, sizeof(free_internal),
+                           diagnostics->heap_available,
+                           diagnostics->free_internal_bytes) ||
+        !format_size_or_na(minimum_free, sizeof(minimum_free),
+                           diagnostics->heap_available,
+                           diagnostics->minimum_free_heap_bytes_lifetime) ||
+        !format_size_or_na(largest_internal, sizeof(largest_internal),
+                           diagnostics->heap_available,
+                           diagnostics->largest_internal_free_block_bytes) ||
+        !format_size_or_na(
+            hfp_stack, sizeof(hfp_stack),
+            diagnostics->hfp_app_task_stack_available,
+            diagnostics->hfp_app_task_min_free_stack_bytes_lifetime) ||
+        !format_size_or_na(
+            i2s_stack, sizeof(i2s_stack),
+            diagnostics->i2s_writer_task_stack_available,
+            diagnostics->i2s_writer_task_min_free_stack_bytes_lifetime)) {
+        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
+                                "STATS_LINE_TOO_LONG", "FD13_VALUE");
+        return false;
+    }
+
+    if (!send_stats_line(
+            "STATS_RESOURCE1",
+            "HEAP_STATE=%s,FREE_INTERNAL_BYTES=%s,"
+            "MIN_FREE_HEAP_BYTES_LIFETIME=%s,"
+            "LARGEST_INTERNAL_BLOCK_BYTES=%s",
+            diagnostics->heap_available ? "AVAILABLE" : "UNAVAILABLE",
+            free_internal, minimum_free, largest_internal)) {
+        return false;
+    }
+
+    if (!send_stats_line(
+            "STATS_RESOURCE2",
+            "HFP_APP_TASK_STATE=%s,"
+            "HFP_APP_MIN_FREE_STACK_BYTES_LIFETIME=%s,"
+            "I2S_WRITER_TASK_STATE=%s,"
+            "I2S_WRITER_MIN_FREE_STACK_BYTES_LIFETIME=%s",
+            diagnostics->hfp_app_task_stack_available
+                ? "AVAILABLE" : "UNAVAILABLE",
+            hfp_stack,
+            diagnostics->i2s_writer_task_stack_available
+                ? "AVAILABLE" : "UNAVAILABLE",
+            i2s_stack)) {
+        return false;
+    }
+
+    if (diagnostics->incoming_callback_available) {
+        return send_stats_line(
+            "STATS_CALLBACK",
+            "STATE=AVAILABLE,BUDGET_US=%" PRIu32
+            ",LAST_US=%" PRIu32 ",MAX_US_LIFETIME=%" PRIu32
+            ",OVER_BUDGET_LIFETIME=%" PRIu64,
+            diagnostics->incoming_callback_budget_us,
+            diagnostics->incoming_callback_last_us,
+            diagnostics->incoming_callback_max_us_lifetime,
+            diagnostics->incoming_callback_over_budget_lifetime);
+    }
+
+    return send_stats_line(
+        "STATS_CALLBACK",
+        "STATE=UNAVAILABLE,BUDGET_US=NA,LAST_US=NA,"
+        "MAX_US_LIFETIME=NA,OVER_BUDGET_LIFETIME=NA");
+}
+
 static cmd_status_t handle_stats(void)
 {
     bt_hfp_manager_stats_t stats;
     esp_err_t err = bt_manager_hfp_get_stats(&stats);
     if (err != ESP_OK) return send_esp_error(NULL, err);
+
+    bt_hfp_manager_diagnostics_t diagnostics;
+    err = bt_manager_hfp_get_diagnostics(&diagnostics);
+    if (err != ESP_OK) return send_esp_error(NULL, err);
+
     if (!send_stats_lines(&stats)) return CMD_SUCCESS;
+    if (!send_diagnostics_lines(&diagnostics)) return CMD_SUCCESS;
     (void)cmd_send_response(CMD_STATUS_OK, "HFP", "STATS", NULL);
     return CMD_SUCCESS;
 }
