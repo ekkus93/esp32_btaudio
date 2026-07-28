@@ -6,9 +6,12 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+
+#include "esp_err.h"
 
 /* Signal for BT app task */
 enum {
@@ -45,6 +48,14 @@ void bt_app_task_start_up(void);
  * @brief     Task shutdown function
  */
 void bt_app_task_shut_down(void);
+
+/**
+ * @brief Return the process-lifetime minimum free stack observed by BtAppTask.
+ *
+ * The ESP-IDF high-water mark is already measured in bytes. The value is
+ * retained after task shutdown and is never reset by HFP RESETSTATS.
+ */
+esp_err_t bt_app_task_get_stack_high_water_mark(size_t *bytes_out);
 
 /**
  * @brief     Callback function for parameter deep copy
