@@ -36,6 +36,7 @@ static bt_hfp_manager_status_t s_hfp_status;
 static esp_err_t s_hfp_status_result = ESP_OK;
 static esp_err_t s_hfp_profile_result = ESP_ERR_NOT_FOUND;
 static esp_err_t s_hfp_audio_result = ESP_ERR_NOT_FOUND;
+static uint32_t s_profile_created_generation;
 static unsigned s_hfp_profile_calls;
 static unsigned s_hfp_audio_calls;
 static uint32_t s_last_hfp_profile_generation;
@@ -62,6 +63,7 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_hfp_status_result = ESP_OK;
     s_hfp_profile_result = ESP_ERR_NOT_FOUND;
     s_hfp_audio_result = ESP_ERR_NOT_FOUND;
+    s_profile_created_generation = 0U;
     s_hfp_profile_calls = 0U;
     s_hfp_audio_calls = 0U;
     s_last_hfp_profile_generation = 0U;
@@ -95,6 +97,10 @@ void bt_manager_test_set_hfp_policy_results(esp_err_t profile_result,
                                             esp_err_t audio_result) {
     s_hfp_profile_result = profile_result;
     s_hfp_audio_result = audio_result;
+}
+
+void bt_manager_test_set_hfp_profile_created_generation(uint32_t generation) {
+    s_profile_created_generation = generation;
 }
 
 unsigned bt_manager_test_get_hfp_profile_calls(void) {
@@ -225,6 +231,19 @@ __attribute__((weak)) esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
     if (peer_mac != NULL) {
         strncpy(s_last_hfp_profile_peer, peer_mac,
                 sizeof(s_last_hfp_profile_peer) - 1U);
+    }
+    if (s_hfp_profile_result == ESP_OK &&
+        expected_generation == 0U &&
+        !s_hfp_status.duplex.peer_valid &&
+        peer_mac != NULL &&
+        s_profile_created_generation != 0U &&
+        state != BT_A2DP_PROFILE_DISCONNECTED &&
+        state != BT_A2DP_PROFILE_DISCONNECTING) {
+        s_hfp_status.duplex.peer_valid = true;
+        s_hfp_status.duplex.session_generation =
+            s_profile_created_generation;
+        strncpy(s_hfp_status.duplex.peer_mac, peer_mac,
+                sizeof(s_hfp_status.duplex.peer_mac) - 1U);
     }
     return s_hfp_profile_result;
 }
