@@ -3,10 +3,10 @@
 #include <string.h>
 #include <strings.h>
 
+#include "bt_duplex_state_internal.h"
 #include "bt_hfp_event_contract.h"
 #include "bt_manager_internal.h"
 #include "platform_sync.h"
-#include "util_safe.h"
 
 typedef struct {
     bool a2dp_interrupted_during_sco;
@@ -61,12 +61,39 @@ void bt_manager_hfp_policy_copy_locked(bt_duplex_policy_snapshot_t *out)
     if (out != NULL) *out = s_policy.snapshot;
 }
 
+static void begin_generation_locked(uint32_t generation)
+{
+    if (!s_policy.snapshot.initialized ||
+        s_policy.snapshot.generation == generation) {
+        return;
+    }
+
+    const uint64_t evaluations = s_policy.snapshot.evaluations_lifetime;
+    const uint64_t mode_changes =
+        s_policy.snapshot.effective_mode_changes_lifetime;
+    const uint64_t incompatibilities =
+        s_policy.snapshot.incompatibilities_lifetime;
+    const uint64_t interruptions =
+        s_policy.snapshot.a2dp_interruptions_lifetime;
+
+    memset(&s_policy, 0, sizeof(s_policy));
+    s_policy.interruption_reason = BT_DUPLEX_POLICY_REASON_REQUESTED_MODE;
+    s_policy.snapshot.reason = BT_DUPLEX_POLICY_REASON_REQUESTED_MODE;
+    s_policy.snapshot.downlink_owner = BT_DUPLEX_DOWNLINK_OWNER_A2DP;
+    s_policy.snapshot.evaluations_lifetime = evaluations;
+    s_policy.snapshot.effective_mode_changes_lifetime = mode_changes;
+    s_policy.snapshot.incompatibilities_lifetime = incompatibilities;
+    s_policy.snapshot.a2dp_interruptions_lifetime = interruptions;
+}
+
 static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
 {
     if (duplex == NULL || !duplex->peer_valid ||
         duplex->session_generation == 0U) {
         return ESP_ERR_NOT_FOUND;
     }
+
+    begin_generation_locked(duplex->session_generation);
 
     const bt_duplex_policy_input_t input = {
         .requested = duplex->requested_mode,
@@ -157,9 +184,12 @@ esp_err_t bt_manager_hfp_get_policy_snapshot(
         bt_ctx_unlock();
         return ESP_ERR_INVALID_STATE;
     }
-    *out = s_policy.snapshot;
+
+    err = bt_manager_hfp_policy_refresh_locked();
+    if (err == ESP_ERR_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) *out = s_policy.snapshot;
     bt_ctx_unlock();
-    return ESP_OK;
+    return err;
 }
 
 static esp_err_t get_bound_duplex_locked(const char *peer_mac,
@@ -182,7 +212,12 @@ esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
         state >= BT_A2DP_PROFILE_STATE_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+
+    bt_duplex_mode_t configured_mode;
+    esp_err_t err = bt_manager_hfp_get_configured_mode(&configured_mode);
+    if (err != ESP_OK) return err;
+
+    err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
     if (!bt_ctx.initialized) {
         bt_ctx_unlock();
@@ -198,8 +233,7 @@ esp_err_t bt_manager_hfp_handle_a2dp_profile_event(
             return ESP_ERR_NOT_FOUND;
         }
         uint32_t generation = 0U;
-        err = bt_duplex_session_begin(
-            peer_mac, bt_manager_hfp_configured_mode_locked(), &generation);
+        err = bt_duplex_session_begin(peer_mac, configured_mode, &generation);
         if (err == ESP_OK) err = bt_duplex_get_snapshot(&duplex);
     }
     if (err == ESP_OK && strcasecmp(peer_mac, duplex.peer_mac) != 0) {
@@ -236,12 +270,16 @@ esp_err_t bt_manager_hfp_handle_a2dp_audio_event(
     }
 
     bt_duplex_snapshot_t duplex;
+    memset(&duplex, 0, sizeof(duplex));
     err = get_bound_duplex_locked(peer_mac, &duplex);
-    const bt_a2dp_audio_state_t old_state = duplex.a2dp_audio_state;
-    if (err == ESP_OK) {
-        err = bt_duplex_set_a2dp_audio_state(
-            duplex.session_generation, peer_mac, state);
+    if (err != ESP_OK) {
+        bt_ctx_unlock();
+        return err;
     }
+
+    const bt_a2dp_audio_state_t old_state = duplex.a2dp_audio_state;
+    err = bt_duplex_set_a2dp_audio_state(
+        duplex.session_generation, peer_mac, state);
     if (err == ESP_OK && state == BT_A2DP_AUDIO_STARTED) {
         s_policy.a2dp_interrupted_during_sco = false;
         s_policy.interruption_reason = BT_DUPLEX_POLICY_REASON_A2DP_RESUMED;
@@ -275,6 +313,10 @@ esp_err_t bt_manager_hfp_policy_note_hfp_profile_transition(
     (void)new_state;
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
     bt_duplex_snapshot_t duplex;
     err = bt_duplex_get_snapshot(&duplex);
     if (err == ESP_OK && !valid_peer(&duplex, generation, peer_mac)) {
@@ -294,6 +336,10 @@ esp_err_t bt_manager_hfp_policy_note_hfp_audio_transition(
     (void)old_state;
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
+    if (!bt_ctx.initialized) {
+        bt_ctx_unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
     bt_duplex_snapshot_t duplex;
     err = bt_duplex_get_snapshot(&duplex);
     if (err == ESP_OK && !valid_peer(&duplex, generation, peer_mac)) {
