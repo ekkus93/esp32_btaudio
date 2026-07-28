@@ -76,6 +76,13 @@ esp_err_t bt_duplex_policy_evaluate(const bt_duplex_policy_input_t *input,
         } else if (!input->sco_connected) {
             result.state = BT_DUPLEX_POLICY_WAITING;
             result.reason = BT_DUPLEX_POLICY_REASON_WAITING_SCO;
+        } else {
+            /* FD-16 only selects policy and reserves ownership. FD-18 adds the
+             * actual AG-to-HF downlink callback. Until then, never report this
+             * mode as operationally satisfied. */
+            result.state = BT_DUPLEX_POLICY_COMPATIBILITY_REQUIRED;
+            result.reason =
+                BT_DUPLEX_POLICY_REASON_HFP_DOWNLINK_NOT_IMPLEMENTED;
         }
         break;
 
@@ -130,6 +137,8 @@ const char *bt_duplex_policy_reason_to_string(bt_duplex_policy_reason_t value)
     case BT_DUPLEX_POLICY_REASON_WAITING_HFP_SLC:
         return "WAITING_HFP_SLC";
     case BT_DUPLEX_POLICY_REASON_WAITING_SCO: return "WAITING_SCO";
+    case BT_DUPLEX_POLICY_REASON_HFP_DOWNLINK_NOT_IMPLEMENTED:
+        return "HFP_DOWNLINK_NOT_IMPLEMENTED";
     case BT_DUPLEX_POLICY_REASON_REMOTE_SUSPENDED_A2DP_DURING_SCO:
         return "REMOTE_SUSPENDED_A2DP_DURING_SCO";
     case BT_DUPLEX_POLICY_REASON_A2DP_STOPPED_DURING_SCO:
