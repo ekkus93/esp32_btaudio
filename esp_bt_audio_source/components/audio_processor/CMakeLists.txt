@@ -12,6 +12,7 @@ idf_component_register(
         "audio_processor_sync_diag.c"
        
         "audio_ringbuffer.c"
+        "hfp_pcm_ring.c"
         "audio_span_log.c"
         "audio_util.c"
         "audio_resampler_stream.c"
