@@ -74,6 +74,8 @@ int main(void) {
     RUN_TEST(test_bt_a2dp_audio_state_forwarding);
     RUN_TEST(test_bt_a2dp_remote_suspend_clears_playing);
     RUN_TEST(test_bt_a2dp_remote_suspend_then_resume);
+    RUN_TEST(test_a2dp_first_profile_event_creates_and_binds_session);
+    RUN_TEST(test_a2dp_reconnect_rotates_lifecycle_serial);
     RUN_TEST(test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted);
     RUN_TEST(test_a2dp_binding_refreshes_after_hfp_generation_rotation);
     RUN_TEST(test_a2dp_wrong_peer_event_is_rejected_and_counted);
