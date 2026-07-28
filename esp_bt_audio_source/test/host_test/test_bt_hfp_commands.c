@@ -2,6 +2,8 @@
 
 void test_hfp_parser_accepts_all_valid_forms(void);
 void test_hfp_status_uses_one_consistent_snapshot_and_sanitizes_text(void);
+void test_hfp_status_reports_fd16_policy_snapshot(void);
+void test_hfp_status_reports_unavailable_policy_without_fake_zero(void);
 void test_hfp_connect_reports_acceptance_not_completion(void);
 void test_hfp_connect_already_connected_is_explicit(void);
 void test_hfp_connect_exact_backend_error_is_reported(void);
@@ -26,6 +28,8 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_hfp_parser_accepts_all_valid_forms);
     RUN_TEST(test_hfp_status_uses_one_consistent_snapshot_and_sanitizes_text);
+    RUN_TEST(test_hfp_status_reports_fd16_policy_snapshot);
+    RUN_TEST(test_hfp_status_reports_unavailable_policy_without_fake_zero);
     RUN_TEST(test_hfp_connect_reports_acceptance_not_completion);
     RUN_TEST(test_hfp_connect_already_connected_is_explicit);
     RUN_TEST(test_hfp_connect_exact_backend_error_is_reported);
