@@ -26,7 +26,8 @@ static esp_err_t default_channel_new(const hfp_i2s_output_config_t *config,
         I2S_CHANNEL_DEFAULT_CONFIG((i2s_port_t)config->port, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = config->dma_desc_num;
     chan_cfg.dma_frame_num = config->dma_frame_num;
-    chan_cfg.auto_clear = true;
+    chan_cfg.auto_clear_after_cb = false;
+    chan_cfg.auto_clear_before_cb = false;
     i2s_chan_handle_t tx = NULL;
     esp_err_t err = i2s_new_channel(&chan_cfg, &tx, NULL);
     if (err == ESP_OK) *channel_out = tx;
@@ -97,7 +98,8 @@ static void writer_task(void *arg)
             if (err != ESP_OK) {
                 bool faulted = false;
                 if (hfp_i2s_output_lock() == ESP_OK) {
-                    faulted = s_output.state == HFP_I2S_OUTPUT_FAULTED;
+                    faulted = s_output.state == HFP_I2S_OUTPUT_FAULTED ||
+                              s_output.state == HFP_I2S_OUTPUT_QUARANTINED;
                     (void)hfp_i2s_output_unlock(ESP_OK);
                 }
                 if (faulted) break;
