@@ -225,8 +225,9 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     err = bt_hfp_ag_unlock(ESP_OK);
     if (err != ESP_OK) return err;
 
-    /* Reject new callback data before asking the stack to tear down HFP. */
-    bt_hfp_audio_profile_stopping();
+    /* Reject new callback data and release bounded control waiters before the
+     * stack is asked to tear down HFP. No callback-owned state is freed here. */
+    bt_hfp_audio_control_profile_stopping();
 
     err = platform_profile_deinit();
     if (err != ESP_OK) {
@@ -247,7 +248,7 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     }
     err = bt_hfp_ag_lock();
     if (err != ESP_OK) return err;
-    esp_err_t completion = g_bt_hfp_ag.completion_result;
+    completion = g_bt_hfp_ag.completion_result;
     return bt_hfp_ag_unlock(completion);
 }
 
@@ -270,6 +271,16 @@ void bt_hfp_ag_force_cleanup_after_stack_shutdown(void)
         return;
     }
 
+    esp_err_t control_cleanup =
+        bt_hfp_audio_control_cleanup_after_stack_shutdown();
+    if (control_cleanup != ESP_OK) {
+#ifdef ESP_PLATFORM
+        ESP_LOGE(TAG, "Refusing HFP AG cleanup after audio control cleanup failed: %s",
+                 esp_err_to_name(control_cleanup));
+#endif
+        return;
+    }
+
     esp_err_t audio_cleanup = bt_hfp_audio_cleanup_after_stack_shutdown();
     if (audio_cleanup != ESP_OK) {
 #ifdef ESP_PLATFORM
@@ -281,9 +292,9 @@ void bt_hfp_ag_force_cleanup_after_stack_shutdown(void)
 
     if (!g_bt_hfp_ag.resources_ready) return;
     platform_mutex_t lock = g_bt_hfp_ag.lock;
-    platform_binary_sem_t completion = g_bt_hfp_ag.completion;
+    platform_binary_sem_t completion_sem = g_bt_hfp_ag.completion;
     memset(&g_bt_hfp_ag, 0, sizeof(g_bt_hfp_ag));
-    platform_binary_sem_delete(completion);
+    platform_binary_sem_delete(completion_sem);
     platform_mutex_delete(lock);
 }
 
@@ -337,7 +348,7 @@ void bt_hfp_ag_handle_profile_result(bt_hfp_ag_profile_result_t result)
     (void)bt_hfp_ag_unlock(ESP_OK);
     if (!signal) return;
 
-    esp_err_t completion = success
+    completion = success
         ? bt_duplex_set_hfp_profile_global_state(target)
         : ESP_FAIL;
     if (!success && target == BT_HFP_PROFILE_FAULTED) {
