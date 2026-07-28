@@ -3,7 +3,10 @@
 #include <string.h>
 
 #ifdef ESP_PLATFORM
+#include "esp_bt_main.h"
 #include "esp_hf_ag_api.h"
+#include "esp_log.h"
+static const char *TAG = "BT_HFP_AG";
 #endif
 
 bt_hfp_ag_context_t g_bt_hfp_ag;
@@ -133,6 +136,7 @@ esp_err_t bt_hfp_ag_profile_init(uint32_t timeout_ms)
     }
     drain_completion();
     g_bt_hfp_ag.snapshot.lifecycle = BT_HFP_AG_LIFECYCLE_INIT_PENDING;
+    g_bt_hfp_ag.snapshot.profile_init_request_accepted = false;
     g_bt_hfp_ag.snapshot.last_error = ESP_OK;
     g_bt_hfp_ag.completion_result = ESP_ERR_INVALID_STATE;
     err = bt_hfp_ag_unlock(ESP_OK);
@@ -150,11 +154,16 @@ esp_err_t bt_hfp_ag_profile_init(uint32_t timeout_ms)
     }
     if (bt_hfp_ag_lock() != ESP_OK) return ESP_FAIL;
     g_bt_hfp_ag.snapshot.callback_registered = true;
+    /* Mark the request as potentially live before invoking the platform. A
+     * synchronous completion callback is therefore able to observe the same
+     * rollback contract. Immediate platform rejection clears this flag. */
+    g_bt_hfp_ag.snapshot.profile_init_request_accepted = true;
     (void)bt_hfp_ag_unlock(ESP_OK);
 
     err = platform_profile_init();
     if (err != ESP_OK) {
         if (bt_hfp_ag_lock() == ESP_OK) {
+            g_bt_hfp_ag.snapshot.profile_init_request_accepted = false;
             bt_hfp_ag_set_fault_locked(err);
             (void)bt_hfp_ag_unlock(ESP_OK);
         }
@@ -185,7 +194,8 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
     if (timeout_ms == 0U) return ESP_ERR_INVALID_ARG;
     esp_err_t err = bt_hfp_ag_lock();
     if (err != ESP_OK) return err;
-    if (g_bt_hfp_ag.snapshot.lifecycle ==
+    if (!g_bt_hfp_ag.snapshot.profile_init_request_accepted ||
+        g_bt_hfp_ag.snapshot.lifecycle ==
             BT_HFP_AG_LIFECYCLE_UNINITIALIZED ||
         g_bt_hfp_ag.snapshot.lifecycle ==
             BT_HFP_AG_LIFECYCLE_DEINIT_PENDING) {
@@ -222,6 +232,13 @@ esp_err_t bt_hfp_ag_profile_deinit(uint32_t timeout_ms)
 
 void bt_hfp_ag_force_cleanup_after_stack_shutdown(void)
 {
+#ifdef ESP_PLATFORM
+    if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+        ESP_LOGE(TAG, "Refusing HFP cleanup while Bluedroid may still deliver callbacks");
+        return;
+    }
+#endif
+    if (!g_bt_hfp_ag.resources_ready) return;
     platform_mutex_t lock = g_bt_hfp_ag.lock;
     platform_binary_sem_t completion = g_bt_hfp_ag.completion;
     memset(&g_bt_hfp_ag, 0, sizeof(g_bt_hfp_ag));
@@ -299,6 +316,9 @@ void bt_hfp_ag_handle_profile_result(bt_hfp_ag_profile_result_t result)
                 : BT_HFP_AG_LIFECYCLE_UNINITIALIZED;
         g_bt_hfp_ag.snapshot.profile_ready =
             target == BT_HFP_PROFILE_DISCONNECTED;
+        if (target == BT_HFP_PROFILE_UNINITIALIZED) {
+            g_bt_hfp_ag.snapshot.profile_init_request_accepted = false;
+        }
         g_bt_hfp_ag.snapshot.last_error = ESP_OK;
     } else {
         bt_hfp_ag_set_fault_locked(completion);
