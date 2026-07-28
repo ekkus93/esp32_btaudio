@@ -50,6 +50,8 @@ typedef struct {
     uint64_t cleanup_disconnect_failures;
     uint64_t i2s_start_failures;
     uint64_t i2s_stop_failures;
+    uint64_t health_report_failures;
+    esp_err_t last_health_report_error;
 } bt_hfp_manager_audio_control_stats_t;
 
 typedef struct {
@@ -73,6 +75,7 @@ typedef struct {
     uint64_t ring_rejected_frames;
     uint64_t ring_rejected_bytes;
     uint64_t callback_over_budget;
+    uint32_t callback_overlap_rejections;
     uint32_t callback_last_us;
     uint32_t callback_max_us_lifetime;
 } bt_hfp_manager_incoming_stats_t;
