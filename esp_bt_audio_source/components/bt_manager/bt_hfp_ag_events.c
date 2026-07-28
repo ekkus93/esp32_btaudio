@@ -1,8 +1,10 @@
 #include "bt_hfp_ag_internal.h"
+#include "bt_hfp_audio.h"
 #include "bt_hfp_connection.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
@@ -172,6 +174,29 @@ static esp_err_t unknown_at_error_production(const char *peer_mac)
     return esp_hf_ag_unknown_at_send(bda, NULL);
 }
 
+static void bind_audio_callback_state(const char *peer,
+                                      const esp_hf_cb_param_t *param)
+{
+    bt_duplex_snapshot_t snapshot;
+    if (bt_duplex_get_snapshot(&snapshot) != ESP_OK) return;
+
+    esp_err_t route = bt_hfp_audio_apply_duplex_state(
+        &snapshot, peer, param->audio_stat.sync_conn_handle,
+        param->audio_stat.preferred_frame_size);
+    bool connected_event =
+        param->audio_stat.state == ESP_HF_AUDIO_STATE_CONNECTED ||
+        param->audio_stat.state == ESP_HF_AUDIO_STATE_CONNECTED_MSBC;
+    bool same_peer = snapshot.peer_valid &&
+        strcasecmp(snapshot.peer_mac, peer) == 0;
+    if (route != ESP_OK && connected_event && same_peer) {
+        const char *reason = route == ESP_ERR_NOT_SUPPORTED
+            ? "mSBC unsupported during CVSD phase"
+            : "HFP audio callback route not ready";
+        (void)bt_duplex_set_health(snapshot.session_generation, peer,
+                                   BT_AUDIO_HEALTH_DEGRADED, route, reason);
+    }
+}
+
 static void production_event_callback(esp_hf_cb_event_t event,
                                       esp_hf_cb_param_t *param)
 {
@@ -217,6 +242,7 @@ static void production_event_callback(esp_hf_cb_event_t event,
         bda_to_string(param->audio_stat.remote_addr, peer);
         bt_hfp_ag_handle_audio_state(
             peer, (bt_hfp_ag_audio_state_t)param->audio_stat.state);
+        bind_audio_callback_state(peer, param);
         break;
     case ESP_HF_BCS_RESPONSE_EVT:
         bda_to_string(param->bcs_rep.remote_addr, peer);
