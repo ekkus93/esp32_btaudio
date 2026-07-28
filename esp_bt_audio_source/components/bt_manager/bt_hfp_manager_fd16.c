@@ -47,6 +47,18 @@ static bool same_input(const bt_duplex_policy_input_t *lhs,
            lhs->interruption_reason == rhs->interruption_reason;
 }
 
+static bool same_decision(const bt_duplex_policy_snapshot_t *lhs,
+                          const bt_duplex_policy_snapshot_t *rhs)
+{
+    return lhs->initialized == rhs->initialized &&
+           lhs->generation == rhs->generation &&
+           lhs->requested == rhs->requested &&
+           lhs->effective == rhs->effective &&
+           lhs->state == rhs->state && lhs->reason == rhs->reason &&
+           lhs->downlink_owner == rhs->downlink_owner &&
+           lhs->request_hfp_downlink == rhs->request_hfp_downlink;
+}
+
 static bt_hfp_mode_event_reason_t event_reason(
     bt_duplex_policy_reason_t reason)
 {
@@ -62,6 +74,14 @@ static bt_hfp_mode_event_reason_t event_reason(
     default:
         return BT_HFP_MODE_EVENT_REASON_POLICY;
     }
+}
+
+static void record_delivery_failure(const bt_duplex_snapshot_t *duplex,
+                                    esp_err_t error)
+{
+    if (error == ESP_OK) return;
+    bt_duplex_record_event_delivery_failure(
+        duplex->session_generation, duplex->peer_mac, error);
 }
 
 void bt_manager_hfp_policy_runtime_reset(void)
@@ -139,9 +159,10 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
     esp_err_t err = bt_duplex_policy_evaluate(&input, &result);
     if (err != ESP_OK) return err;
 
-    bt_duplex_policy_snapshot_t next = s_policy.snapshot;
-    const bool was_incompatible = next.initialized &&
-        next.state == BT_DUPLEX_POLICY_INCOMPATIBLE;
+    const bt_duplex_policy_snapshot_t previous = s_policy.snapshot;
+    bt_duplex_policy_snapshot_t next = previous;
+    const bool was_incompatible = previous.initialized &&
+        previous.state == BT_DUPLEX_POLICY_INCOMPATIBLE;
     next.initialized = true;
     next.generation = duplex->session_generation;
     next.requested = duplex->requested_mode;
@@ -167,13 +188,19 @@ static esp_err_t refresh_from_duplex_locked(bt_duplex_snapshot_t *duplex)
         if (next.effective_mode_changes_lifetime != UINT64_MAX) {
             next.effective_mode_changes_lifetime++;
         }
-        esp_err_t emit = bt_hfp_event_emit_mode(
-            old_effective, result.effective, event_reason(result.reason),
-            duplex->session_generation);
-        if (emit != ESP_OK) {
-            bt_duplex_record_event_delivery_failure(
-                duplex->session_generation, duplex->peer_mac, emit);
-        }
+        record_delivery_failure(
+            duplex,
+            bt_hfp_event_emit_mode(
+                old_effective, result.effective, event_reason(result.reason),
+                duplex->session_generation));
+    }
+
+    if (!same_decision(&previous, &next)) {
+        record_delivery_failure(
+            duplex,
+            bt_hfp_event_emit_policy(
+                next.state, next.reason, next.requested, next.effective,
+                next.downlink_owner, next.generation));
     }
 
     s_policy.last_input = input;
