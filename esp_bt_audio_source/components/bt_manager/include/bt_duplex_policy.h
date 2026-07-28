@@ -106,7 +106,6 @@ esp_err_t bt_manager_hfp_get_policy_snapshot(
     bt_duplex_policy_snapshot_t *out);
 
 /* Internal helpers. Caller must hold bt_ctx. */
-bt_duplex_mode_t bt_manager_hfp_configured_mode_locked(void);
 esp_err_t bt_manager_hfp_policy_refresh_locked(void);
 void bt_manager_hfp_policy_copy_locked(bt_duplex_policy_snapshot_t *out);
 
