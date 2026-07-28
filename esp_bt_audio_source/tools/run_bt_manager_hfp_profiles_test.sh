@@ -23,6 +23,7 @@ mkdir -p "${build_dir}"
     -Wall -Wextra -Werror \
     -fsanitize=address,undefined \
     -fno-omit-frame-pointer \
+    -ffunction-sections -fdata-sections \
     -pthread \
     -DUNIT_TEST \
     -DBT_MANAGER_TEST_HFP_PROFILES \
@@ -42,33 +43,15 @@ mkdir -p "${build_dir}"
     "${unity_dir}/unity.c" \
     "${test_dir}/test_bt_manager_hfp_profiles.c" \
     "${project_dir}/components/bt_manager/bt_manager.c" \
-    "${project_dir}/components/bt_manager/bt_manager_ops.c" \
-    "${project_dir}/components/bt_manager/bt_manager_mocks.c" \
-    "${project_dir}/components/bt_manager/bt_pairing_store.c" \
-    "${project_dir}/components/bt_manager/bt_scan.c" \
-    "${project_dir}/components/bt_manager/bt_connection.c" \
-    "${project_dir}/components/bt_manager/bt_events_gap.c" \
-    "${project_dir}/components/bt_manager/bt_events_a2dp.c" \
-    "${project_dir}/components/bt_manager/bt_events_avrc.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_profile.c" \
-    "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
-    "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/components/bt_manager/bt_hfp_ag_lifecycle.c" \
-    "${project_dir}/components/bt_manager/bt_hfp_ag_events.c" \
     "${test_dir}/mocks/mock_a2dp.c" \
     "${test_dir}/mocks/mock_avrc.c" \
-    "${test_dir}/mocks/mock_gap.c" \
-    "${test_dir}/mocks/nvs_storage_mock.c" \
-    "${test_dir}/mocks/mock_audio_and_btstate.c" \
-    "${test_dir}/mocks/bt_manager_test_hooks.c" \
     "${test_dir}/mocks/fake_esp_err.c" \
     "${test_dir}/mocks/fake_log.c" \
-    "${project_dir}/components/util_safe/util_safe.c" \
     "${project_dir}/components/platform_shim/platform_sync_host.c" \
-    "${project_dir}/components/platform_shim/platform_timing_host.c" \
-    "${project_dir}/components/platform_shim/platform_memory_host.c" \
-    "${project_dir}/components/platform_shim/platform_storage_host.c" \
+    -Wl,--gc-sections \
     -lm \
     -o "${binary}"
 } 2>&1 | tee "${compile_log}"
