@@ -46,6 +46,8 @@ typedef struct {
     atomic_uint invalid_pushes;
     uint32_t consecutive_write_failures;
     uint32_t consecutive_underflows;
+    bool degraded;
+    uint64_t degraded_events;
     uint64_t start_calls;
     uint64_t stop_calls;
     uint64_t start_failures;
@@ -72,16 +74,22 @@ esp_err_t hfp_i2s_output_lock(void);
 esp_err_t hfp_i2s_output_unlock(esp_err_t prior);
 void hfp_i2s_output_drain_sem(platform_binary_sem_t sem);
 void hfp_i2s_output_set_error_locked(esp_err_t error);
+void hfp_i2s_output_enter_quarantine_locked(esp_err_t error);
 void hfp_i2s_output_clear_session_locked(void);
 void *hfp_i2s_output_ops_alloc(size_t bytes);
 void hfp_i2s_output_ops_free(void *ptr);
-esp_err_t hfp_i2s_output_ops_channel_new(const hfp_i2s_output_config_t *config, void **channel_out);
-esp_err_t hfp_i2s_output_ops_channel_init_mode(void *channel, const hfp_i2s_output_config_t *config);
+esp_err_t hfp_i2s_output_ops_channel_new(
+    const hfp_i2s_output_config_t *config, void **channel_out);
+esp_err_t hfp_i2s_output_ops_channel_init_mode(
+    void *channel, const hfp_i2s_output_config_t *config);
 esp_err_t hfp_i2s_output_ops_channel_enable(void *channel);
 esp_err_t hfp_i2s_output_ops_channel_disable(void *channel);
 esp_err_t hfp_i2s_output_ops_channel_delete(void *channel);
 esp_err_t hfp_i2s_output_ops_task_create(void **task_out);
 esp_err_t hfp_i2s_output_ops_task_release_start(void *task);
-esp_err_t hfp_i2s_output_ops_task_wait_stopped(void *task, uint32_t timeout_ms);
-esp_err_t hfp_i2s_output_ops_channel_write(void *channel, const void *data, size_t bytes, size_t *bytes_written, uint32_t timeout_ms);
+esp_err_t hfp_i2s_output_ops_task_wait_stopped(void *task,
+                                               uint32_t timeout_ms);
+esp_err_t hfp_i2s_output_ops_channel_write(
+    void *channel, const void *data, size_t bytes, size_t *bytes_written,
+    uint32_t timeout_ms);
 esp_err_t hfp_i2s_output_writer_iteration(void);
