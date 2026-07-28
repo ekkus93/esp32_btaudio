@@ -15,6 +15,13 @@ typedef enum {
     MOCK_IMMEDIATE_FAILURE,
 } mock_result_mode_t;
 
+void mock_bt_hfp_audio_lifecycle_reset(void);
+void mock_bt_hfp_audio_set_register_result(esp_err_t result);
+void mock_bt_hfp_audio_set_cleanup_result(esp_err_t result);
+unsigned mock_bt_hfp_audio_register_calls(void);
+unsigned mock_bt_hfp_audio_stopping_calls(void);
+unsigned mock_bt_hfp_audio_cleanup_calls(void);
+
 static mock_result_mode_t s_init_mode;
 static mock_result_mode_t s_deinit_mode;
 static esp_err_t s_register_result;
@@ -63,6 +70,7 @@ static esp_err_t mock_unknown_at_error(const char *peer_mac)
 
 void setUp(void)
 {
+    mock_bt_hfp_audio_lifecycle_reset();
     bt_hfp_ag_force_cleanup_after_stack_shutdown();
     bt_duplex_state_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_state_init());
@@ -87,6 +95,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    mock_bt_hfp_audio_lifecycle_reset();
     bt_hfp_ag_force_cleanup_after_stack_shutdown();
     bt_duplex_state_deinit();
 }
@@ -103,6 +112,7 @@ void test_hfp_profile_init_requires_callback_confirmation(void)
     TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(1, s_register_calls);
     TEST_ASSERT_EQUAL_UINT(1, s_init_calls);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_register_calls());
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
     TEST_ASSERT_EQUAL(BT_HFP_PROFILE_DISCONNECTED,
                       duplex.hfp_profile_state);
@@ -118,8 +128,28 @@ void test_hfp_callback_registration_failure_is_visible(void)
     TEST_ASSERT_FALSE(hfp.profile_ready);
     TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(0, s_init_calls);
+    TEST_ASSERT_EQUAL_UINT(0, mock_bt_hfp_audio_register_calls());
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, bt_hfp_ag_profile_deinit(10));
     TEST_ASSERT_EQUAL_UINT(0, s_deinit_calls);
+}
+
+void test_hfp_audio_callback_registration_failure_is_visible(void)
+{
+    mock_bt_hfp_audio_set_register_result(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_hfp_ag_profile_init(10));
+
+    bt_hfp_ag_snapshot_t hfp;
+    bt_duplex_snapshot_t duplex;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
+    TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
+    TEST_ASSERT_FALSE(hfp.profile_ready);
+    TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL(ESP_FAIL, hfp.last_error);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_register_calls());
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL(BT_HFP_PROFILE_FAULTED,
+                      duplex.hfp_profile_state);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_deinit(10));
 }
 
 void test_hfp_init_request_failure_is_visible(void)
@@ -131,6 +161,7 @@ void test_hfp_init_request_failure_is_visible(void)
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_EQUAL(ESP_FAIL, hfp.last_error);
     TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, mock_bt_hfp_audio_register_calls());
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, bt_hfp_ag_profile_deinit(10));
     TEST_ASSERT_EQUAL_UINT(0, s_deinit_calls);
 }
@@ -144,6 +175,7 @@ void test_hfp_init_callback_failure_is_visible(void)
     TEST_ASSERT_EQUAL_UINT64(1, hfp.profile_events);
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, mock_bt_hfp_audio_register_calls());
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_deinit(10));
     TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
 }
@@ -158,6 +190,7 @@ void test_hfp_init_timeout_does_not_claim_ready(void)
     TEST_ASSERT_FALSE(hfp.profile_ready);
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL_UINT(0, mock_bt_hfp_audio_register_calls());
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_deinit(10));
     TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
 }
@@ -168,6 +201,7 @@ void test_hfp_repeated_init_is_rejected(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, bt_hfp_ag_profile_init(10));
     TEST_ASSERT_EQUAL_UINT(1, s_register_calls);
     TEST_ASSERT_EQUAL_UINT(1, s_init_calls);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_register_calls());
 }
 
 void test_hfp_profile_deinit_requires_callback_confirmation(void)
@@ -182,6 +216,7 @@ void test_hfp_profile_deinit_requires_callback_confirmation(void)
     TEST_ASSERT_FALSE(hfp.profile_ready);
     TEST_ASSERT_FALSE(hfp.profile_init_request_accepted);
     TEST_ASSERT_EQUAL_UINT(1, s_deinit_calls);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_stopping_calls());
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
     TEST_ASSERT_EQUAL(BT_HFP_PROFILE_UNINITIALIZED,
                       duplex.hfp_profile_state);
@@ -197,6 +232,19 @@ void test_hfp_deinit_request_failure_is_visible(void)
     TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_FAULTED, hfp.lifecycle);
     TEST_ASSERT_EQUAL(ESP_FAIL, hfp.last_error);
     TEST_ASSERT_TRUE(hfp.profile_init_request_accepted);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_stopping_calls());
+}
+
+void test_hfp_audio_cleanup_failure_preserves_callback_owned_state(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_profile_init(10));
+    mock_bt_hfp_audio_set_cleanup_result(ESP_FAIL);
+    bt_hfp_ag_force_cleanup_after_stack_shutdown();
+
+    bt_hfp_ag_snapshot_t hfp;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_ag_get_snapshot(&hfp));
+    TEST_ASSERT_EQUAL(BT_HFP_AG_LIFECYCLE_READY, hfp.lifecycle);
+    TEST_ASSERT_EQUAL_UINT(1, mock_bt_hfp_audio_cleanup_calls());
 }
 
 void test_hfp_events_update_authoritative_same_peer_state(void)
