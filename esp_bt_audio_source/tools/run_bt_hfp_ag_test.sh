@@ -24,16 +24,19 @@ mkdir -p "${build_dir}"
     -I"${unity_dir}" \
     -I"${project_dir}/test/host_test/mocks/include" \
     -I"${project_dir}/test/host_test/mocks" \
+    -I"${project_dir}/components/command_interface/include" \
     -I"${project_dir}/components/bt_manager/include" \
     -I"${project_dir}/components/platform_shim" \
     "${unity_dir}/unity.c" \
     "${project_dir}/components/platform_shim/platform_sync_host.c" \
+    "${project_dir}/components/bt_manager/bt_hfp_event_contract.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_profile.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/components/bt_manager/bt_hfp_ag_lifecycle.c" \
     "${project_dir}/components/bt_manager/bt_hfp_ag_events.c" \
+    "${project_dir}/test/host_test/mocks/bt_hfp_event_command_stub.c" \
     "${project_dir}/test/host_test/mocks/bt_hfp_connection_untracked_stub.c" \
     "${project_dir}/test/host_test/mocks/bt_hfp_audio_lifecycle_stub.c" \
     "${project_dir}/test/host_test/test_bt_hfp_ag_cases.c" \

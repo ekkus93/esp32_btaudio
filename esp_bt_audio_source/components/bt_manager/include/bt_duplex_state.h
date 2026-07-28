@@ -154,6 +154,13 @@ esp_err_t bt_duplex_set_hfp_audio_state(uint32_t generation,
 esp_err_t bt_duplex_set_i2s_state(uint32_t generation,
                                   const char *peer_mac,
                                   bt_hfp_i2s_state_t state);
+/* Error-aware variant for fault/quarantine transitions. Non-fault states
+ * require ESP_OK; fault/quarantine states require a non-OK cause. */
+esp_err_t bt_duplex_set_i2s_state_with_error(
+    uint32_t generation,
+    const char *peer_mac,
+    bt_hfp_i2s_state_t state,
+    esp_err_t event_error);
 esp_err_t bt_duplex_set_health(uint32_t generation,
                                const char *peer_mac,
                                bt_audio_health_t health,

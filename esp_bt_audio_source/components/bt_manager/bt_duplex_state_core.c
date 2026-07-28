@@ -1,9 +1,31 @@
 #include "bt_duplex_state_internal.h"
 
 #include <ctype.h>
+#include <limits.h>
+#include <stdint.h>
 #include <string.h>
 
+#include "bt_hfp_event_contract.h"
+
 bt_duplex_context_t g_bt_duplex_ctx;
+
+static uint64_t next_health_event_count_locked(void)
+{
+    if (g_bt_duplex_ctx.health_event_count != UINT64_MAX) {
+        g_bt_duplex_ctx.health_event_count++;
+    }
+    return g_bt_duplex_ctx.health_event_count;
+}
+
+static void note_delivery_result(esp_err_t result,
+                                 uint32_t generation,
+                                 const char *peer_mac)
+{
+    if (result != ESP_OK) {
+        bt_duplex_record_event_delivery_failure(
+            generation, peer_mac, result);
+    }
+}
 
 void bt_duplex_snapshot_defaults(bt_duplex_snapshot_t *snapshot)
 {
@@ -97,6 +119,33 @@ esp_err_t bt_duplex_illegal_locked(void)
     return ESP_ERR_INVALID_STATE;
 }
 
+void bt_duplex_record_event_delivery_failure(uint32_t generation,
+                                             const char *peer_mac,
+                                             esp_err_t error)
+{
+    if (error == ESP_OK || bt_duplex_lock() != ESP_OK) return;
+
+    const bool same_identity = generation == 0U
+        ? (!g_bt_duplex_ctx.snapshot.peer_valid &&
+           g_bt_duplex_ctx.snapshot.session_generation == 0U)
+        : (g_bt_duplex_ctx.snapshot.peer_valid &&
+           peer_mac != NULL &&
+           generation == g_bt_duplex_ctx.snapshot.session_generation &&
+           bt_duplex_valid_mac(peer_mac) &&
+           bt_duplex_same_mac(peer_mac, g_bt_duplex_ctx.snapshot.peer_mac));
+
+    if (same_identity) {
+        if (g_bt_duplex_ctx.snapshot.health == BT_AUDIO_HEALTH_OK) {
+            g_bt_duplex_ctx.snapshot.health = BT_AUDIO_HEALTH_DEGRADED;
+            (void)next_health_event_count_locked();
+        }
+        static const char text[] = "HFP event delivery failed";
+        g_bt_duplex_ctx.snapshot.last_error = error;
+        memcpy(g_bt_duplex_ctx.snapshot.last_error_text, text, sizeof(text));
+    }
+    (void)bt_duplex_unlock_result(ESP_OK);
+}
+
 esp_err_t bt_duplex_state_init(void)
 {
     if (g_bt_duplex_ctx.initialized) return ESP_ERR_INVALID_STATE;
@@ -136,6 +185,9 @@ esp_err_t bt_duplex_session_begin(const char *peer_mac,
         !bt_duplex_transient_resources_stopped_locked()) {
         return bt_duplex_unlock_result(bt_duplex_illegal_locked());
     }
+
+    bt_duplex_mode_t old_mode = g_bt_duplex_ctx.snapshot.requested_mode;
+    bt_audio_health_t old_health = g_bt_duplex_ctx.snapshot.health;
     bt_duplex_counters_t counters = g_bt_duplex_ctx.snapshot.counters;
     uint32_t generation =
         bt_duplex_next_generation(g_bt_duplex_ctx.snapshot.session_generation);
@@ -150,8 +202,28 @@ esp_err_t bt_duplex_session_begin(const char *peer_mac,
         requested_mode == BT_DUPLEX_MODE_AUTO
             ? BT_DUPLEX_MODE_A2DP_PLUS_HFP_MIC
             : requested_mode;
+    uint64_t health_count = 0U;
+    if (old_health != BT_AUDIO_HEALTH_OK) {
+        health_count = next_health_event_count_locked();
+    }
     *generation_out = generation;
-    return bt_duplex_unlock_result(ESP_OK);
+    err = bt_duplex_unlock_result(ESP_OK);
+    if (err != ESP_OK) return err;
+
+    note_delivery_result(bt_hfp_event_emit_profile(
+        BT_HFP_PROFILE_DISCONNECTED, peer_mac, generation),
+        generation, peer_mac);
+    if (old_mode != requested_mode) {
+        note_delivery_result(bt_hfp_event_emit_mode(
+            old_mode, requested_mode, BT_HFP_MODE_EVENT_REASON_SESSION_BEGIN,
+            generation), generation, peer_mac);
+    }
+    if (health_count != 0U) {
+        note_delivery_result(bt_hfp_event_emit_health(
+            BT_AUDIO_HEALTH_OK, ESP_OK, health_count, generation),
+            generation, peer_mac);
+    }
+    return ESP_OK;
 }
 
 esp_err_t bt_duplex_get_snapshot(bt_duplex_snapshot_t *out)
@@ -190,6 +262,11 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
     if (!BT_DUPLEX_ENUM_VALUE_VALID(health, BT_AUDIO_HEALTH_COUNT)) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (error_text != NULL &&
+        strlen(error_text) >= BT_DUPLEX_ERROR_TEXT_LEN) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
     esp_err_t err = bt_duplex_lock();
     if (err != ESP_OK) return err;
     err = bt_duplex_validate_event_locked(generation, peer_mac);
@@ -198,18 +275,27 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
         health < g_bt_duplex_ctx.snapshot.health) {
         err = bt_duplex_illegal_locked();
     }
+
+    bool changed = false;
+    uint64_t count = 0U;
     if (err == ESP_OK) {
+        changed = g_bt_duplex_ctx.snapshot.health != health;
         g_bt_duplex_ctx.snapshot.health = health;
         g_bt_duplex_ctx.snapshot.last_error = error;
         if (error_text == NULL) error_text = "";
         size_t n = strlen(error_text);
-        if (n >= sizeof(g_bt_duplex_ctx.snapshot.last_error_text)) {
-            n = sizeof(g_bt_duplex_ctx.snapshot.last_error_text) - 1U;
-        }
         memcpy(g_bt_duplex_ctx.snapshot.last_error_text, error_text, n);
         g_bt_duplex_ctx.snapshot.last_error_text[n] = '\0';
+        if (changed) count = next_health_event_count_locked();
     }
-    return bt_duplex_unlock_result(err);
+    err = bt_duplex_unlock_result(err);
+    if (err != ESP_OK) return err;
+
+    if (changed) {
+        note_delivery_result(bt_hfp_event_emit_health(
+            health, error, count, generation), generation, peer_mac);
+    }
+    return ESP_OK;
 }
 
 esp_err_t bt_duplex_recover(uint32_t generation,
@@ -232,10 +318,18 @@ esp_err_t bt_duplex_recover(uint32_t generation,
     if (err == ESP_OK && !bt_duplex_transient_resources_stopped_locked()) {
         err = bt_duplex_illegal_locked();
     }
+
+    bool profile_changed = false;
+    uint64_t health_count = 0U;
+    uint32_t new_generation = 0U;
     if (err == ESP_OK) {
         g_bt_duplex_ctx.snapshot.session_generation =
             bt_duplex_next_generation(
                 g_bt_duplex_ctx.snapshot.session_generation);
+        new_generation = g_bt_duplex_ctx.snapshot.session_generation;
+        if (g_bt_duplex_ctx.snapshot.health != BT_AUDIO_HEALTH_OK) {
+            health_count = next_health_event_count_locked();
+        }
         g_bt_duplex_ctx.snapshot.health = BT_AUDIO_HEALTH_OK;
         g_bt_duplex_ctx.snapshot.last_error = ESP_OK;
         g_bt_duplex_ctx.snapshot.last_error_text[0] = '\0';
@@ -243,11 +337,25 @@ esp_err_t bt_duplex_recover(uint32_t generation,
             BT_HFP_PROFILE_FAULTED) {
             g_bt_duplex_ctx.snapshot.hfp_profile_state =
                 BT_HFP_PROFILE_DISCONNECTED;
+            profile_changed = true;
         }
         g_bt_duplex_ctx.snapshot.counters.recoveries++;
-        *new_generation_out = g_bt_duplex_ctx.snapshot.session_generation;
+        *new_generation_out = new_generation;
     }
-    return bt_duplex_unlock_result(err);
+    err = bt_duplex_unlock_result(err);
+    if (err != ESP_OK) return err;
+
+    if (profile_changed) {
+        note_delivery_result(bt_hfp_event_emit_profile(
+            BT_HFP_PROFILE_DISCONNECTED, peer_mac, new_generation),
+            new_generation, peer_mac);
+    }
+    if (health_count != 0U) {
+        note_delivery_result(bt_hfp_event_emit_health(
+            BT_AUDIO_HEALTH_OK, ESP_OK, health_count, new_generation),
+            new_generation, peer_mac);
+    }
+    return ESP_OK;
 }
 
 esp_err_t bt_duplex_record_incoming(uint32_t generation,
@@ -302,6 +410,7 @@ void bt_duplex_test_reset(void)
     if (!g_bt_duplex_ctx.initialized) return;
     if (bt_duplex_lock() != ESP_OK) return;
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
+    g_bt_duplex_ctx.health_event_count = 0U;
     (void)bt_duplex_unlock_result(ESP_OK);
 }
 #endif

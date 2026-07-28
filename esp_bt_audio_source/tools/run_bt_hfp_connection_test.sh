@@ -42,11 +42,13 @@ set +e
     "${unity_dir}/unity.c" \
     "${test_dir}/test_bt_hfp_connection.c" \
     "${project_dir}/components/bt_manager/bt_hfp_connection.c" \
+    "${project_dir}/components/bt_manager/bt_hfp_event_contract.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_profile.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_events.c" \
+    "${test_dir}/mocks/bt_hfp_event_command_stub.c" \
     "${test_dir}/mocks/bt_app_core_host_stub.c" \
     "${test_dir}/mocks/bt_hfp_connection_platform_stubs.c" \
     "${test_dir}/mocks/fake_esp_err.c" \

@@ -29,6 +29,7 @@ common_flags=(
     -I"${unity_dir}"
     -I"${test_dir}/mocks/include"
     -I"${test_dir}/mocks"
+    -I"${project_dir}/components/command_interface/include"
     -I"${project_dir}/components/bt_manager/include"
     -I"${project_dir}/components/audio_processor/include"
     -I"${project_dir}/components/platform_shim"
@@ -38,10 +39,12 @@ common_flags=(
     "${CC:-cc}" "${common_flags[@]}" \
         "${unity_dir}/unity.c" \
         "${project_dir}/components/platform_shim/platform_sync_host.c" \
+        "${project_dir}/components/bt_manager/bt_hfp_event_contract.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_audio.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
         "${project_dir}/components/bt_manager/bt_hfp_audio_control.c" \
+        "${test_dir}/mocks/bt_hfp_event_command_stub.c" \
         "${test_dir}/mocks/bt_hfp_audio_control_dependencies.c" \
         "${test_dir}/test_bt_hfp_audio_control_cases.c" \
         "${test_dir}/test_bt_hfp_audio_control_lifecycle_cases.c" \
@@ -55,8 +58,8 @@ common_flags=(
         "${binary}"
 } 2>&1 | tee "${test_log}"
 
-# FD-11 builds the public manager facade and command protocol as separate,
-# focused sanitizer binaries. Keep these explicit rather than allowing the
-# generic host command mocks to stand in for the real FD-11 behavior.
+# FD-12 builds the stable event contract and real dual-UART broadcast path as
+# focused sanitizer binaries before the FD-11 manager/command facade suites.
+bash "${project_dir}/tools/run_bt_hfp_event_contract_test.sh"
 bash "${project_dir}/tools/run_bt_hfp_manager_test.sh"
 bash "${project_dir}/tools/run_bt_hfp_commands_test.sh"

@@ -28,6 +28,7 @@ idf_component_register(
         "bt_duplex_state_transitions.c"
         "bt_duplex_state_strings.c"
         "bt_duplex_state_events.c"
+        "bt_hfp_event_contract.c"
         "bt_hfp_ag_lifecycle.c"
         "bt_hfp_ag_events.c"
         "bt_hfp_connection.c"

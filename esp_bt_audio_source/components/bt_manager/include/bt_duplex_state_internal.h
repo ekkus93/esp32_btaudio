@@ -9,6 +9,7 @@
 typedef struct {
     platform_mutex_t lock;
     bool initialized;
+    uint64_t health_event_count;
     bt_duplex_snapshot_t snapshot;
 } bt_duplex_context_t;
 
@@ -27,3 +28,6 @@ uint32_t bt_duplex_next_generation(uint32_t current);
 esp_err_t bt_duplex_validate_event_locked(uint32_t generation,
                                           const char *peer_mac);
 esp_err_t bt_duplex_illegal_locked(void);
+void bt_duplex_record_event_delivery_failure(uint32_t generation,
+                                             const char *peer_mac,
+                                             esp_err_t error);
