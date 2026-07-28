@@ -24,19 +24,19 @@ extern "C" {
  */
 
 typedef struct {
-    atomic_uint_least32_t sequence;
-    atomic_uint_least32_t low;
-    atomic_uint_least32_t high;
+    atomic_uint sequence;
+    atomic_uint low;
+    atomic_uint high;
 } hfp_pcm_counter64_t;
 
 typedef struct {
     uint8_t *storage;
     size_t capacity;
-    atomic_uint_least32_t generation;
-    atomic_uint_least32_t head;
-    atomic_uint_least32_t tail;
-    atomic_uint_least32_t peak_used;
-    atomic_bool initialized;
+    atomic_uint generation;
+    atomic_uint head;
+    atomic_uint tail;
+    atomic_uint peak_used;
+    atomic_uint initialized;
 
     /* Producer-owned counters. */
     hfp_pcm_counter64_t total_written_bytes;
