@@ -8,6 +8,7 @@ test_dir="${project_dir}/test/host_test"
 build_dir="${test_dir}/build_host_tests/bt_duplex_policy"
 binary="${build_dir}/test_bt_duplex_policy"
 capability_binary="${build_dir}/test_bt_duplex_policy_capability"
+ordering_binary="${build_dir}/test_bt_duplex_policy_ordering"
 
 if [[ ! -f "${unity_dir}/unity.c" || ! -f "${unity_dir}/unity.h" ]]; then
     echo "ERROR: vendored Unity source not found at ${unity_dir}" >&2
@@ -57,6 +58,12 @@ common_flags=(
     "${test_dir}/test_bt_duplex_policy_capability.c" \
     -o "${capability_binary}"
 
+"${CC:-cc}" "${common_flags[@]}" \
+    "${unity_dir}/unity.c" \
+    "${project_dir}/components/bt_manager/bt_duplex_policy.c" \
+    "${test_dir}/test_bt_duplex_policy_ordering.c" \
+    -o "${ordering_binary}"
+
 ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
 UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
     "${binary}"
@@ -64,3 +71,7 @@ UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
 ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
 UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
     "${capability_binary}"
+
+ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
+UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
+    "${ordering_binary}"
