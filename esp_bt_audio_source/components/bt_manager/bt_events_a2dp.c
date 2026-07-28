@@ -6,8 +6,10 @@
 #include "bt_manager.h"
 #include "bt_pairing_store.h"
 #include "bt_duplex_policy.h"
+#include "bt_hfp_manager.h"
 #include "audio_processor.h"
 #include <string.h>
+#include <strings.h>
 
 #define TAG "BT_EVT_A2DP"
 
@@ -29,6 +31,27 @@ static void report_policy_result(const char *event_name, esp_err_t err)
     if (err == ESP_OK || err == ESP_ERR_NOT_FOUND) return;
     ESP_LOGE(TAG, "%s policy update failed: %s", event_name,
              esp_err_to_name(err));
+}
+
+static esp_err_t capture_policy_generation(const char *peer,
+                                           bool allow_no_session,
+                                           uint32_t *generation_out)
+{
+    if (peer == NULL || generation_out == NULL) return ESP_ERR_INVALID_ARG;
+    bt_hfp_manager_status_t status;
+    esp_err_t err = bt_manager_hfp_get_status(&status);
+    if (err != ESP_OK) return err;
+    if (!status.duplex.peer_valid) {
+        if (!allow_no_session) return ESP_ERR_INVALID_STATE;
+        *generation_out = 0U;
+        return ESP_OK;
+    }
+    if (strcasecmp(peer, status.duplex.peer_mac) != 0 ||
+        status.duplex.session_generation == 0U) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    *generation_out = status.duplex.session_generation;
+    return ESP_OK;
 }
 
 static void apply_connection_policy(const esp_a2d_cb_param_t *param)
@@ -53,8 +76,13 @@ static void apply_connection_policy(const esp_a2d_cb_param_t *param)
     }
     char peer[18];
     bda_to_string(param->conn_stat.remote_bda, peer);
-    report_policy_result("A2DP connection",
-                         bt_manager_hfp_handle_a2dp_profile_event(peer, mapped));
+    uint32_t generation = 0U;
+    esp_err_t err = capture_policy_generation(peer, true, &generation);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_handle_a2dp_profile_event(
+            generation, peer, mapped);
+    }
+    report_policy_result("A2DP connection", err);
 }
 
 static void apply_audio_policy(const esp_a2d_cb_param_t *param)
@@ -72,8 +100,13 @@ static void apply_audio_policy(const esp_a2d_cb_param_t *param)
     }
     char peer[18];
     bda_to_string(param->audio_stat.remote_bda, peer);
-    report_policy_result("A2DP audio",
-                         bt_manager_hfp_handle_a2dp_audio_event(peer, mapped));
+    uint32_t generation = 0U;
+    esp_err_t err = capture_policy_generation(peer, false, &generation);
+    if (err == ESP_OK) {
+        err = bt_manager_hfp_handle_a2dp_audio_event(
+            generation, peer, mapped);
+    }
+    report_policy_result("A2DP audio", err);
 }
 
 void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
