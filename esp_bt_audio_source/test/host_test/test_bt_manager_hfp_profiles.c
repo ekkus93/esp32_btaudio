@@ -136,9 +136,9 @@ void test_manager_hfp_registration_failure_rolls_back_previous_profiles(void)
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, bt_manager_test_init_profiles());
     TEST_ASSERT_EQUAL_INT(1, s_hfp_register_calls);
     TEST_ASSERT_EQUAL_INT(0, s_hfp_init_calls);
-    TEST_ASSERT_EQUAL_INT(1, s_hfp_deinit_calls);
-    TEST_ASSERT_TRUE(mock_a2dp_deinit_was_called());
-    TEST_ASSERT_TRUE(mock_avrc_deinit_was_called());
+    TEST_ASSERT_EQUAL_INT(0, s_hfp_deinit_calls);
+    TEST_ASSERT_TRUE(mock_a2dp_was_deinit_called());
+    TEST_ASSERT_TRUE(mock_avrc_was_deinit_called());
 }
 
 void test_manager_hfp_immediate_init_failure_preserves_error_and_rolls_back(void)
@@ -147,9 +147,9 @@ void test_manager_hfp_immediate_init_failure_preserves_error_and_rolls_back(void
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, bt_manager_test_init_profiles());
     TEST_ASSERT_EQUAL_INT(1, s_hfp_register_calls);
     TEST_ASSERT_EQUAL_INT(1, s_hfp_init_calls);
-    TEST_ASSERT_EQUAL_INT(1, s_hfp_deinit_calls);
-    TEST_ASSERT_TRUE(mock_a2dp_deinit_was_called());
-    TEST_ASSERT_TRUE(mock_avrc_deinit_was_called());
+    TEST_ASSERT_EQUAL_INT(0, s_hfp_deinit_calls);
+    TEST_ASSERT_TRUE(mock_a2dp_was_deinit_called());
+    TEST_ASSERT_TRUE(mock_avrc_was_deinit_called());
 }
 
 void test_manager_hfp_callback_failure_rolls_back_previous_profiles(void)
@@ -157,8 +157,18 @@ void test_manager_hfp_callback_failure_rolls_back_previous_profiles(void)
     s_hfp_init_callback_failure = true;
     TEST_ASSERT_EQUAL(ESP_FAIL, bt_manager_test_init_profiles());
     TEST_ASSERT_EQUAL_INT(1, s_hfp_deinit_calls);
-    TEST_ASSERT_TRUE(mock_a2dp_deinit_was_called());
-    TEST_ASSERT_TRUE(mock_avrc_deinit_was_called());
+    TEST_ASSERT_TRUE(mock_a2dp_was_deinit_called());
+    TEST_ASSERT_TRUE(mock_avrc_was_deinit_called());
+}
+
+void test_manager_hfp_rollback_failure_does_not_replace_init_error(void)
+{
+    s_hfp_init_callback_failure = true;
+    s_hfp_deinit_result = ESP_ERR_TIMEOUT;
+    TEST_ASSERT_EQUAL(ESP_FAIL, bt_manager_test_init_profiles());
+    TEST_ASSERT_EQUAL_INT(1, s_hfp_deinit_calls);
+    TEST_ASSERT_TRUE(mock_a2dp_was_deinit_called());
+    TEST_ASSERT_TRUE(mock_avrc_was_deinit_called());
 }
 
 void test_manager_a2dp_failure_does_not_touch_hfp(void)
@@ -168,8 +178,8 @@ void test_manager_a2dp_failure_does_not_touch_hfp(void)
     TEST_ASSERT_EQUAL_INT(0, s_hfp_register_calls);
     TEST_ASSERT_EQUAL_INT(0, s_hfp_init_calls);
     TEST_ASSERT_EQUAL_INT(0, s_hfp_deinit_calls);
-    TEST_ASSERT_TRUE(mock_a2dp_deinit_was_called());
-    TEST_ASSERT_TRUE(mock_avrc_deinit_was_called());
+    TEST_ASSERT_TRUE(mock_a2dp_was_deinit_called());
+    TEST_ASSERT_TRUE(mock_avrc_was_deinit_called());
 }
 
 int main(void)
@@ -179,6 +189,7 @@ int main(void)
     RUN_TEST(test_manager_hfp_registration_failure_rolls_back_previous_profiles);
     RUN_TEST(test_manager_hfp_immediate_init_failure_preserves_error_and_rolls_back);
     RUN_TEST(test_manager_hfp_callback_failure_rolls_back_previous_profiles);
+    RUN_TEST(test_manager_hfp_rollback_failure_does_not_replace_init_error);
     RUN_TEST(test_manager_a2dp_failure_does_not_touch_hfp);
     return UNITY_END();
 }
