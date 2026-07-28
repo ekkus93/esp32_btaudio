@@ -55,6 +55,7 @@ typedef struct {
     uint64_t write_calls;
     uint64_t write_failures;
     uint64_t short_writes;
+    uint64_t write_lost_bytes;
     uint64_t silence_intervals;
     uint64_t silence_samples;
     uint64_t quarantine_events;
@@ -88,7 +89,7 @@ esp_err_t hfp_i2s_output_ops_channel_delete(void *channel);
 esp_err_t hfp_i2s_output_ops_task_create(void **task_out);
 esp_err_t hfp_i2s_output_ops_task_release_start(void *task);
 esp_err_t hfp_i2s_output_ops_task_wait_stopped(void *task,
-                                               uint32_t timeout_ms);
+                                                uint32_t timeout_ms);
 esp_err_t hfp_i2s_output_ops_channel_write(
     void *channel, const void *data, size_t bytes, size_t *bytes_written,
     uint32_t timeout_ms);
