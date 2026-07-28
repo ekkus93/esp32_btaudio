@@ -391,8 +391,6 @@ static void process_incoming(uint16_t sync_conn_handle,
                              bool bad_frame)
 {
     counter64_add(&s_audio.incoming_callbacks, 1U);
-    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
 
     if (data == NULL || data_len == 0U || data_len > buffer_capacity ||
         (data_len % sizeof(int16_t)) != 0U ||
@@ -448,8 +446,7 @@ static void process_incoming(uint16_t sync_conn_handle,
     counter64_add(&s_audio.accepted_bytes, data_len);
 
 out:
-    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
-                              memory_order_acq_rel);
+    return;
 }
 
 #ifdef UNIT_TEST
@@ -459,6 +456,8 @@ static void handle_incoming_timed(uint16_t sync_conn_handle,
                                   size_t buffer_capacity,
                                   bool bad_frame)
 {
+    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
     int64_t started = platform_now_us();
     process_incoming(sync_conn_handle, data, data_len, buffer_capacity,
                      bad_frame);
@@ -469,6 +468,8 @@ static void handle_incoming_timed(uint16_t sync_conn_handle,
         duration = delta > UINT32_MAX ? UINT32_MAX : (uint32_t)delta;
     }
     update_max_duration(duration);
+    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
 }
 #endif
 
@@ -477,6 +478,8 @@ static void production_incoming_callback(esp_hf_sync_conn_hdl_t sync_conn_hdl,
                                          esp_hf_audio_buff_t *audio_buf,
                                          bool bad_frame)
 {
+    atomic_fetch_add_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
     int64_t started = platform_now_us();
     if (audio_buf == NULL) {
         process_incoming(sync_conn_hdl, NULL, 0U, 0U, bad_frame);
@@ -494,6 +497,8 @@ static void production_incoming_callback(esp_hf_sync_conn_hdl_t sync_conn_hdl,
         duration = delta > UINT32_MAX ? UINT32_MAX : (uint32_t)delta;
     }
     update_max_duration(duration);
+    atomic_fetch_sub_explicit(&s_audio.active_callbacks, 1U,
+                              memory_order_acq_rel);
 }
 #endif
 
