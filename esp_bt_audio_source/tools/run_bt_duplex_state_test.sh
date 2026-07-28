@@ -29,9 +29,11 @@ mkdir -p "${build_dir}"
     "${unity_dir}/unity.c" \
     "${project_dir}/components/platform_shim/platform_sync_host.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
+    "${project_dir}/components/bt_manager/bt_duplex_state_audio.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_strings.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state_cases.c" \
+    "${project_dir}/test/host_test/test_bt_duplex_state_audio_cases.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state_strings.c" \
     "${project_dir}/test/host_test/test_bt_duplex_state.c" \
     -o "${binary}"
