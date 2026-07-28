@@ -69,6 +69,11 @@ typedef struct {
     uint64_t ring_rejected_frames;
     uint64_t ring_rejected_bytes;
     uint64_t callback_over_budget;
+    /* Process-lifetime count of callbacks rejected because another incoming
+     * callback was already active. The rejected callback performs no frame or
+     * byte counter updates, so all 64-bit callback counters remain single
+     * writer and cannot lose increments. */
+    uint32_t callback_overlap_rejections;
     uint32_t callback_last_us;
     uint32_t callback_max_us;
     uint32_t active_callbacks;
@@ -108,6 +113,8 @@ typedef struct {
     uint64_t cleanup_disconnect_failures;
     uint64_t i2s_start_failures;
     uint64_t i2s_stop_failures;
+    uint64_t health_report_failures;
+    esp_err_t last_health_report_error;
 } bt_hfp_audio_control_snapshot_t;
 
 /* Called by the HFP AG lifecycle only after profile initialization has been
@@ -167,6 +174,11 @@ typedef struct {
 typedef struct {
     esp_err_t (*audio_connect)(esp_bd_addr_t remote_bda);
     esp_err_t (*audio_disconnect)(esp_bd_addr_t remote_bda);
+    esp_err_t (*set_health)(uint32_t generation,
+                            const char *peer_mac,
+                            bt_audio_health_t health,
+                            esp_err_t error,
+                            const char *text);
 } bt_hfp_audio_control_platform_ops_t;
 
 esp_err_t bt_hfp_audio_test_set_platform_ops(
