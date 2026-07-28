@@ -7,6 +7,11 @@
 
 #include "bt_hfp_event_contract.h"
 
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#define TAG "BT_DUPLEX_STATE"
+#endif
+
 bt_duplex_context_t g_bt_duplex_ctx;
 
 static uint64_t next_health_event_count_locked(void)
@@ -17,21 +22,39 @@ static uint64_t next_health_event_count_locked(void)
     return g_bt_duplex_ctx.health_event_count;
 }
 
-static void record_health_report_failure_locked(esp_err_t error)
+static bool record_health_report_failure_locked(esp_err_t error)
 {
-    if (error == ESP_OK) return;
+    if (error == ESP_OK) return false;
+    const bool first_failure =
+        g_bt_duplex_ctx.health_report_failures == 0U;
     if (g_bt_duplex_ctx.health_report_failures != UINT64_MAX) {
         g_bt_duplex_ctx.health_report_failures++;
     }
     g_bt_duplex_ctx.last_health_report_error = error;
+    return first_failure;
+}
+
+static void log_health_report_failure_once(bool first_failure,
+                                           esp_err_t error)
+{
+#ifdef ESP_PLATFORM
+    if (first_failure) {
+        ESP_LOGE(TAG, "health report rejected: %s", esp_err_to_name(error));
+    }
+#else
+    (void)first_failure;
+    (void)error;
+#endif
 }
 
 static esp_err_t reject_health_report_before_lock(esp_err_t error)
 {
+    bool first_failure = false;
     if (bt_duplex_lock() == ESP_OK) {
-        record_health_report_failure_locked(error);
+        first_failure = record_health_report_failure_locked(error);
         (void)bt_duplex_unlock_result(ESP_OK);
     }
+    log_health_report_failure_once(first_failure, error);
     return error;
 }
 
@@ -320,6 +343,7 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
     }
 
     bool changed = false;
+    bool first_report_failure = false;
     uint64_t count = 0U;
     if (err == ESP_OK) {
         changed = g_bt_duplex_ctx.snapshot.health != health;
@@ -331,10 +355,13 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
         g_bt_duplex_ctx.snapshot.last_error_text[n] = '\0';
         if (changed) count = next_health_event_count_locked();
     } else {
-        record_health_report_failure_locked(err);
+        first_report_failure = record_health_report_failure_locked(err);
     }
     err = bt_duplex_unlock_result(err);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) {
+        log_health_report_failure_once(first_report_failure, err);
+        return err;
+    }
 
     if (changed) {
         note_delivery_result(bt_hfp_event_emit_health(
