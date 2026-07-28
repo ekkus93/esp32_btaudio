@@ -10,7 +10,6 @@
 #include "mock_avrc.h"
 
 extern esp_err_t bt_manager_test_init_profiles(void);
-extern void mock_gap_reset(void);
 
 #define MAX_CALLS 16
 
@@ -24,7 +23,7 @@ static int s_hfp_register_calls;
 static int s_hfp_init_calls;
 static int s_hfp_deinit_calls;
 
-void bt_manager_test_log_call(const char *name)
+void mock_bt_call_log(const char *name)
 {
     if (s_call_count < MAX_CALLS) {
         s_calls[s_call_count++] = name;
@@ -33,14 +32,14 @@ void bt_manager_test_log_call(const char *name)
 
 static esp_err_t mock_hfp_register(void)
 {
-    bt_manager_test_log_call("bt_hfp_ag_register_callback");
+    mock_bt_call_log("bt_hfp_ag_register_callback");
     s_hfp_register_calls++;
     return s_hfp_register_result;
 }
 
 static esp_err_t mock_hfp_init(void)
 {
-    bt_manager_test_log_call("bt_hfp_ag_init");
+    mock_bt_call_log("bt_hfp_ag_init");
     s_hfp_init_calls++;
     if (s_hfp_init_result != ESP_OK) {
         return s_hfp_init_result;
@@ -54,7 +53,7 @@ static esp_err_t mock_hfp_init(void)
 
 static esp_err_t mock_hfp_deinit(void)
 {
-    bt_manager_test_log_call("bt_hfp_ag_deinit");
+    mock_bt_call_log("bt_hfp_ag_deinit");
     s_hfp_deinit_calls++;
     if (s_hfp_deinit_result != ESP_OK) {
         return s_hfp_deinit_result;
@@ -83,7 +82,6 @@ void setUp(void)
 
     mock_avrc_reset();
     mock_a2dp_reset();
-    mock_gap_reset();
     bt_hfp_ag_force_cleanup_after_stack_shutdown();
     bt_duplex_state_deinit();
     TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_state_init());
