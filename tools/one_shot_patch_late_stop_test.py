@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Triggered only after the one-shot workflow exists on the branch.
 from pathlib import Path
 
 PATH = Path("esp_bt_audio_source/test/host_test/test_bluetooth_cases.c")
