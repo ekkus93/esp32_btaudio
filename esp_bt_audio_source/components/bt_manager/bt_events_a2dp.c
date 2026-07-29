@@ -278,6 +278,15 @@ static esp_err_t capture_audio_binding(a2dp_bound_audio_event_t *bound)
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
     if (!s_policy_binding.valid) {
+        if (bound->state != BT_A2DP_AUDIO_STARTED) {
+            /* A stop/suspend event can legitimately race shortly after the
+             * connection-disconnected event already cleared the binding.
+             * Apply the "not playing" state unconditionally rather than
+             * rejecting it — only a START needs a trusted binding. */
+            bt_ctx.audio_playing = false;
+            bt_ctx_unlock();
+            return ESP_OK;
+        }
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
         bt_ctx_unlock();
@@ -503,6 +512,16 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 }
 #endif // ESP_PLATFORM
 
+void bt_events_a2dp_reset_binding(void)
+{
+    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
+        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
+        bt_ctx_unlock();
+    } else {
+        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
+    }
+}
+
 #ifdef UNIT_TEST
 esp_err_t bt_events_a2dp_test_get_binding(
     bt_events_a2dp_binding_snapshot_t *out)
@@ -531,12 +550,7 @@ esp_err_t bt_events_a2dp_test_get_binding(
 
 void bt_events_a2dp_test_reset_binding(void)
 {
-    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
-        bt_ctx_unlock();
-    } else {
-        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
-    }
+    bt_events_a2dp_reset_binding();
 }
 #endif
 

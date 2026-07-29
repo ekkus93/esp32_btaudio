@@ -61,6 +61,16 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param);
  */
 void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param);
 
+/**
+ * @brief Reset the A2DP profile-binding state (peer MAC, connection handle,
+ * lifecycle serial, generation)
+ *
+ * Must be called when tearing down the Bluetooth manager so a stale binding
+ * from a previous session cannot reject a legitimate reconnect after
+ * deinit/init.
+ */
+void bt_events_a2dp_reset_binding(void);
+
 #ifdef UNIT_TEST
 #define BT_EVENTS_A2DP_TEST_MAC_STR_LEN 18U
 typedef struct {
@@ -88,6 +98,7 @@ static inline void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_
 static inline int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len) {
     (void)buf; (void)len; return 0;
 }
+static inline void bt_events_a2dp_reset_binding(void) {}
 #endif // defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
 #endif // BT_EVENTS_A2DP_H

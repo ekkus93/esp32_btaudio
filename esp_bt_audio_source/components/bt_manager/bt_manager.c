@@ -210,6 +210,7 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
     /* Reset runtime defaults at each init so per-session overrides (like
      * autostart disable) do not leak across init/deinit cycles. */
     s_autostart_enabled = true;
+    bt_events_a2dp_reset_binding();
 
     /* Create the bt_ctx mutex before any other initialization.  If this
      * fails there's nothing to clean up since the mutex is the first
@@ -459,6 +460,7 @@ fail:
     bt_ctx.connected = false;
     bt_ctx.connecting = false;
     bt_ctx.audio_playing = false;
+    bt_events_a2dp_reset_binding();
 
     if (first_error != ESP_OK) {
         s_bt_manager_quarantined = true;
