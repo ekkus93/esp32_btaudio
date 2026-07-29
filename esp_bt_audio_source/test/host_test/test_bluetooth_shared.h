@@ -133,5 +133,6 @@ void test_a2dp_reconnect_rotates_lifecycle_serial(void);
 void test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted(void);
 void test_a2dp_binding_refreshes_after_hfp_generation_rotation(void);
 void test_a2dp_wrong_peer_event_is_rejected_and_counted(void);
+void test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection(void);
 
 #endif /* TEST_BLUETOOTH_SHARED_H */
