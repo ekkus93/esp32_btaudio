@@ -10,8 +10,6 @@ typedef struct {
     platform_mutex_t lock;
     bool initialized;
     uint64_t health_event_count;
-    uint64_t health_report_failures;
-    esp_err_t last_health_report_error;
 #ifdef UNIT_TEST
     esp_err_t test_health_report_result;
 #endif
