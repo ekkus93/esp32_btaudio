@@ -26,6 +26,10 @@ const char* mock_uart_get_tx_data_port(int uart_num);
 bool mock_uart_is_initialized(uart_port_t uart_num);
 size_t mock_uart_get_available_bytes(uart_port_t uart_num);
 
+/* Force uart_write_bytes() on one port to return the supplied result. The
+ * injection is cleared by mock_uart_init_port(). */
+void mock_uart_force_write_result_port(int uart_num, int result);
+
 esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size,
                              int queue_size, void* uart_queue, int intr_alloc_flags);
 esp_err_t uart_driver_delete(uart_port_t uart_num);
