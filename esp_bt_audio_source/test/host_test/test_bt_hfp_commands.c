@@ -21,6 +21,7 @@ void test_response_overflow_fails_closed_without_buffer_overread(void);
 void test_hfp_connect_invalid_mac_preserves_exact_backend_error(void);
 void test_hfp_connect_pre_status_failure_does_not_block_accepted_request(void);
 void test_hfp_audio_success_is_not_retracted_by_status_failure(void);
+void test_hfp_audio_status_unavailable_propagates_uart_failure(void);
 void test_hfp_stats_exposes_health_and_callback_review_failures(void);
 void test_hfp_mode_success_does_not_require_followup_snapshot(void);
 
@@ -48,6 +49,7 @@ int main(void)
     RUN_TEST(test_hfp_connect_invalid_mac_preserves_exact_backend_error);
     RUN_TEST(test_hfp_connect_pre_status_failure_does_not_block_accepted_request);
     RUN_TEST(test_hfp_audio_success_is_not_retracted_by_status_failure);
+    RUN_TEST(test_hfp_audio_status_unavailable_propagates_uart_failure);
     RUN_TEST(test_hfp_stats_exposes_health_and_callback_review_failures);
     RUN_TEST(test_hfp_mode_success_does_not_require_followup_snapshot);
     return UNITY_END();
