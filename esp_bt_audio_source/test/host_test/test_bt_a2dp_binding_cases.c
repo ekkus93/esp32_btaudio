@@ -270,3 +270,47 @@ void test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection(void)
     TEST_ASSERT_EQUAL_UINT(2U,
         bt_manager_test_get_stale_operation_records());
 }
+
+void test_a2dp_ctx_lock_failure_rejects_without_partial_state(void)
+{
+    static const uint8_t peer[6] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
+    bt_events_a2dp_test_reset_binding();
+    bt_manager_set_autostart_enabled(false);
+    bt_manager_test_set_hfp_policy_status(
+        true, A2DP_PEER_ONE, 61U, ESP_OK);
+    bt_manager_test_set_hfp_policy_results(ESP_OK, ESP_OK);
+
+    bt_manager_status_t before;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_get_status(&before));
+    const unsigned profile_calls_before =
+        bt_manager_test_get_hfp_profile_calls();
+    const int forwarded_state_before = bt_manager_test_get_last_conn_state();
+    const int autostart_before = bt_manager_test_get_autostart_attempts();
+    bt_connected_callback_called = false;
+
+    esp_a2d_cb_param_t param;
+    set_connection_event(&param, peer, A2DP_HANDLE_ONE,
+                         ESP_A2D_CONNECTION_STATE_CONNECTED);
+    bt_manager_test_deinit_mutex();
+    bt_manager_test_invoke_a2dp_event(ESP_A2D_CONNECTION_STATE_EVT, &param);
+    const esp_err_t reinit_result = bt_manager_test_init_mutex();
+    TEST_ASSERT_EQUAL(ESP_OK, reinit_result);
+
+    bt_manager_status_t after;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_manager_get_status(&after));
+    TEST_ASSERT_EQUAL(before.connected, after.connected);
+    TEST_ASSERT_EQUAL(before.audio_playing, after.audio_playing);
+    TEST_ASSERT_EQUAL_STRING(before.connected_mac, after.connected_mac);
+    TEST_ASSERT_FALSE(bt_connected_callback_called);
+    TEST_ASSERT_EQUAL_UINT(profile_calls_before,
+        bt_manager_test_get_hfp_profile_calls());
+    TEST_ASSERT_EQUAL(forwarded_state_before,
+                      bt_manager_test_get_last_conn_state());
+    TEST_ASSERT_EQUAL(autostart_before,
+                      bt_manager_test_get_autostart_attempts());
+
+    bt_events_a2dp_binding_snapshot_t binding;
+    TEST_ASSERT_EQUAL(ESP_OK,
+        bt_events_a2dp_test_get_binding(&binding));
+    TEST_ASSERT_FALSE(binding.valid);
+}
