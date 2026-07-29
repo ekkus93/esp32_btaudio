@@ -5,22 +5,23 @@
 **Target:** ESP32-WROOM-32, ESP-IDF v5.5.1  
 **Primary project:** `esp_bt_audio_source/`  
 **Status reconciled:** 2026-07-28  
-**Review-fix production head before final documentation commits:** `e98153195b40212d1e7b96ff48bb27950bb8b264`  
+**Reviewed review-fix production/test head before final documentation commits:** `392894daa1b930817639da58c4ba2d590f4b8013`  
 **Last verified compile-only implementation head:** `e48341ae665781dd6da6e40c4137bfbead4d1205`
 
 ## Status rules
 
-- `[x] Software implemented` means the source change exists on the feature branch.
-- `[x] Prior phase host validated` means the cited phase closeout records a passing host run for that older phase baseline.
-- `[x] Compile validated` applies only to the exact SHA recorded with the result.
-- Production code changed after `e48341ae...`; the current branch therefore requires fresh host CI and fresh ESP-IDF compile-only CI.
-- `[ ] Hardware pending` means no physical-board result is claimed.
+- `[x] Software implemented` means the source change exists and was inspected on the feature branch.
+- `[x] Focused coverage present` means a deterministic host test exists and is wired into a maintained runner.
+- Older phase host/compile results validate only their recorded older SHAs.
+- Production source changed after `e48341ae...`; fresh host CI and fresh ESP-IDF compile-only CI are required for the final documentation head.
+- `[ ] Hardware pending` means no physical-board evidence is claimed.
 - `[ ] Future` means the production capability is not implemented.
-- Do not mark the project or review-fix closeout complete while P0 software blockers, CI, compile, or hardware gates remain.
+- Do not treat a compile as runtime proof.
+- Do not create the final review-fix closeout until current-head host CI and compile-only CI pass.
 
 ## Authoritative maintained evidence
 
-All referenced files below exist at the exact repository paths:
+All referenced assistant-created files below exist at the exact repository paths:
 
 - `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_PROGRESS_2026-07-27.md`
 - `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_FD09_CLOSEOUT_2026-07-28.md`
@@ -32,23 +33,23 @@ All referenced files below exist at the exact repository paths:
 - `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_TODO_2026-07-28.md`
 - `esp_bt_audio_source/docs/ESP_BT_AUDIO_HFP_CALLBACK_RESOURCE_BUDGET_2026-07-28.md`
 
-Do not reference an assistant-created report, response file, template, or closeout unless it is committed at the exact named path.
+Do not reference any generated review, response, template, or closeout file unless it is committed at the exact named path.
 
 ---
 
 # Non-negotiable rules
 
 - [x] Work directly on `feature/esp-bt-audio-duplex`.
-- [x] Do not create a helper branch or new PR without explicit instruction.
+- [x] Do not create a helper branch or PR without explicit instruction.
 - [x] Keep `main/main.c` as a clean bootstrap.
-- [x] Keep Bluetooth profile, HFP, SCO, duplex state, and policy under `components/bt_manager`.
+- [x] Keep Bluetooth profile, HFP, SCO, state, and policy under `components/bt_manager`.
 - [x] Keep I2S0 TX and voice conversion under `components/audio_processor`.
-- [x] Route command operations through public manager APIs.
+- [x] Route command behavior through public manager APIs.
 - [x] Reject quiet fallback, silent data loss, fabricated status, fake success, and unbounded retry.
-- [x] Keep the HFP incoming callback allocation-free, nonblocking, direct-I2S-free, and per-frame-log-free.
+- [x] Keep the incoming HFP callback allocation-free, nonblocking, direct-I2S-free, and per-frame-log-free.
 - [x] Make rejected data and failed diagnostics visible through exact errors, stable records, counters, or fault/quarantine state.
 - [x] Do not claim HFP downlink playback before FD-18 and FD-19.
-- [x] Do not flash hardware without explicit user approval in the current conversation.
+- [x] Do not flash hardware without explicit user approval.
 - [x] No hardware was flashed during the software or review-fix work recorded here.
 
 ---
@@ -57,137 +58,147 @@ Do not reference an assistant-created report, response file, template, or closeo
 
 | Phase | Current classification | Remaining gate |
 |---|---|---|
-| FD-00 through FD-07 | Software complete; prior phase host/compile evidence recorded | Real profile/SLC behavior remains hardware-gated |
-| FD-08 | Software complete; prior phase host/compile evidence recorded | Physical I2S0 output and resource validation |
-| FD-09 | Software plus callback review fixes implemented | Fresh host CI, fresh compile, hardware callback measurements |
-| FD-10 | Software complete at prior phase baseline | Real SCO timing/start-stop behavior |
-| FD-11 | Software plus status-unavailable transport fix implemented | Fresh command tests/CI |
+| FD-00 through FD-07 | Software complete; older phase validation recorded | Real profile/SLC hardware behavior |
+| FD-08 | Software and review accounting hardening complete | Fresh CI/compile and physical I2S0 validation |
+| FD-09 | Software, overlap hardening, and registration publication complete | Fresh CI/compile and callback measurements |
+| FD-10 | Software complete at prior phase baseline | Fresh CI and real SCO timing/start-stop behavior |
+| FD-11 | Software plus status-unavailable transport hardening complete | Fresh command CI |
 | FD-12 | Software complete at prior phase baseline | Physical UART validation |
-| FD-13 | Software plus lock-independent health diagnostics implemented | Fresh CI and target runtime measurements |
-| FD-14 | Hardware pending | GPIO32/33/27 I2S0 wire-format acceptance |
+| FD-13 | Software plus lock-independent health diagnostics complete | Fresh CI and target resource measurements |
+| FD-14 | Hardware pending | I2S0 GPIO/wire-format acceptance |
 | FD-15 | Hardware pending | Real HFP SLC/SCO with earbuds |
-| FD-16 | Software plus `conn_hdl` stale-event hardening implemented | A2DP lock-failure blocker, fresh CI/compile |
+| FD-16 | Software plus `conn_hdl` identity and atomic base-state commit complete | Fresh CI/compile |
 | FD-17 | Hardware pending | Simultaneous A2DP playback and HFP microphone |
 | FD-18 | Future; not implemented | Playback voice tap |
 | FD-19 | Future; not implemented | HFP outgoing PCM send path |
-| FD-20 | Blocked by FD-18/FD-19 and hardware | HFP full-duplex CVSD |
+| FD-20 | Blocked by FD-18/FD-19 and hardware | Operational HFP full-duplex CVSD |
 | FD-21 | Future and hardware pending | WBS/mSBC support |
 | FD-22 through FD-24 | Partial | Complete failure/recovery/race matrix |
-| FD-25 | Partial | Current-head host and device compile workflows |
+| FD-25 | In progress | Current-head host and compile-only workflows |
 | FD-26 | Hardware pending | Runtime resource matrix |
 | FD-27 | Hardware pending | Functional matrix and soak |
-| FD-28 | Partial | Final maintained documentation after hardware results |
-| FD-29 | In progress | Resolve software blockers, CI/compile, then closeout |
+| FD-28 | Partial | Final user/runtime documentation after hardware results |
+| FD-29 | Software review complete; validation pending | CI, compile, then review-fix closeout |
 
 ---
 
 # FD-00 through FD-07 — Foundation and HFP SLC
 
-## Implemented
+## Software implemented
 
-- [x] Branch/scope and layering controls.
-- [x] HFP AG/HCI configuration with HFP client disabled and one synchronous connection.
-- [x] Authoritative synchronized duplex state with peer and generation validation.
-- [x] Bounded generation-aware SPSC PCM ring.
-- [x] CVSD 8 kHz to 16 kHz conversion and stereo-to-mono helpers.
-- [x] HFP AG lifecycle with rollback and unsafe-teardown refusal.
-- [x] Generation-bound HFP SLC connect/disconnect operations with bounded request/watchdog waits.
-- [x] Exact distinction between accepted asynchronous requests and completion events.
-- [x] Prior focused host sanitizer and ESP-IDF compile-only validation recorded in maintained phase evidence.
+- [x] Branch, layering, configuration, and single-sync-connection controls.
+- [x] HFP AG/HCI profile lifecycle with bounded waits and rollback.
+- [x] Authoritative peer/generation-bound duplex state.
+- [x] Generation-aware bounded SPSC PCM ring.
+- [x] CVSD conversion and stereo-to-mono helpers.
+- [x] Generation-bound HFP SLC connect/disconnect operations.
+- [x] Exact accepted-versus-completed command semantics.
+- [x] Unsafe teardown refusal and quarantine behavior.
 
-## Still pending
+## Hardware pending
 
-- [ ] Capture current target heap, largest-block, stack, and A2DP baseline measurements.
-- [ ] Confirm real HFP AG profile and SLC events on hardware.
-- [ ] Confirm remote reject, timeout, reconnect, and earbud power-cycle behavior.
+- [ ] Confirm HFP AG profile events on a real target.
+- [ ] Confirm SLC connect/disconnect, reject, timeout, reconnect, and earbud power-cycle behavior.
+- [ ] Capture baseline heap, largest block, and task stack measurements.
 
 ---
 
 # FD-08 — I2S0 microphone output
 
-## Implemented
+## Software implemented
 
-- [x] Validate I2S port and configured pins; never substitute defaults for invalid pins.
-- [x] Reject I2S1, UART, flash, input-only, nonexistent, duplicate, strapping, and known-bad conflicts according to explicit policy.
-- [x] Use GPIO32 BCLK, GPIO33 WS/LRCLK, and GPIO27 DOUT for the configured contract.
-- [x] Allocate bounded ring/writer storage before runtime.
+- [x] Validate port, pins, collisions, and unsupported configurations; never silently substitute defaults.
+- [x] Configure GPIO32 BCLK, GPIO33 WS/LRCLK, and GPIO27 DOUT for 16 kHz signed 16-bit mono Philips I2S.
+- [x] Allocate bounded ring/writer resources before runtime.
 - [x] Use one cooperatively stopped writer task.
-- [x] Roll back channel/mode/task/storage failures in reverse order.
+- [x] Roll back partial initialization in reverse order.
 - [x] Quarantine incomplete stop/cleanup rather than deleting a live task.
-- [x] Count inserted silence, underflow, overflow, write loss, timeout, and quarantine events.
+- [x] Count ring overflow/underflow, inserted silence, short writes, lost bytes, timeout, and quarantine.
 - [x] Keep ring consumption, zero-fill, bounded I2S write, and accounting in one writer critical section.
-- [x] Do not consume PCM or insert uncounted silence if accounting lock acquisition fails.
+- [x] Do not consume PCM or manufacture uncounted silence when the accounting lock cannot be acquired.
+- [x] Require a finite nonzero I2S write timeout; current default is 20 ms.
 
-## Pending
+## Validation pending
 
-- [ ] Fresh host tests after writer-accounting changes.
-- [ ] Fresh ESP-IDF compile-only build.
-- [ ] Verify 16 kHz Philips I2S clocks and PCM on GPIO32/33/27.
-- [ ] Verify receiver mono-slot interpretation and captured microphone intelligibility.
+- [ ] Pass final HFP I2S output host tests.
+- [ ] Pass current-head ESP-IDF compile-only build.
+- [ ] Verify clocks and PCM electrically on GPIO32/33/27.
+- [ ] Verify receiver mono-slot interpretation and microphone intelligibility.
 - [ ] Verify I2S0 does not disturb I2S1, UART2, or A2DP.
-- [ ] Measure heap, stack, underflow, overflow, timeout, and stop behavior.
+- [ ] Measure writer stack, heap, ring, underflow, timeout, and stop behavior.
 
 ---
 
 # FD-09 — HFP incoming HCI callback and CVSD routing
 
-## Implemented
+## Software implemented
 
-- [x] Register the current ESP-IDF incoming HCI callback only after profile readiness.
-- [x] Bind accepted audio to peer, generation, synchronous handle, codec, SLC, and running I2S state.
-- [x] Reject null, zero, odd, oversize, inactive, stale, bad-frame, capacity, ring, and unsupported-codec inputs visibly.
+- [x] Register the ESP-IDF incoming HCI callback only after AG profile readiness.
+- [x] Publish callback registration through an atomic `UNREGISTERED` → `REGISTERING` → `REGISTERED` state machine.
+- [x] Eliminate the former lower-success/post-registration-mutex-reacquire bookkeeping failure.
+- [x] Reject reentrant or concurrent registration while publication is pending; never call the lower API twice.
+- [x] On lower registration failure, record the exact error, increment failure count, and return to retryable `UNREGISTERED` state.
+- [x] Bind accepted PCM to peer, generation, synchronous handle, codec, SLC, and running I2S state.
+- [x] Reject null, zero, odd, oversize, inactive, stale, bad-frame, capacity, ring, and unsupported-codec input visibly.
 - [x] Use alignment-safe bounded copy and fixed-size conversion arrays.
 - [x] Push one whole converted frame to the generation-bound ring.
-- [x] Release every non-null ESP-IDF-owned audio buffer exactly once.
+- [x] Release each non-null ESP-IDF-owned buffer exactly once.
 - [x] Reject mSBC visibly until FD-21.
-- [x] Add a nonblocking overlap gate and saturating `callback_overlap_rejections`.
+- [x] Use a nonblocking overlap gate and saturating overlap counter.
 - [x] Keep ordinary callback counters single-writer.
 - [x] Expose overlap through `HFP STATS`.
-- [x] Enforce a 720-byte combined fixed audio-array budget under a 1024-byte compile-time ceiling.
+- [x] Enforce 720 bytes of fixed callback audio arrays under a 1024-byte compile-time ceiling.
 - [x] Maintain process-lifetime callback maximum and over-budget diagnostics.
 
-## Pending
+## Focused coverage present
 
-- [ ] Pass the incoming-audio sanitizer suite and allocation-symbol gate at the final head.
-- [ ] Resolve/disposition callback-registration bookkeeping after successful lower registration followed by application-lock failure.
-- [ ] Add deterministic coverage for that registration bookkeeping failure.
-- [ ] Measure real callback cadence, p99/max duration, overlap, and stack margins.
+- [x] Registration success, idempotence, lower failure, exact error, and failure count.
+- [x] Reentrant registration is rejected until successful publication completes.
+- [x] Callback overlap rejection and exact accounting.
+- [x] Invalid/stale/bad/unsupported/ring-rejected frame paths.
+- [x] Callback timing and lifetime metrics.
+
+## Validation pending
+
+- [ ] Pass incoming-audio sanitizer and allocation-symbol gates at the final head.
+- [ ] Pass ESP-IDF v5.5.1 compile-only validation for atomics and callback API.
+- [ ] Measure real callback cadence, p99/max duration, overlap, and stack margin.
 
 ---
 
 # FD-10 — HFP audio start/stop
 
-## Implemented
+## Software implemented
 
 - [x] Require enabled mode, same-peer SLC, and clean transient state.
-- [x] Rotate audio generation.
+- [x] Rotate the audio generation.
 - [x] Start I2S before requesting SCO/eSCO.
-- [x] Require matching completion event before claiming startup complete.
+- [x] Require the matching completion event before claiming startup complete.
 - [x] Close callback acceptance before stopping the old generation.
 - [x] Use bounded disconnect/cleanup waits.
-- [x] Fault/quarantine incomplete cleanup rather than returning fake success.
-- [x] Preserve exact primary failure while making secondary health-report failures visible.
+- [x] Fault or quarantine incomplete cleanup rather than returning fake success.
+- [x] Preserve the primary failure while making secondary health-report failures visible.
 
-## Pending
+## Validation pending
 
-- [ ] Fresh audio-control sanitizer tests.
-- [ ] Real SCO request/event timing, synchronous-handle, callback cadence, and repeated start/stop validation.
+- [ ] Pass final audio-control sanitizer tests.
+- [ ] Validate real SCO request/event timing and repeated start/stop behavior.
 
 ---
 
 # FD-11 — HFP commands
 
-## Implemented
+## Software implemented
 
-- [x] `HFP STATUS`, `CONNECT`, `DISCONNECT`, `AUDIO START`, `AUDIO STOP`, `MODE`, `CODEC`, `STATS`, and `RESETSTATS`.
+- [x] `STATUS`, `CONNECT`, `DISCONNECT`, `AUDIO START`, `AUDIO STOP`, `MODE`, `CODEC`, `STATS`, and `RESETSTATS`.
 - [x] Exact mode parsing for `DISABLED`, `A2DP_MIC`, `HFP_FULL`, and `AUTO`.
 - [x] Consistent status snapshots and baseline-relative statistics reset.
 - [x] Exact backend errors and explicit accepted-versus-completed semantics.
-- [x] If lower audio start/stop succeeds but status retrieval fails, emit `AUDIO_STATUS_UNAVAILABLE` with `LOWER_OPERATION=SUCCEEDED` and exact status error.
+- [x] When lower audio start/stop succeeds but status retrieval fails, emit `AUDIO_STATUS_UNAVAILABLE`, `LOWER_OPERATION=SUCCEEDED`, and the exact status error.
 - [x] Do not fabricate status fields.
-- [x] Propagate UART/command-transport failure from the status-unavailable response.
+- [x] Propagate command/UART transport failure from the status-unavailable response.
 
-## Pending
+## Validation pending
 
 - [ ] Pass the final HFP command suite, including forced UART write failure.
 
@@ -195,37 +206,37 @@ Do not reference an assistant-created report, response file, template, or closeo
 
 # FD-12 — Event contract
 
-## Implemented
+## Software implemented
 
 - [x] Stable PROFILE, AUDIO, MODE, I2S, and HEALTH records.
-- [x] Transition/threshold-based emission rather than per-frame flooding.
-- [x] Sanitized fields, stable reason tokens, generation identity, and duplicate suppression.
-- [x] Attempt every configured command UART and expose partial delivery failure.
+- [x] Transition/threshold emission instead of per-frame flooding.
+- [x] Sanitized fields, stable reasons, generation identity, and duplicate suppression.
+- [x] Attempt all configured command UARTs and expose partial delivery failure.
 - [x] Avoid recursive health-event failure loops.
 
-## Pending
+## Hardware pending
 
-- [ ] Physical UART0/UART2 electrical delivery and concurrent ordering validation.
+- [ ] Validate physical UART0/UART2 delivery and concurrent ordering.
 
 ---
 
-# FD-13 — Diagnostics
+# FD-13 — Diagnostics and failure visibility
 
-## Implemented
+## Software implemented
 
-- [x] Current free internal heap, process-lifetime minimum heap, and largest internal block.
+- [x] Current free internal heap, lifetime minimum heap, and largest internal block.
 - [x] HFP app-task and I2S writer minimum-free-stack observations.
-- [x] Callback budget, last duration, process-lifetime maximum, and over-budget count.
-- [x] Explicit available/unavailable states and `NA`; never fake zero.
-- [x] Process-lifetime health-report failure count and last error using lock-independent atomics.
-- [x] Record pre-lock validation, lock, operation-validation, illegal-transition, and unlock failures.
+- [x] Callback budget, last duration, lifetime maximum, over-budget count, and overlap rejection.
+- [x] Explicit `AVAILABLE`, `UNAVAILABLE`, and `NA`; never fake zero.
+- [x] Process-lifetime health-report failure count and exact last error use lock-independent atomics.
+- [x] Record pre-lock validation, lock, identity/transition, injected, and unlock failures.
 - [x] Preserve primary errors and avoid recursive health reporting.
-- [x] Expose diagnostics through bounded `HFP STATS` records.
+- [x] Expose bounded diagnostics through `HFP STATS`.
 
-## Pending
+## Validation pending
 
 - [ ] Pass final duplex-state, audio-control, diagnostics, and command tests.
-- [ ] Record real heap, stack, callback, ring, and health-report metrics on hardware.
+- [ ] Record real heap, stack, callback, ring, and health metrics on hardware.
 
 ---
 
@@ -246,34 +257,38 @@ Do not reference an assistant-created report, response file, template, or closeo
 
 # FD-16 — Duplex policy and A2DP lifecycle identity
 
-## Implemented policy
+## Software implemented
 
 - [x] `DISABLED` preserves ordinary A2DP behavior.
-- [x] Strict `A2DP_MIC` reports incompatibility instead of silently changing mode.
+- [x] Strict `A2DP_MIC` reports incompatibility rather than silently changing mode.
 - [x] `HFP_FULL` reserves HFP ownership without claiming unimplemented playback.
 - [x] `AUTO` may select compatibility-required `HFP_FULL` and emits the transition.
 - [x] Serialize mode transitions and assign exactly one downlink owner.
 - [x] Treat A2DP suspend/stop during SCO as explicit policy input.
-
-## Implemented stale-event hardening
-
-- [x] Use ESP-IDF A2DP `conn_hdl` from connection and audio callback records as the event-owned connection identity.
-- [x] Bind peer, `conn_hdl`, lifecycle serial, and duplex generation.
-- [x] Validate identity before base-state mutation, user callbacks, autostart, and policy forwarding.
+- [x] Use the ESP-IDF A2DP `conn_hdl` from each connection/audio callback as the event-owned connection identity.
+- [x] Bind peer, `conn_hdl`, application lifecycle serial, and duplex generation.
 - [x] Reject missing binding, wrong peer, and stale same-peer old-handle events.
-- [x] Allow legitimate HFP generation rotation only inside the matching A2DP connection.
+- [x] Permit legitimate HFP generation rotation only inside the matching A2DP connection.
 - [x] Prevent old-handle audio from marking a newer same-peer connection as playing.
-- [x] Prevent old-handle disconnect from disconnecting the newer connection.
+- [x] Prevent old-handle disconnect from disconnecting the newer connection or invoking its callback.
+- [x] Validate/create binding, mutate `bt_ctx`, and capture callbacks under one lock acquisition.
+- [x] Invoke callbacks, forwarding, autostart, and policy only after successful atomic commit and unlock.
+- [x] A `bt_ctx_lock()` failure occurs before any binding, state mutation, callback, forwarding, autostart, or policy side effect.
 
-## P0 blocker
+## Focused coverage present
 
-- [ ] If `bt_ctx_lock()` fails after identity acceptance, fail closed before callbacks/policy and do not leave a new binding usable.
-- [ ] Add deterministic failure coverage or equivalent proof for this path.
+- [x] Missing binding, wrong peer, stale old handle, reconnect rotation, and valid generation refresh.
+- [x] Forced unavailable `bt_ctx` mutex proves no partial state or downstream side effect.
 
 ## Capability boundary
 
 - [x] `HFP_FULL` remains `COMPATIBILITY_REQUIRED` with `HFP_DOWNLINK_NOT_IMPLEMENTED` until FD-18/FD-19.
 - [ ] Do not mark operational HFP full-duplex playback complete.
+
+## Validation pending
+
+- [ ] Pass final Bluetooth/A2DP integration and FD-16 policy suites.
+- [ ] Pass current-head ESP-IDF compile-only validation.
 
 ---
 
@@ -294,7 +309,7 @@ Do not reference an assistant-created report, response file, template, or closeo
 ## FD-18 playback voice tap
 
 - [ ] Tap canonical playback PCM without adding a second source consumer.
-- [ ] Downmix safely and resample to the negotiated HFP rate with explicit phase state.
+- [ ] Downmix and resample with explicit bounded phase state.
 - [ ] Write to a bounded generation-bound downlink ring.
 - [ ] Disable work when HFP downlink is inactive.
 - [ ] Reset phase/ring on session or codec change.
@@ -307,21 +322,20 @@ Do not reference an assistant-created report, response file, template, or closeo
 - [ ] Read only from the bounded downlink ring.
 - [ ] Perform no callback-path allocation, blocking wait, or resampling.
 - [ ] Bind outgoing data to peer, generation, codec, and active audio state.
-- [ ] Count every required silence byte and threshold repeated underrun visibly.
+- [ ] Count required silence and threshold repeated underrun visibly.
 - [ ] Add full/partial/empty/inactive/codec-transition/timing tests.
 
 ---
 
-# FD-20 and FD-21 — HFP full duplex and mSBC [future/hardware]
+# FD-20 and FD-21 — Operational HFP full duplex and mSBC [future/hardware]
 
-- [ ] Implement FD-18/FD-19 before FD-20.
+- [ ] Implement FD-18 and FD-19 before FD-20.
 - [ ] Validate simultaneous earbud speaker downlink and microphone-to-I2S0 CVSD.
 - [ ] Verify no false A2DP-streaming status.
-- [ ] Test AUTO transitions and every playback source.
+- [ ] Test AUTO transitions and all playback sources.
 - [ ] Enable WBS/mSBC only after CVSD acceptance.
 - [ ] Measure flash/DRAM growth.
-- [ ] Handle negotiation/fallback and codec changes explicitly.
-- [ ] Flush old-generation/old-codec data.
+- [ ] Handle negotiation, fallback, codec changes, and stale old-codec data explicitly.
 - [ ] Add transition/fallback/flush/strict-mode tests and hardware validation.
 
 ---
@@ -331,8 +345,8 @@ Do not reference an assistant-created report, response file, template, or closeo
 - [ ] Reconcile all thresholds in one maintained table.
 - [ ] Verify isolated/repeated/sustained underflow and overflow boundaries.
 - [ ] Complete failure injection for callback/profile/SLC/ring/I2S/task/SCO/deinit stages.
-- [ ] Prove exact errors, no leaked allocations/channels/tasks, and no false running state.
-- [ ] Complete A2DP-first/HFP-first disconnect, ACL loss, SCO race, codec-after-disconnect, reconnect-before-stale-event, stop/mode-change race, and duplicate-event matrices.
+- [ ] Prove exact errors, no leaked allocation/channel/task, and no false running state.
+- [ ] Complete A2DP-first/HFP-first disconnect, ACL loss, SCO race, codec-after-disconnect, reconnect-before-stale-event, stop/mode-change, and duplicate-event matrices.
 - [ ] Prove stale events cannot resurrect stopped sessions.
 - [ ] Prove counters remain monotonic except explicit baseline reset.
 
@@ -342,19 +356,19 @@ Do not reference an assistant-created report, response file, template, or closeo
 
 ## Historical evidence only
 
-- [x] Prior phase host CI passed through the FD-16 phase baseline.
+- [x] Older phase host CI passed through the FD-16 phase baseline.
 - [x] ESP-IDF v5.5.1 compile-only run `30407430615` passed for `e48341ae665781dd6da6e40c4137bfbead4d1205`.
 - [x] Historical image: 1,025,808 bytes (`0xFA710`).
 - [x] Historical partition headroom: 743,664 bytes (`0xB58F0`), 42% free.
 - [x] No hardware was flashed.
 
-## Required for current branch head
+## Required for the final documentation head
 
 - [ ] Pass HFP incoming-audio sanitizer tests and allocation gate.
 - [ ] Pass HFP audio-control sanitizer tests.
 - [ ] Pass duplex-state and health-report diagnostics tests.
-- [ ] Pass HFP command tests including transport failure.
-- [ ] Pass Bluetooth/A2DP stale-handle integration tests.
+- [ ] Pass HFP command tests including forced transport failure.
+- [ ] Pass Bluetooth/A2DP stale-handle and lock-failure integration tests.
 - [ ] Pass HFP I2S writer/accounting tests.
 - [ ] Pass FD-16 policy/runtime tests.
 - [ ] Pass changed-Python lint and Python unit tests.
@@ -396,26 +410,28 @@ Do not reference an assistant-created report, response file, template, or closeo
 
 # FD-29 — Final review and handoff
 
-## Completed review-fix work
+## Review-fix software complete
 
 - [x] Callback overlap is fail-closed and visible.
-- [x] Same-peer stale A2DP events use the event-owned ESP-IDF connection handle.
+- [x] Same-peer stale A2DP events use the ESP-IDF event-owned connection handle.
+- [x] A2DP identity, binding, and base-state mutation commit atomically or not at all.
 - [x] Health-report failures are visible without relying on the state mutex.
 - [x] Status-unavailable command results and transport failures cannot look like ordinary success.
 - [x] Callback stack-array bounds are statically enforced and documented.
-- [x] I2S writer zero-fill/write loss is accounted in the normal lock-acquired path.
-- [x] No generated build/log artifacts are in the changed-file list.
+- [x] I2S writer zero-fill and write loss are accounted inside one bounded critical section.
+- [x] HFP callback registration success is published atomically with no vulnerable post-registration relock.
+- [x] Focused tests cover both final software failure boundaries.
+- [x] Final post-production static/manual sweeps completed.
+- [x] No generated build/log artifacts are in the reviewed changed-file list.
 - [x] No hardware was flashed.
 
 ## Closeout blockers
 
-- [ ] Resolve A2DP base-state lock-failure partial state.
-- [ ] Resolve or explicitly disposition HFP callback-registration bookkeeping failure.
-- [ ] Pass final host CI.
-- [ ] Pass final ESP-IDF compile-only CI.
-- [ ] Re-run final static/manual sweeps after the last production change.
-- [ ] Create `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` only after all software/CI/compile blockers pass.
-- [ ] Record final SHAs, exact changed files, test results, compile metrics, no-flash status, limitations, and pending hardware.
+- [ ] Pass final host CI at the final documentation head.
+- [ ] Pass final ESP-IDF compile-only CI at the same head.
+- [ ] Record exact workflow IDs, final SHA, test counts, image metrics, and headroom.
+- [ ] Create `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` only after both workflows pass.
+- [ ] Record final changed files, no-flash status, limitations, and pending hardware.
 
 ---
 
@@ -426,10 +442,10 @@ Do not reference an assistant-created report, response file, template, or closeo
 - [ ] GPIO32/33/27 are physically verified.
 - [ ] A2DP plus HFP microphone behavior is known for every target earbud.
 - [ ] FD-18 and FD-19 provide the real HFP compatibility downlink.
-- [ ] HFP full-duplex compatibility mode works when A2DP is suspended.
+- [ ] Operational HFP full-duplex compatibility mode works when A2DP is suspended.
 - [ ] mSBC is implemented and validated if retained in release scope.
 - [x] Implemented mode changes, incompatibilities, unavailable metrics, rejected frames, and supported fallbacks are explicit.
-- [x] The HFP incoming callback is designed not to block, allocate, call I2S, or log per frame.
+- [x] The HFP incoming callback is designed not to block, allocate, call direct I2S, or log per frame.
 - [ ] Current-head full host CI passes.
 - [ ] Current-head ESP-IDF compile-only CI passes with more than 256 KiB headroom.
 - [ ] Runtime heap, stack, callback, and soak gates pass or receive explicit reviewed exceptions.
