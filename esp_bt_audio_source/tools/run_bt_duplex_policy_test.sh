@@ -75,3 +75,8 @@ UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
 ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
 UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
     "${ordering_binary}"
+
+# A2DP identity binding is the event-side FD-16 boundary. Exercise the real
+# manager and event-handler lifecycle targets under ASan and UBSan after the
+# pure policy tests complete.
+bash "${project_dir}/tools/run_bt_a2dp_binding_lifecycle_test.sh"
