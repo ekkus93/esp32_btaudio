@@ -73,9 +73,11 @@ static platform_mutex_t s_bt_ctx_mutex;
 static bool s_bt_manager_quarantined;
 
 #ifdef UNIT_TEST
-/* One-shot failure injection at the bt_ctx locking boundary. This exercises
- * production callers without adding an unsafe reset-only test path. */
+/* One-shot failure injection at the bt_ctx locking boundary. The countdown
+ * permits tests to fail a later production lock without adding caller-specific
+ * test branches. A value of zero fails the next lock attempt. */
 static esp_err_t s_bt_ctx_forced_next_lock_result = ESP_OK;
+static uint32_t s_bt_ctx_forced_lock_countdown;
 #endif
 
 #define safe_vsnprintf util_safe_vsnprintf
@@ -96,9 +98,12 @@ static esp_err_t s_bt_ctx_forced_next_lock_result = ESP_OK;
 esp_err_t bt_ctx_lock(uint32_t timeout_ms) {
 #ifdef UNIT_TEST
     if (s_bt_ctx_forced_next_lock_result != ESP_OK) {
-        esp_err_t forced = s_bt_ctx_forced_next_lock_result;
-        s_bt_ctx_forced_next_lock_result = ESP_OK;
-        return forced;
+        if (s_bt_ctx_forced_lock_countdown == 0U) {
+            esp_err_t forced = s_bt_ctx_forced_next_lock_result;
+            s_bt_ctx_forced_next_lock_result = ESP_OK;
+            return forced;
+        }
+        s_bt_ctx_forced_lock_countdown--;
     }
 #endif
     if (s_bt_ctx_mutex == NULL) {
@@ -206,7 +211,7 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status)
 #endif
 
 static esp_err_t bt_manager_finalize_teardown(esp_err_t first_error,
-                                              bool callbacks_stopped)
+                                               bool callbacks_stopped)
 {
     if (!callbacks_stopped) {
         /* Callback-owned identity must remain intact while a late Bluedroid
@@ -243,6 +248,50 @@ static esp_err_t bt_manager_finalize_teardown(esp_err_t first_error,
     platform_mutex_delete(s_bt_ctx_mutex);
     s_bt_ctx_mutex = NULL;
     return first_error;
+}
+
+/* Complete the callback-owned portion of init rollback using the facts gathered
+ * by the real ESP-platform reverse-order cleanup. The original initialization
+ * error is always authoritative. A secondary reset failure is logged, retains
+ * the mutex and binding, and quarantines the manager rather than fabricating a
+ * clean rollback. */
+static esp_err_t bt_manager_finalize_init_rollback(
+    esp_err_t init_error,
+    bool callbacks_stopped,
+    bool cleanup_complete,
+    bool duplex_state_initialized)
+{
+    if (!callbacks_stopped) {
+        ESP_LOGE(TAG,
+                 "Bluedroid shutdown was not confirmed after init error %s; preserving callback-owned state and quarantining manager",
+                 esp_err_to_name(init_error));
+        s_bt_manager_quarantined = true;
+        return init_error;
+    }
+
+    bt_hfp_ag_force_cleanup_after_stack_shutdown();
+    if (duplex_state_initialized) {
+        bt_duplex_state_deinit();
+    }
+
+    esp_err_t binding_reset_err = bt_events_a2dp_reset_binding();
+    if (binding_reset_err != ESP_OK) {
+        cleanup_complete = false;
+        ESP_LOGE(TAG,
+                 "A2DP binding reset rollback failed after init error %s: %s",
+                 esp_err_to_name(init_error),
+                 esp_err_to_name(binding_reset_err));
+        /* The guarded reset did not complete. Keep the mutex and binding intact
+         * for any state that may still be inspected during quarantine. */
+    } else {
+        platform_mutex_delete(s_bt_ctx_mutex);
+        s_bt_ctx_mutex = NULL;
+    }
+
+    if (!cleanup_complete) {
+        s_bt_manager_quarantined = true;
+    }
+    return init_error;
 }
 
 // Initialize Bluetooth Manager
@@ -445,33 +494,8 @@ fail:
         }
     }
 
-    if (callbacks_stopped) {
-        bt_hfp_ag_force_cleanup_after_stack_shutdown();
-        if (duplex_state_initialized) {
-            bt_duplex_state_deinit();
-        }
-
-        esp_err_t binding_reset_err = bt_events_a2dp_reset_binding();
-        if (binding_reset_err != ESP_OK) {
-            cleanup_complete = false;
-            ESP_LOGE(TAG,
-                     "A2DP binding reset rollback failed after init error %s: %s",
-                     esp_err_to_name(ret), esp_err_to_name(binding_reset_err));
-            /* Keep the mutex and callback-owned state intact because the
-             * guarded reset could not be completed safely. */
-        } else {
-            platform_mutex_delete(s_bt_ctx_mutex);
-            s_bt_ctx_mutex = NULL;
-        }
-    } else {
-        cleanup_complete = false;
-        ESP_LOGE(TAG, "Bluedroid shutdown was not confirmed; preserving callback-owned state and quarantining manager");
-    }
-
-    if (!cleanup_complete || !callbacks_stopped) {
-        s_bt_manager_quarantined = true;
-    }
-    return ret;
+    return bt_manager_finalize_init_rollback(
+        ret, callbacks_stopped, cleanup_complete, duplex_state_initialized);
 
 #else
     bt_ctx.initialized = true;
@@ -824,6 +848,15 @@ void bt_manager_test_deinit_mutex(void)
 
 void bt_manager_test_force_next_ctx_lock_result(esp_err_t result)
 {
+    s_bt_ctx_forced_lock_countdown = 0U;
+    s_bt_ctx_forced_next_lock_result = result;
+}
+
+void bt_manager_test_force_ctx_lock_after_successes(
+    uint32_t successful_locks_before_failure,
+    esp_err_t result)
+{
+    s_bt_ctx_forced_lock_countdown = successful_locks_before_failure;
     s_bt_ctx_forced_next_lock_result = result;
 }
 
@@ -833,8 +866,21 @@ bool bt_manager_test_is_quarantined(void)
 }
 
 esp_err_t bt_manager_test_finalize_teardown(esp_err_t first_error,
-                                            bool callbacks_stopped)
+                                             bool callbacks_stopped)
 {
     return bt_manager_finalize_teardown(first_error, callbacks_stopped);
+}
+
+esp_err_t bt_manager_test_finalize_init_rollback(
+    esp_err_t init_error,
+    bool callbacks_stopped,
+    bool cleanup_complete,
+    bool duplex_state_initialized)
+{
+    return bt_manager_finalize_init_rollback(
+        init_error,
+        callbacks_stopped,
+        cleanup_complete,
+        duplex_state_initialized);
 }
 #endif
