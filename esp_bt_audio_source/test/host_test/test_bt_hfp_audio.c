@@ -1,6 +1,7 @@
 #include "unity.h"
 
 void test_callback_registration_success_and_failure_are_visible(void);
+void test_callback_registration_reentry_is_rejected_until_success_is_published(void);
 void test_activation_requires_same_peer_slc_cvsd_and_running_i2s(void);
 void test_wrong_peer_event_does_not_disable_active_session(void);
 void test_null_zero_odd_oversize_and_capacity_mismatch_are_rejected(void);
@@ -19,6 +20,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_callback_registration_success_and_failure_are_visible);
+    RUN_TEST(test_callback_registration_reentry_is_rejected_until_success_is_published);
     RUN_TEST(test_activation_requires_same_peer_slc_cvsd_and_running_i2s);
     RUN_TEST(test_wrong_peer_event_does_not_disable_active_session);
     RUN_TEST(test_null_zero_odd_oversize_and_capacity_mismatch_are_rejected);
