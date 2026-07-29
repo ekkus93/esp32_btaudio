@@ -129,3 +129,27 @@ void test_rejected_health_report_is_retained_without_mutating_health(void)
     TEST_ASSERT_EQUAL_UINT64(1U, failures);
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
 }
+
+void test_prelock_health_rejection_is_visible_without_state_mutation(void)
+{
+    const uint32_t generation = prepare_slc_session();
+    bt_duplex_snapshot_t before;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&before));
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, bt_duplex_set_health(
+        generation, PEER, (bt_audio_health_t)BT_AUDIO_HEALTH_COUNT,
+        ESP_FAIL, "invalid enum"));
+
+    uint64_t failures = 0U;
+    esp_err_t last_error = ESP_OK;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_health_report_diagnostics(
+        &failures, &last_error));
+    TEST_ASSERT_EQUAL_UINT64(1U, failures);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, last_error);
+
+    bt_duplex_snapshot_t after;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&after));
+    TEST_ASSERT_EQUAL(before.health, after.health);
+    TEST_ASSERT_EQUAL(before.last_error, after.last_error);
+    TEST_ASSERT_EQUAL_STRING(before.last_error_text, after.last_error_text);
+}
