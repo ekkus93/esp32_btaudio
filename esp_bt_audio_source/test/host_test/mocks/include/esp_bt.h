@@ -88,6 +88,7 @@ typedef enum {
 
 // Bluetooth device address
 typedef uint8_t esp_bd_addr_t[ESP_BD_ADDR_LEN];
+typedef uint16_t esp_a2d_conn_hdl_t;
 
 typedef enum {
     ESP_A2D_CONNECTION_STATE_EVT = 0,
@@ -97,11 +98,15 @@ typedef enum {
 typedef struct {
     esp_a2d_connection_state_t state;
     esp_bd_addr_t remote_bda;
+    esp_a2d_conn_hdl_t conn_hdl;
+    uint16_t audio_mtu;
+    uint8_t disc_rsn;
 } esp_a2d_conn_stat_t;
 
 typedef struct {
     esp_a2d_audio_state_t state;
     esp_bd_addr_t remote_bda;
+    esp_a2d_conn_hdl_t conn_hdl;
 } esp_a2d_audio_stat_t;
 
 typedef union esp_a2d_cb_param_t {
