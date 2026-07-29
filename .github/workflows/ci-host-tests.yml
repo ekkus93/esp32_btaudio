@@ -14,6 +14,10 @@ concurrency:
   group: host-tests-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -260,3 +264,44 @@ jobs:
         with:
           name: host-test-logs
           path: esp_bt_audio_source/test/host_test/build_host_tests/*.log
+
+      - name: Publish host workflow commit status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          job_status = os.environ['JOB_STATUS']
+          state = {
+              'success': 'success',
+              'failure': 'failure',
+              'cancelled': 'error',
+          }.get(job_status, 'error')
+          payload = json.dumps({
+              'state': state,
+              'context': 'ci/host-tests-optimized',
+              'description': f'Host workflow {job_status}; run {os.environ["GITHUB_RUN_ID"]}',
+              'target_url': os.environ['RUN_URL'],
+          }).encode('utf-8')
+          request = urllib.request.Request(
+              f'{os.environ["GITHUB_API_URL"]}/repos/{os.environ["GITHUB_REPOSITORY"]}/statuses/{os.environ["GITHUB_SHA"]}',
+              data=payload,
+              method='POST',
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f'Bearer {os.environ["GH_TOKEN"]}',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              if response.status != 201:
+                  raise RuntimeError(f'unexpected status API response: {response.status}')
+          PY
