@@ -80,9 +80,16 @@ void bt_ctx_unlock(void);
 /* Test hooks for host-mode unit tests --------------------------------------
  *
  * Create/destroy the s_bt_ctx_mutex so that bt_ctx_lock()/bt_ctx_unlock()
- * succeed during unit tests that manipulate bt_ctx directly.
+ * succeed during unit tests that manipulate bt_ctx directly. Failure
+ * injection is one-shot and acts at the same bt_ctx_lock() boundary used by
+ * production code. The teardown finalizer hook executes the production
+ * callback-shutdown decision path.
  */
 #ifdef UNIT_TEST
 esp_err_t bt_manager_test_init_mutex(void);
 void bt_manager_test_deinit_mutex(void);
+void bt_manager_test_force_next_ctx_lock_result(esp_err_t result);
+bool bt_manager_test_is_quarantined(void);
+esp_err_t bt_manager_test_finalize_teardown(esp_err_t first_error,
+                                            bool callbacks_stopped);
 #endif
