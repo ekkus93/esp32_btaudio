@@ -87,6 +87,8 @@ bool bt_manager_is_autostart_enabled(void);
 #ifdef UNIT_TEST
 void bt_manager_force_initialized(bool value);
 void bt_manager_debug_print(void);
+esp_err_t bt_manager_test_init_mutex(void);
+void bt_manager_test_deinit_mutex(void);
 #endif
 
 /* Fixture state + mock callbacks — DEFINED in test_bluetooth.c (runner). */
@@ -134,5 +136,6 @@ void test_a2dp_audio_without_lifecycle_binding_is_rejected_and_counted(void);
 void test_a2dp_binding_refreshes_after_hfp_generation_rotation(void);
 void test_a2dp_wrong_peer_event_is_rejected_and_counted(void);
 void test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection(void);
+void test_a2dp_ctx_lock_failure_rejects_without_partial_state(void);
 
 #endif /* TEST_BLUETOOTH_SHARED_H */
