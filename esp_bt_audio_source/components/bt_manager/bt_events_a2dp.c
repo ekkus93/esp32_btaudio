@@ -18,25 +18,35 @@
 typedef struct {
     bool valid;
     char peer_mac[A2DP_BINDING_MAC_STR_LEN];
+    esp_a2d_conn_hdl_t conn_handle;
     uint32_t lifecycle_serial;
     uint32_t last_duplex_generation;
     uint64_t missing_binding_rejections;
     uint64_t wrong_peer_rejections;
+    uint64_t stale_handle_rejections;
     uint64_t generation_sync_failures;
 } a2dp_policy_binding_t;
 
-/* This binding is guarded by bt_ctx.lock. It represents one A2DP connection
- * lifecycle, not one raw duplex generation: the duplex generation legitimately
- * rotates when an HFP audio session starts while the same A2DP link remains up.
- * A policy event may refresh the generation only after its peer and lifecycle
- * binding have been validated. This removes unbound self-stamping while keeping
- * valid A2DP events alive across HFP audio-generation rotations.
- *
- * ESP-IDF's callback does not expose a lower-layer connection token. Therefore
- * a delayed event from an old connection that arrives after a new connection to
- * the same peer has already established a new lifecycle binding is inherently
- * indistinguishable. That residual limitation is documented and tested as a
- * platform-boundary constraint rather than hidden by current-state fallback. */
+typedef struct {
+    char peer_mac[A2DP_BINDING_MAC_STR_LEN];
+    esp_a2d_conn_hdl_t conn_handle;
+    uint32_t lifecycle_serial;
+    uint32_t generation;
+    bt_a2dp_profile_state_t state;
+} a2dp_bound_profile_event_t;
+
+typedef struct {
+    char peer_mac[A2DP_BINDING_MAC_STR_LEN];
+    esp_a2d_conn_hdl_t conn_handle;
+    uint32_t lifecycle_serial;
+    uint32_t generation;
+    bt_a2dp_audio_state_t state;
+} a2dp_bound_audio_event_t;
+
+/* Guarded by bt_ctx.lock. The ESP-IDF connection handle is the event-owned
+ * identity token. The duplex generation may legitimately rotate while the
+ * same A2DP connection remains active, so generation refresh is allowed only
+ * after peer, lifecycle serial, and connection handle have all matched. */
 static a2dp_policy_binding_t s_policy_binding;
 
 /* Forward declarations for connection manager callbacks and internal functions */
@@ -74,9 +84,6 @@ static void record_rejected_bound_event(uint32_t generation,
                                         const char *event_peer)
 {
     if (generation != 0U && event_peer != NULL) {
-        /* Validation updates the existing visible wrong-peer or stale-generation
-         * counter. If the identity still matches, the helper explicitly records
-         * this caller-classified event as stale. */
         (void)bt_duplex_record_stale_operation_event(generation, event_peer);
     }
 }
@@ -95,6 +102,7 @@ static void record_rejected_unbound_event(const char *event_peer)
 
 static esp_err_t create_or_capture_profile_binding(
     const char *peer,
+    esp_a2d_conn_hdl_t conn_handle,
     bt_a2dp_profile_state_t state,
     uint32_t *serial_out,
     uint32_t *last_generation_out)
@@ -107,17 +115,23 @@ static esp_err_t create_or_capture_profile_binding(
     if (err != ESP_OK) return err;
 
     if (s_policy_binding.valid) {
+        const uint32_t generation = s_policy_binding.last_duplex_generation;
         if (strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
-            const uint32_t generation =
-                s_policy_binding.last_duplex_generation;
             increment_u64_saturating(
                 &s_policy_binding.wrong_peer_rejections);
             bt_ctx_unlock();
             record_rejected_bound_event(generation, peer);
             return ESP_ERR_INVALID_STATE;
         }
+        if (conn_handle != s_policy_binding.conn_handle) {
+            increment_u64_saturating(
+                &s_policy_binding.stale_handle_rejections);
+            bt_ctx_unlock();
+            record_rejected_bound_event(generation, peer);
+            return ESP_ERR_INVALID_STATE;
+        }
         *serial_out = s_policy_binding.lifecycle_serial;
-        *last_generation_out = s_policy_binding.last_duplex_generation;
+        *last_generation_out = generation;
         bt_ctx_unlock();
         return ESP_OK;
     }
@@ -138,6 +152,7 @@ static esp_err_t create_or_capture_profile_binding(
     safe_copy_str(s_policy_binding.peer_mac,
                   sizeof(s_policy_binding.peer_mac), peer);
     s_policy_binding.valid = true;
+    s_policy_binding.conn_handle = conn_handle;
     s_policy_binding.lifecycle_serial = serial;
     s_policy_binding.last_duplex_generation = 0U;
     *serial_out = serial;
@@ -146,7 +161,21 @@ static esp_err_t create_or_capture_profile_binding(
     return ESP_OK;
 }
 
+static void increment_generation_sync_failure(uint32_t lifecycle_serial,
+                                              esp_a2d_conn_hdl_t conn_handle)
+{
+    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) return;
+    if (s_policy_binding.valid &&
+        s_policy_binding.lifecycle_serial == lifecycle_serial &&
+        s_policy_binding.conn_handle == conn_handle) {
+        increment_u64_saturating(
+            &s_policy_binding.generation_sync_failures);
+    }
+    bt_ctx_unlock();
+}
+
 static esp_err_t refresh_bound_generation(const char *peer,
+                                          esp_a2d_conn_hdl_t conn_handle,
                                           uint32_t lifecycle_serial,
                                           bool allow_no_session,
                                           uint32_t fallback_generation,
@@ -159,14 +188,7 @@ static esp_err_t refresh_bound_generation(const char *peer,
     bt_hfp_manager_status_t status;
     esp_err_t err = bt_manager_hfp_get_status(&status);
     if (err != ESP_OK) {
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            if (s_policy_binding.valid &&
-                s_policy_binding.lifecycle_serial == lifecycle_serial) {
-                increment_u64_saturating(
-                    &s_policy_binding.generation_sync_failures);
-            }
-            bt_ctx_unlock();
-        }
+        increment_generation_sync_failure(lifecycle_serial, conn_handle);
         return err;
     }
 
@@ -174,27 +196,13 @@ static esp_err_t refresh_bound_generation(const char *peer,
     if (status.duplex.peer_valid) {
         if (strcasecmp(peer, status.duplex.peer_mac) != 0 ||
             status.duplex.session_generation == 0U) {
-            if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-                if (s_policy_binding.valid &&
-                    s_policy_binding.lifecycle_serial == lifecycle_serial) {
-                    increment_u64_saturating(
-                        &s_policy_binding.generation_sync_failures);
-                }
-                bt_ctx_unlock();
-            }
+            increment_generation_sync_failure(lifecycle_serial, conn_handle);
             record_rejected_bound_event(fallback_generation, peer);
             return ESP_ERR_INVALID_STATE;
         }
         generation = status.duplex.session_generation;
     } else if (!allow_no_session) {
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            if (s_policy_binding.valid &&
-                s_policy_binding.lifecycle_serial == lifecycle_serial) {
-                increment_u64_saturating(
-                    &s_policy_binding.generation_sync_failures);
-            }
-            bt_ctx_unlock();
-        }
+        increment_generation_sync_failure(lifecycle_serial, conn_handle);
         record_rejected_unbound_event(peer);
         return ESP_ERR_INVALID_STATE;
     }
@@ -203,6 +211,7 @@ static esp_err_t refresh_bound_generation(const char *peer,
     if (err != ESP_OK) return err;
     if (!s_policy_binding.valid ||
         s_policy_binding.lifecycle_serial != lifecycle_serial ||
+        s_policy_binding.conn_handle != conn_handle ||
         strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
         bt_ctx_unlock();
         record_rejected_bound_event(generation, peer);
@@ -214,28 +223,31 @@ static esp_err_t refresh_bound_generation(const char *peer,
     return ESP_OK;
 }
 
-static void clear_binding_if_serial(uint32_t lifecycle_serial)
+static void clear_binding_if_identity(uint32_t lifecycle_serial,
+                                      esp_a2d_conn_hdl_t conn_handle)
 {
     if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) return;
     if (s_policy_binding.valid &&
-        s_policy_binding.lifecycle_serial == lifecycle_serial) {
+        s_policy_binding.lifecycle_serial == lifecycle_serial &&
+        s_policy_binding.conn_handle == conn_handle) {
         const uint64_t missing =
             s_policy_binding.missing_binding_rejections;
         const uint64_t wrong = s_policy_binding.wrong_peer_rejections;
+        const uint64_t stale = s_policy_binding.stale_handle_rejections;
         const uint64_t sync = s_policy_binding.generation_sync_failures;
         const uint32_t serial = s_policy_binding.lifecycle_serial;
         memset(&s_policy_binding, 0, sizeof(s_policy_binding));
-        /* Retain process-lifetime diagnostics and a monotonic serial across
-         * connection teardown. */
         s_policy_binding.lifecycle_serial = serial;
         s_policy_binding.missing_binding_rejections = missing;
         s_policy_binding.wrong_peer_rejections = wrong;
+        s_policy_binding.stale_handle_rejections = stale;
         s_policy_binding.generation_sync_failures = sync;
     }
     bt_ctx_unlock();
 }
 
 static esp_err_t capture_audio_binding(const char *peer,
+                                       esp_a2d_conn_hdl_t conn_handle,
                                        uint32_t *serial_out,
                                        uint32_t *generation_out)
 {
@@ -251,107 +263,122 @@ static esp_err_t capture_audio_binding(const char *peer,
         record_rejected_unbound_event(peer);
         return ESP_ERR_INVALID_STATE;
     }
+    const uint32_t generation = s_policy_binding.last_duplex_generation;
     if (strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
-        const uint32_t generation = s_policy_binding.last_duplex_generation;
         increment_u64_saturating(&s_policy_binding.wrong_peer_rejections);
         bt_ctx_unlock();
         record_rejected_bound_event(generation, peer);
         return ESP_ERR_INVALID_STATE;
     }
+    if (conn_handle != s_policy_binding.conn_handle) {
+        increment_u64_saturating(&s_policy_binding.stale_handle_rejections);
+        bt_ctx_unlock();
+        record_rejected_bound_event(generation, peer);
+        return ESP_ERR_INVALID_STATE;
+    }
     *serial_out = s_policy_binding.lifecycle_serial;
-    *generation_out = s_policy_binding.last_duplex_generation;
+    *generation_out = generation;
     bt_ctx_unlock();
     return ESP_OK;
 }
 
-static void apply_connection_policy(const esp_a2d_cb_param_t *param)
+static esp_err_t prepare_connection_event(
+    const esp_a2d_cb_param_t *param,
+    a2dp_bound_profile_event_t *bound)
 {
-    bt_a2dp_profile_state_t mapped;
+    if (param == NULL || bound == NULL) return ESP_ERR_INVALID_ARG;
+    memset(bound, 0, sizeof(*bound));
     switch (param->conn_stat.state) {
     case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
-        mapped = BT_A2DP_PROFILE_DISCONNECTED;
+        bound->state = BT_A2DP_PROFILE_DISCONNECTED;
         break;
     case ESP_A2D_CONNECTION_STATE_CONNECTING:
-        mapped = BT_A2DP_PROFILE_CONNECTING;
+        bound->state = BT_A2DP_PROFILE_CONNECTING;
         break;
     case ESP_A2D_CONNECTION_STATE_CONNECTED:
-        mapped = BT_A2DP_PROFILE_CONNECTED;
+        bound->state = BT_A2DP_PROFILE_CONNECTED;
         break;
     case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
-        mapped = BT_A2DP_PROFILE_DISCONNECTING;
+        bound->state = BT_A2DP_PROFILE_DISCONNECTING;
         break;
     default:
-        report_policy_result("A2DP connection", ESP_ERR_INVALID_ARG);
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
+    bda_to_string(param->conn_stat.remote_bda, bound->peer_mac);
+    bound->conn_handle = param->conn_stat.conn_hdl;
+    return create_or_capture_profile_binding(
+        bound->peer_mac, bound->conn_handle, bound->state,
+        &bound->lifecycle_serial, &bound->generation);
+}
 
-    char peer[18];
-    bda_to_string(param->conn_stat.remote_bda, peer);
-    uint32_t lifecycle_serial = 0U;
-    uint32_t generation = 0U;
-    esp_err_t err = create_or_capture_profile_binding(
-        peer, mapped, &lifecycle_serial, &generation);
-    if (err == ESP_OK) {
-        err = refresh_bound_generation(
-            peer, lifecycle_serial, true, generation, &generation);
+static esp_err_t prepare_audio_event(const esp_a2d_cb_param_t *param,
+                                     a2dp_bound_audio_event_t *bound)
+{
+    if (param == NULL || bound == NULL) return ESP_ERR_INVALID_ARG;
+    memset(bound, 0, sizeof(*bound));
+    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
+        bound->state = BT_A2DP_AUDIO_STARTED;
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
+        bound->state = BT_A2DP_AUDIO_REMOTE_SUSPENDED;
+    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
+        bound->state = BT_A2DP_AUDIO_STOPPED;
+    } else {
+        return ESP_ERR_INVALID_ARG;
     }
+    bda_to_string(param->audio_stat.remote_bda, bound->peer_mac);
+    bound->conn_handle = param->audio_stat.conn_hdl;
+    return capture_audio_binding(
+        bound->peer_mac, bound->conn_handle,
+        &bound->lifecycle_serial, &bound->generation);
+}
+
+static void apply_connection_policy(a2dp_bound_profile_event_t *bound)
+{
+    esp_err_t err = refresh_bound_generation(
+        bound->peer_mac, bound->conn_handle, bound->lifecycle_serial,
+        true, bound->generation, &bound->generation);
     if (err == ESP_OK) {
         err = bt_manager_hfp_handle_a2dp_profile_event(
-            generation, peer, mapped);
+            bound->generation, bound->peer_mac, bound->state);
     }
-    if (err == ESP_OK && mapped != BT_A2DP_PROFILE_DISCONNECTED) {
-        /* A generation can be created by the profile handler or rotated by a
-         * concurrent HFP transition. Store the authoritative post-event value,
-         * but only while the same lifecycle serial is still current. */
+    if (err == ESP_OK && bound->state != BT_A2DP_PROFILE_DISCONNECTED) {
         err = refresh_bound_generation(
-            peer, lifecycle_serial, false, generation, &generation);
+            bound->peer_mac, bound->conn_handle, bound->lifecycle_serial,
+            false, bound->generation, &bound->generation);
     } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        record_rejected_bound_event(generation, peer);
+        record_rejected_bound_event(bound->generation, bound->peer_mac);
     }
 
-    if (mapped == BT_A2DP_PROFILE_DISCONNECTED ||
-        (generation == 0U && err != ESP_OK)) {
-        clear_binding_if_serial(lifecycle_serial);
+    if (bound->state == BT_A2DP_PROFILE_DISCONNECTED) {
+        clear_binding_if_identity(bound->lifecycle_serial,
+                                  bound->conn_handle);
     }
     report_policy_result("A2DP connection", err);
 }
 
-static void apply_audio_policy(const esp_a2d_cb_param_t *param)
+static void apply_audio_policy(a2dp_bound_audio_event_t *bound)
 {
-    bt_a2dp_audio_state_t mapped;
-    if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
-        mapped = BT_A2DP_AUDIO_STARTED;
-    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
-        mapped = BT_A2DP_AUDIO_REMOTE_SUSPENDED;
-    } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
-        mapped = BT_A2DP_AUDIO_STOPPED;
-    } else {
-        report_policy_result("A2DP audio", ESP_ERR_INVALID_ARG);
-        return;
-    }
-
-    char peer[18];
-    bda_to_string(param->audio_stat.remote_bda, peer);
-    uint32_t lifecycle_serial = 0U;
-    uint32_t generation = 0U;
-    esp_err_t err = capture_audio_binding(
-        peer, &lifecycle_serial, &generation);
-    if (err == ESP_OK) {
-        err = refresh_bound_generation(
-            peer, lifecycle_serial, false, generation, &generation);
+    esp_err_t err = refresh_bound_generation(
+        bound->peer_mac, bound->conn_handle, bound->lifecycle_serial,
+        true, bound->generation, &bound->generation);
+    if (err == ESP_OK && bound->generation == 0U) {
+        err = ESP_ERR_NOT_FOUND;
     }
     if (err == ESP_OK) {
         err = bt_manager_hfp_handle_a2dp_audio_event(
-            generation, peer, mapped);
+            bound->generation, bound->peer_mac, bound->state);
     }
     if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        record_rejected_bound_event(generation, peer);
+        record_rejected_bound_event(bound->generation, bound->peer_mac);
     }
     report_policy_result("A2DP audio", err);
 }
 
 void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
-    if (!param) {
+    a2dp_bound_profile_event_t bound;
+    esp_err_t identity_err = prepare_connection_event(param, &bound);
+    if (identity_err != ESP_OK) {
+        report_policy_result("A2DP connection identity", identity_err);
         return;
     }
 
@@ -361,7 +388,6 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
 
         ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
 
-        /* Lock bt_ctx, update fields, save callback, unlock, then invoke */
         bt_connected_cb cb = NULL;
         char mac[18] = {0};
         char name[32] = {0};
@@ -392,7 +418,6 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
             ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));  // NOLINT(bugprone-branch-clone)
         }
     } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-        /* Lock bt_ctx, save callback, update fields, unlock, then invoke */
         bt_disconnected_cb cb = NULL;
         char mac[18] = {0};
 
@@ -414,16 +439,17 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
         esp_bd_addr_t tmp_addr = {0};
         safe_memcpy(tmp_addr, sizeof(tmp_addr), param->conn_stat.remote_bda, sizeof(tmp_addr));
         bt_connection_state_cb(param->conn_stat.state, tmp_addr);
-        /* Emit PAIR FAILED if a pairing initiation never reached AUTH_CMPL
-         * (e.g. page timeout, HCI connection refused). */
         bt_pairing_handle_connection_failed(tmp_addr);
     }
 
-    apply_connection_policy(param);
+    apply_connection_policy(&bound);
 }
 
 void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
-    if (!param) {
+    a2dp_bound_audio_event_t bound;
+    esp_err_t identity_err = prepare_audio_event(param, &bound);
+    if (identity_err != ESP_OK) {
+        report_policy_result("A2DP audio identity", identity_err);
         return;
     }
 
@@ -456,7 +482,7 @@ void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
         bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     }
 
-    apply_audio_policy(param);
+    apply_audio_policy(&bound);
 }
 
 // A2DP callback for audio events
@@ -477,14 +503,6 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 {
-    /* Input validation (CODE_REVIEW 2602101453, P1.1.4)
-     *
-     * WHY: Negative or zero length indicates a bug in the Bluetooth stack.
-     *      Null buffer pointer is invalid and would cause crashes.
-     *      Same defensive programming pattern as bt_audio_data_callback().
-     *
-     * SAFETY: Guard against upstream bugs by rejecting invalid parameters immediately.
-     */
     if (buf == NULL) {
         ESP_LOGE(TAG, "bt_events_a2dp_data_callback: NULL buffer pointer");
         return 0;
@@ -500,10 +518,6 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
         return 0;
     }
 
-    /* Cast to size_t once after validation (CODE_REVIEW 2602101453, P1.1.4)
-     * WHY: len is now known to be positive, so safe to cast to size_t.
-     *      Using size_t for audio_processor_read() eliminates signed/unsigned issues.
-     */
     size_t req = (size_t)len;
 
     size_t bytes_read = 0;
@@ -527,12 +541,15 @@ esp_err_t bt_events_a2dp_test_get_binding(
     out->valid = s_policy_binding.valid;
     safe_copy_str(out->peer_mac, sizeof(out->peer_mac),
                   s_policy_binding.peer_mac);
+    out->conn_handle = s_policy_binding.conn_handle;
     out->lifecycle_serial = s_policy_binding.lifecycle_serial;
     out->last_duplex_generation =
         s_policy_binding.last_duplex_generation;
     out->missing_binding_rejections =
         s_policy_binding.missing_binding_rejections;
     out->wrong_peer_rejections = s_policy_binding.wrong_peer_rejections;
+    out->stale_handle_rejections =
+        s_policy_binding.stale_handle_rejections;
     out->generation_sync_failures =
         s_policy_binding.generation_sync_failures;
     bt_ctx_unlock();
