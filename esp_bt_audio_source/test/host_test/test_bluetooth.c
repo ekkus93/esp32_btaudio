@@ -80,6 +80,7 @@ int main(void) {
     RUN_TEST(test_a2dp_binding_refreshes_after_hfp_generation_rotation);
     RUN_TEST(test_a2dp_wrong_peer_event_is_rejected_and_counted);
     RUN_TEST(test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection);
+    RUN_TEST(test_a2dp_ctx_lock_failure_rejects_without_partial_state);
     RUN_TEST(test_bt_gap_failure_paths_emit_events_and_clear_pending);
     RUN_TEST(test_bt_gap_auth_failure_allows_retry);
     RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
