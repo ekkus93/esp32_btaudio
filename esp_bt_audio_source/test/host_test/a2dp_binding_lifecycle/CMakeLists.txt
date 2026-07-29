@@ -80,30 +80,40 @@ set(BT_MANAGER_COMMON_MOCK_SOURCES
     "${HOST_TEST_DIR}/mocks/fake_esp_err.c"
 )
 
-add_executable(test_bt_ctx_lock
-    "${HOST_TEST_DIR}/test_bt_ctx_lock.c"
-    ${BT_MANAGER_PRODUCTION_SOURCES}
-    ${BT_MANAGER_COMMON_MOCK_SOURCES}
-)
-target_link_libraries(test_bt_ctx_lock PRIVATE
-    unity_local
-    util_safe_host
-    platform_shim_host
-    pthread
-)
+function(add_a2dp_binding_test target source)
+    add_executable(${target}
+        "${HOST_TEST_DIR}/${source}"
+        ${BT_MANAGER_PRODUCTION_SOURCES}
+        ${BT_MANAGER_COMMON_MOCK_SOURCES}
+    )
+    target_link_libraries(${target} PRIVATE
+        unity_local
+        util_safe_host
+        platform_shim_host
+        pthread
+    )
+endfunction()
 
-add_executable(test_bt_manager_connection_pairing_events
-    "${HOST_TEST_DIR}/test_bt_manager_connection_pairing_events.c"
-    ${BT_MANAGER_PRODUCTION_SOURCES}
-    ${BT_MANAGER_COMMON_MOCK_SOURCES}
+add_a2dp_binding_test(test_bt_ctx_lock test_bt_ctx_lock.c)
+
+add_a2dp_binding_test(
+    test_bt_manager_connection_pairing_events
+    test_bt_manager_connection_pairing_events.c
+)
+target_sources(test_bt_manager_connection_pairing_events PRIVATE
     "${HOST_TEST_DIR}/mocks/fake_log.c"
 )
 target_compile_definitions(test_bt_manager_connection_pairing_events PRIVATE
     CONFIG_BT_MOCK_TESTING=1
 )
-target_link_libraries(test_bt_manager_connection_pairing_events PRIVATE
-    unity_local
-    util_safe_host
-    platform_shim_host
-    pthread
+
+add_a2dp_binding_test(
+    test_a2dp_binding_diagnostics_exact
+    test_a2dp_binding_diagnostics_exact.c
+)
+target_sources(test_a2dp_binding_diagnostics_exact PRIVATE
+    "${HOST_TEST_DIR}/mocks/fake_log.c"
+)
+target_compile_definitions(test_a2dp_binding_diagnostics_exact PRIVATE
+    CONFIG_BT_MOCK_TESTING=1
 )
