@@ -54,6 +54,18 @@ void test_hfp_audio_success_is_not_retracted_by_status_failure(void)
     TEST_ASSERT_NULL(strstr(tx, "OK|HFP|AUDIO_STOPPED|"));
 }
 
+void test_hfp_audio_status_unavailable_propagates_uart_failure(void)
+{
+    mock_bt_hfp_manager_set_status(NULL, ESP_ERR_TIMEOUT);
+    cmd_context_t ctx;
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, cmd_parse("HFP AUDIO START", &ctx));
+    mock_uart_force_write_result_port(UART_NUM_1, -1);
+
+    TEST_ASSERT_EQUAL(CMD_ERROR_UNKNOWN, cmd_execute(&ctx));
+    TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_audio_start_calls());
+    TEST_ASSERT_EQUAL_STRING("", mock_uart_get_tx_data());
+}
+
 void test_hfp_stats_exposes_health_and_callback_review_failures(void)
 {
     bt_hfp_manager_stats_t stats;
