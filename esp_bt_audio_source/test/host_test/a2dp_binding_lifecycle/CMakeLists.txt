@@ -128,3 +128,25 @@ target_sources(test_a2dp_cross_session_exact PRIVATE
 target_compile_definitions(test_a2dp_cross_session_exact PRIVATE
     CONFIG_BT_MOCK_TESTING=1
 )
+
+add_a2dp_binding_test(
+    test_a2dp_secondary_failures_exact
+    test_a2dp_secondary_failures_exact.c
+)
+target_sources(test_a2dp_secondary_failures_exact PRIVATE
+    "${HOST_TEST_DIR}/mocks/fake_log.c"
+)
+target_compile_definitions(test_a2dp_secondary_failures_exact PRIVATE
+    CONFIG_BT_MOCK_TESTING=1
+)
+
+add_a2dp_binding_test(
+    test_bt_manager_init_rollback
+    test_bt_manager_init_rollback.c
+)
+target_sources(test_bt_manager_init_rollback PRIVATE
+    "${HOST_TEST_DIR}/mocks/fake_log.c"
+)
+target_compile_definitions(test_bt_manager_init_rollback PRIVATE
+    CONFIG_BT_MOCK_TESTING=1
+)
