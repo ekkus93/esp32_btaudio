@@ -54,6 +54,14 @@ typedef struct {
  * after peer, lifecycle serial, and connection handle have all matched. */
 static a2dp_policy_binding_t s_policy_binding;
 
+#ifdef UNIT_TEST
+/* Test-only observations of secondary failures that are otherwise surfaced by
+ * production logs. They let host tests assert the exact error without changing
+ * the public ESP-IDF callback signatures. */
+static esp_err_t s_test_last_generation_diag_update_error = ESP_OK;
+static esp_err_t s_test_last_binding_clear_error = ESP_OK;
+#endif
+
 /* Forward declarations for connection manager callbacks and internal functions */
 extern void bt_connection_state_cb(esp_a2d_connection_state_t state,
                                    esp_bd_addr_t bd_addr);
@@ -186,10 +194,12 @@ static esp_err_t create_or_capture_profile_binding(
     return ESP_OK;
 }
 
-static void increment_generation_sync_failure(uint32_t lifecycle_serial,
-                                              esp_a2d_conn_hdl_t conn_handle)
+static esp_err_t increment_generation_sync_failure(
+    uint32_t lifecycle_serial,
+    esp_a2d_conn_hdl_t conn_handle)
 {
-    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) return;
+    esp_err_t lock_err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (lock_err != ESP_OK) return lock_err;
     if (s_policy_binding.valid &&
         s_policy_binding.lifecycle_serial == lifecycle_serial &&
         s_policy_binding.conn_handle == conn_handle) {
@@ -197,14 +207,36 @@ static void increment_generation_sync_failure(uint32_t lifecycle_serial,
             &s_policy_binding.generation_sync_failures);
     }
     bt_ctx_unlock();
+    return ESP_OK;
+}
+
+static esp_err_t preserve_primary_generation_error(
+    esp_err_t primary_error,
+    uint32_t lifecycle_serial,
+    esp_a2d_conn_hdl_t conn_handle)
+{
+    esp_err_t diag_err = increment_generation_sync_failure(
+        lifecycle_serial, conn_handle);
+#ifdef UNIT_TEST
+    s_test_last_generation_diag_update_error = diag_err;
+#endif
+    if (diag_err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "A2DP generation failure diagnostic update failed: lifecycle=%u handle=%u primary=%s diagnostic=%s",
+                 (unsigned)lifecycle_serial,
+                 (unsigned)conn_handle,
+                 esp_err_to_name(primary_error),
+                 esp_err_to_name(diag_err));
+    }
+    return primary_error;
 }
 
 static esp_err_t refresh_bound_generation(const char *peer,
-                                          esp_a2d_conn_hdl_t conn_handle,
-                                          uint32_t lifecycle_serial,
-                                          bool allow_no_session,
-                                          uint32_t fallback_generation,
-                                          uint32_t *generation_out)
+                                           esp_a2d_conn_hdl_t conn_handle,
+                                           uint32_t lifecycle_serial,
+                                           bool allow_no_session,
+                                           uint32_t fallback_generation,
+                                           uint32_t *generation_out)
 {
     if (peer == NULL || generation_out == NULL || lifecycle_serial == 0U) {
         return ESP_ERR_INVALID_ARG;
@@ -213,23 +245,25 @@ static esp_err_t refresh_bound_generation(const char *peer,
     bt_hfp_manager_status_t status;
     esp_err_t err = bt_manager_hfp_get_status(&status);
     if (err != ESP_OK) {
-        increment_generation_sync_failure(lifecycle_serial, conn_handle);
-        return err;
+        return preserve_primary_generation_error(
+            err, lifecycle_serial, conn_handle);
     }
 
     uint32_t generation = fallback_generation;
     if (status.duplex.peer_valid) {
         if (strcasecmp(peer, status.duplex.peer_mac) != 0 ||
             status.duplex.session_generation == 0U) {
-            increment_generation_sync_failure(lifecycle_serial, conn_handle);
+            err = preserve_primary_generation_error(
+                ESP_ERR_INVALID_STATE, lifecycle_serial, conn_handle);
             record_rejected_bound_event(fallback_generation, peer);
-            return ESP_ERR_INVALID_STATE;
+            return err;
         }
         generation = status.duplex.session_generation;
     } else if (!allow_no_session) {
-        increment_generation_sync_failure(lifecycle_serial, conn_handle);
+        err = preserve_primary_generation_error(
+            ESP_ERR_INVALID_STATE, lifecycle_serial, conn_handle);
         record_rejected_unbound_event(peer);
-        return ESP_ERR_INVALID_STATE;
+        return err;
     }
 
     err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
@@ -248,30 +282,39 @@ static esp_err_t refresh_bound_generation(const char *peer,
     return ESP_OK;
 }
 
-static void clear_binding_if_identity(uint32_t lifecycle_serial,
-                                      esp_a2d_conn_hdl_t conn_handle)
+/* Return ESP_ERR_NOT_FOUND when the expected identity no longer owns the
+ * binding. That is an idempotent stale-session outcome, not a successful clear.
+ * Lock acquisition failures are returned exactly and never trigger an unlocked
+ * fallback. */
+static esp_err_t clear_binding_if_identity(uint32_t lifecycle_serial,
+                                           esp_a2d_conn_hdl_t conn_handle)
 {
-    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) != ESP_OK) return;
-    if (s_policy_binding.valid &&
-        s_policy_binding.lifecycle_serial == lifecycle_serial &&
-        s_policy_binding.conn_handle == conn_handle) {
-        const uint64_t missing =
-            s_policy_binding.missing_binding_rejections;
-        const uint64_t wrong = s_policy_binding.wrong_peer_rejections;
-        const uint64_t stale = s_policy_binding.stale_handle_rejections;
-        const uint64_t sync = s_policy_binding.generation_sync_failures;
-        const uint64_t late_terminal =
-            s_policy_binding.late_terminal_events_ignored;
-        const uint32_t serial = s_policy_binding.lifecycle_serial;
-        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
-        s_policy_binding.lifecycle_serial = serial;
-        s_policy_binding.missing_binding_rejections = missing;
-        s_policy_binding.wrong_peer_rejections = wrong;
-        s_policy_binding.stale_handle_rejections = stale;
-        s_policy_binding.generation_sync_failures = sync;
-        s_policy_binding.late_terminal_events_ignored = late_terminal;
+    esp_err_t lock_err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (lock_err != ESP_OK) return lock_err;
+    if (!s_policy_binding.valid ||
+        s_policy_binding.lifecycle_serial != lifecycle_serial ||
+        s_policy_binding.conn_handle != conn_handle) {
+        bt_ctx_unlock();
+        return ESP_ERR_NOT_FOUND;
     }
+
+    const uint64_t missing =
+        s_policy_binding.missing_binding_rejections;
+    const uint64_t wrong = s_policy_binding.wrong_peer_rejections;
+    const uint64_t stale = s_policy_binding.stale_handle_rejections;
+    const uint64_t sync = s_policy_binding.generation_sync_failures;
+    const uint64_t late_terminal =
+        s_policy_binding.late_terminal_events_ignored;
+    const uint32_t serial = s_policy_binding.lifecycle_serial;
+    memset(&s_policy_binding, 0, sizeof(s_policy_binding));
+    s_policy_binding.lifecycle_serial = serial;
+    s_policy_binding.missing_binding_rejections = missing;
+    s_policy_binding.wrong_peer_rejections = wrong;
+    s_policy_binding.stale_handle_rejections = stale;
+    s_policy_binding.generation_sync_failures = sync;
+    s_policy_binding.late_terminal_events_ignored = late_terminal;
     bt_ctx_unlock();
+    return ESP_OK;
 }
 
 static esp_err_t capture_audio_binding(a2dp_bound_audio_event_t *bound)
@@ -388,8 +431,29 @@ static void apply_connection_policy(a2dp_bound_profile_event_t *bound)
     }
 
     if (bound->state == BT_A2DP_PROFILE_DISCONNECTED) {
-        clear_binding_if_identity(bound->lifecycle_serial,
-                                  bound->conn_handle);
+        esp_err_t clear_err = clear_binding_if_identity(
+            bound->lifecycle_serial, bound->conn_handle);
+#ifdef UNIT_TEST
+        s_test_last_binding_clear_error = clear_err;
+#endif
+        if (clear_err == ESP_ERR_NOT_FOUND) {
+            ESP_LOGW(TAG,
+                     "A2DP disconnect binding clear skipped: lifecycle=%u handle=%u error=%s reason=IDENTITY_CHANGED",
+                     (unsigned)bound->lifecycle_serial,
+                     (unsigned)bound->conn_handle,
+                     esp_err_to_name(clear_err));
+        } else if (clear_err != ESP_OK) {
+            ESP_LOGE(TAG,
+                     "A2DP disconnect binding clear failed: lifecycle=%u handle=%u primary=%s clear=%s",
+                     (unsigned)bound->lifecycle_serial,
+                     (unsigned)bound->conn_handle,
+                     esp_err_to_name(err),
+                     esp_err_to_name(clear_err));
+        }
+        if ((err == ESP_OK || err == ESP_ERR_NOT_FOUND) &&
+            clear_err != ESP_OK) {
+            err = clear_err;
+        }
     }
     report_policy_result("A2DP connection", err);
 }
@@ -566,6 +630,53 @@ esp_err_t bt_events_a2dp_test_get_binding(
 esp_err_t bt_events_a2dp_test_reset_binding(void)
 {
     return bt_events_a2dp_reset_binding();
+}
+
+void bt_events_a2dp_test_reset_secondary_errors(void)
+{
+    s_test_last_generation_diag_update_error = ESP_OK;
+    s_test_last_binding_clear_error = ESP_OK;
+}
+
+esp_err_t bt_events_a2dp_test_get_last_generation_diag_update_error(void)
+{
+    return s_test_last_generation_diag_update_error;
+}
+
+esp_err_t bt_events_a2dp_test_get_last_binding_clear_error(void)
+{
+    return s_test_last_binding_clear_error;
+}
+
+esp_err_t bt_events_a2dp_test_prepare_audio_event(
+    const esp_a2d_cb_param_t *param)
+{
+    a2dp_bound_audio_event_t bound;
+    return prepare_audio_event(param, &bound);
+}
+
+esp_err_t bt_events_a2dp_test_refresh_bound_generation(
+    const char *peer,
+    esp_a2d_conn_hdl_t conn_handle,
+    uint32_t lifecycle_serial,
+    bool allow_no_session,
+    uint32_t fallback_generation,
+    uint32_t *generation_out)
+{
+    return refresh_bound_generation(
+        peer,
+        conn_handle,
+        lifecycle_serial,
+        allow_no_session,
+        fallback_generation,
+        generation_out);
+}
+
+esp_err_t bt_events_a2dp_test_clear_binding_if_identity(
+    uint32_t lifecycle_serial,
+    esp_a2d_conn_hdl_t conn_handle)
+{
+    return clear_binding_if_identity(lifecycle_serial, conn_handle);
 }
 #endif
 
