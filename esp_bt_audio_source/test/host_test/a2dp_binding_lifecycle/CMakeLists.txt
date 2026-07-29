@@ -3,7 +3,9 @@ project(a2dp_binding_lifecycle_sanitizers C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+# Match the repository's established host-test compiler dialect. Several
+# platform shims rely on POSIX/GNU declarations that strict ISO C hides.
+set(CMAKE_C_EXTENSIONS ON)
 
 get_filename_component(HOST_TEST_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 get_filename_component(PROJECT_DIR "${HOST_TEST_DIR}/../.." ABSOLUTE)
