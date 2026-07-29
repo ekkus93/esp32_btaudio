@@ -1,0 +1,53 @@
+name: One-shot host CMake repair
+
+on:
+  push:
+    branches:
+      - feature/esp-bt-audio-duplex
+    paths:
+      - tools/one_shot_patch_host_cmake.py
+      - .github/workflows/one-shot-host-cmake-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-host-cmake-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  patch-and-self-remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: feature/esp-bt-audio-duplex
+          fetch-depth: 0
+
+      - name: Apply exact CMake transformation
+        run: python3 tools/one_shot_patch_host_cmake.py
+
+      - name: Verify transformation before commit
+        run: |
+          set -euo pipefail
+          test ! -e esp_bt_audio_source/test_bluetooth/main/test_pairing_commands.c
+          test ! -e esp_bt_audio_source/test_bluetooth/main/test_pairing_adapters.c
+          ! grep -R "test_pairing_adapter_runner\|test_pairing_commands.c\|test_pairing_adapters.c" \
+              esp_bt_audio_source/test/host_test/CMakeLists.txt
+          grep -q "test_a2dp_secondary_failures_exact" \
+              esp_bt_audio_source/test/host_test/CMakeLists.txt
+          grep -q "test_bt_manager_init_rollback_cleanup_incomplete" \
+              esp_bt_audio_source/test/host_test/CMakeLists.txt
+
+      - name: Remove one-shot machinery and commit real edit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm tools/one_shot_patch_host_cmake.py
+          git rm .github/workflows/one-shot-host-cmake-repair.yml
+          git add esp_bt_audio_source/test/host_test/CMakeLists.txt
+          git diff --cached --check
+          git commit -m "test(host): retire stale pairing adapter target and wire FIX1 suites"
+          git push origin HEAD:feature/esp-bt-audio-duplex
