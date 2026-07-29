@@ -361,13 +361,11 @@ static cmd_status_t send_audio_status_unavailable(const char *operation,
             data, sizeof(data),
             "OPERATION=%s,LOWER_OPERATION=SUCCEEDED,STATUS_ERROR=%s",
             operation, esp_err_to_name(error))) {
-        (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
-                                "AUDIO_STATUS_LINE_TOO_LONG", NULL);
-        return CMD_SUCCESS;
+        return cmd_send_response(CMD_STATUS_ERR, "HFP",
+                                 "AUDIO_STATUS_LINE_TOO_LONG", NULL);
     }
-    (void)cmd_send_response(CMD_STATUS_ERR, "HFP",
-                            "AUDIO_STATUS_UNAVAILABLE", data);
-    return CMD_SUCCESS;
+    return cmd_send_response(CMD_STATUS_ERR, "HFP",
+                             "AUDIO_STATUS_UNAVAILABLE", data);
 }
 
 static cmd_status_t handle_audio_start(void)
