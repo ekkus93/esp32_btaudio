@@ -21,29 +21,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup cache for CMake build dir
+      - name: Setup dependency cache
         uses: actions/cache@v4
         with:
-          path: |
-            esp_bt_audio_source/test/host_test/build_host_tests
-            ~/.cache
-          key: ${{ runner.os }}-cmake-host-tests-${{ hashFiles('**/CMakeLists.txt','esp_bt_audio_source/test/host_test/**') }}
+          path: ~/.cache
+          key: ${{ runner.os }}-host-deps-${{ hashFiles('**/CMakeLists.txt','esp_bt_audio_source/test/host_test/**') }}
           restore-keys: |
-            ${{ runner.os }}-cmake-host-tests-
+            ${{ runner.os }}-host-deps-
 
       - name: Install build dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y build-essential cmake pkg-config git
 
-      - name: Configure and build host tests
+      - name: Clean configure and build complete host graph
         working-directory: esp_bt_audio_source/test/host_test
         run: |
-          mkdir -p build_host_tests
-          cd build_host_tests
-          cmake ..
-          cmake --build . -- -j$(nproc)
-          ls -la .. || true
+          set -euo pipefail
+          rm -rf build_host_tests
+          cmake -S . -B build_host_tests
+          cmake --build build_host_tests --parallel "$(nproc)"
+          cmake --build build_host_tests --target help \
+            | LC_ALL=C sort \
+            > build_host_tests/cmake-targets.txt
+          ctest --test-dir build_host_tests --show-only=json-v1 \
+            > build_host_tests/ctest-inventory.json
 
       - name: Run full-duplex state sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_duplex_state_test.sh
@@ -78,6 +80,9 @@ jobs:
       - name: Run FD-16 duplex policy sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_duplex_policy_test.sh
 
+      - name: Run A2DP binding lifecycle sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_a2dp_binding_lifecycle_test.sh
+
       - name: Install Python test deps
         run: |
           python3 -m pip install --upgrade pip
@@ -102,7 +107,7 @@ jobs:
           if [[ -z "${base_sha}" || "${base_sha}" =~ ^0+$ ]]; then
             base_sha="${GITHUB_SHA}^"
           fi
-          git fetch --no-tags --depth=1 origin "${base_sha}" || true
+          git fetch --no-tags --depth=1 origin "${base_sha}"
 
           mapfile -t changed_python < <(
             git diff --name-only --diff-filter=ACMR "${base_sha}" "${GITHUB_SHA}" -- '*.py' \
@@ -130,30 +135,30 @@ jobs:
 
       - name: Run Python unit tests
         run: |
-          echo "Running Python unit tests (tools/tests)..."
+          set -euo pipefail
           python3 -m pytest -q esp_bt_audio_source/tools/tests
 
-      - name: Run CTest
+      - name: Run complete CTest suite
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
           set -euo pipefail
-          mkdir -p .
           if ctest --help | grep -q -- --output-junit; then
             ctest --output-on-failure -j1 --output-junit test-results.xml 2>&1 | tee ctest.log
           else
             ctest --output-on-failure -j1 2>&1 | tee ctest.log
           fi
 
-      - name: Prepare artifacts (JUnit or ctest.log)
+      - name: Prepare artifacts
+        if: always()
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
           if [ -f test-results.xml ]; then
             echo "JUnit XML produced"
           elif [ ! -f ctest.log ]; then
-            echo "No ctest.log found; creating placeholder" > ctest.log
+            echo "CTest did not run; see the build and sanitizer steps" > ctest.log
           fi
 
-      - name: Upload test results (JUnit or ctest.log)
+      - name: Upload host evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -161,15 +166,19 @@ jobs:
           path: |
             esp_bt_audio_source/test/host_test/build_host_tests/*.xml
             esp_bt_audio_source/test/host_test/build_host_tests/*.log
+            esp_bt_audio_source/test/host_test/build_host_tests/cmake-targets.txt
+            esp_bt_audio_source/test/host_test/build_host_tests/ctest-inventory.json
+            esp_bt_audio_source/test/host_test/build_host_tests/*_compile.log
+            esp_bt_audio_source/test/host_test/build_host_tests/*_test.log
 
-      - name: Inspect JUnit artifact (debug)
+      - name: Inspect JUnit artifact
         if: always()
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
           echo "PWD: $(pwd)"
           if [ -f test-results.xml ]; then
             echo "Found test-results.xml (head):"
-            head -n 80 test-results.xml || true
+            head -n 80 test-results.xml
           else
             echo "No test-results.xml found"
           fi
@@ -179,25 +188,27 @@ jobs:
         working-directory: esp_bt_audio_source/test/host_test/build_host_tests
         run: |
           echo "Searching for JUnit XML files to annotate..."
-          shopt -s nullglob || true
+          shopt -s nullglob
           xmls=( *.xml )
           if [ ${#xmls[@]} -eq 0 ]; then
             echo "No JUnit XML files found"
             exit 0
           fi
           python3 - <<'PY'
-          import glob, re, xml.etree.ElementTree as ET
-          files = glob.glob('*.xml')
-          for f in files:
+          import glob
+          import re
+          import xml.etree.ElementTree as ET
+
+          for filename in glob.glob('*.xml'):
               try:
-                  tree = ET.parse(f)
-              except Exception as e:
-                  print(f"::warning file={f}::Could not parse XML: {e}")
+                  tree = ET.parse(filename)
+              except Exception as exc:
+                  print(f"::warning file={filename}::Could not parse XML: {exc}")
                   continue
               root = tree.getroot()
               for testcase in root.findall('.//testcase'):
-                  name = testcase.attrib.get('name','(unnamed)')
-                  classname = testcase.attrib.get('classname','')
+                  name = testcase.attrib.get('name', '(unnamed)')
+                  classname = testcase.attrib.get('classname', '')
                   file_attr = testcase.attrib.get('file') or testcase.attrib.get('classname') or ''
                   line_attr = testcase.attrib.get('line') or ''
                   node = testcase.find('failure')
@@ -206,26 +217,24 @@ jobs:
                   if node is None:
                       continue
                   title = f"{classname}.{name}" if classname else name
-                  msg = (node.text or '') + ' ' + (node.attrib.get('message','') or '')
-                  msg = msg.strip()
+                  message = (node.text or '') + ' ' + (node.attrib.get('message', '') or '')
+                  message = message.strip()
                   if not file_attr:
-                      m = re.search(r'File "([^"]+)", line (\d+)', msg)
-                      if m:
-                          file_attr = m.group(1)
-                          line_attr = m.group(2)
-                  if len(msg) > 1200:
-                      msg = msg[:1200] + '...'
-                  esc = lambda s: s.replace('%','%25').replace('\n','%0A').replace('\r','%0D')
-                  title_e = esc(title)
-                  msg_e = esc(msg)
+                      match = re.search(r'File "([^"]+)", line (\d+)', message)
+                      if match:
+                          file_attr = match.group(1)
+                          line_attr = match.group(2)
+                  if len(message) > 1200:
+                      message = message[:1200] + '...'
+                  escape = lambda value: value.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
+                  title_e = escape(title)
+                  message_e = escape(message)
                   if file_attr and line_attr:
-                      file_e = esc(file_attr)
-                      print(f"::error file={file_e},line={line_attr},title={title_e}::{msg_e}")
+                      print(f"::error file={escape(file_attr)},line={line_attr},title={title_e}::{message_e}")
                   elif file_attr:
-                      file_e = esc(file_attr)
-                      print(f"::error file={file_e},title={title_e}::{msg_e}")
+                      print(f"::error file={escape(file_attr)},title={title_e}::{message_e}")
                   else:
-                      print(f"::error title={title_e}::{msg_e}")
+                      print(f"::error title={title_e}::{message_e}")
           PY
 
       - name: Compress build directory for failure artifacts
@@ -233,7 +242,7 @@ jobs:
         working-directory: esp_bt_audio_source/test/host_test
         run: |
           if [ -d build_host_tests ]; then
-            tar -czf build_host_tests.tar.gz build_host_tests || true
+            tar -czf build_host_tests.tar.gz build_host_tests
           else
             echo "No build_host_tests directory to archive"
           fi
