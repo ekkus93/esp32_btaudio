@@ -24,13 +24,19 @@ typedef struct {
     atomic_uint high;
 } bt_hfp_audio_counter64_t;
 
+typedef enum {
+    BT_HFP_CALLBACK_UNREGISTERED = 0,
+    BT_HFP_CALLBACK_REGISTERING,
+    BT_HFP_CALLBACK_REGISTERED,
+} bt_hfp_callback_registration_state_t;
+
 typedef struct {
     platform_mutex_t lock;
     bool initialized;
-    bool callback_registered;
     char peer_mac[BT_DUPLEX_MAC_STR_LEN];
-    esp_err_t last_error;
 
+    atomic_uint callback_registration_state;
+    atomic_int last_error;
     atomic_bool accepting_incoming;
     atomic_uint generation;
     atomic_uint sync_conn_handle;
@@ -174,7 +180,9 @@ static esp_err_t context_ensure(void)
 #endif
     s_audio.lock = lock;
     s_audio.initialized = true;
-    s_audio.last_error = ESP_OK;
+    atomic_init(&s_audio.callback_registration_state,
+                (unsigned)BT_HFP_CALLBACK_UNREGISTERED);
+    atomic_init(&s_audio.last_error, ESP_OK);
     atomic_init(&s_audio.accepting_incoming, false);
     atomic_init(&s_audio.generation, 0U);
     atomic_init(&s_audio.sync_conn_handle,
@@ -270,22 +278,36 @@ esp_err_t bt_hfp_audio_register_callback(void)
 {
     esp_err_t err = context_ensure();
     if (err != ESP_OK) return err;
-    err = audio_lock();
-    if (err != ESP_OK) return err;
-    if (s_audio.callback_registered) return audio_unlock(ESP_OK);
-    err = audio_unlock(ESP_OK);
-    if (err != ESP_OK) return err;
+
+    unsigned state = atomic_load_explicit(
+        &s_audio.callback_registration_state, memory_order_acquire);
+    if (state == (unsigned)BT_HFP_CALLBACK_REGISTERED) return ESP_OK;
+
+    unsigned expected = (unsigned)BT_HFP_CALLBACK_UNREGISTERED;
+    if (!atomic_compare_exchange_strong_explicit(
+            &s_audio.callback_registration_state, &expected,
+            (unsigned)BT_HFP_CALLBACK_REGISTERING,
+            memory_order_acq_rel, memory_order_acquire)) {
+        return expected == (unsigned)BT_HFP_CALLBACK_REGISTERED
+            ? ESP_OK : ESP_ERR_INVALID_STATE;
+    }
 
     err = platform_register_callback();
-    if (audio_lock() != ESP_OK) return ESP_FAIL;
     if (err == ESP_OK) {
-        s_audio.callback_registered = true;
-        s_audio.last_error = ESP_OK;
-    } else {
-        counter64_add(&s_audio.registration_failures, 1U);
-        s_audio.last_error = err;
+        atomic_store_explicit(&s_audio.last_error, ESP_OK,
+                              memory_order_relaxed);
+        atomic_store_explicit(
+            &s_audio.callback_registration_state,
+            (unsigned)BT_HFP_CALLBACK_REGISTERED, memory_order_release);
+        return ESP_OK;
     }
-    return audio_unlock(err);
+
+    counter64_add(&s_audio.registration_failures, 1U);
+    atomic_store_explicit(&s_audio.last_error, err, memory_order_relaxed);
+    atomic_store_explicit(
+        &s_audio.callback_registration_state,
+        (unsigned)BT_HFP_CALLBACK_UNREGISTERED, memory_order_release);
+    return err;
 }
 
 void bt_hfp_audio_profile_stopping(void)
@@ -316,10 +338,8 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
         strlen(event_peer_mac) != BT_DUPLEX_MAC_STR_LEN - 1U ||
         !same_peer(snapshot->peer_mac, event_peer_mac)) {
         counter64_add(&s_audio.activation_failures, 1U);
-        if (audio_lock() == ESP_OK) {
-            s_audio.last_error = ESP_ERR_INVALID_STATE;
-            (void)audio_unlock(ESP_OK);
-        }
+        atomic_store_explicit(&s_audio.last_error, ESP_ERR_INVALID_STATE,
+                              memory_order_relaxed);
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -330,10 +350,8 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
     if (snapshot->hfp_audio_state == BT_HFP_AUDIO_CONNECTED_MSBC ||
         snapshot->codec == BT_HFP_CODEC_MSBC) {
         counter64_add(&s_audio.activation_failures, 1U);
-        if (audio_lock() == ESP_OK) {
-            s_audio.last_error = ESP_ERR_NOT_SUPPORTED;
-            (void)audio_unlock(ESP_OK);
-        }
+        atomic_store_explicit(&s_audio.last_error, ESP_ERR_NOT_SUPPORTED,
+                              memory_order_relaxed);
         return ESP_ERR_NOT_SUPPORTED;
     }
     if (snapshot->hfp_audio_state != BT_HFP_AUDIO_CONNECTED_CVSD) {
@@ -341,26 +359,24 @@ esp_err_t bt_hfp_audio_apply_duplex_state(
     }
     if (sync_conn_handle == BT_HFP_AUDIO_INVALID_SYNC_HANDLE) {
         counter64_add(&s_audio.activation_failures, 1U);
-        if (audio_lock() == ESP_OK) {
-            s_audio.last_error = ESP_ERR_INVALID_ARG;
-            (void)audio_unlock(ESP_OK);
-        }
+        atomic_store_explicit(&s_audio.last_error, ESP_ERR_INVALID_ARG,
+                              memory_order_relaxed);
         return ESP_ERR_INVALID_ARG;
     }
     if (!snapshot_is_cvsd_ready(snapshot) ||
-        !s_audio.callback_registered) {
+        atomic_load_explicit(&s_audio.callback_registration_state,
+                             memory_order_acquire) !=
+            (unsigned)BT_HFP_CALLBACK_REGISTERED) {
         counter64_add(&s_audio.activation_failures, 1U);
-        if (audio_lock() == ESP_OK) {
-            s_audio.last_error = ESP_ERR_INVALID_STATE;
-            (void)audio_unlock(ESP_OK);
-        }
+        atomic_store_explicit(&s_audio.last_error, ESP_ERR_INVALID_STATE,
+                              memory_order_relaxed);
         return ESP_ERR_INVALID_STATE;
     }
 
     err = audio_lock();
     if (err != ESP_OK) return err;
     copy_peer(s_audio.peer_mac, snapshot->peer_mac);
-    s_audio.last_error = ESP_OK;
+    atomic_store_explicit(&s_audio.last_error, ESP_OK, memory_order_relaxed);
     atomic_store_explicit(&s_audio.generation, snapshot->session_generation,
                           memory_order_release);
     atomic_store_explicit(&s_audio.sync_conn_handle, sync_conn_handle,
@@ -561,7 +577,9 @@ esp_err_t bt_hfp_audio_get_snapshot(bt_hfp_audio_snapshot_t *out)
     if (err != ESP_OK) return err;
     memset(out, 0, sizeof(*out));
     out->initialized = s_audio.initialized;
-    out->callback_registered = s_audio.callback_registered;
+    out->callback_registered = atomic_load_explicit(
+        &s_audio.callback_registration_state, memory_order_acquire) ==
+        (unsigned)BT_HFP_CALLBACK_REGISTERED;
     out->accepting_incoming = atomic_load_explicit(
         &s_audio.accepting_incoming, memory_order_acquire);
     out->generation = atomic_load_explicit(&s_audio.generation,
@@ -581,7 +599,8 @@ esp_err_t bt_hfp_audio_get_snapshot(bt_hfp_audio_snapshot_t *out)
                                                  memory_order_acquire);
     out->callback_overlap_rejections = atomic_load_explicit(
         &s_callback_overlap_rejections, memory_order_relaxed);
-    out->last_error = s_audio.last_error;
+    out->last_error = atomic_load_explicit(&s_audio.last_error,
+                                           memory_order_relaxed);
 #define READ_COUNTER(name) \
     if (!counter64_read(&s_audio.name, &out->name)) err = ESP_ERR_TIMEOUT
     READ_COUNTER(registration_failures);
