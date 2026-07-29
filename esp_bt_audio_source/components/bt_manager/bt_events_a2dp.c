@@ -25,6 +25,7 @@ typedef struct {
     uint64_t wrong_peer_rejections;
     uint64_t stale_handle_rejections;
     uint64_t generation_sync_failures;
+    uint64_t late_terminal_events_ignored;
 } a2dp_policy_binding_t;
 
 typedef struct {
@@ -259,6 +260,8 @@ static void clear_binding_if_identity(uint32_t lifecycle_serial,
         const uint64_t wrong = s_policy_binding.wrong_peer_rejections;
         const uint64_t stale = s_policy_binding.stale_handle_rejections;
         const uint64_t sync = s_policy_binding.generation_sync_failures;
+        const uint64_t late_terminal =
+            s_policy_binding.late_terminal_events_ignored;
         const uint32_t serial = s_policy_binding.lifecycle_serial;
         memset(&s_policy_binding, 0, sizeof(s_policy_binding));
         s_policy_binding.lifecycle_serial = serial;
@@ -266,6 +269,7 @@ static void clear_binding_if_identity(uint32_t lifecycle_serial,
         s_policy_binding.wrong_peer_rejections = wrong;
         s_policy_binding.stale_handle_rejections = stale;
         s_policy_binding.generation_sync_failures = sync;
+        s_policy_binding.late_terminal_events_ignored = late_terminal;
     }
     bt_ctx_unlock();
 }
@@ -278,14 +282,21 @@ static esp_err_t capture_audio_binding(a2dp_bound_audio_event_t *bound)
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return err;
     if (!s_policy_binding.valid) {
-        if (bound->state != BT_A2DP_AUDIO_STARTED) {
-            /* A stop/suspend event can legitimately race shortly after the
-             * connection-disconnected event already cleared the binding.
-             * Apply the "not playing" state unconditionally rather than
-             * rejecting it — only a START needs a trusted binding. */
-            bt_ctx.audio_playing = false;
+        const bool terminal =
+            bound->state == BT_A2DP_AUDIO_STOPPED ||
+            bound->state == BT_A2DP_AUDIO_REMOTE_SUSPENDED;
+        if (terminal) {
+            /* DISCONNECTED is authoritative and already cleared playback.
+             * A later terminal event has no trusted identity and is therefore
+             * observable only as an idempotent no-op. */
+            increment_u64_saturating(
+                &s_policy_binding.late_terminal_events_ignored);
             bt_ctx_unlock();
-            return ESP_OK;
+            ESP_LOGD(TAG,
+                     "Ignoring unbound terminal A2DP audio event: state=%d peer=%s handle=%u reason=NO_ACTIVE_BINDING",
+                     (int)bound->state, bound->peer_mac,
+                     (unsigned)bound->conn_handle);
+            return ESP_ERR_NOT_FOUND;
         }
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
@@ -512,14 +523,16 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 }
 #endif // ESP_PLATFORM
 
-void bt_events_a2dp_reset_binding(void)
+esp_err_t bt_events_a2dp_reset_binding(void)
 {
-    if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
-        bt_ctx_unlock();
-    } else {
-        memset(&s_policy_binding, 0, sizeof(s_policy_binding));
+    esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
+    if (err != ESP_OK) {
+        return err;
     }
+
+    memset(&s_policy_binding, 0, sizeof(s_policy_binding));
+    bt_ctx_unlock();
+    return ESP_OK;
 }
 
 #ifdef UNIT_TEST
@@ -544,13 +557,15 @@ esp_err_t bt_events_a2dp_test_get_binding(
         s_policy_binding.stale_handle_rejections;
     out->generation_sync_failures =
         s_policy_binding.generation_sync_failures;
+    out->late_terminal_events_ignored =
+        s_policy_binding.late_terminal_events_ignored;
     bt_ctx_unlock();
     return ESP_OK;
 }
 
-void bt_events_a2dp_test_reset_binding(void)
+esp_err_t bt_events_a2dp_test_reset_binding(void)
 {
-    bt_events_a2dp_reset_binding();
+    return bt_events_a2dp_reset_binding();
 }
 #endif
 
