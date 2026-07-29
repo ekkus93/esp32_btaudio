@@ -82,14 +82,24 @@ void bt_ctx_unlock(void);
  * Create/destroy the s_bt_ctx_mutex so that bt_ctx_lock()/bt_ctx_unlock()
  * succeed during unit tests that manipulate bt_ctx directly. Failure
  * injection is one-shot and acts at the same bt_ctx_lock() boundary used by
- * production code. The teardown finalizer hook executes the production
- * callback-shutdown decision path.
+ * production code. The delayed hook permits an exact later lock boundary to
+ * fail without adding a test-only branch to the production caller. Teardown
+ * and init-rollback wrappers execute the same production finalizers used by
+ * the real manager lifecycle.
  */
 #ifdef UNIT_TEST
 esp_err_t bt_manager_test_init_mutex(void);
 void bt_manager_test_deinit_mutex(void);
 void bt_manager_test_force_next_ctx_lock_result(esp_err_t result);
+void bt_manager_test_force_ctx_lock_after_successes(
+    uint32_t successful_locks_before_failure,
+    esp_err_t result);
 bool bt_manager_test_is_quarantined(void);
 esp_err_t bt_manager_test_finalize_teardown(esp_err_t first_error,
-                                            bool callbacks_stopped);
+                                             bool callbacks_stopped);
+esp_err_t bt_manager_test_finalize_init_rollback(
+    esp_err_t init_error,
+    bool callbacks_stopped,
+    bool cleanup_complete,
+    bool duplex_state_initialized);
 #endif
