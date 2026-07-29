@@ -1,0 +1,372 @@
+name: Publish CI Status
+
+on:
+  workflow_run:
+    workflows:
+      - CI — host tests (optimized)
+      - CI — device build (compile only)
+    types:
+      - requested
+      - in_progress
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: publish-esp-bt-audio-ci-status
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish latest host and device CI status
+    if: ${{ github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Update authoritative CI status issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: "3"
+          TRIGGER_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRIGGER_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          TRIGGER_RUN_STATUS: ${{ github.event.workflow_run.status }}
+          TRIGGER_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          case "${TRIGGER_WORKFLOW_NAME}" in
+            "CI — host tests (optimized)")
+              trigger_key="host"
+              ;;
+            "CI — device build (compile only)")
+              trigger_key="device"
+              ;;
+            *)
+              printf 'Unsupported triggering workflow: %s\n' "${TRIGGER_WORKFLOW_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${HEAD_BRANCH}" || -z "${HEAD_SHA}" ]]; then
+            printf 'Missing workflow branch or SHA; branch=%q sha=%q\n' \
+              "${HEAD_BRANCH}" "${HEAD_SHA}" >&2
+            exit 1
+          fi
+
+          host_run_file="${RUNNER_TEMP}/host-run.json"
+          device_run_file="${RUNNER_TEMP}/device-run.json"
+          host_jobs_file="${RUNNER_TEMP}/host-jobs.json"
+          device_jobs_file="${RUNNER_TEMP}/device-jobs.json"
+          body_file="${RUNNER_TEMP}/ci-status.md"
+          patch_file="${RUNNER_TEMP}/ci-status-patch.json"
+
+          fetch_latest_run() {
+            local workflow_file="$1"
+            local output_file="$2"
+
+            gh api \
+              --method GET \
+              "repos/${REPOSITORY}/actions/workflows/${workflow_file}/runs" \
+              -f branch="${HEAD_BRANCH}" \
+              -f event=push \
+              -f per_page=1 \
+              > "${output_file}"
+          }
+
+          fetch_latest_run "ci-host-tests.yml" "${host_run_file}"
+          fetch_latest_run "ci-device-build.yml" "${device_run_file}"
+
+          trigger_run_file="${host_run_file}"
+          if [[ "${trigger_key}" == "device" ]]; then
+            trigger_run_file="${device_run_file}"
+          fi
+
+          latest_trigger_id="$(
+            python3 - "${trigger_run_file}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          runs = payload.get("workflow_runs", [])
+          print(runs[0].get("id", "") if runs else "")
+          PY
+          )"
+
+          if [[ -z "${latest_trigger_id}" ]]; then
+            printf 'Could not resolve latest %s run for branch %s.\n' \
+              "${trigger_key}" "${HEAD_BRANCH}" >&2
+            exit 1
+          fi
+
+          if [[ "${latest_trigger_id}" != "${TRIGGER_RUN_ID}" ]]; then
+            printf 'Skipping stale %s state for run %s; latest matching run is %s.\n' \
+              "${trigger_key}" "${TRIGGER_RUN_ID}" "${latest_trigger_id}"
+            exit 0
+          fi
+
+          fetch_jobs() {
+            local run_file="$1"
+            local output_file="$2"
+            local run_id
+
+            run_id="$(
+              python3 - "${run_file}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          runs = payload.get("workflow_runs", [])
+          print(runs[0].get("id", "") if runs else "")
+          PY
+            )"
+
+            if [[ -z "${run_id}" ]]; then
+              printf '{"jobs": []}\n' > "${output_file}"
+              return
+            fi
+
+            gh api \
+              --method GET \
+              "repos/${REPOSITORY}/actions/runs/${run_id}/jobs" \
+              -f filter=latest \
+              -f per_page=100 \
+              > "${output_file}"
+          }
+
+          fetch_jobs "${host_run_file}" "${host_jobs_file}"
+          fetch_jobs "${device_run_file}" "${device_jobs_file}"
+
+          python3 - \
+            "${host_run_file}" \
+            "${host_jobs_file}" \
+            "${device_run_file}" \
+            "${device_jobs_file}" \
+            "${body_file}" <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          host_run_path = Path(sys.argv[1])
+          host_jobs_path = Path(sys.argv[2])
+          device_run_path = Path(sys.argv[3])
+          device_jobs_path = Path(sys.argv[4])
+          body_path = Path(sys.argv[5])
+
+          terminal_failures = {
+              "action_required",
+              "cancelled",
+              "failure",
+              "startup_failure",
+              "timed_out",
+          }
+
+          def load_json(path: Path) -> dict:
+              return json.loads(path.read_text(encoding="utf-8"))
+
+          def normalize_workflow(
+              key: str,
+              run_payload: dict,
+              jobs_payload: dict,
+          ) -> dict:
+              raw_runs = run_payload.get("workflow_runs", [])
+              if not raw_runs:
+                  return {
+                      "key": key,
+                      "present": False,
+                      "status": "missing",
+                      "conclusion": None,
+                      "failed_steps": [],
+                      "jobs": [],
+                  }
+
+              raw_run = raw_runs[0]
+              jobs = []
+              failed_steps = []
+              for raw_job in jobs_payload.get("jobs", []):
+                  steps = []
+                  for raw_step in raw_job.get("steps", []):
+                      step = {
+                          "number": raw_step.get("number"),
+                          "name": raw_step.get("name"),
+                          "status": raw_step.get("status"),
+                          "conclusion": raw_step.get("conclusion"),
+                          "started_at": raw_step.get("started_at"),
+                          "completed_at": raw_step.get("completed_at"),
+                      }
+                      steps.append(step)
+                      if step["conclusion"] in terminal_failures:
+                          failed_steps.append(
+                              {
+                                  "job": raw_job.get("name"),
+                                  "job_id": raw_job.get("id"),
+                                  "job_url": raw_job.get("html_url"),
+                                  "step": step["name"],
+                                  "step_number": step["number"],
+                                  "conclusion": step["conclusion"],
+                              }
+                          )
+
+                  jobs.append(
+                      {
+                          "id": raw_job.get("id"),
+                          "url": raw_job.get("html_url"),
+                          "name": raw_job.get("name"),
+                          "status": raw_job.get("status"),
+                          "conclusion": raw_job.get("conclusion"),
+                          "runner_name": raw_job.get("runner_name"),
+                          "runner_group_name": raw_job.get("runner_group_name"),
+                          "started_at": raw_job.get("started_at"),
+                          "completed_at": raw_job.get("completed_at"),
+                          "steps": steps,
+                      }
+                  )
+
+              return {
+                  "key": key,
+                  "present": True,
+                  "workflow": raw_run.get("name"),
+                  "workflow_id": raw_run.get("workflow_id"),
+                  "run_id": raw_run.get("id"),
+                  "run_number": raw_run.get("run_number"),
+                  "run_attempt": raw_run.get("run_attempt"),
+                  "run_url": raw_run.get("html_url"),
+                  "status": raw_run.get("status"),
+                  "conclusion": raw_run.get("conclusion"),
+                  "event": raw_run.get("event"),
+                  "head_branch": raw_run.get("head_branch"),
+                  "head_sha": raw_run.get("head_sha"),
+                  "created_at": raw_run.get("created_at"),
+                  "updated_at": raw_run.get("updated_at"),
+                  "failed_steps": failed_steps,
+                  "jobs": jobs,
+              }
+
+          host = normalize_workflow(
+              "host",
+              load_json(host_run_path),
+              load_json(host_jobs_path),
+          )
+          device = normalize_workflow(
+              "device",
+              load_json(device_run_path),
+              load_json(device_jobs_path),
+          )
+
+          same_sha = bool(
+              host.get("head_sha")
+              and device.get("head_sha")
+              and host["head_sha"] == device["head_sha"]
+          )
+
+          conclusions = {host.get("conclusion"), device.get("conclusion")}
+          statuses = {host.get("status"), device.get("status")}
+          if conclusions & terminal_failures:
+              overall = "failure"
+          elif not host["present"] or not device["present"]:
+              overall = "pending"
+          elif not same_sha:
+              overall = "sha_mismatch"
+          elif statuses == {"completed"} and conclusions == {"success"}:
+              overall = "success"
+          else:
+              overall = "pending"
+
+          published_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+          payload = {
+              "schema_version": 1,
+              "branch": os.environ["HEAD_BRANCH"],
+              "trigger": {
+                  "workflow": os.environ["TRIGGER_WORKFLOW_NAME"],
+                  "run_id": int(os.environ["TRIGGER_RUN_ID"]),
+                  "run_attempt": int(os.environ["TRIGGER_RUN_ATTEMPT"]),
+                  "run_url": os.environ["TRIGGER_RUN_URL"],
+                  "status": os.environ["TRIGGER_RUN_STATUS"],
+                  "conclusion": os.environ["TRIGGER_RUN_CONCLUSION"] or None,
+                  "head_sha": os.environ["HEAD_SHA"],
+              },
+              "overall": overall,
+              "same_sha": same_sha,
+              "published_at": published_at,
+              "host": host,
+              "device": device,
+          }
+
+          def run_line(label: str, workflow: dict) -> str:
+              if not workflow["present"]:
+                  return f"- **{label}:** no push run found for this branch"
+              conclusion = workflow.get("conclusion") or "pending"
+              return (
+                  f'- **{label}:** `{workflow.get("status")}` / `{conclusion}` — '
+                  f'[run {workflow.get("run_id")}]({workflow.get("run_url")}) — '
+                  f'`{workflow.get("head_sha")}`'
+              )
+
+          failures = host["failed_steps"] + device["failed_steps"]
+          failed_summary = "None"
+          if failures:
+              failed_summary = ", ".join(
+                  f'{item["job"]} / {item["step"]} ({item["conclusion"]})'
+                  for item in failures
+              )
+
+          body = "\n".join(
+              [
+                  "<!-- maintained by publish-ci-status.yml -->",
+                  "# Latest ESP32 Bluetooth Audio CI Status",
+                  "",
+                  f'- **Branch:** `{payload["branch"]}`',
+                  f'- **Overall:** `{payload["overall"]}`',
+                  f'- **Host/device same SHA:** `{str(payload["same_sha"]).lower()}`',
+                  run_line("Host tests", host),
+                  run_line("Device compile-only", device),
+                  f'- **Failed steps:** {failed_summary}',
+                  f'- **Published:** `{payload["published_at"]}`',
+                  "",
+                  "## Machine-readable status",
+                  "",
+                  "```json",
+                  json.dumps(payload, indent=2, sort_keys=True),
+                  "```",
+                  "",
+                  "This issue is overwritten whenever the latest push-triggered host or device run changes state; it is not a historical log.",
+              ]
+          )
+          body_path.write_text(body + "\n", encoding="utf-8")
+          PY
+
+          python3 - "${body_file}" "${patch_file}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          body = Path(sys.argv[1]).read_text(encoding="utf-8")
+          patch = {
+              "title": "CI Status: Host + Device",
+              "body": body,
+              "state": "open",
+          }
+          Path(sys.argv[2]).write_text(json.dumps(patch), encoding="utf-8")
+          PY
+
+          gh api \
+            --method PATCH \
+            "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
+            --input "${patch_file}" \
+            >/dev/null
+
+          printf 'Published combined host/device CI status for branch %s to issue #%s.\n' \
+            "${HEAD_BRANCH}" "${ISSUE_NUMBER}"
