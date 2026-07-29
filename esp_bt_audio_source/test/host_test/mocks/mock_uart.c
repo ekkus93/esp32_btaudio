@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <stdint.h>  // Add this include for uint8_t and uint32_t types
+#include <stdint.h>
 
 // Mock UART driver for testing
 
@@ -18,7 +18,7 @@ typedef enum {
     UART_NUM_MAX,
 } uart_port_t;
 
-// Status codes 
+// Status codes
 typedef enum {
     ESP_OK = 0,
     ESP_FAIL = -1,
@@ -28,22 +28,24 @@ typedef enum {
 } esp_err_t;
 
 // Define FreeRTOS tick type for mocking
-typedef uint32_t TickType_t;  // Add this definition for TickType_t
+typedef uint32_t TickType_t;
 
 // Mock state for each UART port
 static struct {
     bool initialized;
     int baud_rate;
-    char rx_buffer[MOCK_UART_BUFFER_SIZE]; // Data received by UART (to be read by application)
-    size_t rx_write_pos;  // Position to write to
-    size_t rx_read_pos;   // Position to read from
-    size_t rx_available;  // Bytes available to read
-    
-    char tx_buffer[MOCK_UART_BUFFER_SIZE]; // Data transmitted via UART (written by application)
+    char rx_buffer[MOCK_UART_BUFFER_SIZE];
+    size_t rx_write_pos;
+    size_t rx_read_pos;
+    size_t rx_available;
+
+    char tx_buffer[MOCK_UART_BUFFER_SIZE];
     size_t tx_pos;
+    bool force_write_result;
+    int forced_write_result;
 } uart_mock_state[MOCK_UART_MAX_PORTS] = {
-    { false, 0, {0}, 0, 0, 0, {0}, 0 },
-    { false, 0, {0}, 0, 0, 0, {0}, 0 }
+    { false, 0, {0}, 0, 0, 0, {0}, 0, false, 0 },
+    { false, 0, {0}, 0, 0, 0, {0}, 0, false, 0 }
 };
 
 // Initialize a specific mock UART port
@@ -76,42 +78,50 @@ void mock_uart_reset_tx(void) {
     mock_uart_reset_tx_port(UART_NUM_1);
 }
 
+void mock_uart_force_write_result_port(int uart_num, int result) {
+    if (uart_num < 0 || uart_num >= MOCK_UART_MAX_PORTS) {
+        return;
+    }
+    uart_mock_state[uart_num].force_write_result = true;
+    uart_mock_state[uart_num].forced_write_result = result;
+}
+
 // Inject data into a specific port's RX buffer
 void mock_uart_inject_rx_data_port(int port, const char* data, size_t len) {
     if (port < 0 || port >= MOCK_UART_MAX_PORTS) {
         return;
     }
     uart_port_t uart_num = (uart_port_t)port;
-    
+
     if (!uart_mock_state[uart_num].initialized) {
         printf("Error: UART %d not initialized\n", uart_num);
         return;
     }
-    
+
     if (uart_mock_state[uart_num].rx_available + len > MOCK_UART_BUFFER_SIZE) {
         printf("Error: Mock UART RX buffer overflow\n");
         return;
     }
-    
+
     // If buffer wrapped around, reorganize it
     if (uart_mock_state[uart_num].rx_write_pos + len > MOCK_UART_BUFFER_SIZE &&
         uart_mock_state[uart_num].rx_available > 0) {
-        
+
         // Move existing data to beginning of buffer
-        memmove(uart_mock_state[uart_num].rx_buffer, 
+        memmove(uart_mock_state[uart_num].rx_buffer,
                 uart_mock_state[uart_num].rx_buffer + uart_mock_state[uart_num].rx_read_pos,
                 uart_mock_state[uart_num].rx_available);
-                
+
         uart_mock_state[uart_num].rx_write_pos = uart_mock_state[uart_num].rx_available;
         uart_mock_state[uart_num].rx_read_pos = 0;
     }
-    
+
     // Copy new data to buffer
     memcpy(uart_mock_state[uart_num].rx_buffer + uart_mock_state[uart_num].rx_write_pos, data, len);
     uart_mock_state[uart_num].rx_write_pos += len;
     uart_mock_state[uart_num].rx_available += len;
-    
-    printf("Mock UART %d: Injected %zu bytes, available: %zu\n", 
+
+    printf("Mock UART %d: Injected %zu bytes, available: %zu\n",
            uart_num, len, uart_mock_state[uart_num].rx_available);
 }
 
@@ -135,7 +145,7 @@ const char* mock_uart_get_tx_data(void) {
 
 // Driver implementation
 
-esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size, 
+esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_buffer_size,
                              int queue_size, void* uart_queue, int intr_alloc_flags) {
     (void)rx_buffer_size;
     (void)tx_buffer_size;
@@ -146,14 +156,14 @@ esp_err_t uart_driver_install(uart_port_t uart_num, int rx_buffer_size, int tx_b
     if (uart_num >= UART_NUM_MAX) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     if (uart_mock_state[uart_num].initialized) {
-        return ESP_ERR_INVALID_STATE; // Already initialized
+        return ESP_ERR_INVALID_STATE;
     }
-    
+
     memset(&uart_mock_state[uart_num], 0, sizeof(uart_mock_state[0]));
     uart_mock_state[uart_num].initialized = true;
-    
+
     printf("UART driver installed for port %d\n", uart_num);
     return ESP_OK;
 }
@@ -162,13 +172,13 @@ esp_err_t uart_driver_delete(uart_port_t uart_num) {
     if (uart_num >= UART_NUM_MAX) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     if (!uart_mock_state[uart_num].initialized) {
-        return ESP_ERR_INVALID_STATE; // Not initialized
+        return ESP_ERR_INVALID_STATE;
     }
-    
+
     uart_mock_state[uart_num].initialized = false;
-    
+
     printf("UART driver uninstalled for port %d\n", uart_num);
     return ESP_OK;
 }
@@ -179,63 +189,61 @@ int uart_read_bytes(uart_port_t uart_num, uint8_t *buf, uint32_t length, TickTyp
     if (uart_num >= UART_NUM_MAX || buf == NULL) {
         return -1;
     }
-    
+
     if (!uart_mock_state[uart_num].initialized) {
         return -1;
     }
-    
+
     if (uart_mock_state[uart_num].rx_available == 0) {
-        return 0; // No data
+        return 0;
     }
-    
-    size_t bytes_to_read = (uart_mock_state[uart_num].rx_available < length) ? 
+
+    size_t bytes_to_read = (uart_mock_state[uart_num].rx_available < length) ?
                            uart_mock_state[uart_num].rx_available : length;
-    
-    // Copy data from the buffer
+
     memcpy(buf, uart_mock_state[uart_num].rx_buffer + uart_mock_state[uart_num].rx_read_pos, bytes_to_read);
-    
-    // Update read position and available bytes
+
     uart_mock_state[uart_num].rx_read_pos += bytes_to_read;
     uart_mock_state[uart_num].rx_available -= bytes_to_read;
-    
-    // If all data has been read, reset positions
+
     if (uart_mock_state[uart_num].rx_available == 0) {
         uart_mock_state[uart_num].rx_read_pos = 0;
         uart_mock_state[uart_num].rx_write_pos = 0;
     }
-    
-    return bytes_to_read;
+
+    return (int)bytes_to_read;
 }
 
 int uart_write_bytes(uart_port_t uart_num, const char* src, size_t size) {
     if (uart_num >= UART_NUM_MAX || src == NULL) {
         return -1;
     }
-    
+
     if (!uart_mock_state[uart_num].initialized) {
         return -1;
     }
-    
+
+    if (uart_mock_state[uart_num].force_write_result) {
+        return uart_mock_state[uart_num].forced_write_result;
+    }
+
     if (uart_mock_state[uart_num].tx_pos + size > MOCK_UART_BUFFER_SIZE) {
         printf("Warning: Mock UART TX buffer overflow, truncating\n");
         size = MOCK_UART_BUFFER_SIZE - uart_mock_state[uart_num].tx_pos;
     }
-    
+
     if (size > 0) {
         memcpy(uart_mock_state[uart_num].tx_buffer + uart_mock_state[uart_num].tx_pos, src, size);
         uart_mock_state[uart_num].tx_pos += size;
     }
 
-    /* Always keep the TX buffer null-terminated so callers that treat
-     * it as a C-string (strstr, printf, etc.) see defined behavior. If
-     * we've filled the buffer exactly, ensure the last byte is '\0'. */
     if (uart_mock_state[uart_num].tx_pos < MOCK_UART_BUFFER_SIZE) {
         uart_mock_state[uart_num].tx_buffer[uart_mock_state[uart_num].tx_pos] = '\0';
     } else if (MOCK_UART_BUFFER_SIZE > 0) {
         uart_mock_state[uart_num].tx_buffer[MOCK_UART_BUFFER_SIZE - 1] = '\0';
     }
 
-    return size;
+    return (int)size;
 }
 
 // ESP-IDF API: Check if UART driver is installed
