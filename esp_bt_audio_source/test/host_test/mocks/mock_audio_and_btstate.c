@@ -37,6 +37,7 @@ static esp_err_t s_hfp_status_result = ESP_OK;
 static esp_err_t s_hfp_profile_result = ESP_ERR_NOT_FOUND;
 static esp_err_t s_hfp_audio_result = ESP_ERR_NOT_FOUND;
 static uint32_t s_profile_created_generation;
+static unsigned s_hfp_status_calls;
 static unsigned s_hfp_profile_calls;
 static unsigned s_hfp_audio_calls;
 static uint32_t s_last_hfp_profile_generation;
@@ -64,6 +65,7 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_hfp_profile_result = ESP_ERR_NOT_FOUND;
     s_hfp_audio_result = ESP_ERR_NOT_FOUND;
     s_profile_created_generation = 0U;
+    s_hfp_status_calls = 0U;
     s_hfp_profile_calls = 0U;
     s_hfp_audio_calls = 0U;
     s_last_hfp_profile_generation = 0U;
@@ -94,13 +96,17 @@ void bt_manager_test_set_hfp_policy_status(bool peer_valid,
 }
 
 void bt_manager_test_set_hfp_policy_results(esp_err_t profile_result,
-                                            esp_err_t audio_result) {
+                                             esp_err_t audio_result) {
     s_hfp_profile_result = profile_result;
     s_hfp_audio_result = audio_result;
 }
 
 void bt_manager_test_set_hfp_profile_created_generation(uint32_t generation) {
     s_profile_created_generation = generation;
+}
+
+unsigned bt_manager_test_get_hfp_status_calls(void) {
+    return s_hfp_status_calls;
 }
 
 unsigned bt_manager_test_get_hfp_profile_calls(void) {
@@ -216,6 +222,7 @@ cmd_status_t cmd_handle_hfp(const cmd_context_t *ctx) {
 
 __attribute__((weak)) esp_err_t bt_manager_hfp_get_status(
     bt_hfp_manager_status_t *out) {
+    s_hfp_status_calls++;
     if (out == NULL) return ESP_ERR_INVALID_ARG;
     if (s_hfp_status_result != ESP_OK) return s_hfp_status_result;
     *out = s_hfp_status;
@@ -270,6 +277,15 @@ __attribute__((weak)) esp_err_t bt_duplex_record_stale_operation_event(
                 sizeof(s_last_stale_peer) - 1U);
     }
     return ESP_OK;
+}
+
+/* Focused manager lifecycle tests link production bt_manager.c without the HFP
+ * lifecycle and duplex-state objects. Weak no-op stubs model the already-stopped
+ * lower stack; targets that link the real implementations override them. */
+__attribute__((weak)) void bt_hfp_ag_force_cleanup_after_stack_shutdown(void) {
+}
+
+__attribute__((weak)) void bt_duplex_state_deinit(void) {
 }
 
 /* Capture forwarded callbacks from bt_manager when host builds supply them. */
