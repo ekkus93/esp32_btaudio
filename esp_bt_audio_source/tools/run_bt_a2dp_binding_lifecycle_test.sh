@@ -28,7 +28,8 @@ rm -rf "${build_dir}"
     for binary in \
         test_bt_ctx_lock \
         test_bt_manager_connection_pairing_events \
-        test_a2dp_binding_diagnostics_exact
+        test_a2dp_binding_diagnostics_exact \
+        test_a2dp_cross_session_exact
     do
         echo "Running ${binary} with ASan/UBSan"
         ASAN_OPTIONS="detect_leaks=1:halt_on_error=1:strict_string_checks=1" \
