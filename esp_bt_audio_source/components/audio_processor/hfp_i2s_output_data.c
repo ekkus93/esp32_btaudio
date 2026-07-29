@@ -72,15 +72,15 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
     const size_t requested_bytes =
         s_output.config.writer_samples * sizeof(s_output.writer_pcm[0]);
 
-    /* Acquire the state lock before consuming the ring. If accounting cannot
-     * be made authoritative, do not consume PCM and do not manufacture
-     * uncounted silence. The ring remains SPSC-safe because the producer never
-     * takes this mutex. */
-    esp_err_t accounting_err = hfp_i2s_output_lock();
-    if (accounting_err != ESP_OK) {
-        HFP_I2S_LOGE("writer accounting lock failed: error=%d",
-                     (int)accounting_err);
-        return accounting_err;
+    /* The producer callback never takes this mutex. Keep one bounded writer
+     * critical section from ring consumption through the bounded I2S write and
+     * all resulting counters. This prevents consumed PCM, inserted silence, or
+     * write loss from escaping authoritative accounting and avoids an unsafe
+     * unlock/re-lock window after data has already been consumed. */
+    esp_err_t err = hfp_i2s_output_lock();
+    if (err != ESP_OK) {
+        HFP_I2S_LOGE("writer accounting lock failed: error=%d", (int)err);
+        return err;
     }
 
     const size_t read_bytes = hfp_pcm_ring_read(
@@ -106,27 +106,10 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
         s_output.degraded = false;
     }
 
-    accounting_err = hfp_i2s_output_unlock(ESP_OK);
-    if (accounting_err != ESP_OK) {
-        /* The buffer has already been consumed. Still submit it to I2S so an
-         * unlock error cannot silently convert consumed PCM into lost audio.
-         * The exact unlock error is returned after write accounting succeeds. */
-        HFP_I2S_LOGE("writer accounting unlock failed: error=%d",
-                     (int)accounting_err);
-    }
-
     size_t bytes_written = 0U;
     esp_err_t write_err = hfp_i2s_output_ops_channel_write(
         s_output.channel, s_output.writer_pcm, requested_bytes,
         &bytes_written, s_output.config.write_timeout_ms);
-
-    esp_err_t lock_err = hfp_i2s_output_lock();
-    if (lock_err != ESP_OK) {
-        HFP_I2S_LOGE("writer result lock failed: error=%d written=%u expected=%u",
-                     (int)lock_err, (unsigned)bytes_written,
-                     (unsigned)requested_bytes);
-        return write_err != ESP_OK ? write_err : lock_err;
-    }
 
     s_output.write_calls++;
     if (write_err != ESP_OK || bytes_written != requested_bytes) {
@@ -135,7 +118,6 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
         size_t confirmed_written = bytes_written < requested_bytes
             ? bytes_written : requested_bytes;
         uint64_t lost_bytes = (uint64_t)(requested_bytes - confirmed_written);
-        bool terminal_fault = false;
         s_output.write_failures++;
         if (write_err == ESP_OK && bytes_written != requested_bytes) {
             s_output.short_writes++;
@@ -143,43 +125,31 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
         s_output.write_lost_bytes += lost_bytes;
         s_output.consecutive_write_failures++;
         hfp_i2s_output_set_error_locked(write_error);
+
         if (s_output.consecutive_write_failures >=
             s_output.config.max_consecutive_write_failures) {
             s_output.state = HFP_I2S_OUTPUT_FAULTED;
-            terminal_fault = true;
             HFP_I2S_LOGE(
                 "writer faulted after %" PRIu32
                 " consecutive failures: error=%d written=%u expected=%u lost=%" PRIu64,
                 s_output.consecutive_write_failures,
                 (int)s_output.last_error, (unsigned)bytes_written,
                 (unsigned)requested_bytes, lost_bytes);
-        }
-        esp_err_t unlock_error = hfp_i2s_output_unlock(write_error);
-        if (!terminal_fault) return unlock_error;
 
-        esp_err_t disable_error =
-            hfp_i2s_output_ops_channel_disable(s_output.channel);
-        lock_err = hfp_i2s_output_lock();
-        if (lock_err != ESP_OK) {
-            HFP_I2S_LOGE("writer fault-result lock failed: error=%d",
-                         (int)lock_err);
-            return disable_error != ESP_OK ? disable_error : lock_err;
+            esp_err_t disable_err =
+                hfp_i2s_output_ops_channel_disable(s_output.channel);
+            if (disable_err == ESP_OK) {
+                s_output.channel_enabled = false;
+            } else {
+                hfp_i2s_output_enter_quarantine_locked(disable_err);
+                return hfp_i2s_output_unlock(disable_err);
+            }
         }
-        if (disable_error == ESP_OK) {
-            s_output.channel_enabled = false;
-        } else {
-            hfp_i2s_output_enter_quarantine_locked(disable_error);
-        }
-        esp_err_t disable_unlock_error = hfp_i2s_output_unlock(ESP_OK);
-        if (disable_error != ESP_OK) return disable_error;
-        if (disable_unlock_error != ESP_OK) return disable_unlock_error;
-        return unlock_error;
+        return hfp_i2s_output_unlock(write_error);
     }
 
     s_output.consecutive_write_failures = 0U;
-    esp_err_t result_unlock_error = hfp_i2s_output_unlock(ESP_OK);
-    if (result_unlock_error != ESP_OK) return result_unlock_error;
-    return accounting_err;
+    return hfp_i2s_output_unlock(ESP_OK);
 }
 
 esp_err_t hfp_i2s_output_get_snapshot(hfp_i2s_output_snapshot_t *out)
