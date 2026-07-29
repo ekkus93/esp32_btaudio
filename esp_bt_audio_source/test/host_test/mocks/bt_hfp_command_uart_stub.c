@@ -12,6 +12,8 @@ typedef struct {
     size_t rx_length;
     char tx[HFP_COMMAND_UART_BUFFER_SIZE];
     size_t tx_length;
+    bool force_write_result;
+    int forced_write_result;
 } command_uart_state_t;
 
 static command_uart_state_t s_uart[HFP_COMMAND_UART_PORTS];
@@ -44,6 +46,13 @@ void mock_uart_reset_tx_port(int uart_num)
 void mock_uart_reset_tx(void)
 {
     mock_uart_reset_tx_port(UART_NUM_1);
+}
+
+void mock_uart_force_write_result_port(int uart_num, int result)
+{
+    if (!valid_port(uart_num)) return;
+    s_uart[uart_num].force_write_result = true;
+    s_uart[uart_num].forced_write_result = result;
 }
 
 void mock_uart_inject_rx_data_port(int port, const char *data, size_t len)
@@ -111,6 +120,9 @@ int uart_write_bytes(uart_port_t uart_num, const char *src, size_t size)
 {
     if (!valid_port((int)uart_num) || src == NULL ||
         !s_uart[uart_num].initialized) return -1;
+    if (s_uart[uart_num].force_write_result) {
+        return s_uart[uart_num].forced_write_result;
+    }
     size_t available = sizeof(s_uart[uart_num].tx) -
                        s_uart[uart_num].tx_length - 1U;
     if (size > available) size = available;
