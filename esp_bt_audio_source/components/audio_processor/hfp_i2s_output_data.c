@@ -68,49 +68,76 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
         s_output.config.writer_samples == 0U) {
         return ESP_ERR_INVALID_STATE;
     }
-    size_t requested_bytes =
+
+    const size_t requested_bytes =
         s_output.config.writer_samples * sizeof(s_output.writer_pcm[0]);
-    size_t read_bytes = hfp_pcm_ring_read(
+
+    /* Acquire the state lock before consuming the ring. If accounting cannot
+     * be made authoritative, do not consume PCM and do not manufacture
+     * uncounted silence. The ring remains SPSC-safe because the producer never
+     * takes this mutex. */
+    esp_err_t accounting_err = hfp_i2s_output_lock();
+    if (accounting_err != ESP_OK) {
+        HFP_I2S_LOGE("writer accounting lock failed: error=%d",
+                     (int)accounting_err);
+        return accounting_err;
+    }
+
+    const size_t read_bytes = hfp_pcm_ring_read(
         &s_output.ring, s_output.writer_pcm, requested_bytes,
         atomic_load_explicit(&s_output.generation, memory_order_acquire));
     if (read_bytes < requested_bytes) {
         memset((uint8_t *)s_output.writer_pcm + read_bytes, 0,
                requested_bytes - read_bytes);
-        if (hfp_i2s_output_lock() == ESP_OK) {
-            s_output.silence_intervals++;
-            s_output.silence_samples +=
-                (requested_bytes - read_bytes) / sizeof(int16_t);
-            s_output.consecutive_underflows++;
-            if (s_output.consecutive_underflows ==
-                s_output.config.underflow_degraded_threshold) {
-                s_output.degraded = true;
-                s_output.degraded_events++;
-                s_output.last_error = ESP_ERR_TIMEOUT;
-                HFP_I2S_LOGW("sustained underflow: intervals=%" PRIu32,
-                             s_output.consecutive_underflows);
-            }
-            (void)hfp_i2s_output_unlock(ESP_OK);
+        s_output.silence_intervals++;
+        s_output.silence_samples +=
+            (requested_bytes - read_bytes) / sizeof(int16_t);
+        s_output.consecutive_underflows++;
+        if (s_output.consecutive_underflows ==
+            s_output.config.underflow_degraded_threshold) {
+            s_output.degraded = true;
+            s_output.degraded_events++;
+            s_output.last_error = ESP_ERR_TIMEOUT;
+            HFP_I2S_LOGW("sustained underflow: intervals=%" PRIu32,
+                         s_output.consecutive_underflows);
         }
-    } else if (hfp_i2s_output_lock() == ESP_OK) {
+    } else {
         s_output.consecutive_underflows = 0U;
         s_output.degraded = false;
-        (void)hfp_i2s_output_unlock(ESP_OK);
+    }
+
+    accounting_err = hfp_i2s_output_unlock(ESP_OK);
+    if (accounting_err != ESP_OK) {
+        /* The buffer has already been consumed. Still submit it to I2S so an
+         * unlock error cannot silently convert consumed PCM into lost audio.
+         * The exact unlock error is returned after write accounting succeeds. */
+        HFP_I2S_LOGE("writer accounting unlock failed: error=%d",
+                     (int)accounting_err);
     }
 
     size_t bytes_written = 0U;
-    esp_err_t err = hfp_i2s_output_ops_channel_write(
+    esp_err_t write_err = hfp_i2s_output_ops_channel_write(
         s_output.channel, s_output.writer_pcm, requested_bytes,
         &bytes_written, s_output.config.write_timeout_ms);
-    if (hfp_i2s_output_lock() != ESP_OK) return ESP_FAIL;
+
+    esp_err_t lock_err = hfp_i2s_output_lock();
+    if (lock_err != ESP_OK) {
+        HFP_I2S_LOGE("writer result lock failed: error=%d written=%u expected=%u",
+                     (int)lock_err, (unsigned)bytes_written,
+                     (unsigned)requested_bytes);
+        return write_err != ESP_OK ? write_err : lock_err;
+    }
+
     s_output.write_calls++;
-    if (err != ESP_OK || bytes_written != requested_bytes) {
-        esp_err_t write_error = err != ESP_OK ? err : ESP_ERR_INVALID_SIZE;
+    if (write_err != ESP_OK || bytes_written != requested_bytes) {
+        esp_err_t write_error =
+            write_err != ESP_OK ? write_err : ESP_ERR_INVALID_SIZE;
         size_t confirmed_written = bytes_written < requested_bytes
             ? bytes_written : requested_bytes;
         uint64_t lost_bytes = (uint64_t)(requested_bytes - confirmed_written);
         bool terminal_fault = false;
         s_output.write_failures++;
-        if (err == ESP_OK && bytes_written != requested_bytes) {
+        if (write_err == ESP_OK && bytes_written != requested_bytes) {
             s_output.short_writes++;
         }
         s_output.write_lost_bytes += lost_bytes;
@@ -132,17 +159,27 @@ esp_err_t hfp_i2s_output_writer_iteration(void)
 
         esp_err_t disable_error =
             hfp_i2s_output_ops_channel_disable(s_output.channel);
-        if (hfp_i2s_output_lock() != ESP_OK) return ESP_FAIL;
+        lock_err = hfp_i2s_output_lock();
+        if (lock_err != ESP_OK) {
+            HFP_I2S_LOGE("writer fault-result lock failed: error=%d",
+                         (int)lock_err);
+            return disable_error != ESP_OK ? disable_error : lock_err;
+        }
         if (disable_error == ESP_OK) {
             s_output.channel_enabled = false;
         } else {
             hfp_i2s_output_enter_quarantine_locked(disable_error);
         }
-        (void)hfp_i2s_output_unlock(ESP_OK);
-        return disable_error != ESP_OK ? disable_error : unlock_error;
+        esp_err_t disable_unlock_error = hfp_i2s_output_unlock(ESP_OK);
+        if (disable_error != ESP_OK) return disable_error;
+        if (disable_unlock_error != ESP_OK) return disable_unlock_error;
+        return unlock_error;
     }
+
     s_output.consecutive_write_failures = 0U;
-    return hfp_i2s_output_unlock(ESP_OK);
+    esp_err_t result_unlock_error = hfp_i2s_output_unlock(ESP_OK);
+    if (result_unlock_error != ESP_OK) return result_unlock_error;
+    return accounting_err;
 }
 
 esp_err_t hfp_i2s_output_get_snapshot(hfp_i2s_output_snapshot_t *out)
