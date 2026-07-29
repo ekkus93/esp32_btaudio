@@ -5,6 +5,11 @@
  * target declaration. */
 #include "test_bt_a2dp_binding_cases.c"
 
+/* Supersede the pre-FIX1 late-STOP assertion in test_bluetooth_cases.c. That
+ * legacy body expected a callback after authoritative disconnect, which is now
+ * intentionally forbidden. Keep the replacement in a small reviewable file. */
+#include "test_bt_a2dp_late_terminal_contract.c"
+
 // Mock variables
 bool bt_connected_callback_called = false;
 bool bt_disconnected_callback_called = false;
@@ -86,7 +91,7 @@ int main(void) {
     RUN_TEST(test_bt_gap_success_emits_success_and_clears_pending);
     RUN_TEST(test_bt_gap_events_emit_command_events);
     RUN_TEST(test_bt_autostart_resets_between_sessions);
-    RUN_TEST(test_bt_a2dp_disconnect_and_stop_clear_playing);
+    RUN_TEST(test_bt_a2dp_disconnect_then_late_stop_is_suppressed);
     RUN_TEST(test_bt_disconnect_failure_then_success);
     RUN_TEST(test_bt_start_stop_failure_recovery);
     RUN_TEST(test_bt_init_survives_nvs_failures);
