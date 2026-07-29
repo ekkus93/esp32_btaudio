@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -14,6 +15,12 @@
 
 bt_duplex_context_t g_bt_duplex_ctx;
 
+/* These diagnostics must remain writable when the authoritative state mutex is
+ * unavailable. They are process-lifetime, lock-free 32-bit atomics on ESP32;
+ * the public API widens the saturating count to uint64_t. */
+static atomic_uint s_health_report_failures_lifetime = ATOMIC_VAR_INIT(0U);
+static atomic_int s_last_health_report_error_lifetime = ATOMIC_VAR_INIT(ESP_OK);
+
 static uint64_t next_health_event_count_locked(void)
 {
     if (g_bt_duplex_ctx.health_event_count != UINT64_MAX) {
@@ -22,15 +29,26 @@ static uint64_t next_health_event_count_locked(void)
     return g_bt_duplex_ctx.health_event_count;
 }
 
-static bool record_health_report_failure_locked(esp_err_t error)
+static bool record_health_report_failure(esp_err_t error, bool update_last)
 {
     if (error == ESP_OK) return false;
-    const bool first_failure =
-        g_bt_duplex_ctx.health_report_failures == 0U;
-    if (g_bt_duplex_ctx.health_report_failures != UINT64_MAX) {
-        g_bt_duplex_ctx.health_report_failures++;
+
+    unsigned current = atomic_load_explicit(
+        &s_health_report_failures_lifetime, memory_order_relaxed);
+    bool first_failure = false;
+    while (current != UINT_MAX) {
+        const unsigned next = current + 1U;
+        if (atomic_compare_exchange_weak_explicit(
+                &s_health_report_failures_lifetime, &current, next,
+                memory_order_relaxed, memory_order_relaxed)) {
+            first_failure = current == 0U;
+            break;
+        }
     }
-    g_bt_duplex_ctx.last_health_report_error = error;
+    if (update_last) {
+        atomic_store_explicit(&s_last_health_report_error_lifetime, error,
+                              memory_order_relaxed);
+    }
     return first_failure;
 }
 
@@ -49,11 +67,7 @@ static void log_health_report_failure_once(bool first_failure,
 
 static esp_err_t reject_health_report_before_lock(esp_err_t error)
 {
-    bool first_failure = false;
-    if (bt_duplex_lock() == ESP_OK) {
-        first_failure = record_health_report_failure_locked(error);
-        (void)bt_duplex_unlock_result(ESP_OK);
-    }
+    const bool first_failure = record_health_report_failure(error, true);
     log_health_report_failure_once(first_failure, error);
     return error;
 }
@@ -195,7 +209,6 @@ esp_err_t bt_duplex_state_init(void)
     memset(&g_bt_duplex_ctx, 0, sizeof(g_bt_duplex_ctx));
     g_bt_duplex_ctx.lock = lock;
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
-    g_bt_duplex_ctx.last_health_report_error = ESP_OK;
 #ifdef UNIT_TEST
     g_bt_duplex_ctx.test_health_report_result = ESP_OK;
 #endif
@@ -287,11 +300,11 @@ esp_err_t bt_duplex_get_health_report_diagnostics(
     if (failure_count_out == NULL || last_error_out == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = bt_duplex_lock();
-    if (err != ESP_OK) return err;
-    *failure_count_out = g_bt_duplex_ctx.health_report_failures;
-    *last_error_out = g_bt_duplex_ctx.last_health_report_error;
-    return bt_duplex_unlock_result(ESP_OK);
+    *failure_count_out = (uint64_t)atomic_load_explicit(
+        &s_health_report_failures_lifetime, memory_order_relaxed);
+    *last_error_out = (esp_err_t)atomic_load_explicit(
+        &s_last_health_report_error_lifetime, memory_order_relaxed);
+    return ESP_OK;
 }
 
 #define DEFINE_ENUM_SETTER(name, field, type, count)                         \
@@ -326,26 +339,29 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
         return reject_health_report_before_lock(ESP_ERR_INVALID_SIZE);
     }
 
-    esp_err_t err = bt_duplex_lock();
-    if (err != ESP_OK) return err;
+    esp_err_t operation_err = bt_duplex_lock();
+    if (operation_err != ESP_OK) {
+        const bool first = record_health_report_failure(operation_err, true);
+        log_health_report_failure_once(first, operation_err);
+        return operation_err;
+    }
 #ifdef UNIT_TEST
     if (g_bt_duplex_ctx.test_health_report_result != ESP_OK) {
-        err = g_bt_duplex_ctx.test_health_report_result;
+        operation_err = g_bt_duplex_ctx.test_health_report_result;
     } else
 #endif
     {
-        err = bt_duplex_validate_event_locked(generation, peer_mac);
+        operation_err = bt_duplex_validate_event_locked(generation, peer_mac);
     }
-    if (err == ESP_OK &&
+    if (operation_err == ESP_OK &&
         g_bt_duplex_ctx.snapshot.health >= BT_AUDIO_HEALTH_FAULTED &&
         health < g_bt_duplex_ctx.snapshot.health) {
-        err = bt_duplex_illegal_locked();
+        operation_err = bt_duplex_illegal_locked();
     }
 
     bool changed = false;
-    bool first_report_failure = false;
     uint64_t count = 0U;
-    if (err == ESP_OK) {
+    if (operation_err == ESP_OK) {
         changed = g_bt_duplex_ctx.snapshot.health != health;
         g_bt_duplex_ctx.snapshot.health = health;
         g_bt_duplex_ctx.snapshot.last_error = error;
@@ -354,13 +370,29 @@ esp_err_t bt_duplex_set_health(uint32_t generation,
         memcpy(g_bt_duplex_ctx.snapshot.last_error_text, error_text, n);
         g_bt_duplex_ctx.snapshot.last_error_text[n] = '\0';
         if (changed) count = next_health_event_count_locked();
-    } else {
-        first_report_failure = record_health_report_failure_locked(err);
     }
-    err = bt_duplex_unlock_result(err);
-    if (err != ESP_OK) {
-        log_health_report_failure_once(first_report_failure, err);
-        return err;
+
+    bool first_report_failure = false;
+    if (operation_err != ESP_OK) {
+        first_report_failure =
+            record_health_report_failure(operation_err, true);
+    }
+
+    const esp_err_t unlock_err =
+        platform_mutex_unlock(g_bt_duplex_ctx.lock);
+    if (unlock_err != ESP_OK) {
+        const bool first_unlock_failure = record_health_report_failure(
+            unlock_err, operation_err == ESP_OK);
+        if (!first_report_failure) first_report_failure = first_unlock_failure;
+    }
+
+    if (operation_err != ESP_OK) {
+        log_health_report_failure_once(first_report_failure, operation_err);
+        return operation_err;
+    }
+    if (unlock_err != ESP_OK) {
+        log_health_report_failure_once(first_report_failure, unlock_err);
+        return unlock_err;
     }
 
     if (changed) {
@@ -479,12 +511,14 @@ esp_err_t bt_duplex_record_i2s_timeout(uint32_t generation,
 #ifdef UNIT_TEST
 void bt_duplex_test_reset(void)
 {
+    atomic_store_explicit(&s_health_report_failures_lifetime, 0U,
+                          memory_order_relaxed);
+    atomic_store_explicit(&s_last_health_report_error_lifetime, ESP_OK,
+                          memory_order_relaxed);
     if (!g_bt_duplex_ctx.initialized) return;
     if (bt_duplex_lock() != ESP_OK) return;
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
     g_bt_duplex_ctx.health_event_count = 0U;
-    g_bt_duplex_ctx.health_report_failures = 0U;
-    g_bt_duplex_ctx.last_health_report_error = ESP_OK;
     g_bt_duplex_ctx.test_health_report_result = ESP_OK;
     (void)bt_duplex_unlock_result(ESP_OK);
 }
