@@ -22,6 +22,8 @@ const int16_t *mock_hfp_audio_i2s_last_pcm(void);
 
 static esp_err_t s_register_result;
 static unsigned s_register_calls;
+static bool s_reenter_registration;
+static esp_err_t s_nested_registration_result;
 static int64_t s_now_values[16];
 static size_t s_now_count;
 static size_t s_now_index;
@@ -29,6 +31,10 @@ static size_t s_now_index;
 static esp_err_t mock_register_callback(void)
 {
     s_register_calls++;
+    if (s_reenter_registration) {
+        s_reenter_registration = false;
+        s_nested_registration_result = bt_hfp_audio_register_callback();
+    }
     return s_register_result;
 }
 
@@ -76,6 +82,8 @@ void setUp(void)
     mock_hfp_audio_i2s_reset();
     s_register_result = ESP_OK;
     s_register_calls = 0U;
+    s_reenter_registration = false;
+    s_nested_registration_result = ESP_OK;
     memset(s_now_values, 0, sizeof(s_now_values));
     s_now_values[0] = 1000;
     s_now_values[1] = 1100;
@@ -109,6 +117,23 @@ void test_callback_registration_success_and_failure_are_visible(void)
     TEST_ASSERT_FALSE(snapshot.callback_registered);
     TEST_ASSERT_EQUAL_UINT64(1, snapshot.registration_failures);
     TEST_ASSERT_EQUAL(ESP_FAIL, snapshot.last_error);
+}
+
+void test_callback_registration_reentry_is_rejected_until_success_is_published(void)
+{
+    bt_hfp_audio_snapshot_t snapshot;
+    s_reenter_registration = true;
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_register_callback());
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, s_nested_registration_result);
+    TEST_ASSERT_EQUAL_UINT(1U, s_register_calls);
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_get_snapshot(&snapshot));
+    TEST_ASSERT_TRUE(snapshot.callback_registered);
+    TEST_ASSERT_EQUAL(ESP_OK, snapshot.last_error);
+    TEST_ASSERT_EQUAL_UINT64(0U, snapshot.registration_failures);
+
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_register_callback());
+    TEST_ASSERT_EQUAL_UINT(1U, s_register_calls);
 }
 
 void test_activation_requires_same_peer_slc_cvsd_and_running_i2s(void)
