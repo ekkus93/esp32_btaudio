@@ -267,12 +267,28 @@ void bt_manager_mock_pairing_complete(const char* mac, bool success) {
 
 #ifdef UNIT_TEST
 /* Mock bt_manager_get_status() for host tests.
- * Host tests are single-threaded so direct access is safe. */
+ * Host tests are single-threaded so direct access is safe.
+ *
+ * bt_manager_context_t (bt_ctx's real type) and bt_manager_status_t have
+ * completely different field layouts (e.g. bt_ctx's second field is
+ * device_name[32], while status_t's second field is the connected bool) --
+ * a raw memcpy across the two types reinterprets unrelated bytes as
+ * whichever field lands at that offset in status_t. This silently produced
+ * garbage whenever the misaligned byte wasn't 0/1, and tripped UBSan's
+ * invalid-_Bool-value check when it wasn't. Copy field by field instead,
+ * mirroring the real (ESP_PLATFORM) implementation in bt_manager.c. */
 esp_err_t bt_manager_get_status(bt_manager_status_t *status) {
     if (!status) {
         return ESP_ERR_INVALID_ARG;
     }
-    memcpy(status, &bt_ctx, sizeof(bt_manager_status_t));
+    status->initialized = bt_ctx.initialized;
+    status->connected = bt_ctx.connected;
+    status->audio_playing = bt_ctx.audio_playing;
+    status->scanning = bt_ctx.scanning;
+    safe_copy_str(status->connected_mac, sizeof(status->connected_mac),
+                  bt_ctx.connected_mac);
+    safe_copy_str(status->connected_name, sizeof(status->connected_name),
+                  bt_ctx.connected_name);
     return ESP_OK;
 }
 
