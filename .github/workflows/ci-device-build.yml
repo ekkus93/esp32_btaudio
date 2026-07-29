@@ -10,6 +10,9 @@ on:
       - 'esp_bt_audio_source/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-device:
     name: Build esp_bt_audio_source (no flash)
@@ -25,34 +28,68 @@ jobs:
 
       - name: Install ESP-IDF v5.5.1
         run: |
-          # Clone ESP-IDF at the pinned release used by local builds
-          git clone --depth 1 --branch v5.5.1 https://github.com/espressif/esp-idf.git $HOME/esp/esp-idf
-          # Install ESP-IDF (sets up Python venv and installs toolchain)
-          cd $HOME/esp/esp-idf
+          set -euo pipefail
+          git clone --depth 1 --branch v5.5.1 \
+            https://github.com/espressif/esp-idf.git \
+            "$HOME/esp/esp-idf"
+          cd "$HOME/esp/esp-idf"
           ./install.sh esp32
-          # Install additional Python requirements
-          python3 -m pip install --user -r tools/requirements/requirements.core.txt
+          python3 -m pip install --user \
+            -r tools/requirements/requirements.core.txt
 
-      - name: Install build deps
+      - name: Install build dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update -y
           sudo apt-get install -y ninja-build cmake pkg-config git
 
-      - name: Build firmware (device compile only)
+      - name: Validate required HFP and HCI configuration
         working-directory: esp_bt_audio_source
         run: |
-          # Source the ESP-IDF environment installed above, then build
-          . $HOME/esp/esp-idf/export.sh
-          idf.py fullclean || true
-          idf.py build
+          set -euo pipefail
+          grep -qx 'CONFIG_BT_HFP_ENABLE=y' sdkconfig
+          grep -qx 'CONFIG_BT_HFP_AG_ENABLE=y' sdkconfig
+          grep -qx '# CONFIG_BT_HFP_CLIENT_ENABLE is not set' sdkconfig
+          grep -qx 'CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y' sdkconfig
+          grep -qx '# CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM is not set' sdkconfig
+          grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=1' sdkconfig
+          grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF=1' sdkconfig
+          grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI=y' sdkconfig
+          grep -qx '# CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM is not set' sdkconfig
 
-      - name: Upload build artifacts
+      - name: Clean reconfigure and build firmware
+        working-directory: esp_bt_audio_source
+        run: |
+          set -euo pipefail
+          . "$HOME/esp/esp-idf/export.sh"
+          cp sdkconfig /tmp/esp_bt_audio_source.sdkconfig.before
+          rm -rf build
+          idf.py reconfigure
+          if ! git diff --exit-code -- sdkconfig; then
+            echo '::error::ESP-IDF reconfigure changed tracked sdkconfig; classify and commit the configuration delta before proceeding.'
+            exit 1
+          fi
+          idf.py build
+          idf.py size | tee build/size-summary.txt
+          cp /tmp/esp_bt_audio_source.sdkconfig.before \
+            build/sdkconfig.before
+
+      - name: Verify compile-only boundary
+        run: |
+          set -euo pipefail
+          echo 'Compile-only validation complete. No flash command was executed.'
+          test -f esp_bt_audio_source/build/esp_bt_audio_source.bin
+          test -f esp_bt_audio_source/build/esp_bt_audio_source.elf
+
+      - name: Upload build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: device-build-artifacts
           path: |
             esp_bt_audio_source/sdkconfig
+            esp_bt_audio_source/build/sdkconfig.before
+            esp_bt_audio_source/build/size-summary.txt
             esp_bt_audio_source/build/**/*.bin
             esp_bt_audio_source/build/**/*.elf
             esp_bt_audio_source/build/**/*.map
@@ -60,7 +97,14 @@ jobs:
 
       - name: Show brief build summary
         if: always()
-        working-directory: esp_bt_audio_source/build
+        working-directory: esp_bt_audio_source
         run: |
-          echo "Build dir: $(pwd)"
-          ls -la | sed -n '1,200p' || true
+          if [ -d build ]; then
+            echo "Build dir: $(pwd)/build"
+            find build -maxdepth 2 -type f | LC_ALL=C sort | sed -n '1,200p'
+            if [ -f build/size-summary.txt ]; then
+              cat build/size-summary.txt
+            fi
+          else
+            echo 'Build directory was not created.'
+          fi
