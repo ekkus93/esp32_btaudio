@@ -16,9 +16,9 @@ mkdir -p "${build_root}"
 # or stale sanitizer flags.
 rm -rf "${build_dir}"
 
-# Configure only the two production-path lifecycle targets. The general host
-# CMake graph contains unrelated historical adapter targets, so using a focused
-# graph prevents dead legacy sources from hiding failures in these tests.
+# Configure only the production-path lifecycle targets. The general host CMake
+# graph contains unrelated historical adapter targets, so using a focused graph
+# prevents dead legacy sources from hiding failures in these tests.
 {
     cmake -S "${source_dir}" -B "${build_dir}"
     cmake --build "${build_dir}" --parallel "$(nproc)"
@@ -27,7 +27,8 @@ rm -rf "${build_dir}"
 {
     for binary in \
         test_bt_ctx_lock \
-        test_bt_manager_connection_pairing_events
+        test_bt_manager_connection_pairing_events \
+        test_a2dp_binding_diagnostics_exact
     do
         echo "Running ${binary} with ASan/UBSan"
         ASAN_OPTIONS="detect_leaks=1:halt_on_error=1:strict_string_checks=1" \
