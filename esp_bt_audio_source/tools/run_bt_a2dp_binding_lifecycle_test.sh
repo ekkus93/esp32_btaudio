@@ -11,6 +11,11 @@ test_log="${build_root}/a2dp_binding_lifecycle_test.log"
 
 mkdir -p "${build_root}"
 
+# This is a dedicated, disposable sanitizer build. Remove only this directory
+# so a restored CMake cache cannot retain the previous full-project source path
+# or stale sanitizer flags.
+rm -rf "${build_dir}"
+
 # Configure only the two production-path lifecycle targets. The general host
 # CMake graph contains unrelated historical adapter targets, so using a focused
 # graph prevents dead legacy sources from hiding failures in these tests.
