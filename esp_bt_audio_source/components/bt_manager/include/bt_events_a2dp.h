@@ -92,6 +92,21 @@ typedef struct {
 esp_err_t bt_events_a2dp_test_get_binding(
     bt_events_a2dp_binding_snapshot_t *out);
 esp_err_t bt_events_a2dp_test_reset_binding(void);
+void bt_events_a2dp_test_reset_secondary_errors(void);
+esp_err_t bt_events_a2dp_test_get_last_generation_diag_update_error(void);
+esp_err_t bt_events_a2dp_test_get_last_binding_clear_error(void);
+esp_err_t bt_events_a2dp_test_prepare_audio_event(
+    const esp_a2d_cb_param_t *param);
+esp_err_t bt_events_a2dp_test_refresh_bound_generation(
+    const char *peer,
+    esp_a2d_conn_hdl_t conn_handle,
+    uint32_t lifecycle_serial,
+    bool allow_no_session,
+    uint32_t fallback_generation,
+    uint32_t *generation_out);
+esp_err_t bt_events_a2dp_test_clear_binding_if_identity(
+    uint32_t lifecycle_serial,
+    esp_a2d_conn_hdl_t conn_handle);
 #endif
 
 #else
