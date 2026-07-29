@@ -33,6 +33,10 @@ typedef struct {
     uint32_t lifecycle_serial;
     uint32_t generation;
     bt_a2dp_profile_state_t state;
+    bt_connected_cb connected_callback;
+    bt_disconnected_cb disconnected_callback;
+    char callback_mac[A2DP_BINDING_MAC_STR_LEN];
+    char callback_name[32];
 } a2dp_bound_profile_event_t;
 
 typedef struct {
@@ -100,14 +104,32 @@ static void record_rejected_unbound_event(const char *event_peer)
     }
 }
 
-static esp_err_t create_or_capture_profile_binding(
-    const char *peer,
-    esp_a2d_conn_hdl_t conn_handle,
-    bt_a2dp_profile_state_t state,
-    uint32_t *serial_out,
-    uint32_t *last_generation_out)
+static void apply_base_profile_state_locked(a2dp_bound_profile_event_t *bound)
 {
-    if (peer == NULL || serial_out == NULL || last_generation_out == NULL) {
+    if (bound->state == BT_A2DP_PROFILE_CONNECTED) {
+        bt_ctx.connected = true;
+        bt_ctx.connecting = false;
+        safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac),
+                      bound->peer_mac);
+        bound->connected_callback = bt_ctx.connected_callback;
+        safe_copy_str(bound->callback_mac, sizeof(bound->callback_mac),
+                      bt_ctx.connected_mac);
+        safe_copy_str(bound->callback_name, sizeof(bound->callback_name),
+                      bt_ctx.connected_name);
+    } else if (bound->state == BT_A2DP_PROFILE_DISCONNECTED) {
+        bound->disconnected_callback = bt_ctx.disconnected_callback;
+        safe_copy_str(bound->callback_mac, sizeof(bound->callback_mac),
+                      bt_ctx.connected_mac);
+        bt_ctx.connected = false;
+        bt_ctx.connecting = false;
+        bt_ctx.audio_playing = false;
+    }
+}
+
+static esp_err_t create_or_capture_profile_binding(
+    a2dp_bound_profile_event_t *bound)
+{
+    if (bound == NULL || bound->peer_mac[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -116,32 +138,33 @@ static esp_err_t create_or_capture_profile_binding(
 
     if (s_policy_binding.valid) {
         const uint32_t generation = s_policy_binding.last_duplex_generation;
-        if (strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
+        if (strcasecmp(bound->peer_mac, s_policy_binding.peer_mac) != 0) {
             increment_u64_saturating(
                 &s_policy_binding.wrong_peer_rejections);
             bt_ctx_unlock();
-            record_rejected_bound_event(generation, peer);
+            record_rejected_bound_event(generation, bound->peer_mac);
             return ESP_ERR_INVALID_STATE;
         }
-        if (conn_handle != s_policy_binding.conn_handle) {
+        if (bound->conn_handle != s_policy_binding.conn_handle) {
             increment_u64_saturating(
                 &s_policy_binding.stale_handle_rejections);
             bt_ctx_unlock();
-            record_rejected_bound_event(generation, peer);
+            record_rejected_bound_event(generation, bound->peer_mac);
             return ESP_ERR_INVALID_STATE;
         }
-        *serial_out = s_policy_binding.lifecycle_serial;
-        *last_generation_out = generation;
+        bound->lifecycle_serial = s_policy_binding.lifecycle_serial;
+        bound->generation = generation;
+        apply_base_profile_state_locked(bound);
         bt_ctx_unlock();
         return ESP_OK;
     }
 
-    if (state == BT_A2DP_PROFILE_DISCONNECTED ||
-        state == BT_A2DP_PROFILE_DISCONNECTING) {
+    if (bound->state == BT_A2DP_PROFILE_DISCONNECTED ||
+        bound->state == BT_A2DP_PROFILE_DISCONNECTING) {
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
         bt_ctx_unlock();
-        record_rejected_unbound_event(peer);
+        record_rejected_unbound_event(bound->peer_mac);
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -150,13 +173,14 @@ static esp_err_t create_or_capture_profile_binding(
     memset(s_policy_binding.peer_mac, 0,
            sizeof(s_policy_binding.peer_mac));
     safe_copy_str(s_policy_binding.peer_mac,
-                  sizeof(s_policy_binding.peer_mac), peer);
+                  sizeof(s_policy_binding.peer_mac), bound->peer_mac);
     s_policy_binding.valid = true;
-    s_policy_binding.conn_handle = conn_handle;
+    s_policy_binding.conn_handle = bound->conn_handle;
     s_policy_binding.lifecycle_serial = serial;
     s_policy_binding.last_duplex_generation = 0U;
-    *serial_out = serial;
-    *last_generation_out = 0U;
+    bound->lifecycle_serial = serial;
+    bound->generation = 0U;
+    apply_base_profile_state_locked(bound);
     bt_ctx_unlock();
     return ESP_OK;
 }
@@ -246,12 +270,9 @@ static void clear_binding_if_identity(uint32_t lifecycle_serial,
     bt_ctx_unlock();
 }
 
-static esp_err_t capture_audio_binding(const char *peer,
-                                       esp_a2d_conn_hdl_t conn_handle,
-                                       uint32_t *serial_out,
-                                       uint32_t *generation_out)
+static esp_err_t capture_audio_binding(a2dp_bound_audio_event_t *bound)
 {
-    if (peer == NULL || serial_out == NULL || generation_out == NULL) {
+    if (bound == NULL || bound->peer_mac[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
@@ -260,24 +281,25 @@ static esp_err_t capture_audio_binding(const char *peer,
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
         bt_ctx_unlock();
-        record_rejected_unbound_event(peer);
+        record_rejected_unbound_event(bound->peer_mac);
         return ESP_ERR_INVALID_STATE;
     }
     const uint32_t generation = s_policy_binding.last_duplex_generation;
-    if (strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
+    if (strcasecmp(bound->peer_mac, s_policy_binding.peer_mac) != 0) {
         increment_u64_saturating(&s_policy_binding.wrong_peer_rejections);
         bt_ctx_unlock();
-        record_rejected_bound_event(generation, peer);
+        record_rejected_bound_event(generation, bound->peer_mac);
         return ESP_ERR_INVALID_STATE;
     }
-    if (conn_handle != s_policy_binding.conn_handle) {
+    if (bound->conn_handle != s_policy_binding.conn_handle) {
         increment_u64_saturating(&s_policy_binding.stale_handle_rejections);
         bt_ctx_unlock();
-        record_rejected_bound_event(generation, peer);
+        record_rejected_bound_event(generation, bound->peer_mac);
         return ESP_ERR_INVALID_STATE;
     }
-    *serial_out = s_policy_binding.lifecycle_serial;
-    *generation_out = generation;
+    bound->lifecycle_serial = s_policy_binding.lifecycle_serial;
+    bound->generation = generation;
+    bt_ctx.audio_playing = bound->state == BT_A2DP_AUDIO_STARTED;
     bt_ctx_unlock();
     return ESP_OK;
 }
@@ -306,9 +328,7 @@ static esp_err_t prepare_connection_event(
     }
     bda_to_string(param->conn_stat.remote_bda, bound->peer_mac);
     bound->conn_handle = param->conn_stat.conn_hdl;
-    return create_or_capture_profile_binding(
-        bound->peer_mac, bound->conn_handle, bound->state,
-        &bound->lifecycle_serial, &bound->generation);
+    return create_or_capture_profile_binding(bound);
 }
 
 static esp_err_t prepare_audio_event(const esp_a2d_cb_param_t *param,
@@ -327,9 +347,7 @@ static esp_err_t prepare_audio_event(const esp_a2d_cb_param_t *param,
     }
     bda_to_string(param->audio_stat.remote_bda, bound->peer_mac);
     bound->conn_handle = param->audio_stat.conn_hdl;
-    return capture_audio_binding(
-        bound->peer_mac, bound->conn_handle,
-        &bound->lifecycle_serial, &bound->generation);
+    return capture_audio_binding(bound);
 }
 
 static void apply_connection_policy(a2dp_bound_profile_event_t *bound)
@@ -383,27 +401,10 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
     }
 
     if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-        char bda_str[18];
-        bda_to_string(param->conn_stat.remote_bda, bda_str);
+        ESP_LOGI(TAG, "Connected to device: %s", bound.peer_mac);  // NOLINT(bugprone-branch-clone)
 
-        ESP_LOGI(TAG, "Connected to device: %s", bda_str);  // NOLINT(bugprone-branch-clone)
-
-        bt_connected_cb cb = NULL;
-        char mac[18] = {0};
-        char name[32] = {0};
-
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            bt_ctx.connected = true;
-            bt_ctx.connecting = false;
-            safe_copy_str(bt_ctx.connected_mac, sizeof(bt_ctx.connected_mac), bda_str);
-            cb = bt_ctx.connected_callback;
-            safe_copy_str(mac, sizeof(mac), bt_ctx.connected_mac);
-            safe_copy_str(name, sizeof(name), bt_ctx.connected_name);
-            bt_ctx_unlock();
-        }
-
-        if (cb) {
-            cb(mac, name);
+        if (bound.connected_callback) {
+            bound.connected_callback(bound.callback_mac, bound.callback_name);
         }
 
         esp_bd_addr_t tmp_addr = {0};
@@ -418,22 +419,10 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param) {
             ESP_LOGI(TAG, "Auto-start after connect -> %s", start_ret == ESP_OK ? "OK" : esp_err_to_name(start_ret));  // NOLINT(bugprone-branch-clone)
         }
     } else if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-        bt_disconnected_cb cb = NULL;
-        char mac[18] = {0};
+        ESP_LOGI(TAG, "Disconnected from device: %s", bound.callback_mac);  // NOLINT(bugprone-branch-clone)
 
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            cb = bt_ctx.disconnected_callback;
-            safe_copy_str(mac, sizeof(mac), bt_ctx.connected_mac);
-            bt_ctx.connected = false;
-            bt_ctx.connecting = false;
-            bt_ctx.audio_playing = false;
-            bt_ctx_unlock();
-        }
-
-        ESP_LOGI(TAG, "Disconnected from device: %s", mac);  // NOLINT(bugprone-branch-clone)
-
-        if (cb) {
-            cb(mac);
+        if (bound.disconnected_callback) {
+            bound.disconnected_callback(bound.callback_mac);
         }
 
         esp_bd_addr_t tmp_addr = {0};
@@ -455,32 +444,15 @@ void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param) {
 
     if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED) {
         ESP_LOGI(TAG, "Audio streaming started");  // NOLINT(bugprone-branch-clone)
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            bt_ctx.audio_playing = true;
-            bt_ctx_unlock();
-        }
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_STOPPED) {
         ESP_LOGI(TAG, "Audio streaming stopped");  // NOLINT(bugprone-branch-clone)
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            bt_ctx.audio_playing = false;
-            bt_ctx_unlock();
-        }
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     } else if (param->audio_stat.state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND) {
         ESP_LOGI(TAG, "Audio streaming suspended");  // NOLINT(bugprone-branch-clone)
-        if (bt_ctx_lock(PLATFORM_WAIT_FOREVER) == ESP_OK) {
-            bt_ctx.audio_playing = false;
-            bt_ctx_unlock();
-        }
-        esp_bd_addr_t tmp_addr = {0};
-        safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
-        bt_audio_state_cb(param->audio_stat.state, tmp_addr);
     }
+
+    esp_bd_addr_t tmp_addr = {0};
+    safe_memcpy(tmp_addr, sizeof(tmp_addr), param->audio_stat.remote_bda, sizeof(tmp_addr));
+    bt_audio_state_cb(param->audio_stat.state, tmp_addr);
 
     apply_audio_policy(&bound);
 }
@@ -498,6 +470,7 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
             break;
     }
 }
+
 
 #ifdef ESP_PLATFORM
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
