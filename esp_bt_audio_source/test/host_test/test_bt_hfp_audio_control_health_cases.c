@@ -90,13 +90,14 @@ static uint32_t force_confirmed_audio_state(void)
 
 void test_health_report_failure_after_i2s_start_failure_is_visible(void)
 {
+    const uint64_t failures_before = health_report_failure_count(NULL);
     inject_health_timeout();
     mock_hfp_audio_control_set_i2s_start_result(ESP_FAIL, false);
 
     TEST_ASSERT_EQUAL(ESP_FAIL, bt_hfp_audio_start());
 
     esp_err_t last_error = ESP_OK;
-    TEST_ASSERT_EQUAL_UINT64(1U,
+    TEST_ASSERT_EQUAL_UINT64(failures_before + 1U,
         health_report_failure_count(&last_error));
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
 
@@ -108,13 +109,14 @@ void test_health_report_failure_after_i2s_start_failure_is_visible(void)
 void test_health_report_failure_after_i2s_stop_failure_is_visible(void)
 {
     TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_start());
+    const uint64_t failures_before = health_report_failure_count(NULL);
     inject_health_timeout();
     mock_hfp_audio_control_set_i2s_stop_result(ESP_FAIL, false);
 
     TEST_ASSERT_EQUAL(ESP_FAIL, bt_hfp_audio_stop());
 
     esp_err_t last_error = ESP_OK;
-    TEST_ASSERT_EQUAL_UINT64(1U,
+    TEST_ASSERT_EQUAL_UINT64(failures_before + 1U,
         health_report_failure_count(&last_error));
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, last_error);
 }
