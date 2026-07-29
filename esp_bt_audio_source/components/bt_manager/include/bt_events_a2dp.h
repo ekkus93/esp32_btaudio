@@ -43,8 +43,9 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len);
 /**
  * @brief Handle A2DP connection state change event
  *
- * Updates internal connection state, invokes user callbacks, forwards to
- * connection manager, and triggers auto-start if enabled.
+ * Validates the event-owned ESP-IDF connection handle before mutating base
+ * state, invokes user callbacks, forwards to the connection manager, and
+ * triggers auto-start if enabled.
  *
  * @param param A2DP callback parameters containing connection state
  */
@@ -53,7 +54,8 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param);
 /**
  * @brief Handle A2DP audio streaming state change event
  *
- * Updates internal audio playing state and forwards to connection manager.
+ * Validates the event-owned ESP-IDF connection handle before mutating base
+ * state and forwarding to the connection manager.
  *
  * @param param A2DP callback parameters containing audio state
  */
@@ -64,10 +66,12 @@ void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param);
 typedef struct {
     bool valid;
     char peer_mac[BT_EVENTS_A2DP_TEST_MAC_STR_LEN];
+    esp_a2d_conn_hdl_t conn_handle;
     uint32_t lifecycle_serial;
     uint32_t last_duplex_generation;
     uint64_t missing_binding_rejections;
     uint64_t wrong_peer_rejections;
+    uint64_t stale_handle_rejections;
     uint64_t generation_sync_failures;
 } bt_events_a2dp_binding_snapshot_t;
 
