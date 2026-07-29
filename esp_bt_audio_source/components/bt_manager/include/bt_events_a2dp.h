@@ -62,14 +62,17 @@ void bt_events_handle_a2dp_connection(const esp_a2d_cb_param_t *param);
 void bt_events_handle_a2dp_audio(const esp_a2d_cb_param_t *param);
 
 /**
- * @brief Reset the A2DP profile-binding state (peer MAC, connection handle,
- * lifecycle serial, generation)
+ * @brief Clear the complete A2DP profile-binding state under the manager mutex
  *
- * Must be called when tearing down the Bluetooth manager so a stale binding
- * from a previous session cannot reject a legitimate reconnect after
- * deinit/init.
+ * The Bluetooth manager context mutex must already exist. This function
+ * acquires that mutex internally, clears the peer/handle/lifecycle/generation
+ * identity and all binding diagnostics, and then releases the mutex. If the
+ * lock cannot be acquired, the exact lock error is returned and the binding is
+ * left unchanged. Do not call this function after the manager mutex is deleted.
+ *
+ * @return ESP_OK after a synchronized reset, otherwise the exact lock error
  */
-void bt_events_a2dp_reset_binding(void);
+esp_err_t bt_events_a2dp_reset_binding(void);
 
 #ifdef UNIT_TEST
 #define BT_EVENTS_A2DP_TEST_MAC_STR_LEN 18U
@@ -83,11 +86,12 @@ typedef struct {
     uint64_t wrong_peer_rejections;
     uint64_t stale_handle_rejections;
     uint64_t generation_sync_failures;
+    uint64_t late_terminal_events_ignored;
 } bt_events_a2dp_binding_snapshot_t;
 
 esp_err_t bt_events_a2dp_test_get_binding(
     bt_events_a2dp_binding_snapshot_t *out);
-void bt_events_a2dp_test_reset_binding(void);
+esp_err_t bt_events_a2dp_test_reset_binding(void);
 #endif
 
 #else
@@ -98,7 +102,7 @@ static inline void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_
 static inline int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len) {
     (void)buf; (void)len; return 0;
 }
-static inline void bt_events_a2dp_reset_binding(void) {}
+static inline esp_err_t bt_events_a2dp_reset_binding(void) { return ESP_OK; }
 #endif // defined(ESP_PLATFORM) || defined(UNIT_TEST)
 
 #endif // BT_EVENTS_A2DP_H
