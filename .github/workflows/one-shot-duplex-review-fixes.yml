@@ -1,0 +1,60 @@
+name: One-shot Duplex Review Fixes
+
+on:
+  push:
+    branches:
+      - feature/esp-bt-audio-duplex
+    paths:
+      - tools/one_shot_patch_duplex_review_fixes.py
+      - .github/workflows/one-shot-duplex-review-fixes.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-duplex-review-fixes
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Apply bounded review fixes and remove patch machinery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/esp-bt-audio-duplex
+          fetch-depth: 0
+
+      - name: Verify expected patch input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tools/one_shot_patch_duplex_review_fixes.py
+          test -f .github/workflows/one-shot-duplex-review-fixes.yml
+          python3 -m py_compile tools/one_shot_patch_duplex_review_fixes.py
+
+      - name: Apply exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/one_shot_patch_duplex_review_fixes.py
+          git diff --check
+
+      - name: Remove one-shot machinery and commit durable changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm tools/one_shot_patch_duplex_review_fixes.py
+          rm .github/workflows/one-shot-duplex-review-fixes.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo '::error::One-shot patch produced no durable changes.'
+            exit 1
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'fix(bt): close duplex stabilization review findings'
+          git push origin HEAD:feature/esp-bt-audio-duplex
