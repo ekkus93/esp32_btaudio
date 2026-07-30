@@ -27,116 +27,24 @@ jobs:
           ref: feature/esp-bt-audio-duplex
           fetch-depth: 0
 
-      - name: Append original closeout review section
+      - name: Append validated documentation sections
         shell: bash
         run: |
           set -euo pipefail
           closeout='esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_SOFTWARE_CLOSEOUT_AND_CLAUDE_DEVICE_HANDOFF_2026-07-29.md'
-          marker='## Review follow-up closeout — 2026-07-30'
-          if grep -Fq "${marker}" "${closeout}"; then
-            echo "::error::Review follow-up section already exists in ${closeout}."
-            exit 1
-          fi
-          cat >> "${closeout}" <<'EOF'
-
----
-
-## Review follow-up closeout — 2026-07-30
-
-The follow-up work specified by:
-
-`esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md`
-
-was implemented and validated at the following same-SHA software checkpoint:
-
-```text
-15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
-```
-
-Resolved items:
-
-- The HFP command sanitizer runner is an enforced maintained-host-CI gate.
-- Nested command-runner compile and test logs are retained in the host evidence artifact.
-- Stale-operation telemetry recorder failures are logged and test-visible without replacing the primary A2DP rejection.
-- Unbound diagnostic HFP-status lookup failures expose the exact error.
-- A2DP data-callback `audio_processor_read()` failures remain safe zero-byte callback results but are counted, retain the latest exact error, and use bounded logging.
-- Disconnect clear precedence uses the documented Option A contract: idempotent `ESP_ERR_NOT_FOUND` may be replaced by an actionable clear error, while a hard primary policy error remains authoritative.
-- The original stabilization TODO points to both the original closeout and the review-fix follow-up evidence.
-- Temporary one-shot patch scripts were removed before final candidate validation.
-
-Validation checkpoint:
-
-```text
-Host workflow:       CI — host tests (optimized)
-Host run ID:         30571344895
-Host job ID:         90968575645
-Host result:         SUCCESS
-Host CTest:          81/81 passed, 0 failed
-Host CTest time:     40.10 seconds
-Host artifact:       8770952601 (host-test-results)
-
-Device workflow:     CI — device build (compile only)
-Device run ID:       30571345110
-Device job ID:       90968576182
-Device result:       SUCCESS
-ESP-IDF:             v5.5.1
-Target:              esp32 / ESP32-WROOM-32 configuration
-Application binary:  0xFB070 = 1,028,208 bytes
-Smallest partition:  0x1B0000 = 1,769,472 bytes
-Partition headroom:  0xB4F90 = 741,264 bytes (42% free)
-Flash executed:      No
-```
-
-The exact final cleaned candidate is the branch head reported after the final documentation and temporary-workflow-removal commits also pass both maintained workflows on one SHA. A Git document cannot embed the SHA of the commit that contains itself, so that final literal SHA belongs in the external handoff/result report and in issue #4.
-
-This follow-up does not change the existing capability boundary: FD-18/FD-19 HFP speaker downlink/full-playback work remains unimplemented, physical ESP32 validation remains pending, and the repository must not be represented as globally flake8-clean. The informational full-tree Python lint backlog remains separate deferred maintenance.
-EOF
-
-      - name: Append review TODO completion reconciliation
-        shell: bash
-        run: |
-          set -euo pipefail
           todo='esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md'
-          marker='## Completion reconciliation — 2026-07-30'
-          if grep -Fq "${marker}" "${todo}"; then
-            echo "::error::Completion reconciliation already exists in ${todo}."
+          if grep -Fq '## Review follow-up closeout — 2026-07-30' "${closeout}"; then
+            echo "::error::Review closeout section already exists."
             exit 1
           fi
-          cat >> "${todo}" <<'EOF'
-
----
-
-## Completion reconciliation — 2026-07-30
-
-This section records actual completion without mechanically rewriting every historical checkbox above.
-
-```text
-Starting review-TODO SHA: 67ca96d5924f3b4ce56232577b70f313d29b14d9
-Production/test commit:    857ff667225602d2e24f5b96acdf11bf02e12d1b
-Host-CI gate commit:       cd0175cb95565c5cfb4a99a78f826bfebb33ce87
-Validated checkpoint:      15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
-Temporary workflow removed: 90cf3b74512aee55a1a98679c915b6d5e5dcd65b
-```
-
-Task results:
-
-- FIX-00 branch/baseline discipline: **PASS**. No concurrent branch advance was accepted silently.
-- FIX-01 HFP command CI gate and nested evidence logs: **PASS**.
-- FIX-02 stale telemetry visibility and exact failure tests: **PASS**.
-- FIX-03 A2DP data-callback diagnostics and bounded logging: **PASS**.
-- FIX-04 disconnect clear precedence: **PASS — Option A**.
-- FIX-05 original stabilization TODO closeout pointers: **PASS**.
-- FIX-06 original software closeout review section: **PASS**.
-- FIX-07 focused sanitizer gates: **PASS**. HFP commands 24/24; A2DP secondary failures 12/12; A2DP data diagnostics 4/4; ASan/UBSan stages passed.
-- FIX-08 complete host validation: **PASS**. CTest 81/81, zero failed, 40.10 seconds.
-- FIX-09 relevant Python validation: **PASS**. No maintained Python file remains in the durable diff; Python unit tests and changed-file lint gate passed. Legacy full-tree lint debt remains informational.
-- FIX-10 ESP-IDF v5.5.1 compile-only validation: **PASS**. No flash; no unexplained tracked `sdkconfig` churn; 741,264 bytes partition headroom.
-- FIX-11 same-SHA CI evidence: **PASS** at checkpoint `15a7bbd...`; final cleaned head must also pass before external closeout.
-- FIX-12 quiet-failure/fake-success review: **PASS**. No real gate uses `|| true`; no new error is converted to success; no unlocked fallback mutation, blocking callback lock, heap allocation, retry loop, or fake hardware claim was introduced.
-- FIX-13 final report: supplied by the Ralph-loop completion response after final same-SHA CI.
-
-Physical ESP32-WROOM-32 validation, FD-18/FD-19, broad CMake modularization, and the Python cleanup backlog remain outside this TODO.
-EOF
+          if grep -Fq '## Completion reconciliation — 2026-07-30' "${todo}"; then
+            echo "::error::TODO completion reconciliation already exists."
+            exit 1
+          fi
+          closeout_b64='CgotLS0KCiMjIFJldmlldyBmb2xsb3ctdXAgY2xvc2VvdXQg4oCUIDIwMjYtMDctMzAKClRoZSBmb2xsb3ctdXAgd29yayBzcGVjaWZpZWQgYnk6CgpgZXNwX2J0X2F1ZGlvX3NvdXJjZS9kb2NzL0VTUF9CVF9BVURJT19EVVBMRVhfU1RBQklMSVpBVElPTl9SRVZJRVdfRklYRVNfVE9ET18yMDI2LTA3LTMwLm1kYAoKd2FzIGltcGxlbWVudGVkIGFuZCB2YWxpZGF0ZWQgYXQgdGhlIGZvbGxvd2luZyBzYW1lLVNIQSBzb2Z0d2FyZSBjaGVja3BvaW50OgoKYGBgdGV4dAoxNWE3YmJkYWZhMTA0ZjBmZDdkN2QxM2E0MmQ5MmVjYTJiZDY4OTM4CmBgYAoKUmVzb2x2ZWQgaXRlbXM6CgotIFRoZSBIRlAgY29tbWFuZCBzYW5pdGl6ZXIgcnVubmVyIGlzIGFuIGVuZm9yY2VkIG1haW50YWluZWQtaG9zdC1DSSBnYXRlLgotIE5lc3RlZCBjb21tYW5kLXJ1bm5lciBjb21waWxlIGFuZCB0ZXN0IGxvZ3MgYXJlIHJldGFpbmVkIGluIHRoZSBob3N0IGV2aWRlbmNlIGFydGlmYWN0LgotIFN0YWxlLW9wZXJhdGlvbiB0ZWxlbWV0cnkgcmVjb3JkZXIgZmFpbHVyZXMgYXJlIGxvZ2dlZCBhbmQgdGVzdC12aXNpYmxlIHdpdGhvdXQgcmVwbGFjaW5nIHRoZSBwcmltYXJ5IEEyRFAgcmVqZWN0aW9uLgotIFVuYm91bmQgZGlhZ25vc3RpYyBIRlAtc3RhdHVzIGxvb2t1cCBmYWlsdXJlcyBleHBvc2UgdGhlIGV4YWN0IGVycm9yLgotIEEyRFAgZGF0YS1jYWxsYmFjayBgYXVkaW9fcHJvY2Vzc29yX3JlYWQoKWAgZmFpbHVyZXMgcmVtYWluIHNhZmUgemVyby1ieXRlIGNhbGxiYWNrIHJlc3VsdHMgYnV0IGFyZSBjb3VudGVkLCByZXRhaW4gdGhlIGxhdGVzdCBleGFjdCBlcnJvciwgYW5kIHVzZSBib3VuZGVkIGxvZ2dpbmcuCi0gRGlzY29ubmVjdCBjbGVhciBwcmVjZWRlbmNlIHVzZXMgdGhlIGRvY3VtZW50ZWQgT3B0aW9uIEEgY29udHJhY3Q6IGlkZW1wb3RlbnQgYEVTUF9FUlJfTk9UX0ZPVU5EYCBtYXkgYmUgcmVwbGFjZWQgYnkgYW4gYWN0aW9uYWJsZSBjbGVhciBlcnJvciwgd2hpbGUgYSBoYXJkIHByaW1hcnkgcG9saWN5IGVycm9yIHJlbWFpbnMgYXV0aG9yaXRhdGl2ZS4KLSBUaGUgb3JpZ2luYWwgc3RhYmlsaXphdGlvbiBUT0RPIHBvaW50cyB0byBib3RoIHRoZSBvcmlnaW5hbCBjbG9zZW91dCBhbmQgdGhlIHJldmlldy1maXggZm9sbG93LXVwIGV2aWRlbmNlLgotIFRlbXBvcmFyeSBvbmUtc2hvdCBwYXRjaCBzY3JpcHRzIHdlcmUgcmVtb3ZlZCBiZWZvcmUgZmluYWwgY2FuZGlkYXRlIHZhbGlkYXRpb24uCgpWYWxpZGF0aW9uIGNoZWNrcG9pbnQ6CgpgYGB0ZXh0Ckhvc3Qgd29ya2Zsb3c6ICAgICAgIENJIOKAlCBob3N0IHRlc3RzIChvcHRpbWl6ZWQpCkhvc3QgcnVuIElEOiAgICAgICAgIDMwNTcxMzQ0ODk1Ckhvc3Qgam9iIElEOiAgICAgICAgIDkwOTY4NTc1NjQ1Ckhvc3QgcmVzdWx0OiAgICAgICAgIFNVQ0NFU1MKSG9zdCBDVGVzdDogICAgICAgICAgODEvODEgcGFzc2VkLCAwIGZhaWxlZApIb3N0IENUZXN0IHRpbWU6ICAgICA0MC4xMCBzZWNvbmRzCkhvc3QgYXJ0aWZhY3Q6ICAgICAgIDg3NzA5NTI2MDEgKGhvc3QtdGVzdC1yZXN1bHRzKQoKRGV2aWNlIHdvcmtmbG93OiAgICAgQ0kg4oCUIGRldmljZSBidWlsZCAoY29tcGlsZSBvbmx5KQpEZXZpY2UgcnVuIElEOiAgICAgICAzMDU3MTM0NTExMApEZXZpY2Ugam9iIElEOiAgICAgICA5MDk2ODU3NjE4MgpEZXZpY2UgcmVzdWx0OiAgICAgICBTVUNDRVNTCkVTUC1JREY6ICAgICAgICAgICAgIHY1LjUuMQpUYXJnZXQ6ICAgICAgICAgICAgICBlc3AzMiAvIEVTUDMyLVdST09NLTMyIGNvbmZpZ3VyYXRpb24KQXBwbGljYXRpb24gYmluYXJ5OiAgMHhGQjA3MCA9IDEsMDI4LDIwOCBieXRlcwpTbWFsbGVzdCBwYXJ0aXRpb246ICAweDFCMDAwMCA9IDEsNzY5LDQ3MiBieXRlcwpQYXJ0aXRpb24gaGVhZHJvb206ICAweEI0RjkwID0gNzQxLDI2NCBieXRlcyAoNDIlIGZyZWUpCkZsYXNoIGV4ZWN1dGVkOiAgICAgIE5vCmBgYAoKVGhlIGV4YWN0IGZpbmFsIGNsZWFuZWQgY2FuZGlkYXRlIGlzIHRoZSBicmFuY2ggaGVhZCByZXBvcnRlZCBhZnRlciB0aGUgZmluYWwgZG9jdW1lbnRhdGlvbiBhbmQgdGVtcG9yYXJ5LXdvcmtmbG93LXJlbW92YWwgY29tbWl0cyBhbHNvIHBhc3MgYm90aCBtYWludGFpbmVkIHdvcmtmbG93cyBvbiBvbmUgU0hBLiBBIEdpdCBkb2N1bWVudCBjYW5ub3QgZW1iZWQgdGhlIFNIQSBvZiB0aGUgY29tbWl0IHRoYXQgY29udGFpbnMgaXRzZWxmLCBzbyB0aGF0IGZpbmFsIGxpdGVyYWwgU0hBIGJlbG9uZ3MgaW4gdGhlIGV4dGVybmFsIGhhbmRvZmYvcmVzdWx0IHJlcG9ydCBhbmQgaW4gaXNzdWUgIzQuCgpUaGlzIGZvbGxvdy11cCBkb2VzIG5vdCBjaGFuZ2UgdGhlIGV4aXN0aW5nIGNhcGFiaWxpdHkgYm91bmRhcnk6IEZELTE4L0ZELTE5IEhGUCBzcGVha2VyIGRvd25saW5rL2Z1bGwtcGxheWJhY2sgd29yayByZW1haW5zIHVuaW1wbGVtZW50ZWQsIHBoeXNpY2FsIEVTUDMyIHZhbGlkYXRpb24gcmVtYWlucyBwZW5kaW5nLCBhbmQgdGhlIHJlcG9zaXRvcnkgbXVzdCBub3QgYmUgcmVwcmVzZW50ZWQgYXMgZ2xvYmFsbHkgZmxha2U4LWNsZWFuLiBUaGUgaW5mb3JtYXRpb25hbCBmdWxsLXRyZWUgUHl0aG9uIGxpbnQgYmFja2xvZyByZW1haW5zIHNlcGFyYXRlIGRlZmVycmVkIG1haW50ZW5hbmNlLgo='
+          todo_b64='CgotLS0KCiMjIENvbXBsZXRpb24gcmVjb25jaWxpYXRpb24g4oCUIDIwMjYtMDctMzAKClRoaXMgc2VjdGlvbiByZWNvcmRzIGFjdHVhbCBjb21wbGV0aW9uIHdpdGhvdXQgbWVjaGFuaWNhbGx5IHJld3JpdGluZyBldmVyeSBoaXN0b3JpY2FsIGNoZWNrYm94IGFib3ZlLgoKYGBgdGV4dApTdGFydGluZyByZXZpZXctVE9ETyBTSEE6IDY3Y2E5NmQ1OTI0ZjNiNGNlNTYyMzI1NzdiNzBmMzEzZDI5YjE0ZDkKUHJvZHVjdGlvbi90ZXN0IGNvbW1pdDogICAgODU3ZmY2NjcyMjU2MDJkMmUyNGY1Yjk2YWNkZjExYmYwMmUxMmQxYgpIb3N0LUNJIGdhdGUgY29tbWl0OiAgICAgICBjZDAxNzVjYjk1NTY1YzVjZmI0YTk5YTc4ZjgyNmJmZWJiMzNjZTg3ClZhbGlkYXRlZCBjaGVja3BvaW50OiAgICAgIDE1YTdiYmRhZmExMDRmMGZkN2Q3ZDEzYTQyZDkyZWNhMmJkNjg5MzgKVGVtcG9yYXJ5IHdvcmtmbG93IHJlbW92ZWQ6IDkwY2YzYjc0NTEyYWVlNTVhMWE5ODY3OWM5MTViNmQ1ZTVkY2Q2NWIKYGBgCgpUYXNrIHJlc3VsdHM6CgotIEZJWC0wMCBicmFuY2gvYmFzZWxpbmUgZGlzY2lwbGluZTogKipQQVNTKiouIE5vIGNvbmN1cnJlbnQgYnJhbmNoIGFkdmFuY2Ugd2FzIGFjY2VwdGVkIHNpbGVudGx5LgotIEZJWC0wMSBIRlAgY29tbWFuZCBDSSBnYXRlIGFuZCBuZXN0ZWQgZXZpZGVuY2UgbG9nczogKipQQVNTKiouCi0gRklYLTAyIHN0YWxlIHRlbGVtcnkgdmlzaWJpbGl0eSBhbmQgZXhhY3QgZmFpbHVyZSB0ZXN0czogKipQQVNTKiouCi0gRklYLTAzIEEyRFAgZGF0YS1jYWxsYmFjayBkaWFnbm9zdGljcyBhbmQgYm91bmRlZCBsb2dnaW5nOiAqKlBBU1MqKi4KLSBGSVgtMDQgZGlzY29ubmVjdCBjbGVhciBwcmVjZWRlbmNlOiAqKlBBU1Mg4oCUIE9wdGlvbiBBKiouCi0gRklYLTA1IG9yaWdpbmFsIHN0YWJpbGl6YXRpb24gVE9ETyBjbG9zZW91dCBwb2ludGVyczogKipQQVNTKiouCi0gRklYLTA2IG9yaWdpbmFsIHNvZnR3YXJlIGNsb3Nlb3V0IHJldmlldyBzZWN0aW9uOiAqKlBBU1MqKi4KLSBGSVgtMDcgZm9jdXNlZCBzYW5pdGl6ZXIgZ2F0ZXM6ICoqUEFTUyoqLiBIRlAgY29tbWFuZHMgMjQvMjQ7IEEyRFAgc2Vjb25kYXJ5IGZhaWx1cmVzIDEyLzEyOyBBMkRQIGRhdGEgZGlhZ25vc3RpY3MgNC80OyBBU2FuL1VCU2FuIHN0YWdlcyBwYXNzZWQuCi0gRklYLTA4IGNvbXBsZXRlIGhvc3QgdmFsaWRhdGlvbjogKipQQVNTKiouIENUZXN0IDgxLzgxLCB6ZXJvIGZhaWxlZCwgNDAuMTAgc2Vjb25kcy4KLSBGSVgtMDkgcmVsZXZhbnQgUHl0aG9uIHZhbGlkYXRpb246ICoqUEFTUyoqLiBObyBtYWludGFpbmVkIFB5dGhvbiBmaWxlIHJlbWFpbnMgaW4gdGhlIGR1cmFibGUgZGlmZjsgUHl0aG9uIHVuaXQgdGVzdHMgYW5kIGNoYW5nZWQtZmlsZSBsaW50IGdhdGUgcGFzc2VkLiBMZWdhY3kgZnVsbC10cmVlIGxpbnQgZGVidCByZW1haW5zIGluZm9ybWF0aW9uYWwuCi0gRklYLTEwIEVTUC1JREYgdjUuNS4xIGNvbXBpbGUtb25seSB2YWxpZGF0aW9uOiAqKlBBU1MqKi4gTm8gZmxhc2g7IG5vIHVuZXhwbGFpbmVkIHRyYWNrZWQgYHNk a2NvbmZpZ2AgY2h1cm47IDc0MSwyNjQgYnl0ZXMgcGFydGl0aW9uIGhlYWRyb29tLgotIEZJWC0xMSBzYW1lLVNIQSBDSSBldmlkZW5jZTogKipQQVNTKiogYXQgY2hlY2twb2ludCBgMTVhN2JiZC4uLmA7IGZpbmFsIGNsZWFuZWQgaGVhZCBtdXN0IGFsc28gcGFzcyBiZWZvcmUgZXh0ZXJuYWwgY2xvc2VvdXQuCi0gRklYLTEyIHF1aWV0LWZhaWx1cmUvZmFrZS1zdWNjZXNzIHJldmlldzogKipQQVNTKiouIE5vIHJlYWwgZ2F0ZSB1c2VzIGB8fCB0cnVlYDsgbm8gbmV3IGVycm9yIGlzIGNvbnZlcnRlZCB0byBzdWNjZXNzOyBubyB1bmxvY2tlZCBmYWxsYmFjayBtdXRhdGlvbiwgYmxvY2tpbmcgY2FsbGJhY2sgbG9jaywgaGVhcCBhbGxvY2F0aW9uLCByZXRyeSBsb29wLCBvciBmYWtlIGhhcmR3YXJlIGNsYWltIHdhcyBpbnRyb2R1Y2VkLgotIEZJWC0xMyBmaW5hbCByZXBvcnQ6IHN1cHBsaWVkIGJ5IHRoZSBSYWxwaC1sb29wIGNvbXBsZXRpb24gcmVzcG9uc2UgYWZ0ZXIgZmluYWwgc2FtZS1TSEEgQ0kuCgpQaHlzaWNhbCBFU1AzMi1XUk9PTS0zMiB2YWxpZGF0aW9uLCBGR C0xOC9GRC0xOSwgYnJvYWQgQ01ha2UgbW9kdWxhcml6YXRpb24sIGFuZCB0aGUgUHl0aG9uIGNsZWFudXAgYmFja2xvZyByZW1haW4gb3V0c2lkZSB0aGlzIFRPRE8uCg=='
+          printf '%s' "${closeout_b64}" | base64 -d >> "${closeout}"
+          printf '%s' "${todo_b64}" | tr -d ' ' | base64 -d >> "${todo}"
 
       - name: Verify and commit documentation changes
         shell: bash
@@ -154,5 +62,3 @@ EOF
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git commit -m 'docs: reconcile duplex review fixes closeout'
           git push origin HEAD:feature/esp-bt-audio-duplex
-
-# Retrigger marker: workflow already existed before this push.
