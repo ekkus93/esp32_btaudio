@@ -84,6 +84,9 @@ jobs:
       - name: Run FD-16 duplex policy sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_duplex_policy_test.sh
 
+      - name: Run HFP command sanitizer tests
+        run: bash esp_bt_audio_source/tools/run_bt_hfp_commands_test.sh
+
       - name: Run A2DP binding lifecycle sanitizer tests
         run: bash esp_bt_audio_source/tools/run_bt_a2dp_binding_lifecycle_test.sh
 
@@ -170,6 +173,7 @@ jobs:
           path: |
             esp_bt_audio_source/test/host_test/build_host_tests/*.xml
             esp_bt_audio_source/test/host_test/build_host_tests/*.log
+            esp_bt_audio_source/test/host_test/build_host_tests/**/*.log
             esp_bt_audio_source/test/host_test/build_host_tests/cmake-targets.txt
             esp_bt_audio_source/test/host_test/build_host_tests/ctest-inventory.json
             esp_bt_audio_source/test/host_test/build_host_tests/*_compile.log
@@ -263,7 +267,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: host-test-logs
-          path: esp_bt_audio_source/test/host_test/build_host_tests/*.log
+          path: esp_bt_audio_source/test/host_test/build_host_tests/**/*.log
 
       - name: Publish host workflow commit status
         if: always()
