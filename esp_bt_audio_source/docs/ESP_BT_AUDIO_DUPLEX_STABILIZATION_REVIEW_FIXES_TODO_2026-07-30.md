@@ -793,7 +793,7 @@ Task results:
 
 - FIX-00 branch/baseline discipline: **PASS**. No concurrent branch advance was accepted silently.
 - FIX-01 HFP command CI gate and nested evidence logs: **PASS**.
-- FIX-02 stale telemry visibility and exact failure tests: **PASS**.
+- FIX-02 stale telemetry visibility and exact failure tests: **PASS**.
 - FIX-03 A2DP data-callback diagnostics and bounded logging: **PASS**.
 - FIX-04 disconnect clear precedence: **PASS — Option A**.
 - FIX-05 original stabilization TODO closeout pointers: **PASS**.
