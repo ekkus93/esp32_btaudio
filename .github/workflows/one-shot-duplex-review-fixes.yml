@@ -6,6 +6,7 @@ on:
       - feature/esp-bt-audio-duplex
     paths:
       - tools/one_shot_patch_duplex_review_fixes.py
+      - tools/fix_one_shot_duplex_patch.py
       - .github/workflows/one-shot-duplex-review-fixes.yml
 
 permissions:
@@ -29,12 +30,14 @@ jobs:
           ref: feature/esp-bt-audio-duplex
           fetch-depth: 0
 
-      - name: Verify expected patch input
+      - name: Verify and repair expected patch input
         shell: bash
         run: |
           set -euo pipefail
           test -f tools/one_shot_patch_duplex_review_fixes.py
+          test -f tools/fix_one_shot_duplex_patch.py
           test -f .github/workflows/one-shot-duplex-review-fixes.yml
+          python3 tools/fix_one_shot_duplex_patch.py
           python3 -m py_compile tools/one_shot_patch_duplex_review_fixes.py
 
       - name: Apply exact patch
@@ -49,6 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           rm tools/one_shot_patch_duplex_review_fixes.py
+          rm tools/fix_one_shot_duplex_patch.py
           rm .github/workflows/one-shot-duplex-review-fixes.yml
           git add -A
           if git diff --cached --quiet; then
