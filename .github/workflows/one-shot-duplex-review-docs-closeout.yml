@@ -1,0 +1,156 @@
+name: One-shot Duplex Review Documentation Closeout
+
+on:
+  push:
+    branches:
+      - feature/esp-bt-audio-duplex
+    paths:
+      - .github/workflows/one-shot-duplex-review-docs-closeout.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-duplex-review-docs-closeout
+  cancel-in-progress: false
+
+jobs:
+  closeout:
+    name: Append validated review closeout evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/esp-bt-audio-duplex
+          fetch-depth: 0
+
+      - name: Append original closeout review section
+        shell: bash
+        run: |
+          set -euo pipefail
+          closeout='esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_SOFTWARE_CLOSEOUT_AND_CLAUDE_DEVICE_HANDOFF_2026-07-29.md'
+          marker='## Review follow-up closeout — 2026-07-30'
+          if grep -Fq "${marker}" "${closeout}"; then
+            echo "::error::Review follow-up section already exists in ${closeout}."
+            exit 1
+          fi
+          cat >> "${closeout}" <<'EOF'
+
+---
+
+## Review follow-up closeout — 2026-07-30
+
+The follow-up work specified by:
+
+`esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md`
+
+was implemented and validated at the following same-SHA software checkpoint:
+
+```text
+15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
+```
+
+Resolved items:
+
+- The HFP command sanitizer runner is an enforced maintained-host-CI gate.
+- Nested command-runner compile and test logs are retained in the host evidence artifact.
+- Stale-operation telemetry recorder failures are logged and test-visible without replacing the primary A2DP rejection.
+- Unbound diagnostic HFP-status lookup failures expose the exact error.
+- A2DP data-callback `audio_processor_read()` failures remain safe zero-byte callback results but are counted, retain the latest exact error, and use bounded logging.
+- Disconnect clear precedence uses the documented Option A contract: idempotent `ESP_ERR_NOT_FOUND` may be replaced by an actionable clear error, while a hard primary policy error remains authoritative.
+- The original stabilization TODO points to both the original closeout and the review-fix follow-up evidence.
+- Temporary one-shot patch scripts were removed before final candidate validation.
+
+Validation checkpoint:
+
+```text
+Host workflow:       CI — host tests (optimized)
+Host run ID:         30571344895
+Host job ID:         90968575645
+Host result:         SUCCESS
+Host CTest:          81/81 passed, 0 failed
+Host CTest time:     40.10 seconds
+Host artifact:       8770952601 (host-test-results)
+
+Device workflow:     CI — device build (compile only)
+Device run ID:       30571345110
+Device job ID:       90968576182
+Device result:       SUCCESS
+ESP-IDF:             v5.5.1
+Target:              esp32 / ESP32-WROOM-32 configuration
+Application binary:  0xFB070 = 1,028,208 bytes
+Smallest partition:  0x1B0000 = 1,769,472 bytes
+Partition headroom:  0xB4F90 = 741,264 bytes (42% free)
+Flash executed:      No
+```
+
+The exact final cleaned candidate is the branch head reported after the final documentation and temporary-workflow-removal commits also pass both maintained workflows on one SHA. A Git document cannot embed the SHA of the commit that contains itself, so that final literal SHA belongs in the external handoff/result report and in issue #4.
+
+This follow-up does not change the existing capability boundary: FD-18/FD-19 HFP speaker downlink/full-playback work remains unimplemented, physical ESP32 validation remains pending, and the repository must not be represented as globally flake8-clean. The informational full-tree Python lint backlog remains separate deferred maintenance.
+EOF
+
+      - name: Append review TODO completion reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          todo='esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md'
+          marker='## Completion reconciliation — 2026-07-30'
+          if grep -Fq "${marker}" "${todo}"; then
+            echo "::error::Completion reconciliation already exists in ${todo}."
+            exit 1
+          fi
+          cat >> "${todo}" <<'EOF'
+
+---
+
+## Completion reconciliation — 2026-07-30
+
+This section records actual completion without mechanically rewriting every historical checkbox above.
+
+```text
+Starting review-TODO SHA: 67ca96d5924f3b4ce56232577b70f313d29b14d9
+Production/test commit:    857ff667225602d2e24f5b96acdf11bf02e12d1b
+Host-CI gate commit:       cd0175cb95565c5cfb4a99a78f826bfebb33ce87
+Validated checkpoint:      15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
+Temporary workflow removed: 90cf3b74512aee55a1a98679c915b6d5e5dcd65b
+```
+
+Task results:
+
+- FIX-00 branch/baseline discipline: **PASS**. No concurrent branch advance was accepted silently.
+- FIX-01 HFP command CI gate and nested evidence logs: **PASS**.
+- FIX-02 stale telemetry visibility and exact failure tests: **PASS**.
+- FIX-03 A2DP data-callback diagnostics and bounded logging: **PASS**.
+- FIX-04 disconnect clear precedence: **PASS — Option A**.
+- FIX-05 original stabilization TODO closeout pointers: **PASS**.
+- FIX-06 original software closeout review section: **PASS**.
+- FIX-07 focused sanitizer gates: **PASS**. HFP commands 24/24; A2DP secondary failures 12/12; A2DP data diagnostics 4/4; ASan/UBSan stages passed.
+- FIX-08 complete host validation: **PASS**. CTest 81/81, zero failed, 40.10 seconds.
+- FIX-09 relevant Python validation: **PASS**. No maintained Python file remains in the durable diff; Python unit tests and changed-file lint gate passed. Legacy full-tree lint debt remains informational.
+- FIX-10 ESP-IDF v5.5.1 compile-only validation: **PASS**. No flash; no unexplained tracked `sdkconfig` churn; 741,264 bytes partition headroom.
+- FIX-11 same-SHA CI evidence: **PASS** at checkpoint `15a7bbd...`; final cleaned head must also pass before external closeout.
+- FIX-12 quiet-failure/fake-success review: **PASS**. No real gate uses `|| true`; no new error is converted to success; no unlocked fallback mutation, blocking callback lock, heap allocation, retry loop, or fake hardware claim was introduced.
+- FIX-13 final report: supplied by the Ralph-loop completion response after final same-SHA CI.
+
+Physical ESP32-WROOM-32 validation, FD-18/FD-19, broad CMake modularization, and the Python cleanup backlog remain outside this TODO.
+EOF
+
+      - name: Verify and commit documentation changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git add \
+            esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_SOFTWARE_CLOSEOUT_AND_CLAUDE_DEVICE_HANDOFF_2026-07-29.md \
+            esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md
+          if git diff --cached --quiet; then
+            echo '::error::Documentation closeout produced no changes.'
+            exit 1
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'docs: reconcile duplex review fixes closeout'
+          git push origin HEAD:feature/esp-bt-audio-duplex
