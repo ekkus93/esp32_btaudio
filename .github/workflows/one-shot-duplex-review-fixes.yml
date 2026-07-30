@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: one-shot-duplex-review-fixes
@@ -59,4 +60,12 @@ jobs:
           git commit -m 'fix(bt): close duplex stabilization review findings'
           git push origin HEAD:feature/esp-bt-audio-duplex
 
-# Retrigger marker: workflow already existed before this push.
+      - name: Report one-shot result to CI status issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          gh issue comment 4 --repo "${GITHUB_REPOSITORY}" --body "One-shot duplex review-fixes workflow result: **${JOB_STATUS}**. Run ID: \`${GITHUB_RUN_ID}\`; attempt: \`${GITHUB_RUN_ATTEMPT}\`; triggering SHA: \`${GITHUB_SHA}\`."
