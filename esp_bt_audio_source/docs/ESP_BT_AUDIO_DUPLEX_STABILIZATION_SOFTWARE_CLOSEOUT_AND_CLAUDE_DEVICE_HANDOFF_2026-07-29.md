@@ -794,3 +794,56 @@ At this closeout point:
 - broad host CMake cleanup: **deferred**.
 
 The branch is ready for the bounded Claude Code hardware phase. A merge into `master` should occur only after the repository owner reviews the physical evidence and explicitly accepts any remaining hardware limitations.
+
+
+---
+
+## Review follow-up closeout — 2026-07-30
+
+The follow-up work specified by:
+
+`esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md`
+
+was implemented and validated at the following same-SHA software checkpoint:
+
+```text
+15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
+```
+
+Resolved items:
+
+- The HFP command sanitizer runner is an enforced maintained-host-CI gate.
+- Nested command-runner compile and test logs are retained in the host evidence artifact.
+- Stale-operation telemetry recorder failures are logged and test-visible without replacing the primary A2DP rejection.
+- Unbound diagnostic HFP-status lookup failures expose the exact error.
+- A2DP data-callback `audio_processor_read()` failures remain safe zero-byte callback results but are counted, retain the latest exact error, and use bounded logging.
+- Disconnect clear precedence uses the documented Option A contract: idempotent `ESP_ERR_NOT_FOUND` may be replaced by an actionable clear error, while a hard primary policy error remains authoritative.
+- The original stabilization TODO points to both the original closeout and the review-fix follow-up evidence.
+- Temporary one-shot patch scripts were removed before final candidate validation.
+
+Validation checkpoint:
+
+```text
+Host workflow:       CI — host tests (optimized)
+Host run ID:         30571344895
+Host job ID:         90968575645
+Host result:         SUCCESS
+Host CTest:          81/81 passed, 0 failed
+Host CTest time:     40.10 seconds
+Host artifact:       8770952601 (host-test-results)
+
+Device workflow:     CI — device build (compile only)
+Device run ID:       30571345110
+Device job ID:       90968576182
+Device result:       SUCCESS
+ESP-IDF:             v5.5.1
+Target:              esp32 / ESP32-WROOM-32 configuration
+Application binary:  0xFB070 = 1,028,208 bytes
+Smallest partition:  0x1B0000 = 1,769,472 bytes
+Partition headroom:  0xB4F90 = 741,264 bytes (42% free)
+Flash executed:      No
+```
+
+The exact final cleaned candidate is the branch head reported after the final documentation and temporary-workflow-removal commits also pass both maintained workflows on one SHA. A Git document cannot embed the SHA of the commit that contains itself, so that final literal SHA belongs in the external handoff/result report and in issue #4.
+
+This follow-up does not change the existing capability boundary: FD-18/FD-19 HFP speaker downlink/full-playback work remains unimplemented, physical ESP32 validation remains pending, and the repository must not be represented as globally flake8-clean. The informational full-tree Python lint backlog remains separate deferred maintenance.

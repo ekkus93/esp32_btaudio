@@ -773,3 +773,37 @@ Remaining blockers:
 ```
 
 **Final acceptance condition:** The branch has no known unaddressed software issue from the 2026-07-30 review except explicitly deferred maintenance or physical hardware validation.
+
+
+---
+
+## Completion reconciliation — 2026-07-30
+
+This section records actual completion without mechanically rewriting every historical checkbox above.
+
+```text
+Starting review-TODO SHA: 67ca96d5924f3b4ce56232577b70f313d29b14d9
+Production/test commit:    857ff667225602d2e24f5b96acdf11bf02e12d1b
+Host-CI gate commit:       cd0175cb95565c5cfb4a99a78f826bfebb33ce87
+Validated checkpoint:      15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
+Temporary workflow removed: 90cf3b74512aee55a1a98679c915b6d5e5dcd65b
+```
+
+Task results:
+
+- FIX-00 branch/baseline discipline: **PASS**. No concurrent branch advance was accepted silently.
+- FIX-01 HFP command CI gate and nested evidence logs: **PASS**.
+- FIX-02 stale telemry visibility and exact failure tests: **PASS**.
+- FIX-03 A2DP data-callback diagnostics and bounded logging: **PASS**.
+- FIX-04 disconnect clear precedence: **PASS — Option A**.
+- FIX-05 original stabilization TODO closeout pointers: **PASS**.
+- FIX-06 original software closeout review section: **PASS**.
+- FIX-07 focused sanitizer gates: **PASS**. HFP commands 24/24; A2DP secondary failures 12/12; A2DP data diagnostics 4/4; ASan/UBSan stages passed.
+- FIX-08 complete host validation: **PASS**. CTest 81/81, zero failed, 40.10 seconds.
+- FIX-09 relevant Python validation: **PASS**. No maintained Python file remains in the durable diff; Python unit tests and changed-file lint gate passed. Legacy full-tree lint debt remains informational.
+- FIX-10 ESP-IDF v5.5.1 compile-only validation: **PASS**. No flash; no unexplained tracked `sdkconfig` churn; 741,264 bytes partition headroom.
+- FIX-11 same-SHA CI evidence: **PASS** at checkpoint `15a7bbd...`; final cleaned head must also pass before external closeout.
+- FIX-12 quiet-failure/fake-success review: **PASS**. No real gate uses `|| true`; no new error is converted to success; no unlocked fallback mutation, blocking callback lock, heap allocation, retry loop, or fake hardware claim was introduced.
+- FIX-13 final report: supplied by the Ralph-loop completion response after final same-SHA CI.
+
+Physical ESP32-WROOM-32 validation, FD-18/FD-19, broad CMake modularization, and the Python cleanup backlog remain outside this TODO.
