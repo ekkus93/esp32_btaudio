@@ -5,6 +5,8 @@
 **Review-fixes TODO:** `esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md`  
 **Production/test implementation commit:** `857ff667225602d2e24f5b96acdf11bf02e12d1b`  
 **Host-CI enforcement commit:** `cd0175cb95565c5cfb4a99a78f826bfebb33ce87`  
+**Validated same-SHA checkpoint:** `15a7bbdafa104f0fd7d7d13a42d92eca2bd68938`  
+**Temporary workflow cleanup commit:** `41db360edcd997230c6551ad0cafe52ad832c0ca`  
 **Physical hardware validation:** Pending  
 **Hardware flashed during this work:** No
 
@@ -24,6 +26,8 @@ Implemented changes:
 6. `audio_processor_read()` failures in the A2DP source data callback remain zero-byte callback results but now update nonblocking, saturating diagnostics and emit bounded logs.
 7. Disconnect error precedence is explicit: `ESP_ERR_NOT_FOUND` is treated as an idempotent no-duplex-session result, an actionable clear failure may replace it, and a hard primary policy error remains authoritative.
 8. The original stabilization TODO now points readers to both its software closeout and this review-fix follow-up.
+9. The original software closeout now contains the review-follow-up result and exact validation evidence.
+10. All temporary patch scripts and one-shot workflows used during implementation have been removed.
 
 No fallback mutation, unlocked reset, fake success, blocking manager mutex, heap allocation, retry loop, or hardware claim was added.
 
@@ -85,20 +89,42 @@ The suite proves:
 
 ---
 
-## 3. Host validation checkpoint
+## 3. Same-SHA validation checkpoint
 
-The maintained host workflow passed on:
+The maintained workflows passed together on:
 
 ```text
-Commit:  cd0175cb95565c5cfb4a99a78f826bfebb33ce87
-Run ID:  30571058050
-Job ID:  90967603134
-Result:  SUCCESS
-CTest:   81/81 passed, 0 failed
-Time:    40.11 seconds
+15a7bbdafa104f0fd7d7d13a42d92eca2bd68938
 ```
 
-Successful enforced stages included:
+Host evidence:
+
+```text
+Workflow: CI — host tests (optimized)
+Run ID:   30571344895
+Job ID:   90968575645
+Result:   SUCCESS
+CTest:    81/81 passed, 0 failed
+Time:     40.10 seconds
+Artifact: 8770952601 (host-test-results)
+```
+
+Device compile-only evidence:
+
+```text
+Workflow:             CI — device build (compile only)
+Run ID:               30571345110
+Job ID:               90968576182
+Result:               SUCCESS
+ESP-IDF:              v5.5.1
+Target:               esp32 / ESP32-WROOM-32 configuration
+Application binary:   0xFB070 = 1,028,208 bytes
+Smallest partition:   0x1B0000 = 1,769,472 bytes
+Partition headroom:   0xB4F90 = 741,264 bytes (42% free)
+Flash executed:       No
+```
+
+Successful enforced host stages included:
 
 - clean full host configure and build;
 - all maintained HFP and duplex sanitizer runners;
@@ -109,7 +135,7 @@ Successful enforced stages included:
 - complete CTest;
 - evidence artifact upload.
 
-The full-tree Python lint audit remains informational legacy debt. This work did not claim that the repository is globally flake8-clean.
+The full-tree Python lint audit remains informational legacy debt. This work does not claim that the repository is globally flake8-clean.
 
 ---
 
@@ -131,15 +157,20 @@ Production writes occur from the serial A2DP data-callback context. UNIT_TEST sn
 
 ---
 
-## 5. Remaining validation
+## 5. Final candidate validation rule
 
-This documentation checkpoint intentionally triggers both maintained workflows. Final closure requires:
+This file update is the final ordinary repository change for the review-fix Ralph loop. Its resulting commit SHA must satisfy all of the following before external closeout:
 
-- host workflow success on the same documentation SHA;
-- ESP-IDF v5.5.1 compile-only workflow success on that same SHA;
-- exact firmware size and partition-headroom evidence;
-- removal of temporary one-shot workflow machinery;
-- final TODO/closeout bookkeeping;
-- a final quiet-failure and generated-artifact sweep.
+- issue #4 reports host and device runs on that exact same SHA;
+- host result is `success` with all enforced stages complete;
+- complete CTest remains 81/81 with zero failures;
+- device compile-only result is `success` under ESP-IDF v5.5.1;
+- expected firmware artifacts and size evidence are present;
+- problem steps are `None`;
+- no temporary one-shot script or workflow is present in the final diff;
+- no generated build output or firmware artifact is committed;
+- no hardware flash is executed or implied.
 
-Physical ESP32-WROOM-32 tasks remain pending and must not be represented as passed.
+A Git document cannot embed the SHA of the commit that contains itself. The exact final literal SHA, final host run/job, and final device run/job therefore belong in issue #4 and in the external Ralph-loop completion report.
+
+Physical ESP32-WROOM-32 tasks remain pending and must not be represented as passed. FD-18/FD-19 HFP speaker downlink/full-playback work, broad CMake modularization, and the Python cleanup backlog remain outside this TODO.
