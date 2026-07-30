@@ -20,10 +20,15 @@ extern void bt_manager_test_set_hfp_profile_created_generation(
     uint32_t generation);
 extern unsigned bt_manager_test_get_hfp_status_calls(void);
 extern unsigned bt_manager_test_get_hfp_audio_policy_calls(void);
+extern unsigned bt_manager_test_get_stale_operation_records(void);
+extern void bt_manager_test_set_stale_operation_record_result(esp_err_t result);
 extern int bt_manager_test_get_last_audio_state(void);
 
 static const uint8_t PEER_BDA[6] = {
     0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+};
+static const uint8_t OTHER_PEER_BDA[6] = {
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66
 };
 static const char *PEER = "aa:bb:cc:dd:ee:ff";
 static const esp_a2d_conn_hdl_t HANDLE = 7;
@@ -46,13 +51,21 @@ static void send_audio(esp_a2d_audio_state_t state)
     bt_events_handle_a2dp_audio(&param);
 }
 
-static esp_a2d_cb_param_t audio_param(esp_a2d_audio_state_t state)
+static esp_a2d_cb_param_t audio_param_for(
+    esp_a2d_audio_state_t state,
+    const uint8_t bda[6],
+    esp_a2d_conn_hdl_t handle)
 {
     esp_a2d_cb_param_t param = {0};
     param.audio_stat.state = state;
-    memcpy(param.audio_stat.remote_bda, PEER_BDA, sizeof(PEER_BDA));
-    param.audio_stat.conn_hdl = HANDLE;
+    memcpy(param.audio_stat.remote_bda, bda, 6U);
+    param.audio_stat.conn_hdl = handle;
     return param;
+}
+
+static esp_a2d_cb_param_t audio_param(esp_a2d_audio_state_t state)
+{
+    return audio_param_for(state, PEER_BDA, HANDLE);
 }
 
 static bt_events_a2dp_binding_snapshot_t binding_snapshot(void)
@@ -112,6 +125,7 @@ void setUp(void)
     TEST_ASSERT_EQUAL(ESP_OK, bt_manager_test_init_mutex());
     TEST_ASSERT_EQUAL(ESP_OK, bt_events_a2dp_test_reset_binding());
     bt_events_a2dp_test_reset_secondary_errors();
+    bt_events_a2dp_test_reset_telemetry_errors();
     establish_binding();
 }
 
@@ -244,6 +258,150 @@ static void test_unbound_start_prepare_path_returns_exact_invalid_state(void)
     TEST_ASSERT_EQUAL(audio_before, bt_ctx.audio_playing);
 }
 
+static void test_wrong_peer_telemetry_failure_is_visible_without_state_mutation(void)
+{
+    const bt_events_a2dp_binding_snapshot_t before = binding_snapshot();
+    const unsigned policy_before = bt_manager_test_get_hfp_audio_policy_calls();
+    const unsigned records_before = bt_manager_test_get_stale_operation_records();
+    bt_manager_test_set_stale_operation_record_result(ESP_ERR_NO_MEM);
+    bt_events_a2dp_test_reset_telemetry_errors();
+    esp_a2d_cb_param_t param = audio_param_for(
+        ESP_A2D_AUDIO_STATE_STARTED, OTHER_PEER_BDA, HANDLE);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_events_a2dp_test_prepare_audio_event(&param));
+    const bt_events_a2dp_binding_snapshot_t after = binding_snapshot();
+    TEST_ASSERT_EQUAL_STRING(before.peer_mac, after.peer_mac);
+    TEST_ASSERT_EQUAL_UINT(before.conn_handle, after.conn_handle);
+    TEST_ASSERT_EQUAL_UINT32(before.lifecycle_serial, after.lifecycle_serial);
+    TEST_ASSERT_EQUAL_UINT32(before.last_duplex_generation,
+                             after.last_duplex_generation);
+    TEST_ASSERT_EQUAL_UINT64(before.wrong_peer_rejections + 1U,
+                             after.wrong_peer_rejections);
+    TEST_ASSERT_EQUAL_UINT64(before.stale_handle_rejections,
+                             after.stale_handle_rejections);
+    TEST_ASSERT_EQUAL_UINT(policy_before,
+                           bt_manager_test_get_hfp_audio_policy_calls());
+    TEST_ASSERT_EQUAL_UINT(records_before + 1U,
+                           bt_manager_test_get_stale_operation_records());
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM,
+                      bt_events_a2dp_test_get_last_stale_record_error());
+    TEST_ASSERT_FALSE(bt_ctx.audio_playing);
+}
+
+static void test_stale_handle_telemetry_failure_is_visible_without_state_mutation(void)
+{
+    const bt_events_a2dp_binding_snapshot_t before = binding_snapshot();
+    const unsigned policy_before = bt_manager_test_get_hfp_audio_policy_calls();
+    bt_manager_test_set_stale_operation_record_result(ESP_ERR_TIMEOUT);
+    bt_events_a2dp_test_reset_telemetry_errors();
+    esp_a2d_cb_param_t param = audio_param_for(
+        ESP_A2D_AUDIO_STATE_STARTED, PEER_BDA, HANDLE + 1U);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_events_a2dp_test_prepare_audio_event(&param));
+    const bt_events_a2dp_binding_snapshot_t after = binding_snapshot();
+    TEST_ASSERT_EQUAL_STRING(before.peer_mac, after.peer_mac);
+    TEST_ASSERT_EQUAL_UINT(before.conn_handle, after.conn_handle);
+    TEST_ASSERT_EQUAL_UINT32(before.lifecycle_serial, after.lifecycle_serial);
+    TEST_ASSERT_EQUAL_UINT32(before.last_duplex_generation,
+                             after.last_duplex_generation);
+    TEST_ASSERT_EQUAL_UINT64(before.stale_handle_rejections + 1U,
+                             after.stale_handle_rejections);
+    TEST_ASSERT_EQUAL_UINT64(before.wrong_peer_rejections,
+                             after.wrong_peer_rejections);
+    TEST_ASSERT_EQUAL_UINT(policy_before,
+                           bt_manager_test_get_hfp_audio_policy_calls());
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      bt_events_a2dp_test_get_last_stale_record_error());
+    TEST_ASSERT_FALSE(bt_ctx.audio_playing);
+}
+
+static void test_unbound_telemetry_failure_preserves_primary_rejection(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, bt_events_a2dp_test_reset_binding());
+    bt_manager_test_set_hfp_policy_status(true, PEER, 41U, ESP_OK);
+    bt_manager_test_set_stale_operation_record_result(ESP_ERR_NOT_SUPPORTED);
+    bt_events_a2dp_test_reset_telemetry_errors();
+    const unsigned policy_before = bt_manager_test_get_hfp_audio_policy_calls();
+    esp_a2d_cb_param_t param = audio_param(ESP_A2D_AUDIO_STATE_STARTED);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_events_a2dp_test_prepare_audio_event(&param));
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED,
+                      bt_events_a2dp_test_get_last_stale_record_error());
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      bt_events_a2dp_test_get_last_unbound_status_error());
+    TEST_ASSERT_EQUAL_UINT(policy_before,
+                           bt_manager_test_get_hfp_audio_policy_calls());
+    TEST_ASSERT_FALSE(bt_ctx.audio_playing);
+}
+
+static void test_unbound_status_lookup_failure_is_visible(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, bt_events_a2dp_test_reset_binding());
+    bt_manager_test_set_hfp_policy_status(false, NULL, 0U, ESP_ERR_TIMEOUT);
+    bt_events_a2dp_test_reset_telemetry_errors();
+    esp_a2d_cb_param_t param = audio_param(ESP_A2D_AUDIO_STATE_STARTED);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_events_a2dp_test_prepare_audio_event(&param));
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      bt_events_a2dp_test_get_last_unbound_status_error());
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      bt_events_a2dp_test_get_last_stale_record_error());
+    TEST_ASSERT_FALSE(bt_ctx.audio_playing);
+}
+
+static void test_disconnect_not_found_policy_with_successful_clear_is_idempotent(void)
+{
+    bt_manager_test_set_hfp_policy_status(true, PEER, 41U, ESP_OK);
+    bt_manager_test_set_hfp_policy_results(ESP_ERR_NOT_FOUND, ESP_OK);
+    bt_events_a2dp_test_reset_secondary_errors();
+    send_connection(ESP_A2D_CONNECTION_STATE_DISCONNECTED);
+
+    const bt_events_a2dp_binding_snapshot_t after = binding_snapshot();
+    TEST_ASSERT_FALSE(after.valid);
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      bt_events_a2dp_test_get_last_binding_clear_error());
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND,
+                      bt_events_a2dp_test_get_last_connection_policy_error());
+}
+
+static void test_disconnect_not_found_policy_allows_clear_error_to_surface(void)
+{
+    const bt_events_a2dp_binding_snapshot_t before = binding_snapshot();
+    bt_manager_test_set_hfp_policy_status(true, PEER, 41U, ESP_OK);
+    bt_manager_test_set_hfp_policy_results(ESP_ERR_NOT_FOUND, ESP_OK);
+    bt_events_a2dp_test_reset_secondary_errors();
+    bt_manager_test_force_ctx_lock_after_successes(2U, ESP_ERR_TIMEOUT);
+    send_connection(ESP_A2D_CONNECTION_STATE_DISCONNECTED);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      bt_events_a2dp_test_get_last_binding_clear_error());
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      bt_events_a2dp_test_get_last_connection_policy_error());
+    const bt_events_a2dp_binding_snapshot_t after = binding_snapshot();
+    assert_binding_equal(&before, &after);
+}
+
+static void test_disconnect_hard_policy_error_is_not_replaced_by_clear_error(void)
+{
+    const bt_events_a2dp_binding_snapshot_t before = binding_snapshot();
+    bt_manager_test_set_hfp_policy_status(true, PEER, 41U, ESP_OK);
+    bt_manager_test_set_hfp_policy_results(ESP_ERR_INVALID_STATE, ESP_OK);
+    bt_events_a2dp_test_reset_secondary_errors();
+    bt_manager_test_force_ctx_lock_after_successes(2U, ESP_ERR_TIMEOUT);
+    send_connection(ESP_A2D_CONNECTION_STATE_DISCONNECTED);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
+                      bt_events_a2dp_test_get_last_binding_clear_error());
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      bt_events_a2dp_test_get_last_connection_policy_error());
+    const bt_events_a2dp_binding_snapshot_t after = binding_snapshot();
+    assert_binding_equal(&before, &after);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -252,5 +410,12 @@ int main(void)
     RUN_TEST(test_disconnect_clear_lock_failure_is_visible_and_preserves_binding);
     RUN_TEST(test_late_unbound_terminals_never_request_generation_refresh);
     RUN_TEST(test_unbound_start_prepare_path_returns_exact_invalid_state);
+    RUN_TEST(test_wrong_peer_telemetry_failure_is_visible_without_state_mutation);
+    RUN_TEST(test_stale_handle_telemetry_failure_is_visible_without_state_mutation);
+    RUN_TEST(test_unbound_telemetry_failure_preserves_primary_rejection);
+    RUN_TEST(test_unbound_status_lookup_failure_is_visible);
+    RUN_TEST(test_disconnect_not_found_policy_with_successful_clear_is_idempotent);
+    RUN_TEST(test_disconnect_not_found_policy_allows_clear_error_to_surface);
+    RUN_TEST(test_disconnect_hard_policy_error_is_not_replaced_by_clear_error);
     return UNITY_END();
 }

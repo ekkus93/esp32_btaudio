@@ -89,12 +89,25 @@ typedef struct {
     uint64_t late_terminal_events_ignored;
 } bt_events_a2dp_binding_snapshot_t;
 
+typedef struct {
+    uint64_t audio_read_failures;
+    esp_err_t last_audio_read_error;
+    uint32_t suppressed_audio_read_error_logs;
+} bt_events_a2dp_data_diag_snapshot_t;
+
 esp_err_t bt_events_a2dp_test_get_binding(
     bt_events_a2dp_binding_snapshot_t *out);
 esp_err_t bt_events_a2dp_test_reset_binding(void);
 void bt_events_a2dp_test_reset_secondary_errors(void);
+void bt_events_a2dp_test_reset_telemetry_errors(void);
+void bt_events_a2dp_test_reset_data_diagnostics(void);
 esp_err_t bt_events_a2dp_test_get_last_generation_diag_update_error(void);
 esp_err_t bt_events_a2dp_test_get_last_binding_clear_error(void);
+esp_err_t bt_events_a2dp_test_get_last_stale_record_error(void);
+esp_err_t bt_events_a2dp_test_get_last_unbound_status_error(void);
+esp_err_t bt_events_a2dp_test_get_last_connection_policy_error(void);
+esp_err_t bt_events_a2dp_test_get_data_diagnostics(
+    bt_events_a2dp_data_diag_snapshot_t *out);
 esp_err_t bt_events_a2dp_test_prepare_audio_event(
     const esp_a2d_cb_param_t *param);
 esp_err_t bt_events_a2dp_test_refresh_bound_generation(

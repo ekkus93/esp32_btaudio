@@ -14,6 +14,7 @@
 
 #define TAG "BT_EVT_A2DP"
 #define A2DP_BINDING_MAC_STR_LEN 18U
+#define A2DP_DATA_ERROR_LOG_INTERVAL 64U
 
 typedef struct {
     bool valid;
@@ -48,6 +49,18 @@ typedef struct {
     bt_a2dp_audio_state_t state;
 } a2dp_bound_audio_event_t;
 
+typedef struct {
+    uint64_t audio_read_failures;
+    esp_err_t last_audio_read_error;
+    uint32_t suppressed_audio_read_error_logs;
+} a2dp_data_diagnostics_t;
+
+/* The ESP-IDF A2DP source invokes its data callback serially. Only that
+ * callback writes this diagnostic state in production; UNIT_TEST snapshots are
+ * taken after synchronous callback return. Avoiding the manager mutex keeps the
+ * real-time callback nonblocking and allocation-free. */
+static a2dp_data_diagnostics_t s_a2dp_data_diag;
+
 /* Guarded by bt_ctx.lock. The ESP-IDF connection handle is the event-owned
  * identity token. The duplex generation may legitimately rotate while the
  * same A2DP connection remains active, so generation refresh is allowed only
@@ -60,6 +73,9 @@ static a2dp_policy_binding_t s_policy_binding;
  * the public ESP-IDF callback signatures. */
 static esp_err_t s_test_last_generation_diag_update_error = ESP_OK;
 static esp_err_t s_test_last_binding_clear_error = ESP_OK;
+static esp_err_t s_test_last_stale_record_error = ESP_OK;
+static esp_err_t s_test_last_unbound_status_error = ESP_OK;
+static esp_err_t s_test_last_connection_policy_error = ESP_OK;
 #endif
 
 /* Forward declarations for connection manager callbacks and internal functions */
@@ -93,24 +109,60 @@ static void report_policy_result(const char *event_name, esp_err_t err)
              esp_err_to_name(err));
 }
 
-static void record_rejected_bound_event(uint32_t generation,
-                                        const char *event_peer)
+static esp_err_t record_rejected_bound_event(uint32_t generation,
+                                                const char *event_peer,
+                                                const char *reason)
 {
-    if (generation != 0U && event_peer != NULL) {
-        (void)bt_duplex_record_stale_operation_event(generation, event_peer);
+    if (generation == 0U || event_peer == NULL) {
+#ifdef UNIT_TEST
+        s_test_last_stale_record_error = ESP_ERR_NOT_FOUND;
+#endif
+        return ESP_ERR_NOT_FOUND;
     }
+
+    esp_err_t err = bt_duplex_record_stale_operation_event(
+        generation, event_peer);
+#ifdef UNIT_TEST
+    s_test_last_stale_record_error = err;
+#endif
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "A2DP stale-operation telemetry failed: peer=%s generation=%u reason=%s error=%s",
+                 event_peer,
+                 (unsigned)generation,
+                 reason != NULL ? reason : "UNKNOWN",
+                 esp_err_to_name(err));
+    }
+    return err;
 }
 
-static void record_rejected_unbound_event(const char *event_peer)
+static esp_err_t record_rejected_unbound_event(const char *event_peer,
+                                                const char *reason)
 {
-    bt_hfp_manager_status_t status;
-    if (event_peer != NULL &&
-        bt_manager_hfp_get_status(&status) == ESP_OK &&
-        status.duplex.peer_valid &&
-        status.duplex.session_generation != 0U) {
-        (void)bt_duplex_record_stale_operation_event(
-            status.duplex.session_generation, event_peer);
+    if (event_peer == NULL) {
+        return ESP_ERR_NOT_FOUND;
     }
+
+    bt_hfp_manager_status_t status;
+    esp_err_t status_err = bt_manager_hfp_get_status(&status);
+#ifdef UNIT_TEST
+    s_test_last_unbound_status_error = status_err;
+#endif
+    if (status_err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "A2DP unbound stale-operation status lookup failed: peer=%s reason=%s error=%s",
+                 event_peer,
+                 reason != NULL ? reason : "UNKNOWN",
+                 esp_err_to_name(status_err));
+        return status_err;
+    }
+    if (!status.duplex.peer_valid ||
+        status.duplex.session_generation == 0U) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    return record_rejected_bound_event(
+        status.duplex.session_generation, event_peer, reason);
 }
 
 static void apply_base_profile_state_locked(a2dp_bound_profile_event_t *bound)
@@ -151,14 +203,16 @@ static esp_err_t create_or_capture_profile_binding(
             increment_u64_saturating(
                 &s_policy_binding.wrong_peer_rejections);
             bt_ctx_unlock();
-            record_rejected_bound_event(generation, bound->peer_mac);
+            record_rejected_bound_event(
+                generation, bound->peer_mac, "PROFILE_WRONG_PEER");
             return ESP_ERR_INVALID_STATE;
         }
         if (bound->conn_handle != s_policy_binding.conn_handle) {
             increment_u64_saturating(
                 &s_policy_binding.stale_handle_rejections);
             bt_ctx_unlock();
-            record_rejected_bound_event(generation, bound->peer_mac);
+            record_rejected_bound_event(
+                generation, bound->peer_mac, "PROFILE_STALE_HANDLE");
             return ESP_ERR_INVALID_STATE;
         }
         bound->lifecycle_serial = s_policy_binding.lifecycle_serial;
@@ -173,7 +227,8 @@ static esp_err_t create_or_capture_profile_binding(
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
         bt_ctx_unlock();
-        record_rejected_unbound_event(bound->peer_mac);
+        record_rejected_unbound_event(
+            bound->peer_mac, "PROFILE_NO_ACTIVE_BINDING");
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -255,14 +310,16 @@ static esp_err_t refresh_bound_generation(const char *peer,
             status.duplex.session_generation == 0U) {
             err = preserve_primary_generation_error(
                 ESP_ERR_INVALID_STATE, lifecycle_serial, conn_handle);
-            record_rejected_bound_event(fallback_generation, peer);
+            record_rejected_bound_event(
+                fallback_generation, peer, "GENERATION_PEER_MISMATCH");
             return err;
         }
         generation = status.duplex.session_generation;
     } else if (!allow_no_session) {
         err = preserve_primary_generation_error(
             ESP_ERR_INVALID_STATE, lifecycle_serial, conn_handle);
-        record_rejected_unbound_event(peer);
+        record_rejected_unbound_event(
+            peer, "GENERATION_NO_ACTIVE_SESSION");
         return err;
     }
 
@@ -273,7 +330,8 @@ static esp_err_t refresh_bound_generation(const char *peer,
         s_policy_binding.conn_handle != conn_handle ||
         strcasecmp(peer, s_policy_binding.peer_mac) != 0) {
         bt_ctx_unlock();
-        record_rejected_bound_event(generation, peer);
+        record_rejected_bound_event(
+            generation, peer, "GENERATION_BINDING_CHANGED");
         return ESP_ERR_INVALID_STATE;
     }
     s_policy_binding.last_duplex_generation = generation;
@@ -344,20 +402,23 @@ static esp_err_t capture_audio_binding(a2dp_bound_audio_event_t *bound)
         increment_u64_saturating(
             &s_policy_binding.missing_binding_rejections);
         bt_ctx_unlock();
-        record_rejected_unbound_event(bound->peer_mac);
+        record_rejected_unbound_event(
+            bound->peer_mac, "AUDIO_NO_ACTIVE_BINDING");
         return ESP_ERR_INVALID_STATE;
     }
     const uint32_t generation = s_policy_binding.last_duplex_generation;
     if (strcasecmp(bound->peer_mac, s_policy_binding.peer_mac) != 0) {
         increment_u64_saturating(&s_policy_binding.wrong_peer_rejections);
         bt_ctx_unlock();
-        record_rejected_bound_event(generation, bound->peer_mac);
+        record_rejected_bound_event(
+                generation, bound->peer_mac, "AUDIO_WRONG_PEER");
         return ESP_ERR_INVALID_STATE;
     }
     if (bound->conn_handle != s_policy_binding.conn_handle) {
         increment_u64_saturating(&s_policy_binding.stale_handle_rejections);
         bt_ctx_unlock();
-        record_rejected_bound_event(generation, bound->peer_mac);
+        record_rejected_bound_event(
+                generation, bound->peer_mac, "AUDIO_STALE_HANDLE");
         return ESP_ERR_INVALID_STATE;
     }
     bound->lifecycle_serial = s_policy_binding.lifecycle_serial;
@@ -427,7 +488,8 @@ static void apply_connection_policy(a2dp_bound_profile_event_t *bound)
             bound->peer_mac, bound->conn_handle, bound->lifecycle_serial,
             false, bound->generation, &bound->generation);
     } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        record_rejected_bound_event(bound->generation, bound->peer_mac);
+        record_rejected_bound_event(
+            bound->generation, bound->peer_mac, "PROFILE_POLICY_REJECTED");
     }
 
     if (bound->state == BT_A2DP_PROFILE_DISCONNECTED) {
@@ -450,11 +512,18 @@ static void apply_connection_policy(a2dp_bound_profile_event_t *bound)
                      esp_err_to_name(err),
                      esp_err_to_name(clear_err));
         }
+        /* ESP_ERR_NOT_FOUND here is the idempotent "no duplex session"
+         * policy result, not a hard primary failure. A real binding-clear
+         * failure is more actionable and must remain visible. Hard policy
+         * errors remain authoritative. */
         if ((err == ESP_OK || err == ESP_ERR_NOT_FOUND) &&
             clear_err != ESP_OK) {
             err = clear_err;
         }
     }
+#ifdef UNIT_TEST
+    s_test_last_connection_policy_error = err;
+#endif
     report_policy_result("A2DP connection", err);
 }
 
@@ -471,7 +540,8 @@ static void apply_audio_policy(a2dp_bound_audio_event_t *bound)
             bound->generation, bound->peer_mac, bound->state);
     }
     if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        record_rejected_bound_event(bound->generation, bound->peer_mac);
+        record_rejected_bound_event(
+            bound->generation, bound->peer_mac, "AUDIO_POLICY_REJECTED");
     }
     report_policy_result("A2DP audio", err);
 }
@@ -556,7 +626,34 @@ void bt_events_a2dp_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param
 }
 
 
-#ifdef ESP_PLATFORM
+static void a2dp_data_record_audio_read_failure(esp_err_t err,
+                                                   size_t requested)
+{
+    if (s_a2dp_data_diag.audio_read_failures != UINT64_MAX) {
+        s_a2dp_data_diag.audio_read_failures++;
+    }
+    s_a2dp_data_diag.last_audio_read_error = err;
+
+    const uint64_t failures = s_a2dp_data_diag.audio_read_failures;
+    const bool should_log =
+        failures == 1U ||
+        (failures % A2DP_DATA_ERROR_LOG_INTERVAL) == 0U;
+    if (!should_log) {
+        if (s_a2dp_data_diag.suppressed_audio_read_error_logs != UINT32_MAX) {
+            s_a2dp_data_diag.suppressed_audio_read_error_logs++;
+        }
+        return;
+    }
+
+    ESP_LOGE(TAG,
+             "A2DP data callback audio_processor_read failed: requested=%u error=%s failures=%llu suppressed_logs=%u",
+             (unsigned)requested,
+             esp_err_to_name(err),
+             (unsigned long long)failures,
+             (unsigned)s_a2dp_data_diag.suppressed_audio_read_error_logs);
+}
+
+#if defined(ESP_PLATFORM) || defined(UNIT_TEST)
 // Updated to match esp_a2d_source_data_cb_t: fill buffer and return bytes written
 int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
 {
@@ -580,12 +677,13 @@ int32_t bt_events_a2dp_data_callback(uint8_t *buf, int32_t len)
     size_t bytes_read = 0;
     esp_err_t ret = audio_processor_read(buf, req, &bytes_read);
     if (ret != ESP_OK) {
+        a2dp_data_record_audio_read_failure(ret, req);
         return 0;
     }
 
     return (int32_t)bytes_read;
 }
-#endif // ESP_PLATFORM
+#endif // ESP_PLATFORM || UNIT_TEST
 
 esp_err_t bt_events_a2dp_reset_binding(void)
 {
@@ -636,6 +734,19 @@ void bt_events_a2dp_test_reset_secondary_errors(void)
 {
     s_test_last_generation_diag_update_error = ESP_OK;
     s_test_last_binding_clear_error = ESP_OK;
+    s_test_last_connection_policy_error = ESP_OK;
+}
+
+void bt_events_a2dp_test_reset_telemetry_errors(void)
+{
+    s_test_last_stale_record_error = ESP_OK;
+    s_test_last_unbound_status_error = ESP_OK;
+}
+
+void bt_events_a2dp_test_reset_data_diagnostics(void)
+{
+    memset(&s_a2dp_data_diag, 0, sizeof(s_a2dp_data_diag));
+    s_a2dp_data_diag.last_audio_read_error = ESP_OK;
 }
 
 esp_err_t bt_events_a2dp_test_get_last_generation_diag_update_error(void)
@@ -646,6 +757,32 @@ esp_err_t bt_events_a2dp_test_get_last_generation_diag_update_error(void)
 esp_err_t bt_events_a2dp_test_get_last_binding_clear_error(void)
 {
     return s_test_last_binding_clear_error;
+}
+
+esp_err_t bt_events_a2dp_test_get_last_stale_record_error(void)
+{
+    return s_test_last_stale_record_error;
+}
+
+esp_err_t bt_events_a2dp_test_get_last_unbound_status_error(void)
+{
+    return s_test_last_unbound_status_error;
+}
+
+esp_err_t bt_events_a2dp_test_get_last_connection_policy_error(void)
+{
+    return s_test_last_connection_policy_error;
+}
+
+esp_err_t bt_events_a2dp_test_get_data_diagnostics(
+    bt_events_a2dp_data_diag_snapshot_t *out)
+{
+    if (out == NULL) return ESP_ERR_INVALID_ARG;
+    out->audio_read_failures = s_a2dp_data_diag.audio_read_failures;
+    out->last_audio_read_error = s_a2dp_data_diag.last_audio_read_error;
+    out->suppressed_audio_read_error_logs =
+        s_a2dp_data_diag.suppressed_audio_read_error_logs;
+    return ESP_OK;
 }
 
 esp_err_t bt_events_a2dp_test_prepare_audio_event(

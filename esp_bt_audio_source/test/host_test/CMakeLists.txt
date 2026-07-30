@@ -1423,6 +1423,13 @@ add_test(NAME test_a2dp_secondary_failures_exact
          COMMAND $<TARGET_FILE:test_a2dp_secondary_failures_exact>)
 
 add_a2dp_stabilization_test(
+    test_a2dp_data_callback_diagnostics
+    test_a2dp_data_callback_diagnostics.c
+)
+add_test(NAME test_a2dp_data_callback_diagnostics
+         COMMAND $<TARGET_FILE:test_a2dp_data_callback_diagnostics>)
+
+add_a2dp_stabilization_test(
     test_bt_manager_init_rollback
     test_bt_manager_init_rollback.c
 )

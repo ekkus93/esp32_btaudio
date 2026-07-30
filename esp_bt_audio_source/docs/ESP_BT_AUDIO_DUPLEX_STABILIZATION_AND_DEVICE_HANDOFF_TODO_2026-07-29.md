@@ -8,6 +8,22 @@
 **Status:** Open  
 **Primary goal:** Finish every software-only stabilization, regression, sanitizer, complete-host, and compile-only validation task before handing the repository to Claude Code for the smallest possible hardware-only session.
 
+# Software closeout status
+
+The software-only stabilization work was closed out in:
+
+`esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_SOFTWARE_CLOSEOUT_AND_CLAUDE_DEVICE_HANDOFF_2026-07-29.md`
+
+A later review identified additional software follow-up tasks in:
+
+`esp_bt_audio_source/docs/ESP_BT_AUDIO_DUPLEX_STABILIZATION_REVIEW_FIXES_TODO_2026-07-30.md`
+
+Do not treat unchecked software boxes below as the sole source of current
+status without reading those closeout and follow-up files. Physical hardware
+tasks remain open until real ESP32-WROOM-32 evidence is captured.
+
+---
+
 ---
 
 ## 1. Why this TODO exists

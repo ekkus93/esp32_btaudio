@@ -49,6 +49,10 @@ static char s_last_hfp_audio_peer[BT_DUPLEX_MAC_STR_LEN];
 static unsigned s_stale_operation_records;
 static uint32_t s_last_stale_generation;
 static char s_last_stale_peer[BT_DUPLEX_MAC_STR_LEN];
+static esp_err_t s_stale_operation_record_result = ESP_OK;
+static esp_err_t s_audio_processor_read_result = ESP_OK;
+static size_t s_audio_processor_read_bytes;
+static unsigned s_audio_processor_read_calls;
 
 void bt_manager_test_reset_btstate_mock(void) {
     s_mock_connected = 0;
@@ -77,6 +81,10 @@ void bt_manager_test_reset_btstate_mock(void) {
     s_stale_operation_records = 0U;
     s_last_stale_generation = 0U;
     memset(s_last_stale_peer, 0, sizeof(s_last_stale_peer));
+    s_stale_operation_record_result = ESP_OK;
+    s_audio_processor_read_result = ESP_OK;
+    s_audio_processor_read_bytes = 0U;
+    s_audio_processor_read_calls = 0U;
 }
 
 void bt_manager_test_set_hfp_policy_status(bool peer_valid,
@@ -127,6 +135,24 @@ uint32_t bt_manager_test_get_last_hfp_audio_generation(void) {
 
 unsigned bt_manager_test_get_stale_operation_records(void) {
     return s_stale_operation_records;
+}
+
+void bt_manager_test_set_stale_operation_record_result(esp_err_t result) {
+    s_stale_operation_record_result = result;
+}
+
+esp_err_t bt_manager_test_get_stale_operation_record_result(void) {
+    return s_stale_operation_record_result;
+}
+
+void bt_manager_test_set_audio_processor_read_result(esp_err_t result,
+                                                     size_t bytes_read) {
+    s_audio_processor_read_result = result;
+    s_audio_processor_read_bytes = bytes_read;
+}
+
+unsigned bt_manager_test_get_audio_processor_read_calls(void) {
+    return s_audio_processor_read_calls;
 }
 
 /* CODE_REVIEW8 Task B: Test helper to force bt_get_streaming_info failure */
@@ -190,6 +216,23 @@ __attribute__((weak)) esp_err_t bt_get_streaming_info(bt_streaming_info_t* info)
     /* CODE_REVIEW5 Task 3.2 */
     info->underrun_count = 0;
     info->total_callbacks = 0;
+    return ESP_OK;
+}
+
+__attribute__((weak)) esp_err_t audio_processor_read(
+    uint8_t *buffer, size_t size, size_t *bytes_read) {
+    s_audio_processor_read_calls++;
+    if (bytes_read == NULL || (buffer == NULL && size != 0U)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *bytes_read = 0U;
+    if (s_audio_processor_read_result != ESP_OK) {
+        return s_audio_processor_read_result;
+    }
+    size_t produced = s_audio_processor_read_bytes;
+    if (produced > size) produced = size;
+    if (produced != 0U) memset(buffer, 0, produced);
+    *bytes_read = produced;
     return ESP_OK;
 }
 
@@ -276,7 +319,7 @@ __attribute__((weak)) esp_err_t bt_duplex_record_stale_operation_event(
         strncpy(s_last_stale_peer, peer_mac,
                 sizeof(s_last_stale_peer) - 1U);
     }
-    return ESP_OK;
+    return s_stale_operation_record_result;
 }
 
 /* Focused manager lifecycle tests link production bt_manager.c without the HFP

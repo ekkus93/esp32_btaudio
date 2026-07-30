@@ -39,7 +39,8 @@ run_sanitized() {
         test_bt_manager_connection_pairing_events \
         test_a2dp_binding_diagnostics_exact \
         test_a2dp_cross_session_exact \
-        test_a2dp_secondary_failures_exact
+        test_a2dp_secondary_failures_exact \
+        test_a2dp_data_callback_diagnostics
     do
         run_sanitized "${binary}"
     done

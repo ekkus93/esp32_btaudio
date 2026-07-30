@@ -141,6 +141,17 @@ target_compile_definitions(test_a2dp_secondary_failures_exact PRIVATE
 )
 
 add_a2dp_binding_test(
+    test_a2dp_data_callback_diagnostics
+    test_a2dp_data_callback_diagnostics.c
+)
+target_sources(test_a2dp_data_callback_diagnostics PRIVATE
+    "${HOST_TEST_DIR}/mocks/fake_log.c"
+)
+target_compile_definitions(test_a2dp_data_callback_diagnostics PRIVATE
+    CONFIG_BT_MOCK_TESTING=1
+)
+
+add_a2dp_binding_test(
     test_bt_manager_init_rollback
     test_bt_manager_init_rollback.c
 )
