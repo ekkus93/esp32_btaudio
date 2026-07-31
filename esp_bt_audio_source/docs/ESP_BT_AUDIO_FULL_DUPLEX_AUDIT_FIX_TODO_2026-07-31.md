@@ -94,23 +94,21 @@ The audit found concrete, passing test evidence for two of the seven FD-22–24 
 
 ### C0. "Prove stale events cannot resurrect stopped sessions"
 
-- [ ] Compile the full list of existing test evidence found by the audit: `test_stale_generation_is_ignored_and_counted` (`test/host_test/test_bt_duplex_state_cases.c`), `test_a2dp_stale_terminal_from_prior_session_cannot_change_new_session` and `test_a2dp_late_stopped_after_disconnect_is_ignored` (`test/host_test/test_bt_manager_connection_pairing_events.c`), `test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection` (`test_bt_a2dp_binding_cases.c`), `test_stale_generation_is_rejected_by_generation_bound_i2s` (`test_bt_hfp_audio_cases.c`).
-- [ ] Identify what "stale event" categories exist across the whole system and confirm each has a corresponding test in the list above (don't just count tests — map them to categories): stale A2DP connection event, stale A2DP audio event, stale HFP profile event, stale HFP audio-control event, stale I2S-ring generation, stale duplex-state generation. Note any category with *no* direct test as a genuine remaining gap rather than silently treating the whole bullet as done.
-- [ ] If every category maps to a real, passing test: check off the bullet in `ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md` (FD-22–24 section, line ~350) and add a footnote/citation listing the exact test names, matching how FD-16's "Focused coverage present" section already cites tests inline.
-- [ ] If a category is missing: write the missing test(s) first (in the appropriate existing test file for that subsystem), get them passing, *then* check off the bullet with the completed citation list.
+- [x] Compiled the full list of existing test evidence and mapped every category: stale A2DP connection event (`test_a2dp_stale_same_peer_handle_cannot_mutate_new_connection`, `test_a2dp_stale_terminal_from_prior_session_cannot_change_new_session`), stale A2DP audio event (`test_a2dp_late_stopped_after_disconnect_is_ignored`), stale HFP profile event (`test_hfp_late_same_peer_event_after_new_generation_is_counted` — found during this reconciliation, not in the audit's original list), stale HFP audio-control event (`test_late_old_connected_event_after_timeout_is_ignored`), stale I2S-ring generation (`test_ring_generation_and_reset_contract`, `test_stale_generation_is_rejected_by_generation_bound_i2s`), stale duplex-state generation (`test_stale_generation_is_ignored_and_counted`).
+- [x] All 6 categories have a direct, passing test — no gap found.
+- [x] Checked off the bullet in `ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md` (line ~350) with the full citation list.
 
 ### C1. "Prove counters remain monotonic except explicit baseline reset"
 
-- [ ] Compile the existing evidence: the `reset_sequence` field threaded through `bt_hfp_manager_fd11.c` (lines ~29, 351, 489, 497, 503, 537-538), the header comment in `bt_hfp_manager.h` (lines ~124-127) stating callback lifetime maxima/counters are untouched by `RESETSTATS`, and the regression-detection tests `test_manager_stats_detects_regressed_lifetime_source` / `test_manager_stats_detects_regressed_lifetime_maximum` plus the `RESETSTATS`-gating tests `test_manager_resetstats_rejects_live_slc_audio_callback_and_i2s` / `test_manager_resetstats_rejects_authoritative_streaming_state` (all in `test_bt_hfp_manager_cases.c`).
-- [ ] Enumerate every counter family exposed through `HFP STATS` (duplex, SLC, audio_control, incoming/RX, I2S — the `STATS_*` lines in `cmd_handlers_hfp_stats.c`) and confirm each one is covered by the `SUB()`-macro baseline-reset mechanism in `bt_hfp_manager_fd11.c`, i.e. that `RESETSTATS` correctly baselines it rather than zeroing it destructively (a "monotonic except explicit baseline reset" claim is violated if any counter is actually zeroed by `RESETSTATS` rather than baselined, since a baselined counter can still be read as "went backwards" if the underlying source counter itself ever regresses — which is exactly what the regression-detection tests above check for).
-- [ ] Note explicitly whether the new `i2s_state_sync_failures` counter from Part A gets swept into this reconciliation correctly (it should, since A0 wires it through the same `COPY`/`REG`/`SUB` macros as its siblings) — this is a good place to catch a wiring mistake in Part A if one exists.
-- [ ] If the enumeration confirms full coverage: check off the bullet (line ~351) with a citation list, same as C0.
-- [ ] If gaps exist: write the missing regression/baseline tests for the uncovered counter families first, then check off the bullet.
+- [x] Compiled the existing evidence (`reset_sequence`, the `bt_hfp_manager.h` lifetime-maxima comment, the regression-detection and `RESETSTATS`-gating tests).
+- [x] Enumerated every field in all 5 counter groups (`duplex`: 11/11 fields in `SUB()`; `slc`: 8/8; `audio_control`: all true counters in `SUB()`, matches `COPY()` exactly; `incoming`: 21 counters in `SUB()` vs. 22 in `COPY()`, the one gap being `callback_last_us` — a point-in-time gauge, correctly excluded; `i2s`: 24 counters in `SUB()` vs. 26 in `COPY()`, the two gaps being `ring_current_used` (point-in-time gauge) and `ring_peak_used_lifetime` (documented lifetime-max, excluded from `SUB()` by design but still present in `REG()`'s never-regressed check, exactly matching the `callback_max_us_lifetime` pattern). No unclassified gap — every exclusion from `SUB()` is a deliberate, correctly-categorized exception.
+- [x] Confirmed the new `i2s_state_sync_failures` counter from Part A is correctly swept into `COPY`/`REG`/`SUB` (verified present in all three during this pass).
+- [x] Checked off the bullet (line ~351) with the full citation list and the gauge/lifetime-max classification.
 
 ### C2. Verify and commit
 
-- [ ] Full host `ctest --output-on-failure` after any new tests are added — zero regressions.
-- [ ] Commit the TODO edits (and any new test files) together; push.
+- [x] No new tests were needed (full coverage already existed) — full host `ctest --output-on-failure` re-run to confirm zero regressions from the TODO-only edits.
+- [x] Commit the TODO edits; push.
 
 ---
 
