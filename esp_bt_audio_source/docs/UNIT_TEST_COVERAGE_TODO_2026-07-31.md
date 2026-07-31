@@ -465,17 +465,35 @@ These files already have host test executables that run in CI; they just score b
 the 85.0% overall average per the 2026-07-31 coverage report. Unlike Part A, this is
 genuinely new test-case authoring, not registration.
 
-### B1 — `list.c` (40.6%, 71/175 lines) — lowest scorer in the codebase
+### B1 — `list.c` (40.6%, 71/175 lines) — lowest scorer in the codebase — DONE
 
-- [ ] Open `tmp/coverage_html/list.c.gcov.html` (regenerate via
-      `python tools/run_all_tests.py --no-device --coverage --no-standalone` if stale)
-      and identify which functions/branches show 0 hits.
-- [ ] Identify which test executable(s) currently exercise `list.c` and whether they
-      only hit the "happy path" (e.g., insert/no error paths) while error-handling and
-      edge-case branches (empty list, full list, remove-not-found, iteration boundaries)
-      go untested.
-- [ ] Write additional test cases for the uncovered branches.
-- [ ] Re-run coverage; confirm `list.c` moved meaningfully above 40.6%.
+Note: `list.c` here is `test/host_test/esp_idf_stubs/bt/common/osi/list.c` — a host-test
+stub of ESP-IDF's `osi/list` doubly-linked-list API (used so the real Bluedroid BT stack
+code can build for host tests), not application code.
+
+- [x] Identified via `test_list_ownership.c`, the only existing consumer: it had just 2
+      tests, both narrowly focused on `list_append`/`list_remove`/`list_delete`
+      ownership semantics with a custom free callback. Untested: `list_is_empty`,
+      `list_contains`, `list_get_node`, `list_length`, `list_front`, `list_back`,
+      `list_back_node`, `list_insert_after`, `list_prepend`, `list_clear`,
+      `list_foreach`, the `list_begin`/`list_end`/`list_next`/`list_node` iteration
+      primitives, and multi-node `list_remove`/`list_delete` (middle/tail cases, not
+      just head).
+- [x] Added 10 new test cases to `test_list_ownership.c` (kept in the same file rather
+      than a new one, since it's the natural single home for this stub's tests):
+      length/is_empty, front/back, prepend-to-head ordering, insert-after (middle and
+      tail-promotion cases), contains/get_node (found and not-found), full iteration
+      order via begin/end/next/node, `list_foreach` early-stop-on-false-return, `clear`
+      resetting to empty, and remove/delete from the middle and tail (verifying tail
+      pointer updates and the not-found `false` return).
+- [x] All 12 tests (2 existing + 10 new) passed on the first attempt — no bugs found in
+      this stub.
+- [x] Re-ran coverage: `list.c` **92.6% (162/175)**, up from 40.6% (71/175). The
+      remaining ~13 lines are the `osi_calloc` allocation-failure branches in
+      `list_new_internal`/`list_insert_after`/`list_prepend`/`list_append`, not
+      practically triggerable without fault-injecting the allocator — left uncovered.
+      Overall host coverage: **86.8%** (was 85.9%). Full suite re-run: 98/98 passed,
+      0 regressions.
 
 ### B2 — `synth_manager.c` (67.3%, 74/110 lines)
 
