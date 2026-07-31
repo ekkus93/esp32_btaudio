@@ -211,6 +211,7 @@ esp_err_t bt_duplex_state_init(void)
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
 #ifdef UNIT_TEST
     g_bt_duplex_ctx.test_health_report_result = ESP_OK;
+    g_bt_duplex_ctx.test_force_i2s_state_armed = false;
 #endif
     g_bt_duplex_ctx.initialized = true;
     return ESP_OK;
@@ -520,6 +521,7 @@ void bt_duplex_test_reset(void)
     bt_duplex_snapshot_defaults(&g_bt_duplex_ctx.snapshot);
     g_bt_duplex_ctx.health_event_count = 0U;
     g_bt_duplex_ctx.test_health_report_result = ESP_OK;
+    g_bt_duplex_ctx.test_force_i2s_state_armed = false;
     (void)bt_duplex_unlock_result(ESP_OK);
 }
 
@@ -528,6 +530,17 @@ void bt_duplex_test_set_health_report_result(esp_err_t result)
     if (!g_bt_duplex_ctx.initialized) return;
     if (bt_duplex_lock() != ESP_OK) return;
     g_bt_duplex_ctx.test_health_report_result = result;
+    (void)bt_duplex_unlock_result(ESP_OK);
+}
+
+void bt_duplex_test_force_i2s_state_result(bt_hfp_i2s_state_t target_state,
+                                           esp_err_t result)
+{
+    if (!g_bt_duplex_ctx.initialized) return;
+    if (bt_duplex_lock() != ESP_OK) return;
+    g_bt_duplex_ctx.test_force_i2s_state_armed = true;
+    g_bt_duplex_ctx.test_force_i2s_state_target = target_state;
+    g_bt_duplex_ctx.test_force_i2s_state_result = result;
     (void)bt_duplex_unlock_result(ESP_OK);
 }
 #endif

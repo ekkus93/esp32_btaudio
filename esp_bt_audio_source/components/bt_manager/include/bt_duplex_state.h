@@ -195,6 +195,15 @@ const char *bt_audio_health_to_string(bt_audio_health_t value);
 #ifdef UNIT_TEST
 void bt_duplex_test_reset(void);
 void bt_duplex_test_set_health_report_result(esp_err_t result);
+/* One-shot: arms a forced failure for the next bt_duplex_set_i2s_state()/
+ * _with_error() call whose target state equals `target_state`, returning
+ * `result` instead of performing the normal validate/transition check; then
+ * disarms itself. Calls targeting a different state are unaffected. Used to
+ * construct compound-failure test scenarios (e.g. a primary I2S operation
+ * failing together with the follow-up duplex-state sync) that cannot be
+ * reached through the real transition table alone. */
+void bt_duplex_test_force_i2s_state_result(bt_hfp_i2s_state_t target_state,
+                                           esp_err_t result);
 #endif
 
 #ifdef __cplusplus

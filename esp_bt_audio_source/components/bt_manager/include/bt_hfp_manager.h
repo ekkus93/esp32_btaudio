@@ -50,6 +50,7 @@ typedef struct {
     uint64_t cleanup_disconnect_failures;
     uint64_t i2s_start_failures;
     uint64_t i2s_stop_failures;
+    uint64_t i2s_state_sync_failures;
     uint64_t health_report_failures;
     esp_err_t last_health_report_error;
 } bt_hfp_manager_audio_control_stats_t;

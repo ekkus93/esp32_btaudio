@@ -263,6 +263,13 @@ esp_err_t bt_duplex_set_i2s_state_with_error(
     esp_err_t err = bt_duplex_lock();
     if (err != ESP_OK) return err;
     err = bt_duplex_validate_event_locked(generation, peer_mac);
+#ifdef UNIT_TEST
+    if (err == ESP_OK && g_bt_duplex_ctx.test_force_i2s_state_armed &&
+        g_bt_duplex_ctx.test_force_i2s_state_target == state) {
+        err = g_bt_duplex_ctx.test_force_i2s_state_result;
+        g_bt_duplex_ctx.test_force_i2s_state_armed = false;
+    }
+#endif
     bool changed = false;
     if (err == ESP_OK &&
         !i2s_transition_ok(g_bt_duplex_ctx.snapshot.i2s_state, state)) {

@@ -12,6 +12,9 @@ typedef struct {
     uint64_t health_event_count;
 #ifdef UNIT_TEST
     esp_err_t test_health_report_result;
+    bool test_force_i2s_state_armed;
+    bt_hfp_i2s_state_t test_force_i2s_state_target;
+    esp_err_t test_force_i2s_state_result;
 #endif
     bt_duplex_snapshot_t snapshot;
 } bt_duplex_context_t;

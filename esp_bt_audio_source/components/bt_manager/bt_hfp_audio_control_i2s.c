@@ -117,21 +117,32 @@ esp_err_t start_i2s_for_session(uint32_t generation,
             (void)set_i2s_state_if_needed(
                 generation, peer_mac, BT_HFP_I2S_FAULTED);
         }
+        /* The primary I2S start failure (err) is always the authoritative
+         * cause. A secondary failure to sync duplex state afterward
+         * (sync_err) must never overwrite it -- it is made visible instead
+         * via i2s_state_sync_failures, so a compound failure never hides its
+         * root cause. */
         if (control_lock() == ESP_OK) {
             s_control.snapshot.i2s_start_failures++;
-            s_control.snapshot.last_error = sync_err != ESP_OK ? sync_err : err;
+            if (sync_err != ESP_OK) {
+                s_control.snapshot.i2s_state_sync_failures++;
+            }
+            s_control.snapshot.last_error = err;
             (void)control_unlock(ESP_OK);
         }
         if (sync_err == ESP_OK &&
             local.state == HFP_I2S_OUTPUT_QUARANTINED) {
             set_health(generation, peer_mac, BT_AUDIO_HEALTH_QUARANTINED,
                        err, "HFP I2S startup rollback quarantined");
+        } else if (sync_err != ESP_OK) {
+            set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
+                       err,
+                       "HFP I2S startup failed (state sync also failed)");
         } else {
             set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
-                       sync_err != ESP_OK ? sync_err : err,
-                       "HFP I2S startup failed");
+                       err, "HFP I2S startup failed");
         }
-        return sync_err != ESP_OK ? sync_err : err;
+        return err;
     }
 
     return set_i2s_state_if_needed(generation, peer_mac, BT_HFP_I2S_RUNNING);
@@ -140,10 +151,14 @@ esp_err_t start_i2s_for_session(uint32_t generation,
 static void record_i2s_stop_failure(uint32_t generation, const char *peer_mac,
                                     esp_err_t result,
                                     const hfp_i2s_output_snapshot_t *after,
-                                    bool snapshot_valid)
+                                    bool snapshot_valid,
+                                    bool sync_failed)
 {
     if (control_lock() == ESP_OK) {
         s_control.snapshot.i2s_stop_failures++;
+        if (sync_failed) {
+            s_control.snapshot.i2s_state_sync_failures++;
+        }
         s_control.snapshot.last_error = result;
         (void)control_unlock(ESP_OK);
     }
@@ -151,6 +166,9 @@ static void record_i2s_stop_failure(uint32_t generation, const char *peer_mac,
         after->state == HFP_I2S_OUTPUT_QUARANTINED) {
         set_health(generation, peer_mac, BT_AUDIO_HEALTH_QUARANTINED,
                    result, "HFP I2S stop quarantined");
+    } else if (sync_failed) {
+        set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
+                   result, "HFP I2S stop failed (state sync also failed)");
     } else {
         set_health(generation, peer_mac, BT_AUDIO_HEALTH_FAULTED,
                    result, "HFP I2S stop failed");
@@ -207,10 +225,14 @@ void stop_i2s_for_session(uint32_t generation, const char *peer_mac,
     hfp_i2s_output_snapshot_t after = {0};
     const esp_err_t sync_err =
         sync_i2s_state(generation, peer_mac, &after);
-    result = sync_err != ESP_OK ? sync_err : err;
+    /* The primary stop failure (err) is always the authoritative cause.
+     * sync_err only becomes the reported result when the primary stop
+     * itself succeeded but the follow-up duplex-state sync failed. */
+    result = err != ESP_OK ? err : sync_err;
     if (result != ESP_OK) {
         record_i2s_stop_failure(generation, peer_mac, result, &after,
-                                sync_err == ESP_OK);
+                                sync_err == ESP_OK,
+                                err != ESP_OK && sync_err != ESP_OK);
     }
 
 done:

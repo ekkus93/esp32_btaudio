@@ -130,7 +130,8 @@ static void map_control(bt_hfp_manager_audio_control_stats_t *out,
     COPY(unexpected_connected_events); COPY(rollback_attempts);
     COPY(rollback_failures); COPY(cleanup_disconnect_requests);
     COPY(cleanup_disconnect_failures); COPY(i2s_start_failures);
-    COPY(i2s_stop_failures); COPY(health_report_failures);
+    COPY(i2s_stop_failures); COPY(i2s_state_sync_failures);
+    COPY(health_report_failures);
     COPY(last_health_report_error);
 #undef COPY
 }
@@ -252,6 +253,7 @@ static bool counters_regressed(const bt_hfp_manager_stats_t *current,
         REG(audio_control, cleanup_disconnect_failures) ||
         REG(audio_control, i2s_start_failures) ||
         REG(audio_control, i2s_stop_failures) ||
+        REG(audio_control, i2s_state_sync_failures) ||
         REG(audio_control, health_report_failures) ||
         REG(incoming, registration_failures) ||
         REG(incoming, activation_failures) || REG(incoming, incoming_callbacks) ||
@@ -313,6 +315,7 @@ static void subtract_baseline(bt_hfp_manager_stats_t *current,
     SUB(audio_control, cleanup_disconnect_requests);
     SUB(audio_control, cleanup_disconnect_failures);
     SUB(audio_control, i2s_start_failures); SUB(audio_control, i2s_stop_failures);
+    SUB(audio_control, i2s_state_sync_failures);
     SUB(audio_control, health_report_failures);
     if (current->audio_control.health_report_failures == 0U) {
         current->audio_control.last_health_report_error = ESP_OK;

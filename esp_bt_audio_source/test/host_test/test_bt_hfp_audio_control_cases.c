@@ -189,6 +189,29 @@ void test_i2s_start_failure_prevents_sco_request(void)
     TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_FAULTED, duplex.health);
 }
 
+void test_start_i2s_double_fault_preserves_primary_error(void)
+{
+    /* Primary I2S start fails, and the follow-up duplex-state sync that
+     * tries to reconcile the (STOPPED) local state also fails. The primary
+     * cause (ESP_ERR_TIMEOUT) must survive in the return value, last_error,
+     * and health report -- the secondary sync failure must only be visible
+     * through i2s_state_sync_failures, never by silently replacing it. */
+    mock_hfp_audio_control_set_i2s_start_result(ESP_ERR_TIMEOUT, false);
+    bt_duplex_test_force_i2s_state_result(BT_HFP_I2S_STOPPED,
+                                          ESP_ERR_INVALID_STATE);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, bt_hfp_audio_start());
+
+    bt_duplex_snapshot_t duplex;
+    bt_hfp_audio_control_snapshot_t control;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_get_snapshot(&control));
+    TEST_ASSERT_EQUAL_UINT64(1U, control.i2s_start_failures);
+    TEST_ASSERT_EQUAL_UINT64(1U, control.i2s_state_sync_failures);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, control.last_error);
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_FAULTED, duplex.health);
+}
+
 void test_immediate_sco_connect_failure_rolls_back_i2s(void)
 {
     s_connect_result = ESP_FAIL;
@@ -310,6 +333,30 @@ void test_i2s_stop_timeout_is_quarantined_and_takes_precedence(void)
     TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_QUARANTINED, duplex.health);
     TEST_ASSERT_EQUAL_UINT64(1U, control.i2s_stop_failures);
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, control.last_error);
+}
+
+void test_stop_i2s_double_fault_preserves_primary_error(void)
+{
+    /* Primary I2S stop fails (non-quarantine, so the local writer reports
+     * FAULTED), and the follow-up duplex-state sync to FAULTED also fails.
+     * The primary cause (ESP_ERR_TIMEOUT) must survive as the reported
+     * result/last_error; the secondary sync failure must only be visible
+     * through i2s_state_sync_failures. */
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_start());
+    mock_hfp_audio_control_set_i2s_stop_result(ESP_ERR_TIMEOUT, false);
+    bt_duplex_test_force_i2s_state_result(BT_HFP_I2S_FAULTED,
+                                          ESP_ERR_INVALID_STATE);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, bt_hfp_audio_stop());
+
+    bt_duplex_snapshot_t duplex;
+    bt_hfp_audio_control_snapshot_t control;
+    TEST_ASSERT_EQUAL(ESP_OK, bt_duplex_get_snapshot(&duplex));
+    TEST_ASSERT_EQUAL(ESP_OK, bt_hfp_audio_control_get_snapshot(&control));
+    TEST_ASSERT_EQUAL_UINT64(1U, control.i2s_stop_failures);
+    TEST_ASSERT_EQUAL_UINT64(1U, control.i2s_state_sync_failures);
+    TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT, control.last_error);
+    TEST_ASSERT_EQUAL(BT_AUDIO_HEALTH_FAULTED, duplex.health);
 }
 
 void test_late_old_connected_event_after_timeout_is_ignored(void)

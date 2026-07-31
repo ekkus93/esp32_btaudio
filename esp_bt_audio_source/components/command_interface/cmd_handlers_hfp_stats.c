@@ -101,6 +101,9 @@ bool send_stats_lines(const bt_hfp_manager_stats_t *stats)
          stats->audio_control.i2s_stop_failures,
          stats->audio_control.health_report_failures,
          esp_err_to_name(stats->audio_control.last_health_report_error));
+    SEND("STATS_AUDIO4",
+         "I2S_STATE_SYNC_FAIL=%" PRIu64,
+         stats->audio_control.i2s_state_sync_failures);
     SEND("STATS_RX1",
          "CALLBACKS=%" PRIu64 ",ACCEPT_FRAMES=%" PRIu64
          ",ACCEPT_BYTES=%" PRIu64 ",DROP_FRAMES=%" PRIu64

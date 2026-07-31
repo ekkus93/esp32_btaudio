@@ -196,6 +196,8 @@ void test_hfp_stats_max_values_are_split_without_truncation(void)
     TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_stats_calls());
     TEST_ASSERT_EQUAL_UINT(1U, mock_bt_hfp_manager_diagnostics_calls());
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_STATE|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_AUDIO3|"));
+    TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_AUDIO4|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_I2S5|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_RESOURCE1|"));
     TEST_ASSERT_NOT_NULL(strstr(tx, "INFO|HFP|STATS_CALLBACK|"));
