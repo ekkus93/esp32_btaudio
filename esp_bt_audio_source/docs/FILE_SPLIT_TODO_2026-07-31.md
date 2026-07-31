@@ -255,5 +255,9 @@ investigation — verify, don't assume identical).
 
 ## Final check
 
-- [ ] Re-run the original vendor-excluded top-10-largest-files scan; confirm all 5 files from this TODO are now under 800 lines and note the new top 5 (informational only, not a new commitment).
-- [ ] Confirm no file was accidentally left orphaned from every CMakeLists.txt that used to reference it (a stale reference to a function that no longer exists in that file is a build break, not a silent no-op).
+- [x] Re-run the original vendor-excluded top-10-largest-files scan; confirm all 5 files from this TODO are now under 800 lines and note the new top 5 (informational only, not a new commitment).
+  - Results: `bt_hfp_audio_control.c` 1241→446, `test_audio_processor_diag.c` 846→199, `bt_events_a2dp.c` 820→201, `bt_manager.c` 811→675, `cmd_handlers_hfp_fd11_v2.c` 802→400. New largest project file overall is `tools/run_unity.py` at 697 lines (informational only — out of scope for this TODO).
+- [x] Confirm no file was accidentally left orphaned from every CMakeLists.txt that used to reference it (a stale reference to a function that no longer exists in that file is a build break, not a silent no-op).
+  - Verified via full clean `idf.py build` (device) and full host `ctest` (100/100 passing) after every part — a missed CMake site would have shown up as an undefined-reference link error, and none did. Remaining call sites to relocated functions (e.g. `bt_manager_init_profiles`/`bt_manager_deinit_profiles` from `bt_manager.c`) are legitimate, resolved via the relevant `_internal.h` header.
+
+**TODO is now fully closed out — all 5 Parts (A–E) and the final check are complete.**

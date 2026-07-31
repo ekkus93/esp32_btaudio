@@ -1,5 +1,17 @@
 <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
 
+## 2026-07-31T21:42:01Z - Claude Sonnet 5 - Ralph loop: docs/FILE_SPLIT_TODO_2026-07-31.md complete (5/5 parts)
+
+- Ran the ralph-loop skill over `esp_bt_audio_source/docs/FILE_SPLIT_TODO_2026-07-31.md` on `feature/esp-bt-audio-duplex` (user confirmed via AskUserQuestion — this branch, not master, since the prior unit-test-coverage loop's work already lives there unmerged).
+- Part A: split `bt_hfp_audio_control.c` (1241→446 lines) into core + `_i2s.c`/`_work.c`/`_events.c`, new `bt_hfp_audio_control_internal.h`.
+- Part B: split `cmd_handlers_hfp_fd11_v2.c` (802→400) into core + `_wire.c` (enum-to-string) + `_stats.c` (STATS/diagnostics formatting), new `cmd_handlers_hfp_internal.h`.
+- Part C: split `test_audio_processor_diag.c` (846→199) into 3 Unity executables — core + new `test_audio_processor_config.c` + `test_audio_processor_runtime.c`; verified all 57 original `RUN_TEST` registrations preserved via exact count match.
+- Part D: split `bt_manager.c` (811→675) — extracted profile init/deinit into `bt_manager_profiles.c`; had to update all 28 host_test CMake targets that link `bt_manager.c` directly (sed-inserted the sibling file after every match, verified count).
+- Part E: split `bt_events_a2dp.c` (820→201) into core + `_binding.c` (policy-binding state machine) + `_data.c` (A2DP PCM data callback), new `bt_events_a2dp_internal.h`; same 30-site CMake update as Part D. Hit one build error (`bt_a2dp_profile_state_t`/`bt_connected_cb`/etc. undeclared in the new internal header) — fixed by adding `#include "bt_manager.h"` to `bt_events_a2dp_internal.h`.
+- Verified after every part: full `idf.py build` (device) and full host `ctest` (98→100/100 passing, zero regressions throughout).
+- Final check: re-ran the vendor-excluded top-10-largest-files scan — all 5 target files now well under 800 lines; new largest project file is `tools/run_unity.py` at 697 lines (informational only, out of scope). No orphaned CMake references (would have shown as link errors, none occurred).
+- TODO is now fully closed out (5/5 parts + final check), all commits pushed to `feature/esp-bt-audio-duplex`.
+
 ## 2026-07-31T21:03:44Z - Claude Sonnet 5 - File-split TODO created for top 5 largest project files
 
 - Listed the top 10 largest project-authored (non-vendor/third_party) source files by line count via `find`+`wc -l`, excluding `*/third_party/*` and `*/esp_idf_stubs/*`.
