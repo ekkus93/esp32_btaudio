@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "hfp_i2s_output.h"
+#include "hfp_i2s_output_internal.h"
 
 #define GENERATION 41U
 #define PEER "aa:bb:cc:dd:ee:ff"
@@ -220,6 +221,33 @@ void test_default_config_and_pin_validation(void)
                           hfp_i2s_output_validate_config(&invalid, &owners));
     invalid = config;
     invalid.dout_gpio = invalid.ws_gpio;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    /* GPIO25/26 are the ESP32's DAC1/DAC2 pins -- excluded for every I2S
+     * signal role (BCLK, WS, DOUT), not just some of them, per the same
+     * playback-side DAC-pin-routing bug documented in main/main.c. */
+    invalid = config;
+    invalid.bclk_gpio = 25;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    invalid = config;
+    invalid.bclk_gpio = 26;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    invalid = config;
+    invalid.ws_gpio = 25;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    invalid = config;
+    invalid.ws_gpio = 26;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    invalid = config;
+    invalid.dout_gpio = 25;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,
+                          hfp_i2s_output_validate_config(&invalid, &owners));
+    invalid = config;
+    invalid.dout_gpio = 26;
     TEST_ASSERT_NOT_EQUAL(ESP_OK,
                           hfp_i2s_output_validate_config(&invalid, &owners));
     invalid = config;
@@ -449,6 +477,48 @@ void test_writer_counts_silence_and_faults_after_bounded_failures(void)
     TEST_ASSERT_EQUAL(ESP_ERR_TIMEOUT,
                       hfp_i2s_output_stop(config.stop_timeout_ms));
     TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_deinit());
+}
+
+void test_writer_skips_consumption_when_lock_is_unavailable(void)
+{
+    /* If hfp_i2s_output_lock() cannot be acquired, the writer must not
+     * consume ring data, manufacture uncounted silence, or write to the
+     * channel -- it must return immediately. This exercises that guard
+     * directly (rather than relying on FreeRTOS mutex-take semantics that
+     * cannot realistically fail in this harness) by nulling the lock the
+     * same way the production code observes an unavailable lock. */
+    int16_t input[HFP_I2S_CVSD_MAX_INPUT_SAMPLES];
+    for (size_t i = 0; i < HFP_I2S_CVSD_MAX_INPUT_SAMPLES; ++i) {
+        input[i] = (int16_t)(i + 1);
+    }
+    initialize_component();
+    TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_start(GENERATION, PEER));
+    TEST_ASSERT_TRUE(hfp_i2s_output_push_cvsd(
+        input, HFP_I2S_CVSD_MAX_INPUT_SAMPLES, GENERATION));
+
+    hfp_i2s_output_snapshot_t before;
+    TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_get_snapshot(&before));
+    TEST_ASSERT_GREATER_THAN(0U, before.ring.current_used);
+
+    platform_mutex_t saved_lock = g_hfp_i2s_output.lock;
+    g_hfp_i2s_output.lock = NULL;
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE,
+                      hfp_i2s_output_test_writer_once());
+
+    g_hfp_i2s_output.lock = saved_lock;
+
+    hfp_i2s_output_snapshot_t after;
+    TEST_ASSERT_EQUAL(ESP_OK, hfp_i2s_output_get_snapshot(&after));
+    TEST_ASSERT_EQUAL_UINT64(before.write_calls, after.write_calls);
+    TEST_ASSERT_EQUAL_UINT64(before.silence_intervals, after.silence_intervals);
+    TEST_ASSERT_EQUAL_UINT64(before.silence_samples, after.silence_samples);
+    TEST_ASSERT_EQUAL_UINT64(before.short_writes, after.short_writes);
+    TEST_ASSERT_EQUAL_UINT64(before.write_lost_bytes, after.write_lost_bytes);
+    TEST_ASSERT_EQUAL_UINT64(before.ring.total_read_bytes,
+                             after.ring.total_read_bytes);
+    TEST_ASSERT_EQUAL(before.ring.current_used, after.ring.current_used);
+    TEST_ASSERT_EQUAL_INT(0, fake.write_calls);
 }
 
 void test_cleanup_failure_quarantines(void)

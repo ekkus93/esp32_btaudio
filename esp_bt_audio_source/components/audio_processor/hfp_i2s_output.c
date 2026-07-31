@@ -218,8 +218,14 @@ esp_err_t hfp_i2s_output_validate_config(
         config->ws_gpio == config->dout_gpio) {
         return ESP_ERR_INVALID_ARG;
     }
+    /* GPIO25/26 are the ESP32's DAC1/DAC2 pins. Routing any I2S signal
+     * (BCLK, WS, or DOUT) onto them repeats the exact playback-side bug
+     * documented in main/main.c and i2s_manager.c: BCLK/WS had to be moved
+     * off the DAC pins to GPIO18/19 because the WROOM32, as I2S master,
+     * must output the clock and GPIO25/26 could not do so reliably. */
     if (config->bclk_gpio == 25 || config->bclk_gpio == 26 ||
-        config->ws_gpio == 25 || config->ws_gpio == 26) {
+        config->ws_gpio == 25 || config->ws_gpio == 26 ||
+        config->dout_gpio == 25 || config->dout_gpio == 26) {
         return ESP_ERR_INVALID_ARG;
     }
     return ESP_OK;

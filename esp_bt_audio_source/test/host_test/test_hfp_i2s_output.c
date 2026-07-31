@@ -13,6 +13,7 @@ void test_stop_timeout_quarantines_without_freeing_live_resources(void);
 void test_stale_generation_and_cvsd_duplication(void);
 void test_ring_full_rejects_entire_cvsd_frame(void);
 void test_writer_counts_silence_and_faults_after_bounded_failures(void);
+void test_writer_skips_consumption_when_lock_is_unavailable(void);
 void test_cleanup_failure_quarantines(void);
 
 int main(void)
@@ -31,6 +32,7 @@ int main(void)
     RUN_TEST(test_stale_generation_and_cvsd_duplication);
     RUN_TEST(test_ring_full_rejects_entire_cvsd_frame);
     RUN_TEST(test_writer_counts_silence_and_faults_after_bounded_failures);
+    RUN_TEST(test_writer_skips_consumption_when_lock_is_unavailable);
     RUN_TEST(test_cleanup_failure_quarantines);
     return UNITY_END();
 }

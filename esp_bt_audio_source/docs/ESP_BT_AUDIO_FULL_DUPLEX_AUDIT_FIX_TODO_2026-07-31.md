@@ -116,22 +116,21 @@ The audit found concrete, passing test evidence for two of the seven FD-22–24 
 
 ### D0. GPIO 25/26 exclusion check omits `dout_gpio`
 
-- [ ] `esp_bt_audio_source/components/audio_processor/hfp_i2s_output.c`, `hfp_i2s_output_validate_config()` (lines 221-224): the check `if (config->bclk_gpio == 25 || config->bclk_gpio == 26 || config->ws_gpio == 25 || config->ws_gpio == 26)` excludes GPIO 25/26 (the ESP32's DAC1/DAC2 pins, confirmed reserved separately from the generic `is_strapping_gpio()` check at line 48-51, which only covers {0,2,5,12,15}) for `bclk_gpio` and `ws_gpio` but not `dout_gpio` — meaning a caller could currently configure `dout_gpio = 25` or `26` and pass validation, risking a collision with whatever else in this project reserves the DAC pins (check `grep -rn "GPIO_NUM_25\|GPIO_NUM_26\|gpio.*25\|gpio.*26" esp_bt_audio_source/components/audio_processor/ esp_bt_audio_source/main/` first to confirm exactly what currently uses them, so the fix's rationale/comment is accurate).
-- [ ] Extend the check to include `config->dout_gpio == 25 || config->dout_gpio == 26`.
-- [ ] Add a host test asserting `hfp_i2s_output_validate_config()` rejects a config with `dout_gpio` set to 25 and to 26 (mirroring whatever existing test already covers the `bclk_gpio`/`ws_gpio` 25/26 rejection — find it via `grep -n "25\|26" test/host_test/test_hfp_i2s_output*.c` and add the missing `dout_gpio` case alongside it).
+- [x] Confirmed GPIO25/26 are the ESP32's DAC1/DAC2 pins via `grep` — `main/main.c` and `i2s_manager.c` both document the exact playback-side bug this guards against (BCLK/WS had to move off GPIO25/26 to GPIO18/19 because the WROOM32, as I2S master, must output the clock and GPIO25/26 could not do so reliably).
+- [x] Extended the check to include `config->dout_gpio == 25 || config->dout_gpio == 26`, with a comment explaining why.
+- [x] Added 6 host test assertions (`test_default_config_and_pin_validation`): bclk=25, bclk=26, ws=25, ws=26, dout=25, dout=26 all rejected. **Note**: there was no existing test for the bclk/ws 25/26 exclusion at all (the TODO's phrasing assumed one existed) — added all 6 cases together rather than just the missing `dout_gpio` pair, closing the more fundamental pre-existing gap too.
 
 ### D1. Untested "lock cannot be acquired" defensive path in the writer
 
-- [ ] `esp_bt_audio_source/components/audio_processor/hfp_i2s_output_data.c:80-84`: `hfp_i2s_output_writer_iteration()`'s lock-acquisition-failure branch is implemented correctly (returns immediately, before touching the ring or writing silence) but is currently untested — meaning a future refactor could silently break this guarantee with no test catching it.
-- [ ] Write a host test that forces `hfp_i2s_output_lock()` to fail via the `s_output.lock == NULL` branch (`hfp_i2s_output.c:101`): after a normal `hfp_i2s_output_init()`/`_start()` sequence, directly null out `g_hfp_i2s_output.lock` through the internal header's `extern`-exposed struct (`s_output`/`g_hfp_i2s_output`, declared in `include/hfp_i2s_output_internal.h:65-66`), then call the existing test hook `hfp_i2s_output_test_writer_once()` (`hfp_i2s_output.c:309-312`).
-- [ ] Assert: the call returns `ESP_ERR_INVALID_STATE`; the ring's available-to-read byte count is unchanged (nothing was consumed); no write/silence/short-write/loss counters incremented (nothing was fabricated or fed to the I2S channel). Restore the lock afterward (or otherwise ensure `tearDown()` can still clean up the fixture without crashing on a NULL mutex).
-- [ ] If this reveals the "lock == NULL" path is actually unreachable in a way that makes the new test awkward to write cleanly (e.g. other invariants assume the lock is always non-NULL once initialized), note that finding and adjust the test to instead exercise whatever real path *can* trigger `hfp_i2s_output_lock()`'s failure return — do not weaken the assertion or skip the test to force it to pass.
+- [x] Confirmed the guard is implemented correctly (`hfp_i2s_output_data.c`) but was untested.
+- [x] Added `test_writer_skips_consumption_when_lock_is_unavailable`: pushes real PCM into the ring, saves and nulls `g_hfp_i2s_output.lock`, calls `hfp_i2s_output_test_writer_once()`, restores the lock before `tearDown()` runs (confirmed via the mutex-delete log line appearing exactly once per test run — no leak, no double-free).
+- [x] Asserted: returns `ESP_ERR_INVALID_STATE`; `write_calls`, `silence_intervals`, `silence_samples`, `short_writes`, `write_lost_bytes`, `ring.total_read_bytes`, and `ring.current_used` are all unchanged; the mock's mock `fake.write_calls == 0` (nothing reached the fake I2S channel). The `s_output.lock == NULL` path was directly reachable and clean to test — no fallback needed.
 
 ### D2. Verify and commit
 
-- [ ] Full host `ctest --output-on-failure` — zero regressions, both new tests passing.
-- [ ] `idf.py build` — confirm clean device build (D0 touches production validation logic under `hfp_i2s_output.c`, which is compiled into the device firmware).
-- [ ] Commit, push.
+- [x] Full host `ctest --output-on-failure` — 100/100 passed, zero regressions.
+- [x] `idf.py build` — clean device build (image `0xfb220` bytes, headroom `0xb4de0` bytes / 42% free).
+- [x] Commit, push.
 
 ---
 
