@@ -200,27 +200,40 @@ runner's own translation unit. Only `test_bt_hfp_audio_control_cases.c` and
 - [x] `ctest -R test_bt_hfp_audio_control --output-on-failure`; **21/21 passed**. Full
       suite re-run: 88/88 passed, 0 regressions.
 
-### A6 — `test_bt_hfp_commands` (command_interface HFP command handlers)
+### A6 — `test_bt_hfp_commands` (command_interface HFP command handlers) — DONE
 
 Runner: `test_bt_hfp_commands.c` (24 tests = 16 + 2 + 6 below).
 
-- [ ] Add `add_executable(test_bt_hfp_commands test_bt_hfp_commands.c`
-  - [ ] `test_bt_hfp_commands_cases.c` (16 tests)
-  - [ ] `test_bt_hfp_commands_fd16_cases.c` (2 tests)
-  - [ ] `test_bt_hfp_commands_integrity_cases.c` (6 tests)
-  - [ ] `../../components/command_interface/cmd_handlers_hfp_fd11_v2.c`
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd11.c`
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd13.c`
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd16.c`
-  - [ ] the full `bt_duplex_state_*.c` set (A1)
-  - [ ] `mocks/bt_hfp_manager_command_stub.c`
-  - [ ] `mocks/mock_uart.c`)
-- [ ] Register `target_link_libraries` (this suite likely also needs
-      `command_interface_host`, matching `test_commands`'s pattern) /
-      `target_compile_definitions` / `add_test`.
-- [ ] Build; fix compile errors — this is the largest of the new suites (802-line
-      command handler + 3 HFP manager files), budget extra time here.
-- [ ] `ctest -R test_bt_hfp_commands --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_commands test_bt_hfp_commands.c`
+  - [x] `test_bt_hfp_commands_cases.c` (16 tests)
+  - [x] `test_bt_hfp_commands_fd16_cases.c` (2 tests)
+  - [x] `test_bt_hfp_commands_integrity_cases.c` (6 tests)
+  - [x] `../../components/command_interface/commands.c` (needed for the real
+        `cmd_parse`/`cmd_execute`/`cmd_send_response` — the tests drive the full
+        command pipeline, not `cmd_handle_hfp` directly)
+  - [x] `../../components/command_interface/cmd_handlers_hfp_fd11_v2.c`
+  - [x] **Major correction found at compile time, after 3 iterations**: NOT the real
+        `bt_hfp_manager_fd11/13/16.c` (the tests call `mock_bt_hfp_manager_*` control
+        functions that only exist in `mocks/bt_hfp_manager_command_stub.c`, which
+        mocks the entire `bt_manager_hfp_*` wrapper API `cmd_handlers_hfp_fd11_v2.c`
+        calls — verified all 9 of its calls match the stub exactly). Also NOT the real
+        `bt_manager.c` family or `command_interface_host` (which would need the full
+        real BT stack for `cmd_execute`'s other dispatch entries and collide: the
+        shared `mocks/mock_audio_and_btstate.c` already defines a placeholder
+        `cmd_handle_hfp` for other suites that predates this real handler, so linking
+        both is a multiple-definition error). The correct, purpose-built dependency
+        set is: `mocks/bt_hfp_manager_command_stub.c` +
+        `mocks/bt_hfp_command_dependencies.c` (a lightweight `commands.c`-only
+        dependency set: `audio_processor_init/deinit`, `uart_audio_*` stubs,
+        `cmd_safe_copy`/`cmd_memcpy_safe`/`cmd_memset_safe`/`cmd_snprintf_safe`/etc.,
+        `bt_manager_test_reset_btstate_mock`) + `mocks/fake_esp_err.c`
+        (`esp_err_to_name`) + `mocks/mock_uart.c`. This is a much smaller, fully
+        isolated build — no real `bt_manager`/`command_interface_host` needed at all.
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see the correction above — took 3 iterations to find
+      the right isolation boundary).
+- [x] `ctest -R test_bt_hfp_commands --output-on-failure`; **24/24 passed**. Full suite
+      re-run: 89/89 passed, 0 regressions.
 
 ### A7 — `test_bt_hfp_connection` (SLC connect/disconnect)
 

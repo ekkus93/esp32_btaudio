@@ -1612,3 +1612,18 @@ add_executable(test_bt_hfp_audio_control test_bt_hfp_audio_control.c
 target_link_libraries(test_bt_hfp_audio_control unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_audio_control PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_audio_control COMMAND $<TARGET_FILE:test_bt_hfp_audio_control>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A6: HFP command handlers
+add_executable(test_bt_hfp_commands test_bt_hfp_commands.c
+    test_bt_hfp_commands_cases.c
+    test_bt_hfp_commands_fd16_cases.c
+    test_bt_hfp_commands_integrity_cases.c
+    ../../components/command_interface/commands.c
+    ../../components/command_interface/cmd_handlers_hfp_fd11_v2.c
+    mocks/mock_uart.c
+    mocks/fake_esp_err.c
+    mocks/bt_hfp_manager_command_stub.c
+    mocks/bt_hfp_command_dependencies.c)
+target_link_libraries(test_bt_hfp_commands unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_commands PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_commands COMMAND $<TARGET_FILE:test_bt_hfp_commands>)
