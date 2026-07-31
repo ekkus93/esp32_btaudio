@@ -68,21 +68,21 @@ The audit confirmed the *behavior* already satisfies this: `bt_manager_hfp_audio
 
 ### B0. Confirm current behavior one more time before documenting it (avoid stating something later found to be untrue)
 
-- [ ] `grep -rn "bt_manager_hfp_audio_start\|bt_hfp_audio_start" esp_bt_audio_source/components esp_bt_audio_source/main` and confirm the only production call site remains the command handler (re-verify this hasn't changed since the audit, especially if Part A's changes touch nearby code).
+- [x] Re-ran `grep -rn "bt_manager_hfp_audio_start\|bt_hfp_audio_start(" esp_bt_audio_source/components esp_bt_audio_source/main` — confirmed the only production call site is still `cmd_handlers_hfp_fd11_v2.c:237` (the `HFP AUDIO START` command handler). Part A's changes (error precedence in the I2S layer) did not touch this call chain.
 
 ### B1. Add the documentation
 
-- [ ] `esp_bt_audio_source/README.md`: add a short note near the `AUDIO_AUTOSTART` command table entry (line ~63) or in a new minimal "HFP full-duplex audio (experimental)" subsection, stating explicitly: HFP microphone audio (`HFP AUDIO START`) is never started automatically — not at boot, not on SLC connect, not on A2DP connect/autostart — it requires an explicit `HFP AUDIO START` command every session. Make clear this is distinct from `AUDIO_AUTOSTART`, which only affects A2DP playback.
-- [ ] Cross-check whether `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md` has a place this same fact belongs (it's the companion spec to the parent TODO) — add a matching one-line statement there if it has a relevant "behavior contract" or "capability boundary" section, for consistency with how FD-16's capability boundary is documented in the parent TODO.
+- [x] `esp_bt_audio_source/README.md`: added an "HFP full-duplex microphone audio (experimental)" note right after the `UARTAUDIO` command table row, stating the mic never autostarts (not at boot, not on SLC connect, not on A2DP connect/autostart) and distinguishing it from `AUDIO_AUTOSTART` (A2DP-only).
+- [x] `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md` §8 ("Duplex operating modes") already had a closely related normative statement ("the SCO/eSCO audio link MUST NOT open automatically merely because HFP SLC exists") — appended a concrete sentence naming boot/SLC-connect/A2DP-autostart explicitly and naming the `HFP AUDIO START` command as the only trigger, with no persisted "resume last session" behavior.
 
 ### B2. Close the loop in the parent TODO
 
-- [ ] In `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`, check off the FD-28 bullet "State explicitly that microphone audio does not start automatically at boot" (line ~406), since this Part directly satisfies it — do not check off the other FD-28 bullets, which remain genuinely blocked on hardware results.
+- [x] Checked off the FD-28 bullet "State explicitly that microphone audio does not start automatically at boot" in `ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md` (line ~406), citing both doc locations. Left every other FD-28 bullet unchecked (still genuinely blocked on hardware results).
 
 ### B3. Verify and commit
 
-- [ ] No code changes in this part — no test/build verification needed beyond a proofread of the added prose for accuracy against B0's re-confirmed behavior.
-- [ ] Commit (docs-only), push.
+- [x] No code changes in this part — proofread the added prose against B0's re-confirmed behavior.
+- [x] Commit (docs-only), push.
 
 ---
 

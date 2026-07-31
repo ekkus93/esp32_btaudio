@@ -300,7 +300,7 @@ Required behavior:
 
 Default after boot MUST be `DISABLED` unless a later user decision changes it.
 
-HFP service-level connection MAY be established during ordinary connection setup, but the SCO/eSCO audio link MUST NOT open automatically merely because HFP SLC exists.
+HFP service-level connection MAY be established during ordinary connection setup, but the SCO/eSCO audio link MUST NOT open automatically merely because HFP SLC exists. Concretely: HFP microphone audio does not start at boot, on SLC connect, or on A2DP connect/autostart — it starts only in response to an explicit `HFP AUDIO START` command, every session, with no persisted "resume last session" behavior.
 
 ## 9. Bluetooth state model
 

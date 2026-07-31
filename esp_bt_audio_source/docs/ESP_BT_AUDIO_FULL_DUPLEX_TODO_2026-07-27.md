@@ -403,7 +403,7 @@ Do not reference any generated review, response, template, or closeout file unle
 - [ ] Document CVSD/mSBC behavior and earbud compatibility.
 - [ ] Document counters, failure interpretation, and recovery.
 - [ ] Add final runtime resource measurements.
-- [ ] State explicitly that microphone audio does not start automatically at boot.
+- [x] State explicitly that microphone audio does not start automatically at boot. See `README.md` (HFP full-duplex microphone audio note) and `ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md` §8. Behavior was already correct (single call site: the `HFP AUDIO START` command handler); this closes the documentation gap only.
 - [ ] Update `memory.md` with verified final results.
 
 ---

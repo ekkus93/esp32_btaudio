@@ -67,6 +67,8 @@ Commands are sent over UART (USB console or GPIO16/17 secondary port). Each comm
 | `I2S_CLKGEN` | `I2S_CLKGEN [MS]` | Bit-bang clock square wave | `EVENT\|I2SCLKGEN\|DONE\|bclk=18,ws=19,ms=4000` |
 | `UARTAUDIO` | `UARTAUDIO START\|STATUS\|STOP` | High-speed serial audio streaming | `OK\|UARTAUDIO\|STARTING\|baud=921600` |
 
+**HFP full-duplex microphone audio (experimental):** the `HFP AUDIO START`/`HFP AUDIO STOP` commands (see `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_SPEC_2026-07-27.md` for the full command/event contract) control the HFP microphone path independently of A2DP playback. **HFP microphone audio never starts automatically** — not at boot, not on SLC connect, not on A2DP connect/autostart. It must be explicitly requested with `HFP AUDIO START` every session. This is unrelated to `AUDIO_AUTOSTART` above, which only affects A2DP playback autostart-on-connect.
+
 **DEBUG Subcommands:**
 | Command | Syntax | Description | Sample Output |
 |---------|--------|-------------|---------------|
