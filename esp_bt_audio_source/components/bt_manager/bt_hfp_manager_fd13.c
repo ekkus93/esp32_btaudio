@@ -156,9 +156,4 @@ void bt_manager_hfp_fd13_test_reset_platform_ops(void)
     memset(&s_test_ops, 0, sizeof(s_test_ops));
     s_test_ops_set = false;
 }
-
-void bt_manager_hfp_test_reset_diagnostics(void)
-{
-    bt_manager_hfp_fd13_test_reset_platform_ops();
-}
 #endif

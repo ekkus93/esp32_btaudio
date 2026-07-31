@@ -220,7 +220,7 @@ void bt_pairing_clear_pending(void)
     bt_pairing_clear_pending_flags(true, true);
 }
 
-bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
+MAYBE_WEAK bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
 {
     if (!info) {
         return false;
@@ -237,7 +237,7 @@ bool bt_pairing_get_pending_request(bt_pairing_request_info_t* info)
     return true;
 }
 
-bt_err_t bt_pairing_confirm(const char* mac, bool accept)
+MAYBE_WEAK bt_err_t bt_pairing_confirm(const char* mac, bool accept)
 {
     (void)mac;
     (void)accept;
@@ -274,7 +274,7 @@ bt_err_t bt_pairing_confirm(const char* mac, bool accept)
 #endif
 }
 
-bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
+MAYBE_WEAK bt_err_t bt_pairing_submit_pin(const char* mac, const char* pin)
 {
 #ifdef ESP_PLATFORM
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);

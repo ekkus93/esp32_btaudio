@@ -319,7 +319,7 @@ bt_err_t bt_stop_audio(void) {
 }
 
 // Unpair a device
- bt_err_t bt_unpair(const char* mac) {
+MAYBE_WEAK bt_err_t bt_unpair(const char* mac) {
     if (mac == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -382,7 +382,7 @@ exit:
 }
 
 // Unpair all devices
- bt_err_t bt_unpair_all(void) {
+MAYBE_WEAK bt_err_t bt_unpair_all(void) {
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) {
         return ESP_FAIL;

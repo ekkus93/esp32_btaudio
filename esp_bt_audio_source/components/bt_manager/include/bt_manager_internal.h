@@ -69,11 +69,12 @@ extern int s_autostart_attempts;
 #define parse_mac_bytes util_parse_mac
 
 /* ============================================================================
- * bt_ctx lock/unlock helpers
+ * bt_ctx lock/unlock helpers (defined in bt_ctx_lock.c)
  *
  * Acquire s_bt_ctx_mutex before reading/writing bt_ctx fields.
  * Callbacks are NOT invoked while holding the lock.
  * ============================================================================ */
+extern platform_mutex_t s_bt_ctx_mutex;
 esp_err_t bt_ctx_lock(uint32_t timeout_ms);
 void bt_ctx_unlock(void);
 

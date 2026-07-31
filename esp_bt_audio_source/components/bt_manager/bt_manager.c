@@ -63,22 +63,9 @@ bt_manager_context_t bt_ctx = {
  * requested so the sink begins draining without manual intervention. */
 bool s_autostart_enabled = true;
 
-/* Mutex that protects bt_ctx.  Writers (callbacks running on BtAppTask)
- * acquire the lock before modifying bt_ctx.  Readers (e.g.
- * bt_manager_get_status) acquire the lock to obtain a consistent
- * snapshot.  Callbacks are NOT invoked while holding the lock. */
-static platform_mutex_t s_bt_ctx_mutex;
 /* A failed teardown may leave Bluetooth callbacks alive. In that case the
  * manager is quarantined until reboot and init is rejected. */
 static bool s_bt_manager_quarantined;
-
-#ifdef UNIT_TEST
-/* One-shot failure injection at the bt_ctx locking boundary. The countdown
- * permits tests to fail a later production lock without adding caller-specific
- * test branches. A value of zero fails the next lock attempt. */
-static esp_err_t s_bt_ctx_forced_next_lock_result = ESP_OK;
-static uint32_t s_bt_ctx_forced_lock_countdown;
-#endif
 
 #define safe_vsnprintf util_safe_vsnprintf
 #define safe_snprintf util_safe_snprintf
@@ -86,38 +73,6 @@ static uint32_t s_bt_ctx_forced_lock_countdown;
 #define safe_memcpy util_safe_memcpy
 #define safe_memset util_safe_memset
 #define parse_mac_bytes util_parse_mac
-
-/* ============================================================================
- * bt_ctx lock/unlock helpers
- *
- * These acquire/release s_bt_ctx_mutex to protect bt_ctx from concurrent
- * reads and writes.  Must be called before accessing bt_ctx fields except
- * during init/deinit when the manager is not yet running.
- * ============================================================================ */
-
-esp_err_t bt_ctx_lock(uint32_t timeout_ms) {
-#ifdef UNIT_TEST
-    if (s_bt_ctx_forced_next_lock_result != ESP_OK) {
-        if (s_bt_ctx_forced_lock_countdown == 0U) {
-            esp_err_t forced = s_bt_ctx_forced_next_lock_result;
-            s_bt_ctx_forced_next_lock_result = ESP_OK;
-            return forced;
-        }
-        s_bt_ctx_forced_lock_countdown--;
-    }
-#endif
-    if (s_bt_ctx_mutex == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return platform_mutex_lock(s_bt_ctx_mutex, timeout_ms);
-}
-
-void bt_ctx_unlock(void) {
-    esp_err_t err = platform_mutex_unlock(s_bt_ctx_mutex);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "bt_ctx unlock failed: %s", esp_err_to_name(err));
-    }
-}
 
 #if CONFIG_BT_MOCK_TESTING
 #define BT_SOURCE_SKIP_DEVICE_STRUCT 1
@@ -184,7 +139,7 @@ int s_autostart_attempts = 0;
  *         ESP_ERR_TIMEOUT if mutex lock timed out
  * @note Blocks up to 100ms waiting for mutex. Safe to call from any task.
  */
-esp_err_t bt_manager_get_status(bt_manager_status_t *status)
+MAYBE_WEAK esp_err_t bt_manager_get_status(bt_manager_status_t *status)
 {
     if (!status) {
         return ESP_ERR_INVALID_ARG;
@@ -295,7 +250,7 @@ static esp_err_t bt_manager_finalize_init_rollback(
 }
 
 // Initialize Bluetooth Manager
- bt_err_t bt_manager_init(const bt_manager_init_t* config) {
+MAYBE_WEAK bt_err_t bt_manager_init(const bt_manager_init_t* config) {
     if (config == NULL || config->device_name == NULL) {
         return ESP_FAIL;
     }
@@ -552,7 +507,7 @@ fail:
     return bt_manager_finalize_teardown(first_error, callbacks_stopped);
 }
 
-int bt_manager_is_connected(void) {
+MAYBE_WEAK int bt_manager_is_connected(void) {
 #ifdef ESP_PLATFORM
     bt_manager_status_t status;
     if (bt_manager_get_status(&status) == ESP_OK) {
@@ -611,7 +566,7 @@ bool bt_manager_is_autostart_enabled(void) {
     return s_autostart_enabled;
 }
 
-int bt_manager_set_name(const char* name) {
+MAYBE_WEAK int bt_manager_set_name(const char* name) {
 #ifdef ESP_PLATFORM
     esp_err_t err = bt_ctx_lock(PLATFORM_WAIT_FOREVER);
     if (err != ESP_OK) return -1;
@@ -632,11 +587,11 @@ int bt_manager_pair(const char* mac) {
     return (bt_pair(mac) == ESP_OK) ? 0 : -1;
 }
 
-int bt_manager_connect(const char* mac) {
+MAYBE_WEAK int bt_manager_connect(const char* mac) {
     return (bt_connect(mac) == ESP_OK) ? 0 : -1;
 }
 
-int bt_manager_disconnect(void) {
+MAYBE_WEAK int bt_manager_disconnect(void) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_disconnect_failure(void);
     if (bt_manager_forced_disconnect_failure()) return -1;
@@ -644,7 +599,7 @@ int bt_manager_disconnect(void) {
     return (bt_disconnect() == ESP_OK) ? 0 : -1;
 }
 
-int bt_manager_start_audio(void) {
+MAYBE_WEAK int bt_manager_start_audio(void) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_start_failure(void);
     if (bt_manager_forced_start_failure()) return -1;
@@ -652,7 +607,7 @@ int bt_manager_start_audio(void) {
     return (bt_start_audio() == ESP_OK) ? 0 : -1;
 }
 
-int bt_manager_start_scan(void) {
+MAYBE_WEAK int bt_manager_start_scan(void) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_start_failure(void);
     if (bt_manager_forced_start_failure()) return -1;
@@ -660,7 +615,7 @@ int bt_manager_start_scan(void) {
     return (bt_start_scan() == ESP_OK) ? 0 : -1;
 }
 
-int bt_manager_start_pair(const char* mac) {
+MAYBE_WEAK int bt_manager_start_pair(const char* mac) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_pair_failure(void);
     if (bt_manager_forced_pair_failure()) return -1;
@@ -687,7 +642,7 @@ int bt_manager_start_pair(const char* mac) {
     return ret;
 }
 
-int bt_manager_stop_audio(void) {
+MAYBE_WEAK int bt_manager_stop_audio(void) {
 #ifdef UNIT_TEST
     extern int bt_manager_forced_stop_failure(void);
     if (bt_manager_forced_stop_failure()) return -1;
@@ -830,36 +785,6 @@ host_fail:
 #endif
 
 #ifdef UNIT_TEST
-esp_err_t bt_manager_test_init_mutex(void)
-{
-    if (s_bt_ctx_mutex) platform_mutex_delete(s_bt_ctx_mutex);
-    s_bt_ctx_mutex = platform_mutex_create();
-    if (s_bt_ctx_mutex == NULL) return ESP_ERR_NO_MEM;
-    return ESP_OK;
-}
-
-void bt_manager_test_deinit_mutex(void)
-{
-    if (s_bt_ctx_mutex) {
-        platform_mutex_delete(s_bt_ctx_mutex);
-        s_bt_ctx_mutex = NULL;
-    }
-}
-
-void bt_manager_test_force_next_ctx_lock_result(esp_err_t result)
-{
-    s_bt_ctx_forced_lock_countdown = 0U;
-    s_bt_ctx_forced_next_lock_result = result;
-}
-
-void bt_manager_test_force_ctx_lock_after_successes(
-    uint32_t successful_locks_before_failure,
-    esp_err_t result)
-{
-    s_bt_ctx_forced_lock_countdown = successful_locks_before_failure;
-    s_bt_ctx_forced_next_lock_result = result;
-}
-
 bool bt_manager_test_is_quarantined(void)
 {
     return s_bt_manager_quarantined;

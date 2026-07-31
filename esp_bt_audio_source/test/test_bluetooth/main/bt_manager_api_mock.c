@@ -145,3 +145,20 @@ void bt_manager_test_gap_auth_complete(const char* mac, bool success)
     (void)mac;
     (void)success;
 }
+
+/* bt_ctx_lock()/bt_ctx_unlock() (bt_manager.c) guard the real bt_ctx mutex.
+ * The HFP duplex code (bt_hfp_manager_fd11.c, bt_hfp_manager_fd16.c) calls
+ * them directly; without a mock here that reference pulls bt_manager.c.obj
+ * out of libbt_manager.a, which cascades into bt_connection.c.obj /
+ * bt_manager_ops.c.obj / bt_manager_mocks.c.obj / bt_pairing_store.c.obj —
+ * all of which redefine symbols this file and bt_source_mock*.c already
+ * mock. This test app is single-threaded, so no real locking is needed. */
+esp_err_t bt_ctx_lock(uint32_t timeout_ms)
+{
+    (void)timeout_ms;
+    return ESP_OK;
+}
+
+void bt_ctx_unlock(void)
+{
+}

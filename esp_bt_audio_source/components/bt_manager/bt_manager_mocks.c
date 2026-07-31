@@ -131,7 +131,7 @@ bool bt_manager_test_gap_ssp_confirm(const char* mac, uint32_t passkey)
     return true;
 }
 
-void bt_manager_test_gap_auth_complete(const char* mac, bool success)
+MAYBE_WEAK void bt_manager_test_gap_auth_complete(const char* mac, bool success)
 {
     esp_bd_addr_t addr = {0};
     if (!bt_pairing_parse_mac(mac, addr)) {
@@ -293,7 +293,7 @@ esp_err_t bt_manager_get_status(bt_manager_status_t *status) {
 }
 
 // Expose a function to force-initialize bt_ctx for unit tests
-void bt_manager_force_initialized(bool value) {
+MAYBE_WEAK void bt_manager_force_initialized(bool value) {
     bt_ctx.initialized = value;
 }
 
@@ -340,7 +340,7 @@ bool bt_manager_test_autostart_on_connect(void) {
 /* Optional mock-side hook to keep device test streaming state in sync. */
 MAYBE_WEAK void bt_source_mock_handle_audio_state(esp_a2d_audio_state_t state);
 #endif
-void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
+MAYBE_WEAK void bt_manager_test_invoke_a2dp_event(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     if (!param) {
         return;
     }

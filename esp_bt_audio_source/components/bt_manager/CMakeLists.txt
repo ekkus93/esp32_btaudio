@@ -12,6 +12,7 @@ set(priv_requires
 idf_component_register(
     SRCS
         "bt_manager.c"
+        "bt_ctx_lock.c"
         "bt_manager_ops.c"
         "bt_manager_mocks.c"
         "bt_pairing_store.c"

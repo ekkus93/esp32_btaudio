@@ -5,6 +5,7 @@
 
 #include "esp_err.h"
 #include "esp_bt.h"
+#include "esp_gap_bt_api.h"
 #include "bt_hfp_ag.h"
 #include "bt_duplex_state_events.h"
 

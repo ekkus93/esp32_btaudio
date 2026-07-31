@@ -12,6 +12,7 @@
 #include "esp_bt_main.h"
 #include "esp_err.h"
 #include "esp_gap_bt_api.h"
+#include "esp_hf_ag_api.h"
 #include "esp_log.h"
 #include "osi/allocator.h"
 
@@ -211,6 +212,34 @@ esp_err_t esp_a2d_source_connect(esp_bd_addr_t remote_bda)
 }
 
 esp_err_t esp_a2d_source_disconnect(esp_bd_addr_t remote_bda)
+{
+    (void)remote_bda;
+    log_stub_call(__func__);
+    return ESP_OK;
+}
+
+esp_err_t esp_hf_ag_slc_connect(esp_bd_addr_t remote_bda)
+{
+    (void)remote_bda;
+    log_stub_call(__func__);
+    return ESP_OK;
+}
+
+esp_err_t esp_hf_ag_slc_disconnect(esp_bd_addr_t remote_bda)
+{
+    (void)remote_bda;
+    log_stub_call(__func__);
+    return ESP_OK;
+}
+
+esp_err_t esp_hf_ag_audio_connect(esp_bd_addr_t remote_bda)
+{
+    (void)remote_bda;
+    log_stub_call(__func__);
+    return ESP_OK;
+}
+
+esp_err_t esp_hf_ag_audio_disconnect(esp_bd_addr_t remote_bda)
 {
     (void)remote_bda;
     log_stub_call(__func__);

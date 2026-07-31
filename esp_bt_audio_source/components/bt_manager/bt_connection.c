@@ -68,7 +68,7 @@ bt_err_t bt_connect(const char* mac)
     return ESP_OK;
 }
 
-bt_err_t bt_connect_by_name(const char* name)
+MAYBE_WEAK bt_err_t bt_connect_by_name(const char* name)
 {
     if (name == NULL) {
         return ESP_ERR_INVALID_ARG;
