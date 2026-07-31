@@ -170,7 +170,7 @@ Runner: `test_bt_hfp_audio.c` (15 tests = 13 + 1 + 1 below).
 - [x] `ctest -R test_bt_hfp_audio --output-on-failure`; **15/15 passed**. Full suite
       re-run: 87/87 passed, 0 regressions.
 
-### A5 — `test_bt_hfp_audio_control`
+### A5 — `test_bt_hfp_audio_control` — DONE
 
 Runner: `test_bt_hfp_audio_control.c` (21 tests = 14 + 6 + 1 below). Note: the runner
 file already `#include`s `test_bt_hfp_audio_control_health_cases.c` directly as text, so
@@ -178,19 +178,27 @@ that file is **not** a separate `add_executable` SRCS entry — it compiles as p
 runner's own translation unit. Only `test_bt_hfp_audio_control_cases.c` and
 `test_bt_hfp_audio_control_lifecycle_cases.c` need separate SRCS entries.
 
-- [ ] Add `add_executable(test_bt_hfp_audio_control test_bt_hfp_audio_control.c`
-  - [ ] `test_bt_hfp_audio_control_cases.c` (14 tests)
-  - [ ] `test_bt_hfp_audio_control_lifecycle_cases.c` (1 test)
-  - [ ] (`test_bt_hfp_audio_control_health_cases.c` — 6 tests — do NOT list separately;
-        it's textually included by the runner)
-  - [ ] `../../components/bt_manager/bt_hfp_audio_control.c`
-  - [ ] `../../components/bt_manager/bt_hfp_audio.c`
-  - [ ] the full `bt_duplex_state_*.c` set (A1))
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors (watch specifically for a double-definition of any
-      symbol from `bt_hfp_audio_control_health_cases.c` if it's accidentally also
-      listed as a separate SRCS entry).
-- [ ] `ctest -R test_bt_hfp_audio_control --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_audio_control test_bt_hfp_audio_control.c`
+  - [x] `test_bt_hfp_audio_control_cases.c` (14 tests)
+  - [x] `test_bt_hfp_audio_control_lifecycle_cases.c` (1 test)
+  - [x] (`test_bt_hfp_audio_control_health_cases.c` — 6 tests — confirmed not listed
+        separately; compiles via the runner's text `#include`)
+  - [x] `../../components/bt_manager/bt_hfp_audio_control.c`
+  - [x] the full `bt_duplex_state_*.c` set (A1) + `bt_hfp_event_contract.c` +
+        `mocks/bt_hfp_event_command_stub.c`
+  - [x] **Correction found at compile time**: NOT `bt_hfp_audio.c` — the real dependency
+        is `mocks/bt_hfp_audio_control_dependencies.c`, a full test double that mocks
+        the entire audio layer (`bt_hfp_audio_get_snapshot`,
+        `bt_hfp_audio_profile_stopping`, `bt_hfp_audio_apply_duplex_state`), the i2s
+        layer (`hfp_i2s_output_init/start/stop/get_snapshot/default_config/
+        get_runtime_pin_owners`), and `bt_app_core`'s `bt_app_work_dispatch` — this
+        suite tests the control layer in full isolation from all three, so none of
+        `bt_hfp_audio.c`, `hfp_i2s_output*.c`, or `bt_app_core.c` should be linked here.)
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see correction above; no double-definition issue —
+      `bt_hfp_audio_control_health_cases.c` was correctly never listed separately).
+- [x] `ctest -R test_bt_hfp_audio_control --output-on-failure`; **21/21 passed**. Full
+      suite re-run: 88/88 passed, 0 regressions.
 
 ### A6 — `test_bt_hfp_commands` (command_interface HFP command handlers)
 

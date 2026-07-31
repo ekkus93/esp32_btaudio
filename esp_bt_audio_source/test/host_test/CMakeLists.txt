@@ -1593,3 +1593,22 @@ add_executable(test_bt_hfp_audio test_bt_hfp_audio.c
 target_link_libraries(test_bt_hfp_audio unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_audio PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_audio COMMAND $<TARGET_FILE:test_bt_hfp_audio>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A5: HFP audio control layer
+add_executable(test_bt_hfp_audio_control test_bt_hfp_audio_control.c
+    test_bt_hfp_audio_control_cases.c
+    test_bt_hfp_audio_control_lifecycle_cases.c
+    ../../components/bt_manager/bt_hfp_audio_control.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_hfp_event_command_stub.c
+    mocks/bt_hfp_audio_control_dependencies.c)
+target_link_libraries(test_bt_hfp_audio_control unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_audio_control PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_audio_control COMMAND $<TARGET_FILE:test_bt_hfp_audio_control>)
