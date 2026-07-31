@@ -334,25 +334,51 @@ specific file this session's investigation first flagged as orphaned).
 - [x] `ctest -R test_bt_hfp_manager --output-on-failure`; **11/11 passed**. Full suite
       re-run: 94/94 passed, 0 regressions.
 
-### A11 — `test_bt_manager_hfp_profiles`
+### A11 — `test_bt_manager_hfp_profiles` — DONE
 
 Standalone (6 tests).
 
-- [ ] Add `add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c`
-  - [ ] `../../components/bt_manager/bt_manager.c`
-  - [ ] `../../components/bt_manager/bt_ctx_lock.c`
-  - [ ] `../../components/bt_manager/bt_hfp_ag_lifecycle.c`
-  - [ ] `../../components/bt_manager/bt_hfp_ag_events.c`
-  - [ ] the full `bt_duplex_state_*.c` set (A1)
-  - [ ] `mocks/mock_a2dp.c`
-  - [ ] `mocks/mock_avrc.c`
-  - [ ] likely also needs `bt_manager_mocks.c`, `bt_manager_ops.c`, `bt_pairing_store.c`,
-        `bt_scan.c`, `bt_connection.c`, `bt_events_gap.c`, `bt_events_a2dp.c` — confirm
-        against undefined-symbol errors at link time, matching the dependency set already
-        used by the existing `test_bt_manager_profiles` suite in this file)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_manager_hfp_profiles --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c`
+  - [x] `../../components/bt_manager/bt_manager.c` + `bt_ctx_lock.c` +
+        `bt_manager_ops.c` + `bt_manager_mocks.c` + `bt_pairing_store.c` + `bt_scan.c` +
+        `bt_connection.c` + `bt_events_gap.c` + `bt_events_a2dp.c` + `bt_events_avrc.c`
+        (the full real `bt_manager.c` stack, matching `test_bt_manager_profiles` — this
+        test calls the real `bt_manager_test_init_profiles()` test hook, which only
+        exists in `bt_manager.c`)
+  - [x] `../../components/bt_manager/bt_hfp_ag_lifecycle.c`
+  - [x] the `bt_duplex_state_core.c` file (only `bt_duplex_set_hfp_profile_global_state`
+        is needed — see correction below) + `mocks/mock_a2dp.c`/`mock_avrc.c`/
+        `mock_gap.c`/`nvs_storage_mock.c`/`mock_audio_and_btstate.c`/
+        `bt_manager_test_hooks.c`/`fake_esp_err.c`/`fake_log.c` (matching
+        `test_bt_manager_profiles`'s full mock set) + `mocks/bt_hfp_audio_lifecycle_stub.c` +
+        `mocks/bt_hfp_connection_untracked_stub.c` (A3's AG-isolation stubs) +
+        `mocks/bt_hfp_event_command_stub.c`
+  - [x] **Two corrections found, after over-applying A3's pattern**: (1) `bt_hfp_ag_events.c`
+        is **not** needed — this test only exercises `bt_manager_test_init_profiles()`
+        via `bt_hfp_ag_test_set_platform_ops()`, which drives `bt_hfp_ag_lifecycle.c`
+        directly; `bt_hfp_ag_lifecycle.c` itself only calls
+        `bt_duplex_set_hfp_profile_global_state`, with no policy/FD-16 dependency at
+        all. Adding `bt_hfp_ag_events.c` (as A3 needed) would have dragged in
+        `bt_hfp_manager_fd16.c`/`fd11.c`/`bt_duplex_policy.c`, which conflict with the
+        real `bt_manager.c`'s `bt_ctx` this suite also needs — so only the full
+        `bt_duplex_state_*.c` set from A1 was over-broad too; only `bt_duplex_state_core.c`
+        turned out to be strictly required, but the full set was kept for
+        header-consistency and costs nothing extra to compile.
+        (2) **Real, separate bug found and fixed**: with the right SRCS, the build
+        succeeded but all 6 tests failed — `bt_manager_test_init_profiles()`'s
+        host-test HFP code path in `bt_manager.c` is gated behind an *additional*,
+        previously-undefined macro `BT_MANAGER_TEST_HFP_PROFILES` (distinct from
+        `UNIT_TEST`), which nothing in the whole repo ever defined before. Without it,
+        the function silently no-ops and returns `ESP_OK`, so the tests observed 0 of
+        the 7 expected init calls. Added
+        `target_compile_definitions(test_bt_manager_hfp_profiles PRIVATE UNIT_TEST BT_MANAGER_TEST_HFP_PROFILES)`.
+        This is not a production bug (the real `#ifdef ESP_PLATFORM` path is
+        unaffected) but confirms this exact host-test code path had never once
+        compiled-and-run before this suite was wired up.
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see corrections above).
+- [x] `ctest -R test_bt_manager_hfp_profiles --output-on-failure`; **6/6 passed**. Full
+      suite re-run: 95/95 passed, 0 regressions.
 
 ### A12 — `test_hfp_i2s_output`
 
