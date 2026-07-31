@@ -179,19 +179,19 @@ single cohesive unit rather than doing a 3-4-way split like Part A.
 - Lines 732–785: `#ifdef UNIT_TEST` `bt_manager_test_init_profiles` (the host-side mirror, including its `BT_MANAGER_TEST_HFP_PROFILES`-gated branch).
 
 ### D1. Update `bt_manager_internal.h`
-- [ ] Move the forward declarations `static esp_err_t bt_manager_init_profiles(void);` / `static esp_err_t bt_manager_deinit_profiles(void);` (currently at lines 106–107 of `bt_manager.c`, `#ifdef ESP_PLATFORM`) into `bt_manager_internal.h` as non-static prototypes, `#ifdef ESP_PLATFORM`-guarded.
-- [ ] Add a non-static prototype for `bt_manager_test_init_profiles` under `#ifdef UNIT_TEST` if not already exposed via a public test header.
+- [x] Move the forward declarations `static esp_err_t bt_manager_init_profiles(void);` / `static esp_err_t bt_manager_deinit_profiles(void);` (currently at lines 106–107 of `bt_manager.c`, `#ifdef ESP_PLATFORM`) into `bt_manager_internal.h` as non-static prototypes, `#ifdef ESP_PLATFORM`-guarded.
+- [x] Add a non-static prototype for `bt_manager_test_init_profiles` under `#ifdef UNIT_TEST` if not already exposed via a public test header.
 
 ### D2. Create `bt_manager_profiles.c` (~130 lines)
-- [ ] Move `bt_manager_init_profiles`, `bt_manager_deinit_profiles` (`#ifdef ESP_PLATFORM`) and `bt_manager_test_init_profiles` (`#ifdef UNIT_TEST`, including the `BT_MANAGER_TEST_HFP_PROFILES` branch and its `esp_avrc_ct_init`/`esp_a2d_source_init`/`bt_hfp_ag_profile_init` host-mock sequence).
-- [ ] Include whatever headers this subset needs (`bt_events_avrc.h`, `bt_events_a2dp.h`, `bt_hfp_ag.h` at minimum — check the original file's include list for what these functions actually touch).
+- [x] Move `bt_manager_init_profiles`, `bt_manager_deinit_profiles` (`#ifdef ESP_PLATFORM`) and `bt_manager_test_init_profiles` (`#ifdef UNIT_TEST`, including the `BT_MANAGER_TEST_HFP_PROFILES` branch and its `esp_avrc_ct_init`/`esp_a2d_source_init`/`bt_hfp_ag_profile_init` host-mock sequence).
+- [x] Include whatever headers this subset needs (`bt_events_avrc.h`, `bt_events_a2dp.h`, `bt_hfp_ag.h` at minimum — check the original file's include list for what these functions actually touch).
 
 ### D3. Trim `bt_manager.c` (~680 lines)
-- [ ] Everything else stays as-is: `bt_manager_get_status`, `bt_manager_finalize_teardown`/`bt_manager_finalize_init_rollback`, `bt_manager_init`/`bt_manager_deinit` (which now call the profile functions via the header declaration instead of a same-file static), all the thin wrapper accessors, and the remaining `#ifdef UNIT_TEST` hooks (`bt_manager_test_is_quarantined`, `bt_manager_test_finalize_teardown`, `bt_manager_test_finalize_init_rollback`).
+- [x] Everything else stays as-is: `bt_manager_get_status`, `bt_manager_finalize_teardown`/`bt_manager_finalize_init_rollback`, `bt_manager_init`/`bt_manager_deinit` (which now call the profile functions via the header declaration instead of a same-file static), all the thin wrapper accessors, and the remaining `#ifdef UNIT_TEST` hooks (`bt_manager_test_is_quarantined`, `bt_manager_test_finalize_teardown`, `bt_manager_test_finalize_init_rollback`).
 
 ### D4. Wire up the build (the high-blast-radius step — do not rush this)
-- [ ] `components/bt_manager/CMakeLists.txt`: add `bt_manager_profiles.c` next to `bt_manager.c` (line 14).
-- [ ] `test/host_test/CMakeLists.txt`: re-run the discovery grep fresh (do not rely on the list below going stale) —
+- [x] `components/bt_manager/CMakeLists.txt`: add `bt_manager_profiles.c` next to `bt_manager.c` (line 14).
+- [x] `test/host_test/CMakeLists.txt`: re-run the discovery grep fresh (do not rely on the list below going stale) —
   ```bash
   awk '
   /add_executable\(/ { match($0, /add_executable\(([A-Za-z0-9_]+)/, a); cur=a[1] }
@@ -200,15 +200,15 @@ single cohesive unit rather than doing a 3-4-way split like Part A.
   ' test/host_test/CMakeLists.txt | sort -u
   ```
   As of this writing that yields 28 targets: `dump_event_stress_output`, `test_autoconnect`, `test_bluetooth`, `test_bt_ctx_lock`, `test_bt_lock_cb_reentry`, `test_bt_manager_connection_pairing_events`, `test_bt_manager_edge_cases`, `test_bt_manager_hfp_profiles`, `test_bt_manager_profiles`, `test_bt_pairing_store`, `test_bt_scan`, `test_cmd_dual_uart`, `test_cmd_handlers_audio`, `test_cmd_handlers_bt`, `test_cmd_handlers_system`, `test_commands`, `test_concurrency`, `test_connect_name`, `test_event_stress`, `test_integration_flows`, `test_mock_connection_helpers`, `test_pairing_confirm`, `test_pairing_edge_cases`, `test_pairing_enter_pin`, `test_pairing_event_notifications`, `test_pairing_pending`, `test_pairing_seq_hardening`, `test_uart_audio_cmd`.
-  - [ ] Add `../../components/bt_manager/bt_manager_profiles.c` immediately after every `../../components/bt_manager/bt_manager.c` line found by that grep (whether it's inside an `add_executable(...)` argument list or a separate `target_sources(...)` call for the same target — match the existing style at each site).
-  - [ ] Note: only targets that actually exercise `bt_manager_init`/`bt_manager_deinit` on `ESP_PLATFORM`-style paths strictly *need* the new file for linking (host builds don't compile the `#ifdef ESP_PLATFORM` half), but `bt_manager_test_init_profiles` under `UNIT_TEST` is unconditionally compiled, so **every** target that links `bt_manager.c` needs `bt_manager_profiles.c` too, or it will fail to link on an undefined `bt_manager_test_init_profiles` reference wherever a test calls it.
-  - [ ] After editing, re-run the grep for `bt_manager_profiles.c` and confirm its hit count equals the `bt_manager.c` hit count (30 lines including the 2 `.c` filename occurrences unrelated to targets, i.e. confirm 28 target-block additions).
+  - [x] Add `../../components/bt_manager/bt_manager_profiles.c` immediately after every `../../components/bt_manager/bt_manager.c` line found by that grep (whether it's inside an `add_executable(...)` argument list or a separate `target_sources(...)` call for the same target — match the existing style at each site).
+  - [x] Note: only targets that actually exercise `bt_manager_init`/`bt_manager_deinit` on `ESP_PLATFORM`-style paths strictly *need* the new file for linking (host builds don't compile the `#ifdef ESP_PLATFORM` half), but `bt_manager_test_init_profiles` under `UNIT_TEST` is unconditionally compiled, so **every** target that links `bt_manager.c` needs `bt_manager_profiles.c` too, or it will fail to link on an undefined `bt_manager_test_init_profiles` reference wherever a test calls it.
+  - [x] After editing, re-run the grep for `bt_manager_profiles.c` and confirm its hit count equals the `bt_manager.c` hit count (30 lines including the 2 `.c` filename occurrences unrelated to targets, i.e. confirm 28 target-block additions).
 
 ### D5. Verify and commit
-- [ ] `idf.py build`.
-- [ ] Full host `ctest --output-on-failure` — this is the step most likely to surface a missed CMake site (undefined-reference link errors), so treat any linker failure here as "go back to D4," not as a code bug.
-- [ ] `wc -l` both files, confirm `bt_manager.c` is now under 800.
-- [ ] Update checkboxes, commit, push.
+- [x] `idf.py build`.
+- [x] Full host `ctest --output-on-failure` — this is the step most likely to surface a missed CMake site (undefined-reference link errors), so treat any linker failure here as "go back to D4," not as a code bug.
+- [x] `wc -l` both files, confirm `bt_manager.c` is now under 800.
+- [x] Update checkboxes, commit, push.
 
 ---
 

@@ -104,3 +104,9 @@ esp_err_t bt_manager_test_finalize_init_rollback(
     bool cleanup_complete,
     bool duplex_state_initialized);
 #endif
+
+/* Profile lifecycle (defined in bt_manager_profiles.c) --------------------- */
+#ifdef ESP_PLATFORM
+esp_err_t bt_manager_init_profiles(void);
+esp_err_t bt_manager_deinit_profiles(void);
+#endif
