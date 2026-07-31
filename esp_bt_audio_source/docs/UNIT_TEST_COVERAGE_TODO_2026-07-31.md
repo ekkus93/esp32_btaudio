@@ -60,28 +60,34 @@ wired-in suites, so they are known-working).
       HFP AG → HFP audio → HFP audio control → HFP commands → HFP connection → HFP
       diagnostics/event-contract → HFP manager → audio_processor HFP helpers).
 
-### A1 — `test_bt_duplex_state` (state machine core)
+### A1 — `test_bt_duplex_state` (state machine core) — DONE
 
 Runner: `test_bt_duplex_state.c` (18 `RUN_TEST` calls, verified = sum of case-file test
 functions below).
 
-- [ ] Add `add_executable(test_bt_duplex_state test_bt_duplex_state.c`
-  - [ ] `test_bt_duplex_state_cases.c` (12 tests)
-  - [ ] `test_bt_duplex_state_audio_cases.c` (4 tests)
-  - [ ] `test_bt_duplex_state_cleanup_cases.c` (1 test)
-  - [ ] `test_bt_duplex_state_strings.c` (1 test)
-  - [ ] `../../components/bt_manager/bt_duplex_state_core.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_audio.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_events.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_mode.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_profile.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_strings.c`
-  - [ ] `../../components/bt_manager/bt_duplex_state_transitions.c)`
-- [ ] Add matching `target_link_libraries`/`target_compile_definitions(... PRIVATE UNIT_TEST)`.
-- [ ] Add `add_test(NAME test_bt_duplex_state COMMAND $<TARGET_FILE:test_bt_duplex_state>)`.
-- [ ] `cmake --build .` and fix any compile errors (expect header drift is possible —
-      this code hasn't compiled in this configuration before).
-- [ ] `ctest -R test_bt_duplex_state --output-on-failure`; record actual pass count.
+- [x] Add `add_executable(test_bt_duplex_state test_bt_duplex_state.c`
+  - [x] `test_bt_duplex_state_cases.c` (12 tests)
+  - [x] `test_bt_duplex_state_audio_cases.c` (4 tests)
+  - [x] `test_bt_duplex_state_cleanup_cases.c` (1 test)
+  - [x] `test_bt_duplex_state_strings.c` (1 test)
+  - [x] `../../components/bt_manager/bt_duplex_state_core.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_audio.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_events.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_mode.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_profile.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_strings.c`
+  - [x] `../../components/bt_manager/bt_duplex_state_transitions.c)`
+  - [x] **Correction found at compile time**: also needed
+        `../../components/bt_manager/bt_hfp_event_contract.c` (three of the
+        `bt_duplex_state_*.c` files call its `bt_hfp_event_emit_*` functions) and
+        `mocks/bt_hfp_event_command_stub.c` (stubs `cmd_send_response()`, the one
+        `command_interface` symbol `bt_hfp_event_contract.c` needs, so the real
+        `command_interface` component isn't required).
+- [x] Add matching `target_link_libraries`/`target_compile_definitions(... PRIVATE UNIT_TEST)`.
+- [x] Add `add_test(NAME test_bt_duplex_state COMMAND $<TARGET_FILE:test_bt_duplex_state>)`.
+- [x] `cmake --build .` — built clean on the first attempt after the SRCS correction above.
+- [x] `ctest -R test_bt_duplex_state --output-on-failure`; **18/18 passed**. Full suite
+      re-run: 82/82 passed (81 pre-existing + this new one), 0 regressions.
 
 ### A2 — `test_bt_duplex_policy` + 2 standalone single-test executables
 

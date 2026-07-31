@@ -1505,4 +1505,23 @@ target_include_directories(test_audio_fault_recovery PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
 target_compile_definitions(test_audio_fault_recovery PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
 target_link_libraries(test_audio_fault_recovery unity util_safe_host platform_shim_host)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A1: full-duplex state machine core
+add_executable(test_bt_duplex_state test_bt_duplex_state.c
+    test_bt_duplex_state_cases.c
+    test_bt_duplex_state_audio_cases.c
+    test_bt_duplex_state_cleanup_cases.c
+    test_bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_hfp_event_command_stub.c)
+target_link_libraries(test_bt_duplex_state unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_duplex_state PRIVATE UNIT_TEST)
+add_test(NAME test_bt_duplex_state COMMAND $<TARGET_FILE:test_bt_duplex_state>)
 add_test(NAME test_audio_fault_recovery COMMAND $<TARGET_FILE:test_audio_fault_recovery>)
