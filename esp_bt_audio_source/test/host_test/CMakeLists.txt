@@ -1644,3 +1644,10 @@ add_executable(test_bt_hfp_connection test_bt_hfp_connection.c
 target_link_libraries(test_bt_hfp_connection unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_connection PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_connection COMMAND $<TARGET_FILE:test_bt_hfp_connection>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A8: HFP diagnostics/platform-ops
+add_executable(test_bt_hfp_diagnostics test_bt_hfp_diagnostics.c
+    ../../components/bt_manager/bt_hfp_manager_fd13.c)
+target_link_libraries(test_bt_hfp_diagnostics unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_diagnostics PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_diagnostics COMMAND $<TARGET_FILE:test_bt_hfp_diagnostics>)

@@ -259,20 +259,24 @@ Standalone (own `main()`, 10 tests).
 - [x] `ctest -R test_bt_hfp_connection --output-on-failure`; **10/10 passed**. Full
       suite re-run: 90/90 passed, 0 regressions.
 
-### A8 — `test_bt_hfp_diagnostics`
+### A8 — `test_bt_hfp_diagnostics` — DONE
 
 Standalone (7 tests).
 
-- [ ] Add `add_executable(test_bt_hfp_diagnostics test_bt_hfp_diagnostics.c`
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd13.c` (diagnostics/platform-ops
+- [x] Add `add_executable(test_bt_hfp_diagnostics test_bt_hfp_diagnostics.c`
+  - [x] `../../components/bt_manager/bt_hfp_manager_fd13.c` (diagnostics/platform-ops
         home per the FD-13 closeout doc)
-  - [ ] `../../components/bt_manager/bt_app_core.c`
-  - [ ] `../../components/bt_manager/bt_hfp_audio.c`
-  - [ ] `../../components/audio_processor/hfp_i2s_output.c`
-  - [ ] the full `bt_duplex_state_*.c` set (A1) if needed — confirm at compile time)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_diagnostics --output-on-failure`; record pass count.
+- [x] **Correction found before building**: the test file defines
+        `bt_manager_hfp_get_status`, `bt_hfp_audio_get_snapshot`,
+        `bt_app_task_get_stack_high_water_mark`, and
+        `hfp_i2s_output_get_stack_high_water_mark` itself (inline mocks), so none of
+        `bt_app_core.c`, `bt_hfp_audio.c`, `hfp_i2s_output.c`, or the duplex_state
+        family are needed — `bt_hfp_manager_fd13.c` alone was sufficient and built
+        clean on the first attempt.
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (none needed).
+- [x] `ctest -R test_bt_hfp_diagnostics --output-on-failure`; **7/7 passed**. Full
+      suite re-run: 91/91 passed, 0 regressions.
 
 ### A9 — `test_bt_hfp_event_contract` + `test_bt_hfp_event_uart`
 
