@@ -1599,6 +1599,9 @@ add_executable(test_bt_hfp_audio_control test_bt_hfp_audio_control.c
     test_bt_hfp_audio_control_cases.c
     test_bt_hfp_audio_control_lifecycle_cases.c
     ../../components/bt_manager/bt_hfp_audio_control.c
+    ../../components/bt_manager/bt_hfp_audio_control_i2s.c
+    ../../components/bt_manager/bt_hfp_audio_control_work.c
+    ../../components/bt_manager/bt_hfp_audio_control_events.c
     ../../components/bt_manager/bt_duplex_state_core.c
     ../../components/bt_manager/bt_duplex_state_audio.c
     ../../components/bt_manager/bt_duplex_state_events.c

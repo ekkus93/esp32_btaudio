@@ -1,5 +1,13 @@
 <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
 
+## 2026-07-31T21:03:44Z - Claude Sonnet 5 - File-split TODO created for top 5 largest project files
+
+- Listed the top 10 largest project-authored (non-vendor/third_party) source files by line count via `find`+`wc -l`, excluding `*/third_party/*` and `*/esp_idf_stubs/*`.
+- Top 5 selected for splitting (goal: all under 800 lines): `bt_hfp_audio_control.c` (1241), `test_audio_processor_diag.c` (846), `bt_events_a2dp.c` (820), `bt_manager.c` (811), `cmd_handlers_hfp_fd11_v2.c` (802).
+- Read all 5 files in full and designed splits following the codebase's existing decomposition precedent (`bt_hfp_manager_fd11/13/16.c`, `hfp_i2s_output_data/lifecycle/platform.c`, `bt_duplex_state_*` family). Wrote the plan to `esp_bt_audio_source/docs/FILE_SPLIT_TODO_2026-07-31.md` (Parts A–E, one per file, each with task/subtask checklists, new `_internal.h` headers, and CMakeLists wiring steps).
+- Key finding via CMakeLists grep: `bt_manager.c` and `bt_events_a2dp.c` are each compiled directly into ~28-30 separate host-test executables in `test/host_test/CMakeLists.txt`, so splitting either requires updating every one of those target blocks or tests fail to link. `bt_hfp_audio_control.c` (1 target) and `cmd_handlers_hfp_fd11_v2.c` (2 targets) are comparatively low-risk. The TODO orders work low-risk-first (Parts A/B/C) before the CMake-heavy Parts D/E, and calls out the exact re-grep commands to use before/after editing those two files' build wiring.
+- Not yet implemented — this is a planning-only TODO, mirroring the earlier `UNIT_TEST_COVERAGE_TODO_2026-07-31.md` pattern (TODO doc first, execution via a separate Ralph Loop invocation if/when requested).
+
 ## 2026-07-31T20:45:11Z - Claude Sonnet 5 - Ralph loop: docs/UNIT_TEST_COVERAGE_TODO_2026-07-31.md Part B complete — TODO fully closed out (23/23 tasks)
 
 - Continued the same Ralph loop from the 19:26 entry (Part A). Worked through all 7
