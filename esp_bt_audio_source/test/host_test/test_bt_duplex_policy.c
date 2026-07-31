@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string.h>
 
 #include "unity.h"

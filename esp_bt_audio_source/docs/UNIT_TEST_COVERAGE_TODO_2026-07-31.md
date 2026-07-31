@@ -89,24 +89,34 @@ functions below).
 - [x] `ctest -R test_bt_duplex_state --output-on-failure`; **18/18 passed**. Full suite
       re-run: 82/82 passed (81 pre-existing + this new one), 0 regressions.
 
-### A2 — `test_bt_duplex_policy` + 2 standalone single-test executables
+### A2 — `test_bt_duplex_policy` + 2 standalone single-test executables — DONE
 
 Three separate self-contained executables (each has its own `main()`, no split
 case files):
 
-- [ ] `test_bt_duplex_policy` (10 tests): SRCS
-      `test_bt_duplex_policy.c`,
-      `../../components/bt_manager/bt_duplex_policy.c`,
-      the full `bt_duplex_state_*.c` set (A1), `mocks/bt_duplex_policy_manager_stub.c`,
-      `mocks/bt_hfp_event_command_stub.c`.
-- [ ] `test_bt_duplex_policy_capability` (1 test): same SRCS as above.
-- [ ] `test_bt_duplex_policy_ordering` (1 test): `bt_duplex_policy.c` +
-      `bt_duplex_state_*.c` (check at compile time whether the stub is also required;
-      the single `#include "bt_duplex_policy.h"` suggests it may not be).
-- [ ] Register all three with `add_executable`/`target_link_libraries`/`add_test`.
-- [ ] Build and fix compile errors.
-- [ ] `ctest -R test_bt_duplex_policy --output-on-failure` (matches all three by prefix);
-      record actual pass counts per executable.
+- [x] `test_bt_duplex_policy` (10 tests): SRCS `test_bt_duplex_policy.c`,
+      `bt_duplex_policy.c`, **`bt_hfp_manager_fd16.c`** (defines the
+      `bt_manager_hfp_handle_a2dp_*_event`/`bt_manager_hfp_get_policy_snapshot`/
+      `bt_manager_hfp_policy_note_*`/`bt_manager_hfp_policy_runtime_reset` glue the test
+      drives directly — not in the original guess), the full `bt_duplex_state_*.c` set
+      (A1), `bt_hfp_event_contract.c`, `mocks/bt_duplex_policy_manager_stub.c`
+      (provides `bt_ctx`/`bt_ctx_lock`/`bt_ctx_unlock` mocks so the real `bt_manager.c`
+      is never needed), `mocks/bt_hfp_event_command_stub.c`.
+- [x] `test_bt_duplex_policy_capability` (1 test): `bt_duplex_policy.c` +
+      `bt_hfp_event_contract.c` (needs `bt_hfp_event_emit_policy`) +
+      `mocks/bt_duplex_policy_manager_stub.c` + `mocks/bt_hfp_event_command_stub.c`.
+      Lighter than `test_bt_duplex_policy` — does not need `bt_hfp_manager_fd16.c` or
+      the duplex_state family (only calls `bt_duplex_policy_evaluate` + emits directly).
+- [x] `test_bt_duplex_policy_ordering` (1 test): confirmed at compile time — only needs
+      `bt_duplex_policy.c` alone (calls `bt_duplex_policy_evaluate` directly, no stub or
+      event contract needed).
+- [x] **Bug found and fixed**: `test_bt_duplex_policy.c` used `PRIu32` without
+      `#include <inttypes.h>` — a genuine pre-existing bug in the orphaned test file
+      (never compiled before). Added the missing include.
+- [x] Register all three with `add_executable`/`target_link_libraries`/`add_test`.
+- [x] Build and fix compile errors (see corrections above).
+- [x] `ctest -R test_bt_duplex_policy --output-on-failure`: **10/10, 1/1, 1/1** (12 total).
+      Full suite re-run: 85/85 passed, 0 regressions.
 
 ### A3 — `test_bt_hfp_ag` (HFP Audio Gateway lifecycle/events)
 

@@ -1525,3 +1525,36 @@ target_link_libraries(test_bt_duplex_state unity util_safe_host platform_shim_ho
 target_compile_definitions(test_bt_duplex_state PRIVATE UNIT_TEST)
 add_test(NAME test_bt_duplex_state COMMAND $<TARGET_FILE:test_bt_duplex_state>)
 add_test(NAME test_audio_fault_recovery COMMAND $<TARGET_FILE:test_audio_fault_recovery>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A2: duplex policy engine
+add_executable(test_bt_duplex_policy test_bt_duplex_policy.c
+    ../../components/bt_manager/bt_duplex_policy.c
+    ../../components/bt_manager/bt_hfp_manager_fd16.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_duplex_policy_manager_stub.c
+    mocks/bt_hfp_event_command_stub.c)
+target_link_libraries(test_bt_duplex_policy unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_duplex_policy PRIVATE UNIT_TEST)
+add_test(NAME test_bt_duplex_policy COMMAND $<TARGET_FILE:test_bt_duplex_policy>)
+
+add_executable(test_bt_duplex_policy_capability test_bt_duplex_policy_capability.c
+    ../../components/bt_manager/bt_duplex_policy.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_duplex_policy_manager_stub.c
+    mocks/bt_hfp_event_command_stub.c)
+target_link_libraries(test_bt_duplex_policy_capability unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_duplex_policy_capability PRIVATE UNIT_TEST)
+add_test(NAME test_bt_duplex_policy_capability COMMAND $<TARGET_FILE:test_bt_duplex_policy_capability>)
+
+add_executable(test_bt_duplex_policy_ordering test_bt_duplex_policy_ordering.c
+    ../../components/bt_manager/bt_duplex_policy.c)
+target_link_libraries(test_bt_duplex_policy_ordering unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_duplex_policy_ordering PRIVATE UNIT_TEST)
+add_test(NAME test_bt_duplex_policy_ordering COMMAND $<TARGET_FILE:test_bt_duplex_policy_ordering>)
