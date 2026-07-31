@@ -399,16 +399,18 @@ Runner: `test_hfp_i2s_output.c` (14 tests = `test_hfp_i2s_output_cases.c`'s 14).
 - [x] `ctest -R test_hfp_i2s_output --output-on-failure`; **14/14 passed**. Full suite
       re-run: 96/96 passed, 0 regressions.
 
-### A13 — `test_hfp_pcm_ring`
+### A13 — `test_hfp_pcm_ring` — DONE
 
 Runner: `test_hfp_pcm_ring.c` (8 tests = `test_hfp_pcm_ring_cases.c`'s 8).
 
-- [ ] Add `add_executable(test_hfp_pcm_ring test_hfp_pcm_ring.c`
-  - [ ] `test_hfp_pcm_ring_cases.c` (8 tests)
-  - [ ] `../../components/audio_processor/hfp_pcm_ring.c`)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_hfp_pcm_ring --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_hfp_pcm_ring test_hfp_pcm_ring.c`
+  - [x] `test_hfp_pcm_ring_cases.c` (8 tests)
+  - [x] `../../components/audio_processor/hfp_pcm_ring.c`)
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (none needed — built clean on the first attempt, no
+      mocks required).
+- [x] `ctest -R test_hfp_pcm_ring --output-on-failure`; **8/8 passed**. Full suite
+      re-run: 97/97 passed, 0 regressions.
 
 ### A14 — `test_hfp_voice_convert`
 

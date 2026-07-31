@@ -1747,3 +1747,11 @@ add_executable(test_hfp_i2s_output test_hfp_i2s_output.c
 target_link_libraries(test_hfp_i2s_output unity util_safe_host platform_shim_host)
 target_compile_definitions(test_hfp_i2s_output PRIVATE UNIT_TEST)
 add_test(NAME test_hfp_i2s_output COMMAND $<TARGET_FILE:test_hfp_i2s_output>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A13: HFP CVSD PCM ring buffer
+add_executable(test_hfp_pcm_ring test_hfp_pcm_ring.c
+    test_hfp_pcm_ring_cases.c
+    ../../components/audio_processor/hfp_pcm_ring.c)
+target_link_libraries(test_hfp_pcm_ring unity util_safe_host platform_shim_host)
+target_compile_definitions(test_hfp_pcm_ring PRIVATE UNIT_TEST)
+add_test(NAME test_hfp_pcm_ring COMMAND $<TARGET_FILE:test_hfp_pcm_ring>)
