@@ -147,25 +147,25 @@ are already split from their `main()`-holding runner file.
 - Lines 748–767 (`P2`): `audio_processor_diag.c` dump-helper (`diag_dump_bytes`) tests.
 
 ### C1. Create `test_audio_processor_config.c` (~300 lines)
-- [ ] Move the entire BT-1 section (lines 292–587): all `test_set_sample_rate_*`, `test_set_mute_*`, `test_set_channels_*`, `test_set_bit_depth_*`, `test_set_i2s_pins_*`, `test_configure_i2s_null_config_rejected`, `test_get_config_*`.
-- [ ] Give it its own `setUp`/`tearDown` (copy from the original — same reset logic applies) and its own `main()` with the corresponding `RUN_TEST` calls.
+- [x] Move the entire BT-1 section (lines 292–587): all `test_set_sample_rate_*`, `test_set_mute_*`, `test_set_channels_*`, `test_set_bit_depth_*`, `test_set_i2s_pins_*`, `test_configure_i2s_null_config_rejected`, `test_get_config_*`.
+- [x] Give it its own `setUp`/`tearDown` (copy from the original — same reset logic applies) and its own `main()` with the corresponding `RUN_TEST` calls.
 
 ### C2. Create `test_audio_processor_runtime.c` (~330 lines)
-- [ ] Move `TEST-5`/`TEST-1b` (`apply_volume` + integration, lines 166–290), `BT-2` (`sync_diag`, lines 589–639), and `P2` accessors + `drain_ring` (lines 641–746).
-- [ ] Own `setUp`/`tearDown`/`main`. Note the `s_sync_diag_proc_buf`/`s_sync_diag_proc_buf2` static backing arrays (declared right before the BT-2 tests) move with those tests.
+- [x] Move `TEST-5`/`TEST-1b` (`apply_volume` + integration, lines 166–290), `BT-2` (`sync_diag`, lines 589–639), and `P2` accessors + `drain_ring` (lines 641–746).
+- [x] Own `setUp`/`tearDown`/`main`. Note the `s_sync_diag_proc_buf`/`s_sync_diag_proc_buf2` static backing arrays (declared right before the BT-2 tests) move with those tests.
 
 ### C3. Trim `test_audio_processor_diag.c` down to the core (~260 lines)
-- [ ] Keep: the diag/probe/status/stats tests (lines 41–165) and the dump-helper tests (lines 748–767).
-- [ ] Keep `setUp`/`tearDown` and reduce `main()`'s `RUN_TEST` list to match.
+- [x] Keep: the diag/probe/status/stats tests (lines 41–165) and the dump-helper tests (lines 748–767).
+- [x] Keep `setUp`/`tearDown` and reduce `main()`'s `RUN_TEST` list to match.
 
 ### C4. Wire up the build
-- [ ] `test/host_test/CMakeLists.txt`: duplicate the existing `test_audio_processor_diag` `add_executable` block (~line 653) twice, once per new file, keeping the identical production/mock source list (`audio_processor.c`, `audio_processor_engine.c`, `audio_processor_config.c`, `audio_processor_test_hooks.c`, `audio_processor_diag.c`, `audio_processor_sync_diag.c`, `audio_processor_state.c`, `mocks/audio_processor_core_logic_stubs.c`, `mocks/fake_log.c`, `mocks/fake_esp_err.c`, plus its `target_include_directories`/`target_compile_definitions`/`target_link_libraries`/`add_test` lines) — swap only the executable name and the first source file.
-- [ ] Register both new executables with `add_test`.
+- [x] `test/host_test/CMakeLists.txt`: duplicate the existing `test_audio_processor_diag` `add_executable` block (~line 653) twice, once per new file, keeping the identical production/mock source list (`audio_processor.c`, `audio_processor_engine.c`, `audio_processor_config.c`, `audio_processor_test_hooks.c`, `audio_processor_diag.c`, `audio_processor_sync_diag.c`, `audio_processor_state.c`, `mocks/audio_processor_core_logic_stubs.c`, `mocks/fake_log.c`, `mocks/fake_esp_err.c`, plus its `target_include_directories`/`target_compile_definitions`/`target_link_libraries`/`add_test` lines) — swap only the executable name and the first source file.
+- [x] Register both new executables with `add_test`.
 
 ### C5. Verify and commit
-- [ ] Full host `ctest --output-on-failure`, confirm the same total test count as before the split (no test silently dropped from a `RUN_TEST` list during the copy/move).
-- [ ] `wc -l` all 3 files, confirm each under 800.
-- [ ] Update checkboxes, commit, push.
+- [x] Full host `ctest --output-on-failure`, confirm the same total test count as before the split (no test silently dropped from a `RUN_TEST` list during the copy/move).
+- [x] `wc -l` all 3 files, confirm each under 800.
+- [x] Update checkboxes, commit, push.
 
 ---
 

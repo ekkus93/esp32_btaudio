@@ -673,6 +673,52 @@ target_compile_definitions(test_audio_processor_diag PRIVATE CONFIG_BT_MOCK_TEST
 target_link_libraries(test_audio_processor_diag unity util_safe_host platform_shim_host)
 add_test(NAME test_audio_processor_diag COMMAND $<TARGET_FILE:test_audio_processor_diag>)
 
+# Audio processor config setter/getter tests (FILE_SPLIT_TODO_2026-07-31 Part C)
+add_executable(test_audio_processor_config
+    test_audio_processor_config.c
+    ../../components/audio_processor/audio_processor.c
+    ../../components/audio_processor/audio_processor_engine.c
+    ../../components/audio_processor/audio_processor_config.c
+    ../../components/audio_processor/audio_processor_test_hooks.c
+    ../../components/audio_processor/audio_processor_diag.c
+    ../../components/audio_processor/audio_processor_sync_diag.c
+    ../../components/audio_processor/audio_processor_state.c
+    mocks/audio_processor_core_logic_stubs.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/fake_semphr.c)
+target_include_directories(test_audio_processor_config PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
+target_compile_definitions(test_audio_processor_config PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_processor_config unity util_safe_host platform_shim_host)
+add_test(NAME test_audio_processor_config COMMAND $<TARGET_FILE:test_audio_processor_config>)
+
+# Audio processor apply_volume/sync_diag/accessor tests (FILE_SPLIT_TODO_2026-07-31 Part C)
+add_executable(test_audio_processor_runtime
+    test_audio_processor_runtime.c
+    ../../components/audio_processor/audio_processor.c
+    ../../components/audio_processor/audio_processor_engine.c
+    ../../components/audio_processor/audio_processor_config.c
+    ../../components/audio_processor/audio_processor_test_hooks.c
+    ../../components/audio_processor/audio_processor_diag.c
+    ../../components/audio_processor/audio_processor_sync_diag.c
+    ../../components/audio_processor/audio_processor_state.c
+    mocks/audio_processor_core_logic_stubs.c
+    mocks/fake_log.c
+    mocks/fake_esp_err.c
+    mocks/fake_semphr.c)
+target_include_directories(test_audio_processor_runtime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/audio_processor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/util_safe/include)
+target_compile_definitions(test_audio_processor_runtime PRIVATE CONFIG_BT_MOCK_TESTING UNIT_TEST)
+target_link_libraries(test_audio_processor_runtime unity util_safe_host platform_shim_host)
+add_test(NAME test_audio_processor_runtime COMMAND $<TARGET_FILE:test_audio_processor_runtime>)
+
 # Audio processor beep edge case tests (Phase 3.1 - TDD)
 add_executable(test_audio_processor_beep_edge_cases test_audio_processor_beep_edge_cases.c
     ../../components/audio_processor/audio_processor_beep.c
