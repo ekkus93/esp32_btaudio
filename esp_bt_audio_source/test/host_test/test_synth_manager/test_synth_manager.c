@@ -60,6 +60,19 @@ void test_generate_should_return_zero_on_invalid_args(void)
     TEST_ASSERT_EQUAL_size_t(0, synth_manager_generate_audio(buf, sizeof(buf), NULL, &force, NULL));
 }
 
+void test_generate_should_return_zero_when_buffer_smaller_than_one_frame(void)
+{
+    /* 16-bit mono frame is 2 bytes; a 1-byte buffer can't hold a whole frame. */
+    uint8_t buf[1];
+    memset(buf, 0xAA, sizeof(buf));
+    audio_config_t cfg = make_config();
+    bool force = true;
+
+    size_t written = synth_manager_generate_audio(buf, sizeof(buf), &cfg, &force, NULL);
+
+    TEST_ASSERT_EQUAL_size_t(0, written);
+}
+
 void test_generate_should_fill_whole_frames_and_keep_default_silence(void)
 {
     uint8_t buf[64];
@@ -261,6 +274,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_generate_should_return_zero_on_invalid_args);
+    RUN_TEST(test_generate_should_return_zero_when_buffer_smaller_than_one_frame);
     RUN_TEST(test_generate_should_fill_whole_frames_and_keep_default_silence);
     RUN_TEST(test_generate_should_clamp_to_frame_boundary);
     RUN_TEST(test_generate_32bit_uses_4byte_container_mono);

@@ -495,15 +495,36 @@ code can build for host tests), not application code.
       Overall host coverage: **86.8%** (was 85.9%). Full suite re-run: 98/98 passed,
       0 regressions.
 
-### B2 — `synth_manager.c` (67.3%, 74/110 lines)
+### B2 — `synth_manager.c` (67.3%, 74/110 lines) — DONE (near practical ceiling)
 
-- [ ] Identify uncovered lines via the HTML report.
-- [ ] Check whether uncovered code is synth-voice edge cases (invalid voice IDs,
-      boundary frequencies, arpeggio state transitions) or dead/unreachable code that
-      should instead be removed (cross-reference against the project's existing
-      dead-code-cleanup effort before adding tests to code that may not need to exist).
-- [ ] Write additional test cases or file a dead-code removal note, as appropriate.
-- [ ] Re-run coverage; confirm improvement.
+- [x] Identified uncovered lines via `tmp/coverage_html/audio_processor/synth_manager.c.gcov.html`:
+      lines 55-62 (buffer/frame-size guard checks) and the two duplicated fade-envelope
+      blocks (86-121, 136-169, one per bit-depth path).
+- [x] Checked reachability: the fade-envelope `static`s (`s_synth_fade_active`,
+      `s_synth_env`, `s_synth_fade_dir`, `s_synth_fade_frames_remaining/total`) have no
+      setter anywhere in the public API (`synth_manager.h`) or any other file (they're
+      file-scope `static`, so nothing outside this translation unit even *could* set
+      them) — confirmed **genuinely dead/unreachable code**, not merely untested. The
+      existing test file already documents this exact finding in a header comment
+      (independently reached the same conclusion before checking) and the header marks
+      `synth_manager_generate_audio` "Legacy ... REMOVE" — this is known, intentional
+      technical debt already flagged for the dead-code-cleanup effort, not something to
+      force-test with a fake trigger hook added to production code (out of scope for a
+      coverage task).
+      Of the frame-size guard block, `frame_bytes == 0` (line 56) is *also* unreachable
+      (the `bytes_per_sample <= 0` fallback at line 51-52 guarantees `frame_bytes >= 2`
+      always) — left uncovered. `max_bytes == 0` (line 61) **is** reachable: a caller
+      buffer smaller than one frame.
+- [x] Added one test case exercising the one reachable gap:
+      `test_generate_should_return_zero_when_buffer_smaller_than_one_frame` (1-byte
+      buffer against a 2-byte 16-bit-mono frame size). No dead-code removal performed
+      (out of scope here — flagging it is sufficient; removal is the existing
+      dead-code-cleanup effort's call, and `synth_manager_generate_audio` is used by
+      `synth_source_fill`, so any removal needs to consider both).
+- [x] Re-ran coverage: `synth_manager.c` **68.2% (75/110)**, up from 67.3% (74/110) —
+      the maximum reachable given the current architecture without modifying production
+      code. Full suite re-run: 98/98 passed, 0 regressions. Overall coverage: 86.8%
+      (unchanged at this precision — one line out of ~14,000 total instrumented).
 
 ### B3 — `allocator.c` (70.0%, 98/140 lines)
 
