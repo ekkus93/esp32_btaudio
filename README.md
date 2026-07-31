@@ -1,7 +1,7 @@
 # ESP32 Audio Project
 [![CI - Host Unit Tests](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-host-tests.yml)
 [![CI - Device Build](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml/badge.svg?branch=master)](https://github.com/ekkus93/esp32_btaudio/actions/workflows/ci-device-build.yml)
-[![Coverage](https://img.shields.io/badge/coverage-78.1%25-green.svg)](#code-coverage)
+[![Coverage](https://img.shields.io/badge/coverage-87.7%25-green.svg)](#code-coverage)
 
 This project centers on two ESP32 devices for an audio streaming pipeline:
 - **esp_bt_audio_source** — Bluetooth A2DP audio source firmware (WROOM32 on `/dev/ttyUSB0`)
@@ -114,7 +114,7 @@ The script cleans prior artifacts before each run and reports pass/fail counts f
 
 ## Code Coverage
 
-The project maintains **78.1% line coverage** across production code, measured using gcov/lcov. Coverage reports are automatically generated in CI and can be generated locally.
+The project maintains **87.7% line coverage** across production code, measured using gcov/lcov. Coverage reports are automatically generated in CI and can be generated locally.
 
 ### Generate Coverage Report Locally
 

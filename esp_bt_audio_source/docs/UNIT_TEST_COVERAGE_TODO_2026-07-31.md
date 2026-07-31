@@ -671,19 +671,25 @@ host-test stub of ESP-IDF's `osi/allocator` memory-debug wrapper for the BT stac
       confirm_pin param-shape branches, enter_pin's NVS-default-PIN lookup) and add
       whatever's still missing across those files.
 
-### B8 — Full Part B verification
+### B8 — Full Part B verification — DONE
 
-- [ ] Re-run the full host suite (`ctest --output-on-failure`) after all Part B changes;
-      confirm 0 failures.
-- [ ] Re-run coverage one final time; record the final overall line-coverage percentage
-      and compare against the 85.0% (pre-Part-A) and post-Part-A baselines recorded
-      above.
-- [ ] Update the coverage badge/percentage in the root `README.md` if it changed
-      materially (current badge: 78.1% — note this already differs from the 85.0% figure
-      measured on 2026-07-31, so reconcile which figure the badge should track before
-      editing it).
-- [ ] Append a final `memory.md` entry (real timestamp via `date -u`) summarizing the
+- [x] Re-run the full host suite (`ctest --output-on-failure`) after all Part B
+      changes, from a clean `build_host_tests` reconfigure; confirm 0 failures.
+      **98/98 passed.**
+- [x] Re-run coverage one final time; record the final overall line-coverage
+      percentage and compare against the 85.0% (pre-Part-A) and post-Part-A (85.9%)
+      baselines. **Final: 87.7%, 1199 total host test cases** (up from 977 at the very
+      start of this TODO).
+- [x] Update the coverage badge/percentage in the root `README.md`. Reconciled: the
+      badge and prose both track the exact metric `python tools/run_all_tests.py
+      --no-device --coverage --no-standalone` reports (the same command the README
+      itself documents), so both were updated from the stale 78.1% to **87.7%**.
+- [x] Append a final `memory.md` entry (real timestamp via `date -u`) summarizing the
       Part B work and the final coverage delta from this document's starting point.
+
+**This TODO is now fully closed out**: Part A 15/15, Part B 8/8 (B7 explicitly
+partial, its remaining scope documented above as follow-up work, not silently
+dropped).
 
 ---
 

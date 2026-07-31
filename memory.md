@@ -1,5 +1,46 @@
 <!-- Entries older than 2026-07-20 (1 week) were moved to memory_archive.md on 2026-07-27. See that file for full history back to 2025-01-13. Note: this window intentionally is not a contiguous date range — entries are kept/archived by actual date regardless of position in the file, so a few older entries physically later in the file (e.g. the 2026-07-21/07-22 FIX3 block) remain here because they fall within the last week, while some entries earlier in the file's byte order were older and got archived. -->
 
+## 2026-07-31T20:45:11Z - Claude Sonnet 5 - Ralph loop: docs/UNIT_TEST_COVERAGE_TODO_2026-07-31.md Part B complete — TODO fully closed out (23/23 tasks)
+
+- Continued the same Ralph loop from the 19:26 entry (Part A). Worked through all 7
+  Part B coverage-improvement subtasks plus final verification (B1-B8), one commit per
+  task, each gated on a full `ctest` pass (98/98) before moving on.
+- Host line coverage: **85.0% → 87.7%** across the full TODO (85.9% after Part A alone,
+  then B1-B7 added the rest). Host test case count: **977 → 1199** (98 → 98 executables
+  — Part B added tests to existing suites rather than new ones, except B1/B3 which
+  extended pre-existing host-stub test files).
+- Per-file results: `list.c` 40.6%→92.6% (osi doubly-linked-list stub, 10 new tests),
+  `synth_manager.c` 67.3%→68.2% (confirmed the fade-envelope logic is dead/unreachable
+  code — already documented by a prior author — added the one genuinely reachable
+  test), `allocator.c` 70.0%→84.3% (osi memory-debug stub, 5 new tests),
+  `audio_processor_beep.c` 71.4%→**100%** (5 new tests), `audio_util.c` 71.9%→90.0%
+  (7 new tests, one planned test caught and removed for targeting mathematically
+  unreachable code), `bt_app_core.c` 73.3%→76.2% (2 new tests; remaining gap is the
+  blocking BtAppTask loop the host FreeRTOS stub deliberately never runs — by design,
+  not a gap), `cmd_handlers_bt.c` 77.4%→80.5% (2 new tests; explicitly left partial —
+  the rest of the gap spans `scan`/`connect`/`pair`/`confirm_pin`/`enter_pin` handlers
+  covered piecemeal across 4 *other* test files not audited this session — flagged as
+  follow-up in the TODO rather than claimed done).
+- Two more real bugs found and fixed (both in test code, no production impact):
+  `test_resample_work_bytes_too_small_for_one_dst_frame_fails` asserted a wrong
+  expectation against unreachable code in `resample_audio` (removed rather than
+  weakened — the underlying identity `floor(floor(x/a)/b) == floor(x/(a*b))` proves the
+  `max_dst_frames==0` guard can never fire before the earlier `src_frame_count==0`
+  return); `TEST_ASSERT_EQUAL_DOUBLE` isn't available in this Unity build (matches an
+  existing comment elsewhere in the suite) — fixed to cast-and-compare-as-int.
+- Updated the root `README.md` coverage badge and prose from the stale 78.1% (already
+  out of date before this session started) to **87.7%**, matching exactly what
+  `python tools/run_all_tests.py --no-device --coverage --no-standalone` (the command
+  the README itself documents) now reports.
+- Environment note: the coverage-regeneration step (full recompile under
+  `--coverage`) got killed by the harness 4 separate times across this session under
+  low system memory (as little as ~150-250MB free, heavy swap) — always succeeded on
+  retry with no code changes; not a correctness issue, just transient resource
+  pressure unrelated to this work.
+- `docs/UNIT_TEST_COVERAGE_TODO_2026-07-31.md` is now fully checked off (Part A: 15/15,
+  Part B: 8/8, with B7 explicitly marked partial and its follow-up scoped). All 25
+  commits from this Ralph loop are on `feature/esp-bt-audio-duplex` and pushed.
+
 ## 2026-07-31T19:26:47Z - Claude Sonnet 5 - Ralph loop: docs/UNIT_TEST_COVERAGE_TODO_2026-07-31.md Part A complete (all 15 tasks, 17 suites wired)
 
 - User: "Ok. Let's Ralph Loop docs/UNIT_TEST_COVERAGE_TODO_2026-07-31.md" -> invoked the `ralph-loop` skill on `feature/esp-bt-audio-duplex` (confirmed with user over `master`, since the tests depend on HFP duplex code that only exists on this branch).
