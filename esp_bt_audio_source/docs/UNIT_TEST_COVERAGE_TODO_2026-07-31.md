@@ -380,16 +380,24 @@ Standalone (6 tests).
 - [x] `ctest -R test_bt_manager_hfp_profiles --output-on-failure`; **6/6 passed**. Full
       suite re-run: 95/95 passed, 0 regressions.
 
-### A12 — `test_hfp_i2s_output`
+### A12 — `test_hfp_i2s_output` — DONE
 
 Runner: `test_hfp_i2s_output.c` (14 tests = `test_hfp_i2s_output_cases.c`'s 14).
 
-- [ ] Add `add_executable(test_hfp_i2s_output test_hfp_i2s_output.c`
-  - [ ] `test_hfp_i2s_output_cases.c` (14 tests)
-  - [ ] `../../components/audio_processor/hfp_i2s_output.c`)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_hfp_i2s_output --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_hfp_i2s_output test_hfp_i2s_output.c`
+  - [x] `test_hfp_i2s_output_cases.c` (14 tests)
+  - [x] `../../components/audio_processor/hfp_i2s_output.c`
+  - [x] **Correction found at compile time**: `hfp_i2s_output.c` is split across 4 files
+        (discovered in A4) — also needed `hfp_i2s_output_data.c`,
+        `hfp_i2s_output_lifecycle.c`, `hfp_i2s_output_platform.c`, plus
+        `hfp_pcm_ring.c` (the real ring buffer, A13's file) and `hfp_voice_convert.c`
+        (`hfp_cvsd_8k_to_16k`, A14's file, called by `hfp_i2s_output_data.c`'s
+        `hfp_i2s_output_push_cvsd`) — no test-side mocks needed at all, the full real
+        stack links cleanly.)
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see correction above).
+- [x] `ctest -R test_hfp_i2s_output --output-on-failure`; **14/14 passed**. Full suite
+      re-run: 96/96 passed, 0 regressions.
 
 ### A13 — `test_hfp_pcm_ring`
 

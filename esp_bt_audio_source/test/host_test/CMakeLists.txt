@@ -1734,3 +1734,16 @@ add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c
 target_link_libraries(test_bt_manager_hfp_profiles unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_manager_hfp_profiles PRIVATE UNIT_TEST BT_MANAGER_TEST_HFP_PROFILES)
 add_test(NAME test_bt_manager_hfp_profiles COMMAND $<TARGET_FILE:test_bt_manager_hfp_profiles>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A12: HFP I2S microphone output
+add_executable(test_hfp_i2s_output test_hfp_i2s_output.c
+    test_hfp_i2s_output_cases.c
+    ../../components/audio_processor/hfp_i2s_output.c
+    ../../components/audio_processor/hfp_i2s_output_data.c
+    ../../components/audio_processor/hfp_i2s_output_lifecycle.c
+    ../../components/audio_processor/hfp_i2s_output_platform.c
+    ../../components/audio_processor/hfp_pcm_ring.c
+    ../../components/audio_processor/hfp_voice_convert.c)
+target_link_libraries(test_hfp_i2s_output unity util_safe_host platform_shim_host)
+target_compile_definitions(test_hfp_i2s_output PRIVATE UNIT_TEST)
+add_test(NAME test_hfp_i2s_output COMMAND $<TARGET_FILE:test_hfp_i2s_output>)
