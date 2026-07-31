@@ -1678,3 +1678,23 @@ add_executable(test_bt_hfp_event_uart test_bt_hfp_event_uart.c
 target_link_libraries(test_bt_hfp_event_uart unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_event_uart PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_event_uart COMMAND $<TARGET_FILE:test_bt_hfp_event_uart>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A10: HFP manager (FD-11 wrapper API)
+add_executable(test_bt_hfp_manager test_bt_hfp_manager.c
+    test_bt_hfp_manager_cases.c
+    ../../components/bt_manager/bt_hfp_manager_fd11.c
+    ../../components/bt_manager/bt_hfp_manager_fd16.c
+    ../../components/bt_manager/bt_duplex_policy.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_hfp_event_command_stub.c
+    mocks/bt_hfp_manager_dependencies.c)
+target_link_libraries(test_bt_hfp_manager unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_manager PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_manager COMMAND $<TARGET_FILE:test_bt_hfp_manager>)

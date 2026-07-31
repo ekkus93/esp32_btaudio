@@ -305,22 +305,34 @@ Two standalone executables sharing `bt_hfp_event_contract.c`:
 - [x] `ctest -R test_bt_hfp_event --output-on-failure`; **17/17 and 2/2** (19 total).
       Full suite re-run: 93/93 passed, 0 regressions.
 
-### A10 — `test_bt_hfp_manager`
+### A10 — `test_bt_hfp_manager` — DONE
 
 Runner: `test_bt_hfp_manager.c` (11 tests = `test_bt_hfp_manager_cases.c`'s 11 — the
 specific file this session's investigation first flagged as orphaned).
 
-- [ ] Add `add_executable(test_bt_hfp_manager test_bt_hfp_manager.c`
-  - [ ] `test_bt_hfp_manager_cases.c` (11 tests)
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd11.c`
-  - [ ] `../../components/bt_manager/bt_hfp_manager_fd13.c` (confirm at compile time
-        whether FD-13/FD-16 are needed here or only in A6 — `test_bt_hfp_manager_cases.c`
-        only directly includes `bt_hfp_manager.h`/`bt_hfp_manager_dependencies.h`)
-  - [ ] the full `bt_duplex_state_*.c` set (A1)
-  - [ ] `mocks/bt_hfp_manager_dependencies.c`)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_manager --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_manager test_bt_hfp_manager.c`
+  - [x] `test_bt_hfp_manager_cases.c` (11 tests)
+  - [x] `../../components/bt_manager/bt_hfp_manager_fd11.c`
+  - [x] Confirmed at compile time: needs **`bt_hfp_manager_fd16.c`** too (not FD-13) —
+        `bt_manager_hfp_policy_refresh`/`_refresh_locked`/`_copy_locked`/
+        `_runtime_reset`, same policy glue pattern as A2/A3 — plus `bt_duplex_policy.c`
+        for `bt_duplex_policy_evaluate`.
+  - [x] the full `bt_duplex_state_*.c` set (A1) + `bt_hfp_event_contract.c` +
+        `mocks/bt_hfp_event_command_stub.c`
+  - [x] `mocks/bt_hfp_manager_dependencies.c`)
+- [x] **Real bug found and fixed** (not just a missing-SRCS gap): `bt_hfp_manager_dependencies.c`
+      declared `static platform_mutex_t s_bt_ctx_mutex;` — a genuine naming collision
+      with `extern platform_mutex_t s_bt_ctx_mutex;`, which the 2026-07-31
+      `bt_ctx_lock.c` extraction (earlier this session) added to
+      `bt_manager_internal.h`. This mock predates that refactor and was never compiled
+      since, so the collision was latent until now. Fixed by renaming the mock's
+      private static to `s_mock_bt_ctx_mutex` (purely internal, no other file
+      references it). Verified via a full rebuild + full ctest run afterward that the
+      rename didn't affect any other suite (94/94 passed).
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see corrections above).
+- [x] `ctest -R test_bt_hfp_manager --output-on-failure`; **11/11 passed**. Full suite
+      re-run: 94/94 passed, 0 regressions.
 
 ### A11 — `test_bt_manager_hfp_profiles`
 

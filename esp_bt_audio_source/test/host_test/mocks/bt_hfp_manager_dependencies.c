@@ -7,7 +7,7 @@
 
 bt_manager_context_t bt_ctx;
 
-static platform_mutex_t s_bt_ctx_mutex;
+static platform_mutex_t s_mock_bt_ctx_mutex;
 static bt_hfp_connection_snapshot_t s_slc;
 static bt_hfp_audio_control_snapshot_t s_control;
 static bt_hfp_audio_snapshot_t s_incoming;
@@ -28,14 +28,14 @@ static char s_last_slc_peer[BT_DUPLEX_MAC_STR_LEN];
 
 esp_err_t bt_ctx_lock(uint32_t timeout_ms)
 {
-    if (s_bt_ctx_mutex == NULL) return ESP_ERR_INVALID_STATE;
-    return platform_mutex_lock(s_bt_ctx_mutex, timeout_ms);
+    if (s_mock_bt_ctx_mutex == NULL) return ESP_ERR_INVALID_STATE;
+    return platform_mutex_lock(s_mock_bt_ctx_mutex, timeout_ms);
 }
 
 void bt_ctx_unlock(void)
 {
-    if (s_bt_ctx_mutex != NULL) {
-        (void)platform_mutex_unlock(s_bt_ctx_mutex);
+    if (s_mock_bt_ctx_mutex != NULL) {
+        (void)platform_mutex_unlock(s_mock_bt_ctx_mutex);
     }
 }
 
@@ -71,9 +71,9 @@ void mock_bt_hfp_manager_dependencies_reset_modules(void)
 
 esp_err_t mock_bt_hfp_manager_dependencies_init(const char *active_peer)
 {
-    if (s_bt_ctx_mutex != NULL) platform_mutex_delete(s_bt_ctx_mutex);
-    s_bt_ctx_mutex = platform_mutex_create();
-    if (s_bt_ctx_mutex == NULL) return ESP_ERR_NO_MEM;
+    if (s_mock_bt_ctx_mutex != NULL) platform_mutex_delete(s_mock_bt_ctx_mutex);
+    s_mock_bt_ctx_mutex = platform_mutex_create();
+    if (s_mock_bt_ctx_mutex == NULL) return ESP_ERR_NO_MEM;
 
     memset(&bt_ctx, 0, sizeof(bt_ctx));
     bt_ctx.initialized = true;
@@ -89,9 +89,9 @@ esp_err_t mock_bt_hfp_manager_dependencies_init(const char *active_peer)
 void mock_bt_hfp_manager_dependencies_deinit(void)
 {
     memset(&bt_ctx, 0, sizeof(bt_ctx));
-    if (s_bt_ctx_mutex != NULL) {
-        platform_mutex_delete(s_bt_ctx_mutex);
-        s_bt_ctx_mutex = NULL;
+    if (s_mock_bt_ctx_mutex != NULL) {
+        platform_mutex_delete(s_mock_bt_ctx_mutex);
+        s_mock_bt_ctx_mutex = NULL;
     }
 }
 
