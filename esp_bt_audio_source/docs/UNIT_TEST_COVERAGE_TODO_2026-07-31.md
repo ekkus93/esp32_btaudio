@@ -425,38 +425,37 @@ Runner: `test_hfp_voice_convert.c` (11 tests = `test_hfp_voice_convert_cases.c`'
 - [x] `ctest -R test_hfp_voice_convert --output-on-failure`; **11/11 passed**. Full
       suite re-run: 98/98 passed, 0 regressions. **All 17 Part A suites now wired.**
 
-### A15 — Full Part A verification
+### A15 — Full Part A verification — DONE
 
-- [ ] `cmake --build . -- -j"$(nproc)"` from a clean `build_host_tests` directory (full
+- [x] `cmake --build . -- -j"$(nproc)"` from a clean `build_host_tests` directory (full
       reconfigure) so CMake picks up every new target with no stale cache.
-- [ ] `ctest --output-on-failure` for the complete suite; confirm 0 failures across both
-      the pre-existing 81 executables and the ~17 newly-registered ones.
-- [ ] Update the running total test-case count this document references (17 new
+- [x] `ctest --output-on-failure` for the complete suite; confirm 0 failures across both
+      the pre-existing 81 executables and the ~17 newly-registered ones. **98/98
+      executables passed, 1168 total test cases (up from 977).**
+- [x] Update the running total test-case count this document references (17 new
       suites × their listed counts ≈ 210 additional cases) with the actual number ctest
-      reports.
-- [ ] `python tools/run_all_tests.py --no-device --coverage --no-standalone` and confirm
+      reports. Actual new cases: 18+12+15+15+21+24+10+7+19+11+6+14+8+11 = 191 across the
+      14 new executables (A1-A14; A2's group registered 3 separate executables).
+- [x] `python tools/run_all_tests.py --no-device --coverage --no-standalone` and confirm
       via `tmp/coverage_filtered.info` that every file listed as "MISSING" in the
-      2026-07-31 investigation (`bt_hfp_manager_fd11.c`, `bt_hfp_manager_fd13.c`,
-      `bt_hfp_manager_fd16.c`, `bt_hfp_ag_lifecycle.c`, `bt_hfp_ag_events.c`,
-      `bt_duplex_policy.c`, `bt_duplex_state_core.c`, `bt_duplex_state_audio.c`,
-      `bt_duplex_state_events.c`, `bt_duplex_state_mode.c`, `bt_duplex_state_profile.c`,
-      `bt_duplex_state_strings.c`, `bt_duplex_state_transitions.c`, `bt_hfp_audio.c`,
-      `bt_hfp_audio_control.c`, `bt_hfp_connection.c`, `bt_hfp_event_contract.c`,
-      `hfp_i2s_output.c`, `hfp_pcm_ring.c`, `hfp_voice_convert.c`,
-      `cmd_handlers_hfp_fd11_v2.c`) now reports a real, non-zero coverage percentage.
-      Record the new overall line-coverage percentage (baseline was 85.0%).
-- [ ] Run `idf.py build` (production) and rebuild all three device Unity test apps
+      2026-07-31 investigation now reports a real, non-zero coverage percentage.
+      **Confirmed for all 21 files** (`bt_hfp_manager_fd11.c` 91.2%, `fd13.c` 92.6%,
+      `fd16.c` 85.2%, `bt_hfp_ag_lifecycle.c` 87.9%, `bt_hfp_ag_events.c` 87.3%,
+      `bt_duplex_policy.c` 67.3%, `bt_duplex_state_core.c` 93.4%, `_audio.c` 91.7%,
+      `_events.c` 85.7%, `_mode.c` 96.0%, `_profile.c` 82.9%, `_strings.c` 100.0%,
+      `_transitions.c` 84.7%, `bt_hfp_audio.c` 96.5%, `bt_hfp_audio_control.c` 82.8%,
+      `bt_hfp_connection.c` 79.9%, `bt_hfp_event_contract.c` 86.2%, `hfp_i2s_output.c`
+      88.7%, `hfp_pcm_ring.c` 94.3%, `hfp_voice_convert.c` 97.2%,
+      `cmd_handlers_hfp_fd11_v2.c` 79.6%). Overall line coverage: **85.9%** (was 85.0%).
+- [x] Run `idf.py build` (production) and rebuild all three device Unity test apps
       (`test_bluetooth`, `test_app_audio`, `test_manager`) to confirm none of the
-      `bt_manager`/`command_interface` changes needed to make these host tests compile
-      (if any header/signature fixes are needed along the way) affect the device build.
-      No behavior change is expected — these are purely CMake SRCS additions plus
-      whatever compile-error fixes surface — but verify per this repo's standing rule
-      that any `#ifdef ESP_PLATFORM` touch gets a device build check.
-- [ ] Append a `memory.md` entry (get the real timestamp via
-      `date -u +"%Y-%m-%dT%H:%M:%SZ"` immediately before writing it) summarizing what was
-      wired up, the new test/coverage counts, and any production bugs the newly-running
-      tests turned up (very possible — this code has never executed under a test harness
-      before).
+      `bt_manager`/`command_interface` changes affect the device build. **All four
+      clean.** `test_manager` needed two retries after the environment killed it under
+      low system memory when run concurrently with the other two builds — succeeded on
+      a clean solo retry; not a code issue.
+- [x] Append a `memory.md` entry (real timestamp via `date -u`) summarizing what was
+      wired up, the new test/coverage counts, and the production/test bugs found (3
+      real bugs found, all confirmed test-only — see the entry for detail).
 
 ---
 
