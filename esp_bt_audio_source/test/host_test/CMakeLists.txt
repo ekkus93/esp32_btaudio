@@ -1755,3 +1755,11 @@ add_executable(test_hfp_pcm_ring test_hfp_pcm_ring.c
 target_link_libraries(test_hfp_pcm_ring unity util_safe_host platform_shim_host)
 target_compile_definitions(test_hfp_pcm_ring PRIVATE UNIT_TEST)
 add_test(NAME test_hfp_pcm_ring COMMAND $<TARGET_FILE:test_hfp_pcm_ring>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A14: HFP CVSD<->PCM voice conversion
+add_executable(test_hfp_voice_convert test_hfp_voice_convert.c
+    test_hfp_voice_convert_cases.c
+    ../../components/audio_processor/hfp_voice_convert.c)
+target_link_libraries(test_hfp_voice_convert unity util_safe_host platform_shim_host)
+target_compile_definitions(test_hfp_voice_convert PRIVATE UNIT_TEST)
+add_test(NAME test_hfp_voice_convert COMMAND $<TARGET_FILE:test_hfp_voice_convert>)

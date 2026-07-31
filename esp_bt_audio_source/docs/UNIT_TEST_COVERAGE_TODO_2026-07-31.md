@@ -412,16 +412,18 @@ Runner: `test_hfp_pcm_ring.c` (8 tests = `test_hfp_pcm_ring_cases.c`'s 8).
 - [x] `ctest -R test_hfp_pcm_ring --output-on-failure`; **8/8 passed**. Full suite
       re-run: 97/97 passed, 0 regressions.
 
-### A14 — `test_hfp_voice_convert`
+### A14 — `test_hfp_voice_convert` — DONE
 
 Runner: `test_hfp_voice_convert.c` (11 tests = `test_hfp_voice_convert_cases.c`'s 11).
 
-- [ ] Add `add_executable(test_hfp_voice_convert test_hfp_voice_convert.c`
-  - [ ] `test_hfp_voice_convert_cases.c` (11 tests)
-  - [ ] `../../components/audio_processor/hfp_voice_convert.c`)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_hfp_voice_convert --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_hfp_voice_convert test_hfp_voice_convert.c`
+  - [x] `test_hfp_voice_convert_cases.c` (11 tests)
+  - [x] `../../components/audio_processor/hfp_voice_convert.c`)
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (none needed — built clean on the first attempt, no
+      mocks required).
+- [x] `ctest -R test_hfp_voice_convert --output-on-failure`; **11/11 passed**. Full
+      suite re-run: 98/98 passed, 0 regressions. **All 17 Part A suites now wired.**
 
 ### A15 — Full Part A verification
 
