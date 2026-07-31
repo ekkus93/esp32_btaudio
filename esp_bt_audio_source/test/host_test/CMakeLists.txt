@@ -1627,3 +1627,20 @@ add_executable(test_bt_hfp_commands test_bt_hfp_commands.c
 target_link_libraries(test_bt_hfp_commands unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_commands PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_commands COMMAND $<TARGET_FILE:test_bt_hfp_commands>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A7: HFP SLC connect/disconnect
+add_executable(test_bt_hfp_connection test_bt_hfp_connection.c
+    ../../components/bt_manager/bt_hfp_connection.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_hfp_event_command_stub.c
+    mocks/bt_app_core_host_stub.c)
+target_link_libraries(test_bt_hfp_connection unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_connection PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_connection COMMAND $<TARGET_FILE:test_bt_hfp_connection>)

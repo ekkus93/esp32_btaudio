@@ -235,19 +235,29 @@ Runner: `test_bt_hfp_commands.c` (24 tests = 16 + 2 + 6 below).
 - [x] `ctest -R test_bt_hfp_commands --output-on-failure`; **24/24 passed**. Full suite
       re-run: 89/89 passed, 0 regressions.
 
-### A7 — `test_bt_hfp_connection` (SLC connect/disconnect)
+### A7 — `test_bt_hfp_connection` (SLC connect/disconnect) — DONE
 
 Standalone (own `main()`, 10 tests).
 
-- [ ] Add `add_executable(test_bt_hfp_connection test_bt_hfp_connection.c`
-  - [ ] `../../components/bt_manager/bt_hfp_connection.c`
-  - [ ] `../../components/bt_manager/bt_ctx_lock.c` (directly `#include`s
-        `bt_manager_internal.h` and `platform_sync.h` — confirmed needs the lock)
-  - [ ] the full `bt_duplex_state_*.c` set (A1) if `bt_hfp_connection.c` calls into
-        duplex state — confirm at compile time)
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_connection --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_connection test_bt_hfp_connection.c`
+  - [x] `../../components/bt_manager/bt_hfp_connection.c`
+  - [x] the full `bt_duplex_state_*.c` set (A1) + `bt_hfp_event_contract.c` +
+        `mocks/bt_hfp_event_command_stub.c` (confirmed needed — `bt_hfp_connection.c`
+        calls `bt_duplex_session_begin`/`get_snapshot`/`set_health`/
+        `set_hfp_profile_state`/`set_a2dp_profile_state`/`record_stale_operation_event`
+        directly))
+  - [x] **Correction found at compile time**: NOT `bt_ctx_lock.c` — the test file
+        itself already defines `bt_ctx`, `bt_ctx_lock`, `bt_ctx_unlock` inline (no
+        separate mock needed, and using `bt_ctx_lock.c` or
+        `bt_duplex_policy_manager_stub.c` here would both collide with the test's own
+        definitions). Needed instead: `mocks/bt_app_core_host_stub.c`, a small
+        dedicated stub providing `bt_app_work_dispatch` (calls the callback
+        synchronously — appropriate for host tests) without any `bt_ctx` involvement,
+        so it composes cleanly with the test file's own mock context.
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see correction above).
+- [x] `ctest -R test_bt_hfp_connection --output-on-failure`; **10/10 passed**. Full
+      suite re-run: 90/90 passed, 0 regressions.
 
 ### A8 — `test_bt_hfp_diagnostics`
 
