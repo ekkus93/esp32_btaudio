@@ -1558,3 +1558,27 @@ add_executable(test_bt_duplex_policy_ordering test_bt_duplex_policy_ordering.c
 target_link_libraries(test_bt_duplex_policy_ordering unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_duplex_policy_ordering PRIVATE UNIT_TEST)
 add_test(NAME test_bt_duplex_policy_ordering COMMAND $<TARGET_FILE:test_bt_duplex_policy_ordering>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A3: HFP Audio Gateway lifecycle/events
+add_executable(test_bt_hfp_ag test_bt_hfp_ag.c
+    test_bt_hfp_ag_cases.c
+    test_bt_hfp_ag_fd10_cases.c
+    ../../components/bt_manager/bt_hfp_ag_lifecycle.c
+    ../../components/bt_manager/bt_hfp_ag_events.c
+    ../../components/bt_manager/bt_hfp_manager_fd16.c
+    ../../components/bt_manager/bt_duplex_policy.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    mocks/bt_hfp_event_command_stub.c
+    mocks/bt_hfp_audio_lifecycle_stub.c
+    mocks/bt_hfp_connection_untracked_stub.c
+    mocks/bt_duplex_policy_manager_stub.c)
+target_link_libraries(test_bt_hfp_ag unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_ag PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_ag COMMAND $<TARGET_FILE:test_bt_hfp_ag>)

@@ -118,19 +118,32 @@ case files):
 - [x] `ctest -R test_bt_duplex_policy --output-on-failure`: **10/10, 1/1, 1/1** (12 total).
       Full suite re-run: 85/85 passed, 0 regressions.
 
-### A3 — `test_bt_hfp_ag` (HFP Audio Gateway lifecycle/events)
+### A3 — `test_bt_hfp_ag` (HFP Audio Gateway lifecycle/events) — DONE
 
 Runner: `test_bt_hfp_ag.c` (15 tests = 13 + 2 below).
 
-- [ ] Add `add_executable(test_bt_hfp_ag test_bt_hfp_ag.c`
-  - [ ] `test_bt_hfp_ag_cases.c` (13 tests)
-  - [ ] `test_bt_hfp_ag_fd10_cases.c` (2 tests)
-  - [ ] `../../components/bt_manager/bt_hfp_ag_lifecycle.c`
-  - [ ] `../../components/bt_manager/bt_hfp_ag_events.c`
-  - [ ] the full `bt_duplex_state_*.c` set (A1))
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_ag --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_ag test_bt_hfp_ag.c`
+  - [x] `test_bt_hfp_ag_cases.c` (13 tests)
+  - [x] `test_bt_hfp_ag_fd10_cases.c` (2 tests)
+  - [x] `../../components/bt_manager/bt_hfp_ag_lifecycle.c`
+  - [x] `../../components/bt_manager/bt_hfp_ag_events.c`
+  - [x] the full `bt_duplex_state_*.c` set (A1))
+  - [x] **Corrections found at compile time**: also needed
+        `bt_hfp_manager_fd16.c` (policy glue: `bt_manager_hfp_policy_refresh`,
+        `bt_manager_hfp_policy_note_hfp_profile_transition`/`_audio_transition`),
+        `bt_duplex_policy.c` (`bt_duplex_policy_evaluate`), `bt_hfp_event_contract.c`,
+        `mocks/bt_hfp_event_command_stub.c`, `mocks/bt_hfp_audio_lifecycle_stub.c`
+        (mocks `bt_hfp_audio_*` so the real audio layer isn't needed — this is the
+        AG-lifecycle-only test, audio is tested separately in A4),
+        `mocks/bt_hfp_connection_untracked_stub.c` (stubs
+        `bt_hfp_connection_handle_event`/`_cleanup_after_stack_shutdown`), and
+        `mocks/bt_duplex_policy_manager_stub.c` (provides `bt_ctx`/`bt_ctx_lock`/
+        `bt_manager_hfp_configured_mode_locked` — same stub used in A2).
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see corrections above — no test-file bugs this time,
+      only missing SRCS).
+- [x] `ctest -R test_bt_hfp_ag --output-on-failure`; **15/15 passed**. Full suite
+      re-run: 86/86 passed, 0 regressions.
 
 ### A4 — `test_bt_hfp_audio` (HFP audio path / SCO lifecycle)
 
