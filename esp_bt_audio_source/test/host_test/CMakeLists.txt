@@ -1651,3 +1651,30 @@ add_executable(test_bt_hfp_diagnostics test_bt_hfp_diagnostics.c
 target_link_libraries(test_bt_hfp_diagnostics unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_diagnostics PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_diagnostics COMMAND $<TARGET_FILE:test_bt_hfp_diagnostics>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A9: HFP event contract
+add_executable(test_bt_hfp_event_contract test_bt_hfp_event_contract.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    ../../components/bt_manager/bt_duplex_state_core.c
+    ../../components/bt_manager/bt_duplex_state_audio.c
+    ../../components/bt_manager/bt_duplex_state_events.c
+    ../../components/bt_manager/bt_duplex_state_mode.c
+    ../../components/bt_manager/bt_duplex_state_profile.c
+    ../../components/bt_manager/bt_duplex_state_strings.c
+    ../../components/bt_manager/bt_duplex_state_transitions.c
+    mocks/bt_hfp_event_command_stub.c)
+target_link_libraries(test_bt_hfp_event_contract unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_event_contract PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_event_contract COMMAND $<TARGET_FILE:test_bt_hfp_event_contract>)
+
+add_executable(test_bt_hfp_event_uart test_bt_hfp_event_uart.c
+    ../../components/bt_manager/bt_hfp_event_contract.c
+    ../../components/command_interface/commands.c
+    ../../components/command_interface/cmd_handlers_hfp_fd11_v2.c
+    mocks/mock_uart.c
+    mocks/fake_esp_err.c
+    mocks/bt_hfp_manager_command_stub.c
+    mocks/bt_hfp_command_dependencies.c)
+target_link_libraries(test_bt_hfp_event_uart unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_event_uart PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_event_uart COMMAND $<TARGET_FILE:test_bt_hfp_event_uart>)

@@ -278,20 +278,32 @@ Standalone (7 tests).
 - [x] `ctest -R test_bt_hfp_diagnostics --output-on-failure`; **7/7 passed**. Full
       suite re-run: 91/91 passed, 0 regressions.
 
-### A9 — `test_bt_hfp_event_contract` + `test_bt_hfp_event_uart`
+### A9 — `test_bt_hfp_event_contract` + `test_bt_hfp_event_uart` — DONE
 
 Two standalone executables sharing `bt_hfp_event_contract.c`:
 
-- [ ] `test_bt_hfp_event_contract` (17 tests): SRCS
+- [x] `test_bt_hfp_event_contract` (17 tests): SRCS
       `test_bt_hfp_event_contract.c`,
       `../../components/bt_manager/bt_hfp_event_contract.c`,
       the full `bt_duplex_state_*.c` set (A1), `mocks/bt_hfp_event_command_stub.c`.
-- [ ] `test_bt_hfp_event_uart` (2 tests): SRCS
-      `test_bt_hfp_event_uart.c`,
-      `../../components/bt_manager/bt_hfp_event_contract.c`, `mocks/mock_uart.c`.
-- [ ] Register both with `add_executable`/`target_link_libraries`/`add_test`.
-- [ ] Build both; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_event --output-on-failure`; record pass counts.
+      Built clean as originally planned.
+- [x] `test_bt_hfp_event_uart` (2 tests): **correction found at compile time** — needed
+      much more than the original plan. `bt_hfp_event_contract.c`'s emit path calls
+      the real `cmd_send_response` (in `commands.c`), so `mock_uart.c` alone (which
+      only mocks the UART *driver*, not `cmd_send_response`) wasn't enough. Final SRCS:
+      `test_bt_hfp_event_uart.c`, `bt_hfp_event_contract.c`, `commands.c` (for real
+      `cmd_send_response`/`cmd_execute`), `cmd_handlers_hfp_fd11_v2.c` +
+      `mocks/bt_hfp_manager_command_stub.c` (provides `cmd_handle_hfp` for
+      `cmd_execute`'s dispatch table — reused from A6, since the shared
+      `mock_audio_and_btstate.c` stub for `cmd_handle_hfp` conflicts with
+      `bt_hfp_command_dependencies.c` on `bt_manager_test_reset_btstate_mock`),
+      `mocks/bt_hfp_command_dependencies.c` (stubs every *other* `cmd_handle_*` via a
+      macro, plus `commands.c`'s other needs), `mocks/fake_esp_err.c`,
+      `mocks/mock_uart.c`.
+- [x] Register both with `add_executable`/`target_link_libraries`/`add_test`.
+- [x] Build both; fix compile errors (see correction above for `test_bt_hfp_event_uart`).
+- [x] `ctest -R test_bt_hfp_event --output-on-failure`; **17/17 and 2/2** (19 total).
+      Full suite re-run: 93/93 passed, 0 regressions.
 
 ### A10 — `test_bt_hfp_manager`
 
