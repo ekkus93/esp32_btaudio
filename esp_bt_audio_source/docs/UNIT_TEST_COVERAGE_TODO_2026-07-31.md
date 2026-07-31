@@ -641,12 +641,35 @@ host-test stub of ESP-IDF's `osi/allocator` memory-debug wrapper for the BT stac
       fault-injection test infrastructure. Full suite re-run: 98/98 passed, 0
       regressions. Overall coverage: 87.6% (unchanged at this precision).
 
-### B7 — `cmd_handlers_bt.c` (77.4%, 147/190 lines)
+### B7 — `cmd_handlers_bt.c` (77.4%, 147/190 lines) — PARTIAL (scoped improvement)
 
-- [ ] Identify uncovered lines via the HTML report.
-- [ ] Write additional test cases for uncovered command-parsing error paths or rarely-
-      hit BT command branches.
-- [ ] Re-run coverage; confirm improvement.
+- [x] Identified uncovered lines via the HTML report. This file is larger and more
+      fragmented than B1-B6: the gaps span `cmd_handle_scan`'s failure path,
+      `cmd_handle_connect`/`cmd_handle_connect_name`'s missing-param and multi-word
+      name-concatenation branches, `cmd_handle_pair`'s missing-param/failure/multi-word
+      paths, `cmd_handle_confirm_pin`'s param-shape branches, `cmd_handle_enter_pin`'s
+      default-PIN-from-NVS lookup, and (fully within this file's own existing test's
+      scope) `cmd_handle_set_name`/`cmd_handle_set_default_pin`'s **success** paths
+      (only their missing-param rejections were tested).
+- [x] `test_cmd_handlers_bt.c` itself only covers `disconnect`/`paired`/`unpair`/
+      `unpair_all`/`set_name`/`set_default_pin`/`debug`/`last_mac` — `scan`/`connect`/
+      `connect_name`/`pair`/`confirm_pin`/`enter_pin` are handled by *separate* dedicated
+      files (`test_connect_name.c`, `test_pairing_confirm.c`,
+      `test_pairing_enter_pin.c`, `test_autoconnect.c`) which weren't audited line-by-line
+      in this pass — auditing and extending all of them was out of scope for the time
+      available in this session.
+- [x] Added 2 new test cases within this file's existing scope: `cmd_handle_set_name`
+      and `cmd_handle_set_default_pin`'s success paths (both previously only had their
+      missing-param rejection tested).
+- [x] All 27 tests (25 existing + 2 new) passed. Re-ran coverage: `cmd_handlers_bt.c`
+      **80.5% (153/190)**, up from 77.4% (147/190). Overall host coverage: **87.7%**
+      (was 87.6%). Full suite re-run: 98/98 passed, 0 regressions.
+- [ ] **Remaining work** (not done this session): audit `test_connect_name.c`,
+      `test_pairing_confirm.c`, `test_pairing_enter_pin.c`, `test_autoconnect.c`
+      against `cmd_handlers_bt.c`'s remaining uncovered lines (scan failure,
+      connect/connect_name/pair missing-param and multi-word-name paths,
+      confirm_pin param-shape branches, enter_pin's NVS-default-PIN lookup) and add
+      whatever's still missing across those files.
 
 ### B8 — Full Part B verification
 

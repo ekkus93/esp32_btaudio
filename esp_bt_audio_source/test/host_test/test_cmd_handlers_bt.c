@@ -256,6 +256,29 @@ void test_cmd_set_name_should_reject_missing_param(void) {
 }
 
 // ============================================================================
+// cmd_handle_set_name() should succeed and store the name when a parameter
+// is provided
+// ============================================================================
+void test_cmd_set_name_should_succeed_with_param(void) {
+    // Arrange
+    cmd_context_t ctx = {
+        .type = CMD_TYPE_SET_NAME,
+        .param_count = 1
+    };
+    strncpy(ctx.params[0], "MyDevice", CMD_MAX_PARAM_LEN - 1);
+
+    // Act
+    cmd_status_t result = cmd_handle_set_name(&ctx);
+
+    // Assert
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, result);
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SET_NAME|MOCK_SUCCESS"));
+}
+
+// ============================================================================
 // Test 10: cmd_handle_set_default_pin() should reject missing parameter
 // ============================================================================
 void test_cmd_set_default_pin_should_reject_missing_param(void) {
@@ -274,6 +297,29 @@ void test_cmd_set_default_pin_should_reject_missing_param(void) {
     const char* tx = mock_uart_get_tx_data();
     TEST_ASSERT_NOT_NULL(tx);
     TEST_ASSERT_NOT_NULL(strstr(tx, "ERR|SET_DEFAULT_PIN|MISSING_PARAM"));
+}
+
+// ============================================================================
+// cmd_handle_set_default_pin() should succeed and store the PIN when a
+// parameter is provided
+// ============================================================================
+void test_cmd_set_default_pin_should_succeed_with_param(void) {
+    // Arrange
+    cmd_context_t ctx = {
+        .type = CMD_TYPE_SET_DEFAULT_PIN,
+        .param_count = 1
+    };
+    strncpy(ctx.params[0], "1234", CMD_MAX_PARAM_LEN - 1);
+
+    // Act
+    cmd_status_t result = cmd_handle_set_default_pin(&ctx);
+
+    // Assert
+    TEST_ASSERT_EQUAL(CMD_SUCCESS, result);
+
+    const char* tx = mock_uart_get_tx_data();
+    TEST_ASSERT_NOT_NULL(tx);
+    TEST_ASSERT_NOT_NULL(strstr(tx, "OK|SET_DEFAULT_PIN|MOCK_SUCCESS"));
 }
 
 // ============================================================================
@@ -537,7 +583,9 @@ int main(void) {
     
     // Set name/pin tests
     RUN_TEST(test_cmd_set_name_should_reject_missing_param);
+    RUN_TEST(test_cmd_set_name_should_succeed_with_param);
     RUN_TEST(test_cmd_set_default_pin_should_reject_missing_param);
+    RUN_TEST(test_cmd_set_default_pin_should_succeed_with_param);
     
     // Debug tests
     RUN_TEST(test_cmd_debug_should_reject_missing_param);
