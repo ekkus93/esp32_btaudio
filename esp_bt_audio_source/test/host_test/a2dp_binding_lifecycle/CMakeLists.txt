@@ -60,6 +60,8 @@ add_library(platform_shim_host OBJECT
 
 set(BT_MANAGER_PRODUCTION_SOURCES
     "${PROJECT_DIR}/components/bt_manager/bt_manager.c"
+    "${PROJECT_DIR}/components/bt_manager/bt_manager_profiles.c"
+    "${PROJECT_DIR}/components/bt_manager/bt_ctx_lock.c"
     "${PROJECT_DIR}/components/bt_manager/bt_manager_ops.c"
     "${PROJECT_DIR}/components/bt_manager/bt_manager_mocks.c"
     "${PROJECT_DIR}/components/bt_manager/bt_pairing_store.c"
@@ -67,6 +69,8 @@ set(BT_MANAGER_PRODUCTION_SOURCES
     "${PROJECT_DIR}/components/bt_manager/bt_connection.c"
     "${PROJECT_DIR}/components/bt_manager/bt_events_gap.c"
     "${PROJECT_DIR}/components/bt_manager/bt_events_a2dp.c"
+    "${PROJECT_DIR}/components/bt_manager/bt_events_a2dp_binding.c"
+    "${PROJECT_DIR}/components/bt_manager/bt_events_a2dp_data.c"
     "${PROJECT_DIR}/components/bt_manager/bt_events_avrc.c"
 )
 

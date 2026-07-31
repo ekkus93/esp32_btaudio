@@ -39,6 +39,8 @@ common_flags=(
         "${unity_dir}/unity.c" \
         "${project_dir}/components/command_interface/commands.c" \
         "${project_dir}/components/command_interface/cmd_handlers_hfp_fd11_v2.c" \
+        "${project_dir}/components/command_interface/cmd_handlers_hfp_wire.c" \
+        "${project_dir}/components/command_interface/cmd_handlers_hfp_stats.c" \
         "${test_dir}/mocks/fake_esp_err.c" \
         "${test_dir}/mocks/bt_hfp_command_uart_stub.c" \
         "${test_dir}/mocks/bt_hfp_manager_command_stub.c" \

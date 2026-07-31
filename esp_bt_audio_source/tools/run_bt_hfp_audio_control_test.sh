@@ -44,6 +44,9 @@ common_flags=(
         "${project_dir}/components/bt_manager/bt_duplex_state_audio.c" \
         "${project_dir}/components/bt_manager/bt_duplex_state_transitions.c" \
         "${project_dir}/components/bt_manager/bt_hfp_audio_control.c" \
+        "${project_dir}/components/bt_manager/bt_hfp_audio_control_i2s.c" \
+        "${project_dir}/components/bt_manager/bt_hfp_audio_control_work.c" \
+        "${project_dir}/components/bt_manager/bt_hfp_audio_control_events.c" \
         "${test_dir}/mocks/bt_hfp_event_command_stub.c" \
         "${test_dir}/mocks/bt_hfp_audio_control_dependencies.c" \
         "${test_dir}/test_bt_hfp_audio_control_cases.c" \

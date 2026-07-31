@@ -43,6 +43,7 @@ mkdir -p "${build_dir}"
     "${unity_dir}/unity.c" \
     "${test_dir}/test_bt_manager_hfp_profiles.c" \
     "${project_dir}/components/bt_manager/bt_manager.c" \
+    "${project_dir}/components/bt_manager/bt_manager_profiles.c" \
     "${project_dir}/components/bt_manager/bt_hfp_event_contract.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_core.c" \
     "${project_dir}/components/bt_manager/bt_duplex_state_profile.c" \
