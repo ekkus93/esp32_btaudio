@@ -97,6 +97,8 @@ add_executable(test_commands test_commands.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c)
@@ -127,6 +129,8 @@ add_executable(test_cmd_handlers_audio test_cmd_handlers_audio.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -154,6 +158,8 @@ add_executable(test_cmd_handlers_bt test_cmd_handlers_bt.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -181,6 +187,8 @@ add_executable(test_integration_flows test_integration_flows.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -208,6 +216,8 @@ add_executable(test_concurrency test_concurrency.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -233,6 +243,8 @@ add_executable(test_bluetooth test_bluetooth.c test_bluetooth_cases.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_i2s.c)
 # Ensure test hooks are linked for bt_manager tests
@@ -261,6 +273,8 @@ add_executable(test_bt_manager_profiles
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
@@ -288,6 +302,8 @@ add_executable(test_bt_manager_edge_cases
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
@@ -538,6 +554,8 @@ add_executable(test_uart_audio_cmd test_uart_audio_cmd.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -565,6 +583,8 @@ add_executable(test_cmd_dual_uart test_cmd_dual_uart.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -916,7 +936,9 @@ target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_pairi
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
@@ -939,7 +961,9 @@ target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_pairing_
 target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
@@ -963,7 +987,9 @@ target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_pai
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
@@ -992,7 +1018,9 @@ target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_pa
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
@@ -1013,7 +1041,9 @@ target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_pairi
 target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_pending PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
@@ -1036,7 +1066,9 @@ target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_mana
 target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_event_notifications PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_pairing_event_notifications PRIVATE mocks/mock_audio_and_btstate.c)
@@ -1064,7 +1096,9 @@ target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_pairing_
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
@@ -1086,7 +1120,9 @@ target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
@@ -1105,7 +1141,9 @@ target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
@@ -1163,7 +1201,9 @@ target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/
 target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_mock_connection_helpers PRIVATE mocks/nvs_storage_mock.c)
@@ -1185,7 +1225,9 @@ target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_p
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
 target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
@@ -1263,6 +1305,8 @@ add_executable(test_bt_scan
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_gap.c
     mocks/mock_a2dp.c
@@ -1292,6 +1336,8 @@ add_executable(test_bt_manager_connection_pairing_events
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
@@ -1353,7 +1399,9 @@ add_executable(test_autoconnect test_autoconnect.c
 target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_pairing_store.c)
 target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_autoconnect PRIVATE mocks/nvs_storage_mock.c)
 target_sources(test_autoconnect PRIVATE mocks/bt_manager_test_hooks.c)
@@ -1380,6 +1428,8 @@ add_executable(test_cmd_handlers_system test_cmd_handlers_system.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_uart.c
     mocks/mock_gap.c
@@ -1405,7 +1455,9 @@ target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_pair
 target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_scan.c)
 target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_connection.c)
 target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_a2dp.c)
+target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c)
 target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_sources(test_bt_pairing_store PRIVATE mocks/bt_manager_test_hooks.c)
 target_sources(test_bt_pairing_store PRIVATE mocks/mock_audio_and_btstate.c)
@@ -1444,6 +1496,8 @@ add_executable(test_bt_ctx_lock test_bt_ctx_lock.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
@@ -1470,6 +1524,8 @@ set(A2DP_STABILIZATION_MANAGER_SOURCES
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
 )
 set(A2DP_STABILIZATION_MOCK_SOURCES
@@ -1551,6 +1607,8 @@ add_executable(test_bt_lock_cb_reentry test_bt_lock_cb_reentry.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     mocks/mock_a2dp.c
     mocks/mock_avrc.c
@@ -1793,6 +1851,8 @@ add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c
     ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
+    ../../components/bt_manager/bt_events_a2dp_binding.c
+    ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
     ../../components/bt_manager/bt_hfp_ag_lifecycle.c
     ../../components/bt_manager/bt_duplex_state_core.c

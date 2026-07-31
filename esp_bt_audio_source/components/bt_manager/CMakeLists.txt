@@ -21,6 +21,8 @@ idf_component_register(
         "bt_connection.c"
         "bt_events_gap.c"
         "bt_events_a2dp.c"
+        "bt_events_a2dp_binding.c"
+        "bt_events_a2dp_data.c"
         "bt_events_avrc.c"
         "bt_app_core.c"
         "bt_connection_manager.c"

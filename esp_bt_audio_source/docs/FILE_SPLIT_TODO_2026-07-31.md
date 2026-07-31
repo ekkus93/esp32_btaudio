@@ -221,35 +221,35 @@ files are referenced together at nearly every site observed during
 investigation — verify, don't assume identical).
 
 ### E0. Create `bt_events_a2dp_internal.h`
-- [ ] Move the private types `a2dp_policy_binding_t`, `a2dp_bound_profile_event_t`, `a2dp_bound_audio_event_t` into it.
-- [ ] Declare `extern a2dp_policy_binding_t s_policy_binding;` (was `static`).
-- [ ] Declare non-static prototypes for: `report_policy_result`, `record_rejected_bound_event`, `record_rejected_unbound_event`, `refresh_bound_generation`, `clear_binding_if_identity`, `capture_audio_binding`, `prepare_connection_event`, `prepare_audio_event`, `bda_to_string`, `increment_u64_saturating`.
-- [ ] Under `#ifdef UNIT_TEST`, declare the 5 secondary-error statics as `extern`: `s_test_last_generation_diag_update_error`, `s_test_last_binding_clear_error`, `s_test_last_stale_record_error`, `s_test_last_unbound_status_error`, `s_test_last_connection_policy_error`.
+- [x] Move the private types `a2dp_policy_binding_t`, `a2dp_bound_profile_event_t`, `a2dp_bound_audio_event_t` into it.
+- [x] Declare `extern a2dp_policy_binding_t s_policy_binding;` (was `static`).
+- [x] Declare non-static prototypes for: `report_policy_result`, `record_rejected_bound_event`, `record_rejected_unbound_event`, `refresh_bound_generation`, `clear_binding_if_identity`, `capture_audio_binding`, `prepare_connection_event`, `prepare_audio_event`, `bda_to_string`, `increment_u64_saturating`.
+- [x] Under `#ifdef UNIT_TEST`, declare the 5 secondary-error statics as `extern`: `s_test_last_generation_diag_update_error`, `s_test_last_binding_clear_error`, `s_test_last_stale_record_error`, `s_test_last_unbound_status_error`, `s_test_last_connection_policy_error`.
 
 ### E1. Create `bt_events_a2dp_binding.c` (~350 lines: current lines 112–250, 252–341, 343–376, 378–429, 431–475, plus their UNIT_TEST hooks)
-- [ ] Move `apply_base_profile_state_locked`, `create_or_capture_profile_binding`, `record_rejected_bound_event`, `record_rejected_unbound_event`, `increment_generation_sync_failure`, `preserve_primary_generation_error`, `refresh_bound_generation`, `clear_binding_if_identity`, `capture_audio_binding`, `prepare_connection_event`, `prepare_audio_event`.
-- [ ] Move the `#ifdef UNIT_TEST` hooks that inspect/reset this state: `bt_events_a2dp_test_get_binding`, `bt_events_a2dp_test_reset_binding`, `bt_events_a2dp_test_reset_secondary_errors`, `bt_events_a2dp_test_reset_telemetry_errors`, `bt_events_a2dp_test_get_last_generation_diag_update_error`, `bt_events_a2dp_test_get_last_binding_clear_error`, `bt_events_a2dp_test_get_last_stale_record_error`, `bt_events_a2dp_test_get_last_unbound_status_error`, `bt_events_a2dp_test_get_last_connection_policy_error`, `bt_events_a2dp_test_prepare_audio_event`, `bt_events_a2dp_test_refresh_bound_generation`, `bt_events_a2dp_test_clear_binding_if_identity`.
-- [ ] Define `s_policy_binding` here (single definition site — core file `extern`-references it via the internal header).
+- [x] Move `apply_base_profile_state_locked`, `create_or_capture_profile_binding`, `record_rejected_bound_event`, `record_rejected_unbound_event`, `increment_generation_sync_failure`, `preserve_primary_generation_error`, `refresh_bound_generation`, `clear_binding_if_identity`, `capture_audio_binding`, `prepare_connection_event`, `prepare_audio_event`.
+- [x] Move the `#ifdef UNIT_TEST` hooks that inspect/reset this state: `bt_events_a2dp_test_get_binding`, `bt_events_a2dp_test_reset_binding`, `bt_events_a2dp_test_reset_secondary_errors`, `bt_events_a2dp_test_reset_telemetry_errors`, `bt_events_a2dp_test_get_last_generation_diag_update_error`, `bt_events_a2dp_test_get_last_binding_clear_error`, `bt_events_a2dp_test_get_last_stale_record_error`, `bt_events_a2dp_test_get_last_unbound_status_error`, `bt_events_a2dp_test_get_last_connection_policy_error`, `bt_events_a2dp_test_prepare_audio_event`, `bt_events_a2dp_test_refresh_bound_generation`, `bt_events_a2dp_test_clear_binding_if_identity`.
+- [x] Define `s_policy_binding` here (single definition site — core file `extern`-references it via the internal header).
 
 ### E2. Create `bt_events_a2dp_data.c` (~90 lines: current lines 52–56, 62, 629–686, plus its UNIT_TEST hooks)
-- [ ] Move the `a2dp_data_diagnostics_t` type, `s_a2dp_data_diag` static, `a2dp_data_record_audio_read_failure`, `bt_events_a2dp_data_callback` (the `esp_a2d_source_data_cb_t` implementation).
-- [ ] Move `#ifdef UNIT_TEST` `bt_events_a2dp_test_reset_data_diagnostics`, `bt_events_a2dp_test_get_data_diagnostics`.
-- [ ] This is the A2DP PCM-pull data-path callback — functionally distinct from the connection/audio-state policy machinery, worth keeping separate for readability even though it's small.
+- [x] Move the `a2dp_data_diagnostics_t` type, `s_a2dp_data_diag` static, `a2dp_data_record_audio_read_failure`, `bt_events_a2dp_data_callback` (the `esp_a2d_source_data_cb_t` implementation).
+- [x] Move `#ifdef UNIT_TEST` `bt_events_a2dp_test_reset_data_diagnostics`, `bt_events_a2dp_test_get_data_diagnostics`.
+- [x] This is the A2DP PCM-pull data-path callback — functionally distinct from the connection/audio-state policy machinery, worth keeping separate for readability even though it's small.
 
 ### E3. Trim `bt_events_a2dp.c` down to the core (~300 lines)
-- [ ] Keep: `bda_to_string`, `increment_u64_saturating`, `next_lifecycle_serial`, `report_policy_result`, `apply_connection_policy`, `apply_audio_policy`, `bt_events_handle_a2dp_connection`, `bt_events_handle_a2dp_audio`, `bt_events_a2dp_callback` (the public GAP-registered callback), `bt_events_a2dp_reset_binding`.
-- [ ] `#include "bt_events_a2dp_internal.h"`.
+- [x] Keep: `bda_to_string`, `increment_u64_saturating`, `next_lifecycle_serial`, `report_policy_result`, `apply_connection_policy`, `apply_audio_policy`, `bt_events_handle_a2dp_connection`, `bt_events_handle_a2dp_audio`, `bt_events_a2dp_callback` (the public GAP-registered callback), `bt_events_a2dp_reset_binding`.
+- [x] `#include "bt_events_a2dp_internal.h"`.
 
 ### E4. Wire up the build (high blast radius — same discipline as D4)
-- [ ] `components/bt_manager/CMakeLists.txt`: add `bt_events_a2dp_binding.c`, `bt_events_a2dp_data.c` next to `bt_events_a2dp.c` (line 22).
-- [ ] `test/host_test/CMakeLists.txt`: re-grep fresh for every site referencing `bt_manager/bt_events_a2dp.c` and add both new files at each one — do not reuse the Part D target list without re-verifying, since the two files' reference sites, while overlapping heavily, were not confirmed identical.
-- [ ] After editing, re-grep to confirm the new files' hit counts match `bt_events_a2dp.c`'s.
+- [x] `components/bt_manager/CMakeLists.txt`: add `bt_events_a2dp_binding.c`, `bt_events_a2dp_data.c` next to `bt_events_a2dp.c` (line 22).
+- [x] `test/host_test/CMakeLists.txt`: re-grep fresh for every site referencing `bt_manager/bt_events_a2dp.c` and add both new files at each one — do not reuse the Part D target list without re-verifying, since the two files' reference sites, while overlapping heavily, were not confirmed identical.
+- [x] After editing, re-grep to confirm the new files' hit counts match `bt_events_a2dp.c`'s.
 
 ### E5. Verify and commit
-- [ ] `idf.py build`.
-- [ ] Full host `ctest --output-on-failure` — zero regressions.
-- [ ] `wc -l` all 3 files, confirm each under 800.
-- [ ] Update checkboxes, commit, push.
+- [x] `idf.py build`.
+- [x] Full host `ctest --output-on-failure` — zero regressions.
+- [x] `wc -l` all 3 files, confirm each under 800.
+- [x] Update checkboxes, commit, push.
 
 ---
 
