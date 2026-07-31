@@ -27,6 +27,8 @@ idf_component_register(
         "cmd_handlers_bt.c"
         "cmd_handlers_debug.c"
         "cmd_handlers_hfp_fd11_v2.c"
+        "cmd_handlers_hfp_wire.c"
+        "cmd_handlers_hfp_stats.c"
         "uart_audio_frame.c"
         "uart_audio_rx.c"
         "uart_audio.c"

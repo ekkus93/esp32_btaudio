@@ -1623,6 +1623,8 @@ add_executable(test_bt_hfp_commands test_bt_hfp_commands.c
     test_bt_hfp_commands_integrity_cases.c
     ../../components/command_interface/commands.c
     ../../components/command_interface/cmd_handlers_hfp_fd11_v2.c
+    ../../components/command_interface/cmd_handlers_hfp_wire.c
+    ../../components/command_interface/cmd_handlers_hfp_stats.c
     mocks/mock_uart.c
     mocks/fake_esp_err.c
     mocks/bt_hfp_manager_command_stub.c
@@ -1674,6 +1676,8 @@ add_executable(test_bt_hfp_event_uart test_bt_hfp_event_uart.c
     ../../components/bt_manager/bt_hfp_event_contract.c
     ../../components/command_interface/commands.c
     ../../components/command_interface/cmd_handlers_hfp_fd11_v2.c
+    ../../components/command_interface/cmd_handlers_hfp_wire.c
+    ../../components/command_interface/cmd_handlers_hfp_stats.c
     mocks/mock_uart.c
     mocks/fake_esp_err.c
     mocks/bt_hfp_manager_command_stub.c

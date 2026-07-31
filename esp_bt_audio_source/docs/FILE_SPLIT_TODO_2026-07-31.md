@@ -104,29 +104,29 @@ re-grep and diff-check after editing.
 ## Part B: `command_interface/cmd_handlers_hfp_fd11_v2.c` (802 → ~480 lines)
 
 ### B0. Create `cmd_handlers_hfp_internal.h`
-- [ ] Declare prototypes for the `wire_*` string-conversion functions (11 of them — see B1), `sanitize_field`, `format_checked`, and the stats-formatting entry points `send_stats_lines`, `send_diagnostics_lines` (see B2).
+- [x] Declare prototypes for the `wire_*` string-conversion functions (11 of them — see B1), `sanitize_field`, `format_checked`, and the stats-formatting entry points `send_stats_lines`, `send_diagnostics_lines` (see B2).
 
 ### B1. Create `cmd_handlers_hfp_wire.c` (~140 lines: current lines 14–148)
-- [ ] Move all 11 `wire_*` enum-to-string helpers: `wire_mode`, `wire_a2dp_profile`, `wire_a2dp_audio`, `wire_hfp_profile`, `wire_hfp_audio`, `wire_codec`, `wire_i2s`, `wire_health`, `wire_policy_state`, `wire_policy_reason`, `wire_downlink_owner`.
-- [ ] This mirrors the `bt_duplex_state_strings.c` precedent already in the codebase — same idea, applied to the command layer's wire-format strings.
+- [x] Move all 11 `wire_*` enum-to-string helpers: `wire_mode`, `wire_a2dp_profile`, `wire_a2dp_audio`, `wire_hfp_profile`, `wire_hfp_audio`, `wire_codec`, `wire_i2s`, `wire_health`, `wire_policy_state`, `wire_policy_reason`, `wire_downlink_owner`.
+- [x] This mirrors the `bt_duplex_state_strings.c` precedent already in the codebase — same idea, applied to the command layer's wire-format strings.
 
 ### B2. Create `cmd_handlers_hfp_stats.c` (~200 lines: current lines 459–723)
-- [ ] Move `send_stats_line`, `send_stats_lines` (the `SEND(...)`-macro-driven STATS_* line emitter), `format_size_or_na`, `send_diagnostics_lines`.
-- [ ] Needs `sanitize_field`/`format_checked` from the internal header (still defined in core, per B3) and the `wire_*` helpers are NOT needed here — this block only formats raw counters, not enums. Double check `send_diagnostics_lines`/`send_stats_lines` don't call any `wire_*` function before finalizing the split (a quick grep of the moved block confirms they don't).
+- [x] Move `send_stats_line`, `send_stats_lines` (the `SEND(...)`-macro-driven STATS_* line emitter), `format_size_or_na`, `send_diagnostics_lines`.
+- [x] Needs `sanitize_field`/`format_checked` from the internal header (still defined in core, per B3) and the `wire_*` helpers are NOT needed here — this block only formats raw counters, not enums. Double check `send_diagnostics_lines`/`send_stats_lines` don't call any `wire_*` function before finalizing the split (a quick grep of the moved block confirms they don't).
 
 ### B3. Trim `cmd_handlers_hfp_fd11_v2.c` down to the core (~480 lines)
-- [ ] Keep: `effective_mode`, `parse_mode`, `sanitize_field`, `format_checked`, `send_esp_error`, `invalid_count`, `same_peer`, `send_policy_status`, `handle_status`, `handle_connect`, `handle_disconnect`, `send_audio_status_unavailable`, `handle_audio_start`, `handle_audio_stop`, `handle_mode`, `handle_codec`, `handle_stats`, `handle_reset_stats`, `cmd_handle_hfp` (the public dispatcher).
-- [ ] `#include "cmd_handlers_hfp_internal.h"`.
+- [x] Keep: `effective_mode`, `parse_mode`, `sanitize_field`, `format_checked`, `send_esp_error`, `invalid_count`, `same_peer`, `send_policy_status`, `handle_status`, `handle_connect`, `handle_disconnect`, `send_audio_status_unavailable`, `handle_audio_start`, `handle_audio_stop`, `handle_mode`, `handle_codec`, `handle_stats`, `handle_reset_stats`, `cmd_handle_hfp` (the public dispatcher).
+- [x] `#include "cmd_handlers_hfp_internal.h"`.
 
 ### B4. Wire up the build
-- [ ] `components/command_interface/CMakeLists.txt`: add `cmd_handlers_hfp_wire.c`, `cmd_handlers_hfp_stats.c` next to the existing entry (line 29).
-- [ ] `test/host_test/CMakeLists.txt`: add both new files to **both** targets that reference the original — `test_bt_hfp_commands` (~line 1622) and `test_bt_hfp_event_uart` (~line 1673).
+- [x] `components/command_interface/CMakeLists.txt`: add `cmd_handlers_hfp_wire.c`, `cmd_handlers_hfp_stats.c` next to the existing entry (line 29).
+- [x] `test/host_test/CMakeLists.txt`: add both new files to **both** targets that reference the original — `test_bt_hfp_commands` (~line 1622) and `test_bt_hfp_event_uart` (~line 1673).
 
 ### B5. Verify and commit
-- [ ] `idf.py build`.
-- [ ] Full host `ctest --output-on-failure` — zero regressions.
-- [ ] `wc -l` all 3 files, confirm each under 800.
-- [ ] Update checkboxes, commit, push.
+- [x] `idf.py build`.
+- [x] Full host `ctest --output-on-failure` — zero regressions.
+- [x] `wc -l` all 3 files, confirm each under 800.
+- [x] Update checkboxes, commit, push.
 
 ---
 
