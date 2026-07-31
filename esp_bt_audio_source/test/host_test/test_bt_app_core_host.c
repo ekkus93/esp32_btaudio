@@ -330,6 +330,21 @@ void test_bt_app_param_free_cb_handles_null(void)
     TEST_PASS();
 }
 
+/* ── bt_app_task_get_stack_high_water_mark ────────────────────────────── */
+
+void test_stack_high_water_mark_rejects_null_out_arg(void)
+{
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, bt_app_task_get_stack_high_water_mark(NULL));
+}
+
+void test_stack_high_water_mark_not_supported_on_host(void)
+{
+    /* Host builds don't define ESP_PLATFORM, so this always reports
+     * "not supported" rather than a real FreeRTOS stack watermark. */
+    size_t bytes = 0;
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED, bt_app_task_get_stack_high_water_mark(&bytes));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -348,5 +363,7 @@ int main(void)
     RUN_TEST(test_bt_app_work_copy_cb_rejects_bad_args);
     RUN_TEST(test_bt_app_work_copy_cb_rejects_when_param_already_set);
     RUN_TEST(test_bt_app_param_free_cb_handles_null);
+    RUN_TEST(test_stack_high_water_mark_rejects_null_out_arg);
+    RUN_TEST(test_stack_high_water_mark_not_supported_on_host);
     return UNITY_END();
 }

@@ -609,13 +609,37 @@ host-test stub of ESP-IDF's `osi/allocator` memory-debug wrapper for the BT stac
       **90.0% (144/160)**, up from 71.9% (115/160). Overall host coverage: **87.6%**
       (was 87.3%). Full suite re-run: 98/98 passed, 0 regressions.
 
-### B6 — `bt_app_core.c` (73.3%, 77/105 lines)
+### B6 — `bt_app_core.c` (73.3%, 77/105 lines) — DONE (near practical ceiling)
 
-- [ ] Identify uncovered lines via the HTML report — this file is shared production
-      infrastructure (BtAppTask dispatch), so treat gaps here as higher priority than
-      B1-B5.
-- [ ] Write additional test cases for uncovered dispatch/queue-full/task-lifecycle paths.
-- [ ] Re-run coverage; confirm improvement.
+- [x] Identified uncovered lines via the HTML report (re-extracted carefully after an
+      initial script mis-attributed some line numbers — verified against source): the
+      `xQueueCreate`/`xTaskCreate` failure branches in `bt_app_task_start_up`,
+      `bt_app_task_get_stack_high_water_mark` (entirely untested), the whole
+      `bt_app_task_handler` blocking loop body, and the malloc-failure branch in
+      `bt_app_work_copy_cb`.
+- [x] Checked reachability: the existing test file's own comment already documents why
+      most of this is out of reach — "the created task ... which lets us fill the
+      queue deterministically" — the host FreeRTOS stub's `xTaskCreate` registers the
+      task but **never actually runs it**, by design, so `bt_app_task_handler`'s
+      blocking `xQueueReceive(...portMAX_DELAY)` loop (and its `default:`
+      unhandled-signal case, and its stack-high-water-mark recording) never executes in
+      host tests; that's exactly why the `UNIT_TEST`-only `bt_app_core_process_once`/
+      `bt_app_core_drain` surrogates exist and are already well-tested. Also: the
+      `default:` signal case in `bt_app_core_process_once` isn't reachable either — the
+      private `bt_app_evt_msg_t`/`sig` fields aren't test-exposed, and the only public
+      entry point (`bt_app_work_dispatch`) always sets `BT_APP_SIG_WORK_DISPATCH`.
+      `xQueueCreate`/`xTaskCreate` failure injection would need a fault-injectable
+      FreeRTOS host stub that doesn't currently exist — out of scope for a coverage
+      task (would mean building new test infrastructure, not writing tests against
+      existing seams).
+- [x] Added 2 new test cases for the one clean, fully-reachable gap:
+      `bt_app_task_get_stack_high_water_mark()` (NULL-arg rejection and the
+      always-`ESP_ERR_NOT_SUPPORTED` host-build behavior, since `ESP_PLATFORM` isn't
+      defined for host tests).
+- [x] All 17 tests (15 existing + 2 new) passed. Re-ran coverage: `bt_app_core.c`
+      **76.2% (80/105)**, up from 73.3% (77/105) — the practical ceiling without new
+      fault-injection test infrastructure. Full suite re-run: 98/98 passed, 0
+      regressions. Overall coverage: 87.6% (unchanged at this precision).
 
 ### B7 — `cmd_handlers_bt.c` (77.4%, 147/190 lines)
 
