@@ -145,22 +145,30 @@ Runner: `test_bt_hfp_ag.c` (15 tests = 13 + 2 below).
 - [x] `ctest -R test_bt_hfp_ag --output-on-failure`; **15/15 passed**. Full suite
       re-run: 86/86 passed, 0 regressions.
 
-### A4 — `test_bt_hfp_audio` (HFP audio path / SCO lifecycle)
+### A4 — `test_bt_hfp_audio` (HFP audio path / SCO lifecycle) — DONE
 
 Runner: `test_bt_hfp_audio.c` (15 tests = 13 + 1 + 1 below).
 
-- [ ] Add `add_executable(test_bt_hfp_audio test_bt_hfp_audio.c`
-  - [ ] `test_bt_hfp_audio_cases.c` (13 tests)
-  - [ ] `test_bt_hfp_audio_concurrency.c` (1 test)
-  - [ ] `test_bt_hfp_audio_lifetime.c` (1 test)
-  - [ ] `../../components/bt_manager/bt_hfp_audio.c`
-  - [ ] `../../components/audio_processor/hfp_i2s_output.c` (declared dependency via
-        `#include "hfp_i2s_output.h"` in the cases file — confirm at compile time
-        whether the real `.c` or a lighter stub is appropriate)
-  - [ ] the full `bt_duplex_state_*.c` set (A1))
-- [ ] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
-- [ ] Build; fix compile errors.
-- [ ] `ctest -R test_bt_hfp_audio --output-on-failure`; record pass count.
+- [x] Add `add_executable(test_bt_hfp_audio test_bt_hfp_audio.c`
+  - [x] `test_bt_hfp_audio_cases.c` (13 tests)
+  - [x] `test_bt_hfp_audio_concurrency.c` (1 test)
+  - [x] `test_bt_hfp_audio_lifetime.c` (1 test)
+  - [x] `../../components/bt_manager/bt_hfp_audio.c`
+  - [x] **Correction found at compile time**: not the real `hfp_i2s_output.c` — the test
+        needs `mocks/bt_hfp_audio_i2s_stub.c`, which replaces
+        `hfp_i2s_output_push_cvsd()` with an instrumented mock (call count, last
+        generation/samples/PCM, accept/reject control). Also learned `hfp_i2s_output.c`
+        is itself split across 4 files (`hfp_i2s_output.c`,
+        `hfp_i2s_output_data.c`, `hfp_i2s_output_lifecycle.c`,
+        `hfp_i2s_output_platform.c`) — relevant for A8/A12, not this suite.
+      No duplex_state family needed — `bt_hfp_audio.c` only references
+      `bt_duplex_snapshot_t` as a type, never calls duplex functions.
+      `esp_hf_ag_api.h` usage in `bt_hfp_audio.c` is fully `#ifdef ESP_PLATFORM`-guarded,
+      so no host-side HFP AG stub header was needed.
+- [x] Register `target_link_libraries`/`target_compile_definitions`/`add_test`.
+- [x] Build; fix compile errors (see correction above).
+- [x] `ctest -R test_bt_hfp_audio --output-on-failure`; **15/15 passed**. Full suite
+      re-run: 87/87 passed, 0 regressions.
 
 ### A5 — `test_bt_hfp_audio_control`
 

@@ -1582,3 +1582,14 @@ add_executable(test_bt_hfp_ag test_bt_hfp_ag.c
 target_link_libraries(test_bt_hfp_ag unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_hfp_ag PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_ag COMMAND $<TARGET_FILE:test_bt_hfp_ag>)
+
+# UNIT_TEST_COVERAGE_TODO_2026-07-31.md A4: HFP audio path / SCO lifecycle
+add_executable(test_bt_hfp_audio test_bt_hfp_audio.c
+    test_bt_hfp_audio_cases.c
+    test_bt_hfp_audio_concurrency.c
+    test_bt_hfp_audio_lifetime.c
+    ../../components/bt_manager/bt_hfp_audio.c
+    mocks/bt_hfp_audio_i2s_stub.c)
+target_link_libraries(test_bt_hfp_audio unity util_safe_host platform_shim_host)
+target_compile_definitions(test_bt_hfp_audio PRIVATE UNIT_TEST)
+add_test(NAME test_bt_hfp_audio COMMAND $<TARGET_FILE:test_bt_hfp_audio>)
