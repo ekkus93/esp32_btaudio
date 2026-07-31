@@ -393,10 +393,74 @@ void test_beep_done_callback_clears_remaining_bytes(void)
     TEST_ASSERT_EQUAL_UINT(0, s_beep_remaining_bytes);
 }
 
+void test_beep_busy_when_remaining_bytes_active(void)
+{
+    /* Arrange: simulate a beep already in flight */
+    s_beep_remaining_bytes = 500;
+
+    /* Act */
+    esp_err_t result = audio_processor_beep_tone(100, 1000.0);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, result);
+}
+
+void test_beep_invalid_format_returns_no_mem(void)
+{
+    /* Arrange: corrupt the sample rate so bytes_per_ms computes to 0 */
+    s_audio_config.sample_rate = 0;
+
+    /* Act */
+    esp_err_t result = audio_processor_beep_tone(100, 1000.0);
+
+    /* Assert */
+    TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, result);
+}
+
+void test_beep_wrapper_uses_default_frequency(void)
+{
+    /* Act: audio_processor_beep() should forward to beep_tone with 1000Hz */
+    esp_err_t result = audio_processor_beep(100);
+    TEST_ASSERT_EQUAL(ESP_OK, result);
+
+    uint32_t duration_ms = 0;
+    double freq_hz = 0.0;
+    audio_processor_get_last_beep_request(&duration_ms, &freq_hz);
+    TEST_ASSERT_EQUAL_UINT32(100, duration_ms);
+    /* Unity doesn't support TEST_ASSERT_EQUAL_DOUBLE, so check integer part */
+    TEST_ASSERT_EQUAL_INT(1000, (int)freq_hz);
+}
+
+void test_is_beep_active_reflects_remaining_bytes(void)
+{
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+
+    TEST_ASSERT_EQUAL(ESP_OK, audio_processor_beep_tone(100, 1000.0));
+    TEST_ASSERT_TRUE(audio_processor_is_beep_active());
+    TEST_ASSERT_GREATER_THAN_UINT32(0, audio_processor_test_get_beep_remaining_bytes());
+
+    audio_processor_beep_reset();
+    TEST_ASSERT_FALSE(audio_processor_is_beep_active());
+    TEST_ASSERT_EQUAL_UINT32(0, audio_processor_test_get_beep_remaining_bytes());
+}
+
+void test_enable_next_beep_diag_sets_trace_flags(void)
+{
+    s_dump_next_beep_diag = false;
+    s_trace_read_until_beep_done = false;
+    s_trace_next_read_call = false;
+
+    audio_processor_enable_next_beep_diag();
+
+    TEST_ASSERT_TRUE(s_dump_next_beep_diag);
+    TEST_ASSERT_TRUE(s_trace_read_until_beep_done);
+    TEST_ASSERT_TRUE(s_trace_next_read_call);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
-    
+
     /* Edge case tests (test_beep_during_wav_playback removed - WAV deleted) */
     RUN_TEST(test_beep_not_initialized);
     RUN_TEST(test_beep_restore_synth_source);
@@ -409,6 +473,11 @@ int main(void)
     RUN_TEST(test_beep_manager_play_failure);
     RUN_TEST(test_beep_zero_frequency_defaults_to_1000hz);
     RUN_TEST(test_beep_done_callback_clears_remaining_bytes);
-    
+    RUN_TEST(test_beep_busy_when_remaining_bytes_active);
+    RUN_TEST(test_beep_invalid_format_returns_no_mem);
+    RUN_TEST(test_beep_wrapper_uses_default_frequency);
+    RUN_TEST(test_is_beep_active_reflects_remaining_bytes);
+    RUN_TEST(test_enable_next_beep_diag_sets_trace_flags);
+
     return UNITY_END();
 }

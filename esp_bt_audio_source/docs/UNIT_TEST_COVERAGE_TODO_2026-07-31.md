@@ -558,12 +558,30 @@ host-test stub of ESP-IDF's `osi/allocator` memory-debug wrapper for the BT stac
       `allocator.c` **84.3% (118/140)**, up from 70.0% (98/140). Overall host coverage:
       **87.0%** (was 86.8%). Full suite re-run: 98/98 passed, 0 regressions.
 
-### B4 — `audio_processor_beep.c` (71.4%, 70/98 lines)
+### B4 — `audio_processor_beep.c` (71.4%, 70/98 lines) — DONE (100%)
 
-- [ ] Identify uncovered lines via the HTML report.
-- [ ] Write additional test cases (likely beep-overlay priority interactions, WAV
-      decode error paths, or truncated-file handling).
-- [ ] Re-run coverage; confirm improvement.
+- [x] Identified uncovered lines via the HTML report: the "busy" early-return
+      (`beep_active` check), the `bytes_per_ms == 0` invalid-format guard, the
+      `audio_processor_beep()` default-frequency wrapper, `audio_processor_is_beep_active()`,
+      `audio_processor_test_get_beep_remaining_bytes()`, and
+      `audio_processor_enable_next_beep_diag()` — none were ever called by the existing
+      11-test `test_audio_processor_beep_edge_cases.c`.
+- [x] Added 5 new test cases: busy-rejection (simulating an in-flight beep via
+      `s_beep_remaining_bytes`), invalid-format rejection (corrupting
+      `s_audio_config.sample_rate` to 0 — a defensive guard the test file's existing
+      `extern` seam already supports), the default-frequency wrapper (verified via
+      `audio_processor_get_last_beep_request`), `is_beep_active` reflecting remaining
+      bytes across a full beep-then-reset cycle, and the diagnostic-flag setter
+      (asserting all three `s_dump_next_beep_diag`/`s_trace_read_until_beep_done`/
+      `s_trace_next_read_call` flags via their existing `extern` declarations in
+      `audio_processor_internal.h`).
+- [x] One test-authoring mistake caught immediately by the run: `TEST_ASSERT_EQUAL_DOUBLE`
+      isn't available in this Unity build (matches the existing file's own comment on
+      this exact limitation) — fixed to cast-and-compare-as-int, matching the file's
+      established convention.
+- [x] All 16 tests passed. Re-ran coverage: `audio_processor_beep.c` **100.0% (98/98)**,
+      up from 71.4% (70/98). Overall host coverage: **87.3%** (was 87.0%). Full suite
+      re-run: 98/98 passed, 0 regressions.
 
 ### B5 — `audio_util.c` (71.9%, 115/160 lines)
 
