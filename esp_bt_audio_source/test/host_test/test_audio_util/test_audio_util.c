@@ -224,6 +224,144 @@ void test_convert_24_to_32_should_fail_unsupported(void) {
 }
 
 /* ============================================================================
+ * Coverage: supported narrowing/widening conversions not yet exercised
+ * ========================================================================= */
+
+void test_convert_32_to_16_should_shift_right(void) {
+    int32_t src[] = {0x12340000, (int32_t)0x80000000};
+    int16_t dst[2] = {0};
+    size_t dst_size = 0;
+
+    audio_convert_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_bit_depth = AUDIO_BIT_DEPTH_32,
+        .dst_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_size = &dst_size,
+        .work_bytes = 0,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&args));
+    TEST_ASSERT_EQUAL_size_t(sizeof(dst), dst_size);
+    TEST_ASSERT_EQUAL_INT16(0x1234, dst[0]);
+    TEST_ASSERT_EQUAL_INT16((int16_t)0x8000, dst[1]);
+}
+
+void test_convert_24_to_16_should_shift_right(void) {
+    /* 24-bit samples are stored in a 32-bit container. */
+    int32_t src[] = {0x00123400};
+    int16_t dst[1] = {0};
+    size_t dst_size = 0;
+
+    audio_convert_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_bit_depth = AUDIO_BIT_DEPTH_24,
+        .dst_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_size = &dst_size,
+        .work_bytes = 0,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&args));
+    TEST_ASSERT_EQUAL_size_t(sizeof(dst), dst_size);
+    TEST_ASSERT_EQUAL_INT16(0x1234, dst[0]);
+}
+
+void test_convert_16_to_24_should_shift_left(void) {
+    int16_t src[] = {0x1234};
+    int32_t dst[1] = {0};
+    size_t dst_size = 0;
+
+    audio_convert_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_bit_depth = AUDIO_BIT_DEPTH_16,
+        .dst_bit_depth = AUDIO_BIT_DEPTH_24,
+        .dst_size = &dst_size,
+        .work_bytes = 0,
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, convert_audio_format(&args));
+    TEST_ASSERT_EQUAL_size_t(sizeof(dst), dst_size);
+    TEST_ASSERT_EQUAL_INT32(0x00123400, dst[0]);
+}
+
+/* ============================================================================
+ * Coverage: resample edge cases and the 32-bit interpolation path
+ * ========================================================================= */
+
+void test_resample_32bit_upsample_should_interpolate_linearly(void) {
+    int32_t src[] = {0, 100000};
+    int32_t dst[8] = {0};
+    size_t dst_size = 0;
+
+    audio_resample_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_rate = AUDIO_SAMPLE_RATE_16K,
+        .dst_rate = AUDIO_SAMPLE_RATE_32K,
+        .bit_depth = AUDIO_BIT_DEPTH_32,
+        .channels = AUDIO_CHANNEL_MONO,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, resample_audio(&args));
+    TEST_ASSERT_EQUAL_size_t(sizeof(src), dst_size);
+    TEST_ASSERT_EQUAL_INT32(0, dst[0]);
+    TEST_ASSERT_EQUAL_INT32(100000, dst[1]);
+}
+
+void test_resample_source_smaller_than_one_frame_returns_ok_with_nothing(void) {
+    /* Stereo 16-bit frame is 4 bytes; 2 bytes can't hold one full frame. */
+    int16_t src[] = {123};
+    int16_t dst[4] = {0};
+    size_t dst_size = 123; /* sentinel to prove it gets reset to 0 */
+
+    audio_resample_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_rate = AUDIO_SAMPLE_RATE_16K,
+        .dst_rate = AUDIO_SAMPLE_RATE_32K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_STEREO,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, resample_audio(&args));
+    TEST_ASSERT_EQUAL_size_t(0, dst_size);
+}
+
+void test_resample_dst_frame_count_clamped_to_work_bytes(void) {
+    /* Upsampling 1kHz -> 32kHz would ideally need many more frames than the
+     * tiny work buffer can hold; the output must be clamped, not overflow. */
+    int16_t src[] = {0, 1000, 2000, 3000};
+    int16_t dst[2] = {0xAAAA, 0xAAAA};
+    size_t dst_size = 0;
+
+    audio_resample_args_t args = {
+        .src = src,
+        .dst = dst,
+        .src_size = sizeof(src),
+        .src_rate = AUDIO_SAMPLE_RATE_8K,
+        .dst_rate = AUDIO_SAMPLE_RATE_96K,
+        .bit_depth = AUDIO_BIT_DEPTH_16,
+        .channels = AUDIO_CHANNEL_MONO,
+        .dst_size = &dst_size,
+        .work_bytes = sizeof(dst),
+    };
+
+    TEST_ASSERT_EQUAL(ESP_OK, resample_audio(&args));
+    TEST_ASSERT_EQUAL_size_t(sizeof(dst), dst_size);
+}
+
+/* ============================================================================
  * Edge Case Tests - Resample with NULL/zero validations
  * ========================================================================= */
 
@@ -444,7 +582,17 @@ int main(void)
     /* Unsupported format tests */
     RUN_TEST(test_convert_32_to_24_should_fail_unsupported);
     RUN_TEST(test_convert_24_to_32_should_fail_unsupported);
-    
+
+    /* Supported narrowing/widening conversions */
+    RUN_TEST(test_convert_32_to_16_should_shift_right);
+    RUN_TEST(test_convert_24_to_16_should_shift_right);
+    RUN_TEST(test_convert_16_to_24_should_shift_left);
+
+    /* Resample edge cases and 32-bit interpolation path */
+    RUN_TEST(test_resample_32bit_upsample_should_interpolate_linearly);
+    RUN_TEST(test_resample_source_smaller_than_one_frame_returns_ok_with_nothing);
+    RUN_TEST(test_resample_dst_frame_count_clamped_to_work_bytes);
+
     /* Resample edge case tests */
     RUN_TEST(test_resample_null_args_should_fail);
     RUN_TEST(test_resample_null_dst_should_fail);

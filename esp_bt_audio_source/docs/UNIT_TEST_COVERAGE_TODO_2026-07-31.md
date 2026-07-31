@@ -583,12 +583,31 @@ host-test stub of ESP-IDF's `osi/allocator` memory-debug wrapper for the BT stac
       up from 71.4% (70/98). Overall host coverage: **87.3%** (was 87.0%). Full suite
       re-run: 98/98 passed, 0 regressions.
 
-### B5 — `audio_util.c` (71.9%, 115/160 lines)
+### B5 — `audio_util.c` (71.9%, 115/160 lines) — DONE
 
-- [ ] Identify uncovered lines via the HTML report.
-- [ ] Write additional test cases for uncovered utility-function branches (format
-      conversion edge cases, sample-rate math boundaries).
-- [ ] Re-run coverage; confirm improvement.
+- [x] Identified uncovered lines: three supported-but-untested `convert_audio_format`
+      narrowing/widening paths (32→16, 24→16, 16→24 — only 16→32 and same-depth
+      copies had tests), and most of `resample_audio`'s core logic (the entire 32-bit
+      interpolation loop was untested — existing tests only covered 16-bit).
+- [x] Added 7 new test cases: the three missing bit-depth conversions (verified exact
+      shift amounts), the 32-bit resample interpolation path (mirroring the existing
+      16-bit upsample test), a source-smaller-than-one-frame edge case, and a
+      dst-frame-count-clamped-to-work-bytes case (upsampling 8kHz→96kHz into a tiny
+      2-sample buffer, confirming no overflow).
+- [x] **One planned test turned out to target unreachable code**, caught by the test
+      run itself: `resample_audio`'s `max_dst_frames == 0` guard (a defensive
+      "work buffer too small for one output frame" check) is mathematically
+      unreachable — the function clamps `src_size` and `work_bytes` to the same value
+      *before* computing both `src_frame_count` and `max_dst_frames` from it, and
+      `floor(floor(x/a)/b) == floor(x/(a*b))` for positive integers, so the two
+      "too small" checks are always equal — meaning the *earlier* `src_frame_count == 0`
+      check always fires first, in every case, before `max_dst_frames` is ever
+      evaluated as zero. Removed the test (it asserted a wrong expectation the run
+      caught, `ESP_ERR_INVALID_SIZE` vs. the actual and correct `ESP_OK`) rather than
+      force a wrong expectation to pass.
+- [x] All 28 tests (21 existing + 7 new) passed. Re-ran coverage: `audio_util.c`
+      **90.0% (144/160)**, up from 71.9% (115/160). Overall host coverage: **87.6%**
+      (was 87.3%). Full suite re-run: 98/98 passed, 0 regressions.
 
 ### B6 — `bt_app_core.c` (73.3%, 77/105 lines)
 
