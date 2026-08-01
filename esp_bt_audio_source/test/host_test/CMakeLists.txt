@@ -81,12 +81,9 @@ if(NOT unity_FOUND)
     FetchContent_MakeAvailable(unity)
 endif()
 
-# Add test executables
-add_executable(test_commands test_commands.c
-    test_commands_parse.c
-    test_commands_audio.c
-    test_commands_bt.c
-    ../../components/command_interface/commands.c
+# Shared source bundles to avoid repeating the same file lists across
+# every bt_manager-heavy / i2s_manager-heavy test target.
+set(BT_MANAGER_CORE_SOURCES
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_manager_profiles.c
     ../../components/bt_manager/bt_ctx_lock.c
@@ -100,15 +97,36 @@ add_executable(test_commands test_commands.c
     ../../components/bt_manager/bt_events_a2dp_binding.c
     ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
+)
+set(BT_MANAGER_TEST_MOCKS
+    mocks/mock_a2dp.c
+    mocks/mock_avrc.c
+    mocks/mock_gap.c
+    mocks/nvs_storage_mock.c
+    mocks/mock_audio_and_btstate.c
+    mocks/bt_manager_test_hooks.c
+    mocks/fake_esp_err.c
+)
+set(I2S_MANAGER_TEST_SOURCES
+    ../../components/audio_processor/audio_util.c
+    ../../components/audio_processor/i2s_manager.c
+    mocks/fake_esp_err.c
+    mocks/fake_log.c
+    mocks/fake_queue.c
+    mocks/mock_i2s_std.c
+)
+
+# Add test executables
+add_executable(test_commands
+    test_commands.c
+    test_commands_parse.c
+    test_commands_audio.c
+    test_commands_bt.c
+    ../../components/command_interface/commands.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c)
-target_sources(test_commands PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_commands PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_commands PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_commands PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_commands PRIVATE mocks/fake_esp_err.c)
-target_sources(test_commands PRIVATE mocks/mock_a2dp.c)
-target_sources(test_commands PRIVATE mocks/mock_avrc.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_commands unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_commands PRIVATE UNIT_TEST)
 
@@ -117,174 +135,71 @@ enable_testing()
 add_test(NAME test_commands COMMAND $<TARGET_FILE:test_commands>)
 
 # Command handler audio tests (Phase 1 - error paths and edge cases)
-add_executable(test_cmd_handlers_audio test_cmd_handlers_audio.c
+add_executable(test_cmd_handlers_audio
+    test_cmd_handlers_audio.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_cmd_handlers_audio PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_cmd_handlers_audio PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_cmd_handlers_audio PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_cmd_handlers_audio PRIVATE mocks/fake_esp_err.c)
-target_sources(test_cmd_handlers_audio PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_cmd_handlers_audio unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_cmd_handlers_audio PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_handlers_audio COMMAND $<TARGET_FILE:test_cmd_handlers_audio>)
 
 # Command handler Bluetooth tests (Phase 1 - BT command error paths)
-add_executable(test_cmd_handlers_bt test_cmd_handlers_bt.c
+add_executable(test_cmd_handlers_bt
+    test_cmd_handlers_bt.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_cmd_handlers_bt PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_cmd_handlers_bt PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_cmd_handlers_bt PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_cmd_handlers_bt PRIVATE mocks/fake_esp_err.c)
-target_sources(test_cmd_handlers_bt PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_cmd_handlers_bt unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_cmd_handlers_bt PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_handlers_bt COMMAND $<TARGET_FILE:test_cmd_handlers_bt>)
 
 # Phase 7.1: component integration flows (command -> BT -> audio, pairing persistence)
-add_executable(test_integration_flows test_integration_flows.c
+add_executable(test_integration_flows
+    test_integration_flows.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_integration_flows PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_integration_flows PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_integration_flows PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_integration_flows PRIVATE mocks/fake_esp_err.c)
-target_sources(test_integration_flows PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_integration_flows unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_integration_flows PRIVATE UNIT_TEST)
 add_test(NAME test_integration_flows COMMAND $<TARGET_FILE:test_integration_flows>)
 
 # Phase 7.2: concurrency/race behavior (command+BT events, audio callback+volume+beep, command flood)
-add_executable(test_concurrency test_concurrency.c
+add_executable(test_concurrency
+    test_concurrency.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_concurrency PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_concurrency PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_concurrency PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_concurrency PRIVATE mocks/fake_esp_err.c)
-target_sources(test_concurrency PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_concurrency unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_concurrency PRIVATE UNIT_TEST)
 add_test(NAME test_concurrency COMMAND $<TARGET_FILE:test_concurrency>)
 
-add_executable(test_bluetooth test_bluetooth.c test_bluetooth_cases.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_i2s.c)
+add_executable(test_bluetooth
+    test_bluetooth.c
+    test_bluetooth_cases.c
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/mock_i2s.c
+    ${BT_MANAGER_TEST_MOCKS})
 # Ensure test hooks are linked for bt_manager tests
-target_sources(test_bluetooth PRIVATE mocks/bt_manager_test_hooks.c)
 # Link with math library for sin function
 target_link_libraries(test_bluetooth unity m util_safe_host platform_shim_host)
-target_sources(test_bluetooth PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_bluetooth PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_bluetooth PRIVATE mocks/fake_esp_err.c)
-target_sources(test_bluetooth PRIVATE mocks/mock_gap.c)
-target_sources(test_bluetooth PRIVATE mocks/mock_a2dp.c)
-target_sources(test_bluetooth PRIVATE mocks/mock_avrc.c)
 target_compile_definitions(test_bluetooth PRIVATE UNIT_TEST)
 add_test(NAME test_bluetooth COMMAND $<TARGET_FILE:test_bluetooth>)
 
 # AVRCP/A2DP init order test for bt_manager (uses test-only profile init hook)
 add_executable(test_bt_manager_profiles
     test_bt_manager_profiles.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS}
     mocks/fake_log.c)
-target_sources(test_bt_manager_profiles PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_compile_definitions(test_bt_manager_profiles PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_manager_profiles unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_profiles>)
@@ -292,28 +207,9 @@ add_test(NAME test_bt_manager_profiles COMMAND $<TARGET_FILE:test_bt_manager_pro
 # Phase 5.1: bt_manager edge cases (profile init partial failures, connection, pairing)
 add_executable(test_bt_manager_edge_cases
     test_bt_manager_edge_cases.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS}
     mocks/fake_log.c)
-target_sources(test_bt_manager_edge_cases PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_compile_definitions(test_bt_manager_edge_cases PRIVATE UNIT_TEST)
 target_link_libraries(test_bt_manager_edge_cases unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_manager_edge_cases COMMAND $<TARGET_FILE:test_bt_manager_edge_cases>)
@@ -542,59 +438,25 @@ target_link_libraries(test_uart_upsample2x unity util_safe_host platform_shim_ho
 add_test(NAME test_uart_upsample2x COMMAND $<TARGET_FILE:test_uart_upsample2x>)
 
 # UARTAUDIO step 5: UARTAUDIO command plumbing + cmd_process streaming gate
-add_executable(test_uart_audio_cmd test_uart_audio_cmd.c
+add_executable(test_uart_audio_cmd
+    test_uart_audio_cmd.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_uart_audio_cmd PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_uart_audio_cmd PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_uart_audio_cmd PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_uart_audio_cmd PRIVATE mocks/fake_esp_err.c)
-target_sources(test_uart_audio_cmd PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_uart_audio_cmd unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_uart_audio_cmd PRIVATE UNIT_TEST)
 add_test(NAME test_uart_audio_cmd COMMAND $<TARGET_FILE:test_uart_audio_cmd>)
 
 # Dual-UART command interface (secondary command port routing)
-add_executable(test_cmd_dual_uart test_cmd_dual_uart.c
+add_executable(test_cmd_dual_uart
+    test_cmd_dual_uart.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_cmd_dual_uart PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_cmd_dual_uart PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_cmd_dual_uart PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_cmd_dual_uart PRIVATE mocks/fake_esp_err.c)
-target_sources(test_cmd_dual_uart PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_cmd_dual_uart unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_cmd_dual_uart PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_dual_uart COMMAND $<TARGET_FILE:test_cmd_dual_uart>)
@@ -781,13 +643,9 @@ target_link_libraries(test_beep_manager_edge_cases unity m)
 add_test(NAME test_beep_manager_edge_cases COMMAND $<TARGET_FILE:test_beep_manager_edge_cases>)
 
 # I2S Manager configuration error tests (Phase 4.1 - TDD)
-add_executable(test_i2s_manager_config_errors test_i2s_manager_config_errors.c
-    ../../components/audio_processor/i2s_manager.c
-    ../../components/audio_processor/audio_util.c
-    mocks/mock_i2s_std.c
-    mocks/fake_queue.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
+add_executable(test_i2s_manager_config_errors
+    test_i2s_manager_config_errors.c
+    ${I2S_MANAGER_TEST_SOURCES})
 target_include_directories(test_i2s_manager_config_errors PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
@@ -797,13 +655,9 @@ target_link_libraries(test_i2s_manager_config_errors unity m util_safe_host)
 add_test(NAME test_i2s_manager_config_errors COMMAND $<TARGET_FILE:test_i2s_manager_config_errors>)
 
 # I2S Manager runtime error tests (Phase 4.2 - TDD)
-add_executable(test_i2s_manager_runtime_errors test_i2s_manager_runtime_errors.c
-    ../../components/audio_processor/i2s_manager.c
-    ../../components/audio_processor/audio_util.c
-    mocks/mock_i2s_std.c
-    mocks/fake_queue.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
+add_executable(test_i2s_manager_runtime_errors
+    test_i2s_manager_runtime_errors.c
+    ${I2S_MANAGER_TEST_SOURCES})
 target_include_directories(test_i2s_manager_runtime_errors PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
@@ -813,13 +667,9 @@ target_link_libraries(test_i2s_manager_runtime_errors unity m util_safe_host)
 add_test(NAME test_i2s_manager_runtime_errors COMMAND $<TARGET_FILE:test_i2s_manager_runtime_errors>)
 
 # I2S Manager cleanup error tests (Phase 4.3 - TDD)
-add_executable(test_i2s_manager_cleanup_errors test_i2s_manager_cleanup_errors.c
-    ../../components/audio_processor/i2s_manager.c
-    ../../components/audio_processor/audio_util.c
-    mocks/mock_i2s_std.c
-    mocks/fake_queue.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
+add_executable(test_i2s_manager_cleanup_errors
+    test_i2s_manager_cleanup_errors.c
+    ${I2S_MANAGER_TEST_SOURCES})
 target_include_directories(test_i2s_manager_cleanup_errors PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
@@ -829,13 +679,9 @@ target_link_libraries(test_i2s_manager_cleanup_errors unity m util_safe_host)
 add_test(NAME test_i2s_manager_cleanup_errors COMMAND $<TARGET_FILE:test_i2s_manager_cleanup_errors>)
 
 # I2S Manager mock queue tests (Phase 4.4 - TDD)
-add_executable(test_i2s_manager_mock_queue test_i2s_manager_mock_queue.c
-    ../../components/audio_processor/i2s_manager.c
-    ../../components/audio_processor/audio_util.c
-    mocks/mock_i2s_std.c
-    mocks/fake_queue.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
+add_executable(test_i2s_manager_mock_queue
+    test_i2s_manager_mock_queue.c
+    ${I2S_MANAGER_TEST_SOURCES})
 target_include_directories(test_i2s_manager_mock_queue PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks/include
@@ -924,79 +770,34 @@ target_compile_definitions(test_bt_app_core_host PRIVATE UNIT_TEST)
 add_test(NAME test_bt_app_core_host COMMAND $<TARGET_FILE:test_bt_app_core_host>)
 
 # Pairing reply flow tests
-add_executable(test_pairing_confirm test_pairing_confirm.c
+add_executable(test_pairing_confirm
+    test_pairing_confirm.c
     ../../components/command_interface/commands.c
-    mocks/mock_gap.c
-    mocks/mock_uart.c)
-target_sources(test_pairing_confirm PRIVATE mocks/nvs_storage_mock.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/mock_uart.c
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_pairing_confirm unity util_safe_host command_interface_host platform_shim_host)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_confirm PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_confirm PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_confirm PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_confirm PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_confirm PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_confirm PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_confirm PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_confirm COMMAND $<TARGET_FILE:test_pairing_confirm>)
 
-add_executable(test_connect_name test_connect_name.c
+add_executable(test_connect_name
+    test_connect_name.c
     ../../components/command_interface/commands.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    mocks/mock_gap.c
-    mocks/mock_uart.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_connect_name PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_connect_name PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_connect_name PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/mock_uart.c
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_connect_name unity util_safe_host command_interface_host platform_shim_host)
-target_sources(test_connect_name PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_connect_name PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_connect_name PRIVATE mocks/fake_esp_err.c)
-target_sources(test_connect_name PRIVATE mocks/mock_a2dp.c)
-target_sources(test_connect_name PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_connect_name COMMAND $<TARGET_FILE:test_connect_name>)
 
-add_executable(test_pairing_enter_pin test_pairing_enter_pin.c
+add_executable(test_pairing_enter_pin
+    test_pairing_enter_pin.c
     ../../components/command_interface/commands.c
-    mocks/mock_gap.c
-    mocks/mock_uart.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/nvs_storage_mock.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/mock_uart.c
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_pairing_enter_pin unity util_safe_host command_interface_host platform_shim_host)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_enter_pin PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_enter_pin PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_enter_pin COMMAND $<TARGET_FILE:test_pairing_enter_pin>)
 
 add_executable(test_pairing_negative test_pairing_negative.c
@@ -1006,150 +807,59 @@ target_sources(test_pairing_negative PRIVATE mocks/nvs_storage_mock.c)
 add_test(NAME test_pairing_negative COMMAND $<TARGET_FILE:test_pairing_negative>)
 
 # Edge-case pairing tests (invalid MACs, missing pending request behavior)
-add_executable(test_pairing_edge_cases test_pairing_edge_cases.c
+add_executable(test_pairing_edge_cases
+    test_pairing_edge_cases.c
     ../../components/command_interface/commands.c
-    mocks/mock_gap.c
-    mocks/mock_uart.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/nvs_storage_mock.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/mock_uart.c
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_pairing_edge_cases unity util_safe_host command_interface_host platform_shim_host)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_edge_cases PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_edge_cases PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_edge_cases COMMAND $<TARGET_FILE:test_pairing_edge_cases>)
 
 # Pending-state tracking tests for pairing flows
-add_executable(test_pairing_pending test_pairing_pending.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_pending PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_pending PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_pending PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_pending PRIVATE mocks/nvs_storage_mock.c)
+add_executable(test_pairing_pending
+    test_pairing_pending.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 target_link_libraries(test_pairing_pending unity util_safe_host platform_shim_host)
-target_sources(test_pairing_pending PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_pending PRIVATE mocks/mock_gap.c)
-target_sources(test_pairing_pending PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_pending PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_pending COMMAND $<TARGET_FILE:test_pairing_pending>)
 
 # Pairing event emission tests using test hook (no UART dependency)
-add_executable(test_pairing_event_notifications test_pairing_event_notifications.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_event_notifications PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/nvs_storage_mock.c)
+add_executable(test_pairing_event_notifications
+    test_pairing_event_notifications.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 target_link_libraries(test_pairing_event_notifications unity util_safe_host platform_shim_host)
-target_sources(test_pairing_event_notifications PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/mock_gap.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_event_notifications PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_event_notifications COMMAND $<TARGET_FILE:test_pairing_event_notifications>)
 
 # Event stress test: validates ordering and basic rate-limiting instrumentation
-add_executable(test_event_stress test_event_stress.c
+add_executable(test_event_stress
+    test_event_stress.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
-    mocks/mock_gap.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_event_stress unity util_safe_host command_interface_host platform_shim_host)
 add_test(NAME test_event_stress COMMAND $<TARGET_FILE:test_event_stress>)
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_event_stress PRIVATE TEST_INCLUDE_SEQ)
 # Ensure commands.c links with bt_manager and nvs storage for host tests
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_event_stress PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_event_stress PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_event_stress PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_event_stress PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_event_stress PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_event_stress PRIVATE mocks/fake_esp_err.c)
-target_sources(test_event_stress PRIVATE mocks/mock_a2dp.c)
-target_sources(test_event_stress PRIVATE mocks/mock_avrc.c)
 
 # Pairing event sequence hardening stress test
-add_executable(test_pairing_seq_hardening test_pairing_seq_hardening.c
+add_executable(test_pairing_seq_hardening
+    test_pairing_seq_hardening.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
-    mocks/mock_gap.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_pairing_seq_hardening unity util_safe_host command_interface_host platform_shim_host)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_a2dp.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_avrc.c)
 add_test(NAME test_pairing_seq_hardening COMMAND $<TARGET_FILE:test_pairing_seq_hardening>)
 
 # Enable SEQ/TS emission in host-mode for this test target
 target_compile_definitions(test_pairing_seq_hardening PRIVATE TEST_INCLUDE_SEQ)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_pairing_seq_hardening PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_pairing_seq_hardening PRIVATE mocks/fake_esp_err.c)
 
 add_executable(test_bt_connection_manager
     test_bt_connection_manager.c
@@ -1186,56 +896,24 @@ add_test(NAME test_bt_streaming_manager COMMAND $<TARGET_FILE:test_bt_streaming_
 # Small test to lock mock-connection helper behavior: ensure the mock
 # helpers can be called without explicit manager init and the test-visible
 # getter (bt_get_connection_state) reflects the changes.
-add_executable(test_mock_connection_helpers test_mock_connection_helpers.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    mocks/mock_audio_and_btstate.c
-    mocks/mock_a2dp.c
-    mocks/mock_gap.c
-    mocks/mock_avrc.c)
+add_executable(test_mock_connection_helpers
+    test_mock_connection_helpers.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 # Provide test hooks used by bt_manager wrappers (forced-failure hooks)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_mock_connection_helpers PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_mock_connection_helpers PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_mock_connection_helpers PRIVATE mocks/nvs_storage_mock.c)
 target_link_libraries(test_mock_connection_helpers unity util_safe_host platform_shim_host)
-target_sources(test_mock_connection_helpers PRIVATE mocks/fake_esp_err.c)
 add_test(NAME test_mock_connection_helpers COMMAND $<TARGET_FILE:test_mock_connection_helpers>)
 
 # Helper binary: run the same burst and print the mock UART TX buffer for parsing
-add_executable(dump_event_stress_output dump_event_stress_output.c
+add_executable(dump_event_stress_output
+    dump_event_stress_output.c
     ../../components/command_interface/commands.c
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    ${BT_MANAGER_CORE_SOURCES}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(dump_event_stress_output m util_safe_host command_interface_host platform_shim_host)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c ../../components/bt_manager/bt_ctx_lock.c ../../components/bt_manager/bt_manager_ops.c ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(dump_event_stress_output PRIVATE ../../components/bt_manager/bt_events_avrc.c)
 target_compile_definitions(dump_event_stress_output PRIVATE TEST_INCLUDE_SEQ)
-target_sources(dump_event_stress_output PRIVATE mocks/nvs_storage_mock.c)
-target_sources(dump_event_stress_output PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(dump_event_stress_output PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(dump_event_stress_output PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(dump_event_stress_output PRIVATE mocks/fake_esp_err.c)
-target_sources(dump_event_stress_output PRIVATE mocks/mock_gap.c)
 add_test(NAME dump_event_stress_output COMMAND $<TARGET_FILE:dump_event_stress_output>)
 
 # Audio resampler stream unit tests (stateful streaming resampler)
@@ -1295,27 +973,9 @@ add_test(NAME test_mem_util COMMAND $<TARGET_FILE:test_mem_util>)
 # Phase 5.4: bt_scan edge cases (NEW MODULE - device discovery, scan start/stop, state sync)
 add_executable(test_bt_scan
     test_bt_scan.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_log.c
-    mocks/fake_esp_err.c)
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/fake_log.c)
 target_include_directories(test_bt_scan PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
 )
@@ -1326,28 +986,9 @@ add_test(NAME test_bt_scan COMMAND $<TARGET_FILE:test_bt_scan>)
 # Phase 5.5: bt_manager connection/pairing/events edge cases (14 tests)
 add_executable(test_bt_manager_connection_pairing_events
     test_bt_manager_connection_pairing_events.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c
-    mocks/fake_log.c
-)
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/fake_log.c)
 target_include_directories(test_bt_manager_connection_pairing_events PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/bt_manager/include
 )
@@ -1390,34 +1031,8 @@ add_test(NAME test_platform_shim COMMAND $<TARGET_FILE:test_platform_shim>)
 # This test is intentionally lightweight: it tests the individual building blocks
 # (nvs_storage_get_last_connected_mac, bt_manager_is_autostart_enabled, bt_connect)
 # without bringing in the full bt_manager stack.
-add_executable(test_autoconnect test_autoconnect.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_autoconnect PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_autoconnect PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_autoconnect PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_autoconnect PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_autoconnect PRIVATE mocks/fake_esp_err.c)
-target_sources(test_autoconnect PRIVATE mocks/mock_gap.c)
-target_sources(test_autoconnect PRIVATE mocks/mock_a2dp.c)
-target_sources(test_autoconnect PRIVATE mocks/mock_avrc.c)
-# bt_connection.c is intentionally excluded: test_autoconnect.c provides its own
-# bt_connect stub to count calls without the real BT stack.
-target_link_libraries(test_autoconnect unity util_safe_host platform_shim_host)
-add_test(NAME test_autoconnect COMMAND $<TARGET_FILE:test_autoconnect>)
-
-# TEST-2: cmd_handlers_system.c — STATUS fallback, zero-callbacks, HELP, VERSION
-add_executable(test_cmd_handlers_system test_cmd_handlers_system.c
-    ../../components/command_interface/commands.c
+add_executable(test_autoconnect
+    test_autoconnect.c
     ../../components/bt_manager/bt_manager.c
     ../../components/bt_manager/bt_manager_profiles.c
     ../../components/bt_manager/bt_ctx_lock.c
@@ -1425,47 +1040,34 @@ add_executable(test_cmd_handlers_system test_cmd_handlers_system.c
     ../../components/bt_manager/bt_manager_mocks.c
     ../../components/bt_manager/bt_pairing_store.c
     ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
     ../../components/bt_manager/bt_events_gap.c
     ../../components/bt_manager/bt_events_a2dp.c
     ../../components/bt_manager/bt_events_a2dp_binding.c
     ../../components/bt_manager/bt_events_a2dp_data.c
     ../../components/bt_manager/bt_events_avrc.c
+    ${BT_MANAGER_TEST_MOCKS})
+# bt_connection.c is intentionally excluded: test_autoconnect.c provides its own
+# bt_connect stub to count calls without the real BT stack.
+target_link_libraries(test_autoconnect unity util_safe_host platform_shim_host)
+add_test(NAME test_autoconnect COMMAND $<TARGET_FILE:test_autoconnect>)
+
+# TEST-2: cmd_handlers_system.c — STATUS fallback, zero-callbacks, HELP, VERSION
+add_executable(test_cmd_handlers_system
+    test_cmd_handlers_system.c
+    ../../components/command_interface/commands.c
+    ${BT_MANAGER_CORE_SOURCES}
     mocks/mock_uart.c
-    mocks/mock_gap.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c)
-target_sources(test_cmd_handlers_system PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_cmd_handlers_system PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_cmd_handlers_system PRIVATE mocks/audio_processor_host_stub.c)
-target_sources(test_cmd_handlers_system PRIVATE mocks/fake_esp_err.c)
-target_sources(test_cmd_handlers_system PRIVATE mocks/bt_manager_test_hooks.c)
+    ${BT_MANAGER_TEST_MOCKS}
+    mocks/audio_processor_host_stub.c)
 target_link_libraries(test_cmd_handlers_system unity util_safe_host command_interface_host platform_shim_host)
 target_compile_definitions(test_cmd_handlers_system PRIVATE UNIT_TEST)
 add_test(NAME test_cmd_handlers_system COMMAND $<TARGET_FILE:test_cmd_handlers_system>)
 
 # TEST-1: bt_pairing_store.c — parse_mac, prepare_for_initiation, NULL safety, host returns
-add_executable(test_bt_pairing_store test_bt_pairing_store.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_pairing_store.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_scan.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_connection.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_gap.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c)
-target_sources(test_bt_pairing_store PRIVATE ../../components/bt_manager/bt_events_avrc.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/bt_manager_test_hooks.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/mock_audio_and_btstate.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/nvs_storage_mock.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/fake_esp_err.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/mock_gap.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/mock_a2dp.c)
-target_sources(test_bt_pairing_store PRIVATE mocks/mock_avrc.c)
+add_executable(test_bt_pairing_store
+    test_bt_pairing_store.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 target_link_libraries(test_bt_pairing_store unity util_safe_host platform_shim_host)
 add_test(NAME test_bt_pairing_store COMMAND $<TARGET_FILE:test_bt_pairing_store>)
 
@@ -1485,27 +1087,10 @@ add_custom_target(run_tests
 )
 
 # RH-WR-01: bt_ctx_lock/unlock wrapper tests
-add_executable(test_bt_ctx_lock test_bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c)
+add_executable(test_bt_ctx_lock
+    test_bt_ctx_lock.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 target_link_libraries(test_bt_ctx_lock unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_ctx_lock PRIVATE UNIT_TEST)
 add_test(NAME test_bt_ctx_lock COMMAND $<TARGET_FILE:test_bt_ctx_lock>)
@@ -1596,27 +1181,10 @@ add_test(NAME test_bt_manager_init_rollback_cleanup_incomplete
          COMMAND $<TARGET_FILE:test_bt_manager_init_rollback> cleanup-incomplete)
 
 # RH-WR-01: Callback re-entry deadlock tests
-add_executable(test_bt_lock_cb_reentry test_bt_lock_cb_reentry.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c)
+add_executable(test_bt_lock_cb_reentry
+    test_bt_lock_cb_reentry.c
+    ${BT_MANAGER_CORE_SOURCES}
+    ${BT_MANAGER_TEST_MOCKS})
 target_link_libraries(test_bt_lock_cb_reentry unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_lock_cb_reentry PRIVATE UNIT_TEST)
 add_test(NAME test_bt_lock_cb_reentry COMMAND $<TARGET_FILE:test_bt_lock_cb_reentry>)
@@ -1840,20 +1408,9 @@ target_compile_definitions(test_bt_hfp_manager PRIVATE UNIT_TEST)
 add_test(NAME test_bt_hfp_manager COMMAND $<TARGET_FILE:test_bt_hfp_manager>)
 
 # UNIT_TEST_COVERAGE_TODO_2026-07-31.md A11: bt_manager <-> HFP AG profile integration
-add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c
-    ../../components/bt_manager/bt_manager.c
-    ../../components/bt_manager/bt_manager_profiles.c
-    ../../components/bt_manager/bt_ctx_lock.c
-    ../../components/bt_manager/bt_manager_ops.c
-    ../../components/bt_manager/bt_manager_mocks.c
-    ../../components/bt_manager/bt_pairing_store.c
-    ../../components/bt_manager/bt_scan.c
-    ../../components/bt_manager/bt_connection.c
-    ../../components/bt_manager/bt_events_gap.c
-    ../../components/bt_manager/bt_events_a2dp.c
-    ../../components/bt_manager/bt_events_a2dp_binding.c
-    ../../components/bt_manager/bt_events_a2dp_data.c
-    ../../components/bt_manager/bt_events_avrc.c
+add_executable(test_bt_manager_hfp_profiles
+    test_bt_manager_hfp_profiles.c
+    ${BT_MANAGER_CORE_SOURCES}
     ../../components/bt_manager/bt_hfp_ag_lifecycle.c
     ../../components/bt_manager/bt_duplex_state_core.c
     ../../components/bt_manager/bt_duplex_state_audio.c
@@ -1866,13 +1423,7 @@ add_executable(test_bt_manager_hfp_profiles test_bt_manager_hfp_profiles.c
     mocks/bt_hfp_event_command_stub.c
     mocks/bt_hfp_audio_lifecycle_stub.c
     mocks/bt_hfp_connection_untracked_stub.c
-    mocks/mock_a2dp.c
-    mocks/mock_avrc.c
-    mocks/mock_gap.c
-    mocks/nvs_storage_mock.c
-    mocks/mock_audio_and_btstate.c
-    mocks/bt_manager_test_hooks.c
-    mocks/fake_esp_err.c
+    ${BT_MANAGER_TEST_MOCKS}
     mocks/fake_log.c)
 target_link_libraries(test_bt_manager_hfp_profiles unity util_safe_host platform_shim_host)
 target_compile_definitions(test_bt_manager_hfp_profiles PRIVATE UNIT_TEST BT_MANAGER_TEST_HFP_PROFILES)
