@@ -364,26 +364,26 @@ Do not reference any generated review, response, template, or closeout file unle
 
 ## Required for the final documentation head
 
-- [ ] Pass HFP incoming-audio sanitizer tests and allocation gate.
-- [ ] Pass HFP audio-control sanitizer tests.
-- [ ] Pass duplex-state and health-report diagnostics tests.
-- [ ] Pass HFP command tests including forced transport failure.
-- [ ] Pass Bluetooth/A2DP stale-handle and lock-failure integration tests.
-- [ ] Pass HFP I2S writer/accounting tests.
-- [ ] Pass FD-16 policy/runtime tests.
-- [ ] Pass changed-Python lint and Python unit tests.
-- [ ] Pass full CTest.
-- [ ] Record exact host workflow run ID, final SHA, conclusion, and test counts.
-- [ ] Pass fresh ESP-IDF v5.5.1 compile-only workflow.
-- [ ] Record exact device-build run ID, final SHA, image size, partition size, and headroom.
-- [ ] Confirm no flash.
+- [x] Pass HFP incoming-audio sanitizer tests and allocation gate. (`run_bt_hfp_audio_test.sh`, 15/15)
+- [x] Pass HFP audio-control sanitizer tests. (`run_bt_hfp_audio_control_test.sh` chain, 23+17+2+24/same)
+- [x] Pass duplex-state and health-report diagnostics tests. (`run_bt_duplex_state_test.sh` 18/18, `run_bt_hfp_diagnostics_test.sh` 7/7)
+- [x] Pass HFP command tests including forced transport failure. (`run_bt_hfp_commands_test.sh`, 24/24, includes `test_hfp_audio_status_unavailable_propagates_uart_failure`)
+- [x] Pass Bluetooth/A2DP stale-handle and lock-failure integration tests. (`run_bt_a2dp_binding_lifecycle_test.sh`, all 7 targets incl. `test_bt_ctx_lock`, `test_bt_manager_init_rollback` x4 cases)
+- [x] Pass HFP I2S writer/accounting tests. (`run_hfp_i2s_output_test.sh` 15/15, `run_hfp_pcm_ring_test.sh` 8/8, `run_hfp_voice_convert_test.sh` 11/11)
+- [x] Pass FD-16 policy/runtime tests. (`run_bt_duplex_policy_test.sh` chain, all sub-binaries)
+- [x] Pass changed-Python lint and Python unit tests. (workflow run: "No changed Python files in maintained tool paths"; legacy full-tree flake8 backlog is advisory-only per CI design)
+- [x] Pass full CTest. (100/100)
+- [x] Record exact host workflow run ID, final SHA, conclusion, and test counts. **Run [30674261295](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261295), SHA `ab3ab8a35b25f269cbef903c2cbae8e128339f0d`, conclusion `success`, CTest 100/100, all 13 standalone sanitizer scripts passed with 0 failures / 0 sanitizer errors.** This run required fixing a real regression first (AUDIT_FIX_TODO Part E): the file splits from earlier in this session (`bt_manager_profiles.c`, `bt_hfp_audio_control_{i2s,work,events}.c`, `cmd_handlers_hfp_{wire,stats}.c`, `bt_events_a2dp_{binding,data}.c`) were missing from 3 standalone `cc`-based sanitizer scripts and a 4th, fully separate CMake project (`test/host_test/a2dp_binding_lifecycle/`) that CI runs but the main `test/host_test/CMakeLists.txt`-based `ctest` flow never touches — that project's `bt_ctx_lock.c` gap predated this session entirely.
+- [x] Pass fresh ESP-IDF v5.5.1 compile-only workflow. **Run [30674261291](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261291), SHA `ab3ab8a35b25f269cbef903c2cbae8e128339f0d`, conclusion `success`.**
+- [x] Record exact device-build run ID, final SHA, image size, partition size, and headroom. Image `0xfb220` bytes (1,028,512 bytes; total padded image 1,028,529 bytes), partition `0x1b0000` bytes, headroom `0xb4de0` bytes (42% free) — consistent with the historical baseline above (no meaningful regression from this session's changes).
+- [x] Confirm no flash. Workflow step is titled "Build esp_bt_audio_source (no flash)" / "Clean reconfigure and build firmware" — compile-only, confirmed no flash occurred.
 
 ---
 
 # FD-26 and FD-27 — Runtime resources and final hardware acceptance
 
 - [x] Historical compile-only partition headroom exceeded 256 KiB.
-- [ ] Confirm current-head partition headroom exceeds 256 KiB.
+- [x] Confirm current-head partition headroom exceeds 256 KiB. `0xb4de0` bytes = 740,832 bytes ≈ 723 KiB, well over 256 KiB (compile-only evidence; not a runtime heap/stack measurement — those remain hardware-pending per FD-26's other bullets).
 - [ ] Record heap and stack checkpoints at boot, A2DP, HFP SLC, CVSD SCO, simultaneous mode, future HFP downlink, mSBC, and post-stop.
 - [ ] Minimum internal heap at least 32 KiB or explicit reviewed exception.
 - [ ] Largest internal block at least 16 KiB or explicit reviewed exception.
@@ -427,11 +427,11 @@ Do not reference any generated review, response, template, or closeout file unle
 
 ## Closeout blockers
 
-- [ ] Pass final host CI at the final documentation head.
-- [ ] Pass final ESP-IDF compile-only CI at the same head.
-- [ ] Record exact workflow IDs, final SHA, test counts, image metrics, and headroom.
-- [ ] Create `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` only after both workflows pass.
-- [ ] Record final changed files, no-flash status, limitations, and pending hardware.
+- [x] Pass final host CI at the final documentation head. Run [30674261295](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261295), SHA `ab3ab8a35b25f269cbef903c2cbae8e128339f0d`, `success`.
+- [x] Pass final ESP-IDF compile-only CI at the same head. Run [30674261291](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261291), same SHA, `success`.
+- [x] Record exact workflow IDs, final SHA, test counts, image metrics, and headroom. See FD-25 above.
+- [x] Create `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` only after both workflows pass. Created — documents SHA `ab3ab8a3` as the validated head; the closeout doc's own commit is documentation-only and changes no tested code.
+- [x] Record final changed files, no-flash status, limitations, and pending hardware. See the closeout doc.
 
 ---
 

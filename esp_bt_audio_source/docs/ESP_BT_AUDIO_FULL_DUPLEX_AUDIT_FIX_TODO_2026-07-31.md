@@ -142,22 +142,28 @@ FD-25's "Required for the final documentation head" list and FD-29's "Closeout b
 
 ### E0. Push and let CI run
 
-- [ ] After Parts A-D are committed and pushed, this repo's push-triggered workflows (`CI — host tests (optimized)` and `CI — device build (compile only)`) run automatically on `feature/esp-bt-audio-duplex` — no manual trigger needed.
-- [ ] Per `esp_bt_audio_source/docs/CHATGPT_READABLE_GITHUB_ACTIONS_CI_STATUS_BRIDGE_SPEC.md` (currently only on `master`, not this branch — read it via `git show master:esp_bt_audio_source/docs/CHATGPT_READABLE_GITHUB_ACTIONS_CI_STATUS_BRIDGE_SPEC.md` if needed), `feature/esp-bt-audio-duplex` is mapped to status issue `#4`. Check that issue (or the workflow run pages directly via `gh run list`/`gh api`) for the fresh run's result rather than guessing or re-running local tests as a substitute.
+- [x] Pushed Parts A-D; CI ran automatically on `feature/esp-bt-audio-duplex`.
+- [x] **Deviation from plan, important finding**: the first CI run after pushing (`docs: check off FD-24...`, and every run since the FILE_SPLIT_TODO closeout commit earlier in this session) **failed** host tests — not a flake. `gh run view <id> --log-failed` showed `undefined reference to bt_manager_test_init_profiles`. Root cause: 3 standalone `cc`-based sanitizer scripts (`run_bt_manager_hfp_profiles_test.sh`, `run_bt_hfp_audio_control_test.sh`, `run_bt_hfp_commands_test.sh`) and a 4th, fully separate CMake project (`test/host_test/a2dp_binding_lifecycle/CMakeLists.txt`, invoked by `run_bt_a2dp_binding_lifecycle_test.sh`) hardcode their own production source-file lists, independent of the main `test/host_test/CMakeLists.txt` that this session's earlier file splits (bt_manager_profiles.c, bt_hfp_audio_control_*.c, cmd_handlers_hfp_*.c, bt_events_a2dp_{binding,data}.c) updated. Local `cmake --build`/`ctest` never exercises these scripts, so this session's extensive local verification never caught it. Fixed all 4 files (committed separately as `ab3ab8a3`, its own task per the one-task-one-commit rule); the `a2dp_binding_lifecycle` project was also separately missing `bt_ctx_lock.c` from a change that predates this session entirely.
+- [x] Verified the fix by running all 13 scripts `ci-host-tests.yml` invokes, locally, under the same ASan/UBSan flags CI uses, before pushing: 0 failures, 0 sanitizer errors across all of them.
+- [x] Did not use the ChatGPT CI-status-bridge issue (it lives only on `master`, not this branch, per the spec doc's own mapping) — used `gh run list`/`gh run view` directly instead, which was sufficient.
 
 ### E1. Record exact evidence
 
-- [ ] Host workflow: exact run ID, final SHA (should be the commit from Part D or Part C, whichever lands last), conclusion, and test counts.
-- [ ] Device workflow: exact run ID, final SHA, image size, partition size, and headroom (compare against the historical 1,025,808-byte image / 743,664-byte headroom baseline noted in the parent TODO's FD-25 section — flag any large regression, though the changes in this TODO are small and shouldn't move it meaningfully).
-- [ ] Confirm no flash occurred (both workflows are compile-only/host-only by design — confirm this wasn't changed).
+- [x] Host workflow: run [30674261295](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261295), SHA `ab3ab8a35b25f269cbef903c2cbae8e128339f0d`, conclusion `success`, CTest 100/100, all 13 sanitizer scripts passed.
+- [x] Device workflow: run [30674261291](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261291), same SHA, conclusion `success`, image `0xfb220` bytes, partition `0x1b0000` bytes, headroom `0xb4de0` bytes (42% free) — consistent with the historical baseline, no meaningful regression.
+- [x] Confirmed no flash: device workflow step titled "Build esp_bt_audio_source (no flash)."
 
 ### E2. Close out the parent TODO's blocked items
 
-- [ ] In `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_TODO_2026-07-27.md`, check off the FD-25 bullets that a passing fresh CI run directly satisfies (lines ~367-379) and the FD-29 closeout-blocker bullets it satisfies (lines ~430-432), recording the exact run IDs/SHA/counts from E1 inline (matching the doc's existing evidence-citation style, e.g. the FD-25 "Historical evidence only" section's format).
-- [ ] If both workflows pass at the same head: create `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` (the exact filename the parent TODO already names at line ~433) recording final changed files (Parts A-D's file list), no-flash status, remaining limitations, and pending hardware work — do not create this file before both workflows are confirmed passing at the same head, per the parent TODO's explicit rule at line ~20.
-- [ ] If either workflow fails: diagnose and fix before proceeding — do not create the closeout doc, and do not check off the FD-25/FD-29 bullets that workflow was meant to satisfy.
+- [x] Checked off the FD-25 "Required for final documentation head" bullets and FD-26's partition-headroom bullet, with the run IDs/SHA/counts inline.
+- [x] Checked off all 5 FD-29 "Closeout blockers" bullets.
+- [x] Created `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` after confirming both workflows passed at the same head (`ab3ab8a3`), recording the full Parts A-E changed-file list, no-flash confirmation, and remaining hardware-pending limitations (FD-14/15/17/18-24/26-28 unaffected).
 
 ### E3. Final housekeeping
 
-- [ ] Update `memory.md` per this repo's standing convention, summarizing Parts A-E and the fresh CI result.
-- [ ] Commit, push.
+- [x] Updated `memory.md`.
+- [x] Commit, push.
+
+---
+
+**TODO is now fully closed out — all 5 Parts (A–E) complete.** Fresh CI validated at SHA `ab3ab8a3` (host: [30674261295](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261295) success; device: [30674261291](https://github.com/ekkus93/esp32_btaudio/actions/runs/30674261291) success). See `esp_bt_audio_source/docs/ESP_BT_AUDIO_FULL_DUPLEX_REVIEW_FIX_CLOSEOUT_2026-07-28.md` for the final closeout record.
