@@ -1,6 +1,7 @@
 """Host-side test runners: CTest bundle, standalone build, cmake Unity, coverage."""
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -164,64 +165,104 @@ def run_host_tests(root: Path, build_dir_name: str = "build_host_tests", jobs: i
     outpath.write_text(out)
     summary["host"]["ctest_log"] = str(outpath)
     
-    # After ctest completes, run each host test binary directly to capture Unity case counts
-    # (ctest only reports test targets, not per-Unity test cases).
-    # Look for executable files named test_* in the build directory.
+    # After ctest completes, run each REGISTERED CTest test (not just each
+    # unique executable file) to capture per-test Unity case counts (ctest's
+    # own default output suppresses stdout for passing tests, so it doesn't
+    # give us the "N Tests M Failures K Ignored" footer directly).
+    #
+    # This must use ctest's own registered command for each test -- including
+    # any positional arguments -- rather than guessing from the build
+    # directory's executable file list. At least one binary
+    # (test_bt_manager_init_rollback) is a multi-scenario harness that
+    # requires an argument (e.g. "complete", "reset-fails") to select which
+    # scenario to run and segfaults if invoked bare with no argument.
+    # Iterating raw executables and running each with no arguments cannot
+    # discover that contract, and previously caused this exact binary to be
+    # misreported as a "zero tests" failure on every run.
     per_binary = {}
     total_cases = 0
     total_failures = 0
     total_ignored = 0
     zero_test_binaries = []
     valgrind_errors = {}
+
+    def _run_and_record(name: str, cmd: list[str]) -> None:
+        nonlocal total_cases, total_failures, total_ignored
+        actual_cmd = cmd
+        if valgrind:
+            actual_cmd = [
+                "valgrind",
+                "--leak-check=full",
+                "--error-exitcode=1",
+                "--track-origins=yes",
+                "--errors-for-leak-kinds=definite,possible",
+            ] + cmd
+            print(f"  Running {name} under Valgrind...")
+
+        rc_bin, out_bin = run_cmd(actual_cmd, cwd=str(build_dir))
+        counts = _unity_counts_from_output(out_bin)
+
+        valgrind_failed = False
+        if valgrind and rc_bin == 1:
+            if "ERROR SUMMARY:" in out_bin or "LEAK SUMMARY:" in out_bin:
+                valgrind_failed = True
+                valgrind_errors[name] = out_bin
+
+        per_binary[name] = {
+            "rc": rc_bin,
+            "stdout": out_bin,
+            "tests": counts.get("tests", 0),
+            "failures": counts.get("failures", 0),
+            "ignored": counts.get("ignored", 0),
+            "valgrind_failed": valgrind_failed,
+        }
+        if counts.get("tests", 0) == 0:
+            zero_test_binaries.append(name)
+        total_cases += counts.get("tests", 0)
+        total_failures += counts.get("failures", 0)
+        total_ignored += counts.get("ignored", 0)
+
+    registered_tests = []
     try:
-        for entry in build_dir.iterdir():
-            if not entry.is_file():
-                continue
-            if not entry.name.startswith("test_"):
-                continue
-            if not os.access(entry, os.X_OK):
-                continue
-            
-            # Build command with optional Valgrind wrapper
-            if valgrind:
-                cmd = [
-                    "valgrind",
-                    "--leak-check=full",
-                    "--error-exitcode=1",
-                    "--track-origins=yes",
-                    "--errors-for-leak-kinds=definite,possible",
-                    str(entry)
-                ]
-                print(f"  Running {entry.name} under Valgrind...")
-            else:
-                cmd = [str(entry)]
-            
-            rc_bin, out_bin = run_cmd(cmd, cwd=str(build_dir))
-            counts = _unity_counts_from_output(out_bin)
-            
-            # Track Valgrind-specific failures
-            valgrind_failed = False
-            if valgrind and rc_bin == 1:
-                # Exit code 1 from Valgrind means memory errors detected
-                if "ERROR SUMMARY:" in out_bin or "LEAK SUMMARY:" in out_bin:
-                    valgrind_failed = True
-                    valgrind_errors[entry.name] = out_bin
-            
-            per_binary[entry.name] = {
-                "rc": rc_bin,
-                "stdout": out_bin,
-                "tests": counts.get("tests", 0),
-                "failures": counts.get("failures", 0),
-                "ignored": counts.get("ignored", 0),
-                "valgrind_failed": valgrind_failed,
-            }
-            if counts.get("tests", 0) == 0:
-                zero_test_binaries.append(entry.name)
-            total_cases += counts.get("tests", 0)
-            total_failures += counts.get("failures", 0)
-            total_ignored += counts.get("ignored", 0)
-    except Exception as exc:
-        per_binary["_count_error"] = str(exc)
+        rc_show, out_show = run_cmd(["ctest", "--show-only=json-v1"], cwd=str(build_dir))
+        if rc_show == 0:
+            registered_tests = json.loads(out_show).get("tests", [])
+    except Exception:
+        registered_tests = []
+
+    if registered_tests:
+        try:
+            for t in registered_tests:
+                name = t.get("name")
+                command = t.get("command") or []
+                if not name or not command:
+                    continue
+                if not name.startswith("test_"):
+                    # Not a Unity test binary (e.g. dump_event_stress_output,
+                    # a diagnostic dump utility registered with add_test() but
+                    # with no Unity summary line to parse) -- skip it, same
+                    # as the old raw-binary loop's "test_" prefix filter did.
+                    continue
+                _run_and_record(name, list(command))
+        except Exception as exc:
+            per_binary["_count_error"] = str(exc)
+    else:
+        # Fallback for environments where `ctest --show-only=json-v1` isn't
+        # available (older CMake): iterate raw executables as before. This
+        # cannot discover per-binary argument contracts, so a multi-scenario
+        # binary would still be miscounted here -- but it keeps the script
+        # working rather than reporting zero tests for everything.
+        try:
+            for entry in build_dir.iterdir():
+                if not entry.is_file():
+                    continue
+                if not entry.name.startswith("test_"):
+                    continue
+                if not os.access(entry, os.X_OK):
+                    continue
+                _run_and_record(entry.name, [str(entry)])
+        except Exception as exc:
+            per_binary["_count_error"] = str(exc)
 
     summary["host"]["case_counts"] = {
         "total": total_cases,
