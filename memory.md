@@ -1632,3 +1632,15 @@ phase below was hardware-smoke-tested without re-asking.
 - Device left in a good state: playing SomaFM Groove Salad over BT to the laptop speakers, WiFi on
   kensington2 (post-channel-change, manually reprovisioned), stations recovered to the 5 default
   presets, uptime climbing cleanly on the final firmware.
+
+## 2026-11-07T23:48:49Z - Claude Sonnet 5.5 - /init review of root CLAUDE.md
+
+- Added esp_i2s_source host/verify/device-gate commands, serial port split (S3 ttyACM, WROOM32 ttyUSB0), bt CI sanitizer/layering scripts, run_all_tests.py location, project skills list, AGENTS.md sync note.
+- Synced AGENTS.md as a copy of CLAUDE.md.
+- Pending (not done): .claude/settings.json layering hook has stale path (/home/phil/work/esp32/...); bbgw_i2s_source_ci.yml targets moved dir; lint-n-test-i2s suite count stale; ESP-IDF path differs between CLAUDE.md (esp/v5.5.1/esp-idf) and CI (esp/esp-idf), unverified.
+
+## 2026-11-07T23:56:09Z - Claude Sonnet 5.5 - Follow-up fixes after /init review
+
+- Fixed stale layering-hook path in .claude/settings.json (now /home/phil/work/esp32_btaudio/...).
+- Repointed bbgw_i2s_source_ci.yml paths/working-directory/coverage file to archive/bbgw_i2s_source (workflow not run; consider deleting since project is archived).
+- Added "Python environment" section to CLAUDE.md (reuse root uv-managed .venv, uv pip install, no pyproject/uv.lock); AGENTS.md re-synced.

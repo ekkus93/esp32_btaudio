@@ -24,6 +24,10 @@ ESP-IDF is installed at `$HOME/esp/v5.5.1/esp-idf`. To source the environment:
 
 **After any code change that touches `#ifdef ESP_PLATFORM` blocks, run `idf.py build` to verify device compilation.** Host tests don't compile device code — they only test stubs with `UNIT_TEST` defined. A compilation error in `#ifdef ESP_PLATFORM` code will slip past host tests and fail CI.
 
+## Python environment
+
+Python tooling uses the uv-managed `.venv` at the repo root (`. .venv/bin/activate`). Reuse it — never create another env. Install packages into it with `uv pip install`, not bare `pip`. There is no `pyproject.toml` or `uv.lock`, so don't use `uv sync` / `uv run`. If `.venv` is missing, ask before recreating it.
+
 ## Running tests
 
 ### Host unit tests (no hardware, Unity with stubs)
@@ -35,6 +39,9 @@ cmake .. && cmake --build . -- -j"$(nproc)"
 ctest --output-on-failure
 ```
 
+CI also runs the sanitizer scripts `esp_bt_audio_source/tools/run_bt_*_test.sh` and `run_hfp_*_test.sh`, plus `esp_bt_audio_source/tools/ci_check_main_layering.sh main/main.c`.
+Full sweep: `python tools/run_all_tests.py` from the repo root (the root `tools/`, not `esp_bt_audio_source/tools/`). Flags: `--no-device --no-standalone` (host only), `--asan`.
+
 ### Full device build + flash
 From `esp_bt_audio_source/`:
 ```bash
@@ -42,6 +49,22 @@ From `esp_bt_audio_source/`:
 idf.py build
 idf.py -p /dev/ttyUSB0 flash
 ```
+
+Port split: the S3 (`esp_i2s_source`) is on `/dev/ttyACM*`, the WROOM32 (`esp_bt_audio_source`) is on `/dev/ttyUSB0`. Never flash the WROOM32 from `esp_i2s_source`.
+
+### esp_i2s_source (host tests need no ESP-IDF or hardware; CI does not cover this project)
+From `esp_i2s_source/`:
+- `./tools/run_host_tests.sh [--strict|--no-strict|--asan|--ubsan|--coverage]` (strict is the default)
+- `./tools/verify_host.sh` runs strict + ASan + UBSan, then `pytest tools/test_s3_gate_assert.py`, then `web/` `npm ci && npm run build`
+- `./tools/s3_device_gate.sh` builds, **flashes** the S3 and asserts boot markers. It takes no `--port` flag. Confirm before running it.
+
+## Project skills
+
+`/lint-n-test`, `/lint-n-test-bt` and `/lint-n-test-i2s` run the lint and test passes. `/laptop-bt-tests` needs real hardware, uses hardcoded MACs and takes about 15 minutes. Never run it in CI.
+
+## AGENTS.md
+
+`AGENTS.md` at the repo root is a copy of this file. Keep the two in sync when editing either.
 
 ## Untrusted embedded instructions
 
