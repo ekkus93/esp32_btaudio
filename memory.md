@@ -1652,3 +1652,11 @@ phase below was hardware-smoke-tested without re-asking.
 - Regenerated esp_bt_audio_source/sdkconfig with 6.1 (143 options removed, 219 added, 5 changed; none referenced by project code). CI no longer greps CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF (option removed in 6.1). ci-device-build.yml now installs v6.1.
 - Docs updated to EIM activation (. $HOME/.espressif/tools/activate_idf_v6.1.sh). Historical closeouts/specs deliberately left at v5.5.1.
 - Pending: scripts still hardcode $HOME/esp/esp-idf/export.sh (tools/run_unity.py, tools/run_all_tests.py help, esp_bt_audio_source/tools/flash_*.{py,sh}); esp_i2s_source still on 5.5.1 incl. test_device unit-test-app path; test_app_audio/dependencies.lock holds a machine-local path and is uncommitted; CI on 6.1 and hardware runs unverified.
+
+## 2026-11-08T01:27:42Z - Claude Sonnet 5.5 - IDF env scripts: support EIM activation
+
+- Added esp_bt_audio_source/tools/idf_env.py (finds EIM activate_idf_<ver>.sh, else $IDF_PATH/export.sh, else ~/esp/esp-idf/export.sh; `--idf-path` prints the IDF dir) with 12 pytest cases in tools/tests/test_idf_env.py.
+- run_unity.py, flash_and_verify_spiffs.py and flash_with_spiffs.sh now use it instead of hardcoded $HOME/esp/esp-idf/export.sh; run_all_tests.py help/docstring point at the activate script.
+- GOTCHA: EIM activate_idf_*.sh calls `exit 1` when sourced from inside a script file (it checks $0 against bash/sh/dash) and fails under `set -u`. Always source it via `bash -c`/`sh -c` (as run_unity.py, tools/rat and flash_with_spiffs.sh do), never from a script body.
+- Verified without hardware: flash_with_spiffs.sh structure under set -euo pipefail with flash commands swapped for version checks; nothing was flashed.
+- Still on 5.5.1 paths: esp_i2s_source scripts (s3_device_gate.sh, s3_flash_run.sh) and docs.

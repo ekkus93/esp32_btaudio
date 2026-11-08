@@ -5,7 +5,7 @@ Usage:
   ./flash_and_verify_spiffs.py [--port /dev/ttyUSB0] [--spiffs-image main/assets/spiffs/spiffs.bin]
 
 Notes:
-- Requires an ESP-IDF environment available at $HOME/esp/esp-idf; the script sources the export script before running idf.py.
+- Requires an ESP-IDF environment (EIM install, or IDF_PATH/export.sh; see idf_env.py); the script sources it before running idf.py.
 - Exits 0 on success (both PARTS and FILES verified), non-zero on failure.
 """
 import argparse
@@ -15,6 +15,9 @@ import shlex
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import idf_env  # noqa: E402
 
 try:
     import serial
@@ -47,15 +50,21 @@ def main():
         print(f"ERROR: SPIFFS image not found: {spiffs_image}", file=sys.stderr)
         return 3
 
+    env_script = idf_env.find_idf_env_script()
+    if env_script is None:
+        print("ERROR: no ESP-IDF environment script found (install with EIM or set IDF_PATH)", file=sys.stderr)
+        return 6
+    activate = f". {shlex.quote(env_script)} >/dev/null 2>&1"
+
     # Source IDF and flash app+partition table
-    flash_cmd = f". $HOME/esp/esp-idf/export.sh && idf.py -C {shlex.quote(project_dir)} flash"
+    flash_cmd = f"{activate} && idf.py -C {shlex.quote(project_dir)} flash"
     rc = run_shell(flash_cmd)
     if rc != 0:
         print("ERROR: idf.py flash failed", file=sys.stderr)
         return 4
 
     # Write spiffs image to offset
-    write_cmd = f". $HOME/esp/esp-idf/export.sh && python -m esptool --chip esp32 --port {shlex.quote(args.port)} --baud 460800 write_flash {args.spiffs_offset} {shlex.quote(spiffs_image)}"
+    write_cmd = f"{activate} && python -m esptool --chip esp32 --port {shlex.quote(args.port)} --baud 460800 write_flash {args.spiffs_offset} {shlex.quote(spiffs_image)}"
     rc = run_shell(write_cmd)
     if rc != 0:
         print("ERROR: esptool write_flash failed", file=sys.stderr)

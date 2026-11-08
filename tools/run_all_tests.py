@@ -10,10 +10,11 @@ Usage examples:
   python3 tools/run_all_tests.py --no-host --port /dev/ttyUSB0 --timeout 300
 
   # run everything, sourcing ESP-IDF env first
-  python3 tools/run_all_tests.py --source-idf "$HOME/esp/esp-idf/export.sh"
+  python3 tools/run_all_tests.py --source-idf "$HOME/.espressif/tools/activate_idf_v6.1.sh"
 
 This script intentionally shells device-related commands through `bash -lc` when
-`--source-idf` is provided so callers can pass the path to their `export.sh`.
+`--source-idf` is provided so callers can pass the path to their ESP-IDF environment
+script (EIM `activate_idf_<ver>.sh`, or a legacy `export.sh`).
 
 It writes a summary JSON to `tmp/run_all_tests_summary.json` in the repository root
 and leaves per-suite canonical captures in the test project `build/one_run_unity.log`
@@ -47,7 +48,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--no-host", action="store_true", help="Skip host CTest run")
     p.add_argument("--no-device", action="store_true", help="Skip device Unity runs")
     p.add_argument("--no-standalone", action="store_true", help="Skip standalone host test build (CI parity check)")
-    p.add_argument("--source-idf", help="Path to ESP-IDF export.sh to source before device commands")
+    p.add_argument("--source-idf", help="ESP-IDF environment script to source before device commands (EIM activate_idf_<ver>.sh or export.sh)")
     p.add_argument("--jobs", type=int, default=0, help="Parallel jobs for host build (passed to cmake --build)")
     p.add_argument("--valgrind", action="store_true", help="Run host tests under Valgrind for memory leak detection")
     p.add_argument("--coverage", action="store_true", help="Enable code coverage reporting (gcov/lcov)")

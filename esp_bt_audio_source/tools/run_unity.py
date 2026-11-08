@@ -10,8 +10,9 @@ Behavior:
   `TEST_RUN_COMPLETE: ...`, or conservative `Auto-run of tests completed`) and
   exits with an appropriate status code.
 
-This script attempts to source the user's ESP-IDF `export.sh` when `idf.py` is
-not found on PATH (convenience for interactive shells).
+This script attempts to source the user's ESP-IDF environment script (EIM's
+`activate_idf_<ver>.sh`, or a legacy `export.sh`; see idf_env.py) when `idf.py`
+is not found on PATH (convenience for interactive shells).
 """
 
 import argparse
@@ -27,6 +28,9 @@ import threading
 import time
 import shutil
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import idf_env  # noqa: E402
 
 # Write a short invocation marker so callers can detect that this script started
 # even if their stdout/stderr capture swallowed output. Appends lines to
@@ -74,16 +78,12 @@ ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[A-Za-z]")
 
 
 def find_export_sh():
-    # Prefer an explicit IDF_PATH from the environment so we don't silently
-    # fall back to an older checkout.
-    env_idf_path = os.environ.get("IDF_PATH")
-    if env_idf_path:
-        candidate = Path(env_idf_path) / "export.sh"
-        if candidate.is_file():
-            return str(candidate)
+    """Return the script that activates an ESP-IDF environment, or None.
 
-    candidate = os.path.expanduser('~/esp/esp-idf/export.sh')
-    return candidate if os.path.isfile(candidate) else None
+    Despite the name this also finds EIM's activate_idf_<ver>.sh (ESP-IDF 6.x);
+    see idf_env.py for the selection order.
+    """
+    return idf_env.find_idf_env_script()
 
 
 def idf_available():
@@ -317,17 +317,12 @@ def run_flash_and_monitor(port, project_root, timeout, spiffs_image: str | None 
                         #    current Python interpreter. This avoids depending on pip installs.
                         idf_path = env.get('IDF_PATH') or os.environ.get('IDF_PATH')
                         if not idf_path and export_sh:
-                            # When we sourced export.sh via bash -lc the env changes are not
-                            # propagated back to this process. Derive IDF_PATH from export_sh
-                            # (../ relative path inside the ESP-IDF tree) as a best-effort.
-                            candidate = Path(export_sh).resolve().parent
-                            if candidate.name == 'esp-idf':
-                                idf_path = str(candidate)
-                            else:
-                                # common layout: <...>/esp-idf/export.sh
-                                maybe_root = candidate
-                                if (maybe_root / 'components' / 'esptool_py' / 'esptool' / 'esptool.py').exists():
-                                    idf_path = str(maybe_root)
+                            # When we sourced the env script via bash -lc the env changes are
+                            # not propagated back to this process, so ask the script itself
+                            # (export.sh: its directory; EIM activate script: its -e output).
+                            derived = idf_env.idf_path_for_script(export_sh)
+                            if derived is not None:
+                                idf_path = str(derived)
 
                         if idf_path:
                             bundled = Path(idf_path) / 'components' / 'esptool_py' / 'esptool' / 'esptool.py'
