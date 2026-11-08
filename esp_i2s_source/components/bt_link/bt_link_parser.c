@@ -25,17 +25,23 @@ bool bt_link_parse_line(char *line, bt_link_msg_t *out)
     out->data = EMPTY;
 
     /* field 1: status (up to first '|') */
+    /* The fields are const char * in the struct, but they point into the
+     * mutable `line` buffer. Search through the mutable pointers: C23's
+     * qualifier-preserving strchr() would return const char * for the const
+     * struct fields and cannot be assigned to the char * used to terminate. */
     char *p = strchr(line, '|');
     if (p) {
         *p = '\0';
-        out->command = p + 1;
+        char *cmd = p + 1;
+        out->command = cmd;
         /* field 2: command */
-        char *q = strchr(out->command, '|');
+        char *q = strchr(cmd, '|');
         if (q) {
             *q = '\0';
-            out->result = q + 1;
+            char *res = q + 1;
+            out->result = res;
             /* field 3: result; field 4: data = remainder (keeps any '|') */
-            char *r = strchr(out->result, '|');
+            char *r = strchr(res, '|');
             if (r) {
                 *r = '\0';
                 out->data = r + 1;
