@@ -1676,3 +1676,10 @@ phase below was hardware-smoke-tested without re-asking.
 - Added .github/workflows/ci-i2s-source.yml: host-tests job (run_host_tests.sh --strict, --strict --asan, --strict --ubsan, pytest tools/test_s3_gate_assert.py) and device-build job (ESP-IDF v6.1, install.sh esp32s3, clean reconfigure + dependencies.lock must not change, idf.py build of the firmware, test/test_device and test/wifi_simple). Compile only; no flash. Triggers on esp_i2s_source/** and the workflow file. The tracked main/www/index.html.gz means no Node step is needed. Not yet run on GitHub.
 - Found and fixed existing LeakSanitizer failures in test_radio_ring and test_radio_stream_redirects: setUp created mutexes with the mock xSemaphoreCreateMutex() and tearDown was empty. tearDown now calls vSemaphoreDelete. esp_i2s_source had no CI, so `run_host_tests.sh --asan` had been failing unnoticed (2/27).
 - idf.py infers esp32s3 from sdkconfig.defaults (no IDF_TARGET needed). Verified locally: strict/asan/ubsan 27/27, and the CI reconfigure leaves dependencies.lock unchanged.
+
+## 2026-11-08T02:31:17Z - Claude Sonnet 5.5 - S3 device gate on IDF 6.1: PASS
+
+- Ran tools/s3_device_gate.sh (build + flash + boot + assert) on the ESP32-S3 at /dev/ttyACM0 (QFN56 rev v0.2), via `sg dialout -c` because the login session predates the dialout group change. User approved the flash.
+- GATE: PASS. no_crash, boot_complete (BOOT|COMPLETE required_ok=1, web UI on :80), boot_ready (psram 8192 KB) OK. Warnings only: wifi_sta not associated (no stored creds, NVS_NOT_FOUND), i2s idle (bytes=0, no clock from the WROOM32), link self-test absent (WROOM32 not attached). Those need the companion board / a known AP; they are warn-only by default.
+- Validated for real: the idf_env.py re-exec preamble under EIM, esptool 5.6.0 with hyphenated args (write-flash, watchdog-reset), and the ACM0->ACM1 re-enumeration rescan. App was 1,837,184 bytes. The S3 now runs the IDF 6.1 build.
+- Not covered: Gates B-F (UART link, I2S clocks, tone, radio, soak) need the WROOM32 / network.
