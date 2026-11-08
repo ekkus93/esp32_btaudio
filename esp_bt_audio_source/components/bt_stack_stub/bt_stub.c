@@ -14,7 +14,11 @@
 #include "esp_gap_bt_api.h"
 #include "esp_hf_ag_api.h"
 #include "esp_log.h"
-#include "osi/allocator.h"
+
+/* Declared here instead of including osi/allocator.h: in IDF 6.x that header
+ * includes bt_common.h, which lives in a private include directory. */
+void *osi_malloc_func(size_t size);
+void osi_free_func(void *ptr);
 
 static const char *TAG = "bt_stub";
 static esp_avrc_rn_evt_cap_mask_t s_local_evt_cap = {0};

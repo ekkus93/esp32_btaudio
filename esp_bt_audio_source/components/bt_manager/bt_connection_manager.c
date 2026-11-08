@@ -11,6 +11,7 @@
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include "esp_a2dp_api.h"
+#include "bt_idf_compat.h"
 #include "esp_avrc_api.h"
 #include "bt_app_core.h"
 #include "bt_source.h"

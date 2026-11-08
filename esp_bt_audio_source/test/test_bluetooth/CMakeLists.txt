@@ -15,12 +15,19 @@ cmake_minimum_required(VERSION 3.16)
 # ($(IDF_DOC_BUILD)), not a regular settable bool.
 set(ENV{IDF_DOC_BUILD} "1")
 
+# IDF 6.0 moved test_utils out of tools/unit-test-app (migration guide, tools.rst).
+if(EXISTS "$ENV{IDF_PATH}/tools/test_apps/components/test_utils")
+    set(IDF_TEST_UTILS_DIR "$ENV{IDF_PATH}/tools/test_apps/components")
+else()
+    set(IDF_TEST_UTILS_DIR "$ENV{IDF_PATH}/tools/unit-test-app/components")
+endif()
+
 # Set extra components directory
 set(EXTRA_COMPONENT_DIRS
     "../../components"
     "../../test/component"
     "${CMAKE_SOURCE_DIR}/components"
-    "$ENV{IDF_PATH}/tools/unit-test-app/components"
+    "${IDF_TEST_UTILS_DIR}"
 )
 
 # Include ESP-IDF build system

@@ -11,6 +11,7 @@
 #include "unity.h"
 #include "esp_log.h"
 #include "esp_a2dp_api.h"
+#include "bt_idf_compat.h" /* IDF 6.x removed deprecated A2DP names */
 // Add required FreeRTOS includes
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

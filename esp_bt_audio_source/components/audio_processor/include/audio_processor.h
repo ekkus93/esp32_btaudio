@@ -59,7 +59,7 @@ typedef struct {
     audio_channel_t channels;
     uint8_t volume;        // 0-100%
     bool mute;
-    i2s_port_t i2s_port;  // I2S port number
+    int i2s_port;  // I2S port number (IDF 6.x removed i2s_port_t; plain int per migration guide)
     /* Optional I2S pin configuration (GPIO numbers). Use GPIO_NUM_NC for unused pins. */
     int i2s_bclk_pin;
     int i2s_ws_pin;

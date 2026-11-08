@@ -10,6 +10,10 @@ set(main_requires
     nvs_storage
     esp_ringbuf
     driver
+    # IDF 6.x: the legacy `driver` component no longer re-exports these.
+    esp_driver_uart
+    esp_driver_gpio
+    esp_driver_i2s
     util_safe)
 
 idf_component_register(

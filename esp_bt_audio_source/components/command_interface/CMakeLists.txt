@@ -8,6 +8,9 @@ set(priv_requires
     main
     bt
     driver
+    # IDF 6.x: the legacy `driver` component no longer re-exports these.
+    esp_driver_uart
+    esp_driver_gpio
     esp_app_format
     util_safe
     platform_shim)

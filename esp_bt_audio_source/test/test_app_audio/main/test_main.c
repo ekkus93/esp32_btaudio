@@ -48,7 +48,7 @@ static void ensure_spiffs_mounted(void)
         return;
     }
 
-    esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+    const esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
                                                   ESP_PARTITION_SUBTYPE_DATA_SPIFFS,
                                                   "spiffs");
     if (p) {

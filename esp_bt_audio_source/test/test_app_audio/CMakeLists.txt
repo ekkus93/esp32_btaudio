@@ -5,13 +5,20 @@ cmake_minimum_required(VERSION 3.16)
 # we avoid pulling the Bluetooth stack (and its large dependencies) into this
 # build. The production audio component lives alongside the main firmware, and
 # we still expose the existing mock helpers that ship with the audio tests.
+# IDF 6.0 moved test_utils out of tools/unit-test-app (migration guide, tools.rst).
+if(EXISTS "$ENV{IDF_PATH}/tools/test_apps/components/test_utils")
+    set(IDF_TEST_UTILS_DIR "$ENV{IDF_PATH}/tools/test_apps/components")
+else()
+    set(IDF_TEST_UTILS_DIR "$ENV{IDF_PATH}/tools/unit-test-app/components")
+endif()
+
 set(EXTRA_COMPONENT_DIRS
     "../../components/audio_processor"
     "../../components/util_safe"
     "../../components/nvs_storage"
     "../../components/platform_shim"
     "../test_bluetooth/components"
-    "$ENV{IDF_PATH}/tools/unit-test-app/components"
+    "${IDF_TEST_UTILS_DIR}"
 )
 
 # NOTE: SPIFFS and WAV playback removed in Version 0.3.0 (Phase 5).

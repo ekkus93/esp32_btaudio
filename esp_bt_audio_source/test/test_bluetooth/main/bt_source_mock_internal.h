@@ -20,6 +20,7 @@
 #include "bt_mock.h"
 #include "bt_api.h"
 #include "esp_a2dp_api.h"  /* bt_manager_test_invoke_a2dp_event */
+#include "bt_idf_compat.h" /* IDF 6.x removed deprecated A2DP names */
 #include "nvs_storage.h"
 #include "nvs_flash.h"
 

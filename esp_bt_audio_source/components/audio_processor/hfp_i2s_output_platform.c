@@ -41,7 +41,7 @@ static esp_err_t default_channel_new(const hfp_i2s_output_config_t *config,
 {
     if (config == NULL || channel_out == NULL) return ESP_ERR_INVALID_ARG;
     i2s_chan_config_t chan_cfg =
-        I2S_CHANNEL_DEFAULT_CONFIG((i2s_port_t)config->port, I2S_ROLE_MASTER);
+        I2S_CHANNEL_DEFAULT_CONFIG(config->port, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = config->dma_desc_num;
     chan_cfg.dma_frame_num = config->dma_frame_num;
     chan_cfg.auto_clear_after_cb = false;

@@ -9,6 +9,7 @@
 #if defined(ESP_PLATFORM)
 #include "esp_bt.h"
 #include "esp_a2dp_api.h"
+#include "bt_idf_compat.h"
 #elif defined(__has_include)
 #if __has_include("esp_bt.h")
 #include "esp_bt.h"

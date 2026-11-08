@@ -69,6 +69,9 @@ idf_component_register(
         test_utils
     PRIV_REQUIRES
         driver
+        # IDF 6.x: the legacy `driver` component no longer re-exports these.
+        esp_driver_uart
+        esp_driver_gpio
         nvs_flash
 )
 

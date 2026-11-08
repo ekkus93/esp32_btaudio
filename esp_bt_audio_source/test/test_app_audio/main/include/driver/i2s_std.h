@@ -33,7 +33,10 @@ typedef enum {
 	I2S_SLOT_BIT_WIDTH_AUTO = 0,
 	I2S_SLOT_BIT_WIDTH_32BIT = 32
 } i2s_std_slot_bit_width_t;
-typedef enum { I2S_CLK_SRC_DEFAULT = 0 } i2s_clk_src_t;
+/* Reuse the real SoC clock-source type: IDF 6.x's driver/gpio.h pulls in
+ * soc/clk_tree_defs.h, which already defines I2S_CLK_SRC_DEFAULT. */
+#include "soc/clk_tree_defs.h"
+typedef soc_periph_i2s_clk_src_t i2s_clk_src_t;
 #define I2S_MCLK_MULTIPLE_256 256
 #define I2S_STD_SLOT_LEFT 1
 #define I2S_STD_SLOT_RIGHT 2

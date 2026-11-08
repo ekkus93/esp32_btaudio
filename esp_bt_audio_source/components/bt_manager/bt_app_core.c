@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -15,7 +16,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "bt_app_core.h"
-#include "osi/allocator.h"
 #include "platform_timing.h"
 #include "util_safe.h"
 
@@ -232,7 +232,9 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
         return BT_APP_WORK_FAIL;
     }
 
-    msg->param = osi_malloc(len);
+    /* Plain malloc: IDF 6.x keeps bt_common.h (needed by osi/allocator.h)
+     * private, and this payload is allocated and freed only in this file. */
+    msg->param = malloc((size_t)len);
     if (msg->param) {
         safe_memcpy(msg->param, (size_t)len, p_dest, (size_t)len);
         msg->param_free_cb = bt_app_param_free_cb;
@@ -245,7 +247,7 @@ int bt_app_work_copy_cb(bt_app_msg_t *msg, void *p_dest, int len)
 void bt_app_param_free_cb(void *param)
 {
     if (param) {
-        osi_free(param);
+        free(param);
     }
 }
 

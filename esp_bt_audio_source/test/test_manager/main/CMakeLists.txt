@@ -14,6 +14,7 @@ idf_component_register(
         driver
         esp_timer
         esp_driver_i2s
+        esp_driver_gpio
         freertos
         util_safe
 )

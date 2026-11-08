@@ -32,6 +32,7 @@ idf_component_register(
         util_safe
         nvs_storage
         esp_driver_i2s
+        esp_driver_gpio
     PRIV_REQUIRES
         freertos
         driver
