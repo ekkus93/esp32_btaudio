@@ -38,7 +38,14 @@ void setUp(void)
     atomic_store(&g_radio_prebuffer_bytes, (size_t)8); /* small threshold for tests */
 }
 
-void tearDown(void) {}
+void tearDown(void)
+{
+    /* Release the mutexes created in setUp so LeakSanitizer stays clean. */
+    vSemaphoreDelete(g_radio_ring_mtx);
+    g_radio_ring_mtx = NULL;
+    vSemaphoreDelete(g_radio_pcm_mtx);
+    g_radio_pcm_mtx = NULL;
+}
 
 static void assert_count_invariant_ring(void)
 {

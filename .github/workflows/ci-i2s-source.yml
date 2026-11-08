@@ -1,0 +1,130 @@
+name: CI — esp_i2s_source (host tests + device build)
+
+on:
+  push:
+    paths:
+      - 'esp_i2s_source/**'
+      - '.github/workflows/ci-i2s-source.yml'
+  pull_request:
+    paths:
+      - 'esp_i2s_source/**'
+      - '.github/workflows/ci-i2s-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    name: Host tests (strict, ASan, UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install test dependencies
+        run: python3 -m pip install pytest
+
+      # The three runs mirror tools/verify_host.sh. Each flag combination
+      # gets its own build directory.
+      - name: Host tests (strict)
+        working-directory: esp_i2s_source
+        run: ./tools/run_host_tests.sh --strict
+
+      - name: Host tests (strict + ASan)
+        working-directory: esp_i2s_source
+        run: ./tools/run_host_tests.sh --strict --asan
+
+      - name: Host tests (strict + UBSan)
+        working-directory: esp_i2s_source
+        run: ./tools/run_host_tests.sh --strict --ubsan
+
+      - name: Device-gate assertion tests
+        working-directory: esp_i2s_source
+        run: python3 -m pytest -q tools/test_s3_gate_assert.py
+
+  device-build:
+    name: Build for ESP32-S3 (no flash)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install ESP-IDF v6.1
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v6.1 \
+            https://github.com/espressif/esp-idf.git \
+            "$HOME/esp/esp-idf"
+          cd "$HOME/esp/esp-idf"
+          ./install.sh esp32s3
+          python3 -m pip install --user \
+            -r tools/requirements/requirements.core.txt
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build cmake pkg-config git
+
+      # The gzipped web bundle (main/www/index.html.gz) is committed, so no
+      # Node toolchain is needed to build the firmware.
+      - name: Clean reconfigure and build firmware
+        working-directory: esp_i2s_source
+        run: |
+          set -euo pipefail
+          . "$HOME/esp/esp-idf/export.sh"
+          rm -rf build
+          idf.py reconfigure
+          if ! git diff --exit-code -- dependencies.lock; then
+            echo '::error::idf.py reconfigure changed dependencies.lock; commit the regenerated lock file.'
+            exit 1
+          fi
+          idf.py build
+          idf.py size | tee build/size-summary.txt
+          test -f build/esp_i2s_source.bin
+
+      - name: Build device test app
+        working-directory: esp_i2s_source/test/test_device
+        run: |
+          set -euo pipefail
+          . "$HOME/esp/esp-idf/export.sh"
+          rm -rf build
+          idf.py build
+          test -f build/esp_i2s_source_device_test.bin
+
+      - name: Build WiFi smoke-test app
+        working-directory: esp_i2s_source/test/wifi_simple
+        run: |
+          set -euo pipefail
+          . "$HOME/esp/esp-idf/export.sh"
+          rm -rf build
+          idf.py build
+          test -f build/wifi_simple_test.bin
+
+      - name: Verify compile-only boundary
+        run: echo 'Compile-only validation complete. No flash command was executed.'
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2s-source-build-artifacts
+          path: |
+            esp_i2s_source/dependencies.lock
+            esp_i2s_source/build/size-summary.txt
+            esp_i2s_source/build/*.bin
+            esp_i2s_source/build/*.elf
+            esp_i2s_source/build/*.map
+            esp_i2s_source/test/test_device/build/*.bin
+            esp_i2s_source/test/wifi_simple/build/*.bin

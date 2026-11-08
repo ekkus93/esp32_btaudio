@@ -60,7 +60,12 @@ void setUp(void)
     g_radio_last_error_detail[0] = '\0';
 }
 
-void tearDown(void) {}
+void tearDown(void)
+{
+    /* Release the mutex created in setUp so LeakSanitizer stays clean. */
+    vSemaphoreDelete(g_radio_ring_mtx);
+    g_radio_ring_mtx = NULL;
+}
 
 /* ---- infra smoke test: prove the fake HTTP client + de-static'd
  * connect_with_redirects wiring actually works end-to-end before adding the
