@@ -18,8 +18,8 @@ bt_duplex_context_t g_bt_duplex_ctx;
 /* These diagnostics must remain writable when the authoritative state mutex is
  * unavailable. They are process-lifetime, lock-free 32-bit atomics on ESP32;
  * the public API widens the saturating count to uint64_t. */
-static atomic_uint s_health_report_failures_lifetime = ATOMIC_VAR_INIT(0U);
-static atomic_int s_last_health_report_error_lifetime = ATOMIC_VAR_INIT(ESP_OK);
+static atomic_uint s_health_report_failures_lifetime = 0U;
+static atomic_int s_last_health_report_error_lifetime = ESP_OK;
 
 static uint64_t next_health_event_count_locked(void)
 {

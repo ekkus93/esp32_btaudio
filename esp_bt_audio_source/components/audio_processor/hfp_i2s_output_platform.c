@@ -12,7 +12,7 @@
 
 #ifdef ESP_PLATFORM
 static atomic_size_t s_writer_stack_min_free_bytes_lifetime =
-    ATOMIC_VAR_INIT(SIZE_MAX);
+    SIZE_MAX;
 
 static void record_writer_stack_high_water_mark(void)
 {

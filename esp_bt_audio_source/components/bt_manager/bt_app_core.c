@@ -37,7 +37,7 @@ static TaskHandle_t s_bt_app_task_handle = NULL;
 
 #ifdef ESP_PLATFORM
 static atomic_size_t s_bt_app_stack_min_free_bytes_lifetime =
-    ATOMIC_VAR_INIT(SIZE_MAX);
+    SIZE_MAX;
 
 static void bt_app_record_stack_high_water_mark(void)
 {

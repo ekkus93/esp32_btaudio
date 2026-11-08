@@ -76,11 +76,11 @@ static bt_hfp_audio_context_t s_audio;
  * They intentionally live outside s_audio so verified profile teardown cannot
  * silently erase fields exposed as MAX_US_LIFETIME and
  * OVER_BUDGET_LIFETIME. */
-static atomic_uint s_callback_max_us_lifetime = ATOMIC_VAR_INIT(0U);
+static atomic_uint s_callback_max_us_lifetime = 0U;
 static bt_hfp_audio_counter64_t s_callback_over_budget_lifetime = {
-    .sequence = ATOMIC_VAR_INIT(0U),
-    .low = ATOMIC_VAR_INIT(0U),
-    .high = ATOMIC_VAR_INIT(0U),
+    .sequence = 0U,
+    .low = 0U,
+    .high = 0U,
 };
 
 /* ESP-IDF does not document a callback-serialization guarantee strong enough
@@ -88,7 +88,7 @@ static bt_hfp_audio_counter64_t s_callback_over_budget_lifetime = {
  * than silently lose increments. The gate is nonblocking and callback-safe:
  * no allocation, wait, log, I2S call, or retry loop occurs on rejection. */
 static atomic_flag s_callback_gate = ATOMIC_FLAG_INIT;
-static atomic_uint s_callback_overlap_rejections = ATOMIC_VAR_INIT(0U);
+static atomic_uint s_callback_overlap_rejections = 0U;
 
 static void counter64_init(bt_hfp_audio_counter64_t *counter)
 {
