@@ -44,7 +44,7 @@ date +"%Y-%m-%d %H:%M:%S"
 - Language level: C99 by default. Prefer `static` internal linkage; use `const`/`volatile` appropriately.
 - To initialize ESP-IDF environment, run:
   ```bash
-  . $HOME/esp/esp-idf/export.sh
+  . $HOME/.espressif/tools/activate_idf_v6.1.sh
   ```
 
 > If another `.github/copilot-instructions.md` exists, **merge** with these rules rather than replacing. Prefer repo-specifics when in conflict.

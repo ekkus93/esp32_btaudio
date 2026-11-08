@@ -84,7 +84,7 @@ test image replaces the production firmware — reflash production afterwards.
 
 1. Ensure the ESP-IDF environment is active:
   ```bash
-  . "$HOME/esp/v5.5.1/esp-idf/export.sh"
+  . "$HOME/.espressif/tools/activate_idf_v6.1.sh"
   ```
 2. Run one suite with the non-interactive Unity runner (builds, flashes,
    monitors, auto-stops on the Unity summary, saves

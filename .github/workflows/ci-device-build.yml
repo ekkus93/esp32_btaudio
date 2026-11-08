@@ -27,10 +27,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install ESP-IDF v5.5.1
+      - name: Install ESP-IDF v6.1
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch v5.5.1 \
+          git clone --depth 1 --branch v6.1 \
             https://github.com/espressif/esp-idf.git \
             "$HOME/esp/esp-idf"
           cd "$HOME/esp/esp-idf"
@@ -54,7 +54,6 @@ jobs:
           grep -qx 'CONFIG_BT_HFP_AUDIO_DATA_PATH_HCI=y' sdkconfig
           grep -qx '# CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM is not set' sdkconfig
           grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=1' sdkconfig
-          grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF=1' sdkconfig
           grep -qx 'CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_HCI=y' sdkconfig
           grep -qx '# CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_PCM is not set' sdkconfig
 

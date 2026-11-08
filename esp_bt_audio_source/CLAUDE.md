@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build
 
-Standard ESP-IDF CMake + `idf.py`, no PlatformIO. Target ESP-IDF v5.5.1.
+Standard ESP-IDF CMake + `idf.py`, no PlatformIO. Target ESP-IDF v6.1.
 
 ```bash
-. $HOME/esp/v5.5.1/esp-idf/export.sh
+. $HOME/.espressif/tools/activate_idf_v6.1.sh
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```

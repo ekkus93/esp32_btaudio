@@ -16,11 +16,13 @@ This is a monorepo containing several independent projects — don't assume comm
 
 ## ESP-IDF installation
 
-ESP-IDF is installed at `$HOME/esp/v5.5.1/esp-idf`. To source the environment:
+The project targets ESP-IDF v6.1, installed with EIM (`eim list` shows it) at `$HOME/.espressif/v6.1/esp-idf`. To source the environment:
 
 ```bash
-. $HOME/esp/v5.5.1/esp-idf/export.sh
+. $HOME/.espressif/tools/activate_idf_v6.1.sh
 ```
+
+If `eim list` shows the install as `in progress`, run `eim fix -p ~/.espressif/v6.1/esp-idf -t esp32,esp32s3 -n true`. If it fails with "No space left on device", the installer is extracting into the small `/tmp` partition; retry with `TMPDIR` pointing at a directory under `$HOME`.
 
 **After any code change that touches `#ifdef ESP_PLATFORM` blocks, run `idf.py build` to verify device compilation.** Host tests don't compile device code — they only test stubs with `UNIT_TEST` defined. A compilation error in `#ifdef ESP_PLATFORM` code will slip past host tests and fail CI.
 
@@ -45,7 +47,7 @@ Full sweep: `python tools/run_all_tests.py` from the repo root (the root `tools/
 ### Full device build + flash
 From `esp_bt_audio_source/`:
 ```bash
-. $HOME/esp/v5.5.1/esp-idf/export.sh
+. $HOME/.espressif/tools/activate_idf_v6.1.sh
 idf.py build
 idf.py -p /dev/ttyUSB0 flash
 ```

@@ -54,7 +54,7 @@ CI example
 This snippet shows a minimal CI job step (assumes the runner has serial access and ESP-IDF is sourced):
 
 ```bash
-. $HOME/esp/v5.5.1/esp-idf/export.sh
+. $HOME/.espressif/tools/activate_idf_v6.1.sh
 python3 esp_bt_audio_source/tools/flash_and_verify_spiffs.py \
   --port ${PORT:-/dev/ttyUSB0} \
   --spiffs-image esp_bt_audio_source/main/assets/spiffs/spiffs.bin \

@@ -1644,3 +1644,11 @@ phase below was hardware-smoke-tested without re-asking.
 - Fixed stale layering-hook path in .claude/settings.json (now /home/phil/work/esp32_btaudio/...).
 - Repointed bbgw_i2s_source_ci.yml paths/working-directory/coverage file to archive/bbgw_i2s_source (workflow not run; consider deleting since project is archived).
 - Added "Python environment" section to CLAUDE.md (reuse root uv-managed .venv, uv pip install, no pyproject/uv.lock); AGENTS.md re-synced.
+
+## 2026-11-08T01:23:17Z - Claude Sonnet 5.5 - ESP-IDF 5.5.1 -> 6.1 upgrade (sdkconfig, CI, docs)
+
+- Firmware and test_manager/test_app_audio/test_bluetooth build on IDF 6.1 (EIM install at ~/.espressif/v6.1). Host tests 1206/1206, 15 sanitizer scripts pass. Not run on hardware.
+- Code port (commit 9826a509): i2s_port_t -> int, esp_driver_* requirements, bt_idf_compat.h (STOPPED/REMOTE_SUSPEND/MEDIA_CTRL_STOP were already aliases in 5.5.1, so no behavior change), malloc instead of osi_malloc, test_utils path moved to tools/test_apps.
+- Regenerated esp_bt_audio_source/sdkconfig with 6.1 (143 options removed, 219 added, 5 changed; none referenced by project code). CI no longer greps CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF (option removed in 6.1). ci-device-build.yml now installs v6.1.
+- Docs updated to EIM activation (. $HOME/.espressif/tools/activate_idf_v6.1.sh). Historical closeouts/specs deliberately left at v5.5.1.
+- Pending: scripts still hardcode $HOME/esp/esp-idf/export.sh (tools/run_unity.py, tools/run_all_tests.py help, esp_bt_audio_source/tools/flash_*.{py,sh}); esp_i2s_source still on 5.5.1 incl. test_device unit-test-app path; test_app_audio/dependencies.lock holds a machine-local path and is uncommitted; CI on 6.1 and hardware runs unverified.
