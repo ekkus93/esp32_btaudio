@@ -8,7 +8,7 @@ useful for component-level detail not repeated here.
 DevKit reference.
 **Companion device:** `esp_bt_audio_source` on ESP32-WROOM32 (I2S slave
 receiver + Bluetooth A2DP source), connected by I2S + UART.
-**ESP-IDF:** v5.5.1 (same toolchain as the companion project).
+**ESP-IDF:** v6.1 (same toolchain as the companion project).
 
 ## 1. Product summary
 

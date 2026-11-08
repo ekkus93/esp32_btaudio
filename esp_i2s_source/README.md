@@ -64,12 +64,12 @@ Full contract, clock rationale, and phase detection mechanism are in [`docs/SPEC
 
 ## Build
 
-ESP-IDF **v5.5.1**, target `esp32s3`. WiFi credentials and other settings are
+ESP-IDF **v6.1** (installed with EIM), target `esp32s3`. WiFi credentials and other settings are
 generated config — edit `sdkconfig.defaults`, not `sdkconfig` (which is
 regenerated). `managed_components/` is gitignored (restored by the build).
 
 ```bash
-. $HOME/esp/v5.5.1/esp-idf/export.sh
+. $HOME/.espressif/tools/activate_idf_v6.1.sh
 idf.py build
 ```
 

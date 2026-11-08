@@ -12,13 +12,13 @@ production NVS region.
 ## Hardware
 
 - ESP32-S3-WROOM-1 N16R8
-- ESP-IDF v5.5.1
+- ESP-IDF v6.1
 - Native USB Serial/JTAG console
 
 ## Clean build
 
 ```bash
-. "$HOME/esp/v5.5.1/esp-idf/export.sh"
+. "$HOME/.espressif/tools/activate_idf_v6.1.sh"
 cd esp_i2s_source/test/wifi_simple
 
 rm -rf build sdkconfig sdkconfig.old

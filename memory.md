@@ -1660,3 +1660,13 @@ phase below was hardware-smoke-tested without re-asking.
 - GOTCHA: EIM activate_idf_*.sh calls `exit 1` when sourced from inside a script file (it checks $0 against bash/sh/dash) and fails under `set -u`. Always source it via `bash -c`/`sh -c` (as run_unity.py, tools/rat and flash_with_spiffs.sh do), never from a script body.
 - Verified without hardware: flash_with_spiffs.sh structure under set -euo pipefail with flash commands swapped for version checks; nothing was flashed.
 - Still on 5.5.1 paths: esp_i2s_source scripts (s3_device_gate.sh, s3_flash_run.sh) and docs.
+
+## 2026-11-08T02:10:45Z - Claude Sonnet 5.5 - esp_i2s_source ported to ESP-IDF 6.1
+
+- esp_i2s_source (esp32s3), test/test_device and test/wifi_simple all build on IDF 6.1; host tests 27/27 (also under -std=gnu23). Not flashed or run on hardware.
+- web_ui: IDF 6.0 removed the built-in `json` component -> espressif/cjson (declared in main/idf_component.yml, required as espressif__cjson). main manifest now requires idf >=6.1; dependencies.lock regenerated (cjson 1.7.19~2, idf 6.1.0, lock format 3.0.0).
+- bt_link/i2s_out: legacy `driver` requirement -> esp_driver_uart / esp_driver_i2s.
+- test_device: same test_utils fix as bt test_app_audio (version-aware EXTRA_COMPONENT_DIRS, manifest and machine-local lock deleted). 6.x also errors on nonexistent INCLUDE_DIRS: removed main "include" and made the empty test_command_interface stub `idf_component_register()`.
+- tools/s3_flash_run.sh and s3_device_gate.sh: no longer source export.sh in the script body; they re-exec themselves inside the IDF env via esp_bt_audio_source/tools/idf_env.py (see EIM exit-1 gotcha above). esptool.py/underscore spellings -> esptool + hyphenated (esptool 5; old forms still work but warn, and one call hides all output).
+- sdkconfig.defaults: all 12 entries survive in the 6.1 config. For esp_bt_audio_source, 7 defaults differ from the tracked sdkconfig (GOEPC, WIFI, COEX, GATT*, SMP) but identically before and after the upgrade (tracked sdkconfig wins over defaults).
+- NOTE: /dev/ttyACM0 is the S3 (Espressif USB-JTAG) and the user is not in the dialout group, so serial access fails with EACCES until that is fixed. During testing, s3_flash_run.sh/s3_device_gate.sh --no-flash were run against it by mistake; both failed with permission denied before reaching the device.

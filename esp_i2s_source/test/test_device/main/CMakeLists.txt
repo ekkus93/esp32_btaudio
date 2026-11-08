@@ -5,7 +5,6 @@ idf_component_register(
         "test_device.c"
     INCLUDE_DIRS
         "."
-        "include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../components/signal_gen/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../components/tone/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../components/i2s_out/include"

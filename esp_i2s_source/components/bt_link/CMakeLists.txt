@@ -3,4 +3,4 @@
 # device UART task, verified on hardware at LINK-1c.
 idf_component_register(SRCS "bt_link_parser.c" "bt_link_session.c" "bt_link.c"
                        INCLUDE_DIRS "include"
-                       REQUIRES driver)
+                       REQUIRES esp_driver_uart)

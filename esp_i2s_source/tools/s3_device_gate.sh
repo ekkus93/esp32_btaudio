@@ -38,6 +38,19 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HERE"
 
+# Run the rest of this script inside the ESP-IDF environment. The activation
+# script is sourced by a fresh `bash -c`, never from this script's body: EIM's
+# activate_idf_<ver>.sh calls `exit 1` when sourced from a script file and
+# fails under `set -u`. idf_env.py (shared with esp_bt_audio_source) picks the
+# EIM script, or a legacy export.sh.
+if [ -z "${I2S_SCRIPT_IN_IDF:-}" ]; then
+    IDF_ENV_HELPER="$HERE/../esp_bt_audio_source/tools/idf_env.py"
+    [ -f "$IDF_ENV_HELPER" ] || { echo "ERROR: $IDF_ENV_HELPER not found" >&2; exit 4; }
+    IDF_ENV_SCRIPT="$(python3 "$IDF_ENV_HELPER")" || exit 4
+    I2S_SCRIPT_IN_IDF=1 exec bash -c '. "$1" >/dev/null 2>&1 || exit 1; shift; exec "$@"' \
+        bash "$IDF_ENV_SCRIPT" bash "${BASH_SOURCE[0]}" "$@"
+fi
+
 DO_FLASH=1
 # Wide enough to span the early one-shot BOOT|READY and the later CONSOLE/WEB
 # markers, which only print after WiFi association (a few seconds).
@@ -63,22 +76,19 @@ fi
 
 first_port() { ls /dev/ttyACM* 2>/dev/null | head -1; }
 
-# shellcheck disable=SC1091
-. "$HOME/esp/esp-idf/export.sh" >/dev/null 2>&1
-
 if [ "$DO_FLASH" = 1 ]; then
     idf.py build
     PORT="$(first_port)"; [ -n "$PORT" ] || { echo "no /dev/ttyACM* found"; exit 1; }
     echo ">> flashing on $PORT"
-    ( cd build && esptool.py --chip esp32s3 -p "$PORT" --before default_reset \
-        --after no_reset write_flash "@flash_args" )
+    ( cd build && esptool --chip esp32s3 -p "$PORT" --before default-reset \
+        --after no-reset write-flash "@flash_args" )
 fi
 
 # Boot the app via watchdog reset (download-mode workaround, see s3_flash_run.sh).
 PORT="$(first_port)"; [ -n "$PORT" ] || { echo "no /dev/ttyACM* found"; exit 1; }
 echo ">> booting app via watchdog_reset on $PORT"
-esptool.py --chip esp32s3 -p "$PORT" --before default_reset --after watchdog_reset \
-    flash_id >/dev/null 2>&1 || true
+esptool --chip esp32s3 -p "$PORT" --before default-reset --after watchdog-reset \
+    flash-id >/dev/null 2>&1 || true
 
 CAP="$(mktemp)"
 trap 'rm -f "$CAP"' EXIT

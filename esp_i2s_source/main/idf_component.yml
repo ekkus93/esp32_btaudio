@@ -1,5 +1,6 @@
 ## Managed component dependencies for esp_i2s_source.
 dependencies:
-  idf: ">=5.5"
+  idf: ">=6.1"
+  espressif/cjson: "^1.7.19"       # IDF 6.0 removed the built-in json component (web_ui)
   espressif/mdns: "^1.2"           # WIFI-1b: esp-i2s-source.local on the LAN
   espressif/esp_audio_codec: "^2.6.0"  # RADIO-2a: MP3/AAC/HE-AAC decode
